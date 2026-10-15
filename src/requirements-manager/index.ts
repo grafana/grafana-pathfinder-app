@@ -62,4 +62,4 @@ export type { FixTypeValue } from './fix-types';
 export { dispatchFix } from './fix-registry';
 export type { FixContext, FixResult } from './fix-handlers';
 
-export { createCheckpointAdapter } from './checkpoint-adapter';
+export { createRecoveryAdapter } from './section-recovery-adapter';

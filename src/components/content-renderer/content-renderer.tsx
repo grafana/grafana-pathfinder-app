@@ -1496,7 +1496,6 @@ function renderParsedElement(
           id={element.props.id} // Pass the HTML id attribute
           sectionId={element.props.sectionId}
           autoCollapse={element.props.autoCollapse}
-          checkpoint={element.props.checkpoint}
           whenRequirementsUnmet={element.props.whenRequirementsUnmet}
         >
           {renderChildren(element.children)}

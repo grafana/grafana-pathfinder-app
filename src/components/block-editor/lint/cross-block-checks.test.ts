@@ -7,7 +7,6 @@
  */
 
 import {
-  checkpointBrokenBySection,
   CROSS_BLOCK_CHECK_CODES,
   destructiveActionWithoutObjective,
   firstStepMissingOnPage,
@@ -415,33 +414,5 @@ describe('runCrossBlockChecks', () => {
     // qualifies and this one is `highlight`. Sanity-check the heuristic
     // didn't fire.
     expect(codes).not.toContain(CROSS_BLOCK_CHECK_CODES.DESTRUCTIVE_ACTION_WITHOUT_OBJECTIVE);
-  });
-});
-
-describe('checkpointBrokenBySection', () => {
-  const section = (reftarget: string): JsonGuide => ({
-    ...baseGuide,
-    blocks: [
-      {
-        type: 'section',
-        id: 'explore',
-        checkpoint: { checks: [{ requirement: 'on-page:/explore' }] },
-        blocks: [{ type: 'interactive', action: 'navigate', reftarget, content: 'Go' }],
-      },
-    ],
-  });
-
-  it('warns when a step navigates off the page the checkpoint requires', () => {
-    expect(checkpointBrokenBySection(section('/dashboards?folder=1'))).toEqual([
-      expect.objectContaining({
-        severity: 'warning',
-        code: CROSS_BLOCK_CHECK_CODES.CHECKPOINT_BROKEN_BY_SECTION,
-        path: ['blocks', 0, 'blocks', 0],
-      }),
-    ]);
-  });
-
-  it('allows navigation within the required page', () => {
-    expect(checkpointBrokenBySection(section('/explore?left=1'))).toEqual([]);
   });
 });

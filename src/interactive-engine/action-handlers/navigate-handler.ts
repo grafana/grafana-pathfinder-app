@@ -15,17 +15,6 @@ export class NavigateHandler {
     private context?: InteractiveElementData
   ) {}
 
-  async executeRecovery(data: InteractiveElementData): Promise<ActionExecutionResult> {
-    if (data.signal?.aborted) {
-      return { outcome: 'cancelled' };
-    }
-    const safeTarget = validateInternalNavigationPath(data.refTarget, currentUserIsAdmin());
-    if (!safeTarget || data.openGuide || new URL(safeTarget, window.location.origin).searchParams.has('doc')) {
-      return { outcome: 'error', reason: 'navigation_rejected' };
-    }
-    return this.handleDoMode({ ...data, refTarget: safeTarget });
-  }
-
   async execute(data: InteractiveElementData, navigate: boolean): Promise<ActionExecutionResult> {
     if (data !== this.context && (data.signal || data.lazyRender)) {
       return new NavigateHandler(this.stateManager, this.waitForReactUpdates, data).execute(data, navigate);

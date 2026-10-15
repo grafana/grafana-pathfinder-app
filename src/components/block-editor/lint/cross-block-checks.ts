@@ -98,7 +98,6 @@ export const CROSS_BLOCK_CHECK_CODES = Object.freeze({
   DESTRUCTIVE_ACTION_WITHOUT_OBJECTIVE: 'editor.destructiveActionWithoutObjective',
   UNUSED_SECTION: 'editor.unusedSection',
   REQUIREMENTS_IMPLIED_BUT_NOT_DECLARED: 'editor.requirementsImpliedByActionButNotDeclared',
-  CHECKPOINT_BROKEN_BY_SECTION: 'editor.checkpointBrokenBySection',
 });
 
 // ---------------------------------------------------------------------------
@@ -374,48 +373,6 @@ export function requirementsImpliedByActionButNotDeclared(guide: JsonGuide): Dia
 }
 
 // ---------------------------------------------------------------------------
-// checkpointBrokenBySection
-// ---------------------------------------------------------------------------
-
-/**
- * A checkpoint must hold for the whole section, so a step that navigates off
- * the page it requires pauses the section after that step, and Restore then
- * undoes the step.
- */
-export function checkpointBrokenBySection(guide: JsonGuide): Diagnostic[] {
-  const issues: Diagnostic[] = [];
-  for (const { block, path } of walkBlocks(guide.blocks, ['blocks'])) {
-    if (!isSectionBlock(block) || !block.checkpoint) {
-      continue;
-    }
-    const pages = block.checkpoint.checks.flatMap((check) =>
-      'requirement' in check && check.requirement.startsWith(ON_PAGE_PREFIX)
-        ? [check.requirement.slice(ON_PAGE_PREFIX.length)]
-        : []
-    );
-    if (pages.length === 0) {
-      continue;
-    }
-    for (const { block: step, path: stepPath } of walkBlocks(block.blocks ?? [], [...path, 'blocks'])) {
-      if (!isInteractiveBlock(step) || step.action !== 'navigate' || !step.reftarget) {
-        continue;
-      }
-      const destination = step.reftarget.split(/[?#]/)[0]!;
-      const broken = pages.find((page) => !destination.includes(page));
-      if (broken !== undefined) {
-        issues.push({
-          severity: 'warning',
-          code: CROSS_BLOCK_CHECK_CODES.CHECKPOINT_BROKEN_BY_SECTION,
-          message: `This step navigates to "${destination}", but its section's checkpoint requires \`on-page:${broken}\` throughout, so the section pauses after it. Move that condition to the steps that need it, or split the section.`,
-          path: stepPath,
-        });
-      }
-    }
-  }
-  return issues;
-}
-
-// ---------------------------------------------------------------------------
 // Entry point — runs every cross-block check and returns the combined list.
 // ---------------------------------------------------------------------------
 
@@ -433,6 +390,5 @@ export function runCrossBlockChecks(guide: JsonGuide): Diagnostic[] {
     ...destructiveActionWithoutObjective(guide),
     ...unusedSection(guide),
     ...requirementsImpliedByActionButNotDeclared(guide),
-    ...checkpointBrokenBySection(guide),
   ];
 }

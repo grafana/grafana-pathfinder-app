@@ -132,6 +132,10 @@ describe('openfeature', () => {
           'highlighted_guide_experiment'
         );
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].trackingKey).toBe('frontend_telemetry');
+        expect(pathfinderFeatureFlags['pathfinder.section-recovery']).toMatchObject({
+          trackingKey: 'section_recovery',
+          defaultValue: true,
+        });
         expect(pathfinderFeatureFlags['pathfinder.session-replay'].trackingKey).toBe('session_replay');
         expect(pathfinderFeatureFlags['pathfinder.session-replay-sampling-rate'].trackingKey).toBe(
           'session_replay_sampling_rate'

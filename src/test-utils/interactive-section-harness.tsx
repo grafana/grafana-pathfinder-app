@@ -338,7 +338,7 @@ export function createInteractiveEngineMock() {
 export function createRequirementsManagerMock() {
   return {
     useGuideRequirements: require('../requirements-manager/guide-requirements-context').useGuideRequirements,
-    createCheckpointAdapter: require('../requirements-manager/checkpoint-adapter').createCheckpointAdapter,
+    createRecoveryAdapter: require('../requirements-manager/section-recovery-adapter').createRecoveryAdapter,
     useStepChecker: () => ({
       isEnabled: true,
       isCompleted: false,
@@ -402,9 +402,9 @@ export function createAnalyticsMock() {
       ShowMeButtonClick: 'show_me_button_click',
       DoItButtonClick: 'do_it_button_click',
       StepAutoCompleted: 'step_auto_completed',
-      SectionCheckpointPaused: 'section_checkpoint_paused',
-      SectionCheckpointRestore: 'section_checkpoint_restore',
-      SectionCheckpointUnverifiable: 'section_checkpoint_unverifiable',
+      SectionRecoveryPaused: 'section_recovery_paused',
+      SectionRecoveryRestore: 'section_recovery_restore',
+      SectionRecoveryResolved: 'section_recovery_resolved',
     },
     AnalyticsContentType: {
       Docs: 'docs',

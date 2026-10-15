@@ -1,4 +1,3 @@
-import type { JsonSectionCheckpoint } from './json-guide.types';
 /**
  * Component prop type definitions
  * Centralized prop interfaces for components used across the application
@@ -70,7 +69,6 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
  * Container for multiple interactive steps
  */
 export interface InteractiveSectionProps extends BaseInteractiveProps {
-  checkpoint?: JsonSectionCheckpoint;
   title: string;
   description?: string;
   children: React.ReactNode;
@@ -109,6 +107,8 @@ export interface StepInfo {
   postVerify?: string;
   skippable?: boolean; // Whether this step can be skipped
   showMe?: boolean; // Whether to show the "Show me" button and phase
+  stepKind?: string;
+  opaqueBefore?: boolean;
   isMultiStep: boolean; // Flag to identify component type
   isGuided: boolean; // Flag to identify guided (user-performed) steps
   isQuiz?: boolean; // Flag to identify quiz steps

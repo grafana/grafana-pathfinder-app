@@ -636,6 +636,11 @@ export function getGuideCompletionSource(contentKey: string): 'manual' | 'skippe
     : 'objectives';
 }
 
+export function getSectionSkippedSteps(sectionId: string, completed: ReadonlySet<string>): ReadonlySet<string> {
+  const bySteps = entries.get(getContentKey())?.get(sectionId);
+  return new Set([...completed].filter((stepId) => bySteps?.get(stepId)?.reason === 'skipped'));
+}
+
 /** Subscribe to per-content progress changes. Returns an unsubscribe function. */
 export function subscribeProgress(contentKey: string, listener: () => void): () => void {
   return subscribeToContent(contentKey, listener);

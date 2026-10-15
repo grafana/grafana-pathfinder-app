@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Button, Field, Input, useStyles2, Alert, Switch, Select } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { ConditionChipsField } from './ConditionChipsField';
-import { SelectorHealthBadge } from '../SelectorHealthBadge';
 import {
   useFieldLint,
   ConditionLintMessages,
@@ -32,16 +31,6 @@ function generateIdFromTitle(title: string): string {
   return generated ? `section-${generated}` : '';
 }
 
-function targetsOf(checkpoint: JsonSectionBlock['checkpoint']): string[] {
-  const targets = (checkpoint?.checks ?? []).flatMap((check) => [
-    ...('target' in check ? [check.target] : []),
-    ...(check.recover ?? []).flatMap((step) =>
-      step.objectives.flatMap((objective) => ('target' in objective ? [objective.target] : []))
-    ),
-  ]);
-  return Array.from(new Set(targets));
-}
-
 export function SectionBlockForm({
   initialData,
   onSubmit,
@@ -62,8 +51,6 @@ export function SectionBlockForm({
   >(initial?.whenRequirementsUnmet ?? 'disable');
 
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
-  const checkpoint = useRef(initial?.checkpoint);
-  const checkpointTargets = targetsOf(initial?.checkpoint);
 
   const buildBlock = useCallback((): JsonSectionBlock => {
     const reqArray = requirements
@@ -83,7 +70,6 @@ export function SectionBlockForm({
       ...(reqArray.length > 0 && { requirements: reqArray }),
       ...(objArray.length > 0 && { objectives: objArray }),
       ...(autoCollapse === false && { autoCollapse: false }),
-      ...(checkpoint.current && { checkpoint: checkpoint.current }),
       ...(whenRequirementsUnmet !== 'disable' && { whenRequirementsUnmet }),
     };
   }, [sectionId, title, requirements, objectives, autoCollapse, whenRequirementsUnmet]);
@@ -215,22 +201,6 @@ export function SectionBlockForm({
         onRemoveToken={removeObjectivesToken}
         testId="section-block-objectives-lint"
       />
-
-      {checkpointTargets.length > 0 && (
-        <Field
-          label="Checkpoint targets"
-          description="Checkpoints are edited in JSON mode. Each target must match exactly one element on the page it checks; a target that matches several cannot be verified and stops gating the section."
-        >
-          <div data-testid="section-block-checkpoint-targets">
-            {checkpointTargets.map((target) => (
-              <div key={target}>
-                <code>{target}</code>
-                <SelectorHealthBadge reftarget={target} />
-              </div>
-            ))}
-          </div>
-        </Field>
-      )}
 
       {/* Auto-collapse on completion */}
       <Field

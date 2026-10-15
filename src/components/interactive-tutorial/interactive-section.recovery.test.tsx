@@ -58,19 +58,27 @@ jest.mock('./interactive-step', () => ({
     require('react').createElement('button', { disabled: !props.isEligibleForChecking }, 'Continue step'),
 }));
 
-jest.mock('./hooks/use-section-checkpoint', () => ({
-  useSectionCheckpoint: () => {
-    const [passed, setPassed] = require('react').useState(false);
+const mockRecovery = {
+  plans: new Map<string, unknown>(),
+  paused: false,
+  restore: jest.fn(),
+  recheck: jest.fn(async () => true),
+};
+jest.mock('./hooks/use-section-recovery', () => ({
+  useSectionRecovery: (plan: unknown, sectionId: string) => {
+    mockRecovery.plans.set(sectionId, plan);
     return {
-      passed,
-      settled: true,
-      status: { passed, canRestore: true, explanation: 'Open the query options.' },
+      paused: mockRecovery.paused,
       restoring: false,
-      restore: () => setPassed(true),
-      recheck: jest.fn(),
+      restore: mockRecovery.restore,
+      cancel: jest.fn(),
+      recheck: mockRecovery.recheck,
     };
   },
 }));
+
+const mockRecoveryEnabled = jest.fn(() => true);
+jest.mock('../../utils/section-recovery-enablement', () => ({ isSectionRecoveryEnabled: () => mockRecoveryEnabled() }));
 
 jest.mock('./interactive-multi-step', () => {
   return require('../../test-utils/interactive-section-harness').createInteractiveMultiStepMock();
@@ -127,92 +135,84 @@ afterEach(() => {
   cleanup();
 });
 
-it('holds step checks until recovery succeeds with a single restore action', async () => {
-  render(
-    <InteractiveSection
-      id="recovery"
-      title="Inspect query options"
-      autoCollapse={false}
-      checkpoint={{ checks: [{ requirement: 'on-page:/explore' }] }}
-    >
-      <InteractiveStep targetAction="highlight" refTarget=".options">
-        Inspect options.
+beforeEach(() => {
+  mockRecovery.plans.clear();
+  mockRecovery.paused = false;
+  mockRecoveryEnabled.mockReturnValue(true);
+});
+
+function exploreSection(id = 'explore', extra: Record<string, unknown> = {}) {
+  return (
+    <InteractiveSection id={id} title="Explore" autoCollapse={false} {...extra}>
+      <InteractiveStep targetAction="highlight" refTarget="#row" targetState="aria-expanded:true">
+        Open the row.
+      </InteractiveStep>
+      <InteractiveStep targetAction="button" refTarget="Run query" requirements={['on-page:/explore']}>
+        Run it.
       </InteractiveStep>
     </InteractiveSection>
   );
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument());
-  expect(screen.getByRole('button', { name: 'Continue step' })).toBeDisabled();
-  expect(document.querySelector('details')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Check again' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Continue step' })).toBeEnabled());
-  expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+}
+
+it('derives recovery from the section steps with no authoring', async () => {
+  render(exploreSection());
+  await waitFor(() => expect(mockRecovery.plans.get('section-explore')).toBeDefined());
+  expect(mockRecovery.plans.get('section-explore')).toMatchObject({
+    checks: [
+      {
+        kind: 'target-present',
+        refTarget: '#row',
+        targetAction: 'highlight',
+        recover: [{ kind: 'resume-location' }],
+      },
+    ],
+  });
 });
 
-it('stops offering recovery once the section is complete', async () => {
+it('shows Restore and holds the steps only while recovery is paused', async () => {
+  mockRecovery.paused = true;
+  const { container } = render(exploreSection());
+  const restore = await screen.findByRole('button', { name: 'Restore' });
+  expect(container.querySelector('.recovery-paused')).toBeInTheDocument();
+  screen.getAllByRole('button', { name: 'Continue step' }).forEach((step) => expect(step).toBeDisabled());
+  fireEvent.click(restore);
+  expect(mockRecovery.restore).toHaveBeenCalled();
+});
+
+it('shows nothing and gates nothing when recovery is not paused', async () => {
+  const { container } = render(exploreSection());
+  await waitFor(() => expect(container.querySelector('.interactive-section')).toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  expect(container.querySelector('.recovery-paused')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'Continue step' })[0]).toBeEnabled();
+});
+
+it('has no recovery plan once the section is complete', async () => {
   setStepCheckerCompletionReason('objectives');
-  const { container } = render(
-    <InteractiveSection
-      id="recovery"
-      title="Inspect query options"
-      autoCollapse={false}
-      objectives={['on-page:/explore']}
-      checkpoint={{ checks: [{ requirement: 'on-page:/explore' }] }}
-    >
-      <InteractiveStep targetAction="highlight" refTarget=".options">
-        Inspect options.
-      </InteractiveStep>
-    </InteractiveSection>
-  );
+  const { container } = render(exploreSection('explore', { objectives: ['on-page:/explore'] }));
   await waitFor(() => expect(container.querySelector('.interactive-section.completed')).toBeInTheDocument());
-  expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
-  expect(container.querySelector('.checkpoint-paused')).not.toBeInTheDocument();
+  expect(mockRecovery.plans.get('section-explore')).toBeUndefined();
 });
 
-it('stays quiet on a section the learner has not reached yet', async () => {
-  const { container } = render(
+it('has no recovery plan when the kill switch is off', async () => {
+  mockRecoveryEnabled.mockReturnValue(false);
+  render(exploreSection());
+  await waitFor(() => expect(mockRecovery.plans.has('section-explore')).toBe(true));
+  expect(mockRecovery.plans.get('section-explore')).toBeUndefined();
+});
+
+it('keeps a later section quiet until the learner reaches it', async () => {
+  render(
     <>
       <InteractiveSection id="first" title="First" autoCollapse={false}>
         <InteractiveStep targetAction="highlight" refTarget=".first">
           First step.
         </InteractiveStep>
       </InteractiveSection>
-      <InteractiveSection
-        id="later"
-        title="Later"
-        autoCollapse={false}
-        checkpoint={{ checks: [{ requirement: 'on-page:/explore' }] }}
-      >
-        <InteractiveStep targetAction="highlight" refTarget=".later">
-          Later step.
-        </InteractiveStep>
-      </InteractiveSection>
+      {exploreSection('later')}
     </>
   );
-  await waitFor(() => expect(container.querySelectorAll('.interactive-section')).toHaveLength(2));
-  expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
-  expect(container.querySelector('.checkpoint-paused')).not.toBeInTheDocument();
-});
-
-it('keeps a later reading-only section quiet until the learner reaches it', async () => {
-  const { container } = render(
-    <>
-      <InteractiveSection id="first" title="First" autoCollapse={false}>
-        <InteractiveStep targetAction="highlight" refTarget=".first">
-          First step.
-        </InteractiveStep>
-      </InteractiveSection>
-      <InteractiveSection
-        id="reading"
-        title="Reading"
-        autoCollapse={false}
-        checkpoint={{ checks: [{ requirement: 'on-page:/explore' }] }}
-      >
-        <p>Read about the options.</p>
-      </InteractiveSection>
-    </>
-  );
-  await waitFor(() => expect(container.querySelectorAll('.interactive-section')).toHaveLength(2));
-  expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
-  expect(container.querySelector('.checkpoint-paused')).not.toBeInTheDocument();
+  await waitFor(() => expect(mockRecovery.plans.has('section-later')).toBe(true));
+  expect(mockRecovery.plans.get('section-first')).toBeDefined();
+  expect(mockRecovery.plans.get('section-later')).toBeUndefined();
 });

@@ -324,36 +324,6 @@ export function validateBlockConditions(guide: JsonGuide): ConditionIssue[] {
       });
     }
 
-    if (block.type === 'section' && block.checkpoint) {
-      block.checkpoint.checks.forEach((check, i) => {
-        if ('requirement' in check) {
-          issues.push(...validateConditions([check.requirement], [...path, 'checkpoint', 'checks', i, 'requirement']));
-        }
-        check.recover?.forEach((step, stepIndex) => {
-          step.objectives.forEach((objective, objectiveIndex) => {
-            if ('requirement' in objective) {
-              issues.push(
-                ...validateConditions(
-                  [objective.requirement],
-                  [
-                    ...path,
-                    'checkpoint',
-                    'checks',
-                    i,
-                    'recover',
-                    stepIndex,
-                    'objectives',
-                    objectiveIndex,
-                    'requirement',
-                  ]
-                )
-              );
-            }
-          });
-        });
-      });
-    }
-
     // Check objectives if present
     if ('objectives' in block && block.objectives) {
       issues.push(...validateConditions(block.objectives, [...path, 'objectives']));

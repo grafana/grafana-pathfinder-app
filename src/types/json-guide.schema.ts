@@ -10,12 +10,7 @@
 import { z } from 'zod';
 
 import type { JsonBlock } from './json-guide.types';
-import {
-  CHECKPOINT_REQUIREMENTS,
-  isCheckpointRequirement,
-  isValidRequirement,
-  unknownRequirementMessage,
-} from './requirements.types';
+import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
 
 // ============ COMPLETENESS MESSAGES ============
 //
@@ -1001,52 +996,7 @@ export const PresentationalBlockSchema = z.union([
 // ============ RECURSIVE BLOCK SCHEMAS ============
 
 // Common properties for recursive blocks to avoid duplication
-const CheckpointRequirementSchema = RequirementTokenSchema.refine(
-  isCheckpointRequirement,
-  `Checkpoint requirements must describe live page state (${CHECKPOINT_REQUIREMENTS.join(', ')}); use a target check for element visibility and the section requirements for everything else`
-);
-const CheckpointTargetProps = {
-  target: z.string().trim().min(1).max(2000),
-  state: z.enum(['visible', 'expanded', 'selected']),
-};
-const CheckpointObjectiveSchema = z.union([
-  z.strictObject({
-    requirement: CheckpointRequirementSchema.refine(
-      (token) => !token.startsWith('section-completed:'),
-      'Recovery objectives must describe live state, not historical completion'
-    ),
-  }),
-  z.strictObject(CheckpointTargetProps),
-]);
-const CheckpointRecoverySchema = z
-  .array(
-    z.strictObject({
-      action: z.enum(['button', 'navigate']),
-      reftarget: z.string().trim().min(1).max(2000),
-      targetstate: TargetStateSchema,
-      replaySafe: z
-        .literal(true)
-        .describe('Author reviewed this action as safe to repeat; no resource writes or destructive actions'),
-      objectives: z.array(CheckpointObjectiveSchema).min(1).max(12),
-    })
-  )
-  .min(1)
-  .max(12);
-export const JsonSectionCheckpointSchema = z.strictObject({
-  checks: z
-    .array(
-      z.union([
-        z.strictObject({ requirement: CheckpointRequirementSchema, recover: CheckpointRecoverySchema.optional() }),
-        z.strictObject({ ...CheckpointTargetProps, recover: CheckpointRecoverySchema.optional() }),
-      ])
-    )
-    .min(1)
-    .max(12),
-  manualRecovery: z.string().max(1000).optional(),
-});
-
 const SectionProps = {
-  checkpoint: JsonSectionCheckpointSchema.optional(),
   type: z.literal('section'),
   id: z.string().optional().describe('Stable identifier for the section (required for container blocks via CLI)'),
   title: z.string().optional().describe('Section heading'),
@@ -1396,7 +1346,6 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'requirements',
     'objectives',
     'autoCollapse',
-    'checkpoint',
     'whenRequirementsUnmet',
     'authorNote',
   ]),

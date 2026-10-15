@@ -415,38 +415,15 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 }
 ```
 
-| Field          | Type        | Required | Description                                        |
-| -------------- | ----------- | -------- | -------------------------------------------------- |
-| `id`           | string      | ❌       | HTML id for the section                            |
-| `title`        | string      | ❌       | Section heading                                    |
-| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive)                |
-| `requirements` | string[]    | ❌       | Section-level requirements                         |
-| `objectives`   | string[]    | ❌       | Conditions that auto-complete the section          |
-| `checkpoint`   | object      | ❌       | Live state the section needs throughout; see below |
+| Field          | Type        | Required | Description                               |
+| -------------- | ----------- | -------- | ----------------------------------------- |
+| `id`           | string      | ❌       | HTML id for the section                   |
+| `title`        | string      | ❌       | Section heading                           |
+| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive)       |
+| `requirements` | string[]    | ❌       | Section-level requirements                |
+| `objectives`   | string[]    | ❌       | Conditions that auto-complete the section |
 
-**Section checkpoints.** A checkpoint lists conditions that must stay true for the whole section, such as being on a page with a control open. If the learner leaves that state, the section pauses with a single **Restore** button instead of failing its next step. Completed progress is never reset.
-
-```json
-{
-  "type": "section",
-  "id": "inspect-options",
-  "requirements": ["section-completed:open-explore"],
-  "checkpoint": {
-    "checks": [
-      { "requirement": "on-page:/explore" },
-      { "target": "button[aria-label$='query row']", "state": "expanded" }
-    ],
-    "manualRecovery": "Reopen Explore and expand the query row, then check again."
-  },
-  "blocks": []
-}
-```
-
-- `checks` run in order, so list page checks before controls. A check is either a `requirement` (only `on-page:`, `navmenu-open`, `dashboard-group-by:` and `dashboard-filter-absent:` are accepted; other conditions belong in the section's `requirements`) or a `target` with a `state` of `visible`, `expanded` or `selected`. Targets accept the same selector syntax as steps, including `:contains()`.
-- Restore navigates back to the URL the checkpoint last passed on (so an Explore query survives), opens collapsed controls, and restores dashboard grouping. A `visible` check never guesses a click; give it a `recover` recipe of `button` or `navigate` actions, each with `replaySafe: true` and live `objectives`. See [the design](../../design/AUTORECOVERY_DESIGN.md) for the recipe rules.
-- Checks are deliberately coarse. `on-page:` passes on any path that contains the value, so `on-page:/explore` also passes on `/explore/metrics` and a short value like `/d/` passes on every dashboard. A target must match exactly one visible, enabled element anywhere on the page; scope it to the panel or query row you mean. A target that matches several elements, or whose control has no `aria-expanded`/`aria-selected` to read, cannot be verified, so it stops gating the section and is reported to you rather than blocking the learner. The section form in the guide editor lists checkpoint targets with their live match count.
-- `manualRecovery` is shown when nothing can be restored automatically, including after a Restore that did not verify.
-- The checkpoint is live only once every earlier section is complete or the learner has started this one, and it stops when the section completes.
+**Recovery.** If a learner drifts out of the state a section's earlier steps set up, for example by leaving the page or collapsing a control a step opened, the section pauses and offers **Restore**, without resetting progress. Nothing needs authoring: recovery is derived from the steps. To let it reopen controls, give toggle steps a `targetstate` (for example `"targetstate": "aria-expanded:true"` on the step that expands a row), and give steps the `on-page:` and `exists-reftarget` requirements they rely on. Form fills and one-way clicks such as Save are never replayed. See [the design](../../design/AUTORECOVERY_DESIGN.md#implicit-section-recovery-implemented).
 
 #### Collapsible Block
 

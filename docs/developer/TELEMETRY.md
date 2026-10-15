@@ -97,17 +97,17 @@ Privacy protection is split between enforced normalization and caller discipline
   - The **query is stripped**, everywhere. On a Grafana URL the query is where the user's own choices live — `var-*` template values, Explore's serialized queries, `?doc=` deep links — which is a different class of data from a title.
   - This applies on **two independent channels**. `replay-scrub.ts` covers URLs inside the rrweb payload; `redactPageUrl` in `filtering.ts` covers `meta.page.url`, which Faro sets from `location.href` on every item regardless of payload. The second one matters more than it looks: Grafana Cloud's collector explodes that query into `page.attributes`, so an unscrubbed URL arrives as first-class searchable `page_attr_var_*` fields.
 
-## Section checkpoint events
+## Section recovery events
 
-Sections with a `checkpoint` report when they pause and how a Restore ends. Both events carry guide identity through `guideIdentityAnalyticsProperties`, and add `section_id` only when `guide_visibility` is `public`, because a private guide's section ids are authored text.
+Implicit section recovery reports when a section pauses, how a Restore ends, and how each pause resolved. All three carry guide identity through `guideIdentityAnalyticsProperties`, the cursor step's `step_action`, and `section_id` only when `guide_visibility` is `public`, because a private guide's section ids are authored text. No selectors, requirement strings or URLs are sent.
 
-| Event                             | Fires                                                                               | Properties                                                                           |
-| --------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `section_checkpoint_paused`       | Once per pause, when a live checkpoint first fails after passing or mounting        | `can_restore`, plus the shared fields                                                |
-| `section_checkpoint_restore`      | When a Restore finishes or is cancelled                                             | `outcome` (`restored`, `failed`, `cancelled`), `duration_ms`, plus the shared fields |
-| `section_checkpoint_unverifiable` | Once per check per section mount, when a target cannot be verified and stops gating | `reason` (`ambiguous`, `no-state-attribute`), plus the shared fields                 |
+| Event                       | Fires                                    | Properties                                                                                                  |
+| --------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `section_recovery_paused`   | Once per pause, after drift is confirmed | `trigger` (`page`, `target`), `recipe_length` (toggles to replay), `location_restore`                       |
+| `section_recovery_restore`  | When a Restore finishes or is cancelled  | `outcome` (`restored`, `failed`, `cancelled`), `duration_ms`, `failure_reason` (`repair_failed`, `drifted`) |
+| `section_recovery_resolved` | Once when each pause ends                | `resolved_by` (`restore`, `self`, `step_completed`, `unrestorable`, `inactive`, `unmount`)                  |
 
-Shared fields are the guide identity, `section_id` (public guides only), and, when a check was evaluated, `check_index`, `check_kind` (`requirement` or `target`) and `check_has_recipe`. No selectors, requirement strings or URLs are sent.
+`resolved_by: self` (the drift cleared without Restore) and `step_completed` (the learner moved on while paused) are the false-pause signals to watch across the catalog. The kill switch is `pathfinder.section-recovery`.
 
 ## Completion events
 

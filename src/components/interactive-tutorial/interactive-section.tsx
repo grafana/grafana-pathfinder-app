@@ -77,6 +77,14 @@ export const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSch
 
 /** Resolve the schema for a child element, or `undefined` if the child
  *  is not a tracked step type (markdown / media / wrapper). */
+function isInlineConditional(child: React.ReactNode): boolean {
+  return (
+    React.isValidElement(child) &&
+    typeof child.type !== 'string' &&
+    (child.type as { displayName?: string }).displayName === 'InteractiveConditional'
+  );
+}
+
 function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   if (!React.isValidElement(child)) {
     return undefined;
@@ -103,7 +111,7 @@ import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 import { GuideContentKeyContext } from './guide-content-key-context';
 import { GuideAnalyticsIdentityContext } from './guide-analytics-identity-context';
-import { reportSectionCheckpointEvent } from './hooks/section-checkpoint-analytics';
+import { reportSectionRecoveryEvent } from './hooks/section-recovery-analytics';
 import {
   analyzeAcknowledgement,
   getResumeInfo as computeResumeInfo,
@@ -116,7 +124,9 @@ import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionPersistence } from './hooks/use-section-persistence';
 import { useStoredSectionCompletion } from './hooks/use-stored-section-completion';
 import { useSectionRequirements } from './hooks/use-section-requirements';
-import { useSectionCheckpoint, type SectionCheckpointEvent } from './hooks/use-section-checkpoint';
+import { useSectionRecovery, type SectionRecoveryEvent } from './hooks/use-section-recovery';
+import { deriveSectionRecoveryPlan, type SectionRecoveryPlan } from '../../recovery/section-recovery-plan';
+import { isSectionRecoveryEnabled } from '../../utils/section-recovery-enablement';
 import { useSectionScroll } from './hooks/use-section-scroll';
 import {
   evictSectionCache,
@@ -126,6 +136,7 @@ import {
   refreshAndNotifyGuideProgress,
   refreshGuidePercentageOnLoad,
   resetSection as resetSectionStore,
+  getSectionSkippedSteps,
   resetSteps,
   useSectionCompletion,
 } from '../../global-state/completion-store';
@@ -180,7 +191,6 @@ export function InteractiveSection({
   className,
   id, // HTML id attribute from parsed content
   sectionId: derivedSectionId, // `sectionRuntimeId`, stamped on by the JSON parser
-  checkpoint,
   autoCollapse,
   whenRequirementsUnmet = 'disable',
 }: InteractiveSectionProps) {
@@ -324,10 +334,12 @@ export function InteractiveSection({
     const steps: StepInfo[] = [];
     let stepIndex = 0;
 
+    let opaqueBefore = false;
     React.Children.forEach(children, (wrappedChild) => {
       const child = unwrapSectionChild(wrappedChild);
       const schema = lookupStepSchema(child);
       if (!schema) {
+        opaqueBefore ||= isInlineConditional(child);
         return;
       }
       const childProps = (child as React.ReactElement<any>).props;
@@ -341,7 +353,10 @@ export function InteractiveSection({
         element: child as React.ReactElement<any>,
         index: stepIndex,
         ...extension,
+        stepKind: schema.kind,
+        ...(opaqueBefore ? { opaqueBefore } : {}),
       });
+      opaqueBefore = false;
       stepIndex++;
     });
 
@@ -466,26 +481,6 @@ export function InteractiveSection({
   }, [sectionId, isCompleted]);
   useLayoutEffect(() => () => clearSectionDone(sectionId), [sectionId]);
   const previousSectionsDone = useSyncExternalStore(subscribeSectionDone, () => arePreviousSectionsDone(sectionId));
-  const reached = previousSectionsDone || isRunning || completedSteps.size > 0;
-  const activeCheckpoint = isCompleted || !reached ? undefined : checkpoint;
-  const analyticsIdentity = useContext(GuideAnalyticsIdentityContext);
-  const onCheckpointEvent = useCallback(
-    (event: SectionCheckpointEvent) => {
-      if (checkpoint) {
-        reportSectionCheckpointEvent(event, checkpoint, sectionId, analyticsIdentity);
-      }
-    },
-    [checkpoint, sectionId, analyticsIdentity]
-  );
-  const sectionCheckpoint = useSectionCheckpoint(
-    activeCheckpoint,
-    sectionId,
-    sectionRequirementsStatus.passed,
-    mode === 'controller',
-    { onEvent: onCheckpointEvent, suspended: isRunning || executingGuided.size > 0 }
-  );
-  const sectionReady = sectionRequirementsStatus.passed && sectionCheckpoint.passed;
-  const checkCheckpoint = sectionCheckpoint.recheck;
   // `stepsCompleted` preserves the historical meaning ("all interactive
   // steps are done") so existing call sites that care about that
   // specific question keep working. Note that this no longer implies
@@ -497,6 +492,44 @@ export function InteractiveSection({
   // understands why steps appear inactive — useful when they've scrolled past
   // the top alignment banner.
   const isAlignmentPaused = useIsAlignmentPaused();
+  const skippedSteps = useMemo(() => getSectionSkippedSteps(sectionId, completedSteps), [sectionId, completedSteps]);
+  const reached = previousSectionsDone || isRunning || [...completedSteps].some((stepId) => !skippedSteps.has(stepId));
+  const recoveryPlan = useMemo(
+    () =>
+      isSectionRecoveryEnabled() && !isCompleted && reached && !isAlignmentPaused
+        ? deriveSectionRecoveryPlan(
+            stepComponents.map((step) => ({
+              stepId: step.stepId,
+              kind: step.stepKind ?? 'opaque',
+              targetAction: step.targetAction,
+              refTarget: step.refTarget,
+              targetState: step.targetState,
+              requirements: step.requirements,
+              lazyRender: step.lazyRender,
+              opaqueBefore: step.opaqueBefore,
+            })),
+            currentStepIndex,
+            skippedSteps
+          )
+        : undefined,
+    [isCompleted, reached, isAlignmentPaused, stepComponents, currentStepIndex, skippedSteps]
+  );
+  const analyticsIdentity = useContext(GuideAnalyticsIdentityContext);
+  const onRecoveryEvent = useCallback(
+    (event: SectionRecoveryEvent, plan: SectionRecoveryPlan | undefined) =>
+      reportSectionRecoveryEvent(event, plan, sectionId, analyticsIdentity),
+    [sectionId, analyticsIdentity]
+  );
+  const recovery = useSectionRecovery(
+    recoveryPlan,
+    sectionId,
+    sectionRequirementsStatus.passed,
+    mode === 'controller',
+    { onEvent: onRecoveryEvent, suspended: isRunning || executingGuided.size > 0 }
+  );
+  const hasRecoveryPlan = !!recoveryPlan;
+  const sectionReady = sectionRequirementsStatus.passed && !recovery.paused;
+  const checkRecovery = recovery.recheck;
   const alignmentStartingLocation = useAlignmentStartingLocation();
 
   // Section completion status tracking (debug logging removed)
@@ -886,7 +919,7 @@ export function InteractiveSection({
         }
       }
 
-      if (activeCheckpoint && !(await checkCheckpoint())) {
+      if (hasRecoveryPlan && !(await checkRecovery())) {
         ActionMonitor.getInstance().forceEnable();
         setIsRunning(false);
         return;
@@ -948,10 +981,6 @@ export function InteractiveSection({
         async () => {
           try {
             for (let i = startIndex; i < stepComponents.length; i++) {
-              if (activeCheckpoint && !(await checkCheckpoint())) {
-                handleSectionCancel();
-                break;
-              }
               // Check for cancellation before each step
               if (isCancelledRef.current) {
                 break;
@@ -1241,8 +1270,8 @@ export function InteractiveSection({
     handleSectionCancel,
     currentStepIndex,
     controllerRequirements,
-    activeCheckpoint,
-    checkCheckpoint,
+    hasRecoveryPlan,
+    checkRecovery,
     checkRequirementsFromData,
     scrollToStep,
     beginProgrammaticScroll,
@@ -1388,8 +1417,7 @@ export function InteractiveSection({
           return child;
         }
 
-        const isEligibleForChecking =
-          (stepEligibility[stepIndex] ?? false) && (!activeCheckpoint || sectionCheckpoint.passed);
+        const isEligibleForChecking = (stepEligibility[stepIndex] ?? false) && !recovery.paused;
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
         const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
           sectionId,
@@ -1443,8 +1471,7 @@ export function InteractiveSection({
     sectionId,
     title,
     sectionReady,
-    activeCheckpoint,
-    sectionCheckpoint.passed,
+    recovery.paused,
     setGuidedExecuting,
   ]);
 
@@ -1474,7 +1501,7 @@ export function InteractiveSection({
       id={sectionId}
       className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${
         isCollapsed ? ' collapsed' : ''
-      }${activeCheckpoint && sectionCheckpoint.settled && sectionRequirementsStatus.passed && !sectionCheckpoint.passed ? ' checkpoint-paused' : ''}`}
+      }${recovery.paused ? ' recovery-paused' : ''}`}
       data-testid={testIds.interactive.section(sectionId)}
       data-interactive-section="true"
       onFocusCapture={(event) => {
@@ -1543,38 +1570,22 @@ export function InteractiveSection({
             </div>
           )}
 
-          {!isCollapsed &&
-            activeCheckpoint &&
-            sectionCheckpoint.settled &&
-            sectionRequirementsStatus.passed &&
-            !sectionCheckpoint.passed && (
-              <div className="interactive-section-checkpoint">
-                <span role="status" className="interactive-section-checkpoint-label">
-                  {sectionCheckpoint.restoring ? 'Restoring…' : 'Let’s get you back on track'}
-                </span>
-                {sectionCheckpoint.restoring ? (
-                  <Button size="sm" variant="secondary" onClick={sectionCheckpoint.cancel}>
-                    Cancel
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={sectionCheckpoint.status.canRestore ? 'history' : 'sync'}
-                    onClick={
-                      sectionCheckpoint.status.canRestore ? sectionCheckpoint.restore : sectionCheckpoint.recheck
-                    }
-                  >
-                    {sectionCheckpoint.status.canRestore ? 'Restore' : 'Check again'}
-                  </Button>
-                )}
-                {!sectionCheckpoint.restoring && !sectionCheckpoint.status.canRestore && (
-                  <p className="interactive-section-checkpoint-help" role="status">
-                    {activeCheckpoint.manualRecovery || sectionCheckpoint.status.explanation}
-                  </p>
-                )}
-              </div>
-            )}
+          {!isCollapsed && recovery.paused && (
+            <div className="interactive-section-recovery">
+              <span role="status" className="interactive-section-recovery-label">
+                {recovery.restoring ? 'Restoring…' : 'Let’s get you back on track'}
+              </span>
+              {recovery.restoring ? (
+                <Button size="sm" variant="secondary" onClick={recovery.cancel}>
+                  Cancel
+                </Button>
+              ) : (
+                <Button size="sm" variant="secondary" icon="history" onClick={recovery.restore}>
+                  Restore
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Implied-0th-step alignment hint: surfaces in every section while a
           prompt is up, so users who scroll past the top banner still see why

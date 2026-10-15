@@ -522,7 +522,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     lineHeight: 1.4,
   },
 
-  '.interactive-section-checkpoint': {
+  '.interactive-section-recovery': {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -534,18 +534,11 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
   },
 
-  '.interactive-section-checkpoint-label': {
+  '.interactive-section-recovery-label': {
     flex: '1 1 auto',
   },
 
-  '.interactive-section-checkpoint-help': {
-    flexBasis: '100%',
-    color: theme.colors.text.secondary,
-    margin: 0,
-    overflowWrap: 'anywhere',
-  },
-
-  '.checkpoint-paused .interactive-section-content .interactive-step-requirement-explanation, .checkpoint-paused .interactive-section-content .interactive-guided-requirement-box':
+  '.recovery-paused .interactive-section-content .interactive-step-requirement-explanation, .recovery-paused .interactive-section-content .interactive-guided-requirement-box':
     {
       display: 'none',
     },

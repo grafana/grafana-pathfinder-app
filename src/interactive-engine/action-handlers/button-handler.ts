@@ -3,7 +3,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData, ActionExecutionResult } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { describeElement, isElementVisible, isReplaySafeControl } from '../../lib/dom';
+import { describeElement, isElementVisible } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
@@ -17,31 +17,6 @@ export class ButtonHandler {
     private waitForReactUpdates: () => Promise<void>,
     private context?: InteractiveElementData
   ) {}
-
-  async executeRecovery(data: InteractiveElementData): Promise<ActionExecutionResult> {
-    try {
-      data.signal?.throwIfAborted();
-      const resolved = await resolveWithRetry(data.refTarget, 'button', {
-        signal: data.signal,
-        delays: [],
-        relaxOnRetry: false,
-      });
-      data.signal?.throwIfAborted();
-      const button = resolved?.elements.length === 1 ? resolved.elements[0] : undefined;
-      if (!button || !isElementVisible(button) || !isReplaySafeControl(button)) {
-        return { outcome: 'error', reason: 'target_missing' };
-      }
-      const target = parseTargetState(data.targetState);
-      if (target) {
-        await clickToTargetState(button, target, async () => {});
-      } else {
-        button.click();
-      }
-      return { outcome: data.signal?.aborted ? 'cancelled' : 'ok' };
-    } catch {
-      return data.signal?.aborted ? { outcome: 'cancelled' } : { outcome: 'error', reason: 'action_failed' };
-    }
-  }
 
   async execute(data: InteractiveElementData, click: boolean): Promise<ActionExecutionResult> {
     if (data !== this.context && (data.signal || data.lazyRender)) {

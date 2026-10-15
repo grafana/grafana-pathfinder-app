@@ -1,91 +1,46 @@
 # Auto-recovery system design
 
-## Section checkpoints (implemented pilot)
+## Implicit section recovery (implemented)
 
-A section can now declare an optional `checkpoint` containing ordered live checks. This is an invariant for the section, separate from historical completion. Conditions must remain valid throughout the section; put a condition that the next action intentionally consumes on that step's requirements instead. Existing guides without checkpoints retain their behavior.
+When a learner drifts out of the state a section's steps set up, for example by leaving the page or collapsing a control an earlier step opened, the section pauses with a single **Restore** action. Restoring puts the state back and never touches completion. Authors write nothing for this: recovery is derived from each section's own steps.
 
-The implementation is based on an October 13, 2026 scan of 724 tracked `content.json` guide files in `interactive-tutorials` (including journey content; excluding assets). These contain 734 sections, 195 with requirements; 1,160 page conditions; 1,716 target-presence conditions; 187 navigation-menu conditions; and 398 form-fill actions. Selector-text heuristics found tab candidates in 78 guide files, dialog candidates in 11, and save/create/delete/install candidates in 74. These candidate counts are authoring leads, not verified DOM compatibility or recovery coverage.
+### Why derived rather than authored
 
-Common patterns and their treatment:
+A scan of the 724 tracked `content.json` guides in `interactive-tutorials` (October 2026) found that steps already declare where they run and what they need on screen: 1,009 steps carry `on-page:`, 1,698 `exists-reftarget` and 140 `navmenu-open`. What steps rarely declare is the state of the controls they toggle. None of the 249 `button` steps sets `targetstate`, and only 45 `highlight` steps do. An earlier pilot asked authors to restate the section's state in a `checkpoint` block, which duplicated what the steps imply and was too much to ask; it was removed before release.
 
-| Catalog pattern                            | Checkpoint support                                                                 | Examples                                                                               |
-| ------------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Leaving the expected page                  | Existing `on-page:` condition and validated navigation repair                      | Playlist creation; Adaptive Metrics rule management                                    |
-| Closing the navigation menu                | Existing `navmenu-open` condition and menu repair                                  | Playlists and dashboard snapshots                                                      |
-| Collapsing an options control              | Unique visible control with `aria-expanded`; set false to true once                | Prometheus query options in `dpm-explore-up-metric`                                    |
-| Selecting another tab                      | Unique visible button or non-link tab with `aria-selected`; select only when false | Adaptive Logs Patterns/Exemptions/Segments (verify the actual control before adoption) |
-| Losing a dialog or editor                  | Visible target check with an objective-driven recovery recipe                      | Alert activity details; query and panel editors                                        |
-| Clearing dashboard grouping/filters        | Dashboard state adapter from the filtering pilot                                   | `dashboard-interactive-filtering`                                                      |
-| Form input, missing resources, permissions | Read-only requirements and manual instructions; no automatic write replay          | Playlist forms; alert creation; data source setup                                      |
+### Derivation
 
-```json
-{
-  "type": "section",
-  "id": "inspect-query-options",
-  "title": "Inspect query options",
-  "checkpoint": {
-    "checks": [
-      { "requirement": "on-page:/explore" },
-      { "target": "div[data-testid='data-testid prometheus options'] button[aria-expanded]", "state": "expanded" }
-    ],
-    "manualRecovery": "If the query editor was closed, reopen your Prometheus query, then check again."
-  },
-  "blocks": []
-}
-```
+For the section's cursor step (the first incomplete step), the plan contains, in order:
 
-List location checks before controls so recovery never clicks a matching control on the wrong page. Checks are coarse: `on-page:` keeps its substring match, and a target is satisfied by exactly one matching element anywhere on the page, so targets must be scoped tightly enough to stay unique (the options selector below matches once per query row, so it becomes ambiguous when a learner adds a second query). A target that cannot be verified, because it matches several elements or the control exposes no `aria-expanded`/`aria-selected` to read, is an authoring fault the learner cannot fix: that check stops gating the section, is logged, and is reported as `section_checkpoint_unverifiable`, while a missing, hidden or disabled control is learner state and keeps gating. There is no learner-facing bypass. A Restore that does not verify stops offering Restore for that check and shows the manual instructions until the check passes or a different check fails. Target selectors must remain stable when the control changes state: use `[aria-expanded]`, not `[aria-expanded='false']`. Checks support `visible`, `expanded`, and `selected`; visibility never guesses a trigger action. Ambiguous, disabled, or hidden action targets are never clicked. Missing views can declare an explicit recovery recipe. Submit/reset buttons and links are not clicked. Checkpoint requirements are limited to live page state (`on-page:`, `navmenu-open`, `dashboard-group-by:`, `dashboard-filter-absent:`); terminal commands are excluded because evaluating them can itself write state, and API-backed conditions such as `has-datasource:` belong in section requirements, where they are not polled. Targets resolve through the same enhanced selector engine as steps.
+1. The cursor step's `on-page:` requirements, repaired with the existing location fix.
+2. A target check on the cursor step's `refTarget` (button, highlight, formfill and hover steps; not lazy-render steps), with a recipe of:
+   - returning to the URL where the cursor step was last ready, minus Pathfinder's own launch parameters, so Explore queries and dashboard variables survive;
+   - replaying earlier toggles: completed `button` or `highlight` steps with a `targetstate`, walking back from the cursor.
 
-Background rechecks are suspended while the section runner or a guided interaction is executing, and one check runs as soon as it ends, so a learner opening a menu mid-interaction is never cancelled. The coordinator checks in order, restores only the first unsatisfied repairable condition, waits for observed readiness, and checks the whole checkpoint again before proceeding. Each condition is repaired at most once per request; drift or verification timeout returns control to the learner. Cancel and unmount stop subsequent repairs. Recovery does not call completion or reset APIs. A checkpoint is live only for a section the learner has reached (every earlier section is complete, or this one has started) and stops once the section completes, so finished and future sections neither poll nor show the notice. The gate polls every five seconds, on window focus, and on every in-app navigation (with one follow-up check once the new page has rendered); the section runner also checks at execution boundaries. A page repair returns to the URL the checkpoint last passed on, minus Pathfinder's own launch parameters, so Explore queries and dashboard variables survive; it falls back to the required path when that URL is for another page. Existing automated section click protection remains in use.
+The walk stops at anything that may have changed the page in a way recovery cannot repeat: a `navigate`, a click without a `targetstate`, a multistep or guided block, a lazy-render toggle, or an inline conditional between steps. Form fills, hovers, noops, popouts, quizzes, terminal and code blocks pass through, because replay never re-types values; skipped steps pass through because they never ran. Only the latest toggle of a given control and attribute is kept.
 
-A check can declare `recover`, a compact sequence using the existing `button` and `navigate` actions. Each action must have `replaySafe: true` (an author review of repeat safety) and live `objectives`, using the same requirement/target condition shapes as checkpoints. Historical `section-completed:` objectives and command probes are rejected. No automatic import of all preceding steps occurs: resource writes and form overwrites must not be marked replay-safe.
+A toggle is replayed only if its target resolves to exactly one visible control that `isReplaySafeControl` accepts and whose state can be read; an unreadable state is never clicked blind. `navmenu-open` and `dashboard-*` requirements stay with the step's own **Fix this**, so the learner never sees two fixes for the same thing.
 
-```json
-{
-  "target": "[aria-label='Legend combobox']",
-  "state": "visible",
-  "recover": [
-    {
-      "action": "button",
-      "reftarget": "button[aria-label$='query row']",
-      "replaySafe": true,
-      "objectives": [
-        {
-          "target": "button[aria-label$='query row']",
-          "state": "expanded"
-        }
-      ]
-    },
-    {
-      "action": "button",
-      "reftarget": "[data-testid='data-testid prometheus options'] button[aria-expanded]",
-      "replaySafe": true,
-      "objectives": [
-        {
-          "target": "[aria-label='Legend combobox']",
-          "state": "visible"
-        }
-      ]
-    }
-  ]
-}
-```
+### When a section pauses
 
-Recovery checks the final view before every replay action, so already-visible query options never cause their query row to toggle closed. Actions whose live objectives hold are skipped. Earlier checkpoint conditions are rechecked before each action; a failed objective or cancellation stops the sequence. Only verified checkpoint readiness unblocks the learner; replay does not complete learning steps.
+- **Active section only.** The flag is on, the section is incomplete and reached (every earlier section is done, or the learner has done a step here), its requirements pass, alignment is not paused, and it is not the two-tab controller.
+- **Armed first.** A plan only takes effect after it has passed once for the current cursor step, so a step that has never been ready, a reload, or a section that was never set up is left to the step's own messaging.
+- **Something to do.** A failing check pauses only if Restore can act: the page differs from the armed URL, or the first unmet recipe step can be replayed now. Otherwise the step explains itself as before.
+- **Confirmed.** Drift must be seen twice at least 700 ms apart, which absorbs renders that briefly remove a control.
+- **Never mid-step.** Background checks are suspended while Do Section or a guided interaction is running, and one check runs as soon as it ends.
 
-The button/navigation handlers expose a recovery path with no teaching tooltips, scrolling animation, completion writes, selector-relaxation retries, or fixed settling sleeps. It advances immediately when objectives hold, waking on DOM changes with a 50 ms fallback for non-DOM state and a five-second verification deadline. Navigation stays inside Grafana and cannot switch guides. Recovery buttons must be unique, visible, enabled, and unable to submit/reset a form; an implicit button outside a form is allowed.
+While paused, the step's own notices are hidden and its actions wait. After a Restore that does not verify, the section stops offering Restore for that check until it passes or a different check fails, and the step's own messaging returns.
 
-Author checkpoints through JSON mode. They survive JSON import, validation, parsing, and rendering. No automatic catalog migration or recovery inference is performed. No checkpoint state or learner form values are persisted. The two-tab controller currently blocks checkpointed sections with an instruction to open the guide in the Grafana tab, rather than incorrectly checking the controller DOM. A dedicated editor form and live-tab checkpoint transport are follow-up work.
+Checks run every five seconds, on window focus, and on every in-app navigation (with one follow-up check once the page has rendered). All checks are local URL and DOM reads with no network calls. Only the active section polls.
 
-### Recovery storage and OSS
+### Limits
 
-Recovery instructions are part of the guide's JSON, not per-user snapshots or an action log. OSS uses the same frontend coordinator with bundled, CDN, or imported guides; it does not need App Platform or a new local/user-storage fallback for recovery. Cloud stores the same recipe with the authored guide through the existing guide backend. Runtime readiness, the current repair, and cancellation are memory-only and are recomputed from the live page after remount.
+- Recipes never cross sections, and multistep and guided blocks are opaque.
+- After a reload nothing is restored until the plan has passed again.
+- `on-page:` keeps its substring match, and a target is satisfied by any one matching element, so a loose selector can make recovery report success on the wrong panel.
+- Authors get the most from recovery by giving toggle steps a `targetstate`.
 
-Each attempt is bounded by the validated recipe limits (12 checks, 12 actions per check, 12 objectives per action), one repair per condition, and readiness timeouts. Cancellation and unmount abort outstanding work; observers, timers, and window listeners are released. No recovery history, form values, or snapshots are saved, so no TTL or storage migration is needed. Learner-progress storage, saved drafts, and guide-library retention are outside this change.
-
-Recovery appears as a compact inline notice with a single Restore action. Manual guidance and Check again appear only when automatic restoration is unavailable. While the checkpoint blocks a section, duplicate step requirement notices are hidden; they return once the checkpoint is ready.
-
-New content requires a runtime and validator release containing checkpoint support. Cloud persistence also requires the [companion InteractiveGuide CRD schema update](https://github.com/grafana/grafana-pathfinder-backend/pull/107); older backend schemas silently prune `checkpoint` when saving. The deployment script allowlist targets that companion schema. Older runtimes may ignore the field: keep ordinary requirements on critical steps and do not publish checkpoint-dependent guides ahead of those releases.
+The kill switch is `pathfinder.section-recovery` (see `docs/developer/FEATURE_FLAGS.md`). Telemetry is described under "Section recovery events" in `docs/developer/TELEMETRY.md`. Recovery state is memory-only; nothing is persisted, so OSS, bundled, CDN and App Platform guides behave the same.
 
 ## Vision
 
