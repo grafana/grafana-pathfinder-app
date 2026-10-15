@@ -84,9 +84,6 @@ export function useSectionRecovery(
       if (busy.current && (!restore || busyRestoring.current)) {
         return inFlight.current ?? Promise.resolve(lastAnswer.current);
       }
-      if (!restore && Date.now() < settlingUntil.current) {
-        return Promise.resolve(lastAnswer.current);
-      }
       const answer = (ready: boolean): boolean => {
         lastAnswer.current = ready;
         return ready;
@@ -95,12 +92,12 @@ export function useSectionRecovery(
         current: SectionRecoveryPlan,
         result: RecoveryResult,
         restored: boolean,
-        startedOn: string
+        startedOnPath: string
       ): boolean => {
         if (result.passed) {
           armedKey.current = current.key;
-          if (currentPath() === startedOn) {
-            lastReadyUrl.current = startedOn;
+          if (locationService.getLocation().pathname === startedOnPath) {
+            lastReadyUrl.current = currentPath();
           }
           gaveUp.current = null;
           endPause(restored ? 'restore' : 'self');
@@ -160,7 +157,6 @@ export function useSectionRecovery(
         }
         busy.current = true;
         busyRestoring.current = restore;
-        const startedOn = currentPath();
         restoreStartedAt.current = performance.now();
         setRestoring(restore);
         const adapter = createRecoveryAdapter(
@@ -178,6 +174,11 @@ export function useSectionRecovery(
           () => lastReadyUrl.current
         );
         try {
+          const settleLeft = settlingUntil.current - Date.now();
+          if (!restore && settleLeft > 0) {
+            await new Promise((resolve) => setTimeout(resolve, settleLeft));
+          }
+          const startedOnPath = locationService.getLocation().pathname;
           const result = restore
             ? await restoreRecovery(current.checks, adapter, controller.signal)
             : await inspectRecovery(current.checks, adapter, controller.signal);
@@ -195,7 +196,7 @@ export function useSectionRecovery(
               planRef.current
             );
           }
-          return observe(current, result, restore, startedOn);
+          return observe(current, result, restore, startedOnPath);
         } catch {
           return lastAnswer.current;
         } finally {

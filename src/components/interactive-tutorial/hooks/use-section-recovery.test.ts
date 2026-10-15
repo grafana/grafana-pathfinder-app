@@ -281,7 +281,41 @@ it('does not remember a page the learner reached while the check was running', a
   expect(lastReadyUrl()).toBe('/explore?panes=abc');
 });
 
+it('keeps the page a step was ready on when Grafana fills in its query mid-check', async () => {
+  locationService.push('/explore?panes=abc');
+  render();
+  await settle();
+  let finish!: (result: RecoveryResult) => void;
+  inspect.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  await act(async () => {
+    locationService.replace('/explore?panes=abc&orgId=1');
+    finish(PASS);
+  });
+  const lastReadyUrl = jest.mocked(createRecoveryAdapter).mock.calls.at(-1)![3];
+  expect(lastReadyUrl()).toBe('/explore?panes=abc&orgId=1');
+});
+
 describe('readiness answers for Do Section', () => {
+  it('checks the new page once it settles instead of answering from the old one', async () => {
+    const hook = render();
+    await settle();
+    inspect.mockResolvedValue(DRIFT);
+    await act(async () => {
+      locationService.push('/dashboards');
+    });
+    let ready!: Promise<boolean>;
+    act(() => {
+      ready = hook.result.current.recheck();
+    });
+    expect(inspect).toHaveBeenCalledTimes(1);
+    await settle(750);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(await ready).toBe(false);
+  });
+
   it('does not restart an in-flight check when the event handler changes', async () => {
     const first = jest.fn();
     const hook = renderHook(({ onEvent }) => useSectionRecovery(plan(), 'section', true, false, { onEvent }), {
