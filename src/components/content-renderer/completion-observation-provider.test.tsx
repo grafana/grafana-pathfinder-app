@@ -63,16 +63,19 @@ jest.mock('../../lib/dom/selector-resolver', () => ({ resolveSelector: (selector
 function Step({
   objectives,
   executing = false,
+  resetTrigger,
   onComplete,
 }: {
   objectives?: string[];
   executing?: boolean;
+  resetTrigger?: number;
   onComplete: () => void;
 }) {
   const observation = useObservedCompletion({
     stepId: 'step',
     objectives,
     executing,
+    resetTrigger,
     eligible: true,
     onComplete,
     actions: [
@@ -742,4 +745,42 @@ it('keeps one coordinator and its session progress when the requirement checker 
   fireEvent.click(screen.getByText('Last'));
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
   expect(seen.size).toBe(1);
+});
+
+it("keeps a remounted step's progress after an earlier section reset", async () => {
+  const done = jest.fn();
+  const tree = (mounted: boolean) => (
+    <>
+      <button id="first">First</button>
+      <button id="last">Last</button>
+      <CompletionObservationProvider contentKey="guide">
+        {mounted && <Step resetTrigger={1} onComplete={done} />}
+      </CompletionObservationProvider>
+    </>
+  );
+  const root = render(tree(true));
+  fireEvent.click(screen.getByText('First'));
+  root.rerender(tree(false));
+  root.rerender(tree(true));
+  fireEvent.click(screen.getByText('Last'));
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+});
+
+it('still resets a mounted step when its reset trigger changes', async () => {
+  const done = jest.fn();
+  const tree = (resetTrigger: number) => (
+    <>
+      <button id="first">First</button>
+      <button id="last">Last</button>
+      <CompletionObservationProvider contentKey="guide">
+        <Step resetTrigger={resetTrigger} onComplete={done} />
+      </CompletionObservationProvider>
+    </>
+  );
+  const root = render(tree(1));
+  fireEvent.click(screen.getByText('First'));
+  root.rerender(tree(2));
+  fireEvent.click(screen.getByText('Last'));
+  await act(async () => {});
+  expect(done).not.toHaveBeenCalled();
 });

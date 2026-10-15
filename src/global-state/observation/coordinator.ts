@@ -111,7 +111,7 @@ export function isPassiveCondition(conditions: ConditionInput): boolean {
 }
 
 export class CompletionCoordinator {
-  private dormant = new Map<string, { step: ObservationStep; cursor: number }>();
+  private dormant = new Map<string, { step: ObservationStep; cursor: number; seenUnmet?: boolean }>();
   private entries = new Map<string, Entry>();
   private started = new Map<string, StartedStep>();
   private listeners = new Set<() => void>();
@@ -202,7 +202,14 @@ export class CompletionCoordinator {
     );
     this.dormant.delete(step.id);
     delete this.restoredCursors[step.id];
-    const entry: Entry = previous ?? { step, cursor: restored, committed: false, revision: 0, epoch: 0 };
+    const entry: Entry = previous ?? {
+      step,
+      cursor: restored,
+      committed: false,
+      revision: 0,
+      epoch: 0,
+      seenUnmet: dormant?.seenUnmet,
+    };
     entry.cursor = restored;
     if (restored > 0 && restored === step.actions.length) {
       entry.requested = 'observed';
@@ -219,7 +226,7 @@ export class CompletionCoordinator {
       if (this.entries.get(step.id) === entry) {
         entry.revision++;
         this.entries.delete(step.id);
-        this.dormant.set(step.id, { step: entry.step, cursor: entry.cursor });
+        this.dormant.set(step.id, { step: entry.step, cursor: entry.cursor, seenUnmet: entry.seenUnmet });
         if (entry.requested && !entry.committed && !entry.step.completed) {
           holdRequest(entry.step, entry.requested, !!entry.skipVerify);
         }

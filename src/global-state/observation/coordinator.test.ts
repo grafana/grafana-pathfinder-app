@@ -909,3 +909,18 @@ it('subscribes the live tab with only the wire fields of each action', () => {
     { targetAction: 'formfill', refTarget: '#name', targetValue: 'prod' },
   ]);
 });
+
+it('keeps an objective seen unmet as a change across an unmount and remount', async () => {
+  let met = false;
+  const coordinator = new CompletionCoordinator(async () => met);
+  const item = step({ objectives: ['has-datasources'] });
+  const unmount = coordinator.register(item);
+  coordinator.start();
+  await settle();
+  unmount();
+  met = true;
+  coordinator.register(item);
+  await settle();
+  expect(item.commit).toHaveBeenCalledWith('objectives', 'change');
+  coordinator.stop();
+});

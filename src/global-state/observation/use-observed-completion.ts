@@ -82,8 +82,10 @@ export function useObservedCompletion(options: Options) {
   useLayoutEffect(() => {
     coordinator?.update(id, registrationRef.current);
   });
+  const handledReset = useRef(resetTrigger);
   useLayoutEffect(() => {
-    if (resetTrigger) {
+    if (resetTrigger !== handledReset.current) {
+      handledReset.current = resetTrigger;
       coordinator?.reset(id);
     }
   }, [coordinator, id, resetTrigger]);

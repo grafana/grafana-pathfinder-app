@@ -121,13 +121,15 @@ jest.mock('./interactive-conditional', () => {
 import { InteractiveStep } from './interactive-step';
 import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
 import {
+  executeInteractiveActionCalls,
   memoryStore,
   resetSectionHarness,
   silenceSectionWarnings,
   setCheckRequirementsResult,
   setStepCheckerCompletionReason,
 } from '../../test-utils/interactive-section-harness';
-import { evictAllContentCaches } from '../../global-state/completion-store';
+import { evictAllContentCaches, resetSteps } from '../../global-state/completion-store';
+import { StorageEvents } from '../../lib/event-names';
 import { subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
 
 // ─── Setup ──────────────────────────────────────────────────────────────────
@@ -884,5 +886,58 @@ describe('InteractiveSection — section objective origin', () => {
       sections.unsubscribe();
       guide.unsubscribe();
     }
+  });
+});
+
+describe('InteractiveSection — section objectives across a Do section run and a guide reset', () => {
+  it('announces an objective the Do section run satisfies as a change, not a load', async () => {
+    const sections = collectSectionEvents();
+    try {
+      const coordinator = await renderObjectiveSectionWithCoordinator(
+        async () => executeInteractiveActionCalls.length > 0
+      );
+      await settle();
+      await click(doButton(SECTION_OBJECTIVE));
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(executeInteractiveActionCalls.length).toBeGreaterThan(0);
+      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+      expect(sections.events.map((e) => e.hydrated)).toEqual([false]);
+      coordinator.stop();
+    } finally {
+      sections.unsubscribe();
+    }
+  });
+
+  it('drops an objective completion when the whole guide is reset', async () => {
+    let met = false;
+    const coordinator = await renderObjectiveSectionWithCoordinator(async () => met);
+    await settle();
+    met = true;
+    await act(async () => {
+      coordinator.recheck();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+    );
+    await settle();
+    mockRefreshSpy.mockClear();
+
+    met = false;
+    await act(async () => {
+      resetSteps([STEP_OBJECTIVE], SECTION_OBJECTIVE);
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: NON_PREVIEW_KEY } })
+      );
+      coordinator.reset();
+    });
+    await settle();
+
+    expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).not.toHaveClass('completed');
+    expect(announcedAsChange()).toEqual([]);
+    coordinator.stop();
   });
 });

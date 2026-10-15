@@ -6,6 +6,7 @@ import React, {
   useCallback,
   useMemo,
   useEffect,
+  useLayoutEffect,
   useReducer,
   useRef,
   useContext,
@@ -441,23 +442,49 @@ export function InteractiveSection({
       active = false;
     };
   }, [sectionId, hasSectionObjectives, isPreviewMode, resetTrigger]);
-  const objectiveId = JSON.stringify([getContentKey(), sectionId, 'section-objectives']);
   useEffect(() => {
+    const handleCleared = (event: Event) => {
+      const { contentKey, sectionId: clearedSection } =
+        (event as CustomEvent<{ contentKey?: string; sectionId?: string }>).detail ?? {};
+      const ownKey = (resolveOwnerContentKey?.() ?? getContentKey()).replace(/\/+$/, '');
+      if (
+        clearedSection === undefined &&
+        (!contentKey || contentKey === '*' || contentKey.replace(/\/+$/, '') === ownKey)
+      ) {
+        setObservedObjectives(false);
+        setRestoredObjectives(false);
+      }
+    };
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    return () => window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+  }, [resolveOwnerContentKey]);
+  const objectiveId = JSON.stringify([getContentKey(), sectionId, 'section-objectives']);
+  const objectiveRegistration = {
+    id: objectiveId,
+    stepId: sectionId,
+    sectionId,
+    actions: [],
+    objectives,
+    eligible: true,
+    executing: isRunning,
+    completed: observedObjectives !== false,
+    commit: (_reason: unknown, origin: ProgressOrigin) => setObservedObjectives(origin),
+  };
+  const objectiveRegistrationRef = useRef(objectiveRegistration);
+  useLayoutEffect(() => {
+    objectiveRegistrationRef.current = objectiveRegistration;
+  });
+  useLayoutEffect(() => {
     if (!completionCoordinator || !hasSectionObjectives) {
       return;
     }
-    return completionCoordinator.register({
-      id: objectiveId,
-      stepId: sectionId,
-      sectionId,
-      actions: [],
-      objectives,
-      eligible: true,
-      executing: isRunning,
-      completed: observedObjectives !== false,
-      commit: (_reason, origin) => setObservedObjectives(origin),
-    });
-  }, [completionCoordinator, objectiveId, sectionId, objectives, hasSectionObjectives, isRunning, observedObjectives]);
+    return completionCoordinator.register(objectiveRegistrationRef.current);
+  }, [completionCoordinator, objectiveId, hasSectionObjectives]);
+  useLayoutEffect(() => {
+    if (completionCoordinator && hasSectionObjectives) {
+      completionCoordinator.update(objectiveId, objectiveRegistrationRef.current);
+    }
+  });
 
   // Add objectives checking for section - disable once interactive steps are done.
   // Note: objectives are *separate* from acknowledgement — when objectives fire

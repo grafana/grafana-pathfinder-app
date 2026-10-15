@@ -47,7 +47,6 @@ jest.mock('../../requirements-manager', () => ({
   ...require('../../test-utils/interactive-section-harness').createRequirementsManagerMock(),
   useGuideRequirements: () => ({ checkPostconditions: mockCheckPostconditions }),
   splitGuideScopedRequirements: (requirements: unknown) => ({ guideScoped: [], remaining: requirements }),
-  getPostVerifyExplanation: (token: string) => `Needs ${token}`,
 }));
 jest.mock('../../docs-retrieval', () =>
   require('../../test-utils/interactive-section-harness').createDocsRetrievalMock()

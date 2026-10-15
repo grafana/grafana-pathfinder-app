@@ -330,6 +330,7 @@ export function createInteractiveEngineMock() {
 /** Factory for `jest.mock('../../requirements-manager', ...)`. */
 export function createRequirementsManagerMock() {
   return {
+    getPostVerifyExplanation: (token: string) => `Needs ${token}`,
     useStepChecker: () => ({
       isEnabled: true,
       isCompleted: false,
