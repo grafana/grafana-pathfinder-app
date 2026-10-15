@@ -9,7 +9,7 @@ import type { RequirementsCheckOptions, RequirementsCheckResult } from './requir
 import { isLivePageRequirement } from '../types/requirements.types';
 import { PATHFINDER_ACTIVATION_PARAMS } from '../utils/pathfinder-search-params';
 
-const RESTORABLE_FIXES = new Set(['location', 'navigation', 'expand-parent-navigation', 'dashboard-state']);
+const RESTORABLE_FIXES = new Set(['location', 'navigation', 'expand-parent-navigation']);
 
 function resumeTarget(lastReadyUrl: string): string {
   const url = new URL(lastReadyUrl, window.location.origin);

@@ -93,7 +93,7 @@ it('derives only page checks when the cursor step has no target to look for', ()
 });
 
 it('keeps only on-page from the cursor requirements, leaving other fixes to the step', () => {
-  const plan = deriveSectionRecoveryPlan([cursor('navmenu-open, dashboard-group-by:a:b:c, on-page:/d/a')], 0, NONE);
+  const plan = deriveSectionRecoveryPlan([cursor('navmenu-open, is-admin, on-page:/d/a')], 0, NONE);
   expect(plan?.checks.filter((check) => check.kind === 'requirement')).toEqual([
     { kind: 'requirement', requirement: 'on-page:/d/a' },
   ]);

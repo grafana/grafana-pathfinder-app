@@ -1060,8 +1060,6 @@ describe('CHECK_HANDLERS routing parity', () => {
     ['has-dashboard-named:My Dashboard', 'has-dashboard-named:'],
     ['dashboard-exists', 'dashboard-exists'],
     ['on-page:/explore', 'on-page:'],
-    ['dashboard-group-by:canvvlh:filter:job', 'dashboard-group-by:'],
-    ['dashboard-filter-absent:canvvlh:filter:job', 'dashboard-filter-absent:'],
     ['has-feature:my-toggle', 'has-feature:'],
     ['in-environment:cloud', 'in-environment:'],
     ['min-version:10.0.0', 'min-version:'],

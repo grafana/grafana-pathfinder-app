@@ -38,7 +38,6 @@ COPY src/cli ./src/cli
 COPY src/types ./src/types
 COPY src/validation ./src/validation
 COPY src/lib/assert-exhaustive.ts ./src/lib/assert-exhaustive.ts
-COPY src/lib/dashboard-condition.ts ./src/lib/dashboard-condition.ts
 COPY src/lib/choice-response.ts ./src/lib/choice-response.ts
 COPY src/lib/runtime-manifest.ts ./src/lib/runtime-manifest.ts
 # src/lib/guide-stats is the canonical block-count computation the

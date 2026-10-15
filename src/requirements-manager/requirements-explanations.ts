@@ -185,13 +185,6 @@ export function getRequirementExplanation(
     return baseHint;
   }
 
-  if (
-    (requirements?.startsWith('dashboard-group-by:') || requirements?.startsWith('dashboard-filter-absent:')) &&
-    error
-  ) {
-    return error;
-  }
-
   // Priority 2: Map data-requirements to user-friendly message
   if (requirements && requirements.trim()) {
     const baseMessage = mapRequirementToUserFriendlyMessage(requirements.trim());
