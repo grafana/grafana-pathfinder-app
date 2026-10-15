@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { useDiscoverMore } from './useDiscoverMore';
 import { usePackageCatalog } from './package-catalog.hook';
+import { onlineCatalog } from '../lib/package-catalog';
 import type { CatalogPackage } from '../types/package-catalog.types';
 
 jest.mock('./package-catalog.hook', () => ({ usePackageCatalog: jest.fn() }));
@@ -26,6 +27,40 @@ beforeEach(() =>
     scope: 'org:1',
   })
 );
+
+it('retains runtime-normalized prerequisite metadata from the shared catalog', () => {
+  const label = '  Literal <b> & **syntax**  ';
+  catalogMock.mockReturnValue({
+    items: onlineCatalog({
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'test-path',
+          path: 'test-path/',
+          type: 'path',
+          manifest: {
+            id: 'test-path',
+            type: 'path',
+            milestones: ['first', 'second'],
+            prerequisites: [{ id: 'notice', label, format: 42 }],
+          },
+        },
+      ],
+    }),
+    loading: false,
+    scope: 'org:1',
+  });
+  const { result } = renderHook(() => useDiscoverMore());
+  expect(result.current.items[0]).toMatchObject({
+    milestoneCount: 2,
+    manifest: {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['first', 'second'],
+      prerequisites: [{ id: 'notice', label }],
+    },
+  });
+});
 
 it('uses the same catalog for published official and organization paths', () => {
   const { result } = renderHook(() => useDiscoverMore());

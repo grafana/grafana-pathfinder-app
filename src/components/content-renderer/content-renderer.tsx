@@ -96,8 +96,9 @@ import { createChoiceProgressModel } from '../../lib/guide-stats/choice-progress
 import { selectCountingTree } from '../../lib/guide-counting-source';
 import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
-import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
+import { resolveFullScreenFallbackLocation, resolveFullScreenManifestLocation } from './full-screen-fallback-location';
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -552,29 +553,40 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   const packageManifestDescription = content.metadata.packageManifest?.description;
   const pathId = typeof packageManifestId === 'string' ? packageManifestId : undefined;
   const pathDescription = typeof packageManifestDescription === 'string' ? packageManifestDescription : undefined;
-  // Full-screen -> sidebar handoff target (see interactive-engine/interactive.hook.ts):
-  // prefer the current milestone's own starting location, then the course's.
+  // Full-screen handoff prefers milestone, member, then owning journey location.
   // `/` and empty/missing both mean "no real signal" for this feature specifically
   // — the existing alignment system (resolveStartingLocation) treats `/` as a
   // real, confirmation-gated target for its own unrelated purpose; this handoff
   // has no confirmation step, so a bare default must not silently relocate the user.
-  const courseStartingLocation = content.metadata.packageManifest?.startingLocation;
   const fullScreenFallbackLocation =
     resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
-    resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
+    resolveFullScreenManifestLocation(content.metadata.packageManifest) ??
+    resolveFullScreenManifestLocation(content.metadata.journeyManifest);
   const isCoverPage = isJourneyCoverPage(content);
+  const packageManifest = content.metadata.packageManifest;
+  const prerequisites =
+    !isCoverPage && journey && (packageManifest?.type === 'path' || packageManifest?.type === 'journey')
+      ? undefined
+      : packageManifest?.prerequisites;
+  const hasPrerequisites = Array.isArray(prerequisites) && prerequisites.length > 0;
+  const hasCoverContents = Boolean(isCoverPage && journey && journey.milestones.length > 0);
   const beforeContent =
-    isCoverPage && journey && journey.milestones.length > 0 ? (
-      <LearningPathTableOfContents
-        milestones={journey.milestones}
-        baseUrl={journey.baseUrl}
-        pathId={pathId}
-        title={content.metadata.title}
-        description={pathDescription}
-        tracks={journey.tracks}
-        onActiveTrackChange={onActiveTrackChange}
-        initialActiveTrackId={initialActiveTrackId}
-      />
+    hasPrerequisites || hasCoverContents ? (
+      <>
+        <Prerequisites prerequisites={prerequisites} />
+        {hasCoverContents && journey && (
+          <LearningPathTableOfContents
+            milestones={journey.milestones}
+            baseUrl={journey.baseUrl}
+            pathId={pathId}
+            title={content.metadata.title}
+            description={pathDescription}
+            tracks={journey.tracks}
+            onActiveTrackChange={onActiveTrackChange}
+            initialActiveTrackId={initialActiveTrackId}
+          />
+        )}
+      </>
     ) : null;
 
   // Unconditional for every guide and every milestone (COMPLETION-MODEL.md,
@@ -622,6 +634,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
             selectionState={selectionState}
             documentContext={documentContext}
             beforeContent={beforeContent}
+            coverTocSuppliesTitle={hasCoverContents}
             afterContent={afterContent}
             fullScreenFallbackLocation={fullScreenFallbackLocation}
           />
@@ -646,6 +659,7 @@ interface ContentWithVariablesProps {
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  coverTocSuppliesTitle: boolean;
   afterContent?: React.ReactNode;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
@@ -664,6 +678,7 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  coverTocSuppliesTitle,
   afterContent,
   fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
@@ -678,7 +693,7 @@ function ContentWithVariables({
       return;
     }
     const anchor = (e.target as Element).closest?.('a[href]');
-    if (!anchor) {
+    if (!anchor || anchor.getAttribute('target')?.toLowerCase() === '_blank') {
       return;
     }
     const href = anchor.getAttribute('href');
@@ -744,7 +759,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && isNativeJson && !beforeContent && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && !coverTocSuppliesTitle && <h1 className={titleStyle}>{title}</h1>}
       {beforeContent}
       <ContentProcessor
         html={processedContent}

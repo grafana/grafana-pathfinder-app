@@ -26,6 +26,78 @@ const repository: RepositoryJson = {
 };
 
 describe('package catalog', () => {
+  it.each(['future', 42, { future: true }, 'markdown'])(
+    'preserves path metadata and exact prerequisite labels for format %p',
+    (format) => {
+      const label = '  Literal <b> & **syntax**  ';
+      const [entry] = onlineCatalog({
+        baseUrl: 'https://interactive-learning.grafana.net/packages/',
+        packages: [
+          {
+            id: 'test-path',
+            path: 'test-path/',
+            title: 'Path',
+            type: 'path',
+            manifest: {
+              id: 'test-path',
+              type: 'path',
+              milestones: ['first', 'second'],
+              prerequisites: [{ id: ' notice ', label, format }],
+            },
+          },
+        ],
+      });
+      expect(entry).toMatchObject({
+        format: 'path',
+        memberIds: ['first', 'second'],
+        packageInfo: {
+          packageId: 'test-path',
+          packageManifest: {
+            id: 'test-path',
+            type: 'path',
+            milestones: ['first', 'second'],
+            prerequisites: [{ id: ' notice ', label, ...(format === 'markdown' ? { format } : {}) }],
+          },
+        },
+      });
+    }
+  );
+
+  it.each([
+    [
+      [
+        { id: 'duplicate', label: 'First' },
+        { id: 'duplicate', label: 'Second' },
+      ],
+    ],
+    [[null]],
+    [[{ id: 'numeric-label', label: 42 }]],
+    [{ id: 'not-an-array', label: 'Setup' }],
+  ])('retains path navigation despite invalid prerequisites %p', (prerequisites) => {
+    const [entry] = onlineCatalog({
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'test-path',
+          path: 'test-path/',
+          type: 'path',
+          manifest: {
+            id: 'test-path',
+            type: 'path',
+            milestones: ['first', 'second'],
+            prerequisites,
+          },
+        },
+      ],
+    });
+    expect(entry).toMatchObject({
+      format: 'path',
+      memberIds: ['first', 'second'],
+      packageInfo: { packageManifest: { id: 'test-path', type: 'path', milestones: ['first', 'second'] } },
+    });
+    expect(entry?.packageInfo?.packageManifest?.prerequisites).toBeUndefined();
+  });
+
   it('uses existing bundled estimates and supported activity counts, and excludes fixtures', () => {
     const entries = bundledCatalog(repository, { intro: { title: 'Introduction', estimatedMinutes: 5 } });
     expect(entries.map((entry) => entry.id)).toEqual(['intro', 'unknown']);

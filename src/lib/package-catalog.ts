@@ -1,5 +1,6 @@
 import { isAllowedContentUrl } from '../security';
-import { packageIdSchema, ManifestJsonObjectSchema } from '../types/package.schema';
+import { packageIdSchema } from '../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from './runtime-manifest';
 import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
 import { getManifestMemberIds, type RepositoryJson } from '../types/package.types';
 import type { CatalogFilters, CatalogPackage } from '../types/package-catalog.types';
@@ -70,7 +71,7 @@ export function onlineCatalog(response: PackageRecommendationsResponse): Catalog
     if (!isAllowedContentUrl(url)) {
       return [];
     }
-    const parsed = ManifestJsonObjectSchema.safeParse(entry.manifest);
+    const parsed = RuntimeManifestJsonObjectSchema.safeParse(entry.manifest);
     const manifest = parsed.success ? parsed.data : undefined;
     if (EXCLUDED_BUNDLED_IDS.has(entry.id) || manifest?.category === 'testing') {
       return [];
