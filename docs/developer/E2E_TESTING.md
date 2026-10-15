@@ -296,7 +296,7 @@ Only a 401, a 403, or a login redirect means authentication expired. Network err
 
 Each planned milestone produces one `E2ETestReport`. The reports remain in `MultiGuideReport.reports[]` execution order.
 
-The external report schema is `1.2.0` (the previous contract is `1.1.0`). Fatal transition reports use `TRANSITION_FAILED` and an optional bounded `transitionKind`.
+Fatal transition reports use `TRANSITION_FAILED` and an optional bounded `transitionKind`. See [report validation](#report-validation) for the versioned contract.
 
 The runner copies the transition code and kind to each unrun milestone. `REPORT_MISSING` remains for missing reports and lost browser sessions.
 
@@ -446,7 +446,7 @@ docker run --rm --entrypoint node ghcr.io/grafana/pathfinder-e2e-runner:commit-<
 
 The emitted schema carries a stable `$id` (`https://grafana.com/schemas/pathfinder/e2e-test-report-<version>.json`) and `x-schema-version`. Pin consumers on the image digest plus `schemaVersion`.
 
-The `e2e-report` and `e2e-multi-report` schemas are **open-world**: the exported JSON Schema does not include `additionalProperties: false`. This means additive optional fields introduced in a newer runner version are non-breaking — an orchestrator validating reports from a newer runner against an older schema copy will not reject the report. Consumers should configure their validators accordingly (for example, ajv's default behavior already allows extra fields unless explicitly set to strict mode). Among the non-e2e schemas, `guide`, `block`, `content`, and `graph` remain strict. `manifest` and `repository` are deliberately open at the **top level only** — unknown top-level manifest keys are extension metadata that the packaging CLI forwards into the package's repository entry (see [extension fields](./package-authoring.md#extension-fields)). The `manifest` export therefore carries `additionalProperties: {}` on its root object, and `repository` carries it on each entry object. Their nested `author`, `targeting`, and `testEnvironment` schemas stay strict.
+The `e2e-report` and `e2e-multi-report` schemas are **open-world**: the exported JSON Schema does not include `additionalProperties: false`. Extra fields alone do not cause validation errors, but each schema requires its exact `schemaVersion`. Consumers must adopt the schema from the producing runner when the report version changes. Among the non-e2e schemas, `guide`, `block`, `content`, and `graph` remain strict. `manifest` and `repository` are deliberately open at the **top level only** — unknown top-level manifest keys are extension metadata that the packaging CLI forwards into the package's repository entry (see [extension fields](./package-authoring.md#extension-fields)). The `manifest` export therefore carries `additionalProperties: {}` on its root object, and `repository` carries it on each entry object. Their nested `author`, `targeting`, and `testEnvironment` schemas stay strict.
 
 Runs that execute more than one guide, or execute an explicitly selected path/journey with one milestone, write a multi-guide report with aggregate summary fields plus the individual per-guide reports.
 
@@ -560,7 +560,7 @@ If the backstop expires, the runner closes the page and reports an infrastructur
 
 During step execution, the runner also watches for page crash, page close, context close, and browser disconnect events. An unexpected event stops the active work and writes an `infrastructure_error` report with completed prior steps.
 
-These outcomes use report schema `1.2.0`. Fatal shared-browser transitions use `TRANSITION_FAILED`.
+Fatal shared-browser transitions use `TRANSITION_FAILED`. See [report validation](#report-validation) for the versioned contract.
 
 ## Troubleshooting
 
@@ -864,7 +864,9 @@ Evidence is emitted only for an authenticated, explicitly authorized actual clou
 
 Mutation authorization does not provide isolation, rollback, or a clean starting state. Use a dedicated stack that serves no real users, with controlled access and no overlapping writers across develop, production, manual runs, and docs activity. Job parallelism of one alone is insufficient: use separate stacks or shared per-host coordination. Agree with the docs team on prerequisites, expected changes, repeatability, repair ownership, and concurrent access before enabling mutations. Failed, interrupted, or retried runs can leave state behind; docs owns diagnosis and manual repair. Temporary service-account cleanup does not undo org data changes. Generic reset and automatic rollback are not v1 features.
 
-Publish and pin the compatible runner first, then deploy platform support with mutation policy disabled. Enable only the dedicated hostname after credentials and controlled access are ready, and complete a contained repeatable pilot before normal scheduling. Roll back by removing the platform mutation allowlist entry and redeploying; already-running executions retain their launch configuration and need separate containment.
+Platform configuration and policy support can precede runner publication, but mutation execution must remain disabled until a compatible runner is published and adopted. The current published `1.1.0` runner and schema provenance remain unchanged during this staged delivery.
+
+After publication, pin the compatible runner and its exported schema before enabling the dedicated hostname. Confirm that credentials and controlled access are ready. Complete a contained repeatable pilot before normal scheduling. To disable future mutations, remove the platform mutation allowlist entry and redeploy. Already-running executions retain their launch configuration and need separate containment.
 
 ### Pool-backed cloud runs
 
@@ -885,21 +887,21 @@ Pool-backed run behavior:
 
 In remote modes a package can end in one of these states. `failed`, `provisioning_failed`, and `validation_failed` produce a non-zero test-failure exit; `auth_expired` produces the auth-failure exit. Other skipped outcomes are logged and the batch continues.
 
-| Outcome                       | Meaning                                                        | Test failure? |
-| ----------------------------- | -------------------------------------------------------------- | ------------- |
-| `passed` / `failed`           | The guide ran (see step results)                               | `failed` only |
-| `provisioning_failed`         | Cloud target provisioning or pool-manager leasing failed       | **Yes**       |
-| `skipped_tier_mismatch`       | `cloud` guide on a `local` environment                         | No            |
-| `skipped_no_auth`             | `cloud` guide with no matching cloud auth                      | No            |
-| `skipped_invalid_instance`    | manifest `instance` is not a bare hostname                     | No            |
-| `skipped_unsafe_shared_stack` | Cloud guide requires an isolated stack, but none is configured | No            |
-| `resolution_failed`           | Recommender returned 404 or a network error                    | No            |
-| `fetch_failed`                | Could not fetch `content.json` from the CDN                    | No            |
-| `unsupported_type`            | Repository sweep encountered a non-guide composition package   | No            |
-| `prerequisite_failed`         | A required prerequisite could not be resolved or run           | No            |
-| `skipped_prereq`              | A prerequisite in the same dependency chain failed             | No            |
-| `skipped_unsupported_steps`   | The guide rendered only unsupported step kinds                 | No            |
-| `validation_failed`           | Fetched `content.json` failed guide schema validation          | **Yes**       |
+| Outcome                       | Meaning                                                              | Test failure? |
+| ----------------------------- | -------------------------------------------------------------------- | ------------- |
+| `passed` / `failed`           | The guide ran (see step results)                                     | `failed` only |
+| `provisioning_failed`         | Cloud target provisioning or pool-manager leasing failed             | **Yes**       |
+| `skipped_tier_mismatch`       | `cloud` guide on a `local` environment                               | No            |
+| `skipped_no_auth`             | `cloud` guide with no matching cloud auth                            | No            |
+| `skipped_invalid_instance`    | manifest `instance` is not a bare hostname                           | No            |
+| `skipped_unsafe_shared_stack` | Cloud chain lacks named mutation authorization and an isolated stack | No            |
+| `resolution_failed`           | Recommender returned 404 or a network error                          | No            |
+| `fetch_failed`                | Could not fetch `content.json` from the CDN                          | No            |
+| `unsupported_type`            | Repository sweep encountered a non-guide composition package         | No            |
+| `prerequisite_failed`         | A required prerequisite could not be resolved or run                 | No            |
+| `skipped_prereq`              | A prerequisite in the same dependency chain failed                   | No            |
+| `skipped_unsupported_steps`   | The guide rendered only unsupported step kinds                       | No            |
+| `validation_failed`           | Fetched `content.json` failed guide schema validation                | **Yes**       |
 
 With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).
 
