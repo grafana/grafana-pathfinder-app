@@ -6,6 +6,10 @@
 
 - **Choice-driven guide sections**: Guides can ask readers to pick options in a checkbox group and show, collapse to a heading, or hide sections based on those choices. Progress counts only the selected path, completion evidence survives deselecting and reselecting an option, and the editor gains controls for checkbox groups, option conditions, and section visibility. Existing guides keep their current rendering and progress. (#2150)
 
+### Changed
+
+- **Guide browser lists path milestones once**: A guide that is a milestone of a learning path no longer appears again as a standalone card in All content, search results, topic counts, or the header count. It stays listed under its path's modules, and the Getting started single-guide card is unchanged. (#2156)
+
 ## 2.22.1
 
 ### Added
