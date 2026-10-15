@@ -2,7 +2,7 @@ import React, { useCallback, useId, useLayoutEffect, useMemo, useRef, useSyncExt
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { CATALOG_BATCH_SIZE, type CatalogPackage, type CatalogViewState } from '../../types/package-catalog.types';
-import { filterCatalog, withoutPathMilestones } from '../../lib/package-catalog';
+import { filterCatalog, withoutPathMembers } from '../../lib/package-catalog';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { usePackageCatalog, useCatalogProgress } from '../../learning-paths';
 import { catalogStarters, catalogTopic, catalogTopicCounts, catalogTopicShortcuts } from '../../lib/catalog-discovery';
@@ -63,7 +63,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
     [catalog.scope]
   );
   const progress = useCatalogProgress(catalog.items, catalog.scope);
-  const browsable = useMemo(() => withoutPathMilestones(catalog.items), [catalog.items]);
+  const browsable = useMemo(() => withoutPathMembers(catalog.items), [catalog.items]);
   const normalizedItems = useMemo(
     () => browsable.map((item) => ({ ...item, category: catalogTopic(item) })),
     [browsable]

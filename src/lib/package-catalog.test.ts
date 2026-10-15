@@ -4,7 +4,7 @@ import {
   mergeCatalog,
   onlineCatalog,
   organizationCatalog,
-  withoutPathMilestones,
+  withoutPathMembers,
 } from './package-catalog';
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { RepositoryJson } from '../types/package.types';
@@ -127,7 +127,45 @@ describe('package catalog', () => {
       guide('org-member', 'member', 'organization'),
       guide('standalone', 'standalone', 'grafana'),
     ];
-    expect(withoutPathMilestones(entries).map((entry) => entry.key)).toEqual(['path', 'org-member', 'standalone']);
+    expect(withoutPathMembers(entries).map((entry) => entry.key)).toEqual(['path', 'org-member', 'standalone']);
+  });
+
+  it('omits track-only and legacy organization members while keeping module order', () => {
+    const entries = organizationCatalog([
+      {
+        id: 'team-path',
+        status: 'published',
+        manifest: {
+          type: 'path',
+          milestones: ['foundation', 'team.guide_v1'],
+          tracks: [{ trackId: 'deep-dive', label: 'Deep dive', guides: ['track-only-guide'] }],
+        },
+      },
+      {
+        id: 'canonical-path',
+        status: 'published',
+        manifest: {
+          type: 'path',
+          milestones: ['canonical-member'],
+          tracks: [{ trackId: 'extras', label: 'Extras', guides: ['canonical-track-guide'] }],
+        },
+      },
+      ...[
+        'foundation',
+        'team.guide_v1',
+        'track-only-guide',
+        'canonical-member',
+        'canonical-track-guide',
+        'standalone',
+      ].map((id) => ({
+        id,
+        status: 'published',
+        manifest: { type: 'guide' as const },
+      })),
+    ]);
+    expect(entries[0]?.memberIds).toBeUndefined();
+    expect(entries[1]?.memberIds).toEqual(['canonical-member']);
+    expect(withoutPathMembers(entries).map((entry) => entry.id)).toEqual(['team-path', 'canonical-path', 'standalone']);
   });
 });
 

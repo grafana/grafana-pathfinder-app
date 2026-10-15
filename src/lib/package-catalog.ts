@@ -1,7 +1,7 @@
 import { isAllowedContentUrl } from '../security';
 import { packageIdSchema, ManifestJsonObjectSchema } from '../types/package.schema';
 import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
-import type { RepositoryJson } from '../types/package.types';
+import { getManifestMemberIds, type RepositoryJson } from '../types/package.types';
 import type { CatalogFilters, CatalogPackage } from '../types/package-catalog.types';
 import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
 import type { CustomGuideRepositoryEntry } from './custom-guide-repository-client';
@@ -158,11 +158,17 @@ export function mergeCatalog(...sources: CatalogPackage[][]): CatalogPackage[] {
   });
 }
 
-export function withoutPathMilestones(items: CatalogPackage[]): CatalogPackage[] {
-  const milestones = new Set(
-    items.flatMap((item) => (item.format === 'path' ? (item.memberIds ?? []).map((id) => `${item.source}:${id}`) : []))
+export function withoutPathMembers(items: CatalogPackage[]): CatalogPackage[] {
+  const members = new Set(
+    items.flatMap((item) =>
+      item.format === 'path'
+        ? [...(item.memberIds ?? []), ...getManifestMemberIds(item.packageInfo?.packageManifest)].map(
+            (id) => `${item.source}:${id}`
+          )
+        : []
+    )
   );
-  return items.filter((item) => item.format === 'path' || !milestones.has(`${item.source}:${item.id}`));
+  return items.filter((item) => item.format === 'path' || !members.has(`${item.source}:${item.id}`));
 }
 
 export function filterCatalog(items: CatalogPackage[], filters: CatalogFilters): CatalogPackage[] {
