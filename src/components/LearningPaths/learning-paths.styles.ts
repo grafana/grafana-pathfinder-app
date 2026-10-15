@@ -147,53 +147,46 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
 
   return {
     card: css({
+      minWidth: 0,
       borderRadius: theme.shape.radius.default,
-      background: `linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
-      border: `1px solid ${colors.pathAccentMedium}`,
-      transition: 'all 0.2s ease',
+      background: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
       overflow: 'hidden',
-
-      '&:hover': {
-        borderColor: colors.pathAccent,
-        boxShadow: `0 2px 8px ${colors.pathGlow}`,
-      },
+      '&:hover': { borderColor: theme.colors.border.medium },
     }),
     cardCompleted: css({
-      background: `linear-gradient(135deg, ${colors.successLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      background: theme.colors.background.secondary,
       borderColor: `${colors.success}50`,
 
       '&:hover': {
         borderColor: colors.success,
-        boxShadow: `0 2px 8px ${colors.successGlow}`,
       },
     }),
     cardUpcoming: css({
-      background: `linear-gradient(135deg, ${colors.dueSoonLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      background: theme.colors.background.secondary,
       borderColor: colors.dueSoon,
 
       '&:hover': {
         borderColor: colors.dueSoon,
-        boxShadow: `0 2px 8px ${colors.dueSoonGlow}`,
       },
     }),
     cardOverdue: css({
-      background: `linear-gradient(135deg, ${colors.overdueLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      background: theme.colors.background.secondary,
       borderColor: colors.overdue,
 
       '&:hover': {
         borderColor: colors.overdue,
-        boxShadow: `0 2px 8px ${colors.overdueGlow}`,
       },
     }),
     header: css({
       display: 'flex',
       alignItems: 'flex-start',
       gap: theme.spacing(1.5),
-      padding: theme.spacing(1.5),
+      padding: theme.spacing(2),
       cursor: 'pointer',
       userSelect: 'none',
     }),
-    // For a header with nothing to disclose: no click affordance to imply one.
+
     headerStatic: css({
       cursor: 'default',
       userSelect: 'auto',
@@ -205,7 +198,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
     }),
     title: css({
       margin: 0,
-      fontSize: theme.typography.body.fontSize,
+      fontSize: theme.typography.h5.fontSize,
       fontWeight: theme.typography.fontWeightMedium,
       color: theme.colors.text.primary,
       lineHeight: 1.3,
@@ -270,8 +263,9 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(0.5),
       padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
       borderRadius: theme.shape.radius.default,
-      backgroundColor: colors.pathAccent,
-      color: '#fff',
+      backgroundColor: theme.colors.primary.main,
+      color: theme.colors.primary.contrastText,
+      minHeight: theme.spacing(4),
       fontSize: theme.typography.bodySmall.fontSize,
       fontWeight: theme.typography.fontWeightMedium,
       border: 'none',
@@ -282,8 +276,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       '&:hover:not(:disabled)': {
         backgroundColor: theme.colors.primary.shade,
       },
-      // Launch is single-flight, so every card's action is disabled while one is
-      // preparing — without this they stay fully lit and look clickable.
+
       '&:disabled': {
         opacity: 0.6,
         cursor: 'not-allowed',

@@ -44,7 +44,7 @@ export function useGlobalActiveTabExposure({
     } else {
       // No URL to derive a view from — cold start or the recommendations
       // tab (which has no `content.url`). Previously left the view stale.
-      setFaroViewName('recommendations');
+      setFaroViewName(activeTabId === 'browse' ? 'browse' : 'recommendations');
     }
   }, [activeTabId, activeTabCurrentUrl, activeTabBaseUrl]);
 }

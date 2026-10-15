@@ -1547,9 +1547,9 @@ export const sectionDoneStorage = {
  * content key alone: the mark evidences the whole guide, so unlike
  * `sectionAcknowledgementStorage` there is no section to qualify it with.
  *
- * Two-state — `true` or absent (`null`) — for the same reason that
- * namespace is: reset paths call `.clear()` rather than writing a `false`
- * sentinel, so absence is the only "not marked" representation.
+ * Ordinary guides store `true`. Choice guides store the marked block keys
+ * in the same entry. All reset paths therefore remove both the mark and its
+ * path evidence, without removing the reader's saved input selections.
  */
 function guideCompletionMarkKey(contentKey: string): string {
   return buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, contentKey);
@@ -1560,8 +1560,10 @@ export const guideCompletionMarkStorage = {
   async get(contentKey: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const marked = await storage.getItem<boolean>(guideCompletionMarkKey(contentKey));
-      return marked === true ? true : null;
+      const marked = await storage.getItem<true | { choiceCompletionKeys: string[] }>(
+        guideCompletionMarkKey(contentKey)
+      );
+      return marked === true || (marked && Array.isArray(marked.choiceCompletionKeys)) ? true : null;
     } catch {
       return null;
     }
@@ -1576,17 +1578,33 @@ export const guideCompletionMarkStorage = {
    */
   isMarked(contentKey: string): boolean {
     try {
-      return localStorage.getItem(guideCompletionMarkKey(contentKey)) === 'true';
+      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
+      return marked === true || Array.isArray(marked?.choiceCompletionKeys);
     } catch {
       return false;
     }
   },
 
+  /** Read only content-keyed completion evidence, never saved input responses. */
+  getChoiceCompletionKeys(contentKey: string): string[] {
+    try {
+      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
+      return Array.isArray(marked?.choiceCompletionKeys)
+        ? marked.choiceCompletionKeys.filter((key: unknown): key is string => typeof key === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  },
+
   /** Only `true` is accepted; use `.clear()` to remove an entry. */
-  async set(contentKey: string, isMarked: true): Promise<void> {
+  async set(contentKey: string, isMarked: true, choiceCompletionKeys?: string[]): Promise<void> {
     try {
       const storage = createUserStorage();
-      await storage.setItem(guideCompletionMarkKey(contentKey), isMarked);
+      await storage.setItem(
+        guideCompletionMarkKey(contentKey),
+        choiceCompletionKeys === undefined ? isMarked : { choiceCompletionKeys }
+      );
     } catch (error) {
       logger.warn('Failed to save guide completion mark', { error });
     }
@@ -2048,23 +2066,33 @@ export const learningProgressStorage = {
  *   "guide-id-2": { "region": "us-east-1" }
  * }
  */
+let guideResponseWrites: Promise<void> = Promise.resolve();
+
+function queueGuideResponseWrite(write: () => Promise<void>): Promise<void> {
+  const pending = guideResponseWrites.then(write);
+  guideResponseWrites = pending.catch(() => {});
+  return pending;
+}
+
 export const guideResponseStorage = {
   async mergeResponses(guideId: string, responses: Record<string, string>): Promise<void> {
-    if (
-      ['__proto__', 'prototype', 'constructor'].includes(guideId) ||
-      Object.entries(responses).some(([key, value]) => !isSafeResponseName(key) || value.length > MAX_INPUT_LENGTH)
-    ) {
-      throw new Error('Invalid guide inputs');
-    }
-    const storage = createUserStorage();
-    const all = await guideResponseStorage.getAll();
-    const previous = Object.hasOwn(all, guideId) ? all[guideId] : {};
-    await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: { ...previous, ...responses } });
-    window.dispatchEvent(
-      new CustomEvent(StorageEvents.GuideResponseChanged, {
-        detail: { guideId, variableName: '*', value: undefined },
-      })
-    );
+    return queueGuideResponseWrite(async () => {
+      if (
+        ['__proto__', 'prototype', 'constructor'].includes(guideId) ||
+        Object.entries(responses).some(([key, value]) => !isSafeResponseName(key) || value.length > MAX_INPUT_LENGTH)
+      ) {
+        throw new Error('Invalid guide inputs');
+      }
+      const storage = createUserStorage();
+      const all = await guideResponseStorage.getAll();
+      const previous = Object.hasOwn(all, guideId) ? all[guideId] : {};
+      await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: { ...previous, ...responses } });
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
+          detail: { guideId, variableName: '*', value: undefined },
+        })
+      );
+    });
   },
 
   /**
@@ -2124,95 +2152,101 @@ export const guideResponseStorage = {
    * Sets a response value and dispatches event for reactive updates
    */
   async setResponse(guideId: string, variableName: string, value: GuideResponseValue): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const all = await guideResponseStorage.getAll();
+    return queueGuideResponseWrite(async () => {
+      try {
+        const storage = createUserStorage();
+        const all = await guideResponseStorage.getAll();
 
-      const guideRecord = Object.hasOwn(all, guideId) ? (all[guideId] ?? {}) : {};
-      guideRecord[variableName] = value;
-      all[guideId] = guideRecord;
+        const previous = Object.hasOwn(all, guideId) ? (all[guideId] ?? {}) : {};
+        const guideRecord = { ...previous, [variableName]: value };
+        await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: guideRecord });
 
-      await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
-
-      // Dispatch event to notify listeners (for requirements re-evaluation)
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.GuideResponseChanged, {
-          detail: { guideId, variableName, value },
-        })
-      );
-    } catch (error) {
-      logger.warn('Failed to set guide response', { error });
-    }
+        // Dispatch event to notify listeners (for requirements re-evaluation)
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.GuideResponseChanged, {
+            detail: { guideId, variableName, value },
+          })
+        );
+      } catch (error) {
+        logger.warn('Failed to set guide response', { error });
+      }
+    });
   },
 
   /**
    * Deletes a response and dispatches event
    */
   async deleteResponse(guideId: string, variableName: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const all = await guideResponseStorage.getAll();
+    return queueGuideResponseWrite(async () => {
+      try {
+        const storage = createUserStorage();
+        const all = await guideResponseStorage.getAll();
 
-      const guideRecord = Object.hasOwn(all, guideId) ? all[guideId] : undefined;
-      if (guideRecord) {
-        delete guideRecord[variableName];
-
-        // Clean up empty guide entries
-        if (Object.keys(guideRecord).length === 0) {
-          delete all[guideId];
+        const previous = Object.hasOwn(all, guideId) ? all[guideId] : undefined;
+        if (previous) {
+          const guideRecord = { ...previous };
+          delete guideRecord[variableName];
+          const next = { ...all, [guideId]: guideRecord };
+          if (Object.keys(guideRecord).length === 0) {
+            delete next[guideId];
+          }
+          await storage.setItem(StorageKeys.GUIDE_RESPONSES, next);
         }
 
-        await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
+        // Dispatch event to notify listeners
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.GuideResponseChanged, {
+            detail: { guideId, variableName, value: undefined },
+          })
+        );
+      } catch (error) {
+        logger.warn('Failed to delete guide response', { error });
       }
-
-      // Dispatch event to notify listeners
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.GuideResponseChanged, {
-          detail: { guideId, variableName, value: undefined },
-        })
-      );
-    } catch (error) {
-      logger.warn('Failed to delete guide response', { error });
-    }
+    });
   },
 
   /**
    * Clears all responses for a specific guide
    */
   async clearForGuide(guideId: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const all = await guideResponseStorage.getAll();
+    return queueGuideResponseWrite(async () => {
+      try {
+        const storage = createUserStorage();
+        const all = await guideResponseStorage.getAll();
 
-      delete all[guideId];
-      await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
+        const next = { ...all };
+        delete next[guideId];
+        await storage.setItem(StorageKeys.GUIDE_RESPONSES, next);
 
-      // Dispatch event to notify listeners
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.GuideResponseChanged, {
-          detail: { guideId, variableName: '*', value: undefined },
-        })
-      );
-    } catch (error) {
-      logger.warn('Failed to clear guide responses', { error });
-    }
+        // Dispatch event to notify listeners
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.GuideResponseChanged, {
+            detail: { guideId, variableName: '*', value: undefined },
+          })
+        );
+      } catch (error) {
+        logger.warn('Failed to clear guide responses', { error });
+      }
+    });
   },
 
   /**
    * Clears all guide responses (for testing/reset)
    */
   async clearAll(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.removeItem(StorageKeys.GUIDE_RESPONSES);
+    return queueGuideResponseWrite(async () => {
+      try {
+        const storage = createUserStorage();
+        await storage.removeItem(StorageKeys.GUIDE_RESPONSES);
 
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.GuideResponseChanged, {
-          detail: { guideId: '*', variableName: '*', value: undefined },
-        })
-      );
-    } catch (error) {
-      logger.warn('Failed to clear all guide responses', { error });
-    }
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.GuideResponseChanged, {
+            detail: { guideId: '*', variableName: '*', value: undefined },
+          })
+        );
+      } catch (error) {
+        logger.warn('Failed to clear all guide responses', { error });
+      }
+    });
   },
 };

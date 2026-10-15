@@ -512,6 +512,15 @@
       "omitempty": false
     }
   ],
+  "customGuidesResponse": [
+    {
+      "field": "Items",
+      "json": "items",
+      "type": "[]json.RawMessage",
+      "wire": "array<json>",
+      "omitempty": false
+    }
+  ],
   "guideProxyDiagnostic": [
     {
       "field": "Stage",

@@ -14,6 +14,18 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ## Current feature flags
 
+### `pathfinder.package-browser`
+
+**Type**: Boolean
+
+**Default**: `true`
+
+Controls the sidebar Browse entry and Browse all links. Set it to `false` to hide browsing during rollout. Browse offers starter content, topic shortcuts, and the full catalog. The browser uses existing package metadata and performs no prerequisite assessment. The `/browse` route opens the sidebar browser and returns to My learning.
+
+**Tracking key**: `package_browser`
+
+---
+
 ### `pathfinder.enabled`
 
 **Type**: Boolean

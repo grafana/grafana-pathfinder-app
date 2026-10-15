@@ -96,6 +96,19 @@ describe('InteractiveConditional', () => {
     );
   };
 
+  it('re-evaluates after a response change without an unrelated action', async () => {
+    renderConditional(false);
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    checkRequirementsFromData.mockResolvedValue({ pass: true, requirements: '', error: [] });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('guide-response-changed', { detail: { variableName: 'signals' } }));
+      jest.runAllTimers();
+    });
+    expect(screen.getByTestId('rendered-test-true-0')).toBeInTheDocument();
+  });
+
   it('shows whenTrue branch after interactive-action-completed without remounting', async () => {
     renderConditional(false);
 

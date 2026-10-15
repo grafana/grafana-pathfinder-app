@@ -65,6 +65,12 @@ export const DEFAULT_HIGHLIGHTED_GUIDE_CONFIG: HighlightedGuideConfig = {
  * Naming convention: prefix with component name (e.g., pathfinder.feature-name)
  */
 const pathfinderFeatureFlags = {
+  'pathfinder.package-browser': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'package_browser',
+  },
   'pathfinder.help-button-nudge-experiment': {
     valueType: 'object',
     values: ['excluded', 'control', 'learn', 'learn_hint'].map((variant) => ({ variant })),

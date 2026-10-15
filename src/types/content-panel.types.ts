@@ -43,7 +43,7 @@ export interface PendingAlignment {
  * Represents an open tab in the docs panel
  */
 export type LearningJourneyTabType =
-  'recommendations' | 'learning-journey' | 'docs' | 'devtools' | 'interactive' | 'editor';
+  'recommendations' | 'browse' | 'learning-journey' | 'docs' | 'devtools' | 'interactive' | 'editor';
 
 export interface LearningJourneyTab {
   id: string;

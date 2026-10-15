@@ -27,8 +27,9 @@ import type { PreparedRawContent } from '../types/content.types';
 export interface StagedLaunchPayload {
   /** URL the payload was prepared for — redemption requires an exact match. */
   url: string;
+  source?: string;
   /** @see OpenDocsOptions.preparedContent */
-  preparedContent: PreparedRawContent;
+  preparedContent?: PreparedRawContent;
   /** @see OpenDocsOptions.packageInfo */
   packageInfo?: PackageOpenInfo;
 }

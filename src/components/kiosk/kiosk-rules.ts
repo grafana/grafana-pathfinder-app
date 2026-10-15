@@ -151,12 +151,11 @@ export async function fetchKioskData(
   };
 }
 
-export async function loadKioskData(
+export async function prepareKioskData(
   defaultUrl: string,
   overrideUrl?: string,
-  signal?: AbortSignal,
-  session?: { sessionId: string; mode: KioskMode }
-): Promise<KioskData & { warning?: string }> {
+  signal?: AbortSignal
+): Promise<PreparedKioskData> {
   signal?.throwIfAborted();
   const failed = new Set<KioskCatalogTier>();
   const attempted = new Set<string>();
@@ -168,18 +167,9 @@ export async function loadKioskData(
   const finish = (data: KioskData, tier: KioskCatalogTier, catalogUrl?: string) => {
     signal?.throwIfAborted();
     const kioskName = getKioskNameFromCatalogUrl(catalogUrl);
-    if (session) {
-      setKioskSessionName(session.sessionId, kioskName);
-    }
-    recordKioskCatalogLoaded(tier, failed.size > 0);
-    reportAppInteraction(UserInteraction.KioskCatalogLoaded, {
-      tier,
-      kiosk_name: kioskName,
-      degraded: failed.size > 0,
-      ...(session && { kiosk_session_id: session.sessionId, launch_mode: session.mode }),
-    });
+    const metadata = { tier, kioskName, degraded: failed.size > 0 };
     if (failed.size === 0) {
-      return data;
+      return { data, ...metadata };
     }
     const failure =
       failed.has('override') && failed.has('configured')
@@ -193,7 +183,7 @@ export async function loadKioskData(
         : tier === 'generic'
           ? 'Showing the generic learning kiosk.'
           : 'Showing bundled guides.';
-    return { ...data, warning: `${failure} ${showing}` };
+    return { data: { ...data, warning: `${failure} ${showing}` }, ...metadata };
   };
   if (overrideUrl && !override) {
     reject('override', 'invalid_url');
@@ -221,4 +211,34 @@ export async function loadKioskData(
     }
   }
   return finish({ banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES }, 'bundled');
+}
+
+export interface PreparedKioskData {
+  data: KioskData & { warning?: string };
+  tier: KioskCatalogTier;
+  kioskName: string;
+  degraded: boolean;
+}
+
+export async function loadKioskData(
+  defaultUrl: string,
+  overrideUrl?: string,
+  signal?: AbortSignal,
+  session?: { sessionId: string; mode: KioskMode },
+  prepared?: Promise<PreparedKioskData>
+): Promise<KioskData & { warning?: string }> {
+  signal?.throwIfAborted();
+  const { data, tier, kioskName, degraded } = await (prepared ?? prepareKioskData(defaultUrl, overrideUrl, signal));
+  signal?.throwIfAborted();
+  if (session) {
+    setKioskSessionName(session.sessionId, kioskName);
+  }
+  recordKioskCatalogLoaded(tier, degraded);
+  reportAppInteraction(UserInteraction.KioskCatalogLoaded, {
+    tier,
+    kiosk_name: kioskName,
+    degraded,
+    ...(session && { kiosk_session_id: session.sessionId, launch_mode: session.mode }),
+  });
+  return data;
 }

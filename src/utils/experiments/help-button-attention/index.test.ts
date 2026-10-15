@@ -9,8 +9,14 @@ import {
   HELP_BUTTON_EXPERIMENT_ID,
   HELP_BUTTON_CLICK_EVENT,
 } from '../../../constants/help-button-experiment';
+import { StorageKeys } from '../../../lib/storage-keys';
 import { sidebarState } from '../../../global-state/sidebar';
 import { startHelpButtonExperiment } from './index';
+import { loadTranslatedModule } from '../../../lib/plugin-translations';
+
+jest.mock('../../../lib/plugin-translations', () => ({
+  loadTranslatedModule: jest.fn((load: () => Promise<unknown>) => load()),
+}));
 
 const mockPushEvent = jest.fn();
 const mockFaro = {
@@ -87,7 +93,10 @@ beforeEach(() => {
   const icon = document.createElement('span');
   icon.dataset.testid = 'icon-question-circle';
   button.append(icon);
-  document.body.append(button);
+  const toolbar = document.querySelector('[data-testid="data-testid Nav toolbar"]') ?? document.createElement('div');
+  toolbar.setAttribute('data-testid', 'data-testid Nav toolbar');
+  toolbar.append(button);
+  document.body.append(toolbar);
   jest.spyOn(button, 'getBoundingClientRect').mockReturnValue({
     width: 32,
     height: 32,
@@ -127,6 +136,7 @@ it.each(['control', 'learn', 'learn_hint'])(
     stop = await startHelpButtonExperiment();
     await settle();
     expect(reportExperimentView).toHaveBeenCalledWith(HELP_BUTTON_EXPERIMENT_ID, 'closed-help-toolbar', variant);
+    expect(loadTranslatedModule).toHaveBeenCalledTimes(variant === 'control' ? 0 : 1);
     expect(Boolean(learn())).toBe(variant !== 'control');
     button.click();
     expect(document.querySelector('[data-testid="help-button-learning-hint"]')).toBeNull();
@@ -248,6 +258,7 @@ it.each(['analytics', 'anonymous'])('does not enroll when disabled by %s', async
   await settle();
   expect(reportExperimentView).not.toHaveBeenCalled();
   expect(learn()).toBeNull();
+  expect(loadTranslatedModule).not.toHaveBeenCalled();
 });
 
 it('keeps tooltip dismissal separate from a click and preserves its assignment', async () => {
@@ -274,4 +285,46 @@ it('keeps tooltip dismissal separate from a click and preserves its assignment',
     { mirrorToFaro: false }
   );
   expect(reportExperimentView).toHaveBeenCalledTimes(1);
+});
+
+it('does not load translations for a dismissed, unenrolled user', async () => {
+  sessionStorage.setItem(`${StorageKeys.HELP_BUTTON_ATTENTION_DISMISSED_PREFIX}stacks-123:42`, 'true');
+  await flag({ variant: 'learn_hint' });
+  stop = await startHelpButtonExperiment();
+  await settle();
+  expect(loadTranslatedModule).not.toHaveBeenCalled();
+  expect(reportExperimentView).not.toHaveBeenCalled();
+  expect(learn()).toBeNull();
+});
+
+it('does not render delayed translated UI after stopping', async () => {
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  jest.mocked(loadTranslatedModule).mockImplementationOnce(async (load) => {
+    await ready;
+    return load();
+  });
+  await flag({ variant: 'learn_hint' });
+  stop = await startHelpButtonExperiment();
+  await settle();
+  expect(loadTranslatedModule).toHaveBeenCalledTimes(1);
+  expect(learn()).toBeNull();
+  stop();
+  release();
+  await settle();
+  expect(learn()).toBeNull();
+});
+
+it('keeps native Help usable when translation loading fails', async () => {
+  jest.mocked(loadTranslatedModule).mockRejectedValueOnce(new Error('chunk unavailable'));
+  await flag({ variant: 'learn_hint' });
+  const nativeClick = jest.fn();
+  button.addEventListener('click', nativeClick);
+  stop = await startHelpButtonExperiment();
+  await settle();
+  button.click();
+  expect(nativeClick).toHaveBeenCalledTimes(1);
+  expect(learn()).toBeNull();
 });

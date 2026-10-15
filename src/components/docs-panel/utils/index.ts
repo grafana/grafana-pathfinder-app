@@ -8,6 +8,8 @@ export { computeTabVisibility } from './tab-visibility';
 export type { TabVisibilityResult } from './tab-visibility';
 export {
   RECOMMENDATIONS_TAB_ID,
+  BROWSE_TAB_ID,
+  createBrowseTab,
   DEVTOOLS_TAB_ID,
   EDITOR_TAB_ID,
   getGuideStripTabs,
