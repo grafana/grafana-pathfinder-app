@@ -28,7 +28,13 @@ import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
 import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from '../../completion-records';
-import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
+import { useGuideResponsesOptional, type AnalyticsCompletionIdentity } from '../../docs-retrieval';
+import {
+  getGuideIndex,
+  getHiddenGuideSections,
+  isGuideChoiceProgressReady,
+} from '../../global-state/active-guide-index';
+import { choicePathCompletionKeys, choicePathHasUnansweredRequiredInput } from '../../lib/guide-stats/choice-progress';
 import {
   BLOCK_PROGRESS_RULE_VERSION,
   getGuideBlockCountProperties,
@@ -39,7 +45,12 @@ import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
-import { isBlockEditorPreviewUrl, peekGuidePercentage, subscribeProgress } from '../../global-state/completion-store';
+import {
+  isBlockEditorPreviewUrl,
+  peekGuidePercentage,
+  refreshAndNotifyGuideProgress,
+  subscribeProgress,
+} from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { testIds } from '../../constants/testIds';
 
@@ -105,7 +116,8 @@ export function MarkCompleteFooter({
   // the stored mark has been read, a return visit cannot be told from a first
   // one.
   const hydrated = mark !== null && mark.readFor === contentUrl;
-  const marked = hydrated && mark.marked;
+  const storedMarked = hydrated && mark.marked;
+  const responses = useGuideResponsesOptional();
   const contentKey = hydrated ? mark.key : undefined;
 
   const percentage = useSyncExternalStore(
@@ -115,6 +127,16 @@ export function MarkCompleteFooter({
     ),
     useCallback(() => (contentKey === undefined ? 0 : peekGuidePercentage(contentKey)), [contentKey])
   );
+
+  const activeGuide = contentKey ? getGuideIndex(contentKey) : undefined;
+  const marked = storedMarked && (!activeGuide?.choiceModel || percentage === 100);
+  const unansweredChoices =
+    activeGuide?.choiceModel &&
+    choicePathHasUnansweredRequiredInput(
+      activeGuide.choiceModel,
+      responses?.responses ?? {},
+      getHiddenGuideSections(contentKey!)
+    );
 
   // Both producers of the content key publish it from a layout effect — the
   // panel's active tab URL and this renderer's own override — so resolving it
@@ -135,7 +157,12 @@ export function MarkCompleteFooter({
     };
     guideCompletionMarkStorage
       .get(key)
-      .then((existing) => settle(existing === true))
+      .then((existing) =>
+        settle(
+          existing === true ||
+            (isBlockEditorPreviewUrl(key) && getGuideIndex(key)?.previewChoiceCompletionKeys !== undefined)
+        )
+      )
       .catch((error) => {
         logger.warn('Failed to read guide completion mark', { error });
         settle(false);
@@ -189,14 +216,36 @@ export function MarkCompleteFooter({
   });
 
   const handleClick = useCallback(() => {
-    if (contentKey === undefined || marked) {
+    if (
+      contentKey === undefined ||
+      marked ||
+      unansweredChoices ||
+      responses?.isLoading ||
+      !isGuideChoiceProgressReady(contentKey)
+    ) {
       return;
     }
     // The button the reader just activated is about to unmount, and React
     // would drop focus to `document.body`. A return visit that hydrates an
     // existing mark must not steal focus, so only a click claims it.
+    const active = getGuideIndex(contentKey);
+    const choiceCompletionKeys =
+      active?.choiceModel && responses
+        ? [
+            ...new Set([
+              ...(isBlockEditorPreviewUrl(contentKey)
+                ? (active.previewChoiceCompletionKeys ?? [])
+                : guideCompletionMarkStorage.getChoiceCompletionKeys(contentKey)),
+              ...choicePathCompletionKeys(active.choiceModel, responses.responses, getHiddenGuideSections(contentKey)),
+            ]),
+          ]
+        : undefined;
     claimFocusRef.current = true;
     setMark({ readFor: contentUrl, key: contentKey, marked: true });
+    if (isBlockEditorPreviewUrl(contentKey) && active && choiceCompletionKeys) {
+      active.previewChoiceCompletionKeys = choiceCompletionKeys;
+      refreshAndNotifyGuideProgress(contentKey);
+    }
 
     // A block-editor preview is an author iterating, not a reader: it records
     // nothing, persists nothing and stays out of the click stream, because that
@@ -221,7 +270,11 @@ export function MarkCompleteFooter({
         ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
         ...getGuideBlockCountProperties(contentKey),
       });
-      void guideCompletionMarkStorage.set(contentKey, true).catch((error) => {
+      void (
+        choiceCompletionKeys === undefined
+          ? guideCompletionMarkStorage.set(contentKey, true)
+          : guideCompletionMarkStorage.set(contentKey, true, choiceCompletionKeys)
+      ).catch((error) => {
         logger.warn('Failed to persist guide completion mark', { error });
       });
       // Deliberate, not a placeholder: the percentage namespace is what
@@ -249,6 +302,8 @@ export function MarkCompleteFooter({
     contentKey,
     completionIdentity,
     marked,
+    unansweredChoices,
+    responses,
     context,
     percentage,
     contentUrl,
@@ -297,7 +352,12 @@ export function MarkCompleteFooter({
           variant="primary"
           icon="check"
           size="md"
-          disabled={!hydrated}
+          disabled={
+            !hydrated ||
+            Boolean(unansweredChoices) ||
+            Boolean(responses?.isLoading) ||
+            (contentKey !== undefined && !isGuideChoiceProgressReady(contentKey))
+          }
           onClick={handleClick}
           data-testid={testIds.markComplete.button}
         >

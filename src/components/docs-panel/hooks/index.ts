@@ -15,6 +15,7 @@ export { useSessionJoinUrlCheck } from './useSessionJoinUrlCheck';
 export { useScrollTracking } from './useScrollTracking';
 export { useGlobalActiveTabExposure } from './useGlobalActiveTabExposure';
 export { useAutoOpenListener } from './useAutoOpenListener';
+export { useCatalogBrowserListener } from './useCatalogBrowserListener';
 export { usePopOutHandoff } from './usePopOutHandoff';
 export { useFullScreenHandoff } from './useFullScreenHandoff';
 export { useTabRestoration } from './useTabRestoration';

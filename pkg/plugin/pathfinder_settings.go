@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,34 +22,20 @@ func (a *App) handlePathfinderSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, resource, name string, maxBytes int64) {
-	w.Header().Set("Cache-Control", "no-store")
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
-		a.writeError(w, "method not allowed", http.StatusMethodNotAllowed)
+	client, namespace := a.appPlatformReadClient(w, r, resource, "get")
+	if client == nil {
 		return
 	}
-	if status := a.validIDToken(r); status != identityVerified {
-		a.writeProxyError(w, status.capabilityReason(), http.StatusForbidden, proxyGateDiagnostic("identity-unavailable", resource, "get", "identity"))
-		return
-	}
-	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
-	cfg := config.GrafanaConfigFromContext(r.Context())
-	if cfg == nil || namespace == "" || a.oboExchanger == nil {
-		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, "get", "configuration"))
-		return
-	}
-	appURL, err := cfg.AppURL()
-	if err != nil || appURL == "" {
-		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, "get", "configuration"))
-		return
-	}
-	client := newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context()))
 	client.attempt = readAttempt(r)
 	body, err := client.getItem(r.Context(), namespace, resource, name, maxBytes)
 	if err != nil {
 		status := appPlatformReadErrorStatus(err)
 
 		message := "app platform read failed"
+		if resource == "pathfindersettings" && r.URL.Query().Get("absence") == "explicit" && isSettingsNotConfigured(err) {
+			a.writeJSON(w, map[string]string{"state": "not-configured"}, http.StatusOK)
+			return
+		}
 		if resource == "pathfindersettings" && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
 			message = "settings-upstream-unavailable"
 		}
@@ -56,6 +43,32 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 		return
 	}
 	a.writeJSON(w, body, http.StatusOK)
+}
+
+func (a *App) appPlatformReadClient(w http.ResponseWriter, r *http.Request, resource, operation string) (*appPlatformListClient, string) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		a.writeError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return nil, ""
+	}
+	if status := a.validIDToken(r); status != identityVerified {
+		a.writeProxyError(w, status.capabilityReason(), http.StatusForbidden, proxyGateDiagnostic("identity-unavailable", resource, operation, "identity"))
+		return nil, ""
+	}
+	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
+	cfg := config.GrafanaConfigFromContext(r.Context())
+	if cfg == nil || namespace == "" || a.oboExchanger == nil {
+		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, operation, "configuration"))
+		return nil, ""
+	}
+	appURL, err := cfg.AppURL()
+	if err != nil || appURL == "" {
+		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, operation, "configuration"))
+		return nil, ""
+	}
+	client := newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context()))
+	return client, namespace
 }
 
 func (c *appPlatformListClient) getSettings(ctx context.Context, namespace string) (json.RawMessage, error) {
@@ -83,7 +96,11 @@ func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, &appPlatformUpstreamError{status: resp.StatusCode, msg: fmt.Sprintf("app platform upstream status %d", resp.StatusCode)}
+		errBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2049))
+		if readErr != nil || len(errBody) > 2048 {
+			errBody = nil
+		}
+		return nil, &appPlatformUpstreamError{status: resp.StatusCode, msg: fmt.Sprintf("app platform upstream status %d", resp.StatusCode), body: errBody}
 	}
 	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
@@ -96,6 +113,31 @@ func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource
 		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
 	}
 	return json.RawMessage(body), nil
+}
+
+func isSettingsNotConfigured(err error) bool {
+	var upstream *appPlatformUpstreamError
+	if !errors.As(err, &upstream) || upstream.status != http.StatusNotFound {
+		return false
+	}
+	var status struct {
+		Kind       string `json:"kind"`
+		APIVersion string `json:"apiVersion"`
+		Status     string `json:"status"`
+		Reason     string `json:"reason"`
+		Code       int    `json:"code"`
+		Details    struct {
+			Group  string            `json:"group"`
+			Kind   string            `json:"kind"`
+			Name   string            `json:"name"`
+			Causes []json.RawMessage `json:"causes"`
+		} `json:"details"`
+	}
+	return json.Unmarshal(upstream.body, &status) == nil &&
+		status.Kind == "Status" && status.APIVersion == "v1" && status.Status == "Failure" &&
+		status.Reason == "NotFound" && status.Code == http.StatusNotFound &&
+		status.Details.Group == appPlatformGroup && status.Details.Kind == "pathfindersettings" &&
+		status.Details.Name == "default" && len(status.Details.Causes) == 0
 }
 
 func readAttempt(r *http.Request) int {

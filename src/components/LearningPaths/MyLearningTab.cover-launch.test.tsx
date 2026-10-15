@@ -1,3 +1,5 @@
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
+
 /**
  * Tests for the cover-page launch routing: every URL-based path launch from
  * My Learning lands on its own cover page (base URL / milestone 0), fresh or
@@ -9,8 +11,13 @@ import React from 'react';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
+import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 import { testIds } from '../../constants/testIds';
-import { reportAppInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+
+jest.mock('../docs-panel/utils/open-prepared-guide', () => ({ openGuideInSidebar: jest.fn() }));
+jest.mock('../docs-panel/utils/open-catalog-browser', () => ({ openCatalogBrowser: jest.fn() }));
+jest.mock('../../package-engine', () => ({ AppPlatformPackageResolver: jest.fn() }));
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
@@ -22,6 +29,9 @@ jest.mock('@grafana/i18n', () => ({
     vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k])) : fallback,
 }));
 jest.mock('@grafana/ui', () => ({
+  Button: ({ children, icon: _icon, size: _size, variant: _variant, ...props }: any) => (
+    <button {...props}>{children}</button>
+  ),
   useStyles2: () => new Proxy({}, { get: () => 'style' }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
   ConfirmModal: ({ isOpen }: { isOpen: boolean }) => (isOpen ? <div role="dialog" /> : null),
@@ -35,10 +45,14 @@ let pathProgress = 0;
 
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
+  pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
+  selectContinueLearning: jest.requireActual('../../learning-paths/catalog-learning-core').selectContinueLearning,
+  useCatalogProgress: () => new Map(),
   getPathsData: () => ({ guideMetadata: {} }),
   useDiscoverMore: () => ({
     items: [{ id: 'discover-path-1', title: 'First path', contentUrl: pathBaseUrl, milestoneCount: 1 }],
     isLoading: false,
+    catalog: { items: [], scope: 'test' },
   }),
   useLearningPaths: () => ({
     paths: [{ id: 'path-1', title: 'First path', guides: ['guide-1'], url: pathBaseUrl }],
@@ -114,10 +128,13 @@ describe('MyLearningTab cover-page launch routing', () => {
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(pathBaseUrl, expect.objectContaining({ title: 'First path' }));
-    expect(reportMock).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ interaction_location: 'my_learning_discover_more', content_url: pathBaseUrl })
-    );
+    expect(openGuideInSidebar).toHaveBeenCalledWith(okResult.ok ? okResult.launch : undefined);
+    expect(reportMock).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+      content_title: 'First path',
+      content_url: pathBaseUrl,
+      content_type: 'LearningJourney',
+      interaction_location: 'my_learning_discover_more',
+    });
   });
 
   it('resuming an in-progress path also lands on the cover page', async () => {

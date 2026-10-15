@@ -1,5 +1,5 @@
 import type { Experiment, ExperimentState } from '@grafana-experiments/sdk';
-import { observeHelpButton, type LearnButton } from './controller';
+import { findHelpButton, observeHelpButton, type LearnButton } from './controller';
 
 type Variant = 'control' | 'learn' | 'learn_hint';
 
@@ -25,7 +25,10 @@ function addButton(expanded: string | null = 'false', label = 'Help') {
   const icon = document.createElement('span');
   icon.dataset.testid = 'icon-question-circle';
   button.append(icon);
-  document.body.append(button);
+  const toolbar = document.querySelector('[data-testid="data-testid Nav toolbar"]') ?? document.createElement('div');
+  toolbar.setAttribute('data-testid', 'data-testid Nav toolbar');
+  toolbar.append(button);
+  document.body.append(toolbar);
   jest.spyOn(button, 'getBoundingClientRect').mockReturnValue({
     width: 32,
     height: 32,
@@ -323,4 +326,18 @@ it('removes the Learn button on stop', async () => {
   expect(learnButton()).not.toBeNull();
   stop();
   expect(learnButton()).toBeNull();
+});
+
+it('ignores a page help icon when no toolbar Help control exists', () => {
+  const pageHelp = addButton();
+  document.body.append(pageHelp);
+  expect(findHelpButton()).toBeUndefined();
+});
+
+it('finds localized toolbar Help despite matching page and form icons', () => {
+  const help = addButton('false', 'Hilfe');
+  const pageHelp = addButton('false', 'Help');
+  const formHelp = addButton('false', 'Hilfe');
+  document.body.append(pageHelp, formHelp);
+  expect(findHelpButton()).toBe(help);
 });

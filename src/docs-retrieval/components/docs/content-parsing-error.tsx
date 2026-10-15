@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Button, Alert, IconButton } from '@grafana/ui';
 
 import { ParseError } from '../../../types/content.types';
+import { copyTextToClipboard } from '../../../lib/clipboard';
 
 export interface ContentParsingErrorProps {
   errors: ParseError[];
@@ -17,9 +18,11 @@ export function ContentParsingError({ errors, warnings, fallbackHtml, onRetry, c
 
   const handleCopyHtml = useCallback(() => {
     if (fallbackHtml) {
-      navigator.clipboard.writeText(fallbackHtml).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+      copyTextToClipboard(fallbackHtml).then((copied) => {
+        if (copied) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
       });
     }
   }, [fallbackHtml]);

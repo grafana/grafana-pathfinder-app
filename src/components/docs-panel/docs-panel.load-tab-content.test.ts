@@ -175,6 +175,7 @@ jest.mock('./components', () => ({
 }));
 
 jest.mock('./utils', () => ({
+  ...jest.requireActual('./utils/tab-gates'),
   isDocsLikeTab: jest.fn(),
   shouldUseDocsLoader: jest.fn(() => false),
   getTranslatedTitle: jest.fn((t: string) => t),
