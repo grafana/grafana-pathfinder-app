@@ -31,6 +31,8 @@ A toggle is replayed only if its target resolves to exactly one visible control 
 
 While paused, the step's own notices are hidden and its actions wait. After a Restore that does not verify, the section stops offering Restore for that check until it passes or a different check fails, and the step's own messaging returns.
 
+When the walk stopped at a step recovery cannot repeat (a click such as Save or Create, a navigation, a multistep or guided block) and the check fails without a Restore on offer, the cursor step's requirement message adds **Set up in step N**. The link scrolls to and briefly highlights that step; it never resets or completes anything. The number is left out ("Set up in an earlier step") when an inline conditional before that step may have taken its number.
+
 Checks run every five seconds, on window focus, and on every in-app navigation (with one follow-up check once the page has rendered). All checks are local URL and DOM reads with no network calls. Only the active section polls.
 
 ### Limits

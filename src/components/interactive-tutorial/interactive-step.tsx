@@ -31,6 +31,7 @@ import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../int
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { CodeBlock } from '../../docs-retrieval';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { revealStep } from '../../lib/dom/reveal-step';
 import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
@@ -206,6 +207,7 @@ export const InteractiveStep = forwardRef<
       onStepComplete,
       resetTrigger,
       onStepReset, // New callback for individual step reset
+      recoveryHint,
 
       // Step position tracking for analytics
       stepIndex,
@@ -1355,6 +1357,16 @@ export const InteractiveStep = forwardRef<
             >
               <span id={`requirement-explanation-${renderedStepId}`}>{explanationText}</span>
               {checker.isChecking && <span className="interactive-requirement-spinner">⟳</span>}
+              {isEligibleForChecking && recoveryHint && (
+                <button
+                  type="button"
+                  className="interactive-step-recovery-hint"
+                  data-testid={testIds.interactive.recoveryHint(renderedStepId)}
+                  onClick={() => revealStep(recoveryHint.stepId)}
+                >
+                  {recoveryHint.stepNumber ? `Set up in step ${recoveryHint.stepNumber}` : 'Set up in an earlier step'}
+                </button>
+              )}
               <div className="interactive-step-requirement-buttons">
                 {/* Retry button for eligible steps or fixable requirements */}
                 {(isEligibleForChecking || checker.canFixRequirement) && (

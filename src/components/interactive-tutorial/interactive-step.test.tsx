@@ -1000,3 +1000,59 @@ describe('InteractiveStep: step_skipped', () => {
     expect(reportStepSkipped).not.toHaveBeenCalled();
   });
 });
+
+describe('InteractiveStep: recovery hint', () => {
+  const UNSATISFIABLE_REQUIREMENT = 'on-page:/pathfinder-recovery-hint-never-here';
+
+  afterEach(() => {
+    document.querySelector('[data-step-id="setup-step"]')?.remove();
+    resetCompletionStoreForTests();
+  });
+
+  function renderBlocked(recoveryHint: { stepId: string; stepNumber?: number }) {
+    const onStepComplete = jest.fn();
+    const onStepReset = jest.fn();
+    render(
+      <InteractiveStep
+        stepId="hinted"
+        sectionId="section-1"
+        targetAction="highlight"
+        refTarget="#missing-panel"
+        requirements={UNSATISFIABLE_REQUIREMENT}
+        isEligibleForChecking
+        onStepComplete={onStepComplete}
+        onStepReset={onStepReset}
+        recoveryHint={recoveryHint}
+      >
+        Look at the panel.
+      </InteractiveStep>
+    );
+    return { onStepComplete, onStepReset };
+  }
+
+  it('links the blocked step to the step that set it up, revealing it without touching progress', async () => {
+    const setup = document.createElement('div');
+    setup.dataset.stepId = 'setup-step';
+    setup.scrollIntoView = jest.fn();
+    document.body.appendChild(setup);
+    const { onStepComplete, onStepReset } = renderBlocked({ stepId: 'setup-step', stepNumber: 2 });
+
+    const explanation = await screen.findByTestId(testIds.interactive.requirementCheck('hinted'));
+    const hint = screen.getByTestId(testIds.interactive.recoveryHint('hinted'));
+    expect(explanation).toContainElement(hint);
+    expect(hint).toHaveTextContent('Set up in step 2');
+
+    fireEvent.click(hint);
+    expect(setup.scrollIntoView).toHaveBeenCalled();
+    expect(setup).toHaveClass('interactive-step-revealed');
+    expect(onStepReset).not.toHaveBeenCalled();
+    expect(onStepComplete).not.toHaveBeenCalled();
+  });
+
+  it('falls back to an unnumbered pointer', async () => {
+    renderBlocked({ stepId: 'setup-step' });
+    expect(await screen.findByTestId(testIds.interactive.recoveryHint('hinted'))).toHaveTextContent(
+      'Set up in an earlier step'
+    );
+  });
+});

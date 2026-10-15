@@ -52,15 +52,33 @@ jest.mock('../../docs-retrieval', () => {
   return require('../../test-utils/interactive-section-harness').createDocsRetrievalMock();
 });
 
-jest.mock('./interactive-step', () => ({
-  resetStepCounter: jest.fn(),
-  InteractiveStep: (props: { isEligibleForChecking: boolean }) =>
-    require('react').createElement('button', { disabled: !props.isEligibleForChecking }, 'Continue step'),
-}));
+jest.mock('./interactive-step', () => {
+  const { createElement } = require('react');
+  return {
+    resetStepCounter: jest.fn(),
+    InteractiveStep: (props: {
+      stepId: string;
+      isEligibleForChecking: boolean;
+      onStepComplete?: (stepId: string) => void;
+      recoveryHint?: unknown;
+    }) =>
+      createElement(
+        'div',
+        null,
+        createElement(
+          'button',
+          { disabled: !props.isEligibleForChecking, onClick: () => props.onStepComplete?.(props.stepId) },
+          'Continue step'
+        ),
+        props.recoveryHint ? createElement('output', null, JSON.stringify(props.recoveryHint)) : null
+      ),
+  };
+});
 
 const mockRecovery = {
   plans: new Map<string, unknown>(),
   paused: false,
+  unrestorable: false,
   restore: jest.fn(),
   recheck: jest.fn(async () => true),
 };
@@ -69,6 +87,7 @@ jest.mock('./hooks/use-section-recovery', () => ({
     mockRecovery.plans.set(sectionId, plan);
     return {
       paused: mockRecovery.paused,
+      unrestorable: mockRecovery.unrestorable,
       restoring: false,
       restore: mockRecovery.restore,
       cancel: jest.fn(),
@@ -138,6 +157,7 @@ afterEach(() => {
 beforeEach(() => {
   mockRecovery.plans.clear();
   mockRecovery.paused = false;
+  mockRecovery.unrestorable = false;
   mockRecoveryEnabled.mockReturnValue(true);
 });
 
@@ -215,4 +235,48 @@ it('keeps a later section quiet until the learner reaches it', async () => {
   await waitFor(() => expect(mockRecovery.plans.has('section-later')).toBe(true));
   expect(mockRecovery.plans.get('section-first')).toBeDefined();
   expect(mockRecovery.plans.get('section-later')).toBeUndefined();
+});
+
+function setupSection(intro: React.ReactNode = <p>Open the editor.</p>) {
+  return (
+    <InteractiveSection id="setup" title="Set up" autoCollapse={false}>
+      {intro}
+      <InteractiveStep targetAction="button" refTarget="Save">
+        Save the dashboard.
+      </InteractiveStep>
+      <InteractiveStep targetAction="highlight" refTarget="#panel">
+        Look at the panel.
+      </InteractiveStep>
+    </InteractiveSection>
+  );
+}
+
+async function completeFirstStep() {
+  fireEvent.click(screen.getAllByRole('button', { name: 'Continue step' })[0]!);
+  await waitFor(() =>
+    expect(mockRecovery.plans.get('section-setup')).toMatchObject({ cursorStepId: 'section-setup-step-2' })
+  );
+}
+
+it('points the step after a one-way barrier at the numbered step that set it up', async () => {
+  mockRecovery.unrestorable = true;
+  const { container } = render(setupSection());
+  await completeFirstStep();
+  const hints = container.querySelectorAll('output');
+  expect(hints).toHaveLength(1);
+  expect(JSON.parse(hints[0]!.textContent!)).toEqual({ stepId: 'section-setup-step-1', stepNumber: 2 });
+});
+
+it('leaves the setup step unnumbered when an earlier conditional may hide its number', async () => {
+  mockRecovery.unrestorable = true;
+  const Conditional = Object.assign(() => null, { displayName: 'InteractiveConditional' });
+  const { container } = render(setupSection(<Conditional />));
+  await completeFirstStep();
+  expect(JSON.parse(container.querySelector('output')!.textContent!)).toEqual({ stepId: 'section-setup-step-1' });
+});
+
+it('offers no setup pointer unless recovery has found the drift it cannot restore', async () => {
+  const { container } = render(setupSection());
+  await completeFirstStep();
+  expect(container.querySelector('output')).not.toBeInTheDocument();
 });

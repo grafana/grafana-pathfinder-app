@@ -49,7 +49,7 @@ import {
   TERMINAL_CONNECT_STEP_SCHEMA,
   TERMINAL_STEP_SCHEMA,
 } from './step-type-registry';
-import { wrapSectionChildrenForNumbering } from './section-numbering';
+import { shouldNumberSectionChild, wrapSectionChildrenForNumbering } from './section-numbering';
 // Re-exports preserved for back-compat with `section-numbering.test.tsx`,
 // which imports both helpers from this module. New code should import
 // directly from `./section-numbering`.
@@ -104,7 +104,7 @@ import {
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
-import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
+import type { InteractiveSectionProps, RecoveryHint, StepInfo } from '../../types/component-props.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
@@ -335,10 +335,17 @@ export function InteractiveSection({
     let stepIndex = 0;
 
     let opaqueBefore = false;
+    let displayNumber = 0;
+    let numberingKnown = true;
     React.Children.forEach(children, (wrappedChild) => {
       const child = unwrapSectionChild(wrappedChild);
       const schema = lookupStepSchema(child);
+      if (shouldNumberSectionChild(wrappedChild)) {
+        displayNumber++;
+      }
       if (!schema) {
+        // An inline conditional that resolves empty gives up its number.
+        numberingKnown &&= !isInlineConditional(child);
         opaqueBefore ||= isInlineConditional(child);
         return;
       }
@@ -355,6 +362,7 @@ export function InteractiveSection({
         ...extension,
         stepKind: schema.kind,
         ...(opaqueBefore ? { opaqueBefore } : {}),
+        ...(numberingKnown ? { displayNumber } : {}),
       });
       opaqueBefore = false;
       stepIndex++;
@@ -530,6 +538,12 @@ export function InteractiveSection({
   const hasRecoveryPlan = !!recoveryPlan;
   const sectionReady = sectionRequirementsStatus.passed && !recovery.paused;
   const checkRecovery = recovery.recheck;
+  const setupStepId = recovery.unrestorable ? recoveryPlan?.setupStepId : undefined;
+  const recoveryHint = useMemo((): RecoveryHint | undefined => {
+    const setupStep = stepComponents.find((step) => step.stepId === setupStepId);
+    return setupStep && { stepId: setupStep.stepId, stepNumber: setupStep.displayNumber };
+  }, [stepComponents, setupStepId]);
+  const recoveryHintStepId = recoveryHint && recoveryPlan?.cursorStepId;
   const alignmentStartingLocation = useAlignmentStartingLocation();
 
   // Section completion status tracking (debug logging removed)
@@ -1438,6 +1452,7 @@ export function InteractiveSection({
           resetTrigger,
           onStepComplete: handleStepComplete,
           onStepReset: handleStepReset,
+          ...(stepInfo.stepId === recoveryHintStepId ? { recoveryHint } : {}),
         };
 
         const enhancedProps = schema.toEnhancedProps(enhanceCtx);
@@ -1473,6 +1488,8 @@ export function InteractiveSection({
     sectionReady,
     recovery.paused,
     setGuidedExecuting,
+    recoveryHint,
+    recoveryHintStepId,
   ]);
 
   // Computed once per render so the catch-all action button's `title`

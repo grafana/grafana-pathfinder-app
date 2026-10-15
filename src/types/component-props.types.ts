@@ -56,6 +56,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   onStepComplete?: (stepId: string) => void;
   onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
   resetTrigger?: number; // Signal from parent to reset local completion state
+  recoveryHint?: RecoveryHint;
 
   // Step position tracking for analytics (added by section)
   stepIndex?: number; // 0-indexed position in section (0, 1, 2, etc.)
@@ -87,6 +88,11 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   whenRequirementsUnmet?: 'disable' | 'heading-only' | 'hide';
 }
 
+export interface RecoveryHint {
+  stepId: string;
+  stepNumber?: number;
+}
+
 /**
  * Step info for unified state management
  * Internal type used by InteractiveSection to track steps
@@ -109,6 +115,7 @@ export interface StepInfo {
   showMe?: boolean; // Whether to show the "Show me" button and phase
   stepKind?: string;
   opaqueBefore?: boolean;
+  displayNumber?: number;
   isMultiStep: boolean; // Flag to identify component type
   isGuided: boolean; // Flag to identify guided (user-performed) steps
   isQuiz?: boolean; // Flag to identify quiz steps
