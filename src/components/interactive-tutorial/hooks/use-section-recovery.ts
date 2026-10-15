@@ -56,40 +56,44 @@ export function useSectionRecovery(
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const gaveUp = useRef<{ key: string; index?: number } | null>(null);
   const pausedNow = useRef(false);
+  const lastAnswer = useRef(true);
   const mounted = useRef(true);
   const restoreStartedAt = useRef(0);
   const planRef = useRef(plan);
+  const onEventRef = useRef(onEvent);
   const latestRun = useRef<(restore: boolean) => Promise<boolean>>(async () => true);
   const gate = useRef({ enabled, controllerMode, suspended });
   useLayoutEffect(() => {
     planRef.current = plan;
+    onEventRef.current = onEvent;
     gate.current = { enabled, controllerMode, suspended };
   });
 
-  const endPause = useCallback(
-    (resolvedBy: RecoveryResolvedBy) => {
-      pendingSince.current = null;
-      if (pausedNow.current) {
-        pausedNow.current = false;
-        setPaused(false);
-        onEvent?.({ kind: 'resolved', resolvedBy }, planRef.current);
-      }
-    },
-    [onEvent]
-  );
+  const endPause = useCallback((resolvedBy: RecoveryResolvedBy) => {
+    pendingSince.current = null;
+    if (pausedNow.current) {
+      pausedNow.current = false;
+      setPaused(false);
+      onEventRef.current?.({ kind: 'resolved', resolvedBy }, planRef.current);
+    }
+  }, []);
 
   const run = useCallback(
     (restore: boolean): Promise<boolean> => {
       if (busy.current && (!restore || busyRestoring.current)) {
-        return inFlight.current ?? Promise.resolve(true);
+        return inFlight.current ?? Promise.resolve(lastAnswer.current);
       }
+      const answer = (ready: boolean): boolean => {
+        lastAnswer.current = ready;
+        return ready;
+      };
       const observe = (current: SectionRecoveryPlan, result: RecoveryResult, restored: boolean): boolean => {
         if (result.passed) {
           armedKey.current = current.key;
           lastReadyUrl.current = currentPath();
           gaveUp.current = null;
           endPause(restored ? 'restore' : 'self');
-          return true;
+          return answer(true);
         }
         if (result.gaveUp) {
           gaveUp.current = { key: current.key, index: result.checkIndex };
@@ -101,10 +105,10 @@ export function useSectionRecovery(
         }
         if (armedKey.current !== current.key || !result.canRestore || gaveUp.current) {
           endPause('unrestorable');
-          return true;
+          return answer(true);
         }
         if (pausedNow.current) {
-          return false;
+          return answer(false);
         }
         const now = Date.now();
         if (pendingSince.current === null) {
@@ -114,7 +118,7 @@ export function useSectionRecovery(
         } else if (now - pendingSince.current >= CONFIRM_MS) {
           pausedNow.current = true;
           setPaused(true);
-          onEvent?.(
+          onEventRef.current?.(
             {
               kind: 'paused',
               check: current.checks[result.checkIndex ?? 0]!,
@@ -123,8 +127,9 @@ export function useSectionRecovery(
             planRef.current
           );
         }
-        return false;
+        return answer(false);
       };
+      let task: Promise<boolean> | undefined;
       const execute = async (): Promise<boolean> => {
         const current = planRef.current;
         if (!current) {
@@ -135,7 +140,7 @@ export function useSectionRecovery(
         operation.current = controller;
         if (!gate.current.enabled || gate.current.controllerMode) {
           endPause('inactive');
-          return true;
+          return answer(true);
         }
         busy.current = true;
         busyRestoring.current = restore;
@@ -160,10 +165,10 @@ export function useSectionRecovery(
             ? await restoreRecovery(current.checks, adapter, controller.signal)
             : await inspectRecovery(current.checks, adapter, controller.signal);
           if (controller.signal.aborted) {
-            return true;
+            return inFlight.current && inFlight.current !== task ? inFlight.current : lastAnswer.current;
           }
           if (restore) {
-            onEvent?.(
+            onEventRef.current?.(
               {
                 kind: 'restore',
                 outcome: result.passed ? 'restored' : 'failed',
@@ -175,7 +180,7 @@ export function useSectionRecovery(
           }
           return observe(current, result, restore);
         } catch {
-          return true;
+          return lastAnswer.current;
         } finally {
           if (operation.current === controller) {
             busy.current = false;
@@ -185,17 +190,18 @@ export function useSectionRecovery(
           }
         }
       };
-      const task = execute();
-      inFlight.current = task;
+      task = execute();
+      const settled = task;
+      inFlight.current = settled;
       const release = () => {
-        if (inFlight.current === task) {
+        if (inFlight.current === settled) {
           inFlight.current = null;
         }
       };
-      void task.then(release, release);
-      return task;
+      void settled.then(release, release);
+      return settled;
     },
-    [checkPostconditions, sectionId, onEvent, endPause]
+    [checkPostconditions, sectionId, endPause]
   );
 
   useLayoutEffect(() => {
@@ -253,7 +259,7 @@ export function useSectionRecovery(
 
   const cancel = useCallback(() => {
     if (busy.current && busyRestoring.current) {
-      onEvent?.(
+      onEventRef.current?.(
         {
           kind: 'restore',
           outcome: 'cancelled',
@@ -267,7 +273,7 @@ export function useSectionRecovery(
     inFlight.current = null;
     busy.current = false;
     setRestoring(false);
-  }, [onEvent]);
+  }, []);
   const recheck = useCallback(() => run(false), [run]);
   const restore = useCallback(() => run(true), [run]);
   return { paused, restoring, cancel, recheck, restore };

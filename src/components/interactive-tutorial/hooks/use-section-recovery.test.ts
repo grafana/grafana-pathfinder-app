@@ -4,9 +4,10 @@ import { createRecoveryAdapter } from '../../../requirements-manager';
 import { inspectRecovery, restoreRecovery, type RecoveryResult } from '../../../recovery/section-recovery';
 import type { SectionRecoveryPlan } from '../../../recovery/section-recovery-plan';
 
+const mockCheckPostconditions = jest.fn();
 jest.mock('../../../requirements-manager', () => ({
   createRecoveryAdapter: jest.fn(() => ({})),
-  useGuideRequirements: () => ({ checkPostconditions: jest.fn() }),
+  useGuideRequirements: () => ({ checkPostconditions: mockCheckPostconditions }),
 }));
 jest.mock('../../../recovery/section-recovery', () => ({ inspectRecovery: jest.fn(), restoreRecovery: jest.fn() }));
 
@@ -225,4 +226,42 @@ it('gives the adapter the URL the plan last passed on', async () => {
   await settle();
   const lastReadyUrl = jest.mocked(createRecoveryAdapter).mock.calls.at(-1)![3];
   expect(lastReadyUrl()).toBe('/explore?panes=abc');
+});
+
+describe('readiness answers for Do Section', () => {
+  it('does not restart an in-flight check when the event handler changes', async () => {
+    const first = jest.fn();
+    const hook = renderHook(({ onEvent }) => useSectionRecovery(plan(), 'section', true, false, { onEvent }), {
+      initialProps: { onEvent: first },
+    });
+    await settle();
+    let finish!: (result: RecoveryResult) => void;
+    inspect.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+    let ready!: Promise<boolean>;
+    act(() => {
+      ready = hook.result.current.recheck();
+    });
+    hook.rerender({ onEvent: jest.fn() });
+    await act(async () => {
+      finish(DRIFT);
+    });
+    expect(await ready).toBe(false);
+  });
+
+  it('answers an aborted check with the check that replaced it, never a blind yes', async () => {
+    const hook = render();
+    await settle();
+    let finish!: (result: RecoveryResult) => void;
+    inspect.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+    restore.mockResolvedValue(DRIFT);
+    let ready!: Promise<boolean>;
+    act(() => {
+      ready = hook.result.current.recheck();
+    });
+    await act(async () => {
+      await hook.result.current.restore();
+      finish(PASS);
+    });
+    expect(await ready).toBe(false);
+  });
 });
