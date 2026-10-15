@@ -2,7 +2,7 @@ import React, { useCallback, useId, useLayoutEffect, useMemo, useRef, useSyncExt
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { CATALOG_BATCH_SIZE, type CatalogPackage, type CatalogViewState } from '../../types/package-catalog.types';
-import { filterCatalog } from '../../lib/package-catalog';
+import { filterCatalog, withoutPathMilestones } from '../../lib/package-catalog';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { usePackageCatalog, useCatalogProgress } from '../../learning-paths';
 import { catalogStarters, catalogTopic, catalogTopicCounts, catalogTopicShortcuts } from '../../lib/catalog-discovery';
@@ -63,14 +63,15 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
     [catalog.scope]
   );
   const progress = useCatalogProgress(catalog.items, catalog.scope);
+  const browsable = useMemo(() => withoutPathMilestones(catalog.items), [catalog.items]);
   const normalizedItems = useMemo(
-    () => catalog.items.map((item) => ({ ...item, category: catalogTopic(item) })),
-    [catalog.items]
+    () => browsable.map((item) => ({ ...item, category: catalogTopic(item) })),
+    [browsable]
   );
   const items = useMemo(() => filterCatalog(normalizedItems, view), [normalizedItems, view]);
-  const categories = useMemo(() => catalogTopicCounts(catalog.items), [catalog.items]);
+  const categories = useMemo(() => catalogTopicCounts(browsable), [browsable]);
   const starters = useMemo(() => catalogStarters(catalog.items), [catalog.items]);
-  const shortcuts = useMemo(() => catalogTopicShortcuts(catalog.items), [catalog.items]);
+  const shortcuts = useMemo(() => catalogTopicShortcuts(browsable), [browsable]);
   const cardButtons = useRef(new Map<string, HTMLButtonElement>());
   const { launch, launchingKey, launchError } = useCatalogLaunch(catalog.items, catalog.scope, progress, {
     onOpenGuide,
@@ -165,7 +166,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             </p>
           </div>
           <span className={styles.catalogCount}>
-            {t('packageBrowser.catalogCount', '{{count}} to explore', { count: catalog.items.length })}
+            {t('packageBrowser.catalogCount', '{{count}} to explore', { count: browsable.length })}
           </span>
         </div>
         <label htmlFor={searchId} className={styles.searchLabel}>

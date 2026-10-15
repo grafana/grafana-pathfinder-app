@@ -1,4 +1,11 @@
-import { bundledCatalog, filterCatalog, mergeCatalog, onlineCatalog, organizationCatalog } from './package-catalog';
+import {
+  bundledCatalog,
+  filterCatalog,
+  mergeCatalog,
+  onlineCatalog,
+  organizationCatalog,
+  withoutPathMilestones,
+} from './package-catalog';
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { RepositoryJson } from '../types/package.types';
 import { GUIDE_STATS_VERSION } from './guide-stats/summary';
@@ -103,6 +110,24 @@ describe('package catalog', () => {
       'b',
     ]);
     expect(filterCatalog(entries, { ...all, source: 'grafana' }).map((entry) => entry.key)).toEqual(['a']);
+  });
+
+  it('omits guides that are milestones of a path from the same source', () => {
+    const guide = (key: string, id: string, source: CatalogPackage['source']): CatalogPackage => ({
+      key,
+      id,
+      title: id,
+      format: 'guide',
+      source,
+      url: `bundled:${id}`,
+    });
+    const entries: CatalogPackage[] = [
+      { ...guide('path', 'path', 'grafana'), format: 'path', memberIds: ['member', 'missing'] },
+      guide('member', 'member', 'grafana'),
+      guide('org-member', 'member', 'organization'),
+      guide('standalone', 'standalone', 'grafana'),
+    ];
+    expect(withoutPathMilestones(entries).map((entry) => entry.key)).toEqual(['path', 'org-member', 'standalone']);
   });
 });
 

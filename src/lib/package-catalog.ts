@@ -158,6 +158,13 @@ export function mergeCatalog(...sources: CatalogPackage[][]): CatalogPackage[] {
   });
 }
 
+export function withoutPathMilestones(items: CatalogPackage[]): CatalogPackage[] {
+  const milestones = new Set(
+    items.flatMap((item) => (item.format === 'path' ? (item.memberIds ?? []).map((id) => `${item.source}:${id}`) : []))
+  );
+  return items.filter((item) => item.format === 'path' || !milestones.has(`${item.source}:${item.id}`));
+}
+
 export function filterCatalog(items: CatalogPackage[], filters: CatalogFilters): CatalogPackage[] {
   const query = filters.query.trim().toLocaleLowerCase();
   const tokens = query.split(/\s+/).filter(Boolean);
