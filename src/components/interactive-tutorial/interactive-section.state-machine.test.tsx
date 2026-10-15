@@ -912,6 +912,20 @@ describe('InteractiveSection — section objectives across a Do section run and 
     }
   });
 
+  it('completes again after a step reset while its objective is still met', async () => {
+    const coordinator = await renderObjectiveSectionWithCoordinator(async () => true);
+    const section = () => screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE));
+    await waitFor(() => expect(section()).toHaveClass('completed'));
+    await settle();
+
+    await click(redo(STEP_OBJECTIVE));
+    await settle();
+
+    await waitFor(() => expect(section()).toHaveClass('completed'));
+    expect(announcedAsChange()).toEqual([]);
+    coordinator.stop();
+  });
+
   it('drops an objective completion when the whole guide is reset', async () => {
     let met = false;
     const coordinator = await renderObjectiveSectionWithCoordinator(async () => met);

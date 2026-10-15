@@ -485,6 +485,13 @@ export function InteractiveSection({
       completionCoordinator.update(objectiveId, objectiveRegistrationRef.current);
     }
   });
+  const handledObjectiveReset = useRef(resetTrigger);
+  useLayoutEffect(() => {
+    if (resetTrigger !== handledObjectiveReset.current) {
+      handledObjectiveReset.current = resetTrigger;
+      completionCoordinator?.reset(objectiveId);
+    }
+  }, [completionCoordinator, objectiveId, resetTrigger]);
 
   // Add objectives checking for section - disable once interactive steps are done.
   // Note: objectives are *separate* from acknowledgement — when objectives fire
