@@ -11,7 +11,8 @@
  * @coupling Types: package.types.ts, Schemas: package.schema.ts
  */
 
-import { ContentJsonSchema, ManifestJsonObjectSchema } from '../types/package.schema';
+import { ContentJsonSchema } from '../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from './runtime-manifest';
 import type { ContentJson, ManifestJson, ResolutionError } from '../types/package.types';
 
 export interface LoadSuccess<T> {
@@ -87,7 +88,7 @@ export function loadBundledContent(packagePath: string): LoadOutcome<ContentJson
 
 /**
  * Load manifest.json from a bundled package directory.
- * Uses ManifestJsonObjectSchema (without the conditional steps refinement)
+ * Uses RuntimeManifestJsonObjectSchema (without the conditional steps refinement)
  * with passthrough to tolerate extension metadata.
  *
  * @param packagePath - Relative path within bundled-interactives (e.g., "first-dashboard/")
@@ -105,7 +106,7 @@ export function loadBundledManifest(packagePath: string): LoadOutcome<ManifestJs
 
   try {
     const data = normalizeJson(raw);
-    const result = ManifestJsonObjectSchema.loose().safeParse(data);
+    const result = RuntimeManifestJsonObjectSchema.safeParse(data);
 
     if (!result.success) {
       return {

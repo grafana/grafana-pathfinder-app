@@ -20,7 +20,8 @@ import {
   fetchOnlinePackageRecommendations,
   type OnlinePackageEntry,
 } from '../lib/package-recommendations-client';
-import { ContentJsonSchema, ManifestJsonObjectSchema } from '../types/package.schema';
+import { ContentJsonSchema } from '../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
 import type {
   ContentJson,
   ManifestJson,
@@ -106,7 +107,7 @@ export class OnlineCdnPackageResolver implements PackageResolver {
       resolution.content = loaded.content;
       resolution.manifest = loaded.manifest;
     } else if (entry.manifest) {
-      const parsed = ManifestJsonObjectSchema.loose().safeParse(entry.manifest);
+      const parsed = RuntimeManifestJsonObjectSchema.safeParse(entry.manifest);
       if (parsed.success) {
         resolution.manifest = parsed.data as ManifestJson;
       }
@@ -152,7 +153,7 @@ export class OnlineCdnPackageResolver implements PackageResolver {
       // and saves a round-trip. Fall back to fetching manifestUrl if needed.
       let manifest: ManifestJson | undefined;
       if (inlinedManifest) {
-        const parsed = ManifestJsonObjectSchema.loose().safeParse(inlinedManifest);
+        const parsed = RuntimeManifestJsonObjectSchema.safeParse(inlinedManifest);
         if (parsed.success) {
           manifest = parsed.data as ManifestJson;
         }
@@ -163,7 +164,7 @@ export class OnlineCdnPackageResolver implements PackageResolver {
           const manifestResponse = await fetchGuideResource(manifestUrl, undefined, context, 'manifest');
           if (manifestResponse.ok) {
             const rawManifest = await manifestResponse.json();
-            const manifestResult = ManifestJsonObjectSchema.loose().safeParse(rawManifest);
+            const manifestResult = RuntimeManifestJsonObjectSchema.safeParse(rawManifest);
             if (manifestResult.success) {
               manifest = manifestResult.data as ManifestJson;
             } else {

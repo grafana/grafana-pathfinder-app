@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - 'src/lib/runtime-manifest.ts'
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
@@ -27,6 +28,7 @@ on:
     branches:
       - main
     paths:
+      - 'src/lib/runtime-manifest.ts'
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'

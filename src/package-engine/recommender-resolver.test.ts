@@ -237,6 +237,54 @@ describe('RecommenderPackageResolver', () => {
   });
 
   describe('resolve with loadContent', () => {
+    it.each(['metadata-only', true] as const)(
+      'preserves path metadata with unsupported prerequisite formats and loadContent=%s',
+      async (loadContent) => {
+        const manifest = {
+          ...FIXTURE_MANIFEST,
+          type: 'path',
+          milestones: ['first', 'second'],
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: ['track-guide'] }],
+          prerequisites: [
+            { id: ' first ', label: ' <b>Literal</b> ', format: 'html' },
+            { id: 'numeric', label: '**Still literal**', format: 42 },
+            { id: 'object', label: '[Literal](https://example.com)', format: { type: 'markdown' } },
+            { id: 'markdown', label: '**Markdown**', format: 'markdown' },
+            { id: 'plain', label: 'Plain' },
+          ],
+        };
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(FIXTURE_RESOLUTION),
+        });
+        if (loadContent === true) {
+          mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(FIXTURE_CONTENT) });
+        }
+        mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(manifest) });
+
+        const result = await resolver.resolve('alerting-101', { loadContent });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.manifest).toMatchObject({
+            ...manifest,
+            prerequisites: [
+              { id: ' first ', label: ' <b>Literal</b> ' },
+              { id: 'numeric', label: '**Still literal**' },
+              { id: 'object', label: '[Literal](https://example.com)' },
+              { id: 'markdown', label: '**Markdown**', format: 'markdown' },
+              { id: 'plain', label: 'Plain' },
+            ],
+          });
+          expect(result.content).toEqual(loadContent === true ? FIXTURE_CONTENT : undefined);
+        }
+        expect(mockFetch).toHaveBeenCalledTimes(loadContent === true ? 3 : 2);
+        expect(fetchOnlinePackageRecommendationsMock).toHaveBeenCalledTimes(1);
+        expect(mockFetch).toHaveBeenLastCalledWith(FIXTURE_RESOLUTION.manifestUrl);
+      }
+    );
+
     it('should load content and manifest from CDN on success', async () => {
       // First call: resolution endpoint
       mockFetch.mockResolvedValueOnce({
