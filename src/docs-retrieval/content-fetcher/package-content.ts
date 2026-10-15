@@ -20,6 +20,7 @@ import { fetchContent } from '../content-fetcher';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
+import { getMilestoneSlug } from '../../lib/learning-journey-url';
 import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
 export { setPackageResolver, setPackageResolverFactory };
@@ -109,6 +110,8 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
       title,
       url: resolution.contentUrl,
       isActive: false,
+      ...(resolution.manifest != null && { packageManifest: resolution.manifest }),
+      ...(resolution.repository != null && { repository: resolution.repository }),
       ...(description != null && { description }),
       ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
       ...(typeof startingLocation === 'string' && { startingLocation }),
@@ -373,7 +376,28 @@ export async function fetchPackageContent(
     return result;
   }
 
-  const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
+  const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
+  const matchesLoadedMember = (milestone: Milestone) => {
+    if (!explicitGuideId) {
+      return milestone.url === contentUrl;
+    }
+    if (milestone.id !== undefined) {
+      return milestone.id === explicitGuideId;
+    }
+    return milestone.url !== undefined && getMilestoneSlug(milestone.url) === explicitGuideId;
+  };
+  const memberIndex = needsMilestones ? (milestones?.findIndex(matchesLoadedMember) ?? -1) : -1;
+  const memberMilestone = memberIndex >= 0 ? milestones?.[memberIndex] : undefined;
+  const trackMember = pathTracks?.resolved.flatMap((track) => track.milestones).find(matchesLoadedMember);
+  const resolvedMember = memberMilestone ?? trackMember;
+  let isMemberLoad =
+    resolvedMember !== undefined ||
+    Boolean(
+      explicitGuideId &&
+      (milestoneIds.includes(explicitGuideId) || getAllTrackGuideIds(manifestTracks).includes(explicitGuideId))
+    );
+  const resolvedRepository =
+    repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ?? resolvedMember?.repository;
 
   let learningJourney: LearningJourneyMetadata | undefined;
   // Set only for a track-only member (see the isTrackOnlyMember branch
@@ -384,7 +408,6 @@ export async function fetchPackageContent(
   let contentString = result.content.content;
 
   if (needsMilestones) {
-    const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
     const tracks = pathTracks?.resolved ?? [];
 
     if (milestones && milestones.length > 0) {
@@ -433,6 +456,7 @@ export async function fetchPackageContent(
         }
       }
 
+      isMemberLoad = isMemberLoad || milestoneIndex >= 0 || isConfirmedTrackMember;
       const isCoverPageLoad = milestoneIndex < 0 && !isConfirmedTrackMember;
 
       // A guide that is neither a milestone nor the cover page isn't part of
@@ -526,6 +550,18 @@ export async function fetchPackageContent(
     }
   }
 
+  let packageManifestMetadata: Record<string, unknown> | undefined;
+  if (isMemberLoad) {
+    if (result.content.metadata.packageManifest || resolvedMember?.packageManifest) {
+      packageManifestMetadata = {
+        ...result.content.metadata.packageManifest,
+        ...resolvedMember?.packageManifest,
+      };
+    }
+  } else if (packageManifest !== undefined) {
+    packageManifestMetadata = { ...result.content.metadata.packageManifest, ...packageManifest };
+  }
+
   return {
     ...result,
     content: {
@@ -535,11 +571,8 @@ export async function fetchPackageContent(
       type: renderType,
       metadata: {
         ...result.content.metadata,
-        // Merge, not replace: a catalogue entry is a slim projection and would
-        // otherwise bury fields the loader resolved in full (issue #1681).
-        ...(packageManifest !== undefined && {
-          packageManifest: { ...result.content.metadata.packageManifest, ...packageManifest },
-        }),
+        ...(packageManifestMetadata !== undefined && { packageManifest: packageManifestMetadata }),
+        ...(isMemberLoad && packageManifest !== undefined && { journeyManifest: packageManifest }),
         // Fall back to the repository the baseUrl resolution already carries, so
         // an entry path that supplies no explicit one still keys the durable
         // completion on the true source instead of the manifest schema default.

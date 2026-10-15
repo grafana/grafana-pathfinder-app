@@ -171,6 +171,26 @@ it('expands path details in the card without preparing content or moving scroll 
   expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
 });
 
+it('omits path milestones from the list and search while keeping them in path details', async () => {
+  mockItems.push({
+    key: 'curated:path',
+    id: 'path',
+    title: 'Dashboard path',
+    format: 'path',
+    source: 'grafana',
+    url: '',
+    memberIds: ['dashboard'],
+  });
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Build a dashboard' } });
+  expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Dashboard path' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Show modules' }));
+  const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
+  expect(within(details).getByText('Build a dashboard')).toBeInTheDocument();
+});
+
 it('refuses stale unpublished private content before preparing or launching it', async () => {
   mockResolve.mockResolvedValue({ ok: false, error: { code: 'not-found' } });
   const onOpen = jest.fn();
@@ -241,7 +261,15 @@ it('starts with curated introductions and topic shortcuts rather than the full c
       badgeId: 'basics',
     },
   };
-  mockItems.push(starter);
+  mockItems.push(starter, {
+    key: 'bundled:alerts',
+    id: 'alerts',
+    title: 'Create an alert',
+    format: 'guide',
+    source: 'grafana',
+    category: 'alerting',
+    url: 'bundled:alerts',
+  });
   updateCatalogView('test', { mode: 'explore' });
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
   expect(screen.getByRole('heading', { name: 'Start with the essentials', level: 3 })).toBeInTheDocument();
