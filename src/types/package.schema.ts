@@ -248,7 +248,8 @@ export const ManifestJsonObjectSchema = z.looseObject({
  *
  * Field severity for CLI validation:
  * - ERROR: id, type (hard requirements)
- * - WARN: description, category, targeting, startingLocation (missing but recommended)
+ * - CLI-only ERROR: category (missing or blank; enforced by `validatePackage`, not this schema, so runtime reads stay lenient)
+ * - WARN: description, targeting, startingLocation (missing but recommended)
  * - INFO: repository, language, schemaVersion, dependency fields, author, testEnvironment (defaults applied)
  * - GENERATED: stats (stamped by `pathfinder-cli build-stats` or the block editor; never authored)
  * - Conditional ERROR: milestones required when type is "path" or "journey" (Rule 1)
