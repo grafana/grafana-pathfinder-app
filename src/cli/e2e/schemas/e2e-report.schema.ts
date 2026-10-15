@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const E2E_REPORT_SCHEMA_VERSION = '1.1.0' as const;
+export const E2E_REPORT_SCHEMA_VERSION = '1.2.0' as const;
 
 export const E2E_REPORT_SCHEMA_ID =
   `https://grafana.com/schemas/pathfinder/e2e-test-report-${E2E_REPORT_SCHEMA_VERSION}.json` as const;
@@ -75,8 +75,14 @@ export const RunnerProvenanceSchema = z.object({
   image: z.string().optional(),
 });
 
+export const MutationAuthorizationSchema = z.object({
+  hostname: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/),
+  source: z.literal('cli-explicit-host'),
+});
+
 export const ReportTargetSchema = z.object({
   url: z.string(),
+  mutationAuthorization: MutationAuthorizationSchema.optional(),
   tier: z.string().optional(),
   instance: z.string().optional(),
 });

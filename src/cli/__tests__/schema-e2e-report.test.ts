@@ -19,8 +19,8 @@ describe('schema command — e2e-report registration', () => {
     const schema = exportSchema('e2e-report', true);
 
     expect(schema).not.toBeNull();
-    expect(String(schema?.$id)).toContain('e2e-test-report-1.1.0');
-    expect(schema?.['x-schema-version']).toBe('1.1.0');
+    expect(String(schema?.$id)).toContain('e2e-test-report-1.2.0');
+    expect(schema?.['x-schema-version']).toBe('1.2.0');
     expect(JSON.stringify(schema)).toContain('"coverage"');
     expect(JSON.stringify(schema)).toContain('"stepKind"');
   });
@@ -69,6 +69,32 @@ describe('schema command — e2e-report registration', () => {
     };
 
     expect(validate(generateReport(data))).toBe(true);
+  });
+
+  it('validates mutation authorization in exported single and nested report contracts', () => {
+    const data: TestResultsData = {
+      guide: {
+        id: 'guide',
+        title: 'Guide',
+        path: 'guide/content.json',
+        targetUrl: 'https://docs.example/',
+        sideEffects: { level: 'unknown', reasons: [] },
+      },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      results: [],
+      aborted: false,
+      mutationAuthorization: { hostname: 'docs.example', source: 'cli-explicit-host' },
+    };
+    for (const [name, report] of [
+      ['e2e-report', generateReport(data)],
+      ['e2e-multi-report', generateMultiGuideReport([data])],
+    ] as const) {
+      const validate = new Ajv2020({ strict: false }).compile(exportSchema(name, true)!);
+      expect(validate(report)).toBe(true);
+    }
+    const report = generateReport(data);
+    const validate = new Ajv2020({ strict: false }).compile(exportSchema('e2e-report', true)!);
+    expect(validate({ ...report, target: { ...report.target, mutationAuthorization: true } })).toBe(false);
   });
 
   it('exports open-world schemas (no additionalProperties: false) for independent deployability', () => {

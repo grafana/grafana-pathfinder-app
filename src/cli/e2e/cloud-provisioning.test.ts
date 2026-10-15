@@ -25,6 +25,7 @@ import type { CloudStackPoolManager } from './cloud-stack-pool-manager';
 import type { PackageMeta } from './e2e-results';
 
 const cloudAuth: CloudAuthPolicy = {
+  allowsMutationsFor: () => false,
   targets: { sharedStackUrls: ['https://learn.grafana.net/', 'https://play.grafana.org/'] },
   adminTokenFor: (targetUrl) => {
     if (targetUrl?.startsWith('https://learn.grafana.net')) {
@@ -224,6 +225,31 @@ describe('chainNeedsCloudStack', () => {
       chainNeedsCloudStack({ chain: [{ id: 'mutating' }], packageMetaById, cloudAuth, hasIsolatedCloudStack: true })
     ).toBe(true);
   });
+
+  it.each(['possibly_mutating', 'mutating', 'unknown'] as const)(
+    'preserves pool selection for %s even with named mutation authorization',
+    (level) => {
+      const packageMetaById = new Map<string, PackageMeta>([
+        [
+          'guide',
+          {
+            packageId: 'guide',
+            tier: 'cloud',
+            targetUrl: 'https://learn.grafana.net/',
+            sideEffects: { level, reasons: [] },
+          },
+        ],
+      ]);
+      expect(
+        chainNeedsCloudStack({
+          chain: [{ id: 'guide' }],
+          packageMetaById,
+          cloudAuth: { ...cloudAuth, allowsMutationsFor: () => true },
+          hasIsolatedCloudStack: true,
+        })
+      ).toBe(true);
+    }
+  );
 
   it('uses an isolated stack for cloud guides that lack shared-stack auth', () => {
     const packageMetaById = new Map<string, PackageMeta>([
