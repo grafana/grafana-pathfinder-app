@@ -1,10 +1,3 @@
-/**
- * Input Block Form
- *
- * Form for creating/editing input blocks that collect user responses.
- * Supports text, boolean, and datasource input types with validation options.
- */
-
 import React, { useState, useCallback } from 'react';
 import { Button, Field, Input, TextArea, RadioButtonGroup, Checkbox, Badge, useStyles2, Alert } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
@@ -12,33 +5,25 @@ import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { testIds } from '../../../constants/testIds';
 import { slugify } from '../../../utils/slug';
+import { createInstanceId } from '../../../lib/create-instance-id';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonInputBlock } from '../../../types/json-guide.types';
 
-/**
- * Type guard for input blocks
- */
 function isInputBlock(block: JsonBlock): block is JsonInputBlock {
   return block.type === 'input';
 }
 
-/** Input type options */
 const INPUT_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' as const },
   { label: 'Checkbox', value: 'boolean' as const },
+  { label: 'Checkbox group', value: 'checkbox-group' as const },
   { label: 'Datasource', value: 'datasource' as const },
 ];
 
-/**
- * Validate variable name format
- */
 function isValidVariableName(name: string): boolean {
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
 }
 
-/**
- * Validate regex pattern
- */
 function isValidRegexPattern(pattern: string): boolean {
   try {
     new RegExp(pattern);
@@ -48,9 +33,6 @@ function isValidRegexPattern(pattern: string): boolean {
   }
 }
 
-/**
- * Input block form component
- */
 export function InputBlockForm({
   initialData,
   onSubmit,
@@ -60,7 +42,6 @@ export function InputBlockForm({
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
-  // Initialize from existing data or defaults
   const initial = initialData && isInputBlock(initialData) ? initialData : null;
 
   // Blur-gate inline errors (regex is often temporarily invalid while typing); seed when editing bad data.
@@ -70,10 +51,11 @@ export function InputBlockForm({
   });
 
   const [prompt, setPrompt] = useState(initial?.prompt ?? '');
-  const [inputType, setInputType] = useState<'text' | 'boolean' | 'datasource'>(initial?.inputType ?? 'text');
+  const [inputType, setInputType] = useState<JsonInputBlock['inputType']>(initial?.inputType ?? 'text');
   const [variableName, setVariableName] = useState(initial?.variableName ?? '');
   const [placeholder, setPlaceholder] = useState(initial?.placeholder ?? '');
   const [checkboxLabel, setCheckboxLabel] = useState(initial?.checkboxLabel ?? '');
+  const [choices, setChoices] = useState(() => initial?.choices ?? [{ id: createInstanceId(), text: '' }]);
   const [defaultValue, setDefaultValue] = useState<string | boolean>(initial?.defaultValue ?? '');
   const [required, setRequired] = useState(initial?.required ?? false);
   const [pattern, setPattern] = useState(initial?.pattern ?? '');
@@ -87,7 +69,6 @@ export function InputBlockForm({
   const [dataCheckTimeTo, setDataCheckTimeTo] = useState(initial?.dataCheckTimeTo ?? '');
   const [dataCheckBlocking, setDataCheckBlocking] = useState(initial?.dataCheckBlocking ?? false);
 
-  // Handle requirement quick-add
   const handleRequirementClick = useCallback((req: string) => {
     setRequirements((prev) => {
       if (prev.includes(req)) {
@@ -97,7 +78,6 @@ export function InputBlockForm({
     });
   }, []);
 
-  // Form submission
   const handleSubmit = useCallback(
     (e: React.SubmitEvent) => {
       e.preventDefault();
@@ -109,7 +89,6 @@ export function InputBlockForm({
 
       const hasDataCheck = inputType === 'datasource' && dataCheckQuery.trim().length > 0;
 
-      // Parse requirements
       const reqArray = requirements
         .split(',')
         .map((r) => r.trim())
@@ -132,6 +111,9 @@ export function InputBlockForm({
         ...(inputType === 'text' && placeholder.trim() && { placeholder: placeholder.trim() }),
         ...(inputType === 'datasource' && placeholder.trim() && { placeholder: placeholder.trim() }),
         ...(inputType === 'boolean' && checkboxLabel.trim() && { checkboxLabel: checkboxLabel.trim() }),
+        ...(inputType === 'checkbox-group' && {
+          choices: choices.map((choice) => ({ ...choice, text: choice.text.trim() })),
+        }),
         ...(inputType === 'text' &&
           typeof defaultValue === 'string' &&
           defaultValue.trim() && { defaultValue: defaultValue.trim() }),
@@ -161,6 +143,7 @@ export function InputBlockForm({
       variableName,
       placeholder,
       checkboxLabel,
+      choices,
       defaultValue,
       required,
       pattern,
@@ -178,12 +161,13 @@ export function InputBlockForm({
     ]
   );
 
-  // Validation
   const hasPrompt = prompt.trim().length > 0;
   const hasValidVariableName = variableName.trim().length > 0 && isValidVariableName(variableName.trim());
   const hasValidRegexPattern =
     inputType !== 'text' || pattern.trim().length === 0 || isValidRegexPattern(pattern.trim());
-  const isValid = hasPrompt && hasValidVariableName && hasValidRegexPattern;
+  const hasValidChoices =
+    inputType !== 'checkbox-group' || (choices.length > 0 && choices.every((choice) => choice.text.trim().length > 0));
+  const isValid = hasPrompt && hasValidVariableName && hasValidRegexPattern && hasValidChoices;
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -211,7 +195,16 @@ export function InputBlockForm({
         label="Input type"
         description="Text for free-form input, checkbox for yes/no, datasource for selecting from available data sources"
       >
-        <RadioButtonGroup options={INPUT_TYPE_OPTIONS} value={inputType} onChange={setInputType} />
+        <RadioButtonGroup
+          options={INPUT_TYPE_OPTIONS}
+          value={inputType}
+          onChange={(value) => {
+            setInputType(value);
+            if (value === 'checkbox-group' && !variableName.trim()) {
+              setVariableName(`choices_${createInstanceId().replace(/-/g, '_')}`);
+            }
+          }}
+        />
       </Field>
 
       {/* Variable Name */}
@@ -279,6 +272,46 @@ export function InputBlockForm({
       )}
 
       {/* Boolean-specific fields */}
+      {inputType === 'checkbox-group' && (
+        <Field
+          label="Options"
+          description="Readers can select any combination. Option IDs remain stable when you change a label."
+        >
+          <div>
+            {choices.map((choice, index) => (
+              <div key={choice.id}>
+                <Input
+                  aria-label={`Option ${index + 1}`}
+                  value={choice.text}
+                  onChange={(event) => {
+                    const text = event.currentTarget.value;
+                    setChoices((previous) =>
+                      previous.map((item) => (item.id === choice.id ? { ...item, text } : item))
+                    );
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  aria-label={`Remove option ${index + 1}`}
+                  onClick={() => setChoices((previous) => previous.filter((item) => item.id !== choice.id))}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={choices.length >= 20}
+              onClick={() => setChoices((previous) => [...previous, { id: createInstanceId(), text: '' }])}
+            >
+              Add option
+            </Button>
+          </div>
+        </Field>
+      )}
+
       {inputType === 'boolean' && (
         <>
           <Field label="Checkbox label" description="Text shown next to the checkbox">
@@ -444,7 +477,7 @@ export function InputBlockForm({
         <Button variant="secondary" onClick={onCancel} type="button" data-testid={testIds.blockEditor.formCancelButton}>
           Cancel
         </Button>
-        <Button variant="primary" type="submit" disabled={!isValid}>
+        <Button variant="primary" type="submit" disabled={!isValid} data-testid={testIds.blockEditor.submitButton}>
           {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
@@ -452,5 +485,4 @@ export function InputBlockForm({
   );
 }
 
-// Add display name for debugging
 InputBlockForm.displayName = 'InputBlockForm';

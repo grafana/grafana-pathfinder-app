@@ -54,6 +54,7 @@ export function GuideResponseProvider({ guideId, children }: GuideResponseProvid
   if (loadedGuideId !== guideId) {
     setLoadedGuideId(guideId);
     setResponses({});
+    setIsLoading(true);
   }
 
   // Load responses when guideId changes (async)

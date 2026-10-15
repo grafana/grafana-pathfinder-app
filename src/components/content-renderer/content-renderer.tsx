@@ -71,8 +71,10 @@ import { substituteVariables } from '../../utils/variable-substitution';
 import {
   STANDALONE_SECTION_ID,
   getGuideCompletionSource,
+  peekGuidePercentage,
   isBlockEditorPreviewUrl,
   refreshGuidePercentageOnLoad,
+  refreshAndNotifyGuideProgress,
 } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
@@ -82,12 +84,15 @@ import { GuideContentKeyContext } from '../interactive-tutorial/guide-content-ke
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import {
   evictGuideIndex,
+  getGuideIndex,
   getGuideIndexEvictionRevision,
   publishGuideIndex,
+  setGuideChoiceResponses,
   subscribeGuideIndexEvictions,
 } from '../../global-state/active-guide-index';
 import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { createChoiceProgressModel } from '../../lib/guide-stats/choice-progress';
 import { selectCountingTree } from '../../lib/guide-counting-source';
 import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
@@ -250,6 +255,10 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   // The first terminal trigger owns the completion cause until a reset.
   const triggerGuideComplete = useCallback(
     (source?: CompletionSource) => {
+      const key = resolveGuideContentKey(content.url);
+      if (source !== 'manual' && getGuideIndex(key)?.choiceModel && peekGuidePercentage(key) !== 100) {
+        return;
+      }
       if (guideCompleteCalledRef.current) {
         return;
       }
@@ -268,6 +277,23 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     }
     triggerGuideComplete('manual');
   }, [triggerGuideComplete]);
+
+  useEffect(
+    () =>
+      subscribeProgressEvent((detail) => {
+        const key = resolveGuideContentKey(content.url);
+        if (detail.kind !== 'guide' || detail.contentKey !== key || !getGuideIndex(key)?.choiceModel) {
+          return;
+        }
+        if (detail.percentage < 100) {
+          guideCompleteCalledRef.current = false;
+          completedSectionsRef.current.clear();
+        } else if (peekGuidePercentage(key) === 100) {
+          triggerGuideComplete();
+        }
+      }),
+    [content.url, triggerGuideComplete]
+  );
 
   // Reset tracking state when content changes (new guide = fresh start)
   useEffect(() => {
@@ -658,7 +684,7 @@ function ContentWithVariables({
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
-  const { responses } = useGuideResponses();
+  const { responses, isLoading: responsesLoading } = useGuideResponses();
 
   // Intercept clicks on interactive-learning links inside content.
   // Instead of navigating away, open the guide as a new tab in the sidebar.
@@ -721,6 +747,7 @@ function ContentWithVariables({
   return (
     <div
       ref={activeRef}
+      data-guide-content-root="true"
       className={`${className} ${selectionStyle}`}
       data-pathfinder-content="true"
       onClick={handleContentClick}
@@ -741,6 +768,7 @@ function ContentWithVariables({
         baseUrl={baseUrl}
         onReady={onContentReady}
         responses={responses}
+        responsesLoading={responsesLoading}
         fullScreenFallbackLocation={fullScreenFallbackLocation}
       />
       {afterContent}
@@ -766,6 +794,7 @@ interface ContentProcessorProps {
   onReady?: () => void;
   /** User responses for variable substitution at render time */
   responses: Record<string, unknown>;
+  responsesLoading: boolean;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
 }
@@ -775,6 +804,7 @@ function ContentProcessor({
   countingSource,
   baseUrl,
   responses,
+  responsesLoading,
   fullScreenFallbackLocation,
   onReady,
 }: ContentProcessorProps) {
@@ -909,10 +939,12 @@ function ContentProcessor({
       }
       lastPublishedPreviewGuideRef.current = { contentKey, guide: rawGuide };
     }
+    const index = computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId });
     publishGuideIndex({
       contentKey,
-      index: computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
+      index,
       denominatorSource: 'live-pre-inlining',
+      choiceModel: createChoiceProgressModel(countingGuide.blocks, index),
     });
     // A percentage persisted under the deleted step-count rule is read back
     // verbatim by the new position-based one and is systematically higher,
@@ -923,6 +955,20 @@ function ContentProcessor({
     // with zeros just from being opened.
     refreshGuidePercentageOnLoad(contentKey);
   }, [rawGuide, countingGuide, baseUrl, guideIndexEvictionRevision]);
+
+  React.useLayoutEffect(() => {
+    if (responsesLoading) {
+      setGuideChoiceResponses(resolveGuideContentKey(baseUrl), undefined);
+    }
+  }, [responsesLoading, baseUrl]);
+
+  useEffect(() => {
+    const key = resolveGuideContentKey(baseUrl);
+    if (!responsesLoading && getGuideIndex(key)?.choiceModel) {
+      setGuideChoiceResponses(key, responses);
+      refreshAndNotifyGuideProgress(key);
+    }
+  }, [responses, responsesLoading, baseUrl, rawGuide, guideIndexEvictionRevision]);
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
@@ -1462,6 +1508,7 @@ function renderParsedElement(
           id={element.props.id} // Pass the HTML id attribute
           sectionId={element.props.sectionId}
           autoCollapse={element.props.autoCollapse}
+          whenRequirementsUnmet={element.props.whenRequirementsUnmet}
         >
           {renderChildren(element.children)}
         </InteractiveSection>
@@ -1670,6 +1717,7 @@ function renderParsedElement(
           variableName={element.props.variableName}
           placeholder={sub(element.props.placeholder)}
           checkboxLabel={sub(element.props.checkboxLabel)}
+          choices={element.props.choices}
           defaultValue={element.props.defaultValue}
           required={element.props.required}
           pattern={element.props.pattern}

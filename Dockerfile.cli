@@ -38,6 +38,7 @@ COPY src/cli ./src/cli
 COPY src/types ./src/types
 COPY src/validation ./src/validation
 COPY src/lib/assert-exhaustive.ts ./src/lib/assert-exhaustive.ts
+COPY src/lib/choice-response.ts ./src/lib/choice-response.ts
 COPY src/lib/runtime-manifest.ts ./src/lib/runtime-manifest.ts
 # src/lib/guide-stats is the canonical block-count computation the
 # build-stats command calls; guide-version.ts is the version comparator the

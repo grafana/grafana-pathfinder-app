@@ -29,6 +29,7 @@ src/global-state
 src/styles
 src/lib
 !src/lib/assert-exhaustive.ts
+!src/lib/choice-response.ts
 !src/lib/runtime-manifest.ts
 !src/lib/guide-stats
 !src/lib/guide-version.ts

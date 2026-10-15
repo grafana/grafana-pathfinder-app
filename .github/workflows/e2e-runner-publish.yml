@@ -23,6 +23,7 @@ on:
       - '.npmrc'
       - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
+      - 'src/lib/choice-response.ts'
   pull_request:
     branches:
       - main
@@ -45,6 +46,7 @@ on:
       - '.npmrc'
       - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
+      - 'src/lib/choice-response.ts'
 
 permissions: read-all
 

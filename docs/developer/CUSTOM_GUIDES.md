@@ -100,6 +100,35 @@ Click **•••** → **Unpublish**. The guide is removed from the docs panel 
 
 ---
 
+## Choice-driven sections
+
+A checkbox group lets readers select any combination of author-defined options. The question can cover integrations, environments, signals, or another topic.
+
+1. Add an **Input** block.
+2. Select **Checkbox group**.
+3. Enter a question and a distinct variable name.
+4. Add option labels.
+5. If readers must select an option, enable **Required**.
+6. Add a **Section** after the input.
+7. Under **Requirements**, click **Add condition**.
+8. Select **Checkbox option selected** as the condition type.
+9. Select the question and an **Includes option** value.
+10. Click **Add**.
+11. Select **Hide entire section** under **When requirements are not met**.
+12. Add the section's content.
+
+All section requirements must pass. **Show heading only** hides the content but keeps the heading. The default, **Show section, disable execution**, keeps existing guides unchanged.
+
+Readers' selections save immediately. Option IDs stay unchanged after label edits. Removal of an option does not update its conditions automatically. Guide validation reports these references.
+
+Choice-driven progress excludes hidden content. Completion evidence remains after deselection, so a completed section remains complete after reselection. A newly selected, unfinished section lowers progress. Required groups with no selection prevent guide completion. Optional groups permit an empty selection.
+
+The **Mark complete** button records the current selected path, not future selections. Existing guides without checkbox groups or visibility controls retain position-based progress. Conditional blocks retain their existing one-block counting model.
+
+Import [the signals example](interactive-examples/choice-driven-guide.json) to try three independent sections in preview. Use the same pattern for other topics.
+
+App Platform saves use compatibility markers and conditional wrappers because the current CRD does not preserve the visibility field. Raw JSON uploads must use the compatibility encoding to preserve these settings.
+
 ## Viewing guides in the docs panel
 
 Published guides appear under **Custom guides** in the Pathfinder sidebar docs panel. They are available to all users on the Grafana instance where the guide was published.
