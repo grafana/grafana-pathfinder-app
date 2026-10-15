@@ -8,6 +8,10 @@
 
 ## 2.22.1
 
+### Added
+
+- **Guide browser**: A Browse tab in Interactive learning lets people search and filter the full catalog of official and organization guides and learning paths, with topic shortcuts and a featured starter path. Returning to Browse keeps your search, filters, and scroll position, and My learning shows official guides and paths you have started but not finished. The `pathfinder.package-browser` flag can hide it. (#2142)
+
 ### Fixed
 
 - **Repeated startup settings reads**: Reuse confirmed absent settings for up to ten minutes per browser tab, refresh on opening learning or configuration, and invalidate the cache when settings are saved. Diagnosed upstream timeouts no longer trigger settings-read retries. (#2134)
