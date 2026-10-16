@@ -135,6 +135,7 @@ export const testIds = {
     guidedAiFixButton: (stepId: string) => `interactive-guided-ai-fix-${stepId}`,
     sectionRequirementsBanner: (sectionId: string) => `interactive-section-requirements-banner-${sectionId}`,
     requirementRetryButton: (stepId: string) => `interactive-requirement-retry-${stepId}`,
+    recoveryHint: (stepId: string) => `interactive-recovery-hint-${stepId}`,
     requirementSkipButton: (stepId: string) => `interactive-requirement-skip-${stepId}`,
     stepCompleted: (stepId: string) => `interactive-step-completed-${stepId}`,
     errorMessage: (stepId: string) => `interactive-error-${stepId}`,

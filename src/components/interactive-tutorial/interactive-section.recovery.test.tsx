@@ -54,14 +54,22 @@ jest.mock('../../docs-retrieval', () => {
 
 function mockRunnableStep(label: string) {
   return function MockRunnableStep(props: {
+    stepId?: string;
     isEligibleForChecking: boolean;
     onExecutingChange?: (executing: boolean) => void;
+    onStepComplete?: (stepId: string) => void;
+    recoveryHint?: unknown;
   }) {
     const { createElement, Fragment } = require('react');
     return createElement(
       Fragment,
       null,
-      createElement('button', { disabled: !props.isEligibleForChecking }, 'Continue step'),
+      createElement(
+        'button',
+        { disabled: !props.isEligibleForChecking, onClick: () => props.stepId && props.onStepComplete?.(props.stepId) },
+        'Continue step'
+      ),
+      props.recoveryHint ? createElement('output', null, JSON.stringify(props.recoveryHint)) : null,
       createElement('button', { onClick: () => props.onExecutingChange?.(true) }, `Start ${label}`),
       createElement('button', { onClick: () => props.onExecutingChange?.(false) }, `Finish ${label}`)
     );
@@ -77,6 +85,7 @@ const mockRecovery = {
   plans: new Map<string, unknown>(),
   suspended: new Map<string, boolean | undefined>(),
   paused: false,
+  unrestorable: false,
   restore: jest.fn(),
   recheck: jest.fn(async () => true),
 };
@@ -92,6 +101,7 @@ jest.mock('./hooks/use-section-recovery', () => ({
     mockRecovery.suspended.set(sectionId, options.suspended);
     return {
       paused: mockRecovery.paused,
+      unrestorable: mockRecovery.unrestorable,
       restoring: false,
       restore: mockRecovery.restore,
       cancel: jest.fn(),
@@ -168,6 +178,7 @@ beforeEach(() => {
   mockRecovery.plans.clear();
   mockRecovery.suspended.clear();
   mockRecovery.paused = false;
+  mockRecovery.unrestorable = false;
   mockRecovery.recheck.mockResolvedValue(true);
   mockRecoveryEnabled.mockReturnValue(true);
 });
@@ -246,6 +257,50 @@ it('keeps a later section quiet until the learner reaches it', async () => {
   await waitFor(() => expect(mockRecovery.plans.has('section-later')).toBe(true));
   expect(mockRecovery.plans.get('section-first')).toBeDefined();
   expect(mockRecovery.plans.get('section-later')).toBeUndefined();
+});
+
+function setupSection(intro: React.ReactNode = <p>Open the editor.</p>) {
+  return (
+    <InteractiveSection id="setup" title="Set up" autoCollapse={false}>
+      {intro}
+      <InteractiveStep targetAction="button" refTarget="Save">
+        Save the dashboard.
+      </InteractiveStep>
+      <InteractiveStep targetAction="highlight" refTarget="#panel">
+        Look at the panel.
+      </InteractiveStep>
+    </InteractiveSection>
+  );
+}
+
+async function completeFirstStep() {
+  fireEvent.click(screen.getAllByRole('button', { name: 'Continue step' })[0]!);
+  await waitFor(() =>
+    expect(mockRecovery.plans.get('section-setup')).toMatchObject({ cursorStepId: 'section-setup-step-2' })
+  );
+}
+
+it('points the step after a one-way barrier at the numbered step that set it up', async () => {
+  mockRecovery.unrestorable = true;
+  const { container } = render(setupSection());
+  await completeFirstStep();
+  const hints = container.querySelectorAll('output');
+  expect(hints).toHaveLength(1);
+  expect(JSON.parse(hints[0]!.textContent!)).toEqual({ stepId: 'section-setup-step-1', stepNumber: 2 });
+});
+
+it('leaves the setup step unnumbered when an earlier conditional may hide its number', async () => {
+  mockRecovery.unrestorable = true;
+  const Conditional = Object.assign(() => null, { displayName: 'InteractiveConditional' });
+  const { container } = render(setupSection(<Conditional />));
+  await completeFirstStep();
+  expect(JSON.parse(container.querySelector('output')!.textContent!)).toEqual({ stepId: 'section-setup-step-1' });
+});
+
+it('offers no setup pointer unless recovery has found the drift it cannot restore', async () => {
+  const { container } = render(setupSection());
+  await completeFirstStep();
+  expect(container.querySelector('output')).not.toBeInTheDocument();
 });
 
 it.each(['step', 'multistep', 'guided'])('suspends recovery while a %s runs', async (label) => {

@@ -35,6 +35,7 @@ export interface SectionRecoveryPlan {
   cursorAction?: string;
   checks: RecoveryCheck[];
   key: string;
+  setupStepId?: string;
 }
 
 type StepEffect = 'toggle' | 'transparent' | 'barrier';
@@ -78,14 +79,14 @@ function priorToggles(
   steps: readonly RecoveryStepInput[],
   cursor: number,
   skipped: ReadonlySet<string>
-): RecoveryAction[] {
+): { toggles: RecoveryAction[]; barrierStepId?: string } {
   const toggles: RecoveryAction[] = [];
   const seen = new Set<string>();
   for (let index = cursor - 1; index >= 0 && !steps[index + 1]!.opaqueBefore; index--) {
     const step = steps[index]!;
     const effect = effectOf(step, skipped);
     if (effect === 'barrier') {
-      break;
+      return { toggles, barrierStepId: step.stepId };
     }
     if (effect !== 'toggle') {
       continue;
@@ -106,7 +107,7 @@ function priorToggles(
       objectives: [{ kind: 'target-state', refTarget, targetAction, targetState }],
     });
   }
-  return toggles;
+  return { toggles };
 }
 
 export function deriveSectionRecoveryPlan(
@@ -121,15 +122,15 @@ export function deriveSectionRecoveryPlan(
   const checks: RecoveryCheck[] = conditionTokens(step.requirements)
     .filter((token) => token.startsWith('on-page:'))
     .map((requirement) => ({ kind: 'requirement', requirement }));
+  let setupStepId: string | undefined;
   if (step.kind === 'plain' && TARGETED_ACTIONS.has(step.targetAction ?? '') && step.refTarget && !step.lazyRender) {
+    const { toggles, barrierStepId } = priorToggles(steps, cursor, skipped);
+    setupStepId = barrierStepId;
     checks.push({
       kind: 'target-present',
       refTarget: step.refTarget,
       targetAction: step.targetAction!,
-      recover: [
-        { kind: 'resume-location', objectives: [{ kind: 'resume-location' }] },
-        ...priorToggles(steps, cursor, skipped),
-      ],
+      recover: [{ kind: 'resume-location', objectives: [{ kind: 'resume-location' }] }, ...toggles],
     });
   }
   if (checks.length === 0) {
@@ -140,5 +141,6 @@ export function deriveSectionRecoveryPlan(
     cursorAction: step.kind === 'plain' ? step.targetAction : step.kind,
     checks,
     key: JSON.stringify([step.stepId, checks]),
+    ...(setupStepId ? { setupStepId } : {}),
   };
 }
