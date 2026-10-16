@@ -34,19 +34,21 @@ export default function ReaderCompletionPanel({
   );
   const [path, setPath] = useState<{
     key: string;
-    journey: RawContent['metadata']['learningJourney'];
-    sequence: Props['sequence'];
+    contextKey: string;
     complete: boolean;
   } | null>(null);
   const journey = content.metadata.learningJourney;
-  useEffect(() => {
-    let cancelled = false;
-    const baseUrl = sequence?.baseUrl ?? journey?.baseUrl ?? content.metadata.trackMemberBaseUrl;
-    const sequences = [
+  const contextKey = JSON.stringify({
+    baseUrl: sequence?.baseUrl ?? journey?.baseUrl ?? content.metadata.trackMemberBaseUrl,
+    sequences: [
       sequence?.milestones,
       journey?.milestones,
       ...(journey?.tracks?.map((track) => track.milestones) ?? []),
-    ].filter((modules): modules is Milestone[] => Boolean(modules?.length));
+    ].filter((modules): modules is Milestone[] => Boolean(modules?.length)),
+  });
+  useEffect(() => {
+    let cancelled = false;
+    const { baseUrl, sequences } = JSON.parse(contextKey) as { baseUrl?: string; sequences: Milestone[][] };
     if (!baseUrl || sequences.length === 0) {
       return;
     }
@@ -54,23 +56,21 @@ export default function ReaderCompletionPanel({
       () => {
         if (!cancelled) {
           const complete = sequences.some((modules) => journeyProgressFromMilestones(baseUrl, modules) === 100);
-          setPath({ key: identityKey, journey, sequence, complete });
+          setPath({ key: identityKey, contextKey, complete });
         }
       },
       () => {
         if (!cancelled) {
-          setPath({ key: identityKey, journey, sequence, complete: false });
+          setPath({ key: identityKey, contextKey, complete: false });
         }
       }
     );
     return () => {
       cancelled = true;
     };
-  }, [journey, sequence, content.metadata.trackMemberBaseUrl, identityKey, revision]);
+  }, [contextKey, identityKey, revision]);
 
-  const pathComplete = Boolean(
-    path && path.journey === journey && path.sequence === sequence && path.key === identityKey && path.complete
-  );
+  const pathComplete = Boolean(path && path.contextKey === contextKey && path.key === identityKey && path.complete);
   const nextModule = onContinue
     ? sequence?.milestones.find((module) => module.number > sequence.currentMilestone && !module.isLocked)
     : undefined;

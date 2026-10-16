@@ -195,8 +195,15 @@ export function FloatingPanelContent({
           className={contentClassName}
           completion={{ kind: 'tracked', input: surfaceCompletionInput, onComplete: onGuideComplete }}
           completionPanelEnabled={completionPanelEnabled}
-          completionSequence={completionSequence}
-          onContinueToNextMilestone={model.canNavigateNext() ? () => model.navigateToNextMilestone() : undefined}
+          completionSequence={completionPanelEnabled ? completionSequence : undefined}
+          onContinueToNextMilestone={
+            model.canNavigateNext()
+              ? () =>
+                  completionPanelEnabled
+                    ? model.navigateToNextMilestone({ rejectOnError: true })
+                    : model.navigateToNextMilestone()
+              : undefined
+          }
           onActiveTrackChange={
             activeTab
               ? (trackId, milestones) => model.setActiveTrackId(activeTab.id, trackId, milestones, coverPathId)

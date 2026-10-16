@@ -5,6 +5,7 @@ import type { RawContent } from '../../types/content.types';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import ReaderCompletionPanel from './ReaderCompletionPanel';
 import type { CompletionPanelProps } from './CompletionPanel';
+import { dispatchProgress } from '../../global-state/progress-events';
 
 let percentages: number[] = [];
 jest.mock('../../docs-retrieval', () => ({
@@ -59,7 +60,10 @@ it('does not call the last module path completion until every required member co
   );
   await act(async () => {});
   expect(screen.getByRole('heading', { name: 'Milestone complete' })).toBeInTheDocument();
-  percentages = [100, 100];
+  act(() => {
+    percentages = [100, 100];
+    dispatchProgress({ kind: 'guide', contentKey: 'backend-guide:two', percentage: 100, hasProgress: true });
+  });
   rerender(
     <ReaderCompletionPanel
       content={{

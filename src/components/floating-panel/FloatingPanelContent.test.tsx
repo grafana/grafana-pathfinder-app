@@ -355,12 +355,18 @@ describe('FloatingPanelContent completion navigation', () => {
     }
   });
 
-  it('returns the navigation promise so the completion panel can handle failure', () => {
-    const { model, navigation } = renderTrack();
-    expect(mockContinueToNextMilestone?.()).toBe(navigation);
-    expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
-    expect(model.navigateToNextMilestone).toHaveBeenCalledWith({ rejectOnError: true });
-  });
+  it.each([true, false])(
+    'retains navigation promises and requests rejection only for the enabled panel (%s)',
+    (enabled) => {
+      mockCompletionPanelEnabled = enabled;
+      const { model, navigation } = renderTrack();
+      expect(mockContinueToNextMilestone?.()).toBe(navigation);
+      expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
+      expect(jest.mocked(model.navigateToNextMilestone).mock.calls[0]).toEqual(
+        enabled ? [{ rejectOnError: true }] : []
+      );
+    }
+  );
 
   it('does not offer continuation when the model cannot navigate', () => {
     const { model } = renderTrack(false);

@@ -31,6 +31,7 @@ const content: RawContent = {
   content: '{}',
   lastFetched: '',
   metadata: {
+    title: 'Second guide',
     learningJourney: {
       baseUrl: 'backend-guide:path',
       currentMilestone: 2,
@@ -106,4 +107,17 @@ it('reads the final real storage write after it settles and retains path complet
   );
   expect(screen.getByRole('heading', { name: 'Path complete' })).toBeInTheDocument();
   expect(reads).toHaveBeenCalledTimes(settledReads);
+
+  const incompleteMilestones = [...milestones, { ...milestones[0]!, url: 'backend-guide:three', number: 3 }];
+  rerender(
+    <ReaderCompletionPanel
+      content={{ ...content, metadata: { ...content.metadata, learningJourney: undefined } }}
+      sequence={{ currentMilestone: 2, milestones: incompleteMilestones, baseUrl: 'backend-guide:other-path' }}
+      celebrating={false}
+    />
+  );
+  expect(screen.getByRole('heading', { name: 'Milestone complete' })).toBeInTheDocument();
+  await act(async () => {});
+  expect(screen.getByRole('heading', { name: 'Milestone complete' })).toBeInTheDocument();
+  expect(reads).toHaveBeenCalledTimes(settledReads + 1);
 });

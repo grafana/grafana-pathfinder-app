@@ -465,9 +465,14 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }}
                       completion={{ kind: 'tracked', input: surfaceCompletionInput }}
                       completionPanelEnabled={completionPanelEnabled}
-                      completionSequence={completionSequence}
+                      completionSequence={completionPanelEnabled ? completionSequence : undefined}
                       onContinueToNextMilestone={
-                        model.canNavigateNext() ? () => model.navigateToNextMilestone() : undefined
+                        model.canNavigateNext()
+                          ? () =>
+                              completionPanelEnabled
+                                ? model.navigateToNextMilestone({ rejectOnError: true })
+                                : model.navigateToNextMilestone()
+                          : undefined
                       }
                       onActiveTrackChange={
                         activeTab
@@ -496,7 +501,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         model.setActiveTab(RECOMMENDATIONS_TAB_ID);
                       }}
                     >
-                      {t('docsPanel.myLearning', 'My learning')}
+                      {t('docsPanel.returnToMyLearning', 'Return to my learning')}
                     </Button>
                   </div>
                 )}
