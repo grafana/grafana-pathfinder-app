@@ -1,7 +1,5 @@
 import type { ResolvedPathfinderConfig } from '../constants';
 
-import type { HighlightedGuideConfig } from './openfeature.types';
-
 interface ExposureMarker {
   key: string;
   flag: string;
@@ -9,10 +7,10 @@ interface ExposureMarker {
 }
 
 interface PathfinderExperimentDebugger {
-  config: HighlightedGuideConfig;
-  variant: HighlightedGuideConfig['variant'];
   loadedAt: string;
   bannerVariant: () => string;
+  autoOpenGuide: () => { variant: string; shown: string[] };
+  clearAutoOpenGuideMarkers: () => { cleared: number };
   flags: string[];
   showExposures: () => ExposureMarker[];
   clearExposures: () => { cleared: number };
@@ -36,7 +34,6 @@ declare global {
     __pathfinderExperiment?: PathfinderExperimentDebugger;
     __pathfinderAutoOpenUnlisten?: () => void;
     __pathfinderDeepLinkNavUnlisten?: () => void;
-    __pathfinderHighlightedGuideNavUnlisten?: () => void;
     __pathfinderE2E?: PathfinderE2EControlV1;
   }
 }

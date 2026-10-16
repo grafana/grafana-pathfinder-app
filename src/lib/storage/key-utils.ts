@@ -4,8 +4,8 @@
  *
  * 1. Prefix sweeps — `collectKeysByPrefix` / `clearKeysByPrefix`. The
  *    collect-then-act pattern is duplicated in 7+ call sites across the
- *    codebase (`user-storage.ts`, `experiment-utils.ts`,
- *    `highlighted-guide-utils.ts`, `experiment-debug.ts`), all following the
+ *    codebase (`user-storage.ts`, `experiment-debug.ts`,
+ *    the auto-open guide markers), all following the
  *    same three steps: iterate storage by index, collect matching keys into
  *    an array, then act on each. Routing through one helper keeps the
  *    iteration order, error handling, and "skip keys that turn null

@@ -132,8 +132,7 @@ async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): P
 **Used by**:
 
 - `src/utils/pathfinder-deep-link-handler.ts`
-- `src/utils/experiments/highlighted-guide-utils.ts`
-- `src/utils/experiments/highlighted-guide-orchestrator.ts`
+- `src/utils/experiments/auto-open-guide/` (validates guides, launches the matched one, builds the Featured card)
 - `src/components/full-screen/FullScreenPanel.tsx`
 
 ---
@@ -276,7 +275,7 @@ function prefixRoute(route: string): string {
 - `evaluateFeatureFlag()` - Async function to evaluate a flag's value
 - `getFeatureFlagValue()` - Synchronous boolean flag check
 - `getStringFlagValue()` - Synchronous string flag check
-- `getHighlightedGuideConfig()` - Highlighted-guide experiment state. The enrolled-arm registry that used to live here, `getActiveExperiments()`, moved to `experiments/active-experiments.ts` so the flag registry stays unaware of which experiments exist
+- `parseExperimentVariant()` / `warnExperimentRejection()` - Shared experiment-payload validation. The enrolled-arm registry, `getActiveExperiments()`, lives in `experiments/active-experiments.ts` so the flag registry stays unaware of which experiments exist
 - `initializeOpenFeature()` - Initialize the OpenFeature SDK
 - `useBooleanFlag`, `useStringFlag`, and `useNumberFlag` - React flag hooks
 
@@ -284,11 +283,10 @@ function prefixRoute(route: string): string {
 
 - `src/utils/experiments/active-experiments.ts` - Enrolled-arm registry for analytics enrichment
 - `src/utils/experiments/experiment-debug.ts` - Experiment debugging console tools
-- `src/utils/experiments/highlighted-guide-orchestrator.ts` - Experiment auto-open setup
+- `src/utils/experiments/auto-open-guide/` - Auto-open guide experiment (OpenFeature client, path matching)
 - `src/utils/experiments/interactive-learning-banner.ts` - Interactive-learning banner enrollment
 - `src/utils/openfeature-tracking.ts` - Flag evaluation analytics tracking
 - `src/module.tsx` - Provider initialization, kill switches, and experiment analytics
-- `src/context-engine/context.service.ts` - Highlighted-guide recommendation injection
 
 ---
 
@@ -310,11 +308,10 @@ function prefixRoute(route: string): string {
 
 - `active-experiments.ts` - `getActiveExperiments()`, the enrolled arms for analytics enrichment and Faro session cohorts. Late-bound into `lib/analytics.ts` via `bindExperimentsProvider` in `src/module.tsx`, which is what keeps the OpenFeature SDK out of the telemetry chunk
 - `enrollment-notifier.ts` - `subscribeToEnrollment()` / `notifyEnrollment()`, the seam that lets an enroller wake the Faro session re-stamp and the banner without importing either. Deliberately importless
-- `highlighted-guide-orchestrator.ts` - Initializes reset state, page matching, once-per-browser auto-open, and guide launch
-- `highlighted-guide-utils.ts` - Manages auto-open markers, matches target pages, and builds featured recommendations
+- `auto-open-guide/` - Auto-open guide experiment on `@grafana-experiments/sdk`: payload validation, once-per-browser markers, the SDK-free activation cache that analytics enrichment and the Featured slot read, and the runner `module.tsx` starts after Faro. `enrollment-boundary.test.ts` pins where it starts and where its flag is read
 - `interactive-learning-banner.ts` - Interactive-learning banner arm, enrolled lazily on first panel open rather than at boot. `enrollment-boundary.test.ts` pins the three panel-mount call sites, because evaluating the flag is what emits the exposure; the banner component reads the arm through `subscribeToEnrollment` instead of enrolling
 - `experiment-debug.ts` - Exposes feature-flag names and exposure inspection through `window.__pathfinderExperiment`
-- `index.ts` - Public exports consumed by `src/module.tsx` and `src/context-engine/context.service.ts`
+- `index.ts` - Public exports consumed by `src/module.tsx`
 
 ---
 
@@ -327,7 +324,7 @@ It avoids taking an extension sidebar owned by another plugin and defers auto-op
 **Used by**:
 
 - `src/module.tsx`
-- `src/utils/experiments/highlighted-guide-orchestrator.ts`
+- `src/utils/experiments/auto-open-guide/index.ts`
 
 ---
 
