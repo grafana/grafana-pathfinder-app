@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import pluginJson from '../src/plugin.json';
+import { waitForGrafanaReady } from './helpers/grafana.helpers';
 
 const PACKAGE_RECOMMENDATIONS_PATH = `/api/plugins/${pluginJson.id}/resources/package-recommendations`;
 
@@ -52,7 +53,7 @@ test.describe('online package recommendations endpoint', () => {
     );
 
     await page.goto('/dashboards');
-    await page.waitForLoadState('networkidle');
+    await waitForGrafanaReady(page);
 
     const helpButton = page.locator('button[aria-label="Help"]');
     await helpButton.click();
