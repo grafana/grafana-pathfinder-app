@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { css } from '@emotion/css';
 import { IconButton } from '@grafana/ui';
 import Prism from 'prismjs';
 import { logger } from '../../../lib/logging';
@@ -16,6 +17,16 @@ import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-go';
 import 'prismjs/components/prism-python';
 import 'prismjs/components/prism-sql';
+
+// Prism's light-blue selection hides light syntax colors on dark code blocks.
+const codeSelectionStyle = css`
+  code::selection,
+  code ::selection {
+    background: #005fbd;
+    color: #fff;
+    text-shadow: none;
+  }
+`;
 
 export interface CodeBlockProps {
   code: string;
@@ -52,7 +63,7 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
 
   if (inline) {
     return (
-      <span className={`inline-code${className ? ` ${className}` : ''}`}>
+      <span className={`inline-code ${codeSelectionStyle}${className ? ` ${className}` : ''}`}>
         <code ref={codeRef} className={language ? `language-${language}` : ''}>
           {code}
         </code>
@@ -70,7 +81,7 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
   }
 
   return (
-    <div className={`code-block${className ? ` ${className}` : ''}`}>
+    <div className={`code-block ${codeSelectionStyle}${className ? ` ${className}` : ''}`}>
       <div className="code-block-header">
         <span className="code-block-language">{language}</span>
         {showCopy && (
