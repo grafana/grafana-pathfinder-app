@@ -261,6 +261,68 @@ const preparedContent: PreparedRawContent = {
 // Tests
 // ---------------------------------------------------------------------------
 
+describe.each([false, true])('milestone navigation failure with docs loader %s', (useDocsLoader) => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(useDocsLoader);
+    (getNextMilestoneUrlFromContent as jest.Mock).mockReturnValue('bundled:next');
+  });
+
+  const makePanel = () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [{ ...makeTab('journey-tab'), content: preparedContent }],
+      activeTabId: 'journey-tab',
+    });
+    return panel;
+  };
+
+  it('rejects a failed next-module load while keeping the panel mounted, then allows retry', async () => {
+    const panel = makePanel();
+    const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;
+    let finish!: (result: unknown) => void;
+    fetch.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+
+    const navigation = panel.navigateToNextMilestone({ rejectOnError: true });
+    const rejected = expect(navigation).rejects.toThrow('Failed to load');
+    expect(panel.getActiveTab()).toMatchObject({ content: preparedContent, isLoading: false, error: null });
+
+    finish({ content: null, error: 'Network unavailable', errorType: 'other' });
+    await rejected;
+    expect(panel.getActiveTab()).toMatchObject({ content: preparedContent, isLoading: false, error: null });
+
+    const nextContent = { ...preparedContent, url: 'bundled:next' };
+    fetch.mockResolvedValueOnce({ content: nextContent });
+    await expect(panel.navigateToNextMilestone({ rejectOnError: true })).resolves.toBeUndefined();
+    expect(panel.getActiveTab()).toMatchObject({
+      content: nextContent,
+      currentUrl: 'bundled:next',
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  it('rejects thrown fetch failures without replacing the current content with a tab error', async () => {
+    const panel = makePanel();
+    const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;
+    fetch.mockRejectedValueOnce(new Error('Offline'));
+
+    await expect(panel.navigateToNextMilestone({ rejectOnError: true })).rejects.toThrow('Failed to load');
+    expect(panel.getActiveTab()).toMatchObject({ content: preparedContent, isLoading: false, error: null });
+  });
+
+  it('preserves non-rejecting tab-error behavior for existing navigation and load callers', async () => {
+    const panel = makePanel();
+    const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;
+    fetch.mockResolvedValue({ content: null, error: 'Network unavailable', errorType: 'other' });
+
+    await expect(panel.navigateToNextMilestone()).resolves.toBeUndefined();
+    expect(panel.getActiveTab()).toMatchObject({ error: 'Network unavailable', isLoading: false });
+    await expect(panel.loadTab('journey-tab', 'bundled:next')).resolves.toBeUndefined();
+    expect(panel.getActiveTab()).toMatchObject({ error: 'Network unavailable', isLoading: false });
+  });
+});
+
 describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
   beforeEach(() => {
     jest.clearAllMocks();
