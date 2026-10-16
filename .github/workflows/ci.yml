@@ -423,7 +423,7 @@ jobs:
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
         run: |
-          jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100")
+          jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs")
 
           declare -A results=(
             ["Lint"]="$LINT_RESULT"
