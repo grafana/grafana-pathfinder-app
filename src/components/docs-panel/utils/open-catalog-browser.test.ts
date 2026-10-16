@@ -92,6 +92,25 @@ it.each(['closed', 'other-owner'] as const)('opens a cold sidebar when the slot 
   expect(linkInterceptionState.addToQueue).not.toHaveBeenCalled();
 });
 
+it('navigates the controller document to My learning rather than routing behind its overlay', () => {
+  jest.mocked(getPathfinderSurface).mockReturnValue('controller');
+  const URLConstructor = URL;
+  const destination = new URLConstructor('#my-learning', window.location.href);
+  const urlSpy = jest.spyOn(globalThis, 'URL').mockImplementation(() => destination);
+  try {
+    openLearningHome({ source: 'content_completion_panel' });
+    expect(urlSpy).toHaveBeenCalledWith('/a/grafana-pathfinder-app', window.location.origin);
+    expect(window.location.hash).toBe('#my-learning');
+    expect(locationService.push).not.toHaveBeenCalled();
+    expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('sidebar');
+    expect(getAppEvents().publish).toHaveBeenCalledWith({ type: 'close-extension-sidebar', payload: {} });
+    expect(getCatalogActivation('org-a:1:2')).toBeNull();
+  } finally {
+    urlSpy.mockRestore();
+    window.history.replaceState(null, '', '/');
+  }
+});
+
 it.each(['sidebar', 'floating', 'fullscreen'] as const)('opens the actual My learning page from %s', (surface) => {
   jest.mocked(getPathfinderSurface).mockReturnValue(surface);
   openLearningHome({ source: 'content_completion_panel' });
