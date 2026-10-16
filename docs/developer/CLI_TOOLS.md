@@ -183,6 +183,7 @@ This validates the `content.json` and `manifest.json` within the directory, incl
 - Asset reference validation (warns if `content.json` references `./assets/*` files that don't exist)
 - Severity-based messages: ERROR for required fields, WARN for recommended fields, INFO for defaulted fields
 - `testEnvironment` validation (warns on unrecognized tier values, invalid semver in `minVersion`)
+- `minGrafanaVersion` validation — the top-level runtime floor must be valid semver. Distinct from `testEnvironment.minVersion`: the e2e preflight inherits this value only when no test floor is declared (see [package authoring](./package-authoring.md#mingrafanaversion))
 
 **Validate a tree of package directories:**
 
@@ -420,8 +421,8 @@ node dist/cli/cli/index.js build-graph \
 When lint is enabled (the default), the command checks for:
 
 - **Broken references**: dependency targets that don't exist as real packages or virtual capabilities
-- **Broken steps**: `steps` entries that don't resolve to existing packages
-- **Cycles**: detected via DFS in `depends` (error), `recommends` (warning), and `steps` (error) edge types
+- **Broken milestones/tracks**: `milestones` and `tracks` entries that don't resolve to existing packages
+- **Cycles**: detected via DFS in `depends` (error), `recommends` (warning), `milestones` (error), and `tracks` (error) edge types
 - **Orphaned packages**: packages with no incoming or outgoing edges
 - **Missing metadata**: packages without `description` or `category`
 
@@ -432,7 +433,7 @@ Lint messages are printed to stderr. The graph JSON is written to stdout or the 
 The output is a D3-compatible JSON object with `nodes`, `edges`, and `metadata`:
 
 - **Nodes** contain full manifest metadata plus `id`, `repository`, and an optional `virtual: true` flag for capability nodes
-- **Edges** have `source`, `target`, and `type` (`depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `steps`)
+- **Edges** have `source`, `target`, and `type` (`depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `milestones`, `tracks`)
 - **Metadata** includes `generatedAt` timestamp, repository names, and node/edge counts
 
 ---
@@ -551,6 +552,58 @@ Since Zod `.refine()` calls cannot be expressed in JSON Schema, the output inclu
 ```
 
 Consumers in other languages should reimplement these rules in their own validation logic.
+
+---
+
+## Find-guides command
+
+Searches the public package catalog (`repository.json`) for interactive guides and learning paths, ranked by relevance. It is the same implementation the `pathfinder_find_guides` MCP tool serves; see [MCP server](./MCP_SERVER.md#repository-tools-p6) for the ranking rules and result fields. Bundled guides and guides authored on a stack are not searched.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js find-guides --queries <text> [--queries <text> ...] [options]
+node dist/cli/cli/index.js find-guides --page-url <path> [options]
+```
+
+Pass at least one `--queries` or a `--page-url`. Repeat `--queries`, `--categories`, and `--exclude-ids` once per value.
+
+### Options
+
+- `--queries <text>`: A short search, up to six. Mix the user's words with the Grafana product names they imply.
+- `--page-url <path>`: The Grafana page path the user is on, for example `/a/grafana-adaptivelogs-app/overview`. Boosts guides targeted at that page; on its own it lists what applies to that page.
+- `--categories <category>`: Only these categories. An unknown category fails and lists the valid ones.
+- `--type <guide|path>`: `path` returns learning paths only; `guide` returns single guides and path steps.
+- `--platform <cloud|oss>`: Hide guides that do not apply to this platform.
+- `--exclude-ids <id>`: Leave out guides already shown.
+- `--limit <n>`: Maximum results, 1 to 15 (default 5).
+- `--instance-url <url>`: A Grafana origin; adds an absolute `launchUrl` to each result.
+
+The repository comes from `PATHFINDER_REPOSITORY_URL` when set, and the public CDN otherwise.
+
+### Output
+
+Text output lists each result with its type, relevance (`strong` or `partial`), matched fields, starting page, matched path steps, and the link that opens it. `--format json` prints the structured outcome; its `data` is exactly the `pathfinder_find_guides` response.
+
+### Examples
+
+```bash
+node dist/cli/cli/index.js find-guides --queries "my log bill is too high" --queries "adaptive logs" --queries "log volume"
+node dist/cli/cli/index.js find-guides --page-url /a/grafana-synthetic-monitoring-app --platform cloud
+node dist/cli/cli/index.js --format json find-guides --queries postgresql --type path
+```
+
+### Live quality check
+
+The ranking unit tests run offline over a small synthetic catalog. To measure search quality against the real published catalog, run:
+
+```bash
+npm run eval:guide-search
+```
+
+It builds the CLI, runs each case in `scripts/guide-search-eval/cases.json` through `find-guides` against the live catalog (or `PATHFINDER_REPOSITORY_URL` when set), and prints top-three recall, `noStrongMatch` correctness on the cases with no right answer, and every miss. It exits non-zero when top-three recall is below 90% or any no-answer case reports a strong match. Pass `--json` to `node scripts/guide-search-eval/evaluate.js` for a machine-readable report.
+
+The check needs the network and the catalog changes underneath it, so it does not run in `npm test` or on pull requests. When a case fails because the catalog changed, update the case's expected ids rather than the thresholds.
 
 ---
 

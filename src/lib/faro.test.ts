@@ -9,6 +9,7 @@
  */
 import type { TransportItem, APIEvent } from '@grafana/faro-web-sdk';
 import pluginJson from '../plugin.json';
+import { HELP_BUTTON_EXPERIMENT_ID, HELP_BUTTON_CLICK_EVENT } from '../constants/help-button-experiment';
 
 jest.mock('../../package.json', () => ({ name: 'grafana-pathfinder-app', version: '9.9.9-test' }));
 
@@ -68,7 +69,7 @@ const mockInitializeFaro = jest.fn((_cfg: CapturedFaroConfig) => mockFaroInstanc
 
 jest.mock('@grafana/faro-web-sdk', () => ({
   initializeFaro: (cfg: CapturedFaroConfig) => mockInitializeFaro(cfg),
-  ErrorsInstrumentation: class ErrorsInstrumentation {},
+  BaseInstrumentation: jest.requireActual('@grafana/faro-web-sdk').BaseInstrumentation,
   SessionInstrumentation: class SessionInstrumentation {},
   ViewInstrumentation: class ViewInstrumentation {},
   PerformanceInstrumentation: class PerformanceInstrumentation {},
@@ -299,6 +300,51 @@ function performanceNavigationItem(): TransportItem<APIEvent> {
 }
 
 describe('filterPathfinderTelemetry', () => {
+  it('redacts private package lookup resource timings and URL secrets', () => {
+    const item = performanceResourceItem('https://recommender.grafana.com/api/v1/packages/private-name?token=secret');
+    const result = filterPathfinderTelemetry(item);
+    expect(result).not.toBeNull();
+    expect(JSON.stringify(result)).not.toContain('private-name');
+    expect(JSON.stringify(result)).not.toContain('token=secret');
+  });
+  it.each([
+    'https://ops.grafana-ops.net/d/status?var-plugin_id=grafana-pathfinder-app',
+    'https://grafana-pathfinder-app.example.org/foreign.js',
+    'webpack://grafana-pathfinder-app/../node_modules/@grafana/faro-web-sdk/dist/esm/instrumentations/errors/registerOnerror.js',
+  ])('drops ambient errors attributed only by a misleading filename: %s', (filename) => {
+    expect(filterPathfinderTelemetry(exceptionItem([filename]))).toBeNull();
+  });
+
+  it.each([
+    '/public/plugins/grafana-pathfinder-app/1.js',
+    'webpack:///grafana-pathfinder-app/src/lib/faro.ts',
+    'webpack-internal://grafana-pathfinder-app/./src/lib/faro.ts',
+  ])('drops ambient frames without a supported absolute asset URL or named webpack namespace: %s', (filename) => {
+    expect(filterPathfinderTelemetry(exceptionItem([filename]))).toBeNull();
+  });
+
+  it('keeps versioned CDN assets and subpath deployments', () => {
+    for (const filename of [
+      'https://plugins-cdn.grafana.net/grafana-pathfinder-app/2.19.0/public/plugins/grafana-pathfinder-app/6456.js',
+      'https://example.org/grafana/public/plugins/grafana-pathfinder-app/module.js',
+    ]) {
+      const item = exceptionItem([filename]);
+      expect(filterPathfinderTelemetry(item)).toBe(item);
+    }
+  });
+
+  it('preserves attributed and explicitly reported ResizeObserver errors', () => {
+    const message = 'ResizeObserver loop completed with undelivered notifications.';
+    const attributed = exceptionItem(
+      ['webpack://grafana-pathfinder-app/./hooks/useVerticalOverflow.ts'],
+      undefined,
+      message
+    );
+    const explicit = exceptionItemWithoutStacktrace({ pathfinder_reported: 'true' }, message);
+    expect(filterPathfinderTelemetry(attributed)).toBe(attributed);
+    expect(filterPathfinderTelemetry(explicit)).toBe(explicit);
+  });
+
   it('keeps an exception with a pathfinder stack frame', () => {
     const item = exceptionItem(['webpack://grafana-pathfinder-app/./src/lib/faro.ts']);
     expect(filterPathfinderTelemetry(item)).toBe(item);
@@ -444,6 +490,24 @@ describe('buildResourceIgnorePattern', () => {
 });
 
 describe('initFaro', () => {
+  it('allows initialization to recover after a failed attempt', async () => {
+    const faro = freshFaro();
+    mockInitializeFaro.mockImplementationOnce(() => {
+      throw new Error('Initialization failed');
+    });
+    await expect(faro.initFaro()).rejects.toThrow('Initialization failed');
+    await expect(faro.initFaro()).resolves.toBeUndefined();
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares an in-flight initialization across callers', async () => {
+    const faro = freshFaro();
+    const first = faro.initFaro();
+    expect(faro.initFaro()).toBe(first);
+    await first;
+    expect(mockInitializeFaro).toHaveBeenCalledTimes(1);
+  });
+
   it('does not initialize when the instance is not Grafana Cloud', async () => {
     mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise';
     const faro = freshFaro();
@@ -495,7 +559,7 @@ describe('initFaro', () => {
     const instrumentationNames = calledWith.instrumentations.map((i) => i.constructor.name);
     expect(instrumentationNames).toEqual(
       expect.arrayContaining([
-        'ErrorsInstrumentation',
+        'PathfinderErrorsInstrumentation',
         'SessionInstrumentation',
         'ViewInstrumentation',
         'PerformanceInstrumentation',
@@ -1178,6 +1242,27 @@ describe('setFaroSessionAttributes', () => {
 });
 
 describe('passesActivityGate', () => {
+  it('keeps help-button exposure and click events without admitting other closed-surface telemetry', () => {
+    const faro = freshFaro();
+    const exposure = eventItem();
+    (exposure.payload as any).name = 'experiment_viewed';
+    (exposure.payload as any).attributes = { experiment_id: HELP_BUTTON_EXPERIMENT_ID };
+    expect(faro.passesActivityGate(exposure)).toBe(true);
+    (exposure.payload as any).attributes = { experiment_id: 'another-experiment' };
+    expect(faro.passesActivityGate(exposure)).toBe(false);
+    (exposure.payload as any).name = HELP_BUTTON_CLICK_EVENT;
+    expect(faro.passesActivityGate(exposure)).toBe(true);
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+  });
+  it('keeps explicit launch failures before a destination mounts without opening the activity gate', () => {
+    const faro = freshFaro();
+    const failure = eventItem();
+    (failure.payload as any).name = TELEMETRY_EVENTS.guideRender;
+    (failure.payload as any).attributes = { outcome: 'error', reason: 'http-error', http_status: '404' };
+    expect(faro.passesActivityGate(failure)).toBe(true);
+    expect(faro.filterPathfinderTelemetry(failure)).toBe(failure);
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+  });
   const DOCKED_KEY = 'grafana.navigation.extensionSidebarDocked';
   const PANEL_MODE_KEY = 'grafana-pathfinder-app-panel-mode';
 
@@ -1346,6 +1431,37 @@ describe('passesActivityGate', () => {
 });
 
 describe('beforeSend wiring', () => {
+  it('keeps a fresh-home launch request correlated before any guide surface mounts', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    const { beginGuideLoad, observeGuideRequest, finishGuideLoad } = require('./telemetry/guide-load');
+    const { beforeSend } = mockInitializeFaro.mock.calls[0]![0];
+    const context = beginGuideLoad('backend-guide:private-home-launch');
+    await observeGuideRequest('backend-guide:private-home-launch', 'content-json', context, async () => ({
+      status: 503,
+    }));
+    finishGuideLoad(context, 'error', {
+      source: 'app-platform',
+      stage: 'fetch',
+      reason: 'http-error',
+      statusCode: 503,
+    });
+    const correlated = mockPushEvent.mock.calls.filter(
+      ([name]) => name === TELEMETRY_EVENTS.guideRequest || name === TELEMETRY_EVENTS.guideRender
+    );
+    expect(correlated).toHaveLength(2);
+    for (const [name, attributes] of correlated) {
+      expect(attributes.load_id).toBe(context.loadId);
+      const item = eventItem();
+      Object.assign(item.payload, { name, attributes });
+      expect(beforeSend(item)).not.toBeNull();
+    }
+    const uncorrelated = eventItem();
+    Object.assign(uncorrelated.payload, { name: TELEMETRY_EVENTS.guideRequest, attributes: {} });
+    expect(beforeSend(uncorrelated)).toBeNull();
+    expect(beforeSend(eventItem())).toBeNull();
+  });
+
   it('keeps the activity gate closed for a persisted mode until the surface mounts', async () => {
     localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
     const faro = freshFaro();
@@ -1411,7 +1527,7 @@ describe('setFaroView', () => {
     expect(mockSetView).toHaveBeenCalledWith({ name: 'bundled:welcome-to-pathfinder' });
 
     faro.setFaroView('backend-guide:my-guide');
-    expect(mockSetView).toHaveBeenCalledWith({ name: 'backend-guide:my-guide' });
+    expect(mockSetView).toHaveBeenCalledWith({ name: expect.stringMatching(/^private-guide:[a-f0-9]{32}$/) });
   });
 
   it('bounds the view name length', async () => {

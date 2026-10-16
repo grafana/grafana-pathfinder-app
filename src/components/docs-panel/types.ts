@@ -5,7 +5,7 @@
 import { RefObject } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { LearningJourneyTab, PackageOpenInfo } from '../../types/content-panel.types';
-import { PreparedRawContent, RawContent } from '../../types/content.types';
+import { Milestone, PreparedRawContent, RawContent } from '../../types/content.types';
 import type { LaunchSource } from '../../recovery';
 
 /**
@@ -37,6 +37,18 @@ export interface OpenDocsOptions {
    * One-shot memory state — never persisted to tab storage.
    */
   preparedContent?: PreparedRawContent;
+  /**
+   * The manifest guide id `url` resolved from, when the caller already knows
+   * it — see `loadTab`'s own doc comment on this same field. A caller that
+   * is deliberately opening a path/journey's own cover (never a click on a
+   * specific member) should pass that manifest's own id here: neither a
+   * `milestones` nor a `tracks` entry, so fetchPackageContent classifies it
+   * as the cover page by elimination, not by comparing resolved URLs — the
+   * fix for "a valid cover with a different resolved URL loses its table of
+   * contents" (PrTester opens a raw PR URL while the resolver's canonical
+   * URL differs; that URL mismatch alone must never imply track membership).
+   */
+  explicitGuideId?: string;
 }
 
 /** @see OpenDocsOptions */
@@ -79,6 +91,14 @@ export interface DocsPanelModelOperations {
       packageInfo?: PackageOpenInfo;
       prefetched?: RawContent;
       source?: LaunchSource;
+      /**
+       * The manifest guide id `url` resolved from, when the click target
+       * already carried one (GuideList's current row, the cover-page CTA —
+       * see link-handler.hook.ts). Threaded to fetchPackageContent so it can
+       * classify this load by a direct id lookup against the manifest
+       * instead of comparing resolved URLs.
+       */
+      explicitGuideId?: string;
     }
   ): Promise<void>;
 
@@ -99,6 +119,22 @@ export interface DocsPanelModelOperations {
 
   /** Check if navigation to previous milestone is possible */
   canNavigatePrevious(): boolean;
+
+  /**
+   * Record which Path Tracks tab is currently selected on a tab's cover
+   * page, so `canNavigateNext`/`navigateToNextMilestone` (and the Previous
+   * pair) resolve within that track's own guides instead of Foundations.
+   * `null` restores the default Foundations sequence. `milestones` is the
+   * selected track's own resolved guides (undefined/null for Foundations),
+   * persisted alongside the id so navigation stays track-aware past the
+   * cover page too — see `LearningJourneyTab.activeTrackMilestones`. Called
+   * by `LearningPathTableOfContents` via `onActiveTrackChange`.
+   *
+   * `pathId` is the cover's own `packageManifest.id` at selection time,
+   * persisted as `activeTrackPathId` — see that field's own doc comment for
+   * why a restore needs the manifest id rather than a resolved URL.
+   */
+  setActiveTrackId(tabId: string, trackId: string | null, milestones?: Milestone[] | null, pathId?: string): void;
 
   /** Open the dev tools tab (or switch to it if already open) */
   openDevToolsTab(): void;

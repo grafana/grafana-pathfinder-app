@@ -6,21 +6,22 @@
  *
  * Graph structure:
  * - Nodes: full manifest metadata from denormalized repository.json
- * - Edges: typed relationships (depends, recommends, suggests, provides, conflicts, replaces, milestones)
+ * - Edges: typed relationships (depends, recommends, suggests, provides, conflicts, replaces, milestones, tracks)
  * - Virtual nodes: capability names from `provides` fields (distinguished by virtual: true)
  */
 
 import { z } from 'zod';
 import * as fs from 'fs';
 
-import type {
-  DependencyGraph,
-  DependencyList,
-  GraphEdge,
-  GraphEdgeType,
-  GraphNode,
-  RepositoryEntry,
-  RepositoryJson,
+import {
+  getAllTrackGuideIds,
+  type DependencyGraph,
+  type DependencyList,
+  type GraphEdge,
+  type GraphEdgeType,
+  type GraphNode,
+  type RepositoryEntry,
+  type RepositoryJson,
 } from '../../types/package.types';
 import { RepositoryJsonSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
@@ -144,6 +145,15 @@ export function lintGraph(
         }
       }
     }
+
+    for (const trackGuideId of getAllTrackGuideIds(entry.tracks ?? [])) {
+      if (!realNodeIds.has(trackGuideId)) {
+        messages.push({
+          severity: 'warn',
+          message: `${pkgId}: tracks entry "${trackGuideId}" does not resolve to an existing package`,
+        });
+      }
+    }
   }
 
   const dependsCycles = detectCycles(allNodeIds, edges, new Set(['depends']));
@@ -159,6 +169,11 @@ export function lintGraph(
   const milestonesCycles = detectCycles(allNodeIds, edges, new Set(['milestones']));
   for (const cycle of milestonesCycles) {
     messages.push({ severity: 'error', message: `Cycle in milestones chain: ${cycle.join(' → ')}` });
+  }
+
+  const tracksCycles = detectCycles(allNodeIds, edges, new Set(['tracks']));
+  for (const cycle of tracksCycles) {
+    messages.push({ severity: 'error', message: `Cycle in tracks chain: ${cycle.join(' → ')}` });
   }
 
   const connectedNodes = new Set<string>();
@@ -229,6 +244,7 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
       type: entry.type,
       startingLocation: entry.startingLocation,
       milestones: entry.milestones,
+      tracks: entry.tracks,
       depends: entry.depends,
       recommends: entry.recommends,
       suggests: entry.suggests,
@@ -280,6 +296,10 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
       for (const milestoneId of entry.milestones) {
         edges.push({ source: pkgId, target: milestoneId, type: 'milestones' });
       }
+    }
+
+    for (const trackGuideId of getAllTrackGuideIds(entry.tracks ?? [])) {
+      edges.push({ source: pkgId, target: trackGuideId, type: 'tracks' });
     }
   }
 

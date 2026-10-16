@@ -89,8 +89,26 @@ func (a *App) deriveCompletionUserID(r *http.Request) (string, identityStatus) {
 // does not verify write permission (the write hook must not treat it as a
 // write guarantee).
 type completionCapability struct {
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
+	Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
+	Available   bool                  `json:"available"`
+	Reason      string                `json:"reason,omitempty"`
+	// ProgressRecords advertises that this plugin build accepts attempt
+	// upserts (a write body with attemptId). Set whenever Available is. It says
+	// what the build supports, not what the caller may write.
+	ProgressRecords bool `json:"progressRecords,omitempty"`
+}
+
+// inProgressCompletion is a guide the user has started but whose most recent
+// activity is an unfinished attempt.
+type inProgressCompletion struct {
+	GuideSource       string `json:"guideSource"`
+	GuideID           string `json:"guideId"`
+	GuideTitle        string `json:"guideTitle"`
+	GuideCategory     string `json:"guideCategory"`
+	PathID            string `json:"pathId"`
+	CompletionPercent int64  `json:"completionPercent"`
+	LastUpdatedAt     string `json:"lastUpdatedAt"`
+	AttemptStartedAt  string `json:"attemptStartedAt,omitempty"`
 }
 
 // collatedCompletion is one entry per (guideSource, guideId) for a single user.
@@ -104,14 +122,29 @@ type collatedCompletion struct {
 	LatestCompletedAt    string `json:"latestCompletedAt"`
 	LatestSource         string `json:"latestSource"`
 	MaxCompletionPercent int64  `json:"maxCompletionPercent"`
+
+	// LatestDurationSeconds is the latest completion's duration; omitted when
+	// 0 because legacy writes made it optional.
+	LatestDurationSeconds int64 `json:"latestDurationSeconds,omitempty"`
+	// LastRecordedAt is the newest LastUpdatedAt across every record of the
+	// guide, completions and attempts alike. Superseded attempts hidden from
+	// inProgress still count toward recency.
+	LastRecordedAt string `json:"lastRecordedAt,omitempty"`
+	// LatestAttemptStartedAt is the newest AttemptStartedAt across every
+	// record of the guide.
+	LatestAttemptStartedAt string `json:"latestAttemptStartedAt,omitempty"`
 }
 
 // myCompletionsResponse is the GET /completion-records/my envelope.
 type myCompletionsResponse struct {
-	Capability  completionCapability `json:"capability"`
-	UserID      string               `json:"userId,omitempty"`
-	Completions []collatedCompletion `json:"completions"`
-	AsOf        string               `json:"asOf,omitempty"`
+	Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
+	Capability  completionCapability  `json:"capability"`
+	UserID      string                `json:"userId,omitempty"`
+	Completions []collatedCompletion  `json:"completions"`
+	// InProgress is always present ([] when empty); writeMyCompletions
+	// normalizes a nil slice.
+	InProgress []inProgressCompletion `json:"inProgress"`
+	AsOf       string                 `json:"asOf,omitempty"`
 }
 
 // completionIndex is the collated, per-user view of a namespace's records.
@@ -120,8 +153,9 @@ type myCompletionsResponse struct {
 // idx.byUser[caller] — a cache hit is structurally incapable of exposing
 // another user's slice.
 type completionIndex struct {
-	byUser map[string][]collatedCompletion
-	asOf   time.Time
+	byUser           map[string][]collatedCompletion
+	inProgressByUser map[string][]inProgressCompletion
+	asOf             time.Time
 }
 
 type completionCacheEntry struct {
@@ -370,7 +404,7 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		// Refresh attempts are throttled by TTL + cooldown, so this logs state
 		// transitions, not every request.
 		logger.Info("completion index refresh failed",
-			"namespace", namespace, "error", err,
+			"namespace", namespace, "reason", classifyGuideProxyError(err).Reason,
 			"namespaceGlobal", namespaceGlobal, "servingStale", entry != nil,
 			"refreshFailures", stats.refreshFailures)
 		if entry != nil {
@@ -394,6 +428,22 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 // buildCompletionIndex drains the namespace LIST across pages — up to the
 // aggregate record budget — and collates the records into a per-user index.
 func buildCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, logger log.Logger) (*completionIndex, int, error) {
+	records, pages, err := drainCompletionRecords(ctx, namespace, lister, completionListMaxTotalRecords, logger)
+	if err != nil {
+		return nil, pages, err
+	}
+	byUser, inProgressByUser := collateCompletions(records)
+	return &completionIndex{
+		byUser:           byUser,
+		inProgressByUser: inProgressByUser,
+		asOf:             timeNow(),
+	}, pages, nil
+}
+
+// drainCompletionRecords is the raw LIST buildCompletionIndex collates. The
+// assignment join uses it directly: collation drops the per-row completedAt
+// the obligation criteria test. maxRecords of 0 means no cap.
+func drainCompletionRecords(ctx context.Context, namespace string, lister completionRecordLister, maxRecords int, logger log.Logger) ([]completionRecordSpec, int, error) {
 	var records []completionRecordSpec
 	continueToken := ""
 	pages := 0
@@ -404,9 +454,9 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 		}
 		pages++
 		records = append(records, page.Records...)
-		if len(records) >= completionListMaxTotalRecords && page.Continue != "" {
+		if maxRecords > 0 && len(records) >= maxRecords && page.Continue != "" {
 			logger.Warn("completion records LIST truncated at aggregate budget",
-				"namespace", namespace, "maxTotalRecords", completionListMaxTotalRecords, "pages", pages)
+				"namespace", namespace, "maxTotalRecords", maxRecords, "pages", pages)
 			break
 		}
 		if page.Continue == "" {
@@ -414,16 +464,22 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 		}
 		continueToken = page.Continue
 	}
-
-	return &completionIndex{
-		byUser: collateByUser(records),
-		asOf:   timeNow(),
-	}, pages, nil
+	return records, pages, nil
 }
 
-// collateByUser groups records by userId, then collapses each user's records to
-// one entry per (guideSource, guideId), sorted by latest completion descending.
-func collateByUser(records []completionRecordSpec) map[string][]collatedCompletion {
+// collateCompletions groups records by userId, then collapses each user's
+// records to one entry per (guideSource, guideId), sorted by latest completion
+// descending.
+//
+// Only a record with a completedAt is a completion: it alone feeds count, the
+// latest fields and maxCompletionPercent, and only guides with at least one
+// appear in completions. Every legacy record has a completedAt (it was
+// required), whatever its percent, so legacy collation is unchanged. An attempt
+// record has none until it reaches 100%, so a record without one is an
+// unfinished attempt. Per guide, the
+// newest attempt is reported in inProgress only if it started after the last
+// completion. Server arrival time cannot order delayed writes after a reset.
+func collateCompletions(records []completionRecordSpec) (map[string][]collatedCompletion, map[string][]inProgressCompletion) {
 	type key struct{ source, id string }
 	// Per user: (guideSource,guideId) -> accumulating entry + latest timestamp.
 	type acc struct {
@@ -431,6 +487,18 @@ func collateByUser(records []completionRecordSpec) map[string][]collatedCompleti
 		latestTime time.Time
 		latestOK   bool
 		has        bool
+
+		// Latest completion event time, independent of retry arrival.
+		doneUpdated   time.Time
+		doneUpdatedOK bool
+
+		partial     inProgressCompletion
+		partialTime time.Time
+		partialOK   bool
+		hasPartial  bool
+
+		recorded       latestStamp
+		attemptStarted latestStamp
 	}
 
 	perUser := map[string]map[key]*acc{}
@@ -450,6 +518,34 @@ func collateByUser(records []completionRecordSpec) map[string][]collatedCompleti
 			groups[k] = a
 		}
 
+		a.recorded.offer(rec.LastUpdatedAt)
+		a.attemptStarted.offer(rec.AttemptStartedAt)
+
+		updated, updatedOK := parseCompletionTime(rec.CompletedAt)
+		if rec.CompletedAt == "" {
+			updated, updatedOK = parseCompletionTime(rec.AttemptStartedAt)
+			if !updatedOK {
+				updated, updatedOK = parseCompletionTime(rec.LastUpdatedAt)
+			}
+			if shouldReplaceLatest(a.partialTime, a.partialOK, a.hasPartial, updated, updatedOK) {
+				a.partialTime, a.partialOK, a.hasPartial = updated, updatedOK, true
+				a.partial = inProgressCompletion{
+					GuideSource:       rec.GuideSource,
+					GuideID:           rec.GuideID,
+					GuideTitle:        rec.GuideTitle,
+					GuideCategory:     rec.GuideCategory,
+					PathID:            rec.PathID,
+					CompletionPercent: rec.CompletionPercent,
+					LastUpdatedAt:     rec.LastUpdatedAt,
+					AttemptStartedAt:  rec.AttemptStartedAt,
+				}
+			}
+			continue
+		}
+		if updatedOK && (!a.doneUpdatedOK || updated.After(a.doneUpdated)) {
+			a.doneUpdated, a.doneUpdatedOK = updated, true
+		}
+
 		a.entry.Count++
 		if rec.CompletionPercent > a.entry.MaxCompletionPercent {
 			a.entry.MaxCompletionPercent = rec.CompletionPercent
@@ -460,6 +556,7 @@ func collateByUser(records []completionRecordSpec) map[string][]collatedCompleti
 			a.latestTime, a.latestOK, a.has = t, ok, true
 			a.entry.LatestCompletedAt = rec.CompletedAt
 			a.entry.LatestSource = rec.Source
+			a.entry.LatestDurationSeconds = rec.DurationSeconds
 			a.entry.GuideTitle = rec.GuideTitle
 			a.entry.GuideCategory = rec.GuideCategory
 			a.entry.PathID = rec.PathID
@@ -467,17 +564,74 @@ func collateByUser(records []completionRecordSpec) map[string][]collatedCompleti
 	}
 
 	result := map[string][]collatedCompletion{}
+	inProgress := map[string][]inProgressCompletion{}
 	for userID, groups := range perUser {
 		entries := make([]collatedCompletion, 0, len(groups))
+		var partials []inProgressCompletion
 		for _, a := range groups {
-			entries = append(entries, a.entry)
+			if a.entry.Count > 0 {
+				a.entry.LastRecordedAt = a.recorded.raw
+				a.entry.LatestAttemptStartedAt = a.attemptStarted.raw
+				entries = append(entries, a.entry)
+			}
+			// A partial shows when nothing is completed yet, or when it is
+			// provably newer than the latest completed record.
+			if a.hasPartial && (a.entry.Count == 0 || (a.partialOK && a.doneUpdatedOK && a.partialTime.After(a.doneUpdated))) {
+				partials = append(partials, a.partial)
+			}
 		}
 		sort.SliceStable(entries, func(i, j int) bool {
 			return completionEntryLess(entries[j], entries[i]) // descending by latestCompletedAt
 		})
-		result[userID] = entries
+		sort.SliceStable(partials, func(i, j int) bool {
+			return inProgressLess(partials[j], partials[i]) // descending by lastUpdatedAt
+		})
+		if len(entries) > 0 {
+			result[userID] = entries
+		}
+		if len(partials) > 0 {
+			inProgress[userID] = partials
+		}
 	}
-	return result
+	return result, inProgress
+}
+
+// inProgressLess orders partials by LastUpdatedAt ascending, like
+// completionEntryLess. Its guide-identity tiebreak runs the other way (">"),
+// so the descending sort in collateCompletions yields ascending identity.
+func inProgressLess(x, y inProgressCompletion) bool {
+	tx, okx := parseCompletionTime(x.LastUpdatedAt)
+	ty, oky := parseCompletionTime(y.LastUpdatedAt)
+	if okx && oky && !tx.Equal(ty) {
+		return tx.Before(ty)
+	}
+	if okx != oky {
+		return oky
+	}
+	if x.GuideSource != y.GuideSource {
+		return x.GuideSource > y.GuideSource
+	}
+	return x.GuideID > y.GuideID
+}
+
+// latestStamp tracks the newest of a series of timestamp strings with
+// shouldReplaceLatest's rules, keeping the winner's original text. An empty
+// string is never offered; an unparseable one never beats a parseable one.
+type latestStamp struct {
+	raw string
+	t   time.Time
+	ok  bool
+	has bool
+}
+
+func (l *latestStamp) offer(s string) {
+	if s == "" {
+		return
+	}
+	t, ok := parseCompletionTime(s)
+	if shouldReplaceLatest(l.t, l.ok, l.has, t, ok) {
+		l.raw, l.t, l.ok, l.has = s, t, ok, true
+	}
 }
 
 // shouldReplaceLatest reports whether a candidate record should become the
@@ -547,7 +701,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	userID, status := a.deriveCompletionUserID(r)
 	if status != identityVerified {
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{Available: false, Reason: status.capabilityReason()},
+			Capability:  completionCapability{Available: false, Reason: status.capabilityReason(), Diagnostics: proxyGateDiagnostic("identity-unavailable", "completionrecords", "list", "identity")},
 			Completions: []collatedCompletion{},
 		})
 		return
@@ -556,7 +710,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	lister, namespace, available, reason := a.resolveCompletionBackend(r)
 	if !available {
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{Available: false, Reason: reason},
+			Capability:  completionCapability{Available: false, Reason: reason, Diagnostics: proxyGateDiagnostic("proxy-unavailable", "completionrecords", "list", "configuration")},
 			Completions: []collatedCompletion{},
 		})
 		return
@@ -569,24 +723,27 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 		if isTerminalCompletionError(err) {
 			// Structurally can't serve for this caller ("never works here").
 			a.writeMyCompletions(w, myCompletionsResponse{
-				Capability:  completionCapability{Available: false, Reason: reasonBackendUnavailable},
+				Capability:  completionCapability{Available: false, Reason: reasonBackendUnavailable, Diagnostics: appPlatformDiagnostic(err, "completionrecords", "list")},
 				Completions: []collatedCompletion{},
 			})
 			return
 		}
-		a.ctxLogger(r.Context()).Debug("completion records unavailable (cold)", "error", err)
-		a.writeCompletionUnavailable(w)
+		a.ctxLogger(r.Context()).Debug("completion records unavailable (cold)", "reason", classifyGuideProxyError(err).Reason)
+		a.writeCompletionUnavailable(w, err)
 		return
 	}
 
-	entries := idx.byUser[userID]
-	if entries == nil {
-		entries = []collatedCompletion{}
+	diagnostic := appPlatformDiagnostic(err, "completionrecords", "list")
+	if diagnostic != nil {
+		diagnostic.Outcome, diagnostic.Cache = "degraded", "stale"
+		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.asOf).Milliseconds())
 	}
 	a.writeMyCompletions(w, myCompletionsResponse{
-		Capability:  completionCapability{Available: true},
+		Capability:  completionCapability{Available: true, ProgressRecords: true},
+		Diagnostics: diagnostic,
 		UserID:      userID,
-		Completions: entries,
+		Completions: idx.byUser[userID],
+		InProgress:  idx.inProgressByUser[userID],
 		AsOf:        idx.asOf.UTC().Format(time.RFC3339),
 	})
 }
@@ -603,13 +760,13 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 	}
 
 	if _, status := a.deriveCompletionUserID(r); status != identityVerified {
-		a.writeJSON(w, completionCapability{Available: false, Reason: status.capabilityReason()}, http.StatusOK)
+		a.writeJSON(w, completionCapability{Available: false, Reason: status.capabilityReason(), Diagnostics: proxyGateDiagnostic("identity-unavailable", "completionrecords", "list", "identity")}, http.StatusOK)
 		return
 	}
 
 	lister, namespace, available, reason := a.resolveCompletionBackend(r)
 	if !available {
-		a.writeJSON(w, completionCapability{Available: false, Reason: reason}, http.StatusOK)
+		a.writeJSON(w, completionCapability{Available: false, Reason: reason, Diagnostics: proxyGateDiagnostic("proxy-unavailable", "completionrecords", "list", "configuration")}, http.StatusOK)
 		return
 	}
 
@@ -618,25 +775,37 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 	idx, err := getCompletionIndex(r.Context(), namespace, lister, false, a.ctxLogger(r.Context()))
 	if idx == nil {
 		if isTerminalCompletionError(err) {
-			a.writeJSON(w, completionCapability{Available: false, Reason: reasonBackendUnavailable}, http.StatusOK)
+			a.writeJSON(w, completionCapability{Available: false, Reason: reasonBackendUnavailable, Diagnostics: appPlatformDiagnostic(err, "completionrecords", "list")}, http.StatusOK)
 			return
 		}
-		a.writeCompletionUnavailable(w)
+		a.writeCompletionUnavailable(w, err)
 		return
 	}
-	a.writeJSON(w, completionCapability{Available: true}, http.StatusOK)
+	diagnostic := appPlatformDiagnostic(err, "completionrecords", "list")
+	if diagnostic != nil {
+		diagnostic.Outcome, diagnostic.Cache = "degraded", "stale"
+		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.asOf).Milliseconds())
+	}
+	a.writeJSON(w, completionCapability{Available: true, ProgressRecords: true, Diagnostics: diagnostic}, http.StatusOK)
 }
 
 func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsResponse) {
+	// Both arrays are always present on the wire, never null.
+	if resp.Completions == nil {
+		resp.Completions = []collatedCompletion{}
+	}
+	if resp.InProgress == nil {
+		resp.InProgress = []inProgressCompletion{}
+	}
 	a.writeJSON(w, resp, http.StatusOK)
 }
 
 // writeCompletionUnavailable serves BACKEND_PROXY_PATTERN.md §7's transient
 // hiccup — 503 plus a Retry-After hint, never a capability envelope — so both
 // completion routes answer every retryable failure in one shape.
-func (a *App) writeCompletionUnavailable(w http.ResponseWriter) {
+func (a *App) writeCompletionUnavailable(w http.ResponseWriter, err error) {
 	w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
-	a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
+	a.writeProxyError(w, "completion-records-unavailable", http.StatusServiceUnavailable, appPlatformDiagnostic(err, "completionrecords", "list"))
 }
 
 // resolveCompletionBackend determines whether the aggregated CRUD API is

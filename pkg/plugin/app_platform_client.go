@@ -15,7 +15,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/config"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
@@ -64,11 +66,33 @@ func buildAppPlatformURL(appURL, groupVersion, namespace, resource string) strin
 		url.PathEscape(namespace), url.PathEscape(resource))
 }
 
-// appPlatformListPage is one raw page of a namespace LIST: each item's `spec`
-// undecoded, plus the Kubernetes continue token (empty when drained).
+// appPlatformListPage is one page of a namespace LIST, in the shape the API
+// server returned. metadata.continue is empty when the list is drained.
 type appPlatformListPage struct {
-	Specs    []json.RawMessage
-	Continue string
+	Metadata struct {
+		Continue string `json:"continue"`
+	} `json:"metadata"`
+	Items []appPlatformListItem `json:"items"`
+}
+
+type appPlatformRawListPage struct {
+	Metadata struct {
+		Continue string `json:"continue"`
+	} `json:"metadata"`
+	Items []json.RawMessage `json:"items"`
+}
+
+// appPlatformListItem is one LIST element. metadata.name addresses the
+// object; resourceVersion is what a subsequent status update must echo back.
+// spec and status stay raw so each kind decodes its own schema.
+type appPlatformListItem struct {
+	Metadata struct {
+		Name            string            `json:"name"`
+		ResourceVersion string            `json:"resourceVersion"`
+		Annotations     map[string]string `json:"annotations"`
+	} `json:"metadata"`
+	Spec   json.RawMessage `json:"spec"`
+	Status json.RawMessage `json:"status"`
 }
 
 // accessTokenMinter exchanges a caller's ID token for a short-lived access
@@ -131,6 +155,11 @@ type appPlatformListClient struct {
 	idToken    string
 	httpClient *http.Client
 	logger     log.Logger
+	attempt    int
+
+	// Object calls share one token per request; LIST drains may outlive a token.
+	objectTokenMu sync.Mutex
+	objectToken   string
 }
 
 func newAppPlatformListClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *appPlatformListClient {
@@ -164,12 +193,26 @@ var credentialDiagOnce sync.Once
 // consume, leaving POST's credential/RBAC result otherwise undiagnosed).
 var createDiagOnce sync.Once
 
-// listPage fetches one page of a namespace LIST. The body is bounded by
-// maxBytes; upstream HTTP failures carry the status for retryability and scope
-// classification, and a mint failure carries errAccessTokenMintFailed instead.
 func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (*appPlatformListPage, error) {
+	page := &appPlatformListPage{}
+	if err := c.listPageInto(ctx, groupVersion, namespace, resource, continueToken, pageSize, maxBytes, page); err != nil {
+		return nil, err
+	}
+	return page, nil
+}
+
+func (c *appPlatformListClient) listRawPage(ctx context.Context, namespace, continueToken string) (*appPlatformRawListPage, error) {
+	page := &appPlatformRawListPage{}
+	if err := c.listPageInto(ctx, customGuideGroupVersion, namespace, customGuideResource, continueToken, customGuidesPageSize, customGuideListMaxBytes, page); err != nil {
+		return nil, err
+	}
+	return page, nil
+}
+
+func (c *appPlatformListClient) listPageInto(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64, page any) (err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", c.attempt, err) }()
 	if namespace == "" {
-		return nil, fmt.Errorf("app platform list: empty namespace")
+		return fmt.Errorf("app platform list: empty namespace")
 	}
 
 	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource)
@@ -185,19 +228,19 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 
 	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: %w", err)
+		return fmt.Errorf("app platform list: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: build request: %w", err)
+		return fmt.Errorf("app platform list: build request: %w", err)
 	}
 	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: %w", err)
+		return fmt.Errorf("app platform list: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -211,7 +254,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, &appPlatformUpstreamError{
+		return &appPlatformUpstreamError{
 			status:     resp.StatusCode,
 			retryAfter: resp.Header.Get("Retry-After"),
 			msg:        fmt.Sprintf("app platform list %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
@@ -220,29 +263,16 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: read body: %w", err)
+		return fmt.Errorf("app platform list: read body: %w", err)
 	}
 	if int64(len(body)) > maxBytes {
-		return nil, fmt.Errorf("app platform list: page response exceeded %d bytes", maxBytes)
+		return &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: page response exceeded %d bytes", maxBytes)}
 	}
 
-	var list struct {
-		Metadata struct {
-			Continue string `json:"continue"`
-		} `json:"metadata"`
-		Items []struct {
-			Spec json.RawMessage `json:"spec"`
-		} `json:"items"`
+	if err := json.Unmarshal(body, page); err != nil {
+		return &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform list: decode: %w", err)}
 	}
-	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("app platform list: decode: %w", err)
-	}
-
-	specs := make([]json.RawMessage, 0, len(list.Items))
-	for _, item := range list.Items {
-		specs = append(specs, item.Spec)
-	}
-	return &appPlatformListPage{Specs: specs, Continue: list.Metadata.Continue}, nil
+	return nil
 }
 
 // create POSTs a single object to a namespace collection (the write companion
@@ -250,24 +280,122 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 // appPlatformUpstreamError carrying the upstream status (and Retry-After, when
 // present) so the caller can classify transient/terminal/identity-scoped and
 // echo the upstream backpressure hint.
-func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) error {
+func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) (err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "create", c.attempt, err) }()
 	if namespace == "" {
 		return fmt.Errorf("app platform create: empty namespace")
 	}
 
 	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource)
+	return c.sendObject(ctx, http.MethodPost, endpoint, namespace, resource, "create", obj, maxBytes, func(status int) {
+		createDiagOnce.Do(func() {
+			c.logger.Info("app platform proxy: first upstream create",
+				"resource", resource,
+				"status", status,
+				"idTokenPresent", c.idToken != "",
+				"outboundCredential", auth.AccessTokenHeader+"=<obo-access-token>")
+		})
+	})
+}
+
+// A 404 body distinguishes a missing object from a missing API route.
+func (c *appPlatformListClient) get(ctx context.Context, groupVersion, namespace, resource, name string, maxBytes int64) (body []byte, err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "get", c.attempt, err) }()
+	if namespace == "" || name == "" {
+		return nil, fmt.Errorf("app platform get: empty name")
+	}
+	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource) + "/" + url.PathEscape(name)
 
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
-	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
+	accessToken, err := c.sharedObjectToken(reqCtx, namespace)
 	if err != nil {
-		return fmt.Errorf("app platform create: %w", err)
+		return nil, fmt.Errorf("app platform get: %w", err)
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("app platform get: build request: %w", err)
+	}
+	req.Header.Set(auth.AccessTokenHeader, accessToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("app platform get: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, &appPlatformUpstreamError{
+			status:     resp.StatusCode,
+			retryAfter: resp.Header.Get("Retry-After"),
+			body:       errBody,
+			msg:        fmt.Sprintf("app platform get %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(errBody))),
+		}
+	}
+	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("app platform get: read body: %w", err)
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("app platform get: response exceeded %d bytes", maxBytes)}
+	}
+	return body, nil
+}
+
+// The object must retain its resourceVersion for optimistic concurrency.
+func (c *appPlatformListClient) replace(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) (err error) {
+	defer func() { logAppPlatformResult(c.logger, namespace, resource, "update", c.attempt, err) }()
+	if namespace == "" || name == "" {
+		return fmt.Errorf("app platform update: empty name")
+	}
+	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource) + "/" + url.PathEscape(name)
+	return c.sendObject(ctx, http.MethodPut, endpoint, namespace, resource, "update", obj, maxBytes, nil)
+}
+
+// sharedObjectToken returns the per-request token for single-object calls,
+// minting it on first use.
+func (c *appPlatformListClient) sharedObjectToken(ctx context.Context, namespace string) (string, error) {
+	c.objectTokenMu.Lock()
+	defer c.objectTokenMu.Unlock()
+	if c.objectToken != "" {
+		return c.objectToken, nil
+	}
+	token, err := mintAccessToken(ctx, c.minter, namespace, c.idToken)
+	if err != nil {
+		return "", err
+	}
+	c.objectToken = token
+	return token, nil
+}
+
+// updateStatus PUTs a kind's status subresource. The body is the status
+// document the caller encoded. A non-2xx carries the upstream status, the
+// same way create does.
+func (c *appPlatformListClient) updateStatus(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) error {
+	if namespace == "" || name == "" {
+		return fmt.Errorf("app platform status: empty name")
+	}
+	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource) + "/" + url.PathEscape(name) + "/status"
+	return c.sendObject(ctx, http.MethodPut, endpoint, namespace, resource, "status", obj, maxBytes, nil)
+}
+
+// sendObject sends a JSON object and returns nil on 200/201. A non-2xx becomes an
+// appPlatformUpstreamError carrying the status and Retry-After.
+func (c *appPlatformListClient) sendObject(ctx context.Context, method, endpoint, namespace, resource, op string, obj []byte, maxBytes int64, onResponse func(status int)) error {
+	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
+	defer cancel()
+
+	accessToken, err := c.sharedObjectToken(reqCtx, namespace)
+	if err != nil {
+		return fmt.Errorf("app platform %s: %w", op, err)
 	}
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(obj))
+	req, err := http.NewRequestWithContext(reqCtx, method, endpoint, bytes.NewReader(obj))
 	if err != nil {
-		return fmt.Errorf("app platform create: build request: %w", err)
+		return fmt.Errorf("app platform %s: build request: %w", op, err)
 	}
 	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -275,34 +403,52 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("app platform create: %w", err)
+		return fmt.Errorf("app platform %s: %w", op, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	createDiagOnce.Do(func() {
-		c.logger.Info("app platform proxy: first upstream create",
-			"resource", resource,
-			"status", resp.StatusCode,
-			"idTokenPresent", c.idToken != "",
-			"outboundCredential", auth.AccessTokenHeader+"=<obo-access-token>")
-	})
+	if onResponse != nil {
+		onResponse(resp.StatusCode)
+	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return &appPlatformUpstreamError{
 			status:     resp.StatusCode,
 			retryAfter: resp.Header.Get("Retry-After"),
-			msg:        fmt.Sprintf("app platform create %s: status %d: %s", resource, resp.StatusCode, strings.TrimSpace(string(body))),
+			body:       body,
+			msg:        fmt.Sprintf("app platform %s %s: status %d: %s", op, resource, resp.StatusCode, strings.TrimSpace(string(body))),
 		}
 	}
 
 	// 200/201 means the record is already durable upstream and the body is unused,
 	// so a body read error or an over-cap body must NEVER become a retryable
-	// failure: the write has already committed, and surfacing an error would mask a
-	// durable success as failed. Drain best-effort up to the cap (bounding bytes
-	// transferred) so the connection can be reused, and swallow any error.
+	// failure: surfacing an error would mask a durable success as failed. Drain
+	// best-effort up to the cap so the connection can be reused.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBytes))
 	return nil
+}
+
+// resolveAppPlatformConfig is the structural "is the aggregated API reachable here" gate
+// shared by the custom-guide and assignment proxies. reason is "" when available.
+func resolveAppPlatformConfig(r *http.Request, toggle string) (appURL, namespace, idToken, reason string) {
+	namespace = backend.PluginConfigFromContext(r.Context()).Namespace
+
+	cfg := config.GrafanaConfigFromContext(r.Context())
+	if cfg == nil {
+		return "", namespace, "", reasonGrafanaConfigUnavailable
+	}
+	if !cfg.FeatureToggles().IsEnabled(toggle) {
+		return "", namespace, "", reasonFeatureToggleDisabled
+	}
+	if namespace == "" {
+		return "", namespace, "", reasonNamespaceUnavailable
+	}
+	appURL, err := cfg.AppURL()
+	if err != nil || appURL == "" {
+		return "", namespace, "", reasonAppURLUnavailable
+	}
+	return appURL, namespace, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), ""
 }
 
 // appPlatformUpstreamError carries the upstream HTTP status so error handling
@@ -314,6 +460,27 @@ type appPlatformUpstreamError struct {
 	status     int
 	retryAfter string
 	msg        string
+	// body is the bounded (2 KiB) upstream error body, kept so a caller can
+	// read a Kubernetes Status (for example reason NotFound vs a structural 404).
+	body []byte
+}
+
+// upstreamStatusReasonOf returns the `reason` of a Kubernetes Status error
+// body (for example "NotFound", "Conflict", "Invalid"), or "" when the error
+// carries no status or its body is not a Status.
+func upstreamStatusReasonOf(err error) string {
+	var ue *appPlatformUpstreamError
+	if !errors.As(err, &ue) || len(ue.body) == 0 {
+		return ""
+	}
+	var status struct {
+		Kind   string `json:"kind"`
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal(ue.body, &status) != nil || status.Kind != "Status" {
+		return ""
+	}
+	return status.Reason
 }
 
 func (e *appPlatformUpstreamError) Error() string { return e.msg }

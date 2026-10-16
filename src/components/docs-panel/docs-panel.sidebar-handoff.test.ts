@@ -73,6 +73,8 @@ jest.mock('../../docs-retrieval', () => ({
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
+  getNextMilestoneIdFromContent: jest.fn(),
+  getPreviousMilestoneIdFromContent: jest.fn(),
   getJourneyProgress: jest.fn(() => 0),
   setJourneyCompletionPercentage: jest.fn(),
   getMilestoneSlug: jest.fn(),
@@ -139,9 +141,7 @@ jest.mock('../../global-state/link-interception', () => ({
   linkInterceptionState: { addToQueue: jest.fn() },
 }));
 
-const mockWithGuideOpenAction = jest.fn(async (_url: string, work: () => Promise<unknown>) => work());
 jest.mock('../../lib/telemetry', () => ({
-  withGuideOpenAction: (...args: [string, () => Promise<unknown>]) => mockWithGuideOpenAction(...args),
   recordPanelReady: jest.fn(),
 }));
 

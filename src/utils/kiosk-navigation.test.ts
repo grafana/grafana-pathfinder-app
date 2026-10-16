@@ -1,7 +1,7 @@
 /** @jest-environment-options {"url":"http://grafana.internal/"} */
 import { config, locationService } from '@grafana/runtime';
 import { kioskState } from '../global-state/kiosk';
-import { installKioskNavigation, clearKioskLaunchParams } from './kiosk-navigation';
+import { installKioskNavigation, clearKioskLaunchParams, handleKioskLinkClick } from './kiosk-navigation';
 
 jest.mock('@grafana/runtime', () => ({
   config: { appSubUrl: '' },
@@ -142,4 +142,37 @@ it('removes the previous click handler on reinstallation', () => {
   installKioskNavigation(jest.fn());
   clickLink('/?pathfinderKiosk=1', { target: '_self' });
   expect(locationService.push).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the shareable launch URL and unrelated history state while the kiosk is open', () => {
+  window.history.replaceState({ other: 123 }, '', '/?pathfinderKiosk=1&kioskRulesUrl=first&orgId=2#keep');
+  installKioskNavigation(jest.fn());
+  expect(window.location.search).toBe('?pathfinderKiosk=1&kioskRulesUrl=first&orgId=2');
+  expect(window.history.state).toEqual({ other: 123 });
+  expect(locationService.replace).not.toHaveBeenCalled();
+  kioskState.set(null);
+  expect(installKioskNavigation(jest.fn())).toBe(true);
+  expect(kioskState.getSnapshot()?.rulesUrl).toBe('first');
+});
+
+it('explicit dismissal cannot revive on refresh', () => {
+  window.history.replaceState({}, '', '/?pathfinderKiosk=1&kioskRulesUrl=first');
+  installKioskNavigation(jest.fn());
+  clearKioskLaunchParams();
+  kioskState.set(null);
+  expect(installKioskNavigation(jest.fn())).toBe(false);
+});
+
+it('resolves guide return links against the Grafana subpath before native modified navigation', () => {
+  config.appSubUrl = '/grafana';
+  installKioskNavigation(jest.fn());
+  const anchor = document.createElement('a');
+  anchor.href = '/?pathfinderKiosk=1';
+  document.body.appendChild(anchor);
+  anchor.addEventListener('click', (event) => handleKioskLinkClick(event, true));
+  const event = new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true });
+  anchor.dispatchEvent(event);
+  expect(anchor.pathname).toBe('/grafana/');
+  expect(event.defaultPrevented).toBe(false);
+  expect(locationService.push).not.toHaveBeenCalled();
 });

@@ -4,11 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
 func TestSettingsProxyCallerAndResourceVersion(t *testing.T) {
@@ -139,5 +141,125 @@ func TestAppPlatformReadErrorStatusDoesNotExpireSession(t *testing.T) {
 		if got != want {
 			t.Errorf("upstream %d: got %d, want %d", status, got, want)
 		}
+	}
+}
+
+func TestReadAttemptIsBounded(t *testing.T) {
+	for query, want := range map[string]int{"": 1, "attempt=x": 1, "attempt=0": 1, "attempt=-3": 1, "attempt=2": 2, "attempt=999": 10} {
+		r := httptest.NewRequest(http.MethodGet, "/pathfinder-settings?"+query, nil)
+		if got := readAttempt(r); got != want {
+			t.Errorf("%q: got %d, want %d", query, got, want)
+		}
+	}
+}
+
+func TestSettingsProxyLogsRetriesUnderSeparateEvent(t *testing.T) {
+	keys := jwksBody(testSigningKeyID, testSigningKey())
+	stack := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == auth.SigningKeysPath {
+			_, _ = w.Write(keys)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer stack.Close()
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"token":"obo-token"}}`))
+	}))
+	defer exchange.Close()
+	exchanger, err := auth.New("cap-token", exchange.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for target, want := range map[string]map[string]interface{}{
+		"/pathfinder-settings":           {"event": "pathfinder_proxy_failure", "upstream_status": 503},
+		"/pathfinder-settings?attempt=2": {"event": "pathfinder_proxy_retry_failure", "upstream_status": 503, "attempt": 2},
+	} {
+		logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+		app := &App{logger: logger, oboExchanger: exchanger}
+		recorder := httptest.NewRecorder()
+		app.handlePathfinderSettings(recorder, customGuideRequestWithConfig(t, target, "user:1", map[string]string{sdkconfig.AppURL: stack.URL}))
+		if recorder.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s: status %d %s", target, recorder.Code, recorder.Body.String())
+		}
+		fields := map[string]interface{}{}
+		for i := 0; i < len(logger.fields); i += 2 {
+			fields[logger.fields[i].(string)] = logger.fields[i+1]
+		}
+		_, hasAttempt := fields["attempt"]
+		if fields["event"] != want["event"] || fields["upstream_status"] != want["upstream_status"] || fields["attempt"] != want["attempt"] || hasAttempt != (want["attempt"] != nil) {
+			t.Errorf("%s: unexpected fields %#v", target, fields)
+		}
+	}
+}
+
+// Captured from a live stack's GET of a missing pathfindersettings object, renamed to "default".
+var missingSettingsStatus = func() string {
+	body, err := os.ReadFile("testdata/upstream/pathfindersettings-not-found.json")
+	if err != nil {
+		panic(err)
+	}
+	return string(body)
+}()
+
+func TestSettingsProxyDistinguishesAbsence(t *testing.T) {
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"token":"obo-token"}}`))
+	}))
+	defer exchange.Close()
+	exchanger, err := auth.New("cap-token", exchange.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, body, query string
+		upstream, want    int
+		fallback, logged  bool
+	}{
+		{"confirmed absence", missingSettingsStatus, "?absence=explicit", 404, 200, false, false},
+		{"old client", missingSettingsStatus, "", 404, 404, true, false},
+		{"route missing", `404 page not found`, "?absence=explicit", 404, 404, true, false},
+		{"generic status", `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`, "?absence=explicit", 404, 404, true, false},
+		{"namespace missing", strings.ReplaceAll(missingSettingsStatus, `"kind":"pathfindersettings"`, `"kind":"namespaces"`), "?absence=explicit", 404, 404, true, false},
+		{"wrong name", strings.ReplaceAll(missingSettingsStatus, `"name":"default"`, `"name":"other"`), "?absence=explicit", 404, 404, true, false},
+		{"wrong group", strings.ReplaceAll(missingSettingsStatus, `"group":"`+appPlatformGroup, `"group":"other.app`), "?absence=explicit", 404, 404, true, false},
+		{"unexpected server response", strings.ReplaceAll(missingSettingsStatus, `"name":"default"`, `"name":"default","causes":[{"reason":"UnexpectedServerResponse"}]`), "?absence=explicit", 404, 404, true, false},
+		{"oversized", missingSettingsStatus + strings.Repeat(" ", 2048), "?absence=explicit", 404, 404, true, false},
+		{"malformed", missingSettingsStatus[:len(missingSettingsStatus)-1], "?absence=explicit", 404, 404, true, false},
+		{"forbidden", missingSettingsStatus, "?absence=explicit", 403, 403, false, true},
+		{"server failure", missingSettingsStatus, "?absence=explicit", 503, 503, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keys := jwksBody(testSigningKeyID, testSigningKey())
+			stack := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == auth.SigningKeysPath {
+					_, _ = w.Write(keys)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.upstream)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer stack.Close()
+			logger := newCapturingLogger()
+			app := &App{logger: logger, oboExchanger: exchanger}
+			recorder := httptest.NewRecorder()
+			app.handlePathfinderSettings(recorder, customGuideRequestWithConfig(t, "/pathfinder-settings"+tc.query, "user:1", map[string]string{sdkconfig.AppURL: stack.URL}))
+			if recorder.Code != tc.want {
+				t.Fatalf("status %d: %s", recorder.Code, recorder.Body.String())
+			}
+			if strings.Contains(recorder.Body.String(), `"state":"not-configured"`) != (tc.want == 200) {
+				t.Fatalf("only confirmed absence may be cacheable: %s", recorder.Body.String())
+			}
+			if strings.Contains(recorder.Body.String(), "settings-upstream-unavailable") != tc.fallback {
+				t.Fatalf("fallback tag mismatch: %s", recorder.Body.String())
+			}
+			if logger.warnedWith("Pathfinder proxy operation failed") != tc.logged {
+				t.Fatal("only real failures may emit proxy-failure diagnostics")
+			}
+			if recorder.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("HTTP caches must not cache settings")
+			}
+		})
 	}
 }

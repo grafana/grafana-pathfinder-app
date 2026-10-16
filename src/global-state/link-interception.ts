@@ -1,43 +1,43 @@
 import { getDocsLinkFromEvent } from 'global-state/utils.link-interception';
+import { panelModeManager } from 'global-state/panel-mode';
 import { sidebarState } from 'global-state/sidebar';
 import { reportAppInteraction, UserInteraction } from 'lib/analytics';
 import { AUTO_OPEN_DOCS_EVENT } from 'lib/event-names';
 import type { QueuedDocsLink } from 'types/link-interception.types';
 
-/**
- * Global state manager for the Pathfinder plugin's link interception.
- * Manages link interception and pending docs queue.
- */
+function isGrafanaKioskMode(): boolean {
+  return new URLSearchParams(window.location.search).has('kiosk');
+}
+
 class GlobalLinkInterceptionState {
   private _isInterceptionEnabled = false;
   private _pendingDocsQueue: QueuedDocsLink[] = [];
 
-  // Arrow function to preserve 'this' binding when used as event listener
   private handleGlobalClick = (event: MouseEvent): void => {
+    if (isGrafanaKioskMode()) {
+      return;
+    }
+
     const docsLink = getDocsLinkFromEvent(event);
 
     if (!docsLink) {
       return;
     }
 
-    event.preventDefault();
+    const sidebarWasOpen = sidebarState.getIsSidebarMounted();
+    // A mounted surface's listener cancels the event; the mounted flag alone goes stale.
+    const delivered = !document.dispatchEvent(
+      new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
+        cancelable: true,
+        detail: { ...docsLink, source: 'link_interception' },
+      })
+    );
 
-    // Track the intercepted link
-    reportAppInteraction(UserInteraction.GlobalDocsLinkIntercepted, {
-      intercepted_url: docsLink.url,
-      link_title: docsLink.title,
-      sidebar_was_open: sidebarState.getIsSidebarMounted(),
-      timestamp: Date.now(),
-    });
+    if (!delivered) {
+      if (panelModeManager.getMode() !== 'sidebar') {
+        return;
+      }
 
-    // if sidebar is mounted, auto-open the link
-    if (sidebarState.getIsSidebarMounted()) {
-      document.dispatchEvent(
-        new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
-          detail: { ...docsLink, source: 'link_interception' },
-        })
-      );
-    } else {
       sidebarState.setPendingOpenSource('link_interception');
       sidebarState.openSidebar('Interactive learning', {
         url: docsLink.url,
@@ -51,6 +51,16 @@ class GlobalLinkInterceptionState {
         timestamp: Date.now(),
       });
     }
+
+    event.preventDefault();
+
+    reportAppInteraction(UserInteraction.GlobalDocsLinkIntercepted, {
+      intercepted_url: docsLink.url,
+      link_title: docsLink.title,
+      sidebar_was_open: sidebarWasOpen,
+      delivery: delivered ? 'open_surface' : 'cold_sidebar',
+      timestamp: Date.now(),
+    });
   };
 
   public getIsInterceptionEnabled(): boolean {

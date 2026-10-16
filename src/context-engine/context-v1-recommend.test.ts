@@ -200,7 +200,20 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
           contentUrl: 'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/content.json',
           manifestUrl: 'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/manifest.json',
           repository: 'interactive-tutorials',
-          manifest: { id: 'sm-setting-up-your-first-check', type: 'guide' },
+          manifest: {
+            id: 'sm-setting-up-your-first-check',
+            type: 'guide',
+            prerequisites: [
+              { id: 'valid', label: '<strong>literal</strong> **text**', format: 'markdown' },
+              { id: 'unknown-format', label: '[still literal](https://example.com)', format: 'unsupported' as never },
+              { id: 'numeric-format', label: ' **exact numeric fallback** ', format: 42 as never },
+              { id: 'object-format', label: '<b>exact object fallback</b>', format: { value: 'markdown' } as never },
+              { id: 'bad-label', label: ' \t ' },
+              { id: ' \t ', label: 'Nonblank label' },
+              { id: 'valid', label: 'duplicate id' },
+              { id: 'bad-shape', label: 42 as unknown as string },
+            ],
+          },
         },
       ],
       featured: [
@@ -232,7 +245,18 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
       'https://interactive-learning.grafana.net/packages/sm-setting-up-your-first-check/manifest.json'
     );
     expect(featured!.repository).toBe('interactive-tutorials');
-    expect(featured!.manifest).toEqual({ id: 'sm-setting-up-your-first-check', type: 'guide' });
+    expect(featured!.manifest).toEqual({
+      id: 'sm-setting-up-your-first-check',
+      type: 'guide',
+      prerequisites: [
+        { id: 'valid', label: '<strong>literal</strong> **text**', format: 'markdown' },
+        { id: 'unknown-format', label: '[still literal](https://example.com)' },
+        { id: 'numeric-format', label: ' **exact numeric fallback** ' },
+        { id: 'object-format', label: '<b>exact object fallback</b>' },
+      ],
+    });
+    const ordinary = result.recommendations.find((item) => item.type === 'package');
+    expect(ordinary?.manifest).toEqual(featured!.manifest);
   });
 
   it('should sanitize v1 recommendations and not pass through raw properties', async () => {
@@ -382,6 +406,27 @@ describe('Additive V1 recommendation helpers', () => {
     const manifest = pkg.manifest as Record<string, unknown>;
     expect(manifest.recommends).toEqual(['valid-id', 'another-valid']);
     expect(manifest.depends).toEqual(['real-dep']);
+  });
+
+  it.each([
+    ['carries a string minGrafanaVersion through the allowlist', '13.2.0', '13.2.0'],
+    ['drops a numeric minGrafanaVersion', 13 as unknown as string, undefined],
+    ['drops a null minGrafanaVersion', null as unknown as string, undefined],
+    ['drops an object minGrafanaVersion', { min: '13.2.0' } as unknown as string, undefined],
+  ])('%s', (_label, declared, expected) => {
+    const sanitizeV1Recommendation = (ContextService as any).sanitizeV1Recommendation.bind(ContextService);
+    const pkg = sanitizeV1Recommendation({
+      type: 'package',
+      title: 'Guide',
+      matchAccuracy: 0.9,
+      contentUrl: 'https://cdn.example.com/guide/content.json',
+      manifestUrl: 'https://cdn.example.com/guide/manifest.json',
+      repository: 'test',
+      manifest: { id: 'guide', type: 'guide', minGrafanaVersion: declared },
+    });
+
+    const manifest = pkg.manifest as Record<string, unknown>;
+    expect(manifest.minGrafanaVersion).toBe(expected);
   });
 
   it('should handle empty contentUrl/manifestUrl gracefully', () => {

@@ -158,6 +158,7 @@ export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackag
       return;
     }
     milestones.push({
+      id,
       number: index + 1,
       title: resolved.title,
       url: resolved.url,

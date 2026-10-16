@@ -114,7 +114,7 @@ describe('pruneGatedTabState', () => {
   it('preserves references when both gated kinds are allowed', () => {
     const state = { tabs: [recommendations, editor, devTools, tab('guide-1')], activeTabId: 'editor' };
 
-    const result = pruneGatedTabState(state, { allowEditor: true, allowDevTools: true });
+    const result = pruneGatedTabState(state, { allowEditor: true, allowDevTools: true, allowBrowse: true });
 
     expect(result).toEqual({ ...state, changed: false });
     expect(result.tabs).toBe(state.tabs);
@@ -123,17 +123,17 @@ describe('pruneGatedTabState', () => {
   it.each([
     {
       name: 'editor only',
-      gates: { allowEditor: false, allowDevTools: true },
+      gates: { allowEditor: false, allowDevTools: true, allowBrowse: true },
       expected: ['recommendations', 'devtools', 'guide-1'],
     },
     {
       name: 'Dev Tools only',
-      gates: { allowEditor: true, allowDevTools: false },
+      gates: { allowEditor: true, allowDevTools: false, allowBrowse: true },
       expected: ['recommendations', 'editor', 'guide-1'],
     },
     {
       name: 'both gated kinds',
-      gates: { allowEditor: false, allowDevTools: false },
+      gates: { allowEditor: false, allowDevTools: false, allowBrowse: true },
       expected: ['recommendations', 'guide-1'],
     },
   ])('removes $name while preserving other order', ({ gates, expected }) => {
@@ -165,10 +165,18 @@ describe('pruneGatedTabState', () => {
       activeTabId,
     };
 
-    const result = pruneGatedTabState(state, { allowEditor: false, allowDevTools: false });
+    const result = pruneGatedTabState(state, { allowEditor: false, allowDevTools: false, allowBrowse: true });
 
     expect(result.activeTabId).toBe(expected);
     expect(result.tabs.map((item) => item.id)).toEqual(['recommendations', 'guide-1', 'interactive-1']);
+  });
+
+  it('falls back to Recommendations when Browse is disabled while active', () => {
+    const state = { tabs: [recommendations, tab('browse', 'browse'), tab('guide-1')], activeTabId: 'browse' };
+    const result = pruneGatedTabState(state, { allowEditor: true, allowDevTools: true, allowBrowse: false });
+    expect(result.changed).toBe(true);
+    expect(result.activeTabId).toBe('recommendations');
+    expect(result.tabs.map((item) => item.id)).toEqual(['recommendations', 'guide-1']);
   });
 
   it('does not mutate the input array or tabs', () => {
@@ -176,7 +184,7 @@ describe('pruneGatedTabState', () => {
     const state = { tabs: [recommendations, editor, guide, devTools], activeTabId: guide.id };
     const originalTabs = [...state.tabs];
 
-    const result = pruneGatedTabState(state, { allowEditor: false, allowDevTools: false });
+    const result = pruneGatedTabState(state, { allowEditor: false, allowDevTools: false, allowBrowse: true });
 
     expect(state.tabs).toEqual(originalTabs);
     expect(state.tabs[2]).toBe(guide);
@@ -256,6 +264,23 @@ describe('projectPersistedTabs', () => {
     expect(tabs).toEqual([recommendations, guide, docs]);
     expect(guide.content).toBe(content);
     expect(guide.packageInfo).toBe(packageInfo);
+  });
+
+  it('persists the selected track and its path identity, but not the derived milestones', () => {
+    const selected: LearningJourneyTab = {
+      ...tab('path-1', 'learning-journey'),
+      activeTrackId: 'builder',
+      activeTrackPathId: 'path-a',
+      activeTrackMilestones: [],
+    };
+    const foundations: LearningJourneyTab = { ...tab('path-2', 'learning-journey'), activeTrackId: null };
+
+    const [persistedSelected, persistedFoundations] = projectPersistedTabs([selected, foundations]);
+
+    expect(persistedSelected).toMatchObject({ activeTrackId: 'builder', activeTrackPathId: 'path-a' });
+    expect(persistedSelected).not.toHaveProperty('activeTrackMilestones');
+    expect(persistedFoundations).not.toHaveProperty('activeTrackId');
+    expect(persistedFoundations).not.toHaveProperty('activeTrackPathId');
   });
 
   it.each([{ tabs: [] }, { tabs: [recommendations] }])(

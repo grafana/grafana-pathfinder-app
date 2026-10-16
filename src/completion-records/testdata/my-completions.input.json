@@ -1,0 +1,103 @@
+{
+  "capability": { "available": true, "progressRecords": true },
+  "userId": "user:1",
+  "completions": [
+    {
+      "guideSource": "interactive-tutorials",
+      "guideId": "alerting-101",
+      "guideTitle": "Alerting 101",
+      "guideCategory": "interactive",
+      "pathId": "observability-path",
+      "count": 2,
+      "latestCompletedAt": "2026-09-01T14:03:22Z",
+      "latestSource": "objectives",
+      "maxCompletionPercent": 100,
+      "latestDurationSeconds": 742,
+      "lastRecordedAt": "2026-10-02T09:12:40Z",
+      "latestAttemptStartedAt": "2026-10-02T09:01:10Z"
+    },
+    {
+      "guideSource": "bundled",
+      "guideId": "loki-basics",
+      "guideTitle": "Loki basics",
+      "guideCategory": "interactive",
+      "pathId": "",
+      "count": 1,
+      "latestCompletedAt": "2026-08-15T10:00:00Z",
+      "latestSource": "manual",
+      "maxCompletionPercent": 100,
+      "lastRecordedAt": "2026-08-15T10:00:05Z"
+    },
+    {
+      "guideSource": "app-platform",
+      "guideId": "fe-alerting-01",
+      "guideTitle": "Private alerting module",
+      "guideCategory": "interactive",
+      "pathId": "private-path",
+      "count": 1,
+      "latestCompletedAt": "2026-10-03T09:00:00Z",
+      "latestSource": "objectives",
+      "maxCompletionPercent": 100,
+      "latestDurationSeconds": 120,
+      "lastRecordedAt": "2026-10-03T09:00:05Z"
+    },
+    {
+      "guideSource": "online-cdn",
+      "guideId": "dashboards-101",
+      "guideTitle": "Dashboards 101",
+      "guideCategory": "interactive",
+      "pathId": "",
+      "count": 1,
+      "latestCompletedAt": "2026-07-01T08:00:00Z",
+      "latestSource": "objectives",
+      "maxCompletionPercent": 100,
+      "latestDurationSeconds": 300,
+      "lastRecordedAt": "2026-07-01T08:00:10Z"
+    },
+    {
+      "guideSource": "interactive-tutorials",
+      "guideId": "dashboards-101",
+      "guideTitle": "Dashboards 101 (updated)",
+      "guideCategory": "interactive",
+      "pathId": "",
+      "count": 1,
+      "latestCompletedAt": "2026-07-20T08:00:00Z",
+      "latestSource": "manual",
+      "maxCompletionPercent": 100,
+      "latestDurationSeconds": 95,
+      "lastRecordedAt": "2026-07-20T08:00:10Z"
+    }
+  ],
+  "inProgress": [
+    {
+      "guideSource": "interactive-tutorials",
+      "guideId": "alerting-101",
+      "guideTitle": "Alerting 101",
+      "guideCategory": "interactive",
+      "pathId": "observability-path",
+      "completionPercent": 40,
+      "lastUpdatedAt": "2026-10-02T09:12:40Z",
+      "attemptStartedAt": "2026-10-02T09:01:10Z"
+    },
+    {
+      "guideSource": "interactive-tutorials",
+      "guideId": "prometheus-intro",
+      "guideTitle": "Prometheus intro",
+      "guideCategory": "interactive",
+      "pathId": "",
+      "completionPercent": 30,
+      "lastUpdatedAt": "2026-10-04T12:00:00Z",
+      "attemptStartedAt": "2026-10-04T11:50:00Z"
+    },
+    {
+      "guideSource": "app-platform",
+      "guideId": "fe-private-02",
+      "guideTitle": "Private in progress",
+      "guideCategory": "interactive",
+      "pathId": "",
+      "completionPercent": 20,
+      "lastUpdatedAt": "2026-10-05T12:00:00Z"
+    }
+  ],
+  "asOf": "2026-10-13T12:00:00Z"
+}

@@ -24,11 +24,7 @@ import {
 } from './pathfinder-search-params';
 
 export interface DeepLinkHandlerDeps {
-  /** Whether the sidebar surface is mounted for this user/variant. */
-  shouldMountSidebar: boolean;
-  /** Schedule an `open-extension-sidebar` event after the given delay. */
   attemptAutoOpen: (delay?: number) => void;
-  loadControlGroupDocPopup: () => Promise<{ showControlGroupDocPopup: (source: string) => void }>;
 }
 
 // Dedup gate — prevents re-processing the same URL from multiple listener transports.
@@ -67,9 +63,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   const kioskSessionParam = deepLink.kioskSession;
   const panelModeParam = deepLink.panelMode;
 
-  // FullScreenPanel owns `?doc=` on this route; kiosk_session/panelMode still
-  // process below. With neither present there is nothing to do — bail before
-  // the dedup gate so this search isn't latched against a later normal route.
+  // FullScreenPanel owns doc consumption; leave the dedup gate untouched when it owns the whole request.
   const onFullScreenRoute = isFullScreenRoute(locationService.getLocation().pathname);
   if (onFullScreenRoute && panelModeParam === undefined && kioskSessionParam === undefined) {
     return false;
@@ -82,6 +76,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 
   if (kioskSessionParam) {
     window.__pathfinderKioskSessionId = kioskSessionParam;
+    window.__pathfinderKioskName = deepLink.kioskName ?? 'unknown';
   }
 
   if (panelModeParam === 'sidebar') {
@@ -105,22 +100,10 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     locationService.replace(target);
   }
 
-  const docOpenSource = sourceParam || 'url_param';
+  const docOpenSource = kioskSessionParam ? 'kiosk_session' : sourceParam || 'url_param';
 
   if (!docsParam || onFullScreenRoute) {
-    // panelMode-only / kiosk-only links, or a full-screen-route doc owned by
-    // FullScreenPanel: nothing more to dispatch here.
     return panelModeParam !== undefined || kioskSessionParam !== undefined;
-  }
-
-  // Control group: sidebar is dismounted; show the fallback popup instead.
-  if (!deps.shouldMountSidebar) {
-    rewriteCurrentUrl(stripPathfinderParams);
-    deps
-      .loadControlGroupDocPopup()
-      .then(({ showControlGroupDocPopup }) => showControlGroupDocPopup(docOpenSource))
-      .catch((err) => logger.error('[Pathfinder] Failed to load control group popup', { error: err }));
-    return true;
   }
 
   // Capture before the async import so listener re-fires don't mutate these.
@@ -136,7 +119,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       const docsPage = findDocPage(ctx.docsParam);
 
       // SECURITY: page only processed when doc is also present (not a general redirector).
-      const rawRedirectTarget = ctx.pageParam || docsPage?.targetPage;
+      const rawRedirectTarget = ctx.pageParam || (kioskSessionParam ? undefined : docsPage?.targetPage);
       const redirectTarget = rawRedirectTarget ? validateRedirectPath(rawRedirectTarget) : null;
 
       if (!docsPage) {

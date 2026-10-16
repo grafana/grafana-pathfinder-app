@@ -14,6 +14,18 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ## Current feature flags
 
+### `pathfinder.package-browser`
+
+**Type**: Boolean
+
+**Default**: `true`
+
+Controls the sidebar Browse entry and Browse all links. Set it to `false` to hide browsing during rollout. Browse offers starter content, topic shortcuts, and the full catalog. The browser uses existing package metadata and performs no prerequisite assessment. The `/browse` route opens the sidebar browser and returns to My learning.
+
+**Tracking key**: `package_browser`
+
+---
+
 ### `pathfinder.enabled`
 
 **Type**: Boolean
@@ -27,7 +39,7 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 - **`true`**: Pathfinder loads normally — sidebar is available, the highlighted-guide experiment runs as configured
 - **`false`**: Plugin is dismounted, the native Grafana help menu takes over
 
-**Important**: This is the only gate on whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal.
+**Important**: This is the only flag that gates whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal. A headless image-renderer session (the page's user has `authenticatedBy: 'render'`) is treated the same as `false` and never reads tenant settings. Detection uses the render key, not the `render=1` query parameter, so a person who opens a render URL in a normal browser still gets Pathfinder.
 
 **Tracking key**: `pathfinder_enabled`
 
@@ -142,6 +154,135 @@ flag || (isDevModeEnabled(config, userId) && enableCodaTerminal)
 
 ---
 
+### `pathfinder.intercept-docs-links`
+
+**Type**: Boolean
+
+**Purpose**: Turns on global docs-link interception for a stack, so a grafana.com docs link clicked anywhere in Grafana opens in Pathfinder instead of a new tab. Before this flag the only switch was the experimental `interceptGlobalDocsLinks` tenant setting, which an admin had to find and enable by hand.
+
+**Default**: `false`
+
+**Behavior**:
+
+- **`true`**: interception is on, whatever `interceptGlobalDocsLinks` says.
+- **`false`**: interception follows `interceptGlobalDocsLinks`.
+
+The flag and the setting are a plain OR, applied once settings resolve in `src/module.tsx` (`applySettings`). The flag can turn interception on but never off; an admin opt-in stays on regardless of the flag. OSS and self-managed stacks have no OFREP provider, so there only the setting applies.
+
+**On the configuration page the flag is display-only.** The "Global link interception" toggle shows as on and disabled, labelled as flag-driven, and a save never writes the forced value. Turning the flag off restores whatever the stack had set. `ConfigurationForm.intercept-flag.test.tsx` pins that.
+
+**What interception does with a click** (`src/global-state/link-interception.ts`):
+
+- It ignores modified clicks, middle clicks, `#` and `download` links, links inside Pathfinder content, and Grafana `?kiosk` mode, so the browser handles those.
+- It only takes plain docs pages: grafana.com `/docs/` and `/tutorials/` pages and interactive guides whose query string is empty or only `utm_*` tracking parameters. Filtered or searched listings such as `/docs/grafana-cloud/whats-new/?tags=IRM`, the `/docs/` home, and the What's new section (which now redirects to grafana.com/whats-new/) open in the browser.
+- It hands the link to whichever surface accepts it: the sidebar, floating, or full-screen `useAutoOpenListener` cancels the event to accept.
+- If no surface accepts the link in sidebar mode, it opens the sidebar and queues the link.
+- In any other mode it lets the browser follow the link rather than swallow the click.
+
+**Tracking key**: `intercept_docs_links`
+
+---
+
+### `pathfinder.progress-analytics`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill switch for `pathfinder_guide_progress` and attempt correlation on terminal completion events (RudderStack, mirrored to Faro).
+
+**Default**: `false` (no progress analytics events when the flag is absent or MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: `guide_progress` fires at first real progress and at 25%, 50%, and 75% crossings, at most four times per attempt. The existing `guide_completed` event also carries `attempt_id` for a bundled or standalone guide.
+- **`false`**: progress events stop, and terminal events omit `attempt_id`. Guide attempts still persist on the device. Durable completion writes are unaffected.
+
+Terminal completion analytics keep their separate guard and do not depend on this flag or durable write acceptance. Attempt tracking does not emit a second terminal event.
+
+The flag is read each time an event would fire, so a flip takes effect without a reload once the provider has the new value. Implementation: `src/completion-records/progress-analytics.ts`.
+
+**Tracking key**: `progress_analytics`
+
+---
+
+### `pathfinder.progress-records`
+
+**Type**: Boolean
+
+**Purpose**: Saves guide progress as it happens. With the flag on, a new guide attempt is minted in `records` mode, and its partial percentages are written to one durable CompletionRecord per attempt, raised in place until the guide is complete.
+
+**Default**: `false`
+
+**Behavior**:
+
+- **`true`**: a new attempt uses `records` mode when the installed plugin backend also reports `progressRecords: true` on `/completion-records/capability`. Partial progress is queued (debounced 10 seconds), and the completion at 100% updates the same record.
+- **`false`**: new attempts use `analytics` mode and send the original create-only completion body. Existing records-mode attempts keep their identity for the final 100% write. The observer stops new partials, and the queue removes unsent partials before transmission.
+
+The flag does not cancel requests already in flight. Each tab uses its locally available flag value. Stale tabs can continue partial writes until they receive the disabled value or reload.
+
+Capability discovery makes no requests while this flag is false. The controller checks the local flag every five seconds until enabled. Unknown capability retries with exponential backoff and jitter, capped at five minutes. Invalid capability responses remain unknown and do not remove queued partials.
+
+Local attempts still persist under `grafana-pathfinder-app-guide-attempt-` when both progress flags are false. Each key includes the current user and organization, matching the write queue owner. Resets affect only that owner's attempts. These device-local keys do not use user-storage synchronization. Without a valid owner, attempts do not persist or use records mode.
+
+Old unscoped attempt keys remain unused because their owner is unknown. The app neither adopts nor deletes them during an owner's reset. The separate analytics flag controls remote events. See [Telemetry](TELEMETRY.md#guide-progress-events).
+
+**Before enabling the flag:**
+
+1. Deploy the CompletionRecord schema with optional `completedAt`.
+2. Deploy partial-aware collation and attempt upserts to every serving plugin replica.
+3. Verify that partial progress followed by 100% produces one record and satisfies an assignment on the deployed stack.
+
+Costa confirmed in Slack that Viewer OBO receives the required permissions through the RBAC permission set, as reported by Tom. This resolves the permission-model question. The live end-to-end check remains separate. A 403 still disarms the session's write queue and retains items until retry or the 30-day expiry. There is no create-only fallback for failed attempt updates.
+
+Records-mode minting requires the browser Web Locks API. Minting, completion, and reset share one origin-wide lock. Browsers without this API create analytics-mode attempts and retain the legacy completion path. A lock-acquisition failure also disables new records-mode attempts for that session. Reset removes unsent partials for that guide. Send-time checks also reject partials whose attempt is no longer current.
+
+**Do not roll back the plugin by disabling the flag alone.** Older readers count existing partials as completions. Follow the [rollback procedure](../design/BACKEND_PROXY_PATTERN.md#rollout-and-rollback-of-attempt-records), including writer quiescence and partial-record cleanup.
+
+Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-capability.ts`, and `completion-write-queue.ts`.
+
+**Tracking key**: `progress_records`
+
+---
+
+### `pathfinder.passive-completion`
+
+**Type**: Boolean
+
+**Purpose**: Fleet kill switch for passive guide completion — the renderer-owned completion coordinator that observes objectives and the reader's own actions while a guide is open (`src/components/content-renderer/completion-observation-provider.tsx`).
+
+**Default**: `true`
+
+**Behavior**:
+
+- **`true`**: passive completion runs unless the tenant stored `enableAutoDetection: false` (the **Automatic completion** setting), which is the per-tenant opt-out.
+- **`false`**: no coordinator is provided. Steps complete only through their own objective checks, Show me, Do it, and Mark complete, as before passive completion; no passive polling, DOM observation or pop-out observation subscriptions run.
+
+The provider reads the flag when it renders, so a flip applies to guides opened after the new value arrives. The flag only becomes operable once it is registered in deployment_tools; until then every stack gets the default.
+
+**Tracking key**: `passive_completion`
+
+---
+
+### `pathfinder.recommend-completions`
+
+**Type**: Boolean
+
+**Purpose**: Gate for attaching the user's completion history to `POST /api/v1/recommend`. See [Completion history in recommend requests](engines/context-engine.md#completion-history-in-recommend-requests).
+
+**Default**: `false`. The flag ships off until privacy and product sign-off and the terms notice cover completion history (tracked separately from this feature).
+
+**Behavior**:
+
+- **`true`**: each recommend request carries a `completions` object built from `GET /completion-records/my`, when that route reports the feature available.
+- **`false`**: no `/completion-records/my` request is made for recommendations and the request body has no `completions` key.
+
+The flag is read each time a recommend request is built, so a flip takes effect on the next request. Turning it on, or off again during an incident, reaches browsers only once a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` exist in deployment_tools.
+
+Implementation: `src/context-engine/recommend-completions-attachment.ts`.
+
+**Tracking key**: `recommend_completions`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)
@@ -180,14 +321,7 @@ A typical A/B setup serves the **same** `pages[]` to both arms with **different*
 
 **Those three values are the whole set.** The variant arrives from MTFF, so it can be anything; a value outside the table — a typo'd `treament`, a stale arm name, an empty string — rejects the **entire** payload. Rejection is whole-payload, not field-level: `pages`, `guideId`, `docType` and `resetCache` are all discarded along with the bad variant, so "rename an arm and set `resetCache: true`" clears nothing. Nobody is enrolled — no auto-open, no once-per-browser marker, and no arm attached to analytics or session telemetry. Renaming an arm therefore turns it off rather than half-enrolling its cohort under a bogus label.
 
-**Where a rejected payload lands depends on the source**, which is the thing to know when debugging:
-
-| Rejected payload from             | Result                                                                                                                                                          |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MTFF (the remote flag)            | The default `excluded` config above                                                                                                                             |
-| `localStorage` override (QA/demo) | The override is **ignored** and the remote MTFF value applies. Locally there is no MTFF provider, so this looks like the default — on a Cloud stack it does not |
-
-Either way the plugin logs a `warn` naming the source and a low-cardinality reason (`unknown_variant` or `invalid_shape`), once per source per page load. An unrecognized variant never produced a `pathfinder_feature_flag_evaluated` exposure event in the first place — `reportFeatureFlagExposure` only tracks `control` and `treatment` — so exposure counts are not a signal that a payload is broken. The `warn` is.
+Rejected payloads use the default `excluded` config above. The plugin logs a `warn` with a low-cardinality reason (`unknown_variant` or `invalid_shape`), once per flag per page load. An unrecognized variant never produces a `pathfinder_feature_flag_evaluated` exposure event — `reportFeatureFlagExposure` only tracks `control` and `treatment` — so exposure counts are not a signal that a payload is broken. The `warn` is.
 
 **Page-pattern semantics — note the difference**: Empty `pages` is treated as **no match**, NOT "all pages" (unlike `pathfinder.experiment-variant`). This makes the safe default of `{ variant: 'excluded', pages: [] }` a true no-op even if the variant is accidentally flipped without configuring pages. Patterns support the same `*` suffix wildcards as `matchPathPattern`.
 
@@ -255,6 +389,60 @@ Enrollment also re-stamps the Faro session `experiments` attribute, because `ini
 **Tracking key**: `interactive_learning_banner_experiment`
 
 ---
+
+### `pathfinder.help-button-nudge-experiment`
+
+Object flag, default `{ "variant": "excluded" }`. `control` leaves the toolbar unchanged.
+`learn` inserts a separate **Learn** button (graduation cap and label, Grafana's theme-aware orange)
+immediately before the unchanged question-mark Help button; it opens the interactive learning panel
+with open source `help_button_learn`. Until its attention ends, the Learn button shows three small
+twinkling sparkles (static for reduced motion, hidden in forced colors). `learn_hint` adds the
+dismissible “Try interactive learning” hint below the Learn button.
+
+The Learn button stays for the rest of the tab session once the tab is enrolled, including while the
+panel is open and after a reload. Attention (sparkle and hint) ends for the tab on the first toolbar
+click or when any route opens Pathfinder. Closing the hint, or pressing Escape while focus is on the
+hint or its button, hides only the hint; the sparkle stays and a later toolbar click remains
+attributable. State is scoped by namespace and signed-in user.
+
+Enrollment happens only when the unique, visible question-mark Help button exposes
+`aria-expanded="false"` while Pathfinder is closed; a tab that opens Pathfinder first is not enrolled. Mobile Help dropdowns, hidden tabs, ambiguous matches, anonymous sessions,
+missing namespaces, disabled analytics, and unavailable Pathfinder Faro instances do not enroll.
+The DOM adapter depends on Grafana's question-circle icon test ID, localized Help label (read from
+core's `grafana` namespace), and expanded-state contract, and inserts the Learn button as a sibling in
+Grafana's top bar; unsupported markup fails closed.
+
+This experiment uses `@grafana-experiments/sdk@0.3.0` with Pathfinder's existing OpenFeature client
+and isolated Faro instance. It deliberately has **no `trackingKey`**: the SDK owns the single
+`experiment_viewed` denominator through `reportExperimentView` and Faro. Experiment ID:
+`pathfinder-help-button-nudge-v1`; group: `closed-help-toolbar`. SDK exposure deduplication is per
+Faro session and assignment, with sessionStorage persistence when available. Pathfinder's Faro
+sessions are volatile, so a full reload can create a new session and exposure. Dismissal survives
+reloads within the same tab. Do not interpret exposure rows as unique people or allocation units.
+
+The primary outcome is `pathfinder_help_button_clicked_toolbar`, once per tab on the first toolbar
+click before Pathfinder opens any other way, in all three arms. `toolbar_target` says which button:
+`help` or `learn` (control can only report `help`). Later Learn opens are visible as
+`docs_panel_interaction` opens with source `help_button_learn`. RudderStack properties include
+`experiment_help_button_nudge`, `exposure_id`, `event_id`, and `toolbar_target`; Faro receives the SDK's full assignment snapshot. The SDK owns this event's Faro mirror,
+so `reportAppInteraction` skips its normal mirror for this call. The closed-surface Faro gate admits
+only this experiment's exposure, click, and hint dismissal; it does not activate replay or general page telemetry.
+
+Remote provisioning is separate: create a public object flag with excluded/control/learn/learn_hint values,
+excluded outside the chosen population, and the intended three-arm split inside it. Assignment uses
+the existing stack/org OpenFeature context, never client-side user bucketing. Verify the deployed
+bucketing field and allocation before declaring randomized inference. Keep the experiment's allocation
+stable after launch; changing variation weights or ordering can change assignment boundaries.
+The SDK accepts any caller-defined list of variation names; this integration declares these three.
+Analysis is performed independently of Odin's two-arm analysis model. Verify ingestion for all arms
+before launch. Hint dismissal emits `pathfinder_help_button_dismissed_hint` with the same attribution
+properties as the click. A RudderStack dashboard needs staging models for these outcome events.
+
+Retirement removes the flag registry entry, `help-button-attention/`, its bootstrap call, the shared
+constants and dismissal key, the click event and mirror option (if unused elsewhere), the narrow
+Faro filter exception and getter, the closed-surface experiment note in `TELEMETRY.md`, these documentation
+sections, and the remote flag/experiment. If no other experiment uses it, also remove `@grafana-experiments/sdk`
+and `src/lib/telemetry/experiments.ts`.
 
 ## Backend aggregation toggles (not MTFF)
 

@@ -84,6 +84,7 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   sectionId?: string;
   skippable?: boolean; // Whether this section can be skipped if requirements fail
   autoCollapse?: boolean; // Whether to auto-collapse on completion (default: true, can be overridden by user preference)
+  whenRequirementsUnmet?: 'disable' | 'heading-only' | 'hide';
 }
 
 /**
@@ -91,6 +92,8 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
  * Internal type used by InteractiveSection to track steps
  */
 export interface StepInfo {
+  lazyRender?: boolean;
+  scrollContainer?: string;
   stepId: string;
   element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
   index: number;
@@ -99,6 +102,7 @@ export interface StepInfo {
   targetValue?: string;
   targetState?: boolean | string;
   targetComment?: string; // Optional comment to show during execution
+  openGuide?: string; // Guide to open in sidebar after navigation
   requirements?: ConditionInput;
   postVerify?: string;
   skippable?: boolean; // Whether this step can be skipped

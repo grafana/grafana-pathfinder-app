@@ -84,6 +84,8 @@ describe('step-type-registry', () => {
         refTarget: '.foo',
         targetValue: 'bar',
         targetComment: 'see foo',
+        openGuide: 'bundled:destination-guide',
+        fullScreenFallbackLocation: '/connections',
         requirements: 'logged-in',
         postVerify: 'data-x=1',
         skippable: true,
@@ -94,6 +96,8 @@ describe('step-type-registry', () => {
         refTarget: '.foo',
         targetValue: 'bar',
         targetComment: 'see foo',
+        openGuide: 'bundled:destination-guide',
+        fullScreenFallbackLocation: '/connections',
         requirements: 'logged-in',
         postVerify: 'data-x=1',
         skippable: true,
@@ -151,6 +155,7 @@ describe('step-type-registry', () => {
         targetAction: 'should-be-ignored',
         refTarget: '.ignored',
         targetValue: 'ignored',
+        fullScreenFallbackLocation: '/connections',
         requirements: 'r',
         skippable: false,
       });
@@ -158,6 +163,7 @@ describe('step-type-registry', () => {
         targetAction: undefined,
         refTarget: undefined,
         targetValue: undefined,
+        fullScreenFallbackLocation: '/connections',
         requirements: 'r',
         skippable: false,
         isMultiStep: true,
@@ -176,9 +182,13 @@ describe('step-type-registry', () => {
 
   describe('INTERACTIVE_GUIDED_SCHEMA', () => {
     it('toStepInfoExtension sets isGuided=true', () => {
-      const ext = INTERACTIVE_GUIDED_SCHEMA.toStepInfoExtension({ requirements: 'r' });
+      const ext = INTERACTIVE_GUIDED_SCHEMA.toStepInfoExtension({
+        requirements: 'r',
+        fullScreenFallbackLocation: '/connections',
+      });
       expect(ext.isGuided).toBe(true);
       expect(ext.isMultiStep).toBe(false);
+      expect(ext.fullScreenFallbackLocation).toBe('/connections');
     });
 
     it('refTarget is "multiStepRefs" (guided refs share the multi-step ref bag)', () => {
@@ -244,11 +254,16 @@ describe('step-type-registry', () => {
 
   describe('CODE_BLOCK_STEP_SCHEMA', () => {
     it('toStepInfoExtension passes through refTarget but sets isMultiStep=true and targetAction="code-block"', () => {
-      const ext = CODE_BLOCK_STEP_SCHEMA.toStepInfoExtension({ refTarget: '.code', requirements: 'r' });
+      const ext = CODE_BLOCK_STEP_SCHEMA.toStepInfoExtension({
+        refTarget: '.code',
+        requirements: 'r',
+        fullScreenFallbackLocation: '/connections',
+      });
       expect(ext).toMatchObject({
         targetAction: 'code-block',
         refTarget: '.code',
         targetValue: undefined,
+        fullScreenFallbackLocation: '/connections',
         isMultiStep: true,
         isGuided: false,
       });

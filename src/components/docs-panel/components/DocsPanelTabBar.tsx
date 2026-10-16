@@ -1,26 +1,14 @@
-/**
- * Tab bar surface for the docs panel: Interactive Learning wordmark,
- * recommendations home icon, divider, guide-tab list with close buttons,
- * overflow chevron and dropdown, and the trailing TabBarActions slot.
- *
- * Extracted verbatim from `docs-panel.tsx`. Every `data-testid` is preserved
- * unchanged — `docs-panel.contract.test.tsx`'s testId exhaustiveness check
- * is the Pattern-J tripwire for this move.
- *
- * Pre-mortem H6 (test-id surface drift): the contract test asserts each
- * testIds.docsPanel.* key appears in exactly one tracked file; this
- * extraction moves the relevant references from docs-panel.tsx to this
- * file's entry in SOURCE_CONTRACT (updated in the same commit).
- */
 import React, { useSyncExternalStore } from 'react';
 import { Icon, IconButton, Badge } from '@grafana/ui';
 import { t } from '@grafana/i18n';
+import { useBooleanFlag } from '../../../utils/openfeature';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
 import { testIds } from '../../../constants/testIds';
 
 type DocsPanelStyles = ReturnType<typeof getDocsPanelStyles>;
-import { RECOMMENDATIONS_TAB_ID, getGuideStripTabs, getTranslatedTitle } from '../utils';
+import { BROWSE_TAB_ID, RECOMMENDATIONS_TAB_ID, getGuideStripTabs, getTranslatedTitle } from '../utils';
+import { reportCatalogInteraction } from '../../../lib/catalog-analytics';
 import { TabBarActions } from './TabBarActions';
 import {
   reportAppInteraction,
@@ -86,31 +74,41 @@ export function DocsPanelTabBar({
   onOpenEditorTab,
   onOpenDevToolsTab,
 }: DocsPanelTabBarProps): React.ReactElement {
-  // visibleTabs may still include recommendations on computeTabVisibility early
-  // returns; keep that rail-only chrome out of the guide list.
   const guideTabs = getGuideStripTabs(visibleTabs);
+  const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
 
-  // One subscription for the whole strip: per-tab status is then a plain read,
-  // so an overflowed editor tab re-renders on draft/publish changes too.
+  // One subscription keeps overflowed editor tabs current too.
   useSyncExternalStore(subscribeEditorChromeStatus, getEditorChromeStatusVersion);
 
   return (
     <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
       <div className={styles.recommendationsTab}>
-        <div className={styles.wordmarkGroup}>
-          <span className={styles.wordmark}>{t('docsPanel.wordmark', 'Interactive Learning')}</span>
-          <div className={styles.tabDivider} aria-hidden="true" />
-        </div>
         <button
           className={`${styles.iconTab} ${activeTab?.type === 'recommendations' ? styles.iconTabActive : ''}`}
           onClick={() => onSetActiveTab(RECOMMENDATIONS_TAB_ID)}
           title={t('docsPanel.recommendations', 'Recommendations')}
+          aria-pressed={activeTab?.type === 'recommendations'}
           data-testid={testIds.docsPanel.recommendationsTab}
         >
           <Icon name="document-info" size="md" />
         </button>
       </div>
 
+      {browseEnabled && (
+        <button
+          className={`${styles.iconTab} ${activeTab?.type === 'browse' ? styles.iconTabActive : ''}`}
+          onClick={() => {
+            reportCatalogInteraction({ action: 'tab_click' });
+            onSetActiveTab(BROWSE_TAB_ID);
+          }}
+          title={t('packageBrowser.browse', 'Browse')}
+          aria-label={t('packageBrowser.browse', 'Browse')}
+          aria-pressed={activeTab?.type === 'browse'}
+          data-testid="docs-panel-tab-browse"
+        >
+          <Icon name="compass" size="md" />
+        </button>
+      )}
       {guideTabs.length > 0 && <div className={styles.tabDivider} />}
 
       <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
@@ -283,7 +281,6 @@ export function DocsPanelTabBar({
         </div>
       )}
 
-      {/* Menu and close actions */}
       <TabBarActions
         className={styles.tabBarActions}
         activeTab={activeTab}

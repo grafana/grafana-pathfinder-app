@@ -13,7 +13,12 @@ import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+} from '../../lib/analytics';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import {
@@ -23,6 +28,7 @@ import {
   useCodaTerminalGate,
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
+import type { ProgressReason } from '../../global-state/progress-events';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { logger } from '../../lib/logging';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
@@ -62,7 +68,6 @@ export function resetTerminalStepCounter(): void {
 const getStyles = (theme: GrafanaTheme2) => ({
   disabled: css({
     opacity: 0.5,
-    pointerEvents: 'none' as const,
   }),
   content: css({
     marginBottom: theme.spacing(1),
@@ -163,12 +168,12 @@ export const TerminalStep = forwardRef<
 
     const [copyFeedback, setCopyFeedback] = useState(false);
     const [isExecRunning, setIsExecRunning] = useState(false);
+    const [execError, setExecError] = useState<string | null>(null);
 
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
     const isCompleted = storedCompleted;
 
-    // Validate requirements configuration
     useMemo(() => {
       validateInteractiveRequirements({ requirements, stepId: renderedStepId }, 'TerminalStep');
     }, [requirements, renderedStepId]);
@@ -191,31 +196,44 @@ export const TerminalStep = forwardRef<
       }
     }, [isStandalone, renderedStepId, sectionId]);
 
-    // Runs in EVERY child of the section, so the store write is suppressed for
-    // section steps: the section's own `resetSteps(tailStepIds)` already owns
-    // it, and a per-child write would wipe preceding completions.
+    // The section owns store resets so preceding completions survive a later step's redo.
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
         persistReset();
         setCopyFeedback(false);
+        setExecError(null);
         if (checker.resetStep) {
           checker.resetStep({ skipStoreWrite: true });
         }
       }
     }, [resetTrigger, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps -- checker.resetStep and persistReset are stable but including checker rebuilds every render
 
-    const markComplete = useCallback(() => {
+    const markComplete = useCallback(
+      (reason: ProgressReason = 'manual') => {
+        if (isCompleted) {
+          return;
+        }
+        if (isStandalone) {
+          markStepCompleted(renderedStepId, sectionId, reason);
+        }
+        if (onStepComplete && renderedStepId) {
+          onStepComplete(renderedStepId);
+        }
+        onComplete?.();
+      },
+      [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]
+    );
+
+    const handleSkip = useCallback(() => {
       if (isCompleted) {
         return;
       }
-      if (isStandalone) {
-        markStepCompleted(renderedStepId, sectionId, 'manual');
-      }
-      if (onStepComplete && renderedStepId) {
-        onStepComplete(renderedStepId);
-      }
-      onComplete?.();
-    }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
+      markComplete('skipped');
+      reportStepSkipped(
+        { targetAction: 'terminal', interactionLocation: 'terminal_step', skipReason: 'requirements_unmet' },
+        analyticsStepMeta
+      );
+    }, [isCompleted, markComplete, analyticsStepMeta]);
 
     const handleCopy = useCallback(async () => {
       reportAppInteraction(
@@ -247,11 +265,13 @@ export const TerminalStep = forwardRef<
           analyticsStepMeta
         )
       );
+      setExecError(null);
       setIsExecRunning(true);
       try {
         await terminalCtx.sendCommand(command);
         markComplete();
       } catch (err) {
+        setExecError('The command could not be sent. Check the terminal connection and retry.');
         logger.error('[TerminalStep] Exec failed', { error: err });
       } finally {
         setIsExecRunning(false);
@@ -262,7 +282,6 @@ export const TerminalStep = forwardRef<
       terminalCtx?.openTerminal();
     }, [terminalCtx]);
 
-    // Imperative API for section "Do Section" automation
     useImperativeHandle(
       ref,
       () => ({
@@ -286,9 +305,7 @@ export const TerminalStep = forwardRef<
 
     const isEnabled = checker.isEnabled && !disabled;
     const isTerminalConnected = terminalCtx?.status === 'connected';
-    // The provider mounts unconditionally while the panel that registers the
-    // real `connect` is gated, so "Connect terminal" would otherwise be a
-    // button wired to nothing. Copy still works — it never needed a sandbox.
+    // A mounted provider may have no terminal panel registered to handle Connect.
     const sandboxUnavailable = codaUnavailableMessage(
       codaGate,
       codaEligibility,
@@ -296,12 +313,18 @@ export const TerminalStep = forwardRef<
       SANDBOX_SUBJECT
     );
 
-    // Determine visual state
+    const terminalError =
+      isEligibleForChecking && isEnabled && !checker.isChecking
+        ? (execError ?? (terminalCtx?.status === 'error' ? terminalCtx.error || 'Terminal connection failed.' : null))
+        : null;
+
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
       stepState = STEP_STATES.COMPLETED;
     } else if (isExecRunning || isCurrentlyExecuting) {
       stepState = STEP_STATES.EXECUTING;
+    } else if (terminalError) {
+      stepState = STEP_STATES.ERROR;
     } else if (checker.isChecking) {
       stepState = STEP_STATES.CHECKING;
     } else if (!isEnabled) {
@@ -323,26 +346,27 @@ export const TerminalStep = forwardRef<
         className={containerClasses}
         {...getTrackedStepRootAttributes('terminal', renderedStepId)}
         data-test-step-state={stepState}
+        data-test-terminal-status={terminalCtx?.status ?? 'disconnected'}
+        data-test-terminal-unavailable={!!sandboxUnavailable && !isTerminalConnected}
+        data-test-terminal-checking={codaGate === 'checking'}
+        data-test-skippable={skippable}
         data-testid={testIds.interactive.terminalStep(renderedStepId)}
       >
-        {/* Description content */}
         {children && <div className={styles.content}>{children}</div>}
 
-        {/* Command display */}
         <div className={styles.commandBlock}>
           <code>{command}</code>
         </div>
 
-        {/* Requirement unmet message */}
         {!isEnabled && !isCompleted && checker.explanation && (
-          <div className={styles.requirementMessage}>
+          <div className={styles.requirementMessage} data-testid={testIds.interactive.requirementCheck(renderedStepId)}>
             {checker.explanation}
-            {skippable && (
+            {skippable && isEligibleForChecking && checker.canSkip && (
               <Button
                 size="sm"
                 variant="secondary"
                 fill="text"
-                onClick={markComplete}
+                onClick={handleSkip}
                 data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
               >
                 Skip
@@ -351,7 +375,6 @@ export const TerminalStep = forwardRef<
           </div>
         )}
 
-        {/* Actions */}
         {isEnabled && !isCompleted && (
           <div className={styles.actions}>
             <Button
@@ -373,6 +396,7 @@ export const TerminalStep = forwardRef<
                 onClick={handleExec}
                 disabled={isExecRunning}
                 tooltip="Execute command in terminal"
+                data-testid={testIds.interactive.terminalExecButton(renderedStepId)}
               >
                 {isExecRunning ? 'Running...' : 'Exec'}
               </Button>
@@ -384,6 +408,7 @@ export const TerminalStep = forwardRef<
                 icon="link"
                 onClick={handleConnect}
                 tooltip="Connect to terminal to execute commands"
+                data-testid={testIds.interactive.terminalConnectButton(renderedStepId)}
               >
                 Connect terminal
               </Button>
@@ -393,12 +418,32 @@ export const TerminalStep = forwardRef<
           </div>
         )}
 
-        {/* Why there is no Exec button. Copy is still offered above. */}
         {isEnabled && !isCompleted && !isTerminalConnected && sandboxUnavailable && (
-          <div className={styles.requirementMessage}>{sandboxUnavailable}</div>
+          <div className={styles.requirementMessage} data-testid={testIds.interactive.requirementCheck(renderedStepId)}>
+            {sandboxUnavailable}
+            {skippable && (
+              <Button
+                size="sm"
+                variant="secondary"
+                fill="text"
+                onClick={handleSkip}
+                data-testid={testIds.interactive.terminalSkipButton(renderedStepId)}
+              >
+                Skip
+              </Button>
+            )}
+          </div>
         )}
 
-        {/* Completed badge */}
+        {terminalError && !isCompleted && (
+          <div
+            role={execError && terminalCtx?.status !== 'error' ? 'alert' : undefined}
+            data-testid={testIds.interactive.errorMessage(renderedStepId)}
+          >
+            {terminalError}
+          </div>
+        )}
+
         {isCompleted && (
           <div className={styles.completedBadge}>
             <Icon name="check-circle" size="sm" />

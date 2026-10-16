@@ -5,8 +5,12 @@ import { parseJsonGuide } from '../../docs-retrieval';
 import { BlockPreview } from './BlockPreview';
 import type { JsonGuide } from './types';
 
+const mockRenderedCompletions: unknown[] = [];
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: () => <div data-testid="preview-content-renderer" />,
+  ContentRenderer: ({ completion }: { completion: unknown }) => {
+    mockRenderedCompletions.push(completion);
+    return <div data-testid="preview-content-renderer" />;
+  },
 }));
 
 jest.mock('./hooks/useGuidePreviewProgress', () => ({
@@ -57,5 +61,15 @@ describe('BlockPreview snippet handling', () => {
   it('skips the inlining pass when the guide references no snippets', () => {
     render(<BlockPreview guide={resolvedGuide} />);
     expect(inlineSnippetRefsInGuideMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('BlockPreview completion', () => {
+  it('mounts the renderer untracked, so a preview records nothing', () => {
+    mockRenderedCompletions.length = 0;
+
+    render(<BlockPreview guide={resolvedGuide} />);
+
+    expect(mockRenderedCompletions.at(-1)).toEqual({ kind: 'untracked', reason: 'preview' });
   });
 });

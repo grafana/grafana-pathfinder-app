@@ -14,10 +14,6 @@ interface PathfinderExperimentDebugger {
   loadedAt: string;
   bannerVariant: () => string;
   flags: string[];
-  setOverride: (flagName: string, value: unknown) => void;
-  removeOverride: (flagName: string) => void;
-  clearOverrides: () => void;
-  showOverrides: () => Record<string, unknown>;
   showExposures: () => ExposureMarker[];
   clearExposures: () => { cleared: number };
 }
@@ -36,6 +32,7 @@ declare global {
     __pathfinderPluginConfig?: ResolvedPathfinderConfig;
     __pathfinderKioskConfig?: { rulesUrl: string };
     __pathfinderKioskSessionId?: string;
+    __pathfinderKioskName?: string;
     __pathfinderExperiment?: PathfinderExperimentDebugger;
     __pathfinderAutoOpenUnlisten?: () => void;
     __pathfinderDeepLinkNavUnlisten?: () => void;

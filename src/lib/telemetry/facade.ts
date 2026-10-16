@@ -1,6 +1,14 @@
+import { guideSource } from '../guide-diagnostics';
+import type {
+  ProxyDiagnostics,
+  GuideDiagnostic,
+  GuideLoadContext,
+  GuideRenderOutcome,
+  GuideRequestRole,
+} from '../../types/guide-diagnostics.types';
 // Typed domain operations — call sites use these, never the vendor-specific
 // pushFaro* primitives, so the backing SDK stays an adapter concern.
-import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction, USER_ACTION_TIMEOUT_MEDIUM_MS } from './faro-adapter';
+import { pushFaroEvent, pushFaroMeasurement, pushFaroUserAction } from './faro-adapter';
 import { normalizeTelemetryUrl } from './url';
 import { createInteractionName, UserInteraction } from '../analytics';
 import {
@@ -10,27 +18,12 @@ import {
   type CompletionWriteDegradation,
   type ContentFetchOutcome,
   type ContentFetchTier,
-  type GuideLoadOutcome,
+  type RecommendCompletionsOutcome,
   type RecommenderErrorType,
   type RecommenderOutcome,
   type SequenceErrorClassification,
   type StepOutcome,
 } from './types';
-
-// Loaders resolve on failure (errors live in tab state), so the resolved
-// outcome — not promise settlement — stamps the action.
-export function withGuideOpenAction(url: string, work: () => Promise<GuideLoadOutcome>): Promise<GuideLoadOutcome> {
-  return withFaroUserAction(
-    createInteractionName(UserInteraction.DocsPanelInteraction),
-    { action: 'open_guide', content_url: normalizeTelemetryUrl(url) },
-    work,
-    USER_ACTION_TIMEOUT_MEDIUM_MS,
-    {
-      critical: true,
-      outcomeFrom: (result) => (result === 'completed' ? 'ok' : 'error'),
-    }
-  );
-}
 
 export function recordRecommenderRequest(durationMs: number, outcome: RecommenderOutcome): void {
   pushFaroMeasurement(TELEMETRY_MEASUREMENTS.recommender, { recommender_ms: durationMs }, { outcome });
@@ -43,28 +36,73 @@ export function recordRecommenderFallback(errorType: RecommenderErrorType, fallb
   });
 }
 
+function completionItemBucket(count: number): string {
+  if (count <= 0) {
+    return '0';
+  }
+  if (count <= 10) {
+    return '1-10';
+  }
+  if (count <= 50) {
+    return '11-50';
+  }
+  return count < 250 ? '51-249' : '250';
+}
+
+export function recordRecommendCompletions(
+  outcome: RecommendCompletionsOutcome,
+  itemCount?: number,
+  truncated?: boolean,
+  waitMs?: number
+): void {
+  pushFaroEvent(TELEMETRY_EVENTS.recommendCompletions, {
+    outcome,
+    ...(itemCount !== undefined && { item_bucket: completionItemBucket(itemCount) }),
+    ...(truncated !== undefined && { truncated: String(truncated) }),
+  });
+  if (waitMs !== undefined) {
+    pushFaroMeasurement(
+      TELEMETRY_MEASUREMENTS.recommendCompletionsWait,
+      { recommend_completions_wait_ms: waitMs },
+      { outcome }
+    );
+  }
+}
+
 export function recordContentFetch(params: {
   url: string;
   tier: ContentFetchTier;
   durationMs: number;
   outcome: ContentFetchOutcome;
+  diagnostic?: GuideDiagnostic;
+  loadContext?: GuideLoadContext;
 }): void {
   pushFaroMeasurement(
     TELEMETRY_MEASUREMENTS.contentFetch,
     { content_fetch_ms: params.durationMs },
-    { tier: params.tier, outcome: params.outcome, content_url: normalizeTelemetryUrl(params.url) }
+    {
+      tier: params.tier,
+      outcome: params.outcome,
+      content_url: normalizeTelemetryUrl(params.url),
+      ...guideDiagnosticAttributes(params.diagnostic),
+      ...(params.loadContext && { load_id: params.loadContext.loadId }),
+    }
   );
 }
 
 export function recordContentFetchFallback(params: {
   url: string;
   tierUsed: ContentFetchTier;
+  diagnostic?: GuideDiagnostic;
+  loadContext?: GuideLoadContext;
   errorType: string;
 }): void {
   pushFaroEvent(TELEMETRY_EVENTS.contentFetchFallback, {
     content_url: normalizeTelemetryUrl(params.url),
     tier_used: params.tierUsed,
+    ...(params.loadContext && { load_id: params.loadContext.loadId }),
     error_type: params.errorType,
+    ...guideDiagnosticAttributes(params.diagnostic),
   });
 }
 
@@ -119,6 +157,16 @@ export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEvent(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason });
 }
 
+// Reason is a capability.reason, `http-<status>` or `transport-error`; never an id or identity.
+export function recordAssignmentsUnavailable(reason: string): void {
+  pushFaroEvent(TELEMETRY_EVENTS.assignmentsUnavailable, { reason });
+}
+
+// Count only, never a target id.
+export function recordAssignmentTargetsUnresolved(count: number): void {
+  pushFaroEvent(TELEMETRY_EVENTS.assignmentTargetUnresolved, { reason: 'unresolvable-target', count });
+}
+
 /**
  * A sandbox-backed block could not run, with the rung of the ladder that
  * stopped it. Emitted once per block that had to degrade, not per render.
@@ -153,6 +201,13 @@ export function recordSandboxUnavailable(reason: SandboxUnavailableReason, block
 export type SettingsStoreOutcome =
   'resource' | 'not-created' | 'kind-not-served' | 'api-unavailable' | 'empty-spec' | 'forbidden' | 'read-error';
 
+export function recordStartupSettings(
+  durationMs: number,
+  outcome: 'resolved' | 'read-error' | 'timeout' | 'remote-disabled'
+): void {
+  pushFaroMeasurement(TELEMETRY_MEASUREMENTS.startupSettings, { startup_settings_ms: durationMs }, { outcome });
+}
+
 export function recordSettingsStoreResolved(outcome: SettingsStoreOutcome): void {
   pushFaroEvent(TELEMETRY_EVENTS.settingsStoreResolved, { outcome });
 }
@@ -177,6 +232,97 @@ export type GcxCredentialDegradation =
 
 export function recordGcxCredentialDegradation(reason: GcxCredentialDegradation): void {
   pushFaroEvent(TELEMETRY_EVENTS.gcxCredentialDegraded, { reason });
+}
+
+export function guideDiagnosticAttributes(diagnostic?: GuideDiagnostic): Record<string, string> {
+  return diagnostic
+    ? {
+        source: diagnostic.source,
+        stage: diagnostic.stage,
+        reason: diagnostic.reason,
+        ...(diagnostic.statusCode !== undefined && { http_status: String(diagnostic.statusCode) }),
+        ...(diagnostic.validationCount !== undefined && { validation_count: String(diagnostic.validationCount) }),
+      }
+    : {};
+}
+
+export function recordGuideRequest(params: {
+  context?: GuideLoadContext;
+  url: string;
+  role: GuideRequestRole;
+  durationMs: number;
+  statusCode?: number;
+  diagnostic?: GuideDiagnostic;
+}): void {
+  pushFaroEvent(TELEMETRY_EVENTS.guideRequest, {
+    load_id: params.context?.loadId,
+    guide_ref: params.context?.guideRef,
+    source: guideSource(params.url),
+    content_url:
+      params.context?.source === 'app-platform'
+        ? `private-guide:${params.context.guideRef}`
+        : normalizeTelemetryUrl(params.url),
+    role: params.role,
+    duration_ms: Math.round(params.durationMs),
+    http_status: params.statusCode,
+    outcome: params.diagnostic ? 'error' : 'ok',
+    ...guideDiagnosticAttributes(params.diagnostic),
+  });
+}
+
+export function recordGuideRender(
+  context: GuideLoadContext,
+  outcome: GuideRenderOutcome,
+  durationMs: number,
+  diagnostic?: GuideDiagnostic
+): void {
+  if (outcome !== 'degraded' && outcome !== 'awaiting-user') {
+    pushFaroUserAction(createInteractionName(UserInteraction.DocsPanelInteraction), {
+      action: 'open_guide',
+      phase: 'render',
+      load_id: context.loadId,
+      guide_ref: context.guideRef,
+      outcome: outcome === 'rendered' ? 'ok' : outcome,
+      duration_ms: Math.round(durationMs),
+      ...guideDiagnosticAttributes(diagnostic),
+    });
+  }
+  pushFaroEvent(TELEMETRY_EVENTS.guideRender, {
+    load_id: context.loadId,
+    guide_ref: context.guideRef,
+    source: context.source,
+    outcome,
+    duration_ms: Math.round(durationMs),
+    ...guideDiagnosticAttributes(diagnostic),
+  });
+}
+
+export function recordPackageIndex(attributes: {
+  outcome: 'ok' | 'error' | 'degraded' | 'suppressed';
+  reason?: string;
+  http_status?: number;
+  cache?: string;
+  cache_age_ms?: number;
+  manifest_failures?: number;
+  manifest_http_error_count?: number;
+  manifest_timeout_count?: number;
+  manifest_invalid_json_count?: number;
+  manifest_other_error_count?: number;
+  budget_exhausted?: boolean;
+}): void {
+  pushFaroEvent(TELEMETRY_EVENTS.packageIndex, attributes);
+}
+
+export function recordProxyFailure(diagnostic: ProxyDiagnostics): void {
+  pushFaroEvent(TELEMETRY_EVENTS.proxyFailure, {
+    outcome: diagnostic.outcome,
+    stage: diagnostic.stage ?? 'unknown',
+    resource: diagnostic.resource ?? 'unknown',
+    operation: diagnostic.operation ?? 'unknown',
+    reason: diagnostic.reason ?? 'unexpected-error',
+    upstream_status: diagnostic.upstreamStatus ?? 0,
+    cache: diagnostic.cache ?? 'none',
+  });
 }
 
 export function recordKioskCatalogLoaded(tier: KioskCatalogTier, degraded: boolean): void {

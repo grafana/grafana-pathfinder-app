@@ -45,6 +45,8 @@ export const PATHFINDER_CONFIG_UPDATED_EVENT = 'pathfinder-config-updated';
 // the payload itself never rides this forgeable event.
 export const AUTO_OPEN_DOCS_EVENT = 'pathfinder-auto-open-docs';
 
+export const OPEN_CATALOG_BROWSER_EVENT = 'pathfinder-open-catalog-browser';
+
 // Dispatched by integrations/coda's TerminalProvider on every connection-status
 // change, with detail { status }. `is-terminal-active` and `coda-exit-zero:`
 // read live module state, so they can see a connection — but nothing tells them

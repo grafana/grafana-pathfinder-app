@@ -1,0 +1,178 @@
+import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
+import { guideLaunchStore } from '../../global-state/guide-launch';
+import { sidebarState } from '../../global-state/sidebar';
+import { linkInterceptionState } from '../../global-state/link-interception';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
+import pluginJson from '../../plugin.json';
+import { AUTO_OPEN_DOCS_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
+import { panelModeManager } from '../../global-state/panel-mode';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
+import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getKioskName, getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
+import type { KioskRule } from './kiosk-rules';
+import { parseKioskWebUrl } from '../../security/kiosk-url';
+import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
+
+import type { KioskMode } from '../../types/kiosk-page.schema';
+
+export function launchKioskGuide(
+  rule: KioskRule,
+  mode: KioskMode,
+  onLaunch?: () => void,
+  prepared?: PreparedGuideLaunch,
+  blockIndex?: number
+): void {
+  const page = rule.page === undefined ? undefined : validateInternalNavigationPath(rule.page);
+  if (page === null || (rule.interactiveLearning !== false && !isAllowedContentUrl(rule.url))) {
+    return;
+  }
+  const current = locationService.getLocation();
+  if (rule.interactiveLearning === false) {
+    if (!page) {
+      return;
+    }
+    const destination = new URL(page, window.location.origin);
+    stripProductLaunchParams(destination);
+    if (mode === 'presentation') {
+      const target = parseKioskWebUrl(
+        rule.targetUrl || new URL(`${config.appSubUrl ?? ''}/`, window.location.origin).href,
+        window.location.origin
+      );
+      if (!target) {
+        return;
+      }
+      const basePath = target.pathname.replace(/\/+$/, '');
+      target.pathname =
+        basePath && (destination.pathname === basePath || destination.pathname.startsWith(`${basePath}/`))
+          ? destination.pathname
+          : `${basePath}${destination.pathname}`;
+      stripProductLaunchParams(target);
+      for (const [key, value] of destination.searchParams) {
+        target.searchParams.set(key, value);
+      }
+      target.hash = destination.hash;
+      reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
+      window.open(target.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const orgId = new URLSearchParams(current.search).get('orgId');
+    if (orgId && !destination.searchParams.has('orgId')) {
+      destination.searchParams.set('orgId', orgId);
+    }
+    const subpath = config.appSubUrl ?? '';
+    if (subpath && (destination.pathname === subpath || destination.pathname.startsWith(`${subpath}/`))) {
+      destination.pathname = destination.pathname.slice(subpath.length) || '/';
+    }
+    reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
+    onLaunch?.();
+    if (sidebarState.getIsSidebarMounted() && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
+      getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
+    }
+    panelModeManager.setModeTransient('sidebar');
+    locationService.push(`${destination.pathname}${destination.search}${destination.hash}`);
+    return;
+  }
+  const url =
+    mode === 'instance'
+      ? new URL(page ?? `${current.pathname}${current.search}${current.hash}`, window.location.origin)
+      : parseKioskWebUrl(rule.targetUrl || window.location.origin, window.location.origin);
+  if (!url) {
+    return;
+  }
+  if (mode === 'presentation') {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/`;
+    url.search = '';
+    url.hash = '';
+    if (page) {
+      url.searchParams.set('page', page);
+    }
+  } else {
+    const orgId = new URLSearchParams(current.search).get('orgId');
+    if (orgId && !url.searchParams.has('orgId')) {
+      url.searchParams.set('orgId', orgId);
+    }
+    stripPathfinderParams(url);
+  }
+  const sessionId = getKioskSessionId() ?? crypto.randomUUID();
+  const kioskName = getKioskName() ?? 'unknown';
+
+  reportAppInteraction(UserInteraction.KioskDemoStarted, {
+    kiosk_session_id: sessionId,
+    kiosk_name: kioskName,
+    guide_url: rule.url,
+    guide_title: rule.title,
+    guide_type: rule.type,
+    launch_mode: mode,
+    target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
+  });
+
+  if (!prepared) {
+    url.searchParams.set('doc', rule.url);
+  }
+  url.searchParams.set('kiosk_session', sessionId);
+  url.searchParams.set('kiosk_name', kioskName);
+  url.searchParams.set('source', 'kiosk_session');
+  if (rule.type === 'learning-journey') {
+    url.searchParams.set('type', 'learning-journey');
+  }
+  if (mode === 'instance') {
+    window.__pathfinderKioskSessionId = sessionId;
+    window.__pathfinderKioskName = kioskName;
+    if (prepared && (panelModeManager.getMode() === 'floating' || isExtensionSidebarOwnedByOther(pluginJson.id))) {
+      panelModeManager.setPendingGuide({
+        url: prepared.url,
+        title: prepared.title,
+        type: prepared.type,
+        packageInfo: prepared.packageInfo,
+        preparedContent: prepared.preparedContent,
+        source: 'kiosk_session',
+      });
+      onLaunch?.();
+      panelModeManager.setModeTransient('floating');
+      locationService.push(`${url.pathname}${url.search}${url.hash}`);
+      document.dispatchEvent(new CustomEvent(REQUEST_FLOATING_GUIDE_EVENT));
+      return;
+    }
+    onLaunch?.();
+    panelModeManager.setModeTransient('sidebar');
+    locationService.push(`${url.pathname}${url.search}${url.hash}`);
+    if (prepared) {
+      const launchKey = guideLaunchStore.stage({
+        url: prepared.url,
+        preparedContent: prepared.preparedContent,
+        packageInfo: prepared.packageInfo,
+      });
+      if (sidebarState.getIsSidebarMounted()) {
+        document.dispatchEvent(
+          new CustomEvent(AUTO_OPEN_DOCS_EVENT, {
+            detail: { url: prepared.url, title: prepared.title, source: 'kiosk_session', launchKey },
+          })
+        );
+      } else {
+        sidebarState.setPendingOpenSource('kiosk_session', 'auto-open');
+        sidebarState.openSidebar('Interactive learning', {
+          url: prepared.url,
+          title: prepared.title,
+          timestamp: Date.now(),
+        });
+        linkInterceptionState.addToQueue({
+          url: prepared.url,
+          title: prepared.title,
+          timestamp: Date.now(),
+          launchKey,
+        });
+      }
+    }
+  } else {
+    window.open(url.toString(), '_blank', 'noopener,noreferrer');
+  }
+}
+
+function stripProductLaunchParams(url: URL): void {
+  for (const param of PATHFINDER_PARAMS) {
+    if (param !== 'page' && param !== 'type' && param !== 'source') {
+      url.searchParams.delete(param);
+    }
+  }
+}

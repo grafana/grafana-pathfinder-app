@@ -4,6 +4,10 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
+import type { JsonBlock } from '../../types/json-guide.types';
+import { createChoiceProgressModel } from '../../lib/guide-stats/choice-progress';
+import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { evictAllGuideIndexes, publishGuideIndex } from '../../global-state/active-guide-index';
 import { MarkCompleteFooter } from './MarkCompleteFooter';
 
 jest.mock('@grafana/i18n', () => ({
@@ -11,19 +15,28 @@ jest.mock('@grafana/i18n', () => ({
     vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_m, name) => String(vars[name])) : fallback,
 }));
 
+let mockChoiceResponses: {
+  responses: Record<string, string>;
+  getResponse: (name: string) => string | undefined;
+  setResponse: jest.Mock;
+  isLoading: boolean;
+} | null = null;
+jest.mock('../../docs-retrieval', () => ({ useGuideResponsesOptional: () => mockChoiceResponses }));
+
 const reportAppInteraction = jest.fn();
 jest.mock('../../lib/analytics', () => ({
   ...jest.requireActual('../../lib/analytics'),
   reportAppInteraction: (...args: unknown[]) => reportAppInteraction(...args),
 }));
 
-const markStorage = { get: jest.fn(), set: jest.fn(), clear: jest.fn() };
+const markStorage = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), getChoiceCompletionKeys: jest.fn(() => []) };
 const setCompletionPercentage = jest.fn();
 jest.mock('../../lib/user-storage', () => ({
   guideCompletionMarkStorage: {
     get: (...a: unknown[]) => markStorage.get(...a),
     set: (...a: unknown[]) => markStorage.set(...a),
     clear: (...a: unknown[]) => markStorage.clear(...a),
+    getChoiceCompletionKeys: () => markStorage.getChoiceCompletionKeys(),
   },
   interactiveCompletionStorage: { set: (...a: unknown[]) => setCompletionPercentage(...a) },
 }));
@@ -78,6 +91,7 @@ function liveRegions(): Element[] {
 beforeEach(() => {
   jest.clearAllMocks();
   percentage = 25;
+  mockChoiceResponses = null;
   notifyProgress = undefined;
   ambientKey = 'guide-key';
   progressKeys.length = 0;
@@ -94,6 +108,62 @@ async function clickWhenReady(): Promise<void> {
 }
 
 describe('MarkCompleteFooter', () => {
+  describe('choice paths', () => {
+    const blocks: JsonBlock[] = [
+      {
+        type: 'input',
+        inputType: 'checkbox-group',
+        prompt: 'Which signals?',
+        variableName: 'signals',
+        required: true,
+        choices: [{ id: 'logs', text: 'Logs' }],
+      },
+      {
+        type: 'section',
+        id: 'logs',
+        requirements: ['var-signals:includes:logs'],
+        whenRequirementsUnmet: 'hide',
+        blocks: [{ type: 'markdown', id: 'logs-step', content: 'Logs' }],
+      },
+    ];
+    beforeEach(() => {
+      const index = computeGuideBlockIndex(blocks);
+      publishGuideIndex({
+        contentKey: 'guide-key',
+        index,
+        denominatorSource: 'live-pre-inlining',
+        choiceModel: createChoiceProgressModel(blocks, index),
+        responses: {},
+      });
+      mockChoiceResponses = { responses: {}, getResponse: () => undefined, setResponse: jest.fn(), isLoading: false };
+    });
+    afterEach(() => evictAllGuideIndexes());
+
+    it('disables guide completion until a required choice is answered', async () => {
+      render(<MarkCompleteFooter context="guide" />);
+      const button = await screen.findByTestId(testIds.markComplete.button);
+      await waitFor(() => expect(markStorage.get).toHaveBeenCalled());
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+      expect(markStorage.set).not.toHaveBeenCalled();
+    });
+
+    it('stores a path-specific completion snapshot and re-arms after the path expands', async () => {
+      mockChoiceResponses!.responses = { signals: 'logs' };
+      render(<MarkCompleteFooter context="guide" />);
+      await clickWhenReady();
+      expect(markStorage.set).toHaveBeenCalledWith('guide-key', true, expect.arrayContaining(['logs-step']));
+      expect(mockChoiceResponses!.setResponse).not.toHaveBeenCalled();
+      markStorage.get.mockResolvedValue(true);
+      percentage = 100;
+      await act(async () => notifyProgress?.());
+      await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
+      percentage = 50;
+      await act(async () => notifyProgress?.());
+      await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
+    });
+  });
+
   it('records exactly one completion and one analytics event per click', async () => {
     const onMarkComplete = jest.fn();
     render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
@@ -106,8 +176,75 @@ describe('MarkCompleteFooter', () => {
       interaction_location: 'content_footer',
       completion_context: 'guide',
       completion_percentage_before: 25,
+      block_progress_rule_version: 'block-position-v1',
     });
     await waitFor(() => expect(markStorage.set).toHaveBeenCalledWith('guide-key', true));
+  });
+
+  it("carries the reader's position in the path on a milestone", async () => {
+    render(
+      <MarkCompleteFooter context="milestone" currentMilestone={2} totalMilestones={5} onMarkComplete={jest.fn()} />
+    );
+
+    await clickWhenReady();
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.MarkCompleteClicked,
+      expect.objectContaining({ current_milestone: 2, total_milestones: 5 })
+    );
+  });
+
+  it('sends no milestone position for a standalone guide', async () => {
+    render(<MarkCompleteFooter context="guide" currentMilestone={2} totalMilestones={5} />);
+
+    await clickWhenReady();
+
+    const properties = jest.mocked(reportAppInteraction).mock.calls[0]![1];
+    expect(properties).not.toHaveProperty('current_milestone');
+    expect(properties).not.toHaveProperty('total_milestones');
+  });
+
+  describe('block counts', () => {
+    const index = computeGuideBlockIndex([
+      { type: 'markdown' },
+      { type: 'section', id: 'setup', blocks: [{ type: 'interactive' }, { type: 'markdown' }] },
+    ]);
+
+    afterEach(() => {
+      evictAllGuideIndexes();
+    });
+
+    it("carries the guide's counts when its frozen index has published", async () => {
+      publishGuideIndex({ contentKey: 'guide-key', index, denominatorSource: 'live-pre-inlining' });
+      render(<MarkCompleteFooter context="guide" />);
+
+      await clickWhenReady();
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
+        interaction_location: 'content_footer',
+        completion_context: 'guide',
+        completion_percentage_before: 25,
+        block_progress_rule_version: 'block-position-v1',
+        guide_stats_version: 2,
+        total_block_count: 3,
+        completable_block_count: 1,
+        section_count: 1,
+      });
+    });
+
+    it('omits the counts when only another guide has an index', async () => {
+      publishGuideIndex({ contentKey: 'other-guide-key', index, denominatorSource: 'live-pre-inlining' });
+      render(<MarkCompleteFooter context="guide" />);
+
+      await clickWhenReady();
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
+        interaction_location: 'content_footer',
+        completion_context: 'guide',
+        completion_percentage_before: 25,
+        block_progress_rule_version: 'block-position-v1',
+      });
+    });
   });
 
   it('fires nothing on render or re-render', async () => {

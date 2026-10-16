@@ -108,6 +108,7 @@ export const DEFAULT_DEV_MODE_OPT_IN = false;
 
 // Org overrides are sparse in storage; defaults and rollout decisions remain system-owned.
 export interface PathfinderTenantSettings {
+  pathfinderEnabled: boolean;
   recommenderServiceUrl: string;
   tutorialUrl: string;
   // Terms and Conditions
@@ -152,6 +153,7 @@ export interface PathfinderTenantSettings {
  * rejects keys outside the tenant slice.
  */
 export const TENANT_SETTING_KEYS = [
+  'pathfinderEnabled',
   'recommenderServiceUrl',
   'tutorialUrl',
   'acceptedTermsAndConditions',
@@ -212,6 +214,7 @@ export type ResolvedPathfinderConfig = PathfinderTenantSettings & PathfinderUser
 // first is legacy-read-only (folded into devModeOptIn by the resolve layer), and
 // the second is provisioning's, not ours.
 export const getConfigWithDefaults = (config: PathfinderPluginConfig): ResolvedPathfinderConfig => ({
+  pathfinderEnabled: config.pathfinderEnabled ?? true,
   recommenderServiceUrl:
     config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
       ? config.recommenderServiceUrl
@@ -275,8 +278,6 @@ export const isRecommenderEnabled = (pluginConfig: PathfinderPluginConfig): bool
 export const getRecommenderServiceUrl = (config: PathfinderPluginConfig) =>
   getConfigWithDefaults(config).recommenderServiceUrl;
 export const getTutorialUrl = (config: PathfinderPluginConfig) => getConfigWithDefaults(config).tutorialUrl;
-export const getTermsAccepted = (config: PathfinderPluginConfig) =>
-  getConfigWithDefaults(config).acceptedTermsAndConditions;
 export const getTermsVersion = (config: PathfinderPluginConfig) => getConfigWithDefaults(config).termsVersion;
 
 // Get dev mode setting from config
@@ -284,10 +285,10 @@ export const getDevMode = (config: PathfinderPluginConfig) => config.devMode ?? 
 
 // Legacy exports for backward compatibility
 export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;
-export const DOCS_BASE_URL = DEFAULT_DOCS_BASE_URL;
 
 export enum ROUTES {
   Home = '',
   Context = 'context',
+  Browse = 'browse',
   FullScreen = 'fullscreen',
 }

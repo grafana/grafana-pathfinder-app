@@ -22,7 +22,10 @@
  *    pure and cannot consult the bundled repository to second-guess it.
  *  - A candidate key must survive `sanitizeContentKey` unchanged. That map is
  *    lossy, and `resetPath` clears the keys built here, so a rewritten value
- *    would name another guide's key and delete its progress.
+ *    would name another guide's key and delete its progress. If ANY candidate
+ *    of a member is rewritten, the member forms no key at all: dropping only
+ *    that candidate could leave a sibling shape that finds no record and
+ *    scores the member as an unopened zero.
  *  - The record is read by key PRESENCE, not value: the storage `get` returns
  *    0 for a missing key, which would collapse never-opened into zero.
  *  - A member the record cannot answer for is EXCLUDED and counted, never
@@ -133,13 +136,12 @@ function dedupe(values: readonly string[]): readonly string[] {
 }
 
 /**
- * Candidates that survive `sanitizeContentKey` unchanged. It strips `..` and
- * truncates at 200 characters, so a value it rewrites names a different
- * guide's key — and `resetPath` deletes the keys built here. Dropping the
- * candidate yields `'unresolved'` instead of someone else's record.
+ * Whether a candidate survives `sanitizeContentKey` unchanged. It strips `..`
+ * and truncates at 200 characters, so a value it rewrites names a different
+ * guide's key — and `resetPath` deletes the keys built here.
  */
-function normalizedCandidates(values: readonly string[]): readonly string[] {
-  return dedupe(values.filter((value) => sanitizeContentKey(value) === value));
+function isNormalizedCandidate(value: string): boolean {
+  return sanitizeContentKey(value) === value;
 }
 
 /**
@@ -186,16 +188,20 @@ function bundledLaunchShapes(url: string): readonly string[] {
  * `createCompositeResolver` precedence order. Keys within a group are launch
  * shapes of one guide and rank by percentage; groups rank by precedence. A
  * supplied `url` is one group — it is trusted as the guide the caller
- * resolved. A group whose candidates do not survive normalization is dropped,
- * so an id that cannot be keyed safely resolves as `'unresolved'`.
+ * resolved.
+ *
+ * If any candidate does not survive normalization the member has no groups,
+ * so it resolves as `'unresolved'` and is excluded from the mean. Dropping
+ * only the failing candidate, or only its group, is not enough: the record may
+ * be stored under exactly the dropped shape, and the surviving shapes would
+ * then find nothing and score a real record as an unopened zero.
  */
 function pathMemberContentKeyGroups(member: PathMember, pathBaseUrl?: string): ReadonlyArray<readonly string[]> {
-  const groups = member.url
-    ? [normalizedCandidates(bundledLaunchShapes(member.url))]
-    : pathBaseUrl
-      ? []
-      : idSchemeKeyGroups(member.id).map(normalizedCandidates);
-  return groups.filter((group) => group.length > 0);
+  const groups = member.url ? [bundledLaunchShapes(member.url)] : pathBaseUrl ? [] : idSchemeKeyGroups(member.id);
+  if (!groups.every((group) => group.every(isNormalizedCandidate))) {
+    return [];
+  }
+  return groups.map(dedupe);
 }
 
 /**

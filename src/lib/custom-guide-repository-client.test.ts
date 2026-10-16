@@ -16,11 +16,32 @@ jest.mock('./logging', () => ({
 }));
 
 import { getBackendSrv } from '@grafana/runtime';
-import { fetchCustomGuideRepository, invalidateCustomGuideRepositoryCache } from './custom-guide-repository-client';
+import {
+  fetchCustomGuideRepository,
+  fetchCustomGuideCatalogue,
+  invalidateCustomGuideRepositoryCache,
+} from './custom-guide-repository-client';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 
 const mockGet = jest.fn();
+
+it('preserves availability and refreshes a cached unavailable response without a wire change', async () => {
+  mockGet.mockResolvedValueOnce({ capability: { available: false, reason: 'upstream-503' }, guides: [] });
+  expect(await fetchCustomGuideCatalogue('stacks-123')).toEqual({
+    available: false,
+    reason: 'upstream-503',
+    entries: [],
+  });
+  await fetchCustomGuideCatalogue('stacks-123');
+  expect(mockGet).toHaveBeenCalledTimes(1);
+  mockGet.mockResolvedValueOnce({ capability: { available: true }, guides: [{ id: 'team', status: 'published' }] });
+  expect(await fetchCustomGuideCatalogue('stacks-123', { refresh: true })).toMatchObject({
+    available: true,
+    entries: [{ id: 'team' }],
+  });
+  expect(mockGet).toHaveBeenCalledTimes(2);
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -210,41 +231,6 @@ describe('fetchCustomGuideRepository', () => {
     await fetchCustomGuideRepository('stacks-123');
 
     expect(mockGet).toHaveBeenCalledTimes(1);
-  });
-
-  // The reason lands on a Faro event attribute and in the bridged log context,
-  // so every rejection shape must collapse to a token from the closed set.
-  it.each([
-    { shape: 'a top-level status', err: { status: 503, statusText: 'Service Unavailable' }, reason: 'http-503' },
-    { shape: 'a top-level statusCode', err: { statusCode: 418 }, reason: 'http-418' },
-    { shape: 'a nested data.statusCode', err: { data: { statusCode: 502 } }, reason: 'http-502' },
-    {
-      shape: 'status ahead of both statusCode shapes',
-      err: { status: 503, statusCode: 404, data: { statusCode: 500 } },
-      reason: 'http-503',
-    },
-    {
-      shape: 'statusCode ahead of data.statusCode',
-      err: { statusCode: 404, data: { statusCode: 500 } },
-      reason: 'http-404',
-    },
-    { shape: 'one below the low bound', err: { status: 99 }, reason: 'transport-error' },
-    { shape: 'the low bound', err: { status: 100 }, reason: 'http-100' },
-    { shape: 'the high bound', err: { status: 599 }, reason: 'http-599' },
-    { shape: 'one above the high bound', err: { status: 600 }, reason: 'transport-error' },
-    { shape: 'a wildly out-of-range status', err: { status: 99999 }, reason: 'transport-error' },
-    { shape: 'a negative status', err: { status: -503 }, reason: 'transport-error' },
-    { shape: 'a string status', err: { status: '503' }, reason: 'transport-error' },
-    { shape: 'a non-integer status', err: { data: { statusCode: 503.0000001 } }, reason: 'transport-error' },
-    { shape: 'no status at all', err: new Error('network error'), reason: 'transport-error' },
-  ])('records $reason for $shape', async ({ err, reason }) => {
-    mockGet.mockRejectedValue(err);
-
-    const result = await fetchCustomGuideRepository('stacks-123');
-
-    expect(result).toEqual([]);
-    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith(reason);
-    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue fetch failed', { reason });
   });
 
   // logging.ts sanitizes the log context but does not strip it, so anything put

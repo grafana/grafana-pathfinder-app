@@ -17,6 +17,7 @@ import { resetContentKeyForTests } from '../../global-state/content-key';
 import { evictAllGuideIndexes, getGuideIndex } from '../../global-state/active-guide-index';
 import { evictAllContentCaches, evictContentCache } from '../../global-state/completion-store';
 import { ContentRenderer } from './content-renderer';
+import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -54,7 +55,7 @@ function PanelLike({ content }: { content: RawContent }) {
     window.__DocsPluginActiveTabUrl = content.url;
   }, [content.url]);
 
-  return <ContentRenderer key={content.url} content={content} />;
+  return <ContentRenderer completion={UNTRACKED_COMPLETION} key={content.url} content={content} />;
 }
 
 beforeEach(() => {
@@ -120,10 +121,12 @@ describe('ContentRenderer — the frozen block index', () => {
     // first edit, and the previewed percentage would never track further
     // edits — pf-cutover-preview-index-stale-on-edit.
     it('republishes when the previewed content changes, without remounting', () => {
-      const { rerender } = render(<ContentRenderer content={makeContent(previewUrl, 3)} />);
+      const { rerender } = render(
+        <ContentRenderer completion={UNTRACKED_COMPLETION} content={makeContent(previewUrl, 3)} />
+      );
       expect(getGuideIndex(previewUrl)?.index.totalBlockCount).toBe(3);
 
-      rerender(<ContentRenderer content={makeContent(previewUrl, 5)} />);
+      rerender(<ContentRenderer completion={UNTRACKED_COMPLETION} content={makeContent(previewUrl, 5)} />);
 
       expect(getGuideIndex(previewUrl)?.index.totalBlockCount).toBe(5);
     });

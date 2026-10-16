@@ -248,8 +248,7 @@ export function getConversionWarning(source: JsonBlock, targetType: BlockType): 
     if (field === sourceContentField && targetContentField) {
       return false;
     }
-    // Check if target knows this field
-    return !targetKnownFields.has(field);
+    return (field === 'choices' && sourceType !== targetType) || !targetKnownFields.has(field);
   });
 
   if (lostFields.length === 0) {
@@ -311,7 +310,13 @@ export function convertBlockType(source: JsonBlock, targetType: BlockType): Json
   const targetKnownFields = KNOWN_FIELDS[targetType];
   if (targetKnownFields) {
     for (const [key, value] of Object.entries(sourceRecord)) {
-      if (key !== 'type' && value !== undefined && targetKnownFields.has(key) && !(key in converted)) {
+      if (
+        key !== 'type' &&
+        key !== 'choices' &&
+        value !== undefined &&
+        targetKnownFields.has(key) &&
+        !(key in converted)
+      ) {
         converted[key] = value;
       }
     }

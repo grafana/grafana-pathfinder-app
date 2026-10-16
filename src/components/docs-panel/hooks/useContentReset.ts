@@ -7,6 +7,7 @@ import {
   getContentTypeForAnalytics,
   tabTypeToContentType,
   enrichWithStepContext,
+  type ResetScope,
 } from '../../../lib/analytics';
 import { logger } from '../../../lib/logging';
 import { resolveActiveMilestoneSlug } from '../../../docs-retrieval';
@@ -29,16 +30,30 @@ export function useContentReset({ model }: UseContentResetOptions) {
             content_url: analyticsUrl,
             content_type: getContentTypeForAnalytics(analyticsUrl, tabTypeToContentType(activeTab?.type)),
             interaction_location: 'docs_content_meta_header',
+            reset_scope: 'guide' satisfies ResetScope,
           })
         );
+
+        // trackMemberBaseUrl fallback: mirrors recordGuideCompletionForSurface
+        // (the writer) exactly. A track-only guide carries no learningJourney
+        // (COMPLETION-MODEL.md decision 10), so without this fallback the
+        // slug never resolves, resetGuideProgress falls through to the
+        // manifest-preferring identity, and — because metadata.packageManifest
+        // for a track-only guide load is the RETAINED PARENT path's manifest,
+        // not this guide's own — the reset invalidates the parent path's
+        // completion guard instead of this guide's, while the guide's own
+        // durable completion fact (keyed by this same slug) is untouched.
+        const journeyBaseUrl =
+          activeTab?.content?.metadata?.learningJourney?.baseUrl ?? activeTab?.content?.metadata?.trackMemberBaseUrl;
 
         await resetGuideProgress(progressKey, {
           packageManifest: activeTab?.content?.metadata?.packageManifest,
           repository: activeTab?.content?.metadata?.repository,
           milestoneSlug: resolveActiveMilestoneSlug({
             currentUrl: activeTab?.currentUrl,
-            journeyBaseUrl: activeTab?.content?.metadata?.learningJourney?.baseUrl,
+            journeyBaseUrl,
           }),
+          journeyBaseUrl,
         });
 
         // An internal reload does not request alignment for the fresh guide.

@@ -1,7 +1,7 @@
 /**
- * Go <-> TypeScript contract ratchet for the four App Platform response
+ * Go <-> TypeScript contract ratchet for the App Platform response
  * envelopes: `/package-recommendations`, `/custom-guide-repository`,
- * `/completion-records/my`, `/completion-records/capability`.
+ * `/custom-guides`, `/completion-records/my`, `/completion-records/capability`, `/assignments/my`.
  *
  * The boundary is a process boundary, so no compiler can couple the two
  * descriptions of these shapes. `pkg/plugin/contract_fixtures_test.go` captures
@@ -143,7 +143,7 @@ function normalizedZodWireType(schema: z.core.$ZodType): string {
   if (schema instanceof z.ZodNullable) {
     return `nullable<${normalizedZodWireType(schema.unwrap())}>`;
   }
-  if (schema instanceof z.ZodString) {
+  if (schema instanceof z.ZodString || schema instanceof z.ZodEnum) {
     return 'string';
   }
   if (schema instanceof z.ZodBoolean) {

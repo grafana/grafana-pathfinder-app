@@ -15,6 +15,8 @@ export interface SequenceErrorClassification {
 export type RecommenderErrorType = 'unavailable' | 'rate-limit' | 'other';
 export type RecommenderOutcome = 'ok' | RecommenderErrorType;
 
+export type RecommendCompletionsOutcome = 'ok' | 'disabled' | 'unavailable' | 'timeout' | 'invalid';
+
 export type ContentFetchTier = 'bundled' | 'backend-guide' | 'content-json' | 'unstyled-html' | 'other';
 export type ContentFetchOutcome = 'ok' | 'error';
 
@@ -27,13 +29,18 @@ export type CompletionWriteDegradation =
   | 'eviction'
   | 'expired-drop'
   | 'enqueue-failed'
-  | 'drain-failed';
+  | 'drain-failed'
+  | 'partial-unsupported-drop';
 
 export type KioskCatalogTier = 'override' | 'configured' | 'generic' | 'bundled';
 
 export const TELEMETRY_EVENTS = {
+  guideRequest: 'pathfinder_guide_request',
+  guideRender: 'pathfinder_guide_render',
+  packageIndex: 'pathfinder_package_index',
   kioskCatalogLoaded: 'pathfinder_kiosk_catalog_loaded',
   recommenderFallback: 'pathfinder_recommender_fallback',
+  recommendCompletions: 'pathfinder_recommend_completions',
   contentFetchFallback: 'pathfinder_content_fetch_fallback',
   requirementsExhausted: 'pathfinder_requirements_exhausted',
   sequenceActionError: 'pathfinder_sequence_action_error',
@@ -42,12 +49,17 @@ export const TELEMETRY_EVENTS = {
   sessionReplaySamplingFallback: 'pathfinder_session_replay_sampling_fallback',
   customGuideCatalogueUnavailable: 'pathfinder_custom_guide_catalogue_unavailable',
   sandboxUnavailable: 'pathfinder_sandbox_unavailable',
+  proxyFailure: 'pathfinder_proxy_failure',
   settingsStoreResolved: 'pathfinder_settings_store_resolved',
   gcxCredentialDegraded: 'pathfinder_gcx_credential_degraded',
+  assignmentsUnavailable: 'pathfinder_assignments_unavailable',
+  assignmentTargetUnresolved: 'pathfinder_assignment_target_unresolved',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {
+  startupSettings: 'pathfinder_startup_settings',
   recommender: 'pathfinder_recommender',
+  recommendCompletionsWait: 'pathfinder_recommend_completions_wait',
   contentFetch: 'pathfinder_content_fetch',
   step: 'pathfinder_step',
   requirements: 'pathfinder_requirements',

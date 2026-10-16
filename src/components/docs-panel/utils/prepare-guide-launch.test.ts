@@ -1,3 +1,4 @@
+import { beginGuideLoad, finishGuideLoad } from '../../../lib/telemetry/guide-load';
 import { prepareGuideLaunch } from './prepare-guide-launch';
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
@@ -64,6 +65,16 @@ describe('prepareGuideLaunch', () => {
     jest.clearAllMocks();
     mockIsPackage.mockReturnValue(false);
     mockInline.mockImplementation((guide: JsonGuide) => realInlineSnippetRefs(guide, neverResolvingResolver));
+  });
+
+  it('preserves the caller-owned attempt through fetching and the prepared handoff', async () => {
+    const url = 'https://grafana.com/docs/x';
+    const loadContext = beginGuideLoad(url);
+    fetchResolves({ id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'hi' }] });
+    const result = await prepareGuideLaunch(url, { title: 'X', source: 'home_page', loadContext });
+    expect(mockLoad).toHaveBeenCalledWith(url, expect.objectContaining({ loadContext }));
+    expect(result.ok && result.launch.preparedContent.loadContext).toBe(loadContext);
+    finishGuideLoad(loadContext, 'cancelled');
   });
 
   it('fetches the content exactly once', async () => {
@@ -151,6 +162,18 @@ describe('prepareGuideLaunch', () => {
     if (result.ok) {
       expect(result.launch.requiresGrafanaUi).toBe(true);
     }
+  });
+
+  it('rejects unresolved snippets when preparing an input handoff', async () => {
+    const guide: JsonGuide = { id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'Text' }] };
+    fetchResolves(guide);
+    mockInline.mockResolvedValue({ guide, unresolvedSnippetIds: ['missing-snippet'] });
+    const result = await prepareGuideLaunch('https://grafana.com/docs/x', {
+      title: 'X',
+      source: 'url_param',
+      requireResolvedSnippets: true,
+    });
+    expect(result).toMatchObject({ ok: false, errorCode: 'schema-invalid' });
   });
 
   it('returns a failure result (no surface committed) when the fetch fails', async () => {

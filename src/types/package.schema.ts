@@ -11,19 +11,22 @@ import { z } from 'zod';
 
 import { GuideStatsSummarySchema } from './guide-stats.schema';
 import { JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
-import type {
-  Author,
-  DependencyClause,
-  DependencyGraph,
-  DependencyList,
-  GraphEdge,
-  GraphEdgeType,
-  GraphNode,
-  GuideTargeting,
-  PackageType,
-  RepositoryEntry,
-  RepositoryJson,
-  TestEnvironment,
+import {
+  FOUNDATIONS_TRACK_ID,
+  type Author,
+  type DependencyClause,
+  type DependencyGraph,
+  type DependencyList,
+  type GraphEdge,
+  type GraphEdgeType,
+  type GraphNode,
+  type GuideTargeting,
+  type ManifestTrack,
+  type PackageType,
+  type Prerequisite,
+  type RepositoryEntry,
+  type RepositoryJson,
+  type TestEnvironment,
 } from './package.types';
 
 // ============ PACKAGE ID FORMAT ============
@@ -83,6 +86,28 @@ export const DependencyClauseSchema = z.union([
  */
 export const DependencyListSchema = z.array(DependencyClauseSchema) satisfies z.ZodType<DependencyList>;
 
+// ============ PREREQUISITE SCHEMA ============
+
+export const PrerequisiteSchema = z.object({
+  id: z.string().refine((value) => value.trim().length > 0, 'Prerequisite id must not be blank'),
+  label: z.string().refine((value) => value.trim().length > 0, 'Prerequisite label must not be blank'),
+  format: z.literal('markdown').optional(),
+}) satisfies z.ZodType<Prerequisite>;
+
+export const PrerequisitesSchema = z.array(PrerequisiteSchema).superRefine((prerequisites, ctx) => {
+  const seenIds = new Set<string>();
+  prerequisites.forEach(({ id }, index) => {
+    if (seenIds.has(id)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Prerequisite id "${id}" must be unique within the manifest`,
+        path: [index, 'id'],
+      });
+    }
+    seenIds.add(id);
+  });
+});
+
 // ============ AUTHOR SCHEMA ============
 
 /**
@@ -130,6 +155,27 @@ const DEFAULT_TEST_ENVIRONMENT = { tier: 'cloud' } as const;
 
 export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies z.ZodType<PackageType>;
 
+// ============ TRACK SCHEMA ============
+
+/**
+ * One named, independently-ordered guide sequence (Path Tracks RFC). `guides`
+ * is a track's own complete ordering, not a subset or reordering of
+ * `milestones`.
+ *
+ * Structurally tolerant, matching `milestones`' own base-schema treatment:
+ * several runtime loaders parse `ManifestJsonObjectSchema` directly, without
+ * `ManifestJsonSchema`'s superRefine, so a hard `.min(1)` here would fail
+ * that parse for any manifest with a malformed `tracks` entry. The
+ * non-empty-sequence invariant lives in Rule 5 below instead;
+ * `getManifestTracks` also drops an empty-`guides` track at runtime.
+ * @coupling Type: ManifestTrack
+ */
+export const ManifestTrackSchema = z.object({
+  trackId: z.string(),
+  label: z.string(),
+  guides: z.array(z.string()),
+}) satisfies z.ZodType<ManifestTrack>;
+
 // ============ MANIFEST SCHEMA (manifest.json) ============
 
 /**
@@ -146,6 +192,7 @@ export const ManifestJsonObjectSchema = z.looseObject({
   repository: z.string().default('interactive-tutorials'),
 
   milestones: z.array(z.string().min(1)).optional(),
+  tracks: z.array(ManifestTrackSchema).optional(),
 
   description: z.string().optional(),
   /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
@@ -165,9 +212,15 @@ export const ManifestJsonObjectSchema = z.looseObject({
   provides: z.array(z.string().min(1)).default([]),
   conflicts: z.array(z.string().min(1)).default([]),
   replaces: z.array(z.string().min(1)).default([]),
+  prerequisites: PrerequisitesSchema.optional(),
 
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.default(DEFAULT_TEST_ENVIRONMENT),
+
+  // No `.default()`, for the same reason as `startingLocation` above: a
+  // schema-supplied floor is indistinguishable from an authored one, and the
+  // docs panel would warn readers away from guides nobody version-gated.
+  minGrafanaVersion: z.string().optional(),
 
   /**
    * Generated, never hand-authored. Declared positively so a consumer reading a
@@ -195,17 +248,22 @@ export const ManifestJsonObjectSchema = z.looseObject({
  *
  * Field severity for CLI validation:
  * - ERROR: id, type (hard requirements)
- * - WARN: description, category, targeting, startingLocation (missing but recommended)
+ * - CLI-only ERROR: category (missing or blank; enforced by `validatePackage`, not this schema, so runtime reads stay lenient)
+ * - WARN: description, targeting, startingLocation (missing but recommended)
  * - INFO: repository, language, schemaVersion, dependency fields, author, testEnvironment (defaults applied)
  * - GENERATED: stats (stamped by `pathfinder-cli build-stats` or the block editor; never authored)
  * - Conditional ERROR: milestones required when type is "path" or "journey" (Rule 1)
  * - Conditional ERROR: milestones only valid when type is "path" or "journey" (Rule 2)
+ * - Conditional ERROR: tracks only valid when type is "path" (Rule 3)
+ * - Conditional ERROR: trackId must be unique within one manifest's tracks (Rule 4)
+ * - Conditional ERROR: each track's trackId, label, and guides must be non-empty (Rule 5)
  *
  * @coupling Type: ManifestJson
  */
 export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest, ctx) => {
   const isMetapackage = manifest.type === 'path' || manifest.type === 'journey';
   const hasMilestones = manifest.milestones !== undefined && manifest.milestones.length > 0;
+  const hasTracks = manifest.tracks !== undefined && manifest.tracks.length > 0;
 
   // Rule 1: path/journey requires milestones
   if (isMetapackage && !hasMilestones) {
@@ -222,6 +280,80 @@ export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest
       code: 'custom',
       message: `"milestones" is only valid when type is "path" or "journey", but type is "${manifest.type}" — either change type to "path" or "journey", or remove the milestones array`,
       path: ['type'],
+    });
+  }
+
+  // Rule 3: tracks requires path type specifically, not journey — RFC §6.1
+  // scopes tracks to paths only. A journey is a fixed reading order; tracks
+  // presenting the same content in a different order don't apply to it.
+  if (hasTracks && manifest.type !== 'path') {
+    ctx.addIssue({
+      code: 'custom',
+      message: `"tracks" is only valid when type is "path", but type is "${manifest.type}" — either change type to "path", or remove the tracks array`,
+      path: ['type'],
+    });
+  }
+
+  // Rule 4: trackId must be unique, and may not collide with the reserved
+  // Foundations sentinel — each track is independently addressable (cover-page
+  // tab selection, CRD projection), and a duplicate or reserved id makes that
+  // lookup ambiguous.
+  if (hasTracks) {
+    const seenTrackIds = new Set<string>();
+    manifest.tracks!.forEach((track, index) => {
+      if (track.trackId === FOUNDATIONS_TRACK_ID) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `"tracks" trackId cannot be "${FOUNDATIONS_TRACK_ID}" — that id is reserved for the default Foundations sequence`,
+          path: ['tracks', index, 'trackId'],
+        });
+      }
+      if (seenTrackIds.has(track.trackId)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `"tracks" contains duplicate trackId "${track.trackId}" — each track must have a unique trackId`,
+          path: ['tracks', index, 'trackId'],
+        });
+      }
+      seenTrackIds.add(track.trackId);
+    });
+  }
+
+  // Rule 5: trackId and label must be non-empty, and guides must be a
+  // non-empty sequence of non-empty strings — the same non-empty-sequence
+  // rule Rule 1 enforces for `milestones`.
+  if (hasTracks) {
+    manifest.tracks!.forEach((track, index) => {
+      if (track.trackId.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: '"tracks" trackId must be a non-empty string',
+          path: ['tracks', index, 'trackId'],
+        });
+      }
+      if (track.label.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: '"tracks" label must be a non-empty string',
+          path: ['tracks', index, 'label'],
+        });
+      }
+      if (track.guides.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'A track must declare at least one guide',
+          path: ['tracks', index, 'guides'],
+        });
+      }
+      track.guides.forEach((guideId, guideIndex) => {
+        if (guideId.length === 0) {
+          ctx.addIssue({
+            code: 'custom',
+            message: '"tracks" guides must not contain an empty string',
+            path: ['tracks', index, 'guides', guideIndex],
+          });
+        }
+      });
     });
   }
 });
@@ -243,12 +375,14 @@ const packageMetadataSchemaFields = {
   author: AuthorSchema.optional(),
   startingLocation: z.string().optional(),
   milestones: z.array(z.string()).optional(),
+  tracks: z.array(ManifestTrackSchema).optional(),
   depends: DependencyListSchema.optional(),
   recommends: DependencyListSchema.optional(),
   suggests: DependencyListSchema.optional(),
   provides: z.array(z.string()).optional(),
   conflicts: z.array(z.string()).optional(),
   replaces: z.array(z.string()).optional(),
+  prerequisites: PrerequisitesSchema.optional(),
 };
 
 // ============ REPOSITORY INDEX SCHEMA ============
@@ -266,6 +400,7 @@ export const RepositoryEntrySchema = z.looseObject({
   ...packageMetadataSchemaFields,
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.optional(),
+  minGrafanaVersion: z.string().optional(),
 
   /**
    * Carried from the manifest by `build-repository`, not forwarded as an
@@ -293,6 +428,7 @@ export const GraphEdgeTypeSchema = z.enum([
   'conflicts',
   'replaces',
   'milestones',
+  'tracks',
 ]) satisfies z.ZodType<GraphEdgeType>;
 
 /**

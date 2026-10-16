@@ -1,9 +1,10 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
 import type { JsonGuide } from './types';
+import { replaceEditorDraft } from './editor-draft';
 import { BlockEditor } from './BlockEditor';
 
 jest.mock('./BlockJsonEditor', () => {
@@ -26,6 +27,23 @@ jest.mock('./BlockJsonEditor', () => {
 describe('BlockEditor persistence', () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  it('loads a copied draft in visual mode and keeps subsequent edits across remounts', () => {
+    const guide: JsonGuide = {
+      id: 'private-copy',
+      title: 'Original (copy)',
+      blocks: [{ type: 'markdown', content: 'Copied block' }],
+    };
+    replaceEditorDraft(guide);
+    const { unmount } = render(<BlockEditor />);
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeChecked();
+    expect(screen.getByText('Copied block')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'Preview' }));
+    unmount();
+    render(<BlockEditor />);
+    expect(screen.getByRole('radio', { name: 'Preview' })).toBeChecked();
+    expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide.id).toBe('private-copy');
   });
 
   it('writes preview mode immediately when selected', () => {
@@ -73,7 +91,12 @@ describe('BlockEditor persistence', () => {
     expect(screen.getByTestId(testIds.blockEditor.jsonEditor)).toHaveAttribute('data-can-undo', 'true');
   });
 
-  it('persists a confirmed multi-selection delete and restores it with undo', async () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('persists a confirmed multi-selection delete and restores it with undo', () => {
+    jest.useFakeTimers();
     const guide: JsonGuide = {
       id: 'bulk-delete-guide',
       title: 'Bulk delete guide',
@@ -91,26 +114,23 @@ describe('BlockEditor persistence', () => {
     fireEvent.click(checkboxes[0]!);
     fireEvent.click(checkboxes[1]!);
     fireEvent.click(screen.getByTestId(testIds.blockEditor.bulkDeleteButton));
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+    const confirmation = screen.getByRole('dialog', { name: 'Delete selected blocks' });
+    fireEvent.click(within(confirmation).getByRole('button', { name: /^Delete$/ }));
 
     expect(container.querySelectorAll('[data-block-card]')).toHaveLength(1);
     expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
-    await waitFor(
-      () => {
-        const stored = JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!);
-        expect(stored.guide.blocks).toEqual([{ type: 'markdown', content: 'keep' }]);
-      },
-      { timeout: 3_000 }
-    );
+    act(() => {
+      jest.advanceTimersByTime(1_000);
+    });
+    expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide.blocks).toEqual([
+      { type: 'markdown', content: 'keep' },
+    ]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Undo: Delete 2 blocks' }));
+    fireEvent.click(screen.getByLabelText('Undo: Delete 2 blocks'));
     expect(container.querySelectorAll('[data-block-card]')).toHaveLength(3);
-    await waitFor(
-      () => {
-        const stored = JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!);
-        expect(stored.guide.blocks).toEqual(guide.blocks);
-      },
-      { timeout: 3_000 }
-    );
+    act(() => {
+      jest.advanceTimersByTime(1_000);
+    });
+    expect(JSON.parse(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)!).guide.blocks).toEqual(guide.blocks);
   });
 });

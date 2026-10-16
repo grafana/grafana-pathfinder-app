@@ -76,9 +76,7 @@ const flushPromises = async (): Promise<void> => {
 };
 
 const mkDeps = (overrides: Partial<Deps> = {}): Deps => ({
-  shouldMountSidebar: true,
   attemptAutoOpen: jest.fn(),
-  loadControlGroupDocPopup: jest.fn().mockResolvedValue({ showControlGroupDocPopup: jest.fn() }),
   ...overrides,
 });
 
@@ -114,6 +112,17 @@ describe('handlePathfinderDeepLink', () => {
     mockGetHistoryImpl = () => ({ listen: mockHistoryListen });
   });
 
+  it('keeps the route selected by kiosk without a page query that conflicts with app routing', async () => {
+    setPathname('/a/grafana-synthetic-monitoring-app/home');
+    setSearch('?doc=bundled%3Afoo&kiosk_session=test');
+    mockFindDocPage.mockReturnValue({ type: 'docs-page', url: 'bundled:foo', title: 'Foo', targetPage: '/explore' });
+    const deps = mkDeps();
+    handlePathfinderDeepLink(deps);
+    await flushPromises();
+    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).toHaveBeenCalled();
+  });
+
   it('returns false and does no work when no Pathfinder params are present', () => {
     setSearch('?keep=this');
     const deps = mkDeps();
@@ -147,20 +156,6 @@ describe('handlePathfinderDeepLink', () => {
     // so the inner `.then` callback settles before we assert.
     await flushPromises();
     expect(mockFindDocPage).toHaveBeenCalledTimes(1);
-  });
-
-  it('routes the control-group branch when sidebar is not mountable', async () => {
-    setSearch('?doc=bundled%3Afoo&source=tile_click');
-    const showControlGroupDocPopup = jest.fn();
-    const loadControlGroupDocPopup = jest.fn().mockResolvedValue({ showControlGroupDocPopup });
-    const deps = mkDeps({ shouldMountSidebar: false, loadControlGroupDocPopup });
-
-    expect(handlePathfinderDeepLink(deps)).toBe(true);
-    expect(window.location.search).toBe('');
-
-    await flushPromises();
-    expect(showControlGroupDocPopup).toHaveBeenCalledWith('tile_click');
-    expect(mockFindDocPage).not.toHaveBeenCalled();
   });
 
   it('sets floating panel mode and strips panelMode from the URL', () => {
@@ -236,6 +231,35 @@ describe('handlePathfinderDeepLink', () => {
     handlePathfinderDeepLink(mkDeps());
     expect(mockSetModePersisted).toHaveBeenCalledWith('sidebar');
     expect(window.location.search).toBe('');
+  });
+
+  it.each(['dem', 'customer-onboarding'])(
+    'attributes a kiosk deep link to its session and %s catalog',
+    async (name) => {
+      setSearch(`?doc=bundled:welcome&kiosk_session=session-new&kiosk_name=${name}`);
+      handlePathfinderDeepLink(mkDeps());
+      await flushPromises();
+      expect(mockSetPendingOpenSource).toHaveBeenCalledWith('kiosk_session', 'auto-open');
+      expect(window.__pathfinderKioskSessionId).toBe('session-new');
+      expect(window.__pathfinderKioskName).toBe(name);
+    }
+  );
+
+  it('does not reuse an old kiosk name for a legacy or invalid-name session link', async () => {
+    window.__pathfinderKioskName = 'previous-kiosk';
+    setSearch('?doc=bundled:welcome&kiosk_session=new&kiosk_name=private%20title');
+    handlePathfinderDeepLink(mkDeps());
+    await flushPromises();
+    expect(window.__pathfinderKioskName).toBe('unknown');
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('kiosk_session', 'auto-open');
+  });
+
+  it('preserves ordinary open attribution after a kiosk session', async () => {
+    window.__pathfinderKioskSessionId = 'previous';
+    setSearch('?doc=bundled:welcome&source=shared_link');
+    handlePathfinderDeepLink(mkDeps());
+    await flushPromises();
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('shared_link', 'auto-open');
   });
 
   it('leaves kiosk launch links to the kiosk handler even when panelMode is supplied', () => {

@@ -1,16 +1,19 @@
+import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 
-import {
-  useInteractiveElements,
-  useAutoDetection,
-  type DetectedActionEvent,
-  type MatchResult,
-} from '../../interactive-engine';
+import { useInteractiveElements } from '../../interactive-engine';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import {
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+  type StepSkipReason,
+} from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
@@ -22,11 +25,11 @@ import { testIds } from '../../constants/testIds';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
-import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { CompletionWaitingStatus } from './completion-waiting-status';
+import { resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
-import type { ProgressReason } from '../../global-state/progress-events';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 let anonymousMultiStepCounter = 0;
@@ -79,6 +82,7 @@ interface MultiStepUiStateInput {
   hasError: boolean;
   isChecking: boolean;
   isEnabled: boolean;
+  isWaiting?: boolean;
 }
 
 export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateValue {
@@ -93,6 +97,9 @@ export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateV
   }
   if (input.isCompleted) {
     return STEP_STATES.COMPLETED;
+  }
+  if (input.isWaiting) {
+    return STEP_STATES.WAITING;
   }
   if (input.isChecking) {
     return STEP_STATES.CHECKING;
@@ -119,6 +126,8 @@ async function checkActionRequirements(
       targetAction: action.targetAction,
       refTarget: action.refTarget || '',
       targetValue: action.targetValue,
+      lazyRender: action.lazyRender,
+      scrollContainer: action.scrollContainer,
       textContent: `multistep-action-${actionIndex + 1}`,
       tagName: 'span',
     };
@@ -156,14 +165,17 @@ async function checkActionRequirements(
   }
 }
 
-export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<boolean> }, InteractiveMultiStepProps>(
+export const InteractiveMultiStep = forwardRef<
+  { executeStep: (signal?: AbortSignal) => Promise<boolean> },
+  InteractiveMultiStepProps
+>(
   (
     {
       internalActions,
       stepId,
       isEligibleForChecking = true,
       isCurrentlyExecuting = false,
-      onStepComplete,
+      onStepComplete: notifyStepComplete,
       onStepReset, // New callback for individual step reset
       title, // Add title prop
       children,
@@ -172,7 +184,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       hints,
       requirements,
       objectives,
-      onComplete,
+      onComplete: notifyComplete,
       skippable = false, // Whether this multi-step can be skipped
       completeEarly = false, // Default to false - only mark early if explicitly set
       stepDelay = INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay, // Default delay between steps
@@ -208,22 +220,32 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const [isExecuting, setIsExecuting] = useState(false);
 
     // Completion lives in the store.
-    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
-    const isStandalone = !onStepComplete;
+    const { completed: storedCompleted, reason: storedReason } = useStepCompletion(renderedStepId, sectionId);
+    const isStandalone = !notifyStepComplete;
     // `reason` flows into the unified `pathfinder:progress` event so
     // downstream consumers can distinguish a normal completion
     // (`'manual'`) from a user-initiated skip (`'skipped'`). The
     // checker's own skip bridge writes `'skipped'` first; without this
     // reason plumbing the standalone store write here would silently
     // overwrite it with `'manual'`, making the event lie about intent.
-    const persistCompletion = useCallback(
-      (reason: ProgressReason = 'manual') => {
-        if (isStandalone) {
-          markStepCompleted(renderedStepId, sectionId, reason);
-        }
+    const observation = useObservedCompletion({
+      stepId: renderedStepId,
+      sectionId,
+      objectives,
+      actions: internalActions,
+      eligible: isEligibleForChecking && !disabled,
+      executing: isExecuting || isCurrentlyExecuting,
+      resetTrigger,
+      onStepComplete: notifyStepComplete,
+      onComplete: notifyComplete,
+      analytics: {
+        location: 'interactive_multi_step_auto',
+        targetAction: 'multistep',
+        refTarget: renderedStepId,
+        stepMeta: analyticsStepMeta,
       },
-      [isStandalone, renderedStepId, sectionId]
-    );
+    });
+    const { complete: persistCompletion, onStepComplete, onComplete } = observation;
     const persistReset = useCallback(() => {
       if (isStandalone) {
         resetStep(renderedStepId, sectionId);
@@ -233,11 +255,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const [failedStepIndex, setFailedStepIndex] = useState(-1); // Track which step failed for error display
     const [executionError, setExecutionError] = useState<string | null>(null);
 
-    // Track which internal actions have been auto-completed by user
-    const [autoCompletedActions, setAutoCompletedActions] = useState<Set<number>>(new Set());
-
     // Use ref for cancellation to avoid closure issues
     const isCancelledRef = React.useRef(false);
+    const executionControllerRef = React.useRef<AbortController | null>(null);
     // Set when the user cancels a controller-mode run, so the awaiting branch
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
     const controllerCancelledRef = React.useRef(false);
@@ -250,7 +270,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         persistReset();
         setExecutionError(null); // Also clear any execution errors
         setFailedStepIndex(-1); // Reset failed step tracking
-        setAutoCompletedActions(new Set()); // Clear auto-completed actions
         isCancelledRef.current = false; // Reset cancellation state
       }
     }, [resetTrigger, stepId, persistReset]);
@@ -285,20 +304,23 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for overall multi-step requirements and objectives
-    // Auto-completion when objectives are met is handled internally by useStepChecker
-    const checker = useStepChecker({
+    const rawChecker = useStepChecker({
+      observedCompletion: observation.completion,
       requirements,
-      objectives,
+      objectives: observation.managed ? undefined : objectives,
       hints,
       stepId: stepId || renderedStepId,
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
+      lazyRender: internalActions[0]?.lazyRender,
+      scrollContainer: internalActions[0]?.scrollContainer,
       disabled, // Pass through for auto-completion suppression
       sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
+    const checker = { ...rawChecker, isEnabled: rawChecker.isEnabled && !observation.waiting };
 
     const aiFixEnabled = useAiFixEnabled();
 
@@ -308,6 +330,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Create cancellation handler
     const handleMultiStepCancel = useCallback(() => {
       isCancelledRef.current = true;
+      executionControllerRef.current?.abort();
       // In controller mode the run is remote: release the awaitStepComplete waiter
       // so the spinner clears, and flag the cancel so the awaiting branch skips
       // its "not completed" toast.
@@ -316,169 +339,21 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     }, [controllerChannel, renderedStepId]);
 
     // Main execution logic (similar to InteractiveSection's sequence execution)
-    const executeStep = useCallback(async (): Promise<boolean> => {
-      // When called via ref (section execution), ignore disabled prop to avoid race conditions
-      // Only check if not enabled, completed, or already executing
-      if (!checker.isEnabled || (isCompletedWithObjectives && !allowCompletedRetryRef.current) || isExecuting) {
-        return false;
-      }
-
-      // Check objectives before executing internal actions (clarification 18)
-      if (checker.completionReason === 'objectives') {
-        persistCompletion();
-
-        // Notify parent if we have the callback (section coordination)
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
-
-        // Call the original onComplete callback if provided
-        if (onComplete) {
-          onComplete();
-        }
-
-        return true;
-      }
-
-      setIsExecuting(true);
-      setExecutionError(null);
-      setFailedStepIndex(-1); // Reset failed step tracking
-
-      isCancelledRef.current = false; // Reset ref as well
-      if (completeEarly) {
-        await waitForReactUpdates();
-        persistCompletion();
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
-        if (onComplete) {
-          onComplete();
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-
-      // Clear any existing highlights before starting multi-step execution
-      const { NavigationManager } = await import('../../interactive-engine');
-      const navigationManager = new NavigationManager();
-      navigationManager.clearAllHighlights();
-
-      // Check if we're already in a section blocking state (nested in a section)
-      const isNestedInSection = isSectionBlocking();
-      const multiStepId = stepId || renderedStepId;
-
-      // Only start blocking if we're not already in a blocking state (avoid double-blocking)
-      if (!isNestedInSection) {
-        // Create dummy data for blocking overlay
-        const dummyData: InteractiveElementData = {
-          refTarget: `multistep-${multiStepId}`,
-          targetAction: 'multistep',
-          targetValue: undefined,
-          requirements: undefined,
-          tagName: 'div',
-          textContent: title || 'Interactive Multi-Step',
-          timestamp: Date.now(),
-        };
-        startSectionBlocking(multiStepId, dummyData, handleMultiStepCancel);
-      }
-
-      try {
-        // Execute each internal action in sequence
-        for (let i = 0; i < internalActions.length; i++) {
-          const action = internalActions[i]!;
-
-          // Check for cancellation before each action
-          if (isCancelledRef.current) {
-            break;
-          }
-
-          if (!isInteractiveActionType(action.targetAction)) {
-            logger.error(`Unknown multi-step action: ${action.targetAction}`);
-            setFailedStepIndex(i);
-            setExecutionError(`Unsupported action "${action.targetAction}".`);
-            return false;
-          }
-          const targetAction = action.targetAction;
-          setCurrentActionIndex(i);
-
-          // Just-in-time requirements checking for this specific action
-          if (action.requirements) {
-            const requirementsResult = await checkActionRequirements(action, i, checkRequirementsFromData);
-            if (!requirementsResult.pass) {
-              logger.error(`Multi-step ${stepId}: Internal action ${i + 1} requirements failed`, {
-                explanation: requirementsResult.explanation,
-              });
-              setFailedStepIndex(i);
-              setExecutionError(requirementsResult.explanation || 'Action requirements not met');
-              return false;
-            }
-          }
-
-          // Execute the action (show first, then do)
-          try {
-            // Show mode (highlight what will be acted upon, with comment if available)
-            await executeInteractiveAction({
-              ...action,
-              targetAction,
-              buttonType: 'show',
-              fullScreenFallbackLocation,
-            });
-
-            // Delay between show and do with cancellation check
-            for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
-              if (isCancelledRef.current) {
-                break;
-              }
-              await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.multiStep.baseInterval));
-            }
-            if (isCancelledRef.current) {
-              continue;
-            } // Skip to cancellation check at loop start
-
-            // Do mode (actually perform the action)
-            const doOutcome = await executeInteractiveAction({
-              ...action,
-              targetAction,
-              buttonType: 'do',
-              fullScreenFallbackLocation,
-            });
-            if (doOutcome === 'error') {
-              setFailedStepIndex(i);
-              setExecutionError(`Step ${i + 1} did not complete successfully.`);
-              return false;
-            }
-
-            // Wait for DOM to settle after action
-            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-            await new Promise((resolve) => setTimeout(resolve, 200));
-
-            // Add delay between steps with cancellation check (but not after the last step)
-            if (i < internalActions.length - 1 && stepDelay > 0) {
-              const delaySteps = Math.ceil(stepDelay / INTERACTIVE_CONFIG.delays.multiStep.baseInterval); // Convert delay to base interval steps
-              for (let j = 0; j < delaySteps; j++) {
-                if (isCancelledRef.current) {
-                  break;
-                }
-                await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.multiStep.baseInterval));
-              }
-            }
-          } catch (actionError) {
-            logger.error(`Multi-step ${stepId}: Internal action ${i + 1} execution failed`, { error: actionError });
-            const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
-            setFailedStepIndex(i);
-            setExecutionError(`Step ${i + 1} failed: ${errorMessage}`);
-            return false;
-          }
-        }
-
-        // Check if execution was cancelled
-        if (isCancelledRef.current) {
+    const executeStep = useCallback(
+      async (parentSignal?: AbortSignal): Promise<boolean> => {
+        // When called via ref (section execution), ignore disabled prop to avoid race conditions
+        // Only check if not enabled, completed, or already executing
+        if (
+          !checker.isEnabled ||
+          (isCompletedWithObjectives && !allowCompletedRetryRef.current) ||
+          isExecuting ||
+          executionControllerRef.current
+        ) {
           return false;
         }
 
-        // NEW: If NOT completeEarly, mark complete after actions (normal flow)
-        if (!completeEarly) {
-          // All internal actions completed successfully
+        // Check objectives before executing internal actions (clarification 18)
+        if (checker.completionReason === 'objectives') {
           persistCompletion();
 
           // Notify parent if we have the callback (section coordination)
@@ -490,45 +365,252 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           if (onComplete) {
             onComplete();
           }
+
+          return true;
         }
 
-        return true;
-      } catch (error) {
-        logger.error(`Multi-step execution failed: ${stepId}`, { error });
-        const errorMessage = error instanceof Error ? error.message : 'Multi-step execution failed';
-        setExecutionError(errorMessage);
-        return false;
-      } finally {
-        // Stop blocking overlay if we started it (not nested in section)
-        if (!isNestedInSection) {
-          stopSectionBlocking(multiStepId);
-        }
+        setIsExecuting(true);
+        setExecutionError(null);
+        setFailedStepIndex(-1); // Reset failed step tracking
 
-        setIsExecuting(false);
-        setCurrentActionIndex(-1);
-      }
-    }, [
-      checker.isEnabled,
-      isCompletedWithObjectives,
-      isExecuting,
-      completeEarly,
-      stepId,
-      internalActions,
-      executeInteractiveAction,
-      checkRequirementsFromData,
-      onStepComplete,
-      onComplete,
-      checker.completionReason,
-      stepDelay,
-      startSectionBlocking,
-      stopSectionBlocking,
-      isSectionBlocking,
-      handleMultiStepCancel,
-      title,
-      renderedStepId,
-      persistCompletion,
-      fullScreenFallbackLocation,
-    ]);
+        isCancelledRef.current = false;
+        const controller = new AbortController();
+        executionControllerRef.current = controller;
+        const cancelFromParent = () => {
+          isCancelledRef.current = true;
+          controller.abort();
+        };
+        parentSignal?.addEventListener('abort', cancelFromParent, { once: true });
+        if (parentSignal?.aborted) {
+          cancelFromParent();
+        }
+        try {
+          if (controller.signal.aborted) {
+            return false;
+          }
+          if (completeEarly) {
+            await waitForReactUpdates();
+            if (controller.signal.aborted) {
+              return false;
+            }
+            persistCompletion('manual', true);
+            if (onStepComplete && stepId) {
+              onStepComplete(stepId);
+            }
+            if (onComplete) {
+              onComplete();
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+
+          // Clear any existing highlights before starting multi-step execution
+          const { NavigationManager } = await import('../../interactive-engine');
+          const navigationManager = new NavigationManager();
+          navigationManager.clearAllHighlights();
+
+          // Check if we're already in a section blocking state (nested in a section)
+          const isNestedInSection = isSectionBlocking();
+          const multiStepId = stepId || renderedStepId;
+
+          // Only start blocking if we're not already in a blocking state (avoid double-blocking)
+          if (!isNestedInSection) {
+            // Create dummy data for blocking overlay
+            const dummyData: InteractiveElementData = {
+              refTarget: `multistep-${multiStepId}`,
+              targetAction: 'multistep',
+              targetValue: undefined,
+              requirements: undefined,
+              tagName: 'div',
+              textContent: title || 'Interactive Multi-Step',
+              timestamp: Date.now(),
+            };
+            startSectionBlocking(multiStepId, dummyData, handleMultiStepCancel);
+          }
+
+          try {
+            // Execute each internal action in sequence
+            for (let i = 0; i < internalActions.length; i++) {
+              const action = internalActions[i]!;
+
+              // Check for cancellation before each action
+              if (isCancelledRef.current) {
+                break;
+              }
+
+              if (!isInteractiveActionType(action.targetAction)) {
+                logger.error(`Unknown multi-step action: ${action.targetAction}`);
+                setFailedStepIndex(i);
+                setExecutionError(`Unsupported action "${action.targetAction}".`);
+                return false;
+              }
+              const targetAction = action.targetAction;
+              setCurrentActionIndex(i);
+
+              // Just-in-time requirements checking for this specific action
+              if (action.requirements) {
+                if (action.lazyRender) {
+                  await resolveWithRetry(action.refTarget ?? '', action.targetAction, {
+                    delays: [],
+                    lazyRender: true,
+                    scrollContainer: action.scrollContainer,
+                    signal: controller.signal,
+                  });
+                }
+                const requirementsResult = await checkActionRequirements(action, i, checkRequirementsFromData);
+                controller.signal.throwIfAborted();
+                if (!requirementsResult.pass) {
+                  logger.error(`Multi-step ${stepId}: Internal action ${i + 1} requirements failed`, {
+                    explanation: requirementsResult.explanation,
+                  });
+                  setFailedStepIndex(i);
+                  setExecutionError(requirementsResult.explanation || 'Action requirements not met');
+                  return false;
+                }
+              }
+
+              // Execute the action (show first, then do)
+              try {
+                // Show mode (highlight what will be acted upon, with comment if available)
+                const showOutcome = await executeInteractiveAction({
+                  ...action,
+                  signal: controller.signal,
+                  targetAction,
+                  buttonType: 'show',
+                  fullScreenFallbackLocation,
+                });
+
+                if (showOutcome === 'error') {
+                  if (!controller.signal.aborted) {
+                    setFailedStepIndex(i);
+                    setExecutionError(`Step ${i + 1} could not be shown.`);
+                  }
+                  return false;
+                }
+                // Delay between show and do with cancellation check
+                for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
+                  if (isCancelledRef.current) {
+                    break;
+                  }
+                  await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.multiStep.baseInterval));
+                }
+                if (isCancelledRef.current) {
+                  continue;
+                } // Skip to cancellation check at loop start
+
+                // Do mode (actually perform the action)
+                const doOutcome = await executeInteractiveAction({
+                  ...action,
+                  signal: controller.signal,
+                  targetAction,
+                  buttonType: 'do',
+                  fullScreenFallbackLocation,
+                });
+                if (controller.signal.aborted) {
+                  return false;
+                }
+                if (doOutcome === 'error') {
+                  setFailedStepIndex(i);
+                  setExecutionError(`Step ${i + 1} did not complete successfully.`);
+                  return false;
+                }
+
+                // Wait for DOM to settle after action
+                await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                await new Promise((resolve) => setTimeout(resolve, 200));
+
+                // Add delay between steps with cancellation check (but not after the last step)
+                if (i < internalActions.length - 1 && stepDelay > 0) {
+                  const delaySteps = Math.ceil(stepDelay / INTERACTIVE_CONFIG.delays.multiStep.baseInterval); // Convert delay to base interval steps
+                  for (let j = 0; j < delaySteps; j++) {
+                    if (isCancelledRef.current) {
+                      break;
+                    }
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, INTERACTIVE_CONFIG.delays.multiStep.baseInterval)
+                    );
+                  }
+                }
+              } catch (actionError) {
+                if (controller.signal.aborted) {
+                  return false;
+                }
+                logger.error(`Multi-step ${stepId}: Internal action ${i + 1} execution failed`, { error: actionError });
+                const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
+                setFailedStepIndex(i);
+                setExecutionError(`Step ${i + 1} failed: ${errorMessage}`);
+                return false;
+              }
+            }
+
+            // Check if execution was cancelled
+            if (isCancelledRef.current) {
+              return false;
+            }
+
+            // NEW: If NOT completeEarly, mark complete after actions (normal flow)
+            if (!completeEarly) {
+              // All internal actions completed successfully
+              persistCompletion();
+
+              // Notify parent if we have the callback (section coordination)
+              if (onStepComplete && stepId) {
+                onStepComplete(stepId);
+              }
+
+              // Call the original onComplete callback if provided
+              if (onComplete) {
+                onComplete();
+              }
+            }
+
+            return true;
+          } catch (error) {
+            if (controller.signal.aborted) {
+              return false;
+            }
+            logger.error(`Multi-step execution failed: ${stepId}`, { error });
+            const errorMessage = error instanceof Error ? error.message : 'Multi-step execution failed';
+            setExecutionError(errorMessage);
+            return false;
+          } finally {
+            // Stop blocking overlay if we started it (not nested in section)
+            if (!isNestedInSection) {
+              stopSectionBlocking(multiStepId);
+            }
+          }
+        } finally {
+          setIsExecuting(false);
+          setCurrentActionIndex(-1);
+          parentSignal?.removeEventListener('abort', cancelFromParent);
+          if (executionControllerRef.current === controller) {
+            executionControllerRef.current = null;
+          }
+        }
+      },
+      [
+        checker.isEnabled,
+        isCompletedWithObjectives,
+        isExecuting,
+        completeEarly,
+        stepId,
+        internalActions,
+        executeInteractiveAction,
+        checkRequirementsFromData,
+        onStepComplete,
+        onComplete,
+        checker.completionReason,
+        stepDelay,
+        startSectionBlocking,
+        stopSectionBlocking,
+        isSectionBlocking,
+        handleMultiStepCancel,
+        title,
+        renderedStepId,
+        persistCompletion,
+        fullScreenFallbackLocation,
+      ]
+    );
 
     // Expose execute method for parent (sequence execution)
     useImperativeHandle(
@@ -538,104 +620,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       }),
       [executeStep]
     );
-
-    // Convert internalActions to ActionToDetect format for the auto-detection hook
-    const actionsToDetect = useMemo(
-      () =>
-        internalActions.map((action) => ({
-          targetAction: action.targetAction,
-          refTarget: action.refTarget || '',
-          targetValue: action.targetValue,
-        })),
-      [internalActions]
-    );
-
-    // Handler for auto-detected actions - tracks completion of each internal action
-    const handleMultiStepActionDetected = useCallback(
-      (result: MatchResult, _detectedAction: DetectedActionEvent) => {
-        if (!result.matched) {
-          return;
-        }
-
-        const matchedIndex = result.actionIndex;
-
-        // Skip if this action was already completed
-        if (autoCompletedActions.has(matchedIndex)) {
-          return;
-        }
-
-        // For sequential multi-steps: if a later action is detected, assume earlier actions
-        // were also completed (e.g., dropdown menu was opened before clicking an option)
-        // This handles cases where earlier clicks happened before auto-detection was enabled
-        const indicesToMark: number[] = [];
-        for (let i = 0; i <= matchedIndex; i++) {
-          if (!autoCompletedActions.has(i)) {
-            indicesToMark.push(i);
-          }
-        }
-
-        // Mark this action (and all preceding actions) as completed
-        setAutoCompletedActions((prev) => {
-          const newSet = new Set(prev);
-          for (const idx of indicesToMark) {
-            newSet.add(idx);
-          }
-          return newSet;
-        });
-
-        // Check if all actions are now completed
-        const newCompletedCount = autoCompletedActions.size + indicesToMark.length;
-        if (newCompletedCount >= internalActions.length) {
-          // Mark entire multi-step as completed
-          persistCompletion();
-
-          // Notify parent if we have the callback (section coordination)
-          if (onStepComplete && stepId) {
-            onStepComplete(stepId);
-          }
-
-          // Call the original onComplete callback if provided
-          if (onComplete) {
-            onComplete();
-          }
-
-          // Track auto-completion in analytics
-          reportAppInteraction(
-            UserInteraction.StepAutoCompleted,
-            buildInteractiveStepProperties(
-              {
-                target_action: 'multistep',
-                ref_target: renderedStepId,
-                interaction_location: 'interactive_multi_step_auto',
-                completion_method: 'auto_detected',
-                internal_actions_count: internalActions.length,
-              },
-              analyticsStepMeta
-            )
-          );
-        }
-      },
-      [
-        autoCompletedActions,
-        internalActions.length,
-        stepId,
-        onStepComplete,
-        onComplete,
-        renderedStepId,
-        analyticsStepMeta,
-        persistCompletion,
-      ]
-    );
-
-    // Use shared auto-detection hook for tracking user actions
-    useAutoDetection({
-      actions: actionsToDetect,
-      isEnabled: checker.isEnabled,
-      isCompleted: isCompletedWithObjectives,
-      isExecuting: isCurrentlyExecuting,
-      disabled,
-      onActionDetected: handleMultiStepActionDetected,
-    });
 
     // Handle "Do it" button click
     const handleDoAction = useCallback(async () => {
@@ -681,6 +665,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) =>
           setCurrentActionIndex(index)
         );
+        const completion = controllerChannel.awaitStepComplete(renderedStepId, runId);
         controllerChannel.post({
           kind: 'step-command',
           phase: 'do',
@@ -693,7 +678,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           },
         });
         try {
-          const finished = await controllerChannel.awaitStepComplete(renderedStepId, runId);
+          const finished = await completion;
           if (finished) {
             persistCompletion();
             if (onStepComplete && stepId) {
@@ -757,6 +742,30 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // setExecutionError is a stable React setter, isCancelledRef is a ref
     // — neither needs to appear in the deps array.
 
+    const markSkipped = checker.markSkipped;
+    const handleSkip = useCallback(
+      async (skipReason: StepSkipReason) => {
+        if (!markSkipped || storedReason === 'skipped') {
+          return;
+        }
+        await markSkipped();
+        setExecutionError(null);
+        setFailedStepIndex(-1);
+        persistCompletion('skipped');
+        reportStepSkipped(
+          { targetAction: 'multistep', interactionLocation: 'interactive_multi_step', skipReason },
+          analyticsStepMeta
+        );
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+      },
+      [markSkipped, storedReason, persistCompletion, analyticsStepMeta, onStepComplete, stepId, onComplete]
+    );
+
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
     const uiState = deriveMultiStepUiState({
       isCompleted: isCompletedWithObjectives,
@@ -765,6 +774,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       hasError: Boolean(executionError),
       isChecking: checker.isChecking,
       isEnabled: checker.isEnabled,
+      isWaiting: observation.waiting,
     });
 
     // Generate button title/tooltip based on current state
@@ -807,11 +817,14 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         data-test-substep-index={isExecuting ? currentActionIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking ? 'checking' : rawChecker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
+          {observation.waiting && (
+            <CompletionWaitingStatus id={renderedStepId} unmet={observation.unmet} onCheck={observation.retry} />
+          )}
           {children}
         </div>
 
@@ -834,18 +847,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               </Button>
               {skippable && (
                 <Button
-                  onClick={async () => {
-                    if (checker.markSkipped) {
-                      await checker.markSkipped();
-                      persistCompletion('skipped');
-                      if (onStepComplete && stepId) {
-                        onStepComplete(stepId);
-                      }
-                      if (onComplete) {
-                        onComplete();
-                      }
-                    }
-                  }}
+                  onClick={() => handleSkip('user')}
                   disabled={disabled || isAnyActionRunning}
                   size="sm"
                   variant="secondary"
@@ -996,20 +998,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 )}
               {skippable && (
                 <Button
-                  onClick={async () => {
-                    if (checker.markSkipped) {
-                      await checker.markSkipped();
-                      setExecutionError(null);
-                      setFailedStepIndex(-1);
-                      persistCompletion('skipped');
-                      if (onStepComplete && stepId) {
-                        onStepComplete(stepId);
-                      }
-                      if (onComplete) {
-                        onComplete();
-                      }
-                    }
-                  }}
+                  onClick={() => handleSkip('after_failure')}
                   size="sm"
                   variant="secondary"
                   className="interactive-guided-skip-btn"

@@ -3,6 +3,7 @@ import {
   guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
+  milestoneCompletionStorage,
 } from '../../../lib/user-storage';
 import { invalidateEmittedCompletion } from '../../../completion-records';
 import { resetGuideProgress } from './resetGuideProgress';
@@ -31,6 +32,7 @@ const mockInteractiveCompletionStorage = interactiveCompletionStorage as jest.Mo
   typeof interactiveCompletionStorage
 >;
 const mockGuideCompletionMarkStorage = guideCompletionMarkStorage as jest.Mocked<typeof guideCompletionMarkStorage>;
+const mockMilestoneCompletionStorage = milestoneCompletionStorage as jest.Mocked<typeof milestoneCompletionStorage>;
 
 describe('resetGuideProgress', () => {
   beforeEach(() => {
@@ -38,6 +40,7 @@ describe('resetGuideProgress', () => {
     mockInteractiveStepStorage.clearAllForContent.mockResolvedValue(undefined);
     mockInteractiveCompletionStorage.clear.mockResolvedValue(undefined);
     mockGuideCompletionMarkStorage.clear.mockResolvedValue(undefined);
+    mockMilestoneCompletionStorage.removeCompleted.mockResolvedValue(undefined);
   });
 
   it('clears persisted and cached progress and emits the cleared event', async () => {
@@ -94,5 +97,60 @@ describe('resetGuideProgress', () => {
     await resetGuideProgress('https://grafana.com/docs/learning-journeys/demo/milestone-2/');
 
     expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('interactive-tutorials', 'milestone-2');
+  });
+
+  // A per-milestone reset must also clear the legacy
+  // `milestoneCompletionStorage` record for the same slug — otherwise
+  // `backfillLegacyMilestoneCompletion` (learning-journey-helpers.ts) reads
+  // that still-populated record on the very next render and silently
+  // rewrites the just-reset milestone back to 100%.
+  it('clears the legacy milestoneCompletionStorage record when resetting a milestone', async () => {
+    await resetGuideProgress('https://grafana.com/docs/learning-journeys/demo/milestone-2/content.json', {
+      milestoneSlug: 'milestone-2',
+      journeyBaseUrl: 'https://grafana.com/docs/learning-journeys/demo/',
+    });
+
+    expect(mockMilestoneCompletionStorage.removeCompleted).toHaveBeenCalledWith(
+      'https://grafana.com/docs/learning-journeys/demo/',
+      'milestone-2',
+      ['https://grafana.com/docs/learning-journeys/demo/milestone-2/content.json']
+    );
+  });
+
+  it('does not touch milestoneCompletionStorage for an ordinary (non-milestone) reset', async () => {
+    await resetGuideProgress('bundled:e2e-test');
+
+    expect(mockMilestoneCompletionStorage.removeCompleted).not.toHaveBeenCalled();
+  });
+
+  // Defensive: milestoneSlug and journeyBaseUrl are set together by their one
+  // real caller (useContentReset.ts), but a future caller supplying one
+  // without the other must not call removeCompleted with an undefined arg.
+  it('does not touch milestoneCompletionStorage when milestoneSlug resolves but journeyBaseUrl is absent', async () => {
+    await resetGuideProgress('https://grafana.com/docs/learning-journeys/demo/milestone-2/content.json', {
+      milestoneSlug: 'milestone-2',
+    });
+
+    expect(mockMilestoneCompletionStorage.removeCompleted).not.toHaveBeenCalled();
+  });
+
+  // A track-only guide (COMPLETION-MODEL.md decision 10) has no journeyBaseUrl
+  // in the same sense a Foundations milestone does — journeyBaseUrl here is
+  // set to a track-only guide's own trackMemberBaseUrl fallback, which never
+  // has a legacy record to begin with. Confirms this doesn't crash when
+  // milestoneSlug resolves but there's nothing to remove.
+  it('is a safe no-op when milestoneSlug resolves but there is no legacy record for it', async () => {
+    await expect(
+      resetGuideProgress('bundled:track-only/content.json', {
+        milestoneSlug: 'track-only',
+        journeyBaseUrl: 'bundled:the-path/content.json',
+      })
+    ).resolves.not.toThrow();
+
+    expect(mockMilestoneCompletionStorage.removeCompleted).toHaveBeenCalledWith(
+      'bundled:the-path/content.json',
+      'track-only',
+      ['bundled:track-only/content.json']
+    );
   });
 });

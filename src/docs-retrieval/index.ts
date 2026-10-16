@@ -40,6 +40,8 @@ export { fetchPackageInfoFromUrl, isPackageContentUrl } from './package-info-fro
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrl as getPreviousMilestoneUrlFromContent,
+  getNextMilestoneId as getNextMilestoneIdFromContent,
+  getPreviousMilestoneId as getPreviousMilestoneIdFromContent,
   setJourneyCompletionPercentage,
   clearJourneyCompletion,
 } from './learning-journey-helpers';
@@ -83,3 +85,6 @@ registerLearningJourneyContentBridge({
   resolvePackageNavLinks,
   derivePathSlug,
 });
+
+export { resolveAssetUrl } from './components/docs/resolve-asset-url';
+export { validateKioskDestination } from './kiosk-inputs';

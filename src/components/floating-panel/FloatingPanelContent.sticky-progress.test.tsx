@@ -18,15 +18,19 @@ jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, vars?: Record<string, unknown>) =>
     fallback.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(vars?.[k] ?? '')),
 }));
-jest.mock('../../lib/analytics', () => ({ reportAppInteraction: jest.fn(), UserInteraction: {} }));
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportAppInteraction: jest.fn(),
+}));
 jest.mock('../../docs-retrieval', () => ({
-  recordGuideCompletionForSurface: jest.fn(),
+  useGuideResponsesOptional: () => null,
   isJourneyCoverPage: (content: RawContent) =>
     content.type === 'learning-journey' && content.metadata.learningJourney?.currentMilestone === 0,
 }));
 jest.mock('../docs-panel/link-handler.hook', () => ({ useLinkClickHandler: jest.fn() }));
 jest.mock('../docs-panel/components', () => ({
   AlignmentPrompt: () => null,
+  GuideVersionNotice: () => null,
   LearningJourneyMilestoneToolbar: () => null,
 }));
 jest.mock('../InteractiveLearningBanner', () => ({ InteractiveLearningBanner: () => null }));

@@ -21,13 +21,10 @@ export async function initializeConfiguredSurfaces(
   effects: ConfiguredBootstrapEffects
 ): Promise<void> {
   const config = await settings;
-  if (!config) {
+  if (!config || !context.pathfinderEnabled || !config.pathfinderEnabled) {
     return;
   }
   effects.applySettings(config);
-  if (!context.pathfinderEnabled) {
-    return;
-  }
   const kioskRequested = installKioskNavigation(() => effects.mountKiosk(config));
   if (context.controllerRequested) {
     if (config.enableTwoTabController) {

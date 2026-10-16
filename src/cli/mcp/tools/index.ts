@@ -16,6 +16,7 @@ import type { AuthoringSessionStore } from '../lib/session-store';
 import { registerArtifactTools } from './artifact-tools';
 import { registerAuthoringStart } from './authoring-start';
 import { registerFinalizeTool } from './finalize';
+import { registerFindGuides } from './find-guides';
 import { registerHelpTool } from './help';
 import { registerInspectTool } from './inspect';
 import { registerMutationTools } from './mutation-tools';
@@ -47,6 +48,7 @@ export function registerAuthoringTools(server: McpServer, options: RegisterAutho
   registerSessionReadTools(server, options);
   registerFinalizeTool(server, options);
   registerRepositoryTools(server);
+  registerFindGuides(server);
 
   // cli-routed — thin wrap of CLI runX
   registerSchemaTools(server);

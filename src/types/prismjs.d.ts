@@ -1,6 +1,11 @@
 // Type declarations for prismjs
 declare module 'prismjs' {
+  interface Token {
+    type: string;
+    content: string | Array<string | Token>;
+  }
   interface PrismStatic {
+    tokenize(text: string, grammar: Record<string, unknown>): Array<string | Token>;
     highlightElement(element: Element, async?: boolean, callback?: () => void): void;
     highlightAll(async?: boolean, callback?: () => void): void;
     highlightAllUnder(element: Element, async?: boolean, callback?: () => void): void;

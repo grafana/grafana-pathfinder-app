@@ -17,9 +17,24 @@ them is the source of every bug this document exists to prevent:
 - the **persisted preference** — the value in `localStorage` that a fresh page
   load restores.
 
-They diverge because a guide launched from **My Learning** picks the surface
-that best fits its content (prose → full screen; interactive → beside Grafana),
-and that automatic choice must **not** become the user's durable preference.
+They diverge because automatic launches can select a surface without changing
+the user's durable preference. Existing My Learning path launches classify
+content (prose → full screen; interactive → beside Grafana). Catalog card
+launches use the sidebar policy below.
+
+## Catalog card launches
+
+Start and Resume from Browse, recommendations, My Learning Discover and catalog
+Continue learning open in the sidebar through `openGuideInSidebar`, including
+reading-only content. This gives discovery cards a consistent destination.
+Floating and full-screen views render the guide reader or editor; they do not
+provide recommendations or Browse navigation.
+
+Launching from a discovery card while another reader is floating or full-screen
+returns to the sidebar. The launch uses `setModeTransient`, so it preserves the
+stored surface preference. Readers can still choose floating or full-screen
+after opening the guide. Existing My Learning path launches through
+`openPreparedGuide` retain their content-based surface selection.
 
 ## The two axes and the three mutators
 

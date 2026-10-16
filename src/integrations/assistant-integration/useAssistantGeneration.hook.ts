@@ -42,6 +42,7 @@ export interface UseAssistantGenerationOptions {
 export interface UseAssistantGenerationReturn {
   /** Whether the assistant is available in this Grafana instance */
   isAssistantAvailable: boolean;
+  isCheckingAssistantAvailability: boolean;
   /** The inline assistant generate function */
   generate: ReturnType<typeof useInlineAssistant>['generate'];
   /** Whether content is currently being generated */
@@ -50,6 +51,7 @@ export interface UseAssistantGenerationReturn {
   content: string | null;
   /** Reset assistant state */
   reset: () => void;
+  cancel: () => void;
   /** Get datasource context for customization */
   getDatasourceContext: () => Promise<DatasourceContext>;
   /** Whether the current datasource is supported for metadata fetching */
@@ -62,64 +64,38 @@ export interface UseAssistantGenerationReturn {
   getStorageKey: () => string;
 }
 
-/**
- * Shared hook for assistant generation functionality.
- *
- * Extracts common patterns from AssistantBlockWrapper and AssistantCustomizable
- * to reduce code duplication.
- *
- * @example
- * ```tsx
- * const {
- *   isAssistantAvailable,
- *   generate,
- *   isGenerating,
- *   getDatasourceContext,
- *   createMetadataTool,
- * } = useAssistantGeneration({ contentKey, assistantId });
- * ```
- */
 export function useAssistantGeneration(options: UseAssistantGenerationOptions): UseAssistantGenerationReturn {
   const { contentKey, assistantId } = options;
 
-  // Check if dev mode is enabled
   const devModeEnabled = isAssistantDevModeEnabledGlobal();
 
-  // Use the inline assistant hook for generating customized content
   const realInlineAssistant = useInlineAssistant();
   const mockInlineAssistant = useMockInlineAssistant();
-  const { generate, isGenerating, content, reset } = devModeEnabled ? mockInlineAssistant : realInlineAssistant;
+  const { generate, isGenerating, content, reset, cancel } = devModeEnabled ? mockInlineAssistant : realInlineAssistant;
 
-  // Track assistant availability
-  const [isAssistantAvailable, setIsAssistantAvailable] = useState(false);
+  const [isAssistantAvailable, setIsAssistantAvailable] = useState<boolean | null>(null);
 
-  // Provide page context for datasource
   const setPageContext = useProvidePageContext('/explore', EMPTY_CONTEXT_DEPS);
 
-  // Generate localStorage key
   const getStorageKey = useCallback((): string => {
     return buildAssistantStorageKey(contentKey, assistantId);
   }, [contentKey, assistantId]);
 
-  // Check if assistant is available
   useEffect(() => {
     const subscription = getIsAssistantAvailable().subscribe((available: boolean) => {
       setIsAssistantAvailable(available);
     });
 
-    // REACT: cleanup subscription (R1)
     return () => {
       subscription.unsubscribe();
     };
   }, []);
 
-  // Get datasource context for assistant and provide it via page context
   const getDatasourceContext = useCallback(async (): Promise<DatasourceContext> => {
     try {
       const dataSourceSrv = getDataSourceSrv();
       const dataSources = await dataSourceSrv.getList();
 
-      // Get current datasource from URL if in Explore
       const location = locationService.getLocation();
       let currentDatasource = null;
 
@@ -133,12 +109,10 @@ export function useAssistantGeneration(options: UseAssistantGenerationOptions): 
         }
       }
 
-      // Fallback: get first Prometheus datasource if no current one
       if (!currentDatasource) {
         currentDatasource = dataSources.find((ds) => ds.type === 'prometheus');
       }
 
-      // Provide datasource context to assistant using page context
       if (currentDatasource && setPageContext) {
         const datasourceContext = createAssistantContextItem('datasource', {
           datasourceUid: currentDatasource.uid,
@@ -162,17 +136,18 @@ export function useAssistantGeneration(options: UseAssistantGenerationOptions): 
     }
   }, [setPageContext]);
 
-  // Create metadata tool factory
   const createMetadataTool = useCallback((onArtifact: (artifact: DatasourceMetadataArtifact) => void) => {
     return createDatasourceMetadataTool(onArtifact);
   }, []);
 
   return {
-    isAssistantAvailable,
+    isAssistantAvailable: isAssistantAvailable === true,
+    isCheckingAssistantAvailability: isAssistantAvailable === null,
     generate,
     isGenerating,
     content,
     reset,
+    cancel,
     getDatasourceContext,
     isSupportedDatasource: isSupportedDatasourceType,
     createMetadataTool,

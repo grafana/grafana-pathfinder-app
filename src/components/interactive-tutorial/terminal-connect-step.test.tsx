@@ -59,8 +59,10 @@ jest.mock('../../lib/logging', () => ({
 }));
 
 const mockReportAppInteraction = jest.fn();
+const mockReportStepSkipped = jest.fn();
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+  reportStepSkipped: (...args: unknown[]) => mockReportStepSkipped(...args),
   UserInteraction: { GcxCredentialInstalled: 'gcx_credential_installed', GcxSetupSkipped: 'gcx_setup_skipped' },
   buildInteractiveStepProperties: jest.fn((props: unknown) => props),
 }));
@@ -172,6 +174,71 @@ beforeEach(() => {
 });
 
 describe('without gcx', () => {
+  it('exposes the connection contract and custom button control', () => {
+    renderStep({ buttonText: 'Start nginx', vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
+    const root = screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID));
+    expect(root).toHaveAttribute('data-test-terminal-status', 'disconnected');
+    expect(root).toHaveAttribute('data-test-terminal-gcx', 'false');
+    expect(root).toHaveAttribute('data-test-terminal-vm-requested', 'true');
+    expect(screen.getByTestId(testIds.interactive.terminalConnectButton(STEP_ID))).toHaveTextContent('Start nginx');
+  });
+
+  it('exposes a failed connection without marking completion', () => {
+    mockTerminalStatus = 'error';
+    renderStep();
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
+      'data-test-step-state',
+      'error'
+    );
+    expect(screen.getByTestId(testIds.interactive.errorMessage(STEP_ID))).toHaveTextContent(
+      'Terminal connection failed'
+    );
+    expect(mockMarkStepCompleted).not.toHaveBeenCalled();
+  });
+
+  it('keeps shared connection errors off blocked steps and leaves announcements to the panel', () => {
+    mockTerminalStatus = 'error';
+    render(
+      <>
+        <TerminalConnectStep stepId="current" />
+        <TerminalConnectStep stepId="blocked" isEligibleForChecking={false} />
+      </>
+    );
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep('current'))).toHaveAttribute(
+      'data-test-step-state',
+      'error'
+    );
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep('blocked'))).toHaveAttribute(
+      'data-test-step-state',
+      'requirements-unmet'
+    );
+    expect(screen.queryByTestId(testIds.interactive.errorMessage('blocked'))).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.errorMessage('current'))).toBeVisible();
+    expect(screen.queryAllByRole('alert')).toHaveLength(0);
+  });
+
+  it('preserves checking state during a shared connection error', () => {
+    mockTerminalStatus = 'error';
+    mockCheckerStatusOverride = 'checking';
+    renderStep();
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
+      'data-test-step-state',
+      'checking'
+    );
+    expect(screen.queryByTestId(testIds.interactive.errorMessage(STEP_ID))).not.toBeInTheDocument();
+  });
+
+  it('exposes an unavailable sandbox as prerequisite evidence', () => {
+    mockSandboxUnavailable = 'This account cannot create sessions.';
+    renderStep();
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
+      'data-test-terminal-unavailable',
+      'true'
+    );
+    expect(screen.getByTestId(testIds.interactive.requirementCheck(STEP_ID))).toHaveTextContent(mockSandboxUnavailable);
+    expect(screen.queryByTestId(testIds.interactive.terminalConnectButton(STEP_ID))).not.toBeInTheDocument();
+  });
+
   it('connects and completes, never asking for a credential', async () => {
     connectResolves();
     const onComplete = jest.fn();
@@ -200,6 +267,15 @@ describe('without gcx', () => {
 });
 
 describe('with gcx', () => {
+  it('declares credential provisioning before any connect action', () => {
+    renderStep({ gcx: true });
+    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
+      'data-test-terminal-gcx',
+      'true'
+    );
+    expect(mockProvisionGcx).not.toHaveBeenCalled();
+  });
+
   it('provisions against the session id openTerminal resolved, not the rendered one', async () => {
     // Reading `sessionId` off the render can hand back the session being torn
     // down when the requested VM differs from the live one.
@@ -340,6 +416,26 @@ describe('with gcx', () => {
     expect(mockReportAppInteraction).toHaveBeenCalledWith(
       'gcx_setup_skipped',
       expect.objectContaining({ state: 'needs-token', interaction_location: 'terminal_connect_step' })
+    );
+    expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(mockReportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'terminal-connect', interactionLocation: 'terminal_connect_step', skipReason: 'after_failure' },
+      expect.objectContaining({ stepId: STEP_ID })
+    );
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith(STEP_ID, undefined, 'skipped');
+  });
+
+  it('reports a gcx skip taken before any setup attempt as a user skip', () => {
+    mockTerminalStatus = 'connected';
+    mockSessionId = 's_abc';
+    renderStep({ gcx: true });
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.gcxSkipButton(STEP_ID)));
+
+    expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(mockReportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'terminal-connect', interactionLocation: 'terminal_connect_step', skipReason: 'user' },
+      expect.objectContaining({ stepId: STEP_ID })
     );
   });
 

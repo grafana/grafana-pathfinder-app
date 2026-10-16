@@ -50,6 +50,7 @@ import {
   type PackageMatchExpr,
 } from '../lib/package-recommendations-client';
 import { getHighlightedGuideConfig } from '../utils/openfeature';
+import { completionsForRecommend, reportCompletionsAttachment } from './recommend-completions-attachment';
 import { buildSyntheticFeaturedRecommendation, matchesHighlightedGuidePage } from '../utils/experiments';
 
 // Hoisted to module scope so the recursive `usesOnlySupportedMatchPredicates`
@@ -65,6 +66,36 @@ const SUPPORTED_MATCH_PREDICATE_KEYS: ReadonlySet<string> = new Set([
 // Sentinel used to tell an expected boot-budget timeout apart from real
 // failures in getOnlinePackageRecommendations' catch.
 export const ONLINE_PACKAGES_TIMEOUT_MESSAGE = 'Online package recommendations timed out; continuing without them';
+
+function normalizePrerequisites(value: unknown): Array<{ id: string; label: string; format?: 'markdown' }> | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const seenIds = new Set<string>();
+  return value
+    .filter((item): item is { id: string; label: string; format?: unknown } => {
+      if (
+        item == null ||
+        typeof item !== 'object' ||
+        Array.isArray(item) ||
+        typeof item.id !== 'string' ||
+        item.id.trim().length === 0 ||
+        typeof item.label !== 'string' ||
+        item.label.trim().length === 0 ||
+        seenIds.has(item.id)
+      ) {
+        return false;
+      }
+      seenIds.add(item.id);
+      return true;
+    })
+    .map(({ id, label, format }) => ({
+      id,
+      label,
+      ...(format === 'markdown' ? { format } : {}),
+    }));
+}
 
 export class ContextService {
   // Error handling state
@@ -284,6 +315,9 @@ export class ContextService {
     usingFallbackRecommendations: boolean;
   }> {
     const recommenderStart = performance.now();
+    // Time spent blocked on the completions attachment is not recommender latency.
+    let completionsWaitMs = 0;
+    const elapsedMs = () => performance.now() - recommenderStart - completionsWaitMs;
     // One request settles telemetry exactly once — post-parse processing can
     // still throw into the fail path after a successful fetch.
     let telemetrySettled = false;
@@ -300,7 +334,7 @@ export class ContextService {
       }
     };
     const fail = (errorType: 'unavailable' | 'rate-limit' | 'other', errorMessage: string) => {
-      settleTelemetry(errorType, performance.now() - recommenderStart);
+      settleTelemetry(errorType, elapsedMs());
       return this.handleRecommenderError(errorType, errorMessage, contextData, bundledRecommendations);
     };
     try {
@@ -310,6 +344,9 @@ export class ContextService {
       if (!this.validateRecommenderUrl(configWithDefaults.recommenderServiceUrl)) {
         return fail('other', 'Recommender service URL failed security validation');
       }
+
+      // Started before the hashing awaits so the /my load overlaps them; never aborted at its budget.
+      const completionsPromise = completionsForRecommend();
 
       const isCloud = currentPlatform() === 'cloud';
 
@@ -339,6 +376,11 @@ export class ContextService {
       const hashedSource = await getHashedSource();
 
       const identity = await buildTelemetryIdentity();
+      const waitStart = performance.now();
+      const attachment = await completionsPromise;
+      completionsWaitMs = performance.now() - waitStart;
+      reportCompletionsAttachment(attachment, completionsWaitMs);
+      const { completions } = attachment;
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
@@ -350,6 +392,7 @@ export class ContextService {
         platform: this.getCurrentPlatform(),
         source: hashedSource,
         language: this.getCurrentLanguage(),
+        ...(completions && { completions }),
       };
 
       // Add timeout to prevent hanging in air-gapped or slow connection scenarios
@@ -383,7 +426,7 @@ export class ContextService {
         const data: V1RecommenderResponse = await response.json();
         // Captured here (processLearningJourneys does its own fetches, which
         // would skew ok durations) but only emitted once processing succeeds.
-        const okDurationMs = performance.now() - recommenderStart;
+        const okDurationMs = elapsedMs();
 
         const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
           this.sanitizeV1Recommendation(rec)
@@ -694,6 +737,9 @@ export class ContextService {
     if (typeof m.startingLocation === 'string') {
       sanitized.startingLocation = m.startingLocation;
     }
+    if (typeof m.minGrafanaVersion === 'string') {
+      sanitized.minGrafanaVersion = m.minGrafanaVersion;
+    }
     if (Array.isArray(m.milestones)) {
       sanitized.milestones = m.milestones.filter((s): s is string => typeof s === 'string');
     }
@@ -714,6 +760,10 @@ export class ContextService {
     }
     if (Array.isArray(m.replaces)) {
       sanitized.replaces = m.replaces.filter((s): s is string => typeof s === 'string');
+    }
+    const prerequisites = normalizePrerequisites(m.prerequisites);
+    if (prerequisites !== undefined) {
+      sanitized.prerequisites = prerequisites;
     }
 
     return sanitized;
@@ -1448,8 +1498,9 @@ export class ContextService {
    *
    * COUPLING POINT — package manifest schema. The dependency-like field
    * allowlist below (`milestones`, `depends`, `recommends`, `suggests`,
-   * `provides`, `conflicts`, `replaces`) is the contract with the upstream
-   * package author format documented in `docs/developer/package-authoring.md`.
+   * `provides`, `conflicts`, `replaces`), plus the scalars `startingLocation`
+   * and `minGrafanaVersion`, is the contract with the upstream package author
+   * format documented in `docs/developer/package-authoring.md`.
    * If the package design adds new dependency-like fields (e.g. `enhances`,
    * `breaks`), they will silently fail to surface to OSS users until this
    * allowlist is updated. Treat changes here and in
@@ -1481,11 +1532,18 @@ export class ContextService {
     if (typeof raw.startingLocation === 'string') {
       normalized.startingLocation = raw.startingLocation;
     }
+    if (typeof raw.minGrafanaVersion === 'string') {
+      normalized.minGrafanaVersion = raw.minGrafanaVersion;
+    }
     for (const field of ['milestones', 'depends', 'recommends', 'suggests', 'provides', 'conflicts', 'replaces']) {
       const value = raw[field];
       if (Array.isArray(value)) {
         normalized[field] = value.filter((s): s is string => typeof s === 'string');
       }
+    }
+    const prerequisites = normalizePrerequisites(raw.prerequisites);
+    if (prerequisites !== undefined) {
+      normalized.prerequisites = prerequisites;
     }
     return normalized;
   }

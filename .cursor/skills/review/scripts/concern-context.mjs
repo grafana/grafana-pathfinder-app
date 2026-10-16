@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { findTable, unquote } from './registry-table.mjs';
+import { extractSections } from './review-section.mjs';
 
 const MAX_WORKER_FILES = 8;
 const MAX_WORKER_CHARACTERS = 30_000;
@@ -405,6 +406,14 @@ function main() {
   if (process.argv[2] === '--plan' && process.argv.length === 4) {
     const input = JSON.parse(readFileSync(process.argv[3], 'utf8'));
     process.stdout.write(`${JSON.stringify(buildReviewPlan(input), null, 2)}\n`);
+    return;
+  }
+  if (process.argv[2] === '--section') {
+    const standards = readFileSync(
+      fileURLToPath(new URL('../../../../docs/design/PR_REVIEW.md', import.meta.url)),
+      'utf8'
+    );
+    process.stdout.write(`${extractSections(standards, process.argv.slice(3))}\n`);
     return;
   }
   const workerMode = process.argv[2] === '--worker';

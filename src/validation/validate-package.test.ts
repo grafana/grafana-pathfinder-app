@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import { ManifestJsonSchema } from '../types/package.schema';
 import { validatePackage, validatePackageTree } from './validate-package';
 
 function createTmpDir(): string {
@@ -131,7 +132,6 @@ describe('validatePackage', () => {
     });
 
     const result = validatePackage(pkgDir);
-    expect(result.isValid).toBe(true);
 
     const infoMessages = result.messages.filter((m) => m.severity === 'info');
     const warnMessages = result.messages.filter((m) => m.severity === 'warn');
@@ -139,7 +139,64 @@ describe('validatePackage', () => {
     expect(infoMessages.some((m) => m.message.includes('repository'))).toBe(true);
     expect(infoMessages.some((m) => m.message.includes('language'))).toBe(true);
     expect(warnMessages.some((m) => m.message.includes('description'))).toBe(true);
-    expect(warnMessages.some((m) => m.message.includes('category'))).toBe(true);
+    expect(warnMessages.some((m) => m.message.includes('category'))).toBe(false);
+  });
+
+  describe('manifest category', () => {
+    function validateWithCategory(name: string, category: unknown, type = 'guide') {
+      const pkgDir = path.join(tmpDir, name);
+      writeJson(path.join(pkgDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+      const manifest: Record<string, unknown> = { id: 'test', type };
+      if (category !== undefined) {
+        manifest.category = category;
+      }
+      if (type === 'path') {
+        manifest.milestones = ['step-one'];
+      }
+      writeJson(path.join(pkgDir, 'manifest.json'), manifest);
+      return validatePackage(pkgDir);
+    }
+
+    const categoryErrors = (result: ReturnType<typeof validatePackage>) =>
+      result.errors.filter((e) => e.path?.[1] === 'category');
+
+    it.each([
+      ['missing', undefined],
+      ['empty', ''],
+      ['whitespace-only', '   '],
+      ['null', null],
+    ])('fails when category is %s', (name, category) => {
+      const result = validateWithCategory(`category-${name}`, category);
+      expect(result.isValid).toBe(false);
+      expect(categoryErrors(result)).toHaveLength(1);
+    });
+
+    it('names the fix when category is missing', () => {
+      const result = validateWithCategory('category-fix', undefined);
+      expect(categoryErrors(result)[0]?.message).toContain('set-manifest <dir> --category');
+    });
+
+    it.each(['onboarding', 'general', 'anything-goes'])('accepts any non-blank value (%s)', (category) => {
+      const result = validateWithCategory(`category-ok-${category}`, category);
+      expect(result.isValid).toBe(true);
+      expect(categoryErrors(result)).toHaveLength(0);
+    });
+
+    it('applies to paths as well as guides', () => {
+      const result = validateWithCategory('category-path', undefined, 'path');
+      expect(result.isValid).toBe(false);
+      expect(categoryErrors(result)).toHaveLength(1);
+    });
+
+    it('does not make the runtime manifest schema reject a missing category', () => {
+      expect(ManifestJsonSchema.safeParse({ id: 'test', type: 'guide' }).success).toBe(true);
+    });
+
+    it('does not fail a package with no manifest', () => {
+      const pkgDir = path.join(tmpDir, 'category-no-manifest');
+      writeJson(path.join(pkgDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+      expect(validatePackage(pkgDir).isValid).toBe(true);
+    });
   });
 
   it('should warn on asset references to missing files', () => {
@@ -179,6 +236,7 @@ describe('validatePackage', () => {
     writeJson(path.join(pkgDir, 'manifest.json'), {
       id: 'test',
       type: 'guide',
+      category: 'testing',
       testEnvironment: { tier: 'managed', minVersion: '11.0.0' },
     });
 
@@ -221,6 +279,37 @@ describe('validatePackage', () => {
     expect(result.messages.some((m) => m.message.includes('not valid semver'))).toBe(true);
   });
 
+  it.each(['13.2', 'not-semver', '', '13.2.0-beta'])('rejects an invalid runtime floor %s', (minGrafanaVersion) => {
+    writeJson(path.join(tmpDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+    writeJson(path.join(tmpDir, 'manifest.json'), {
+      id: 'test',
+      type: 'guide',
+      category: 'testing',
+      minGrafanaVersion,
+    });
+
+    const result = validatePackage(tmpDir);
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        path: ['manifest.json', 'minGrafanaVersion'],
+        message: expect.stringContaining('not valid semver'),
+      })
+    );
+  });
+
+  it.each([undefined, '13.2.0'])('accepts an optional valid runtime floor %s', (minGrafanaVersion) => {
+    writeJson(path.join(tmpDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+    writeJson(path.join(tmpDir, 'manifest.json'), {
+      id: 'test',
+      type: 'guide',
+      category: 'testing',
+      minGrafanaVersion,
+    });
+
+    expect(validatePackage(tmpDir).isValid).toBe(true);
+  });
+
   it('should accept a valid testEnvironment instance hostname', () => {
     const pkgDir = path.join(tmpDir, 'valid-instance');
     writeJson(path.join(pkgDir, 'content.json'), {
@@ -231,6 +320,7 @@ describe('validatePackage', () => {
     writeJson(path.join(pkgDir, 'manifest.json'), {
       id: 'test',
       type: 'guide',
+      category: 'testing',
       testEnvironment: { instance: 'play.grafana.org' },
     });
 
@@ -436,6 +526,7 @@ describe('validatePackageTree', () => {
     writeJson(path.join(tmpDir, 'guide-b', 'manifest.json'), {
       id: 'guide-b',
       type: 'guide',
+      category: 'testing',
       depends: ['guide-a'],
     });
 

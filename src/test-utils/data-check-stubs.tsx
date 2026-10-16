@@ -44,6 +44,7 @@ export const analyticsStub = {
     baseProperties: Record<string, string | number | boolean>,
     stepContext: Record<string, unknown>
   ) => ({ ...baseProperties, step_id: stepContext.stepId }),
+  reportStepSkipped: jest.fn(),
   UserInteraction: {
     DataCheckRun: 'data_check_run',
     DataCheckPassed: 'data_check_passed',

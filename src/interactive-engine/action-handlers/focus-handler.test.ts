@@ -117,16 +117,12 @@ describe('FocusHandler', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      // With enhanced selector, empty results are handled gracefully without throwing
-      // The enhanced selector returns empty arrays instead of throwing errors
       mockQuerySelectorAll.mockReturnValue([]);
 
       await focusHandler.execute(mockData, true);
 
-      // Should complete successfully even with no elements found
-      // Enhanced selector handles this gracefully
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(mockData, 'completed');
     });
 
     it('should handle empty element list in show mode', async () => {
@@ -148,29 +144,26 @@ describe('FocusHandler', () => {
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
       expect(mockNavigationManager.ensureNavigationOpen).not.toHaveBeenCalled();
       expect(mockNavigationManager.ensureElementVisible).not.toHaveBeenCalled();
-      expect(mockWaitForReactUpdates).toHaveBeenCalled();
-      expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
+      expect(mockWaitForReactUpdates).not.toHaveBeenCalled();
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(mockData, 'completed');
     });
 
-    it('does not complete when no element is found and skipCompletionOnEmptyTarget is set', async () => {
+    it('does not complete when the target is missing', async () => {
       mockQuerySelectorAll.mockReturnValue([]);
-      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+      const data: InteractiveElementData = { ...mockData };
 
       await focusHandler.execute(data, true);
 
       expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
-      // executeInteractiveAction reads this to report 'error' instead of 'ok' —
-      // without it, the caller's own completion persistence (gated on the
-      // outcome, not on stateManager) would mark the step done anyway.
-      expect(data.completionSuppressed).toBe(true);
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
     });
 
-    it('does not set completionSuppressed when an element is found (regression guard)', async () => {
-      const data: InteractiveElementData = { ...mockData, skipCompletionOnEmptyTarget: true };
+    it('completes when the target is found', async () => {
+      const data: InteractiveElementData = { ...mockData };
 
       await focusHandler.execute(data, true);
 
-      expect(data.completionSuppressed).toBeUndefined();
+      expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
     });
 
     it('should warn when element is not visible but continue execution', async () => {

@@ -30,43 +30,7 @@ export function installKioskNavigation(mount: () => void): boolean {
     return true;
   };
   const handleClick = (event: MouseEvent) => {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return;
-    }
-    const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
-    if (!(anchor instanceof HTMLAnchorElement) || anchor.hasAttribute('download')) {
-      return;
-    }
-    const target = anchor.getAttribute('target') ?? document.querySelector('base')?.getAttribute('target');
-    if (target && target.toLowerCase() !== '_self') {
-      return;
-    }
-    let url: URL;
-    try {
-      url = new URL(anchor.href);
-    } catch {
-      return;
-    }
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
-      return;
-    }
-    const params = parsePathfinderDeepLink(url.search);
-    if (url.origin !== window.location.origin || !params.pathfinderKiosk || params.doc || params.controller) {
-      return;
-    }
-    const appSubUrl = config.appSubUrl ?? '';
-    if (appSubUrl && url.pathname !== appSubUrl && !url.pathname.startsWith(`${appSubUrl}/`)) {
-      return;
-    }
-    event.preventDefault();
-    locationService.push(`${url.pathname.slice(appSubUrl.length) || '/'}${url.search}${url.hash}`);
+    handleKioskLinkClick(event);
   };
   let unlisten: () => void;
   try {
@@ -81,4 +45,69 @@ export function installKioskNavigation(mount: () => void): boolean {
     document.removeEventListener('click', handleClick);
   };
   return handleNavigation();
+}
+
+export function handleKioskLinkClick(event: MouseEvent, fromGuide = false): boolean {
+  const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+  if (!(anchor instanceof HTMLAnchorElement)) {
+    return false;
+  }
+  const url = prepareKioskLink(anchor, fromGuide);
+  if (!url) {
+    return false;
+  }
+  const appSubUrl = config.appSubUrl ?? '';
+  const target = anchor.getAttribute('target') ?? document.querySelector('base')?.getAttribute('target');
+  if (
+    !detach ||
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey ||
+    anchor.hasAttribute('download') ||
+    (target && target.toLowerCase() !== '_self') ||
+    url.origin !== window.location.origin ||
+    (appSubUrl && url.pathname !== appSubUrl && !url.pathname.startsWith(`${appSubUrl}/`))
+  ) {
+    return true;
+  }
+  event.preventDefault();
+  locationService.push(`${url.pathname.slice(appSubUrl.length) || '/'}${url.search}${url.hash}`);
+  return true;
+}
+
+export function prepareKioskLink(anchor: HTMLAnchorElement, fromGuide = false): URL | null {
+  let url: URL;
+  try {
+    url = new URL(anchor.getAttribute('href') ?? '', window.location.href);
+  } catch {
+    return null;
+  }
+  const params = parsePathfinderDeepLink(url.search);
+  if (
+    !['http:', 'https:'].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    !params.pathfinderKiosk ||
+    params.doc ||
+    params.controller
+  ) {
+    return null;
+  }
+  const appSubUrl = config.appSubUrl ?? '';
+  const raw = anchor.getAttribute('href') ?? '';
+  if (
+    fromGuide &&
+    raw.startsWith('/') &&
+    !raw.startsWith('//') &&
+    appSubUrl &&
+    url.pathname !== appSubUrl &&
+    !url.pathname.startsWith(`${appSubUrl}/`)
+  ) {
+    url.pathname = `${appSubUrl}${url.pathname}`;
+    anchor.href = url.href;
+  }
+  return url;
 }

@@ -87,18 +87,13 @@ export function isExtensionSidebarInUse(): boolean {
   }
 }
 
-/**
- * Match the docked surface against a Pathfinder fingerprint. Mirrors the
- * historical `module.tsx` restore-path check: pluginId equality OR a
- * componentTitle match for older Grafana versions where pluginId was not
- * yet recorded.
- */
+// Older Grafana entries omit pluginId; a known owner always takes precedence over title.
 export function isExtensionSidebarOwnedByPathfinder(myPluginId: string, componentTitleMatch: string): boolean {
   const docked = parseExtensionSidebarDocked();
   if (!docked) {
     return false;
   }
-  return docked.pluginId === myPluginId || docked.componentTitle === componentTitleMatch;
+  return docked.pluginId ? docked.pluginId === myPluginId : docked.componentTitle === componentTitleMatch;
 }
 
 /**

@@ -138,12 +138,6 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1691',
   },
   {
-    violation: 'interactive-engine/auto-completion/useAutoDetection.ts -> hooks',
-    reason:
-      'Auto-detection consumes the shared resolved settings hook so tenant completion policy does not fall back to stale plugin metadata after App Platform saves.',
-    tracking: '#1691',
-  },
-  {
     violation: 'interactive-engine/interactive.hook.ts -> requirements-manager',
     reason:
       'Interactive execution delegates requirement checks to the requirements engine, forming the tracked cross-engine cycle.',
@@ -446,11 +440,6 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  * permanent.
  */
 const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
-  {
-    violation: 'types/backend-api.schema.ts',
-    reason: 'Imported only by validation/backend-api-contract.test.ts, the Go-to-TypeScript contract check.',
-    tracking: '#1923',
-  },
   {
     violation: 'types/v1-recommender.types.ts',
     reason:

@@ -1,11 +1,3 @@
-/**
- * AssistantBlockWrapper
- *
- * A wrapper component that adds assistant-customization functionality
- * to any child content. Unlike AssistantCustomizable which renders its own
- * content, this renders children and overlays the customize button.
- */
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -51,16 +43,16 @@ const getStyles = (theme: GrafanaTheme2) => ({
     display: 'block',
   }),
   wrapperDefault: css({
-    borderLeft: '3px dotted rgb(143, 67, 179)', // Purple to match assistant button
+    borderLeft: '3px dotted rgb(143, 67, 179)',
     paddingLeft: theme.spacing(2),
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
     '&:hover': {
-      borderLeftColor: 'rgb(163, 87, 199)', // Lighter purple on hover
+      borderLeftColor: 'rgb(163, 87, 199)',
     },
   }),
   wrapperCustomized: css({
-    borderLeft: `3px solid ${theme.colors.success.border}`, // Green for customized
+    borderLeft: `3px solid ${theme.colors.success.border}`,
     paddingLeft: theme.spacing(2),
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
@@ -69,18 +61,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
     },
   }),
   buttonContainer: css({
-    position: 'absolute',
-    top: '-48px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    zIndex: theme.zIndex.portal,
-    pointerEvents: 'auto',
+    marginBottom: theme.spacing(1),
   }),
   buttonGroup: css({
     display: 'flex',
     gap: theme.spacing(0.5),
-    flexWrap: 'nowrap',
-    whiteSpace: 'nowrap',
+    flexWrap: 'wrap',
   }),
   assistantButtonWrapper: css({
     position: 'relative',
@@ -97,12 +83,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-/**
- * Assistant Block Wrapper Component
- *
- * Wraps child content with assistant customization functionality.
- * Shows customize button on hover, stores customizations in localStorage.
- */
 export function AssistantBlockWrapper({
   assistantId,
   assistantType,
@@ -113,9 +93,7 @@ export function AssistantBlockWrapper({
   surroundingContext,
 }: AssistantBlockWrapperProps) {
   const styles = useStyles2(getStyles);
-  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Use the shared assistant generation hook
   const {
     isAssistantAvailable,
     generate,
@@ -128,10 +106,8 @@ export function AssistantBlockWrapper({
     getStorageKey,
   } = useAssistantGeneration({ contentKey, assistantId });
 
-  // Track previous isGenerating state to detect completion
   const wasGeneratingRef = useRef(false);
 
-  // Get initial customized value from localStorage
   const getInitialCustomizedValue = useCallback((): string | null => {
     try {
       const storageKey = buildAssistantStorageKey(contentKey, assistantId);
@@ -141,59 +117,40 @@ export function AssistantBlockWrapper({
     }
   }, [contentKey, assistantId]);
 
-  // State management
   const [customizedValue, setCustomizedValue] = useState<string | null>(getInitialCustomizedValue);
-  const [isHovered, setIsHovered] = useState(false);
-  const [isPinned, setIsPinned] = useState(false);
-  // Track datasource type used for customization (for syntax highlighting)
   const [customizedDatasourceType, setCustomizedDatasourceType] = useState<string | null>(null);
-  // Track error state for showing error UI
   const [generationError, setGenerationError] = useState<string | null>(null);
 
-  // Derived state: content is customized if we have a customized value
   const isCustomized = customizedValue !== null;
 
-  // Track generation context for workaround (SDK onComplete bug)
   const generationContextRef = useRef<{ datasourceType: string; blockType: string } | null>(null);
 
-  // WORKAROUND: SDK v0.1.8 bug where onComplete is not called when tools are used
-  // Detect completion by watching isGenerating transition from true to false
+  // SDK v0.1.8 can omit onComplete after tool calls; observe the generation transition too.
   useEffect(() => {
     const wasGenerating = wasGeneratingRef.current;
     wasGeneratingRef.current = isGenerating;
 
-    // Detect completion: was generating, now not generating, and we have content
     if (wasGenerating && !isGenerating && content && generationContextRef.current) {
-      // Clean up the response using shared utility
       let customized = cleanAssistantResponse(content);
 
-      // For query blocks, extract just the query using shared utility
       const ctx = generationContextRef.current;
       const isQueryBlockWorkaround = ctx?.blockType === 'interactive' || ctx?.blockType === 'code-block';
       if (isQueryBlockWorkaround) {
         customized = extractQueryFromResponse(customized);
       }
 
-      // For query blocks, add @@CLEAR@@ prefix back if original had it
       const needsClearMarker = defaultValue.startsWith('@@CLEAR@@');
       const cleanedDefault = defaultValue.replace(/^@@CLEAR@@\s*/, '');
 
       if (customized && customized !== cleanedDefault) {
-        // Save to localStorage - add @@CLEAR@@ prefix for query blocks
         const valueToSave = needsClearMarker ? `@@CLEAR@@ ${customized}` : customized;
         try {
           const storageKey = getStorageKey();
           localStorage.setItem(storageKey, valueToSave);
-          // Intentional: Sync React state with external SDK completion state
-          // This is a workaround for SDK v0.1.8 onComplete callback bug
           setCustomizedValue(valueToSave);
-          // Track datasource type for syntax highlighting (ctx is captured from outer scope)
 
           setCustomizedDatasourceType(ctx.datasourceType);
 
-          setIsPinned(false);
-
-          // Track successful customization
           reportAppInteraction(
             UserInteraction.AssistantCustomizeSuccess,
             buildAssistantCustomizableProperties(
@@ -212,28 +169,22 @@ export function AssistantBlockWrapper({
         }
       }
 
-      // Clear context after handling
       generationContextRef.current = null;
     }
   }, [isGenerating, content, defaultValue, getStorageKey, assistantId, assistantType, contentKey]);
 
-  // State to store datasource metadata artifact from tool
   const [metadataArtifact, setMetadataArtifact] = useState<DatasourceMetadataArtifact | null>(null);
 
-  // REACT: memoize tool creation using shared factory (R3)
   const datasourceMetadataTool = useMemo(
     () => createMetadataTool((artifact) => setMetadataArtifact(artifact)),
     [createMetadataTool]
   );
 
-  // Build analytics context
   const getAnalyticsContext = useCallback(() => {
     return { assistantId, assistantType, contentKey, inline: false };
   }, [assistantId, assistantType, contentKey]);
 
-  // Handle customize button click
   const handleCustomize = useCallback(async () => {
-    // Clear any existing error state before starting
     setGenerationError(null);
 
     const dsContext = await getDatasourceContext();
@@ -247,10 +198,8 @@ export function AssistantBlockWrapper({
     const datasourceType = dsContext.currentDatasource.type;
     const hasSupportedDatasource = isSupportedDatasource(datasourceType);
 
-    // Store context for workaround (SDK v0.1.8 onComplete bug)
     generationContextRef.current = { datasourceType, blockType };
 
-    // Track customize button click
     reportAppInteraction(
       UserInteraction.AssistantCustomizeClick,
       buildAssistantCustomizableProperties(getAnalyticsContext(), {
@@ -261,11 +210,9 @@ export function AssistantBlockWrapper({
 
     const tools = hasSupportedDatasource ? [datasourceMetadataTool] : [];
 
-    // Strip @@CLEAR@@ marker from interactive block values for the prompt
     const cleanedDefaultValue = defaultValue.replace(/^@@CLEAR@@\s*/, '');
     const isQueryBlock = blockType === 'interactive' || blockType === 'code-block';
 
-    // Build context section from surrounding blocks (helps AI understand purpose)
     const contextSection = surroundingContext?.before
       ? `Context: This step demonstrates "${surroundingContext.before}"${
           surroundingContext.after ? ` followed by "${surroundingContext.after}"` : ''
@@ -274,7 +221,6 @@ export function AssistantBlockWrapper({
         ? `Context: This precedes "${surroundingContext.after}"\n\n`
         : '';
 
-    // Different prompts for query blocks vs content blocks
     const prompt = isQueryBlock
       ? hasSupportedDatasource
         ? `${contextSection}Customize this ${datasourceType} query using real data from my datasource.
@@ -316,45 +262,36 @@ Adapt this to use common ${datasourceType} values that typically exist. Keep the
 
 Return only the customized content text.`;
 
-    // Use shared system prompt builders (fixes Prometheus-specific guidance for other datasources)
     const systemPrompt = isQueryBlock
       ? buildQuerySystemPrompt(datasourceType, hasSupportedDatasource)
       : buildContentSystemPrompt(datasourceType, hasSupportedDatasource);
 
-    // Generate with inline assistant
     await generate({
       prompt,
       origin: 'grafana-pathfinder-app/assistant-block-wrapper',
       systemPrompt,
       tools,
       onComplete: (text) => {
-        // Clear workaround context since SDK callback worked
         generationContextRef.current = null;
 
-        // Use shared utilities to clean up the response
         let customized = cleanAssistantResponse(text);
 
-        // For query blocks, extract just the query using shared utility
         const isQueryBlockInCallback = blockType === 'interactive' || blockType === 'code-block';
         if (isQueryBlockInCallback) {
           customized = extractQueryFromResponse(customized);
         }
 
-        // For query blocks, add @@CLEAR@@ prefix back if original had it
         const needsClearMarker = defaultValue.startsWith('@@CLEAR@@');
         const cleanedDefault = defaultValue.replace(/^@@CLEAR@@\s*/, '');
 
         if (customized && customized !== cleanedDefault) {
-          // Save to localStorage - add @@CLEAR@@ prefix for query blocks
           const valueToSave = needsClearMarker ? `@@CLEAR@@ ${customized}` : customized;
           try {
             const storageKey = getStorageKey();
             localStorage.setItem(storageKey, valueToSave);
             setCustomizedValue(valueToSave);
             setCustomizedDatasourceType(datasourceType);
-            setIsPinned(false);
 
-            // Track successful customization
             const labelCount = metadataArtifact?.metadata.labels
               ? Object.keys(metadataArtifact.metadata.labels).length
               : 0;
@@ -378,7 +315,6 @@ Return only the customized content text.`;
       onError: (err) => {
         logger.error('[AssistantBlockWrapper] Generation failed', { error: err });
 
-        // Set error state for UI feedback
         const errorMessage = err instanceof Error ? err.message : 'Generation failed. Please try again.';
         setGenerationError(errorMessage);
 
@@ -406,7 +342,6 @@ Return only the customized content text.`;
     surroundingContext,
   ]);
 
-  // Handle revert button click
   const handleRevert = useCallback(() => {
     try {
       const storageKey = getStorageKey();
@@ -414,7 +349,6 @@ Return only the customized content text.`;
       setCustomizedValue(null);
       setCustomizedDatasourceType(null);
       setGenerationError(null);
-      setIsPinned(false);
       reset();
 
       reportAppInteraction(
@@ -428,67 +362,19 @@ Return only the customized content text.`;
     }
   }, [getStorageKey, reset, getAnalyticsContext, blockType]);
 
-  // Mouse handlers
-  const handleMouseEnter = useCallback(() => {
-    setIsHovered(true);
-  }, []);
-
-  const handleMouseLeave = useCallback(() => {
-    if (!isPinned) {
-      setIsHovered(false);
-    }
-  }, [isPinned]);
-
-  const handleClick = useCallback(() => {
-    setIsPinned((prev) => !prev);
-  }, []);
-
-  // Click outside handler to close the button
-  useEffect(() => {
-    if (!isPinned) {
-      return;
-    }
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setIsPinned(false);
-        setIsHovered(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    // REACT: cleanup event listener (R1)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isPinned]);
-
-  // Show button if hovered OR pinned, and assistant is available
-  const showButton = (isHovered || isPinned) && isAssistantAvailable;
-
-  // Render button
-  // Handle dismissing error state
   const handleDismissError = useCallback(() => {
     setGenerationError(null);
   }, []);
 
   const renderButton = () => {
-    // Show button if hovered, pinned, generating, or has error
-    if (!showButton && !isGenerating && !generationError) {
+    if (!isAssistantAvailable && !isCustomized && !isGenerating && !generationError) {
       return null;
     }
 
     return (
-      <div
-        className={styles.buttonContainer}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
+      <div className={styles.buttonContainer}>
         <div className={styles.buttonGroup}>
           {generationError ? (
-            // Error state: show error message with retry and dismiss buttons
             <>
               <Button
                 icon="exclamation-triangle"
@@ -522,7 +408,7 @@ Return only the customized content text.`;
           ) : (
             <div className={styles.assistantButtonWrapper}>
               <Button icon="ai" size="sm" variant="primary" onClick={handleCustomize}>
-                Customize
+                Customize with Assistant
               </Button>
             </div>
           )}
@@ -531,8 +417,6 @@ Return only the customized content text.`;
     );
   };
 
-  // Helper to render ParsedElements to React nodes
-  // Handles markdown elements produced by parseMarkdownToElements
   const renderParsedElement = (element: ParsedElement | string, key: string | number): React.ReactNode => {
     if (typeof element === 'string') {
       return element;
@@ -592,17 +476,13 @@ Return only the customized content text.`;
           </span>
         );
       default:
-        // Fallback for unknown types
         return <span key={key}>{children}</span>;
     }
   };
 
-  // Render customized content for markdown blocks (non-interactive)
-  // Interactive blocks use the context approach (InteractiveStep handles rendering)
   const renderContent = () => {
     const isInteractiveBlock = blockType === 'interactive' || blockType === 'code-block';
 
-    // For interactive blocks, use context provider (InteractiveStep will handle rendering)
     if (isInteractiveBlock) {
       return (
         <AssistantBlockValueProvider
@@ -615,33 +495,21 @@ Return only the customized content text.`;
       );
     }
 
-    // For markdown blocks, render customized content using proper markdown parsing
     if (customizedValue) {
-      // Strip any @@CLEAR@@ marker (shouldn't be on markdown, but just in case)
       const displayValue = customizedValue.replace(/^@@CLEAR@@\s*/, '');
 
-      // Parse markdown to elements using the same parser as the JSON guide system
       const elements = parseMarkdownToElements(displayValue);
 
-      // Render parsed elements
       return <>{elements.map((el, i) => renderParsedElement(el, `customized-${i}`))}</>;
     }
 
-    // No customization, render original children
     return children;
   };
 
   return (
-    <div
-      ref={wrapperRef}
-      className={`${styles.wrapper} ${isCustomized ? styles.wrapperCustomized : styles.wrapperDefault}`}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onClick={handleClick}
-      title={isCustomized ? 'Customized by Assistant (click to revert)' : 'Click to customize with Assistant'}
-    >
-      {renderContent()}
+    <div className={`${styles.wrapper} ${isCustomized ? styles.wrapperCustomized : styles.wrapperDefault}`}>
       {renderButton()}
+      {renderContent()}
     </div>
   );
 }

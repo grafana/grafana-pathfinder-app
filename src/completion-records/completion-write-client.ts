@@ -1,3 +1,4 @@
+import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
 
@@ -40,6 +41,14 @@ export interface CompletionWriteBody {
   completedAt: string;
   durationMs?: number;
   platform: CompletionPlatform;
+  /**
+   * Present only for an attempt minted in `records` mode: the plugin then
+   * keeps one record per attempt and raises its percent in place. Absent, the
+   * body is the original create-only completion. A plugin that predates
+   * attempt upserts ignores the field and creates a record as before.
+   */
+  attemptId?: string;
+  attemptStartedAt?: string;
 }
 
 /**
@@ -98,6 +107,7 @@ export async function postCompletionRecord(body: CompletionWriteBody, idempotenc
     );
     return { kind: 'created' };
   } catch (err) {
+    reportProxyFailure(err);
     // A timeout is a network-class transient: the request may still land, and
     // the idempotency key makes a later retry safe.
     if (err instanceof TimeoutError) {

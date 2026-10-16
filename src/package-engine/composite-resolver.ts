@@ -1,3 +1,4 @@
+import type { GuideDiagnostic } from '../types/guide-diagnostics.types';
 /**
  * Composite Package Resolver
  *
@@ -26,6 +27,15 @@ import { AppPlatformPackageResolver } from './app-platform-resolver';
 // resolution here would serve stale content after an author edits a guide.
 const UNCACHEABLE_REPOSITORIES = new Set(['app-platform']);
 
+function isResolutionMiss(diagnostic: GuideDiagnostic): boolean {
+  return (
+    diagnostic.reason === 'not-found' ||
+    (diagnostic.stage === 'resolve' &&
+      diagnostic.reason === 'http-error' &&
+      (diagnostic.statusCode === 400 || diagnostic.statusCode === 404))
+  );
+}
+
 export class CompositePackageResolver implements PackageResolver {
   private readonly resolvers: PackageResolver[];
   private readonly cache = new Map<string, Promise<PackageResolution>>();
@@ -45,7 +55,7 @@ export class CompositePackageResolver implements PackageResolver {
     const loadContent = options?.loadContent ?? false;
     const verifyPublished = loadContent ? false : (options?.verifyPublished ?? false);
     const cacheKey = `${packageId}:${loadContent}:${verifyPublished}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = options?.bypassCache ? undefined : this.cache.get(cacheKey);
     if (cached) {
       return cached;
     }
@@ -80,6 +90,7 @@ export class CompositePackageResolver implements PackageResolver {
 
   private async resolveUncached(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
     let lastFailure: PackageResolution | undefined;
+    let attemptedDiagnostic: GuideDiagnostic | undefined;
 
     for (const resolver of this.resolvers) {
       const result = await resolver.resolve(packageId, options);
@@ -87,8 +98,20 @@ export class CompositePackageResolver implements PackageResolver {
         return result;
       }
       lastFailure = result;
+      const diagnostic = result.error.diagnostic;
+      if (
+        diagnostic &&
+        diagnostic.reason !== 'namespace-unavailable' &&
+        diagnostic.reason !== 'backend-unavailable' &&
+        (!attemptedDiagnostic || (isResolutionMiss(attemptedDiagnostic) && !isResolutionMiss(diagnostic)))
+      ) {
+        attemptedDiagnostic = diagnostic;
+      }
     }
 
+    if (lastFailure && !lastFailure.ok && attemptedDiagnostic) {
+      return { ...lastFailure, error: { ...lastFailure.error, diagnostic: attemptedDiagnostic } };
+    }
     return (
       lastFailure ?? {
         ok: false,

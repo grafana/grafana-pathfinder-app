@@ -4,6 +4,7 @@
  * Tests resolution ordering, fallback behavior, and recommender gating.
  */
 
+import type { GuideDiagnostic } from '../types/guide-diagnostics.types';
 import type { PackageResolution, PackageResolver, ResolveOptions } from '../types/package.types';
 
 import { CompositePackageResolver, createCompositeResolver } from './composite-resolver';
@@ -57,6 +58,71 @@ const NOT_FOUND: PackageResolution = {
 describe('CompositePackageResolver', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('failure diagnostics', () => {
+    const publicMiss: GuideDiagnostic = { source: 'cdn', stage: 'resolve', reason: 'not-found' };
+    const privateMiss: GuideDiagnostic = {
+      source: 'app-platform',
+      stage: 'resolve',
+      reason: 'http-error',
+      statusCode: 404,
+    };
+    const indexUnavailable: GuideDiagnostic = { source: 'cdn', stage: 'resolve', reason: 'index-unavailable' };
+    const privateDenied: GuideDiagnostic = {
+      source: 'app-platform',
+      stage: 'resolve',
+      reason: 'http-error',
+      statusCode: 403,
+    };
+
+    it.each([
+      [publicMiss, privateMiss, publicMiss],
+      [indexUnavailable, privateMiss, indexUnavailable],
+      [publicMiss, privateDenied, privateDenied],
+      [indexUnavailable, privateDenied, indexUnavailable],
+      [publicMiss, { source: 'app-platform', stage: 'resolve', reason: 'backend-unavailable' }, publicMiss],
+    ] as Array<[GuideDiagnostic, GuideDiagnostic, GuideDiagnostic]>)(
+      'selects the diagnostic for %j followed by %j',
+      async (publicDiagnostic, privateDiagnostic, expected) => {
+        const finalFailure: PackageResolution = {
+          ok: false,
+          id: 'missing',
+          repository: 'app-platform',
+          error: { code: 'not-found', message: 'App platform lookup failed', diagnostic: privateDiagnostic },
+        };
+        const composite = new CompositePackageResolver([
+          { resolve: jest.fn().mockResolvedValue(NOT_FOUND) },
+          {
+            resolve: jest.fn().mockResolvedValue({
+              ok: false,
+              id: 'missing',
+              error: { code: 'not-found', message: 'Public lookup failed', diagnostic: publicDiagnostic },
+            }),
+          },
+          { resolve: jest.fn().mockResolvedValue(finalFailure) },
+        ]);
+
+        expect(await composite.resolve('missing')).toEqual({
+          ...finalFailure,
+          error: { ...finalFailure.error, diagnostic: expected },
+        });
+      }
+    );
+
+    it('returns successful fallback without carrying an earlier failure diagnostic', async () => {
+      const composite = new CompositePackageResolver([
+        {
+          resolve: jest.fn().mockResolvedValue({
+            ok: false,
+            id: 'remote-guide',
+            error: { code: 'network-error', message: 'unavailable', diagnostic: indexUnavailable },
+          }),
+        },
+        { resolve: jest.fn().mockResolvedValue(SUCCESS_RECOMMENDER) },
+      ]);
+      expect(await composite.resolve('remote-guide')).toEqual(SUCCESS_RECOMMENDER);
+    });
   });
 
   describe('resolution ordering', () => {
@@ -185,6 +251,33 @@ describe('CompositePackageResolver', () => {
       expect(first).toBe(second);
       expect(first.ok).toBe(false);
       expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+
+    // A caller that already knows the prior call for this exact
+    // packageId/loadContent/verifyPublished combination failed needs a way
+    // to force a genuinely fresh attempt for a static-tier (bundled/CDN)
+    // failure — the kind this suite's own test just above proves is
+    // negatively cached and NOT evicted on failure, unlike app-platform's.
+    // Without `bypassCache`, that caller would silently get back the
+    // identical already-failed cached promise, never retrying anything.
+    it('bypassCache forces a fresh attempt past a cached static-tier failure, and refreshes the cache', async () => {
+      const resolveMock = mockBundledResolver.resolve as jest.Mock;
+      resolveMock.mockResolvedValueOnce(NOT_FOUND).mockResolvedValueOnce(SUCCESS_BUNDLED);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = await composite.resolve('missing');
+      expect(first.ok).toBe(false);
+
+      const retried = await composite.resolve('missing', { bypassCache: true });
+      expect(retried.ok).toBe(true);
+      expect(resolveMock).toHaveBeenCalledTimes(2);
+
+      // The cache is refreshed with the successful retry, not just bypassed
+      // for that one call — a later ordinary call reuses it rather than
+      // re-attempting or reverting to the stale failure.
+      const third = await composite.resolve('missing');
+      expect(third).toBe(retried);
+      expect(resolveMock).toHaveBeenCalledTimes(2);
     });
   });
 

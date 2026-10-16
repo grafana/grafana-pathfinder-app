@@ -1,25 +1,40 @@
+import {
+  KioskCatalogSchema,
+  KioskExitButtonLabelSchema,
+  type KioskMode,
+  type KioskPage,
+} from '../../types/kiosk-page.schema';
 import { logger } from '../../lib/logging';
 import { recordKioskCatalogLoaded, type KioskCatalogTier } from '../../lib/telemetry';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getKioskNameFromCatalogUrl } from '../../lib/kiosk-attribution';
+import { setKioskSessionName } from '../../lib/kiosk-analytics';
 import defaultKiosk from './default-kiosk.json';
 import { parseKioskWebUrl, validateKioskOverride } from '../../security/kiosk-url';
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
 
 export interface KioskRule {
+  id?: string;
   title: string;
   url: string;
   description: string;
   type: string;
   targetUrl?: string;
   page?: string;
+  interactiveLearning?: boolean;
 }
 
 export interface KioskRulesResponse {
   banner?: string;
+  exitButtonLabel?: string;
+  page?: KioskPage;
   rules: KioskRule[];
 }
 
 export interface KioskData {
   banner: string;
+  exitButtonLabel?: string;
+  page?: KioskPage;
   rules: KioskRule[];
 }
 
@@ -50,7 +65,13 @@ function invalidRuleField(item: unknown): string | undefined {
       return field;
     }
   }
-  if (!isAllowedContentUrl(obj.url as string)) {
+  if (obj.interactiveLearning !== undefined && typeof obj.interactiveLearning !== 'boolean') {
+    return 'interactiveLearning';
+  }
+  if (obj.interactiveLearning === false && typeof obj.page !== 'string') {
+    return 'page';
+  }
+  if (obj.interactiveLearning !== false && !isAllowedContentUrl(obj.url as string)) {
     return 'url';
   }
   if (
@@ -101,6 +122,13 @@ export async function fetchKioskData(
   }
 
   const data: KioskRulesResponse = await response.json();
+  const exitButtonLabel = KioskExitButtonLabelSchema.optional().safeParse(data?.exitButtonLabel);
+  if (!exitButtonLabel.success) {
+    throw new CatalogError('invalid_rules');
+  }
+  if (data && Object.hasOwn(data, 'page') && !KioskCatalogSchema.safeParse(data).success) {
+    throw new CatalogError('invalid_rules');
+  }
   const rules = Array.isArray(data?.rules) ? data.rules : Array.isArray(data) ? data : [];
   const valid = rules
     .filter((rule: unknown): rule is KioskRule => {
@@ -112,20 +140,22 @@ export async function fetchKioskData(
       return true;
     })
     .map((rule) => ({ ...rule, type: rule.type || 'guide' }));
-  if (valid.length === 0) {
+  if (valid.length === 0 || (data?.page && valid.length !== rules.length)) {
     throw new CatalogError('invalid_rules');
   }
   return {
     banner: typeof data?.banner === 'string' && data.banner.trim() ? data.banner : DEFAULT_BANNER,
     rules: valid,
+    ...(exitButtonLabel.data !== undefined && { exitButtonLabel: exitButtonLabel.data }),
+    ...(data?.page && { page: data.page }),
   };
 }
 
-export async function loadKioskData(
+export async function prepareKioskData(
   defaultUrl: string,
   overrideUrl?: string,
   signal?: AbortSignal
-): Promise<KioskData & { warning?: string }> {
+): Promise<PreparedKioskData> {
   signal?.throwIfAborted();
   const failed = new Set<KioskCatalogTier>();
   const attempted = new Set<string>();
@@ -134,22 +164,26 @@ export async function loadKioskData(
     failed.add(tier);
     logger.warn('Kiosk catalog load failed', { tier, reason });
   };
-  const finish = (data: KioskData, tier: KioskCatalogTier) => {
+  const finish = (data: KioskData, tier: KioskCatalogTier, catalogUrl?: string) => {
     signal?.throwIfAborted();
-    recordKioskCatalogLoaded(tier, failed.size > 0);
+    const kioskName = getKioskNameFromCatalogUrl(catalogUrl);
+    const metadata = { tier, kioskName, degraded: failed.size > 0 };
     if (failed.size === 0) {
-      return data;
+      return { data, ...metadata };
     }
-    const failure = failed.has('configured')
-      ? 'The configured kiosk could not be loaded.'
-      : 'The requested kiosk could not be loaded.';
+    const failure =
+      failed.has('override') && failed.has('configured')
+        ? 'The requested kiosk and the configured default kiosk could not be loaded.'
+        : failed.has('configured')
+          ? 'The configured kiosk could not be loaded.'
+          : 'The requested kiosk could not be loaded.';
     const showing =
       tier === 'configured'
         ? 'Showing the configured default kiosk.'
         : tier === 'generic'
           ? 'Showing the generic learning kiosk.'
           : 'Showing bundled guides.';
-    return { ...data, warning: `${failure} ${showing}` };
+    return { data: { ...data, warning: `${failure} ${showing}` }, ...metadata };
   };
   if (overrideUrl && !override) {
     reject('override', 'invalid_url');
@@ -170,11 +204,41 @@ export async function loadKioskData(
     attempted.add(url);
     signal?.throwIfAborted();
     try {
-      return finish(await fetchKioskData(url, signal, tier), tier);
+      return finish(await fetchKioskData(url, signal, tier), tier, url);
     } catch (error) {
       signal?.throwIfAborted();
       reject(tier, catalogFailureReason(error));
     }
   }
   return finish({ banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES }, 'bundled');
+}
+
+export interface PreparedKioskData {
+  data: KioskData & { warning?: string };
+  tier: KioskCatalogTier;
+  kioskName: string;
+  degraded: boolean;
+}
+
+export async function loadKioskData(
+  defaultUrl: string,
+  overrideUrl?: string,
+  signal?: AbortSignal,
+  session?: { sessionId: string; mode: KioskMode },
+  prepared?: Promise<PreparedKioskData>
+): Promise<KioskData & { warning?: string }> {
+  signal?.throwIfAborted();
+  const { data, tier, kioskName, degraded } = await (prepared ?? prepareKioskData(defaultUrl, overrideUrl, signal));
+  signal?.throwIfAborted();
+  if (session) {
+    setKioskSessionName(session.sessionId, kioskName);
+  }
+  recordKioskCatalogLoaded(tier, degraded);
+  reportAppInteraction(UserInteraction.KioskCatalogLoaded, {
+    tier,
+    kiosk_name: kioskName,
+    degraded,
+    ...(session && { kiosk_session_id: session.sessionId, launch_mode: session.mode }),
+  });
+  return data;
 }

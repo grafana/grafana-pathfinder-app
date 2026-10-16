@@ -3,6 +3,7 @@ import { getAppEvents } from '@grafana/runtime';
 import {
   __resetQuotaWarningForTests,
   completionEmittedStorage,
+  completionReportedStorage,
   createHybridStorage,
   createLocalStorage,
   guideResponseStorage,
@@ -18,6 +19,8 @@ import {
   unwrapEnvelope,
   wrapEnvelope,
 } from './user-storage';
+import { StorageEvents } from './event-names';
+import { logger } from './logging';
 import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
@@ -140,57 +143,149 @@ describe('unwrapEnvelope', () => {
 
 describe('milestoneCompletionStorage', () => {
   const journeyUrl = 'https://grafana.com/docs/learning-paths/linux-server-integration';
+  const otherJourneyUrl = 'backend-guide:fe-alerting-path';
+
+  const seedMilestones = (record: Record<string, string[]>) =>
+    localStorage.setItem(StorageKeys.MILESTONE_COMPLETION, JSON.stringify(record));
+  const readMilestones = () => JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}');
 
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('reads completions written with launch URL variants under the journey base URL', async () => {
-    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
-    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/view-data/content.json`, 'view-data');
+  it('reads completions stored under launch URL variants of the journey base URL', () => {
+    seedMilestones({
+      [`${journeyUrl}/`]: ['install-alloy'],
+      [`${journeyUrl}/view-data/content.json`]: ['view-data'],
+    });
 
-    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(
-      new Set(['install-alloy', 'view-data'])
-    );
-
-    const stored = JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}');
-    expect(stored[journeyUrl]).toEqual(['install-alloy', 'view-data']);
-    expect(stored[`${journeyUrl}/`]).toEqual(['install-alloy', 'view-data']);
-    expect(stored[`${journeyUrl}/view-data/content.json`]).toEqual(['install-alloy', 'view-data']);
-  });
-
-  it('reads non-HTTP milestone aliases supplied by journey metadata', async () => {
-    localStorage.setItem(
-      StorageKeys.MILESTONE_COMPLETION,
-      JSON.stringify({ 'bundled:demo-milestone/content.json': ['demo-milestone'] })
-    );
-
-    await expect(
-      milestoneCompletionStorage.getCompleted('bundled:demo-cover/content.json', [
-        'bundled:demo-milestone/content.json',
-      ])
-    ).resolves.toEqual(new Set(['demo-milestone']));
+    expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['install-alloy', 'view-data']));
   });
 
   it('clears canonical and legacy URL variants together', async () => {
-    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
-    await milestoneCompletionStorage.markCompleted(`${journeyUrl}/view-data/content.json`, 'view-data');
+    seedMilestones({
+      [journeyUrl]: ['install-alloy'],
+      [`${journeyUrl}/`]: ['install-alloy'],
+      [`${journeyUrl}/view-data/content.json`]: ['view-data'],
+      [otherJourneyUrl]: ['fe-alerting-01'],
+    });
 
     await milestoneCompletionStorage.clear(journeyUrl);
 
-    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
-    expect(JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}')).toEqual({});
+    expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
+    expect(readMilestones()).toEqual({ [otherJourneyUrl]: ['fe-alerting-01'] });
   });
 
   it('clearAll drops every journey', async () => {
-    await milestoneCompletionStorage.markCompleted(journeyUrl, 'install-alloy');
-    await milestoneCompletionStorage.markCompleted('backend-guide:fe-alerting-path', 'fe-alerting-01');
+    seedMilestones({ [journeyUrl]: ['install-alloy'], [otherJourneyUrl]: ['fe-alerting-01'] });
 
     await milestoneCompletionStorage.clearAll();
 
-    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
-    await expect(milestoneCompletionStorage.getCompleted('backend-guide:fe-alerting-path')).resolves.toEqual(new Set());
+    expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
+    expect(milestoneCompletionStorage.getCompletedSync(otherJourneyUrl)).toEqual(new Set());
     expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
+  });
+
+  // The per-milestone toolbar reset needs to remove exactly ONE slug from a
+  // journey's legacy record — `clear` above drops the whole journey, which
+  // would silently un-reset every OTHER milestone in the same journey.
+  it('removeCompleted removes only the named slug, across canonical and legacy URL variants, leaving siblings intact', async () => {
+    seedMilestones({
+      [journeyUrl]: ['install-alloy', 'view-data'],
+      [`${journeyUrl}/`]: ['install-alloy', 'view-data'],
+      [`${journeyUrl}/view-data/content.json`]: ['install-alloy', 'view-data'],
+    });
+
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy');
+
+    expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['view-data']));
+    const stored = readMilestones();
+    expect(stored[journeyUrl]).toEqual(['view-data']);
+    expect(stored[`${journeyUrl}/`]).toEqual(['view-data']);
+    expect(stored[`${journeyUrl}/view-data/content.json`]).toEqual(['view-data']);
+  });
+
+  // getCompletedSync also treats a milestone's own URL as an exact alias for
+  // its journey's record (getStoredMilestoneSlugs' exactKeys), so a
+  // pre-migration write under that URL — rather than under any key that
+  // canonicalizes to the journey base — must be reachable by removeCompleted
+  // too, or the read path keeps reporting the reset milestone as complete.
+  it('removeCompleted also removes a legacy record stored under the milestone URL itself, given as an alias', async () => {
+    const milestoneUrl = `${journeyUrl}/install-alloy/content.json`;
+    seedMilestones({ [`${journeyUrl}/`]: ['view-data'], [milestoneUrl]: ['install-alloy'] });
+
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy', [milestoneUrl]);
+
+    expect(readMilestones()[milestoneUrl]).toEqual([]);
+    expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['view-data']));
+  });
+
+  it('removeCompleted is a no-op when the slug was never marked complete', async () => {
+    seedMilestones({ [journeyUrl]: ['install-alloy'] });
+
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'never-completed');
+
+    expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['install-alloy']));
+  });
+
+  it('removeCompleted is a no-op when the journey has no record at all', async () => {
+    await milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy');
+    expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
+  });
+
+  // removeCompleted reads the whole record, mutates the matching entries, and
+  // writes the whole record back — calls for DIFFERENT journeys fired without
+  // an await between them would otherwise both read the same pre-write record,
+  // and whichever write resolved last would silently discard the other's
+  // removal (a lost update, mirroring bounded-record-storage.test.ts's "keeps
+  // every key when two set() calls for DIFFERENT keys race" case).
+  it('applies both removals when removeCompleted calls for DIFFERENT journeys race without an await between them', async () => {
+    seedMilestones({
+      [journeyUrl]: ['install-alloy', 'view-data'],
+      [otherJourneyUrl]: ['fe-alerting-01', 'fe-alerting-02'],
+    });
+
+    await Promise.all([
+      milestoneCompletionStorage.removeCompleted(journeyUrl, 'install-alloy'),
+      milestoneCompletionStorage.removeCompleted(otherJourneyUrl, 'fe-alerting-01'),
+    ]);
+
+    expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['view-data']));
+    expect(milestoneCompletionStorage.getCompletedSync(otherJourneyUrl)).toEqual(new Set(['fe-alerting-02']));
+  });
+
+  it('keeps only the survivor when removeCompleted calls race inside Promise.all', async () => {
+    seedMilestones({ [journeyUrl]: ['m1', 'm2', 'm3'] });
+
+    await Promise.all([
+      milestoneCompletionStorage.removeCompleted(journeyUrl, 'm1'),
+      milestoneCompletionStorage.removeCompleted(journeyUrl, 'm2'),
+    ]);
+
+    expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['m3']));
+  });
+
+  it('runs the next queued mutation after a rejected one', async () => {
+    seedMilestones({ [journeyUrl]: ['m1', 'm2'] });
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {
+      throw new Error('logger failed');
+    });
+    const getItem = jest.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new Error('read failed');
+    });
+
+    try {
+      const [rejected] = await Promise.allSettled([
+        milestoneCompletionStorage.removeCompleted(journeyUrl, 'm1'),
+        milestoneCompletionStorage.removeCompleted(journeyUrl, 'm2'),
+      ]);
+
+      expect(rejected.status).toBe('rejected');
+      expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['m1']));
+    } finally {
+      getItem.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   describe('getCompletedSync', () => {
@@ -198,17 +293,8 @@ describe('milestoneCompletionStorage', () => {
       expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set());
     });
 
-    it('reads back a completion written through markCompleted, synchronously', async () => {
-      await milestoneCompletionStorage.markCompleted(`${journeyUrl}/`, 'install-alloy');
-
-      expect(milestoneCompletionStorage.getCompletedSync(journeyUrl)).toEqual(new Set(['install-alloy']));
-    });
-
-    it('resolves milestone aliases the same way the async read does', () => {
-      localStorage.setItem(
-        StorageKeys.MILESTONE_COMPLETION,
-        JSON.stringify({ 'bundled:demo-milestone/content.json': ['demo-milestone'] })
-      );
+    it('resolves non-HTTP milestone aliases supplied by journey metadata', () => {
+      seedMilestones({ 'bundled:demo-milestone/content.json': ['demo-milestone'] });
 
       expect(
         milestoneCompletionStorage.getCompletedSync('bundled:demo-cover/content.json', [
@@ -793,6 +879,18 @@ describe('warnQuotaExceededOnce — surfaces a single toast across writes', () =
 // ============================================================================
 
 describe('guideResponseStorage — own-key lookups', () => {
+  it('serializes rapid writes, deletes, and merges without losing another guide', async () => {
+    await Promise.all([
+      guideResponseStorage.setResponse('first', 'signals', 'logs'),
+      guideResponseStorage.setResponse('first', 'environments', 'development'),
+      guideResponseStorage.setResponse('second', 'signals', 'metrics'),
+      guideResponseStorage.setResponse('first', 'signals', 'logs,traces'),
+      guideResponseStorage.deleteResponse('first', 'environments'),
+      guideResponseStorage.mergeResponses('first', { regions: 'west' }),
+    ]);
+    expect(await guideResponseStorage.getForGuide('first')).toEqual({ signals: 'logs,traces', regions: 'west' });
+    expect(await guideResponseStorage.getForGuide('second')).toEqual({ signals: 'metrics' });
+  });
   beforeEach(() => {
     localStorage.clear();
     // Seeded so getAll() parses a fresh container instead of returning the module default.
@@ -804,12 +902,22 @@ describe('guideResponseStorage — own-key lookups', () => {
 
     await expect(guideResponseStorage.getForGuide('docs-grafana-alerting')).resolves.toEqual({ region: 'us-east-1' });
     await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'region')).resolves.toBe('us-east-1');
-    await expect(guideResponseStorage.hasResponse('docs-grafana-alerting', 'region')).resolves.toBe(true);
 
     await guideResponseStorage.deleteResponse('docs-grafana-alerting', 'region');
 
     await expect(guideResponseStorage.getForGuide('docs-grafana-alerting')).resolves.toEqual({});
-    await expect(guideResponseStorage.hasResponse('docs-grafana-alerting', 'region')).resolves.toBe(false);
+    await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'region')).resolves.toBeUndefined();
+  });
+
+  it('keeps legitimate falsy values distinguishable from an absent response', async () => {
+    await guideResponseStorage.setResponse('docs-grafana-alerting', 'enabled', false);
+    await guideResponseStorage.setResponse('docs-grafana-alerting', 'count', 0);
+    await guideResponseStorage.setResponse('docs-grafana-alerting', 'note', '');
+
+    await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'enabled')).resolves.toBe(false);
+    await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'count')).resolves.toBe(0);
+    await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'note')).resolves.toBe('');
+    await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'missing')).resolves.toBeUndefined();
   });
 
   it('misses a guide id naming an inherited member instead of resolving through the prototype chain', async () => {
@@ -818,7 +926,6 @@ describe('guideResponseStorage — own-key lookups', () => {
     expect(responses).not.toBe(Object.prototype);
     expect(responses).toEqual({});
     await expect(guideResponseStorage.getResponse('__proto__', 'toString')).resolves.toBeUndefined();
-    await expect(guideResponseStorage.hasResponse('__proto__', 'toString')).resolves.toBe(false);
   });
 
   it('leaves Object.prototype unmodified when writing under a guide id naming an inherited member', async () => {
@@ -850,7 +957,6 @@ describe('guideResponseStorage — own-key lookups', () => {
     await guideResponseStorage.setResponse('docs-grafana-alerting', 'region', 'us-east-1');
 
     await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'toString')).resolves.toBeUndefined();
-    await expect(guideResponseStorage.hasResponse('docs-grafana-alerting', 'toString')).resolves.toBe(false);
   });
 });
 
@@ -1011,6 +1117,20 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     removeItem.mockRestore();
   });
 
+  it('keeps the analytics once-guard apart from the durable completion guard', async () => {
+    await completionEmittedStorage.markEmitted('guide:bundled:shared');
+    await completionReportedStorage.markEmitted('guide:bundled:shared');
+
+    await completionReportedStorage.clearAll();
+
+    expect(completionEmittedStorage.isEmitted('guide:bundled:shared')).toBe(true);
+    expect(completionReportedStorage.isEmitted('guide:bundled:shared')).toBe(false);
+    expect(Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.COMPLETION_REPORTED_PREFIX))).toEqual(
+      []
+    );
+    await completionEmittedStorage.clearAll();
+  });
+
   it('writes no record of its own — only the backend timestamp companions of records it removed', async () => {
     // The interim scheme completed a reset by writing a per-content marker, so
     // a refused write left the old progress live and still read. Nothing is
@@ -1049,5 +1169,51 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
       setGlobalStorage(createLocalStorage());
       jest.useRealTimers();
     }
+  });
+});
+
+describe('kiosk response persistence', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setGlobalStorage(createLocalStorage());
+  });
+  it('announces merged responses with the guide-scoped wildcard event', async () => {
+    const listener = jest.fn();
+    window.addEventListener(StorageEvents.GuideResponseChanged, listener);
+    try {
+      await guideResponseStorage.mergeResponses('first', { appUrl: 'https://example.com' });
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener.mock.calls[0][0].detail).toEqual({ guideId: 'first', variableName: '*', value: undefined });
+    } finally {
+      window.removeEventListener(StorageEvents.GuideResponseChanged, listener);
+    }
+  });
+  it('merges submitted keys, survives a storage reload and isolates guides', async () => {
+    await guideResponseStorage.setResponse('first', 'other', 'preserved');
+    await guideResponseStorage.mergeResponses('second', { appUrl: 'https://second.example' });
+    await guideResponseStorage.mergeResponses('first', { appUrl: 'https://old.example' });
+    await guideResponseStorage.mergeResponses('first', { appUrl: 'https://new.example' });
+    setGlobalStorage(createLocalStorage());
+    expect(await guideResponseStorage.getForGuide('first')).toEqual({
+      other: 'preserved',
+      appUrl: 'https://new.example',
+    });
+    expect(await guideResponseStorage.getForGuide('second')).toEqual({ appUrl: 'https://second.example' });
+  });
+  it('reports storage failures instead of claiming success', async () => {
+    setGlobalStorage({
+      ...createLocalStorage(),
+      setItem: async () => {
+        throw new Error('Unavailable');
+      },
+    });
+    await expect(guideResponseStorage.mergeResponses('first', { appUrl: 'https://example.com' })).rejects.toThrow(
+      'Unavailable'
+    );
+  });
+  it('rejects prototype keys', async () => {
+    await expect(guideResponseStorage.mergeResponses('first', JSON.parse('{"__proto__":"x"}'))).rejects.toThrow(
+      'Invalid'
+    );
   });
 });

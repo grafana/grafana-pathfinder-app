@@ -246,7 +246,7 @@ export function codaConfigGateMessage(
 ): string | null {
   switch (gate) {
     case 'disabled':
-      return `${subject}, and the sandbox terminal is turned off for this Grafana. An administrator can enable it in Pathfinder’s configuration.`;
+      return `${subject}, and the sandbox terminal is turned off for this Grafana. An administrator can enable it in the interactive learning configuration.`;
     case 'plugin-missing':
       return `${subject}, and the Coda app plugin is not installed or not enabled in this Grafana.`;
     case 'checking':

@@ -63,33 +63,6 @@ describe('getActiveExperiments', () => {
     });
   });
 
-  it('reflects a localStorage override for the highlighted-guide flag (incl. guideId/docType)', () => {
-    jest.isolateModules(() => {
-      setup({});
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-      const { setFlagOverride } = require('../openfeature');
-      const { getActiveExperiments } = require('./active-experiments');
-      setFlagOverride(HIGHLIGHTED_GUIDE_FLAG, {
-        variant: 'treatment',
-        pages: ['/a/grafana-irm-app*'],
-        guideId: 'bundled:my-guide',
-        autoOpen: true,
-        docType: 'interactive',
-      });
-
-      const highlighted = getActiveExperiments().find(
-        (entry: { flag: string }) => entry.flag === HIGHLIGHTED_GUIDE_FLAG
-      );
-
-      expect(highlighted).toEqual(
-        expect.objectContaining({ variant: 'treatment', guideId: 'bundled:my-guide', docType: 'interactive' })
-      );
-
-      consoleSpy.mockRestore();
-    });
-  });
-
   it('omits the banner arm until it is enrolled, and never evaluates it itself', () => {
     jest.isolateModules(() => {
       const mockOF = setup({ [BANNER_FLAG]: { variant: 'treatment' } });

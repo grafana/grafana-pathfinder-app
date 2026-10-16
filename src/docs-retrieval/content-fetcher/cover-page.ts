@@ -134,6 +134,7 @@ export function injectJourneyExtrasIntoJsonGuide(
     }
 
     wrapExpectBlockInOrangeOutline(parsed.blocks);
+    dropLeadingPathBodyBlock(parsed.blocks);
 
     const extrasHtml = generateJourneyContentWithExtras('', metadata, skipReadyToBegin);
     const blocks = extrasHtml.trim() ? [...parsed.blocks, { type: 'html', content: extrasHtml }] : parsed.blocks;
@@ -193,6 +194,32 @@ function wrapExpectBlockInOrangeOutline(blocks: Array<{ type: string; content?: 
 
     blocks.splice(i, 1, ...replacement);
     return;
+  }
+}
+
+/**
+ * Drop the Path's own leading body block on its cover page — always,
+ * regardless of shape, since the React hero above already renders the
+ * Path's title/description and no real body content has ever been found
+ * worth keeping there. Only ever runs for a Path's cover page, never a
+ * milestone guide's own content. Only fires on a markdown block 0 — if
+ * `wrapExpectBlockInOrangeOutline` (called first) already replaced it with
+ * the "what to expect" html card, there's nothing left to drop here.
+ *
+ * A genuinely empty `blocks: []` fails at render time (`ContentProcessor`
+ * treats it as a parse error), so a sole leading block becomes an empty
+ * html element instead of being removed outright.
+ */
+function dropLeadingPathBodyBlock(blocks: Array<{ type: string; content?: string }>): void {
+  const first = blocks[0];
+  if (first?.type !== 'markdown') {
+    return;
+  }
+
+  if (blocks.length > 1) {
+    blocks.shift();
+  } else {
+    blocks[0] = { type: 'html', content: '<div></div>' };
   }
 }
 

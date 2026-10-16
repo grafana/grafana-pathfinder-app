@@ -10,10 +10,11 @@ import { useStyles2, Alert, Icon } from '@grafana/ui';
 import { getBlockPreviewStyles } from './block-editor.styles';
 import { parseJsonGuide } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
-import { ContentRenderer } from '../content-renderer/content-renderer';
+import { ContentRenderer, type ContentRendererCompletion } from '../content-renderer/content-renderer';
 import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
+import { usePublishSurfaceContentKey } from '../../hooks';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import type { JsonGuide } from './types';
 import type { ContentParseResult, RawContent } from '../../types/content.types';
@@ -33,6 +34,8 @@ export interface BlockPreviewProps {
   hideResetButton?: boolean;
 }
 
+const PREVIEW_COMPLETION: ContentRendererCompletion = { kind: 'untracked', reason: 'preview' };
+
 /**
  * Block preview component
  */
@@ -45,6 +48,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
 
   // Progress key matches the URL used in content rendering
   const progressKey = `block-editor://preview/${guide.id}`;
+  usePublishSurfaceContentKey(progressKey);
   const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
 
   // Force ContentRenderer remount when progress is cleared (locally or by a sibling
@@ -186,6 +190,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
       <ContentRenderer
         key={`preview-content-${resetKey}`}
         content={content}
+        completion={PREVIEW_COMPLETION}
         className={`${journeyStyles} ${interactiveStyles} ${prismStyles} ${styles.previewContent}`}
       />
     </div>

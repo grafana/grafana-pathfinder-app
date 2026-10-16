@@ -29,7 +29,7 @@ export function useSessionJoinUrlCheck({
         type: 'alert-warning',
         payload: [
           'Live sessions disabled',
-          'Live sessions are disabled on this Grafana instance. Ask your administrator to enable them in the Pathfinder plugin configuration.',
+          'Live sessions are disabled on this Grafana instance. Ask your administrator to enable them in the interactive learning plugin configuration.',
         ],
       });
       return;

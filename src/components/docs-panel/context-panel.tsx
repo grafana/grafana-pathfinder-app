@@ -2,10 +2,10 @@ import React, { memo, useEffect, useState } from 'react';
 import { cx } from '@emotion/css';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
-import { Icon, useStyles2, Card, Alert, Button } from '@grafana/ui';
-import { IconName } from '@grafana/data';
+import { Icon, useStyles2, Alert, Button } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
+import { Prerequisites } from '../Prerequisites';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
@@ -16,6 +16,7 @@ import { locationService, getAppEvents } from '@grafana/runtime';
 import { getStyles } from '../../styles/context-panel.styles';
 import { getSkeletonStyles } from '../../styles/skeleton.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
+import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { ResolvedNavLink } from '../../types/context.types';
 import {
   reportAppInteraction,
@@ -33,6 +34,12 @@ import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuid
 import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { useRecommendationsScrollPosition } from './hooks';
+import { useLearningPaths, useMyAssignments, type ResolvedAssignment } from '../../learning-paths';
+import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
+import { LearningModuleList } from '../LearningContentCard/LearningModuleList';
+import { learningEffort } from '../LearningContentCard/learning-effort';
+import { catalogTopic } from '../../lib/catalog-discovery';
+import { AssignmentBadges } from '../LearningPaths/AssignmentBadges';
 
 /**
  * Resolve the effective display type for a recommendation.
@@ -47,6 +54,34 @@ const getEffectiveDisplayType = (recommendation: Recommendation): Recommendation
   return recommendation.type;
 };
 
+/** The manifest id of a package-backed recommendation; bundled-catalogue paths have none. */
+function recommendationTargetId(recommendation: Recommendation): string | undefined {
+  const id = recommendation.manifest?.id;
+  return typeof id === 'string' && id.trim() !== '' ? id : undefined;
+}
+
+/**
+ * Matches a card to its assignment by manifest id; only a card with no id falls back to a unique title.
+ * An id that matches nothing or an ambiguous title drops the badge rather than guess.
+ */
+function assignmentForPath(
+  recommendation: Recommendation,
+  assignments: ResolvedAssignment[]
+): ResolvedAssignment | undefined {
+  if (getEffectiveDisplayType(recommendation) !== 'learning-journey') {
+    return undefined;
+  }
+
+  const targetId = recommendationTargetId(recommendation);
+  if (targetId !== undefined) {
+    return assignments.find((assignment) => assignment.targetId === targetId);
+  }
+
+  const title = recommendation.title.trim().toLowerCase();
+  const byTitle = assignments.filter((assignment) => assignment.title.trim().toLowerCase() === title);
+  return byTitle.length === 1 ? byTitle[0] : undefined;
+}
+
 /** Maps a recommendation's effective display type onto the canonical analytics content_type. */
 const getContentTypeForDisplayType = (displayType: Recommendation['type']): AnalyticsContentType => {
   if (displayType === 'docs-page') {
@@ -58,60 +93,8 @@ const getContentTypeForDisplayType = (displayType: Recommendation['type']): Anal
   return AnalyticsContentType.LearningJourney;
 };
 
-/** Get icon name based on recommendation type */
-const getRecommendationIcon = (type?: string): IconName => {
-  if (type === 'docs-page') {
-    return 'file-alt';
-  }
-  return 'rocket';
-};
-
-/** Get short button text based on recommendation type and progress */
-const getRecommendationButtonText = (type?: string, completionPercentage?: number): string => {
-  if (type === 'docs-page') {
-    return t('contextPanel.view', 'View');
-  }
-  if (completionPercentage && completionPercentage > 0 && completionPercentage < 100) {
-    return t('contextPanel.resume', 'Resume');
-  }
-  return t('contextPanel.start', 'Start');
-};
-
-/** Get category label for display as a tag below the title */
-const getCategoryLabel = (type?: string): string => {
-  if (type === 'interactive') {
-    return t('contextPanel.categoryInteractiveGuide', 'Interactive guide');
-  }
-  if (type === 'docs-page') {
-    return t('contextPanel.categoryDocsPage', 'Docs page');
-  }
-  return t('contextPanel.categoryLearningJourney', 'Learning path');
-};
-
-/** Get category tag style class name based on recommendation type */
-const getCategoryTagStyle = (styles: ReturnType<typeof getStyles>, type?: string): string => {
-  if (type === 'interactive') {
-    return styles.categoryTagInteractive;
-  }
-  if (type === 'docs-page') {
-    return styles.categoryTagDocs;
-  }
-  return styles.categoryTagJourney;
-};
-
 /** Check if recommendation type is docs-only (static documentation, not action-oriented) */
 const isDocsOnlyRecommendation = (type?: string): boolean => type === 'docs-page';
-
-/**
- * Approximate two lines of bodySmall text in the recommendation card.
- */
-const SUMMARY_COLLAPSE_WORD_THRESHOLD = 20;
-
-/** Whether the summary text alone is long enough to warrant a collapse control. */
-function isCollapsibleSummary(summary?: string): boolean {
-  const words = summary?.trim().split(/\s+/).filter(Boolean) ?? [];
-  return words.length > SUMMARY_COLLAPSE_WORD_THRESHOLD;
-}
 
 /** Whether unresolved or resolved content exists for the expansion panel. */
 function hasExpandableDetails(recommendation: Recommendation): boolean {
@@ -119,17 +102,17 @@ function hasExpandableDetails(recommendation: Recommendation): boolean {
     Boolean(recommendation.pendingMilestoneIds?.length) ||
     Boolean(recommendation.pendingRecommendIds?.length) ||
     Boolean(recommendation.pendingSuggestIds?.length);
-  if (hasPendingDetails || Boolean(recommendation.milestones?.length)) {
+  const prerequisites = recommendation.manifest?.prerequisites;
+  if (
+    hasPendingDetails ||
+    Boolean(recommendation.milestones?.length) ||
+    (Array.isArray(prerequisites) && prerequisites.length > 0)
+  ) {
     return true;
   }
 
   const nav = getManifestNavigation(recommendation);
   return nav.recommends.length > 0 || nav.suggests.length > 0;
-}
-
-/** Whether this card should render the Summary collapse control. */
-function isSummaryExpandable(recommendation: Recommendation): boolean {
-  return isCollapsibleSummary(recommendation.summary) || hasExpandableDetails(recommendation);
 }
 
 /**
@@ -191,10 +174,10 @@ function getManifestNavigation(recommendation: Recommendation): {
   return { recommends, suggests };
 }
 
-const getNavLinkIcon = (link: ResolvedNavLink): IconName =>
-  getPackageRenderType(link.manifest) === 'learning-journey' ? 'graph-bar' : 'link';
-
-const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
+const getRecommendationPackageInfo = (
+  recommendation: Recommendation,
+  trackId?: string
+): PackageOpenInfo | undefined => {
   if (recommendation.type !== 'package') {
     return undefined;
   }
@@ -208,6 +191,7 @@ const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOp
     packageManifest: recommendation.manifest,
     repository: recommendation.repository,
     resolvedMilestones: Array.isArray(recommendation.milestones) ? recommendation.milestones : undefined,
+    ...(trackId && { trackId }),
   };
 };
 
@@ -232,13 +216,13 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 
   public openLearningJourney(url: string, title: string) {
     if (this.state.onOpenLearningJourney) {
-      this.state.onOpenLearningJourney(url, title);
+      return this.state.onOpenLearningJourney(url, title);
     }
   }
 
   public openDocsPage(url: string, title: string, packageInfo?: PackageOpenInfo) {
     if (this.state.onOpenDocsPage) {
-      this.state.onOpenDocsPage(url, title, packageInfo);
+      return this.state.onOpenDocsPage(url, title, packageInfo);
     } else {
       logger.warn('No onOpenDocsPage callback available');
     }
@@ -255,7 +239,6 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   }
 }
 
-// Memoized recommendations section to prevent unnecessary rerenders
 interface RecommendationsSectionProps {
   recommendations: Recommendation[];
   featuredRecommendations: Recommendation[];
@@ -276,6 +259,7 @@ interface RecommendationsSectionProps {
   toggleSuggestedGuidesExpansion: () => void;
   toggleSummaryExpansion: (recommendationUrl: string) => void;
   toggleOtherDocsExpansion: () => void;
+  assignments?: ResolvedAssignment[];
 }
 
 export const RecommendationsSection = memo(function RecommendationsSection({
@@ -298,20 +282,193 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   toggleSuggestedGuidesExpansion,
   toggleSummaryExpansion,
   toggleOtherDocsExpansion,
+  assignments = [],
 }: RecommendationsSectionProps) {
   const styles = useStyles2(getStyles);
   const skeletonStyles = useStyles2(getSkeletonStyles);
   const hasCustomGuidesContent = isLoadingCustomGuides || customGuides.length > 0;
   const suggestedGuidesCount = recommendations.length + featuredRecommendations.length;
 
-  // All recommendations are now >= 0.5 confidence and pre-sorted by service
-  // Primary recommendations: maximum of 4 items with highest confidence
+  const renderRecommendation = (recommendation: Recommendation, index: number, featured = false) => {
+    const contentUrl = getRecommendationContentUrl(recommendation);
+    const assignment = assignmentForPath(recommendation, assignments);
+    const packageInfo = getRecommendationPackageInfo(recommendation, assignment?.trackId);
+    const displayType = getEffectiveDisplayType(recommendation);
+    const kind = displayType === 'docs-page' ? 'docs' : displayType === 'interactive' ? 'guide' : 'path';
+    const isExpanded = Boolean(recommendation.summaryExpanded);
+    return (
+      <LearningContentCard
+        key={contentUrl || `${featured ? 'featured' : 'main'}-${index}`}
+        title={recommendation.title}
+        topic={catalogTopic({
+          id: typeof recommendation.manifest?.id === 'string' ? recommendation.manifest.id : contentUrl,
+          title: recommendation.title,
+          category:
+            typeof recommendation.manifest?.category === 'string' ? recommendation.manifest.category : undefined,
+        })}
+        kind={kind}
+        description={recommendation.summary}
+        progress={displayType === 'docs-page' ? undefined : recommendation.completionPercentage}
+        organization={recommendation.repository === 'app-platform'}
+        badges={assignment && <AssignmentBadges assignment={assignment} />}
+        effort={learningEffort(recommendation.manifest, kind)}
+        testId={featured ? `featured-recommendation-card-${index}` : testIds.contextPanel.recommendationCard(index)}
+        titleTestId={!featured ? testIds.contextPanel.recommendationTitle(index) : undefined}
+        actionTestId={!featured ? testIds.contextPanel.recommendationStartButton(index) : undefined}
+        disclosureTestId={!featured ? testIds.contextPanel.recommendationSummaryButton(index) : undefined}
+        detailsTestId={!featured ? testIds.contextPanel.recommendationSummaryContent(index) : undefined}
+        disclosureLabel={
+          recommendation.pendingMilestoneIds?.length || recommendation.milestones?.length
+            ? t('learningCard.showModules', 'Show modules')
+            : hasExpandableDetails(recommendation)
+              ? t('learningCard.showRelated', 'Related content')
+              : undefined
+        }
+        collapseLabel={
+          recommendation.pendingMilestoneIds?.length || recommendation.milestones?.length
+            ? t('learningCard.hideModules', 'Hide modules')
+            : hasExpandableDetails(recommendation)
+              ? t('learningCard.hideRelated', 'Hide related content')
+              : undefined
+        }
+        expanded={isExpanded}
+        onToggleDetails={() => {
+          reportAppInteraction(UserInteraction.SummaryClick, {
+            content_title: recommendation.title,
+            content_url: contentUrl,
+            content_type: getContentTypeForAnalytics(contentUrl, getContentTypeForDisplayType(displayType)),
+            action: isExpanded ? 'collapse' : 'expand',
+            match_accuracy: recommendation.matchAccuracy || 0,
+            ...(displayType !== 'docs-page' && { total_milestones: recommendation.totalSteps || 0 }),
+          });
+          toggleSummaryExpansion(contentUrl);
+        }}
+        onLaunch={() => {
+          reportAppInteraction(UserInteraction.OpenResourceClick, {
+            content_title: recommendation.title,
+            content_url: contentUrl,
+            content_type: getContentTypeForAnalytics(contentUrl, getContentTypeForDisplayType(displayType)),
+            interaction_location: featured ? 'featured_card_button' : 'main_card_button',
+            match_accuracy: recommendation.matchAccuracy || 0,
+            ...(displayType !== 'docs-page' && {
+              total_milestones: recommendation.totalSteps || 0,
+              completion_percentage: recommendation.completionPercentage ?? 0,
+            }),
+          });
+          return shouldUseDocsPageOpener(recommendation.type)
+            ? openDocsPage(contentUrl, recommendation.title, packageInfo)
+            : openLearningJourney(contentUrl, recommendation.title);
+        }}
+        details={
+          hasExpandableDetails(recommendation) ? (
+            <>
+              <Prerequisites prerequisites={recommendation.manifest?.prerequisites} />
+              {recommendation.isResolvingDeferred && !recommendation.milestones && (
+                <div className={cx(skeletonStyles.skeleton, styles.deferredSkeleton)}>
+                  {Array.from({
+                    length: recommendation.totalSteps ? Math.min(recommendation.totalSteps, 3) : 2,
+                  }).map((_, i) => (
+                    <div key={i} className={styles.deferredSkeletonRow}>
+                      <div className={styles.deferredSkeletonCircle}></div>
+                      <div className={styles.deferredSkeletonBar}></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!isDocsOnlyRecommendation(displayType) && (recommendation.milestones?.length ?? 0) > 0 && (
+                <div data-testid={!featured ? testIds.contextPanel.recommendationMilestones(index) : undefined}>
+                  <h4>{t('learningCard.modulesTitle', 'Modules')}</h4>
+                  <LearningModuleList
+                    modules={recommendation.milestones ?? []}
+                    itemTestId={
+                      !featured
+                        ? (stepIndex) => testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)
+                        : undefined
+                    }
+                    onOpen={(milestone) => {
+                      reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
+                        content_title: recommendation.title,
+                        milestone_title: milestone.title,
+                        milestone_number: milestone.number,
+                        milestone_url: milestone.url,
+                        content_url: contentUrl,
+                        interaction_location: featured ? 'featured_milestone_list' : 'milestone_list',
+                      });
+                      return packageInfo
+                        ? openDocsPage(milestone.url, recommendation.title, packageInfo)
+                        : openLearningJourney(milestone.url, `${recommendation.title} - ${milestone.title}`);
+                    }}
+                  />
+                </div>
+              )}
+              {(() => {
+                const nav = getManifestNavigation(recommendation);
+                const hasNav = nav.recommends.length > 0 || nav.suggests.length > 0;
+                if (!hasNav) {
+                  return null;
+                }
+                return (
+                  <div>
+                    {[
+                      {
+                        links: nav.recommends,
+                        title: t('contextPanel.recommendedNext', 'Recommended next'),
+                        location: featured ? 'featured_recommends_section' : 'recommends_section',
+                      },
+                      {
+                        links: nav.suggests,
+                        title: t('contextPanel.youMightAlsoLike', 'You might also like'),
+                        location: featured ? 'featured_suggests_section' : 'suggests_section',
+                      },
+                    ]
+                      .filter((section) => section.links.length)
+                      .map((section) => (
+                        <div key={section.location}>
+                          <h4>{section.title}</h4>
+                          <LearningModuleList
+                            numbered={false}
+                            modules={section.links.map((link, index) => ({
+                              id: link.packageId,
+                              title: link.title,
+                              url: link.contentUrl,
+                              number: index + 1,
+                              isActive: false,
+                            }))}
+                            onOpen={(member) => {
+                              const link = section.links.find((link) => link.packageId === member.id);
+                              if (!link) {
+                                return;
+                              }
+                              reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                content_title: link.title,
+                                content_url: link.contentUrl,
+                                content_type: AnalyticsContentType.PackageNavLink,
+                                interaction_location: section.location,
+                              });
+                              return openDocsPage(link.contentUrl, link.title, {
+                                packageId: link.packageId,
+                                packageManifest: link.manifest,
+                                repository: link.repository,
+                              });
+                            }}
+                          />
+                        </div>
+                      ))}
+                  </div>
+                );
+              })()}
+            </>
+          ) : undefined
+        }
+      />
+    );
+  };
+
   const finalPrimaryRecommendations = recommendations.slice(0, 4);
 
-  // Secondary recommendations: all remaining items go to "Other Documentation"
   const secondaryDocs = recommendations.slice(4);
 
-  // Show loading state while context is loading OR recommendations are loading
   if (isLoadingRecommendations || isLoadingContext) {
     return (
       <div className={styles.recommendationsContainer} data-testid={testIds.contextPanel.recommendationsContainer}>
@@ -320,7 +477,6 @@ export const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
-  // If there's an error but no recommendations (regular or featured), show only the error
   if (
     recommendationsError &&
     recommendations.length === 0 &&
@@ -338,7 +494,6 @@ export const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
-  // If there are no recommendations (regular or featured) and no error, show empty state
   if (recommendations.length === 0 && featuredRecommendations.length === 0 && !hasCustomGuidesContent) {
     return (
       <>
@@ -391,6 +546,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             expanded={customGuidesExpanded}
             onToggleExpanded={toggleCustomGuidesExpansion}
             openDocsPage={openDocsPage}
+            assignments={assignments}
           />
         )}
 
@@ -413,7 +569,6 @@ export const RecommendationsSection = memo(function RecommendationsSection({
           </div>
         )}
 
-        {/* Featured Recommendations Section - Time-based featured content */}
         {suggestedGuidesExpanded && featuredRecommendations.length > 0 && (
           <div className={styles.featuredSection} data-testid="featured-section">
             <div className={styles.featuredHeader}>
@@ -421,283 +576,9 @@ export const RecommendationsSection = memo(function RecommendationsSection({
               <h3 className={styles.featuredTitle}>{t('contextPanel.featured', 'Featured')}</h3>
             </div>
             <div className={styles.featuredGrid}>
-              {featuredRecommendations.map((recommendation, index) => {
-                const contentUrl = getRecommendationContentUrl(recommendation);
-                const packageInfo = getRecommendationPackageInfo(recommendation);
-                const displayType = getEffectiveDisplayType(recommendation);
-                const isExpandable = isSummaryExpandable(recommendation);
-                const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
-                return (
-                  <Card
-                    key={`featured-${index}`}
-                    className={`${styles.recommendationCard} ${styles.featuredCard} ${
-                      displayType === 'docs-page' ? styles.compactCard : ''
-                    }`}
-                    data-testid={`featured-recommendation-card-${index}`}
-                  >
-                    <div
-                      className={`${styles.recommendationCardContent} ${
-                        displayType === 'docs-page' ? styles.compactCardContent : ''
-                      }`}
-                    >
-                      <div
-                        className={`${styles.cardHeader} ${displayType === 'docs-page' ? styles.compactHeader : ''}`}
-                      >
-                        <div className={styles.cardTitleSection}>
-                          <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
-                          <span className={getCategoryTagStyle(styles, displayType)}>
-                            {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
-                            {getCategoryLabel(displayType)}
-                          </span>
-                        </div>
-                        <div className={styles.cardActions}>
-                          <button
-                            onClick={() => {
-                              reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                content_title: recommendation.title,
-                                content_url: contentUrl,
-                                content_type: getContentTypeForAnalytics(
-                                  contentUrl,
-                                  getContentTypeForDisplayType(displayType)
-                                ),
-                                interaction_location: 'featured_card_button',
-                                match_accuracy: recommendation.matchAccuracy || 0,
-                                ...(displayType !== 'docs-page' && {
-                                  total_milestones: recommendation.totalSteps || 0,
-                                  completion_percentage: recommendation.completionPercentage ?? 0,
-                                }),
-                              });
-
-                              if (shouldUseDocsPageOpener(recommendation.type)) {
-                                openDocsPage(contentUrl, recommendation.title, packageInfo);
-                              } else {
-                                openLearningJourney(contentUrl, recommendation.title);
-                              }
-                            }}
-                            className={styles.startButton}
-                          >
-                            <Icon name={getRecommendationIcon(displayType)} size="sm" />
-                            {getRecommendationButtonText(displayType, recommendation.completionPercentage)}
-                          </button>
-                        </div>
-                      </div>
-
-                      {(!isDocsOnlyRecommendation(displayType) || recommendation.summary) && (
-                        <>
-                          <div className={styles.cardMetadata}>
-                            <div className={styles.summaryInfo}>
-                              {isExpandable ? (
-                                <button
-                                  onClick={() => {
-                                    reportAppInteraction(UserInteraction.SummaryClick, {
-                                      content_title: recommendation.title,
-                                      content_url: contentUrl,
-                                      content_type: getContentTypeForAnalytics(
-                                        contentUrl,
-                                        getContentTypeForDisplayType(displayType)
-                                      ),
-                                      action: isExpanded ? 'collapse' : 'expand',
-                                      match_accuracy: recommendation.matchAccuracy || 0,
-                                      ...(displayType !== 'docs-page' && {
-                                        total_milestones: recommendation.totalSteps || 0,
-                                      }),
-                                    });
-
-                                    toggleSummaryExpansion(contentUrl);
-                                  }}
-                                  className={styles.summaryButton}
-                                >
-                                  <Icon name="info-circle" size="sm" />
-                                  <span>{t('contextPanel.summary', 'Summary')}</span>
-                                  <Icon name={isExpanded ? 'angle-up' : 'angle-down'} size="sm" />
-                                </button>
-                              ) : (
-                                recommendation.summary && (
-                                  <p className={styles.inlineSummary}>{recommendation.summary}</p>
-                                )
-                              )}
-                              {!isDocsOnlyRecommendation(displayType) &&
-                                typeof recommendation.completionPercentage === 'number' && (
-                                  <div className={styles.completionInfo}>
-                                    <div
-                                      className={styles.completionPercentage}
-                                      data-completion={recommendation.completionPercentage}
-                                    >
-                                      {t('contextPanel.percentComplete', '{{percent}}% complete', {
-                                        percent: recommendation.completionPercentage,
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                            </div>
-                          </div>
-
-                          {isExpanded && (
-                            <div className={styles.summaryExpansion}>
-                              {recommendation.summary && (
-                                <div className={styles.summaryContent}>
-                                  <p className={styles.summaryText}>{recommendation.summary}</p>
-                                </div>
-                              )}
-
-                              {recommendation.isResolvingDeferred && !recommendation.milestones && (
-                                <div className={cx(skeletonStyles.skeleton, styles.deferredSkeleton)}>
-                                  {Array.from({
-                                    length: recommendation.totalSteps ? Math.min(recommendation.totalSteps, 3) : 2,
-                                  }).map((_, i) => (
-                                    <div key={i} className={styles.deferredSkeletonRow}>
-                                      <div className={styles.deferredSkeletonCircle}></div>
-                                      <div className={styles.deferredSkeletonBar}></div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {!isDocsOnlyRecommendation(displayType) &&
-                                (recommendation.totalSteps ?? 0) > 0 &&
-                                recommendation.milestones && (
-                                  <div className={styles.milestonesSection}>
-                                    <div className={styles.milestonesHeader}>
-                                      <h4 className={styles.milestonesTitle}>
-                                        {t('contextPanel.milestones', 'Milestones:')}
-                                      </h4>
-                                    </div>
-                                    <div className={styles.milestonesList}>
-                                      {recommendation.milestones.map((milestone, stepIndex) => (
-                                        <button
-                                          key={stepIndex}
-                                          onClick={() => {
-                                            // Locked (unpublished) member — placeholder only, not navigable.
-                                            if (milestone.isLocked) {
-                                              return;
-                                            }
-                                            reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
-                                              content_title: recommendation.title,
-                                              milestone_title: milestone.title,
-                                              milestone_number: milestone.number,
-                                              milestone_url: milestone.url,
-                                              content_url: contentUrl,
-                                              interaction_location: 'featured_milestone_list',
-                                            });
-                                            if (packageInfo) {
-                                              openDocsPage(milestone.url, recommendation.title, packageInfo);
-                                            } else {
-                                              openLearningJourney(
-                                                milestone.url,
-                                                `${recommendation.title} - ${milestone.title}`
-                                              );
-                                            }
-                                          }}
-                                          disabled={milestone.isLocked}
-                                          className={`${styles.milestoneItem} ${milestone.isLocked ? styles.milestoneItemLocked : ''}`}
-                                        >
-                                          <div className={styles.milestoneNumber}>{milestone.number}</div>
-                                          <div className={styles.milestoneContent}>
-                                            <div className={styles.milestoneTitle}>
-                                              {milestone.title}
-                                              {milestone.isLocked && (
-                                                <span className={styles.milestoneDuration}>
-                                                  {t('contextPanel.notYetAvailable', '(not yet available)')}
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          {milestone.isLocked && <Icon name="lock" size="sm" />}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                              {(() => {
-                                const nav = getManifestNavigation(recommendation);
-                                const hasNav = nav.recommends.length > 0 || nav.suggests.length > 0;
-                                if (!hasNav) {
-                                  return null;
-                                }
-                                return (
-                                  <div className={styles.milestonesSection}>
-                                    {nav.recommends.length > 0 && (
-                                      <>
-                                        <div className={styles.milestonesHeader}>
-                                          <h4 className={styles.milestonesTitle}>
-                                            {t('contextPanel.recommendedNext', 'Recommended next')}
-                                          </h4>
-                                        </div>
-                                        <div className={styles.milestonesList}>
-                                          {nav.recommends.map((link) => (
-                                            <button
-                                              key={link.packageId}
-                                              onClick={() => {
-                                                reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                                  content_title: link.title,
-                                                  content_url: link.contentUrl,
-                                                  content_type: AnalyticsContentType.PackageNavLink,
-                                                  interaction_location: 'featured_recommends_section',
-                                                });
-                                                openDocsPage(link.contentUrl, link.title, {
-                                                  packageId: link.packageId,
-                                                  packageManifest: link.manifest,
-                                                  repository: link.repository,
-                                                });
-                                              }}
-                                              className={styles.milestoneItem}
-                                            >
-                                              <Icon name="arrow-right" size="sm" />
-                                              <div className={styles.milestoneContent}>
-                                                <div className={styles.milestoneTitle}>{link.title}</div>
-                                              </div>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </>
-                                    )}
-                                    {nav.suggests.length > 0 && (
-                                      <>
-                                        <div className={styles.milestonesHeader}>
-                                          <h4 className={styles.milestonesTitle}>
-                                            {t('contextPanel.youMightAlsoLike', 'You might also like')}
-                                          </h4>
-                                        </div>
-                                        <div className={styles.milestonesList}>
-                                          {nav.suggests.map((link) => (
-                                            <button
-                                              key={link.packageId}
-                                              onClick={() => {
-                                                reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                                  content_title: link.title,
-                                                  content_url: link.contentUrl,
-                                                  content_type: AnalyticsContentType.PackageNavLink,
-                                                  interaction_location: 'featured_suggests_section',
-                                                });
-                                                openDocsPage(link.contentUrl, link.title, {
-                                                  packageId: link.packageId,
-                                                  packageManifest: link.manifest,
-                                                  repository: link.repository,
-                                                });
-                                              }}
-                                              className={styles.milestoneItem}
-                                            >
-                                              <Icon name={getNavLinkIcon(link)} size="sm" />
-                                              <div className={styles.milestoneContent}>
-                                                <div className={styles.milestoneTitle}>{link.title}</div>
-                                              </div>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
+              {featuredRecommendations.map((recommendation, index) =>
+                renderRecommendation(recommendation, index, true)
+              )}
             </div>
           </div>
         )}
@@ -705,307 +586,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
         {suggestedGuidesExpanded && finalPrimaryRecommendations.length > 0 && (
           <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
-            {finalPrimaryRecommendations.map((recommendation, index) => {
-              const contentUrl = getRecommendationContentUrl(recommendation);
-              const packageInfo = getRecommendationPackageInfo(recommendation);
-              const displayType = getEffectiveDisplayType(recommendation);
-              const isExpandable = isSummaryExpandable(recommendation);
-              const isExpanded = isExpandable && Boolean(recommendation.summaryExpanded);
-              return (
-                <Card
-                  key={contentUrl || `rec-${index}`}
-                  className={`${styles.recommendationCard} ${
-                    isDocsOnlyRecommendation(displayType) ? styles.compactCard : ''
-                  }`}
-                  data-testid={testIds.contextPanel.recommendationCard(index)}
-                >
-                  <div
-                    className={`${styles.recommendationCardContent} ${
-                      isDocsOnlyRecommendation(displayType) ? styles.compactCardContent : ''
-                    }`}
-                  >
-                    <div
-                      className={`${styles.cardHeader} ${
-                        isDocsOnlyRecommendation(displayType) ? styles.compactHeader : ''
-                      }`}
-                    >
-                      <div className={styles.cardTitleSection}>
-                        <h3
-                          className={styles.recommendationCardTitle}
-                          data-testid={testIds.contextPanel.recommendationTitle(index)}
-                        >
-                          {recommendation.title}
-                        </h3>
-                        <span className={getCategoryTagStyle(styles, displayType)}>
-                          {recommendation.type === 'package' && <span className={styles.packagePillIcon}>📦</span>}
-                          {getCategoryLabel(displayType)}
-                        </span>
-                      </div>
-                      <div className={styles.cardActions}>
-                        <button
-                          onClick={() => {
-                            reportAppInteraction(UserInteraction.OpenResourceClick, {
-                              content_title: recommendation.title,
-                              content_url: contentUrl,
-                              content_type: getContentTypeForAnalytics(
-                                contentUrl,
-                                getContentTypeForDisplayType(displayType)
-                              ),
-                              interaction_location: 'main_card_button',
-                              match_accuracy: recommendation.matchAccuracy || 0,
-                              ...(displayType !== 'docs-page' && {
-                                total_milestones: recommendation.totalSteps || 0,
-                                completion_percentage: recommendation.completionPercentage ?? 0,
-                              }),
-                            });
-
-                            if (shouldUseDocsPageOpener(recommendation.type)) {
-                              openDocsPage(contentUrl, recommendation.title, packageInfo);
-                            } else {
-                              openLearningJourney(contentUrl, recommendation.title);
-                            }
-                          }}
-                          className={styles.startButton}
-                          data-testid={testIds.contextPanel.recommendationStartButton(index)}
-                        >
-                          <Icon name={getRecommendationIcon(displayType)} size="sm" />
-                          {getRecommendationButtonText(displayType, recommendation.completionPercentage)}
-                        </button>
-                      </div>
-                    </div>
-
-                    {(!isDocsOnlyRecommendation(displayType) || recommendation.summary) && (
-                      <>
-                        <div className={styles.cardMetadata}>
-                          <div className={styles.summaryInfo}>
-                            {isExpandable ? (
-                              <button
-                                onClick={() => {
-                                  reportAppInteraction(UserInteraction.SummaryClick, {
-                                    content_title: recommendation.title,
-                                    content_url: contentUrl,
-                                    content_type: getContentTypeForAnalytics(
-                                      contentUrl,
-                                      getContentTypeForDisplayType(displayType)
-                                    ),
-                                    action: isExpanded ? 'collapse' : 'expand',
-                                    match_accuracy: recommendation.matchAccuracy || 0,
-                                    ...(displayType !== 'docs-page' && {
-                                      total_milestones: recommendation.totalSteps || 0,
-                                    }),
-                                  });
-
-                                  toggleSummaryExpansion(contentUrl);
-                                }}
-                                className={styles.summaryButton}
-                                data-testid={testIds.contextPanel.recommendationSummaryButton(index)}
-                              >
-                                <Icon name="info-circle" size="sm" />
-                                <span>{t('contextPanel.summary', 'Summary')}</span>
-                                <Icon name={isExpanded ? 'angle-up' : 'angle-down'} size="sm" />
-                              </button>
-                            ) : (
-                              recommendation.summary && <p className={styles.inlineSummary}>{recommendation.summary}</p>
-                            )}
-                            {!isDocsOnlyRecommendation(displayType) &&
-                              typeof recommendation.completionPercentage === 'number' && (
-                                <div className={styles.completionInfo}>
-                                  <div
-                                    className={styles.completionPercentage}
-                                    data-completion={recommendation.completionPercentage}
-                                  >
-                                    {t('contextPanel.percentComplete', '{{percent}}% complete', {
-                                      percent: recommendation.completionPercentage,
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                          </div>
-                        </div>
-
-                        {isExpanded && (
-                          <div
-                            className={styles.summaryExpansion}
-                            data-testid={testIds.contextPanel.recommendationSummaryContent(index)}
-                          >
-                            {recommendation.summary && (
-                              <div className={styles.summaryContent}>
-                                <p className={styles.summaryText}>{recommendation.summary}</p>
-                              </div>
-                            )}
-
-                            {recommendation.isResolvingDeferred && !recommendation.milestones && (
-                              <div className={cx(skeletonStyles.skeleton, styles.deferredSkeleton)}>
-                                {Array.from({
-                                  length: recommendation.totalSteps ? Math.min(recommendation.totalSteps, 3) : 2,
-                                }).map((_, i) => (
-                                  <div key={i} className={styles.deferredSkeletonRow}>
-                                    <div className={styles.deferredSkeletonCircle}></div>
-                                    <div className={styles.deferredSkeletonBar}></div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {!isDocsOnlyRecommendation(displayType) &&
-                              (recommendation.totalSteps ?? 0) > 0 &&
-                              recommendation.milestones && (
-                                <div
-                                  className={styles.milestonesSection}
-                                  data-testid={testIds.contextPanel.recommendationMilestones(index)}
-                                >
-                                  <div className={styles.milestonesHeader}>
-                                    <h4 className={styles.milestonesTitle}>
-                                      {t('contextPanel.milestones', 'Milestones:')}
-                                    </h4>
-                                  </div>
-                                  <div className={styles.milestonesList}>
-                                    {recommendation.milestones.map((milestone, stepIndex) => (
-                                      <button
-                                        key={stepIndex}
-                                        onClick={() => {
-                                          // Locked (unpublished) member — placeholder only, not navigable.
-                                          if (milestone.isLocked) {
-                                            return;
-                                          }
-                                          reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
-                                            content_title: recommendation.title,
-                                            milestone_title: milestone.title,
-                                            milestone_number: milestone.number,
-                                            milestone_url: milestone.url,
-                                            content_url: contentUrl,
-                                            interaction_location: 'milestone_list',
-                                          });
-                                          if (packageInfo) {
-                                            openDocsPage(milestone.url, recommendation.title, packageInfo);
-                                          } else {
-                                            openLearningJourney(
-                                              milestone.url,
-                                              `${recommendation.title} - ${milestone.title}`
-                                            );
-                                          }
-                                        }}
-                                        disabled={milestone.isLocked}
-                                        className={`${styles.milestoneItem} ${milestone.isLocked ? styles.milestoneItemLocked : ''}`}
-                                        data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
-                                      >
-                                        <div className={styles.milestoneNumber}>{milestone.number}</div>
-                                        <div className={styles.milestoneContent}>
-                                          <div className={styles.milestoneTitle}>
-                                            {milestone.title}
-                                            {milestone.isLocked ? (
-                                              <span className={styles.milestoneDuration}>
-                                                {t('contextPanel.notYetAvailable', '(not yet available)')}
-                                              </span>
-                                            ) : (
-                                              typeof milestone.estimatedMinutes === 'number' && (
-                                                <span className={styles.milestoneDuration}>
-                                                  (
-                                                  {t('docsPanel.milestoneEstimatedMinutes', '{{count}} min', {
-                                                    count: milestone.estimatedMinutes,
-                                                  })}
-                                                  )
-                                                </span>
-                                              )
-                                            )}
-                                          </div>
-                                        </div>
-                                        {milestone.isLocked && <Icon name="lock" size="sm" />}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                            {(() => {
-                              const nav = getManifestNavigation(recommendation);
-                              const hasNav = nav.recommends.length > 0 || nav.suggests.length > 0;
-                              if (!hasNav) {
-                                return null;
-                              }
-                              return (
-                                <div className={styles.milestonesSection}>
-                                  {nav.recommends.length > 0 && (
-                                    <>
-                                      <div className={styles.milestonesHeader}>
-                                        <h4 className={styles.milestonesTitle}>
-                                          {t('contextPanel.recommendedNext', 'Recommended next')}
-                                        </h4>
-                                      </div>
-                                      <div className={styles.milestonesList}>
-                                        {nav.recommends.map((link) => (
-                                          <button
-                                            key={link.packageId}
-                                            onClick={() => {
-                                              reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                                content_title: link.title,
-                                                content_url: link.contentUrl,
-                                                content_type: AnalyticsContentType.PackageNavLink,
-                                                interaction_location: 'recommends_section',
-                                              });
-                                              openDocsPage(link.contentUrl, link.title, {
-                                                packageId: link.packageId,
-                                                packageManifest: link.manifest,
-                                                repository: link.repository,
-                                              });
-                                            }}
-                                            className={styles.milestoneItem}
-                                          >
-                                            <Icon name="arrow-right" size="sm" />
-                                            <div className={styles.milestoneContent}>
-                                              <div className={styles.milestoneTitle}>{link.title}</div>
-                                            </div>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </>
-                                  )}
-                                  {nav.suggests.length > 0 && (
-                                    <>
-                                      <div className={styles.milestonesHeader}>
-                                        <h4 className={styles.milestonesTitle}>
-                                          {t('contextPanel.youMightAlsoLike', 'You might also like')}
-                                        </h4>
-                                      </div>
-                                      <div className={styles.milestonesList}>
-                                        {nav.suggests.map((link) => (
-                                          <button
-                                            key={link.packageId}
-                                            onClick={() => {
-                                              reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                                content_title: link.title,
-                                                content_url: link.contentUrl,
-                                                content_type: AnalyticsContentType.PackageNavLink,
-                                                interaction_location: 'suggests_section',
-                                              });
-                                              openDocsPage(link.contentUrl, link.title, {
-                                                packageId: link.packageId,
-                                                packageManifest: link.manifest,
-                                                repository: link.repository,
-                                              });
-                                            }}
-                                            className={styles.milestoneItem}
-                                          >
-                                            <Icon name={getNavLinkIcon(link)} size="sm" />
-                                            <div className={styles.milestoneContent}>
-                                              <div className={styles.milestoneTitle}>{link.title}</div>
-                                            </div>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
+            {finalPrimaryRecommendations.map((recommendation, index) => renderRecommendation(recommendation, index))}
           </div>
         )}
 
@@ -1019,7 +600,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                 data-testid={testIds.contextPanel.otherDocsToggle}
               >
                 <Icon name="file-alt" size="sm" />
-                <span>{t('contextPanel.otherDocumentation', 'Other Documentation')}</span>
+                <span>{t('contextPanel.otherDocumentation', 'Other documentation')}</span>
                 <span className={styles.otherDocsCount}>
                   <Icon name="list-ul" size="xs" />
                   {t('contextPanel.items', '{{count}} items', { count: secondaryDocs.length })}
@@ -1031,51 +612,43 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             {otherDocsExpanded && (
               <div className={styles.otherDocsExpansion}>
                 <div className={styles.otherDocsList} data-testid={testIds.contextPanel.otherDocsList}>
-                  {secondaryDocs.map((item, index) => {
-                    const contentUrl = getRecommendationContentUrl(item);
-                    const packageInfo = getRecommendationPackageInfo(item);
-                    const displayType = getEffectiveDisplayType(item);
-                    return (
-                      <div
-                        key={contentUrl || `other-${index}`}
-                        className={styles.otherDocItem}
-                        data-testid={testIds.contextPanel.otherDocItem(index)}
-                      >
-                        <div className={styles.docIcon}>
-                          <Icon name={getRecommendationIcon(displayType)} size="sm" />
-                        </div>
-                        <div className={styles.docContent}>
-                          <button
-                            onClick={() => {
-                              reportAppInteraction(UserInteraction.OpenResourceClick, {
-                                content_title: item.title,
-                                content_url: contentUrl,
-                                content_type: getContentTypeForAnalytics(
-                                  contentUrl,
-                                  getContentTypeForDisplayType(displayType)
-                                ),
-                                interaction_location: 'other_docs_list',
-                                match_accuracy: item.matchAccuracy || 0,
-                                ...(!isDocsOnlyRecommendation(displayType) && {
-                                  total_milestones: item.totalSteps || 0,
-                                  completion_percentage: item.completionPercentage ?? 0,
-                                }),
-                              });
-
-                              if (shouldUseDocsPageOpener(item.type)) {
-                                openDocsPage(contentUrl, item.title, packageInfo);
-                              } else {
-                                openLearningJourney(contentUrl, item.title);
-                              }
-                            }}
-                            className={styles.docLink}
-                          >
-                            {item.title}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <LearningModuleList
+                    numbered={false}
+                    itemTestId={(index) => testIds.contextPanel.otherDocItem(index)}
+                    modules={secondaryDocs.map((item, index) => ({
+                      id: String(index),
+                      title: item.title,
+                      url: getRecommendationContentUrl(item),
+                      number: index + 1,
+                      isActive: false,
+                    }))}
+                    onOpen={(member) => {
+                      const item = secondaryDocs[Number(member.id)];
+                      if (!item) {
+                        return;
+                      }
+                      const contentUrl = getRecommendationContentUrl(item);
+                      const packageInfo = getRecommendationPackageInfo(
+                        item,
+                        assignmentForPath(item, assignments)?.trackId
+                      );
+                      const displayType = getEffectiveDisplayType(item);
+                      reportAppInteraction(UserInteraction.OpenResourceClick, {
+                        content_title: item.title,
+                        content_url: contentUrl,
+                        content_type: getContentTypeForAnalytics(contentUrl, getContentTypeForDisplayType(displayType)),
+                        interaction_location: 'other_docs_list',
+                        match_accuracy: item.matchAccuracy || 0,
+                        ...(!isDocsOnlyRecommendation(displayType) && {
+                          total_milestones: item.totalSteps || 0,
+                          completion_percentage: item.completionPercentage ?? 0,
+                        }),
+                      });
+                      return shouldUseDocsPageOpener(item.type)
+                        ? openDocsPage(contentUrl, item.title, packageInfo)
+                        : openLearningJourney(contentUrl, item.title);
+                    }}
+                  />
                 </div>
               </div>
             )}
@@ -1122,6 +695,14 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   } = usePublishedGuides();
   const [customGuidesExpanded, setCustomGuidesExpanded] = useState(true);
   const [suggestedGuidesExpanded, setSuggestedGuidesExpanded] = useState(true);
+  const { paths, getPathProgress, getPathGuides, progress } = useLearningPaths();
+  const { notDone: assignedNotDone } = useMyAssignments({
+    paths,
+    getPathProgress,
+    getPathGuides,
+    completedGuides: progress.completedGuides,
+    resolveNavLinks: resolvePackageNavLinks,
+  });
 
   // Note: Auto-open event listener moved to CombinedPanelRenderer to avoid remounting issues
   // ContextPanelRenderer remounts when tabs change, causing listener cleanup
@@ -1183,6 +764,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             toggleSuggestedGuidesExpansion={() => setSuggestedGuidesExpanded((prev) => !prev)}
             toggleSummaryExpansion={toggleSummaryExpansion}
             toggleOtherDocsExpansion={toggleOtherDocsExpansion}
+            assignments={assignedNotDone}
           />
         </div>
 

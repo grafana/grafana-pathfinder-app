@@ -348,7 +348,7 @@ export function ChallengeBlockForm({
           label="Mode"
           description={
             mode === 'standard'
-              ? 'Verifies against the learner’s own Grafana via a Pathfinder requirement. No VM, no terminal.'
+              ? 'Verifies against the learner’s own Grafana via an interactive learning requirement. No VM, no terminal.'
               : codaUnavailableHere
                 ? 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero). This Grafana cannot run Coda challenges — the sandbox terminal is off or the Coda app plugin is missing — so the block will report that instead of starting. It still works for learners on a stack where Coda is enabled.'
                 : 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero).'
@@ -473,8 +473,8 @@ export function ChallengeBlockForm({
                 </>
               ) : (
                 <div>
-                  Pathfinder requirement that proves the challenge is solved. Multiple chips mean &quot;all must
-                  pass&quot;.
+                  An interactive learning requirement that proves the challenge is solved. Multiple chips mean &quot;all
+                  must pass&quot;.
                 </div>
               )}
             </div>

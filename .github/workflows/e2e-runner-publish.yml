@@ -5,11 +5,13 @@ on:
     branches:
       - main
     paths:
+      - 'src/lib/runtime-manifest.ts'
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
       - 'src/lib/assert-exhaustive.ts'
       - 'src/lib/guide-stats/**'
+      - 'src/lib/guide-version.ts'
       - 'tests/e2e-runner/**'
       - 'tests/fixtures.ts'
       - 'src/cli/e2e/schemas/**'
@@ -21,15 +23,18 @@ on:
       - '.npmrc'
       - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
+      - 'src/lib/choice-response.ts'
   pull_request:
     branches:
       - main
     paths:
+      - 'src/lib/runtime-manifest.ts'
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
       - 'src/lib/assert-exhaustive.ts'
       - 'src/lib/guide-stats/**'
+      - 'src/lib/guide-version.ts'
       - 'tests/e2e-runner/**'
       - 'tests/fixtures.ts'
       - 'src/cli/e2e/schemas/**'
@@ -41,6 +46,7 @@ on:
       - '.npmrc'
       - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
+      - 'src/lib/choice-response.ts'
 
 permissions: read-all
 
@@ -112,14 +118,14 @@ jobs:
             /app/dist/cli/cli/index.js schema e2e-report --include-version > schema.json
           node -e '
             const s = require("./schema.json");
-            if (!String(s.$id || "").includes("e2e-test-report-1.1.0")) throw new Error(`unexpected $id: ${s.$id}`);
-            if (s["x-schema-version"] !== "1.1.0") throw new Error(`unexpected x-schema-version: ${s["x-schema-version"]}`);
+            if (!String(s.$id || "").includes("e2e-test-report-1.2.0")) throw new Error(`unexpected $id: ${s.$id}`);
+            if (s["x-schema-version"] !== "1.2.0") throw new Error(`unexpected x-schema-version: ${s["x-schema-version"]}`);
             console.log("E2E report schema contract verified");
           '
       - name: Export tested image for publish job
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: docker save pathfinder-e2e-runner:smoke | gzip > runner-image.tar.gz
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           name: runner-image
@@ -136,7 +142,7 @@ jobs:
       packages: write
       id-token: write
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: runner-image
       - name: Load tested image

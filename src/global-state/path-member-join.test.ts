@@ -242,11 +242,33 @@ describe('normalization refusal (B1)', () => {
     expect(pathMemberContentKeys({ id: longId })).toEqual([]);
   });
 
-  it('keeps the bare shape when only the package shape overruns the key length', () => {
-    // 195 chars: `bundled:<id>` fits in 200, `bundled:<id>/content.json` does not.
+  it('forms no key when only the package shape overruns the key length', () => {
+    // 193 chars: `bundled:<id>` fits in 200, `bundled:<id>/content.json` does not.
+    // Keeping the bare shape would search a group that cannot see the record
+    // stored under the package shape (#1856).
     const id = 'b'.repeat(185);
 
-    expect(pathMemberContentKeys({ id })).toEqual(['bundled:' + id, 'backend-guide:' + id]);
+    expect(pathMemberContentKeys({ id })).toEqual([]);
+  });
+
+  it('excludes, not zeroes, a member whose record is under a dropped shape', () => {
+    const id = 'b'.repeat(185);
+    const resolution = resolvePathMemberPercentage(
+      { id },
+      contextWith({ persistedPercentages: { [`bundled:${id}/content.json`]: 60 } })
+    );
+
+    expect(resolution).toEqual({ memberId: id, percent: undefined, source: 'unresolved' });
+  });
+
+  it('excludes a member whose url has a sibling shape that overruns the key length', () => {
+    const url = 'bundled:' + 'c'.repeat(185);
+    const resolution = resolvePathMemberPercentage(
+      { id: 'c', url },
+      contextWith({ persistedPercentages: { [`${url}/content.json`]: 40 } })
+    );
+
+    expect(resolution).toEqual({ memberId: 'c', percent: undefined, source: 'unresolved' });
   });
 
   it('still hands resetPath the raw keys for the namespaces keyed by launch URL', () => {

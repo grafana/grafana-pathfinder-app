@@ -13,6 +13,7 @@ import { render, screen } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
 import { ContentRenderer } from './content-renderer';
+import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -53,7 +54,7 @@ function renderGuide(block: Record<string, unknown>) {
     lastFetched: '2026-08-14T00:00:00.000Z',
     metadata: { title: 'Data check guide' },
   };
-  return render(<ContentRenderer content={content} />);
+  return render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
 }
 
 describe('a data check authored in guide JSON', () => {

@@ -5,7 +5,7 @@
  * to its peers and the router stays small.
  */
 
-import { config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
+import { config, hasPermission, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
 import { fetchDataSources, fetchPlugins, fetchDashboardsByName } from '../../lib/grafana-api';
 import type { CheckResultError } from '../../types/requirements.types';
 
@@ -95,50 +95,63 @@ export async function hasRoleCheck(check: string): Promise<CheckResultError> {
 /**
  * Data source existence by name or type.
  */
-export async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
-  try {
-    const dataSourceSrv = getDataSourceSrv();
-    const dsRequirement = check.replace('has-datasource:', '').toLowerCase();
+type ListedDataSource = { name: string; type: string; uid: string };
 
-    const dataSources = dataSourceSrv.getList();
-    let found = false;
-    let matchType = '';
-
-    // Check for exact matches in name or type, then normalized type
-    // Type normalization strips common prefixes/suffixes (e.g. grafana-testdata-datasource → testdata)
-    for (const ds of dataSources) {
-      if (ds.name.toLowerCase() === dsRequirement) {
-        found = true;
-        matchType = 'name';
-        break;
-      }
-      if (ds.type.toLowerCase() === dsRequirement) {
-        found = true;
-        matchType = 'type';
-        break;
-      }
-      const normalizedType = ds.type
-        .toLowerCase()
-        .replace(/^grafana-/, '')
-        .replace(/-datasource$/, '');
-      if (normalizedType === dsRequirement) {
-        found = true;
-        matchType = 'type-normalized';
-        break;
-      }
+function matchDataSource(dataSources: ListedDataSource[], requirement: string): string | undefined {
+  for (const ds of dataSources) {
+    if (ds.name.toLowerCase() === requirement) {
+      return 'name';
     }
+    if (ds.type.toLowerCase() === requirement) {
+      return 'type';
+    }
+    // Strips common prefixes and suffixes, e.g. grafana-testdata-datasource → testdata.
+    const normalizedType = ds.type
+      .toLowerCase()
+      .replace(/^grafana-/, '')
+      .replace(/-datasource$/, '');
+    if (normalizedType === requirement) {
+      return 'type-normalized';
+    }
+  }
+  return undefined;
+}
 
-    return {
-      requirement: check,
-      pass: found,
-      error: found ? undefined : `No data source found with name/type: ${dsRequirement}`,
-      context: {
-        searched: dsRequirement,
-        matchType: found ? matchType : null,
-        available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, uid: ds.uid })),
-      },
-    };
+function localDataSources(): ListedDataSource[] {
+  try {
+    return getDataSourceSrv()
+      .getList()
+      .filter((ds) => !ds.meta?.builtIn);
+  } catch {
+    return [];
+  }
+}
+
+export async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
+  const dsRequirement = check.replace('has-datasource:', '').toLowerCase();
+  const result = (dataSources: ListedDataSource[], matchType: string | undefined): CheckResultError => ({
+    requirement: check,
+    pass: matchType !== undefined,
+    error: matchType ? undefined : `No data source found with name/type: ${dsRequirement}`,
+    context: {
+      searched: dsRequirement,
+      matchType: matchType ?? null,
+      available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, uid: ds.uid })),
+    },
+  });
+  const local = localDataSources();
+  const localMatch = matchDataSource(local, dsRequirement);
+  if (localMatch) {
+    return result(local, localMatch);
+  }
+  try {
+    const dataSources = await fetchDataSources({ throwOnError: true });
+    return result(dataSources, matchDataSource(dataSources, dsRequirement));
   } catch (error) {
+    const status = (error as { status?: number } | undefined)?.status;
+    if (status === 401 || status === 403) {
+      return result(local, undefined);
+    }
     return {
       verdict: 'unavailable',
       requirement: check,
