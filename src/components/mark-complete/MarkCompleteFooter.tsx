@@ -283,7 +283,13 @@ export function MarkCompleteFooter({
       // recommendation cards and context read, and the reader's statement that
       // they finished belongs there too. See COMPLETION-MODEL.md, "Rolling this
       // back".
-      void interactiveCompletionStorage.set(contentKey, 100);
+      void Promise.resolve(interactiveCompletionStorage.set(contentKey, 100))
+        .then(() => {
+          dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+        })
+        .catch((error) => {
+          logger.warn('Failed to persist guide completion percentage', { error });
+        });
       dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
     }
 

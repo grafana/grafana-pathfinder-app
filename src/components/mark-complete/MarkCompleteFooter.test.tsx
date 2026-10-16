@@ -101,6 +101,29 @@ beforeEach(() => {
 });
 
 describe('completion panel handoff', () => {
+  it('notifies path readers again after a delayed completion write settles', async () => {
+    let finish!: () => void;
+    setCompletionPercentage.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+    );
+    render(<MarkCompleteFooter context="guide" renderCompleted={() => <div>Next steps</div>} />);
+    await clickWhenReady();
+    const immediateNotifications = dispatchProgress.mock.calls.length;
+    expect(immediateNotifications).toBeGreaterThan(0);
+    await act(async () => {
+      finish();
+    });
+    expect(dispatchProgress.mock.calls.length).toBe(immediateNotifications + 1);
+    expect(dispatchProgress).toHaveBeenLastCalledWith({
+      kind: 'guide',
+      contentKey: 'guide-key',
+      percentage: 100,
+      hasProgress: true,
+    });
+  });
+
   it('announces completion and focuses a named status after a click', async () => {
     render(
       <MarkCompleteFooter
