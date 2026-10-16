@@ -7,7 +7,10 @@ import {
   subscribeSectionDone,
 } from './section-registry';
 
-beforeEach(() => resetRegistry());
+beforeEach(() => {
+  resetRegistry();
+  ['first', 'second', 'third'].forEach(clearSectionDone);
+});
 
 it('is reached only once every earlier reporting section is done', () => {
   registerSectionSteps('first', 1, 0);
@@ -32,8 +35,22 @@ it('notifies subscribers only when a section changes', () => {
   setSectionDone('first', false);
   setSectionDone('first', false);
   setSectionDone('first', true);
-  resetRegistry();
   unsubscribe();
   setSectionDone('first', false);
-  expect(listener).toHaveBeenCalledTimes(3);
+  expect(listener).toHaveBeenCalledTimes(2);
+});
+
+it('keeps what mounted sections reported when new content resets the registry', () => {
+  const listener = jest.fn();
+  const unsubscribe = subscribeSectionDone(listener);
+  registerSectionSteps('first', 1, 0);
+  registerSectionSteps('second', 1, 1);
+  setSectionDone('first', false);
+  listener.mockClear();
+  resetRegistry();
+  registerSectionSteps('first', 1, 0);
+  registerSectionSteps('second', 1, 1);
+  expect(arePreviousSectionsDone('second')).toBe(false);
+  expect(listener).not.toHaveBeenCalled();
+  unsubscribe();
 });

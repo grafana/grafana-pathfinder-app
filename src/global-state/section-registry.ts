@@ -58,10 +58,6 @@ export function resetRegistry(): void {
   totalDocumentSteps = 0;
   documentStepOffsets.clear();
   autoDocumentOrder = 0;
-  if (sectionDone.size > 0) {
-    sectionDone.clear();
-    notifySectionDone();
-  }
 }
 
 export function setSectionDone(sectionId: string, done: boolean): void {
