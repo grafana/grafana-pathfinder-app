@@ -32,6 +32,8 @@ jest.mock('../../global-state/active-guide-index', () => ({
   getGuideIndex: () => ({}),
   subscribeGuideIndexPublications: () => () => undefined,
   getGuideIndexPublicationRevision: () => 0,
+  subscribeGuideIndexEvictions: () => () => undefined,
+  getGuideIndexEvictionRevision: () => 0,
 }));
 
 const mockPercentages = new Map<string, number>();

@@ -33,7 +33,7 @@ jest.mock('../InteractiveLearningBanner', () => ({ InteractiveLearningBanner: ()
 jest.mock('../content-renderer/content-renderer', () => ({
   ContentRenderer: ({ content }: { content: RawContent }) => {
     React.useLayoutEffect(() => {
-      setActiveTabUrl(content.url);
+      window.__DocsPluginContentKey = content.url;
     }, [content.url]);
     return <MarkCompleteFooter context="guide" contentUrl={content.url} />;
   },
@@ -56,18 +56,21 @@ function publish(key: string) {
 function surface(url: string, mode: 'floating' | 'fullscreen') {
   return (
     <FloatingPanelContent
-      content={{ url, type: 'docs', metadata: {}, content: '', lastFetched: '' } as RawContent}
-      activeTab={null}
+      content={{ url, type: 'single-doc', metadata: { title: 'Guide' }, content: '', lastFetched: '' }}
+      activeTab={{ id: 'floating-tab', currentUrl: url, baseUrl: url } as any}
       model={{ canNavigateNext: () => false } as any}
       surface={mode}
     />
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await interactiveStepStorage.clearAll();
   localStorage.clear();
   resetCompletionStoreForTests();
   resetContentKeyForTests();
+  window.__DocsPluginActiveTabUrl = '';
+  window.__DocsPluginContentKey = '';
 });
 
 it.each(['floating', 'fullscreen'] as const)(
@@ -90,7 +93,7 @@ it.each(['floating', 'fullscreen'] as const)(
 it.each(['floating', 'fullscreen'] as const)(
   'gates %s navigation using the post-layout key, including cached indexes',
   async (mode) => {
-    setActiveTabUrl(guideUrl);
+    window.__DocsPluginActiveTabUrl = guideUrl;
     publish(guideUrl);
     const view = render(surface(guideUrl, mode));
     await screen.findByRole('progressbar');

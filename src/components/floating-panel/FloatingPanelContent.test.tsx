@@ -25,6 +25,7 @@ jest.mock('../content-renderer/content-renderer', () => ({
 
 jest.mock('../../docs-retrieval', () => ({
   recordGuideCompletionForSurface: jest.fn(),
+  isJourneyCoverPage: () => false,
 }));
 
 jest.mock('../docs-panel/link-handler.hook', () => ({
@@ -40,10 +41,9 @@ jest.mock('../InteractiveLearningBanner', () => ({
   InteractiveLearningBanner: () => null,
 }));
 
-jest.mock('../guide-progress', () => ({
-  GuideProgressBar: ({ contentUrl }: { contentUrl?: string }) => (
-    <div data-testid="guide-progress-bar">{contentUrl ? `Progress for ${contentUrl}` : 'No content'}</div>
-  ),
+jest.mock('../../global-state/completion-store', () => ({
+  peekGuidePercentage: () => 0,
+  subscribeProgress: () => () => undefined,
 }));
 
 let mockGuideIndex: Record<string, any> | null = null;
@@ -58,6 +58,8 @@ jest.mock('../../global-state/active-guide-index', () => ({
     };
   },
   getGuideIndexPublicationRevision: () => publicationRevision,
+  subscribeGuideIndexEvictions: () => () => undefined,
+  getGuideIndexEvictionRevision: () => 0,
 }));
 
 jest.mock('../../global-state/guide-content-key', () => ({
@@ -179,13 +181,13 @@ describe('FloatingPanelContent model forwarding', () => {
  * The fix makes visibility reactive to index publication via useSyncExternalStore.
  */
 describe('FloatingPanelContent progress bar visibility (cold open)', () => {
-  it('shows the progress bar after index is published, even on first mount', () => {
+  it('shows the progress bar after index is published, even on first mount', async () => {
     // Initial render: no index published yet (cold open)
     mockGuideIndex = null;
 
     render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
 
-    // Bar should be absent when no index exists
+    await act(async () => {});
     expect(screen.queryByTestId('guide-progress-bar')).not.toBeInTheDocument();
 
     // Simulate ContentRenderer publishing the index in its passive effect
@@ -199,9 +201,7 @@ describe('FloatingPanelContent progress bar visibility (cold open)', () => {
 
     // Bar should now appear because the index is published
     expect(screen.getByTestId('guide-progress-bar')).toBeInTheDocument();
-    expect(screen.getByTestId('guide-progress-bar')).toHaveTextContent(
-      'Progress for https://example.com/remote-guide/content.json'
-    );
+    expect(screen.getByTestId('guide-progress-bar')).toHaveAttribute('aria-valuenow', '0');
   });
 
   it('hides the progress bar when index is absent (no guide)', () => {

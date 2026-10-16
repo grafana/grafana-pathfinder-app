@@ -7,84 +7,48 @@ import { t } from '@grafana/i18n';
 import { peekGuidePercentage, subscribeProgress } from '../../global-state/completion-store';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import { testIds } from '../../constants/testIds';
+import {
+  getGuideIndex,
+  subscribeGuideIndexPublications,
+  getGuideIndexPublicationRevision,
+  subscribeGuideIndexEvictions,
+  getGuideIndexEvictionRevision,
+} from '../../global-state/active-guide-index';
+import { subscribeGuideProgressRevision, getGuideProgressRevision } from '../../global-state/progress-events';
 
 interface GuideProgressBarProps {
-  /**
-   * The rendered guide's URL. Resolved to the progress storage key with the
-   * SAME resolver the Mark complete footer uses, so this bar and the footer can
-   * never report different numbers for the same guide.
-   */
   contentUrl?: string;
+  isCoverPage?: boolean;
 }
 
-/** No key resolved yet, so there is nothing to subscribe to. */
 const NO_SUBSCRIPTION = () => undefined;
 
-/**
- * Sticky guide progress bar.
- *
- * A read-only mirror of the completion percentage already shown by the
- * `MarkCompleteFooter`, pinned to the top of the guide panel so progress stays
- * visible while the reader scrolls. It intentionally renders ONLY the
- * track + "NN% complete" label — the "Mark complete" action stays at the foot
- * of the guide where it belongs.
- *
- * It reads from the same source as the footer (`peekGuidePercentage` /
- * `subscribeProgress`, keyed via `resolveGuideContentKey`). Because the guide
- * completion mark is already folded into that percentage (a marked guide reads
- * 100), this bar reaches 100% exactly when the footer does — the two can never
- * disagree.
- */
-export function GuideProgressBar({ contentUrl }: GuideProgressBarProps): React.ReactElement | null {
+export function GuideProgressBar({
+  contentUrl,
+  isCoverPage = false,
+}: GuideProgressBarProps): React.ReactElement | null {
   const styles = useStyles2(getStyles);
 
-  // Resolve the content key in a passive effect, not during render.
-  // Both producers of the content key publish it from a layout effect
-  // (content-renderer.tsx:764), so resolving during render would latch the
-  // PREVIOUS milestone's key. This mirrors the pattern in MarkCompleteFooter.tsx:101.
   const [resolved, setResolved] = useState<{ contentUrl: string; contentKey: string } | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    // Callback pattern to satisfy react-hooks/set-state-in-effect:
-    // setState is called via a callback, not directly in the effect body
-    const settle = (key: string) => {
-      if (cancelled) {
-        return;
-      }
-      setResolved((previous) =>
-        previous !== null && previous.contentUrl === contentUrl && previous.contentKey === key
-          ? previous
-          : { contentUrl: contentUrl!, contentKey: key }
-      );
-    };
-
     if (contentUrl === undefined) {
-      // Use callback pattern even for the null case
-      queueMicrotask(() => {
-        if (!cancelled) {
-          setResolved(null);
-        }
-      });
       return;
     }
-
-    // Resolve key and settle asynchronously to satisfy the linter
-    queueMicrotask(() => {
-      if (!cancelled) {
-        const key = resolveGuideContentKey(contentUrl);
-        settle(key);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    const contentKey = resolveGuideContentKey(contentUrl);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Ambient key publishers run in layout effects, after render.
+    setResolved({ contentUrl, contentKey });
   }, [contentUrl]);
 
-  // Derive contentKey from resolved state, checking that the resolved URL matches current URL
   const contentKey = resolved !== null && resolved.contentUrl === contentUrl ? resolved.contentKey : undefined;
+
+  useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
+  useSyncExternalStore(
+    subscribeGuideIndexPublications,
+    getGuideIndexPublicationRevision,
+    getGuideIndexPublicationRevision
+  );
+  useSyncExternalStore(subscribeGuideIndexEvictions, getGuideIndexEvictionRevision, getGuideIndexEvictionRevision);
 
   const percentage = useSyncExternalStore(
     useCallback(
@@ -94,7 +58,7 @@ export function GuideProgressBar({ contentUrl }: GuideProgressBarProps): React.R
     useCallback(() => (contentKey === undefined ? 0 : peekGuidePercentage(contentKey)), [contentKey])
   );
 
-  if (contentKey === undefined) {
+  if (contentKey === undefined || isCoverPage || !getGuideIndex(contentKey)) {
     return null;
   }
 

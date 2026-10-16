@@ -1,15 +1,9 @@
-import React, { useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
 import { GuideProgressBar } from '../guide-progress';
-import {
-  getGuideIndex,
-  subscribeGuideIndexPublications,
-  getGuideIndexPublicationRevision,
-} from '../../global-state/active-guide-index';
-import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
-import { recordGuideCompletionForSurface } from '../../docs-retrieval';
+import { isJourneyCoverPage, recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -22,6 +16,7 @@ import {
 } from '../docs-panel/components';
 import { AlignmentPendingContext } from '../../global-state/alignment-pending-context';
 import { useLinkClickHandler } from '../docs-panel/link-handler.hook';
+import { useGlobalActiveTabExposure } from '../docs-panel/hooks/useGlobalActiveTabExposure';
 import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { getFloatingPanelStyles } from './floating-panel.styles';
 
@@ -80,6 +75,12 @@ export function FloatingPanelContent({
   onResetGuide,
   surface = 'floating',
 }: FloatingPanelContentProps) {
+  useGlobalActiveTabExposure({
+    activeTabId: activeTab?.id,
+    activeTabCurrentUrl: activeTab?.currentUrl,
+    activeTabBaseUrl: activeTab?.baseUrl,
+  });
+
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
@@ -117,15 +118,6 @@ export function FloatingPanelContent({
     [alignmentIsPending, alignmentStartingLocation]
   );
 
-  // Subscribe to guide index publications so the progress bar appears when
-  // the index is published (after the content renderer's passive effect runs).
-  // Must be called before early return to maintain hook order.
-  const indexPublicationRevision = useSyncExternalStore(
-    subscribeGuideIndexPublications,
-    getGuideIndexPublicationRevision,
-    getGuideIndexPublicationRevision
-  );
-
   if (!content) {
     return (
       <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-secondary)' }}>No guide content loaded</div>
@@ -135,12 +127,6 @@ export function FloatingPanelContent({
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
 
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
-
-  // Show the step progress bar whenever a guide is active in this surface.
-  // Use resolveGuideContentKey(content.url) for consistency with ContentRenderer.
-  // The read of getGuideIndex must be inside the render so it re-evaluates
-  // when indexPublicationRevision changes (subscription above triggers re-render).
-  const showProgressBar = !!getGuideIndex(resolveGuideContentKey(content.url)) && indexPublicationRevision >= 0;
 
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
@@ -156,14 +142,12 @@ export function FloatingPanelContent({
               onResetGuide={onResetGuide!}
               compact
             />
-            {showProgressBar && <GuideProgressBar contentUrl={content.url} />}
+            <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
           </div>
         ) : (
-          showProgressBar && (
-            <div className={floatingStyles.stickyToolbar}>
-              <GuideProgressBar contentUrl={content.url} />
-            </div>
-          )
+          <div className={floatingStyles.stickyToolbar}>
+            <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
+          </div>
         )}
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
