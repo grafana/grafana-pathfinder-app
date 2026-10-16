@@ -200,10 +200,10 @@ actually recomputed.
 **Decision.** Every guide and every milestone ends in a button that takes the
 reader to 100%. No predicate. No special cases. Labels differ by context only:
 
-| Context   | Label                          |
-| --------- | ------------------------------ |
-| Guide     | **Mark complete**              |
-| Milestone | **Mark complete and continue** |
+| Context   | Label                                                                                          |
+| --------- | ---------------------------------------------------------------------------------------------- |
+| Guide     | **Mark complete**                                                                              |
+| Milestone | **Complete milestone** with the completion panel; **Mark complete and continue** with flag off |
 
 (Written in sentence case per the Grafana Writers' Toolkit, as AGENTS.md requires;
 the decision is that the label differs by context, not how it is capitalised.)

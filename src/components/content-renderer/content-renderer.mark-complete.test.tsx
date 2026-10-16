@@ -55,6 +55,29 @@ jest.mock('../completion-panel/ReaderCompletionPanel', () => ({
 }));
 
 describe('completion panel integration', () => {
+  it('restores guide labels and analytics for a flag-off track-only member', async () => {
+    const content = makeContent({
+      type: 'learning-journey',
+      metadata: { title: 'Track guide', trackMemberBaseUrl: baseUrl },
+    });
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled={false}
+        completionSequence={{ currentMilestone: 1, milestones, baseUrl }}
+        onContinueToNextMilestone={jest.fn()}
+      />
+    );
+    expect(await screen.findByRole('button', { name: 'Mark complete' })).toBeInTheDocument();
+    await clickWhenReady();
+    const event = markCompleteEvents().at(-1)?.[1];
+    expect(event).toEqual(expect.objectContaining({ completion_context: 'guide' }));
+    expect(event).not.toHaveProperty('current_milestone');
+    expect(event).not.toHaveProperty('total_milestones');
+    expect(screen.queryByTestId('completion-panel')).not.toBeInTheDocument();
+  });
+
   it('keeps the completed module visible until the reader chooses the next module', async () => {
     const content = makeMilestone();
     const onContinue = jest.fn();

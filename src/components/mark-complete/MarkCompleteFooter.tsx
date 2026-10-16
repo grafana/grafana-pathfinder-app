@@ -350,7 +350,8 @@ export function MarkCompleteFooter({
       {completed ? (
         <div
           ref={completedRef}
-          role={renderCompleted ? undefined : 'status'}
+          role="status"
+          aria-label={renderCompleted ? t('markComplete.completed', 'Completed') : undefined}
           tabIndex={-1}
           className={renderCompleted ? styles.panelContent : celebrating ? styles.celebration : styles.completed}
           data-testid={testIds.markComplete.completed}

@@ -101,6 +101,19 @@ beforeEach(() => {
 });
 
 describe('completion panel handoff', () => {
+  it('announces completion and focuses a named status after a click', async () => {
+    render(
+      <MarkCompleteFooter
+        context="guide"
+        renderCompleted={() => <section aria-label="Guide complete">Next steps</section>}
+      />
+    );
+    await clickWhenReady();
+    const status = screen.getByRole('status', { name: 'Completed' });
+    expect(status).toHaveFocus();
+    expect(status).toContainElement(screen.getByRole('region', { name: 'Guide complete' }));
+  });
+
   it('records completion immediately and waits for an explicit continuation', async () => {
     const onMarkComplete = jest.fn();
     const onContinue = jest.fn();

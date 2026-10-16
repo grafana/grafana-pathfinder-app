@@ -617,12 +617,20 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   );
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
-      key={`${scope}:${content.url}`}
-      context={completionSequence || (content.type === 'learning-journey' && journey) ? 'milestone' : 'guide'}
+      key={completionPanelEnabled ? `${scope}:${content.url}` : undefined}
+      context={
+        (completionPanelEnabled && completionSequence) || (content.type === 'learning-journey' && journey)
+          ? 'milestone'
+          : 'guide'
+      }
       contentUrl={content.url}
       completionIdentity={completionIdentity}
-      currentMilestone={completionSequence?.currentMilestone ?? journey?.currentMilestone}
-      totalMilestones={completionSequence?.milestones.length ?? journey?.totalMilestones}
+      currentMilestone={
+        (completionPanelEnabled ? completionSequence?.currentMilestone : undefined) ?? journey?.currentMilestone
+      }
+      totalMilestones={
+        (completionPanelEnabled ? completionSequence?.milestones.length : undefined) ?? journey?.totalMilestones
+      }
       onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
       renderCompleted={
@@ -635,7 +643,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
                   <ReaderCompletionPanel
                     content={content}
                     completionIdentity={completionIdentity}
-                    sequence={completionSequence ?? (journey ? { ...journey } : undefined)}
+                    sequence={completionSequence ?? journey}
                     onContinue={onContinueToNextMilestone}
                     celebrating={celebrating}
                   />

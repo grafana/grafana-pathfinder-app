@@ -166,6 +166,8 @@ URL without credentials, query or fragment; private content omits it. Sidebar
 selection is intentional for discovery cards, including reading-only guides, and
 does not change the stored surface preference.
 
+With `pathfinder.completion-panel` enabled, the sidebar's `navigate_to_recommendations` event (`source: content_footer`) is replaced by `navigate_to_my_learning` (`source: content_completion_panel`). The flag-off footer retains its original event and destination. The controller guide-reader overlay keeps the legacy footer regardless of the flag.
+
 `completion_panel_viewed` reports an actual viewport impression after confirmed completion, once per user/organization/content URL in the current page session. Its bounded in-memory deduplication stores no persistent state. The payload uses the existing completion identity helpers and omits private resource names, URLs and identifiers. `completion_context` distinguishes guides from milestones.
 
 Next-module clicks use `open_resource_click` with `interaction_location: content_completion_panel` and `completion_action: next_module`. Their completion identity describes the finished guide, not the destination. Catalog suggestion clicks retain the selected public content attribution. Existing guide-load render outcomes and progress events measure subsequent engagement; a prepared launch or a click alone does not prove that the next guide opened. Consent and environment gates still apply.
