@@ -410,12 +410,16 @@ Each reset reports once per action, never per member guide. An assignment reset 
 | `action`    | Trigger                                                               | Attributes                                                     |
 | ----------- | --------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `tab_click` | Click the Browse tab, including when already selected                 | None                                                           |
-| `search`    | Change an empty or whitespace-only query to non-empty                 | None                                                           |
+| `search`    | Edited non-empty search after 500 ms idle, Enter, or blur             | `search_topic`                                                 |
 | `topic`     | Click a topic shortcut or select a topic filter                       | `topic`, `control` (`shortcut` or `filter`)                    |
 | `view`      | Explicitly switch Explore / All content, including Browse all content | `view`, `previous_view` (`explore` or `all`)                   |
 | `source`    | Switch All / Official / Your organization                             | `source`, `previous_source` (`all`, `grafana`, `organization`) |
 
-Search measures engagement, not distinct queries: further edits emit nothing until the query is cleared. Restoring a saved search emits nothing. No search text, derived keywords, query length, or result metadata is sent. Topics use a fixed allowlist (`all`, `dashboards`, `data-sources`, `alerting`, `metrics`, `logs`, `k6`, `getting-started`, `uncategorized`); all other topics report `other`.
+Search reports an edited non-empty query after 500 ms without typing, or immediately on Enter or blur. Enter and blur do not repeat an already reported edit. Further edits can report again; this measures settled search edits, not unique queries or users. Restoring a saved search and clearing it emit nothing. Pending events are cancelled on unmount or organization change. No raw search text, query length, or result metadata is sent.
+
+`search_topic` comes from exact matching against a fixed keyword/phrase dictionary in `src/lib/catalog-analytics.ts`, after case, whitespace, hyphen and underscore normalization. Examples: `Tempo` maps to `traces`, `k8s` to `kubernetes`, and `RUM` to `frontend-observability`. Coverage includes signals, application/frontend/database/cloud/infrastructure observability, synthetic monitoring, performance testing, IRM, SLOs, Alloy, OpenTelemetry, fleet management, adaptive telemetry, Assistant, investigations, knowledge graph, agent observability, costs, observability as code, administration, workflows, and onboarding. Arbitrary text and mixed phrases such as `dashboard for alice@example.com` report `other`; no keywords are extracted from longer text. This dictionary affects analytics only, not search results or visible topics.
+
+Topics use a fixed allowlist (`all`, `dashboards`, `data-sources`, `alerting`, `metrics`, `logs`, `k6`, `getting-started`, `uncategorized`); all other topics report `other`.
 
 Automatic view changes caused by searching or choosing a topic do not emit `view`; resetting filters does not emit `source` or `topic`. Clicking an already selected view or source emits nothing. These events use the shared RudderStack pipeline and Faro mirror.
 

@@ -1,8 +1,8 @@
-import React, { useCallback, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { CATALOG_BATCH_SIZE, type CatalogPackage, type CatalogViewState } from '../../types/package-catalog.types';
-import { reportCatalogInteraction } from '../../lib/catalog-analytics';
+import { catalogSearchTopic, reportCatalogInteraction } from '../../lib/catalog-analytics';
 import { filterCatalog, withoutPathMembers } from '../../lib/package-catalog';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { usePackageCatalog, useCatalogProgress } from '../../learning-paths';
@@ -48,6 +48,23 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
   const snapshot = useCallback(() => getCatalogView(catalog.scope), [catalog.scope]);
   const view = useSyncExternalStore(subscribeCatalogView, snapshot, snapshot);
   const container = useRef<HTMLDivElement>(null);
+  const editedSearchScope = useRef<string | null>(null);
+  const reportSearch = useCallback(() => {
+    if (editedSearchScope.current === catalog.scope) {
+      editedSearchScope.current = null;
+      if (view.query.trim()) {
+        reportCatalogInteraction({ action: 'search', topic: catalogSearchTopic(view.query) });
+      }
+    }
+  }, [catalog.scope, view.query]);
+  useEffect(() => {
+    if (editedSearchScope.current !== catalog.scope) {
+      editedSearchScope.current = null;
+      return;
+    }
+    const timer = setTimeout(reportSearch, 500);
+    return () => clearTimeout(timer);
+  }, [catalog.scope, reportSearch]);
   const update = useCallback(
     (patch: Partial<CatalogViewState>) => {
       const filtersChanged = 'query' in patch || 'format' in patch || 'source' in patch || 'category' in patch;
@@ -198,10 +215,14 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
           placeholder={t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')}
           onChange={(event) => {
             const query = event.currentTarget.value;
-            if (query.trim() && !view.query.trim()) {
-              reportCatalogInteraction({ action: 'search' });
-            }
+            editedSearchScope.current = catalog.scope;
             update({ query, scrollTop: 0 });
+          }}
+          onBlur={reportSearch}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              reportSearch();
+            }
           }}
         />
         <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>

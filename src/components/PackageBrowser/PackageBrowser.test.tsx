@@ -358,21 +358,71 @@ it('hides launch failures from the previous identity and ignores late scope laun
   expect(onOpen).not.toHaveBeenCalled();
 });
 
-it('reports search engagement without query text or repeated keystrokes', () => {
-  render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  expect(reportAppInteraction).not.toHaveBeenCalled();
-  const search = screen.getByLabelText('Search guides and paths');
-  for (const value of [' ', 'alice@example.com', 'alice@example.com dashboard']) {
-    fireEvent.change(search, { target: { value } });
-  }
-  expect(reportAppInteraction).toHaveBeenCalledTimes(1);
-  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
-    action: 'search',
-    interaction_location: 'package_browser',
+describe('search analytics', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('reports the settled keyword without repeated keystrokes or raw text', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    const search = screen.getByLabelText('Search guides and paths');
+    for (const value of [' ', 'k', 'k8', 'k8s']) {
+      fireEvent.change(search, { target: { value } });
+      act(() => jest.advanceTimersByTime(100));
+    }
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    act(() => jest.advanceTimersByTime(500));
+    expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+    expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+      action: 'search',
+      interaction_location: 'package_browser',
+      search_topic: 'kubernetes',
+    });
+    fireEvent.change(search, { target: { value: 'alice@example.com dashboard' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    fireEvent.blur(search);
+    act(() => jest.advanceTimersByTime(500));
+    expect(reportAppInteraction).toHaveBeenCalledTimes(2);
+    expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+      action: 'search',
+      interaction_location: 'package_browser',
+      search_topic: 'other',
+    });
+    fireEvent.change(search, { target: { value: 'Tempo' } });
+    fireEvent.blur(search);
+    expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+      action: 'search',
+      interaction_location: 'package_browser',
+      search_topic: 'traces',
+    });
   });
-  fireEvent.change(search, { target: { value: '' } });
-  fireEvent.change(search, { target: { value: 'private' } });
-  expect(reportAppInteraction).toHaveBeenCalledTimes(2);
+
+  it('does not report restored searches, clearing, or abandoned pending searches', () => {
+    updateCatalogView('test', { query: 'metrics' });
+    const { unmount } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    const search = screen.getByLabelText('Search guides and paths');
+    act(() => jest.advanceTimersByTime(500));
+    fireEvent.blur(search);
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    fireEvent.change(search, { target: { value: 'Tempo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    act(() => jest.advanceTimersByTime(500));
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    fireEvent.change(search, { target: { value: 'Loki' } });
+    unmount();
+    act(() => jest.advanceTimersByTime(500));
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending search when the organization scope changes', () => {
+    const { rerender } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'metrics' } });
+    mockScope = 'test:search-other-org';
+    updateCatalogView(mockScope, { mode: 'all', query: 'logs' });
+    rerender(<PackageBrowser onOpenGuide={jest.fn()} />);
+    act(() => jest.advanceTimersByTime(500));
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+  });
 });
 
 it('reports explicit source and view changes and topic shortcuts', () => {
