@@ -386,7 +386,7 @@ jobs:
   # Alerts #grafana-pathfinder-alerts on main-branch CI failures only.
   notify-ci-failure:
     name: Notify CI failure
-    needs: [lint, typecheck, prettier, test, validate-packages, build, lint-backend, test-backend, test-scripts]
+    needs: [lint, typecheck, prettier, test, validate-packages, build, lint-backend, test-backend, test-scripts, playwright-tests]
     if: >-
       always() &&
       github.event_name == 'push' &&
@@ -398,7 +398,8 @@ jobs:
        needs.validate-packages.result == 'failure' ||
        needs.build.result == 'failure' ||
        needs.lint-backend.result == 'failure' ||
-       needs.test-backend.result == 'failure')
+       needs.test-backend.result == 'failure' ||
+       needs.playwright-tests.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       contents: read # required by the shared action's checkout step
@@ -417,11 +418,12 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           LINT_BACKEND_RESULT: ${{ needs.lint-backend.result }}
           TEST_BACKEND_RESULT: ${{ needs.test-backend.result }}
+          PLAYWRIGHT_RESULT: ${{ needs.playwright-tests.result }}
           RUN_ID: ${{ github.run_id }}
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
         run: |
-          jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs")
+          jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100")
 
           declare -A results=(
             ["Lint"]="$LINT_RESULT"
@@ -442,6 +444,13 @@ jobs:
               text="${text}${nl}• <${url}|${name}>"
             fi
           done
+
+          # The matrix has one GitHub job per Grafana image; link each failed image.
+          if [[ "$PLAYWRIGHT_RESULT" == "failure" ]]; then
+            while IFS=$'\t' read -r name url; do
+              text="${text}${nl}• <${url}|${name}>"
+            done < <(echo "$jobs_json" | jq -r '.jobs[] | select(.name | startswith("e2e test ")) | select(.conclusion == "failure") | [.name, .html_url] | @tsv')
+          fi
 
           payload=$(jq -n \
             --arg text "$text" \
