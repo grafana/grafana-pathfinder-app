@@ -26,6 +26,20 @@ Controls the sidebar Browse entry and Browse all links. Set it to `false` to hid
 
 ---
 
+### `pathfinder.sidebar-hub`
+
+**Type**: Boolean
+
+**Default**: `false`
+
+Swaps the content of the sidebar's Recommended tab for the learning hub: a welcome header with a My learning button, the top recommendation, a resume card for the path in progress, three count tiles (assignments, in progress, completed) that open My learning, a "More recommended" list, and a compact help footer. Tabs and the tab bar are unchanged. With the flag off the existing Recommended tab renders as before.
+
+The hub is read in `ContextPanelRenderer` and does not render custom organization guides or the "Other documentation" list yet.
+
+**Tracking key**: `sidebar_hub`
+
+---
+
 ### `pathfinder.enabled`
 
 **Type**: Boolean

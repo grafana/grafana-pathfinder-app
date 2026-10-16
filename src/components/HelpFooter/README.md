@@ -27,6 +27,9 @@ import { HelpFooter } from '../HelpFooter';
 
 // With custom className
 <HelpFooter className="custom-footer-class" />
+
+// Borderless text links without icons (used by the sidebar hub)
+<HelpFooter variant="compact" />
 ```
 
 ## Styling
