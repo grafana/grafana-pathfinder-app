@@ -180,7 +180,12 @@ test.describe('completion tracking', () => {
     await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
     await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
     await markComplete(page);
-    expect(await footerPercentage(page)).toBe(100);
+    await expect
+      .poll(
+        async () => (await readStoredProgress(page)).interactiveCompletion[fixtureContentUrl(PATH_MILESTONES[0]!)],
+        { message: 'completed milestone persisted at 100%', timeout: TIMEOUTS.UI_READY }
+      )
+      .toBe(100);
     const completedFacts = await waitForQueuedFacts(page, 1);
     expect(factsFor(completedFacts, FIXTURE_REPOSITORY, PATH_MILESTONES[0]!.id)).toHaveLength(1);
 
@@ -343,7 +348,13 @@ test.describe('completion tracking', () => {
       for (let index = 0; index < milestoneIds.length; index++) {
         await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
         await markComplete(page);
-        expect(await footerPercentage(page)).toBe(100);
+        const milestone = ALL_FIXTURES.find((fixture) => fixture.id === milestoneIds[index])!;
+        await expect
+          .poll(async () => (await readStoredProgress(page)).interactiveCompletion[fixtureContentUrl(milestone)], {
+            message: `milestone ${index + 1} persisted at 100%`,
+            timeout: TIMEOUTS.UI_READY,
+          })
+          .toBe(100);
         const milestoneFacts = await waitForQueuedFacts(page, index + 1);
         expect(factsFor(milestoneFacts, DEFAULT_GUIDE_SOURCE, milestoneIds[index]!)).toHaveLength(1);
         const completionPanel = page.getByTestId('completion-panel');
