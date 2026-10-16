@@ -9,6 +9,8 @@
  */
 
 export const StorageKeys = {
+  SETTINGS_ABSENT_PREFIX: 'grafana-pathfinder-settings-absent-v1:',
+  SETTINGS_GENERATION_PREFIX: 'grafana-pathfinder-settings-generation-v1:',
   HELP_BUTTON_ATTENTION_DISMISSED_PREFIX: 'pathfinder-help-button-nudge-v1:dismissed:',
   JOURNEY_COMPLETION: 'grafana-pathfinder-app-journey-completion',
   INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey

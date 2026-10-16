@@ -304,6 +304,7 @@ export function InteractiveConditional({
     window.addEventListener('datasources-changed', handleDataSourcesChanged);
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
+    window.addEventListener('guide-response-changed', handleActionCompleted);
     window.addEventListener('interactive-action-completed', handleActionCompleted);
     document.addEventListener('interactive-action-completed', handleActionCompleted);
 
@@ -318,6 +319,7 @@ export function InteractiveConditional({
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
+      window.removeEventListener('guide-response-changed', handleActionCompleted);
       window.removeEventListener('interactive-action-completed', handleActionCompleted);
       document.removeEventListener('interactive-action-completed', handleActionCompleted);
     };

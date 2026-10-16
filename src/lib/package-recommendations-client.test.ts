@@ -26,6 +26,15 @@ const samplePayload = {
   ],
 };
 
+it('explicit retry recovers from a sticky failure through the existing endpoint', async () => {
+  mockGet.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(samplePayload);
+  expect((await fetchOnlinePackageRecommendations()).available).toBe(false);
+  expect((await fetchOnlinePackageRecommendations()).available).toBe(false);
+  expect(mockGet).toHaveBeenCalledTimes(1);
+  expect((await fetchOnlinePackageRecommendations({ refresh: true })).packages).toEqual(samplePayload.packages);
+  expect(mockGet).toHaveBeenCalledTimes(2);
+});
+
 let originalOnLine: PropertyDescriptor | undefined;
 
 beforeAll(() => {

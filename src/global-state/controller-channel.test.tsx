@@ -623,6 +623,74 @@ describe('ControllerChannelProvider', () => {
     await waitFor(() => expect(screen.getByTestId('done2')).toHaveTextContent('ok:true'));
   });
 
+  describe('awaitStepComplete bound', () => {
+    async function renderPaired() {
+      const transport = new FakeCrossTabTransport();
+      let channel!: NonNullable<ReturnType<typeof useControllerChannel>>;
+      function Capture() {
+        const value = useControllerChannel();
+        React.useEffect(() => {
+          channel = value!;
+        }, [value]);
+        return null;
+      }
+      render(
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          <Capture />
+        </ControllerChannelProvider>
+      );
+      await pairWithLive(transport, 'live-A');
+      return { transport, channel };
+    }
+
+    afterEach(() => {
+      jest.useRealTimers();
+      jest.restoreAllMocks();
+    });
+
+    it('resolves false when no step-complete arrives and drops the pending run', async () => {
+      const { channel } = await renderPaired();
+      const deleted = jest.spyOn(Map.prototype, 'delete');
+      jest.useFakeTimers();
+      let result: boolean | undefined;
+      void channel.awaitStepComplete('s11', 'run-11', 100).then((ok) => (result = ok));
+
+      await act(async () => jest.advanceTimersByTimeAsync(99));
+      expect(result).toBeUndefined();
+      await act(async () => jest.advanceTimersByTimeAsync(1));
+
+      expect(result).toBe(false);
+      expect(deleted).toHaveBeenCalledWith('s11:run-11');
+    });
+
+    it.each(['completion', 'cancel'])('clears the timer on %s', async (end) => {
+      const { transport, channel } = await renderPaired();
+      jest.useFakeTimers();
+      const idle = jest.getTimerCount();
+      const pending = channel.awaitStepComplete('s12', 'run-12', 100);
+      expect(jest.getTimerCount()).toBe(idle + 1);
+
+      if (end === 'cancel') {
+        channel.cancelStepComplete('s12', 'run-12');
+      } else {
+        act(() =>
+          transport.emit({
+            source: 'pathfinder',
+            senderId: 'live-A',
+            timestamp: 0,
+            kind: 'step-complete',
+            stepId: 's12',
+            runId: 'run-12',
+            ok: true,
+          })
+        );
+      }
+
+      expect(await pending).toBe(end === 'completion');
+      expect(jest.getTimerCount()).toBe(idle);
+    });
+  });
+
   it('forwards step-progress to an onStepProgress subscriber', async () => {
     function ProgressProbe() {
       const channel = useControllerChannel();

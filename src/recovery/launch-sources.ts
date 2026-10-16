@@ -36,6 +36,7 @@ export type LaunchSource =
   | 'devtools'
   // Needs alignment check
   | 'home_page'
+  | 'package_browser'
   | 'url_param'
   | 'kiosk_session'
   | 'shared_link'
@@ -103,6 +104,7 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<LaunchSource> = new Se
  */
 export const NEEDS_ALIGNMENT_CHECK_SOURCES: ReadonlySet<LaunchSource> = new Set<LaunchSource>([
   'home_page',
+  'package_browser',
   'url_param',
   'kiosk_session',
   'shared_link',

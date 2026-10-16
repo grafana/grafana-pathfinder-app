@@ -278,14 +278,14 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   const openLearningJourney = useCallback(
     (url: string, title: string) => {
-      onOpenLearningJourney?.(url, title);
+      return onOpenLearningJourney?.(url, title);
     },
     [onOpenLearningJourney]
   );
 
   const openDocsPage = useCallback(
     (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-      onOpenDocsPage?.(url, title, packageInfo);
+      return onOpenDocsPage?.(url, title, packageInfo);
     },
     [onOpenDocsPage]
   );

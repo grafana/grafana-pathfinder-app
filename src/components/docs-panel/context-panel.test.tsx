@@ -25,6 +25,13 @@ jest.mock('@grafana/i18n', () => ({
   t: jest.fn((key: string, fallback: string) => fallback),
 }));
 
+const paragraphHeight = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
+  this: HTMLElement
+) {
+  return this.tagName === 'P' && (this.textContent?.split(/\s+/).length ?? 0) > 20 ? 80 : 0;
+});
+afterAll(() => paragraphHeight.mockRestore());
+
 const { __mockPublish: mockPublish, __mockPush: mockPush } = jest.requireMock('@grafana/runtime');
 
 describe('RecommendationsSection', () => {
@@ -102,7 +109,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(screen.getByRole('button', { name: /Start (guide|path)/ }));
 
     expect(openDocsPage).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
@@ -149,8 +156,77 @@ describe('RecommendationsSection', () => {
     );
 
     expect(screen.getByText('Learning path')).toBeInTheDocument();
-    expect(screen.queryByText('Interactive guide')).not.toBeInTheDocument();
+    expect(screen.queryByText('Guide')).not.toBeInTheDocument();
   });
+
+  it.each([
+    { featured: false, hasMilestones: true },
+    { featured: true, hasMilestones: true },
+    { featured: false, hasMilestones: false },
+    { featured: true, hasMilestones: false },
+  ])(
+    'shows prerequisites in expanded details with featured=$featured and milestones=$hasMilestones',
+    ({ featured, hasMilestones }) => {
+      const recommendation = {
+        title: 'Prometheus learning path',
+        url: '',
+        contentUrl: 'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
+        type: 'package' as const,
+        summary: 'Learn Prometheus step by step.',
+        manifest: {
+          id: 'prometheus-lj',
+          type: 'path',
+          prerequisites: [
+            {
+              id: 'prometheus',
+              label: 'A running [Prometheus server](https://example.com/prometheus).',
+              format: 'markdown',
+            },
+          ],
+        },
+        summaryExpanded: true,
+        totalSteps: hasMilestones ? 1 : 0,
+        milestones: hasMilestones
+          ? [{ number: 1, title: 'Install Prometheus', url: 'https://example.com/step-1' }]
+          : [],
+      };
+      render(
+        <RecommendationsSection
+          recommendations={featured ? [] : [recommendation]}
+          featuredRecommendations={featured ? [recommendation] : []}
+          customGuides={[]}
+          customGuidePaths={[]}
+          customGuideOrphans={[]}
+          isLoadingCustomGuides={false}
+          customGuidesExpanded
+          suggestedGuidesExpanded
+          isLoadingRecommendations={false}
+          isLoadingContext={false}
+          recommendationsError={null}
+          otherDocsExpanded={false}
+          showEnableRecommenderBanner={false}
+          openLearningJourney={jest.fn()}
+          openDocsPage={jest.fn()}
+          toggleCustomGuidesExpansion={jest.fn()}
+          toggleSuggestedGuidesExpansion={jest.fn()}
+          toggleSummaryExpansion={jest.fn()}
+          toggleOtherDocsExpansion={jest.fn()}
+        />
+      );
+
+      const prerequisite = screen.getByRole('link', { name: 'Prometheus server' });
+      expect(screen.getByRole('note')).toHaveTextContent('Prerequisites');
+      expect(prerequisite).toHaveAttribute('target', '_blank');
+      expect(prerequisite).toHaveAttribute('rel', 'noopener noreferrer');
+      if (hasMilestones) {
+        const milestone = screen.getByText('Install Prometheus');
+        expect(prerequisite.compareDocumentPosition(milestone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      expect(
+        screen.getByRole('button', { name: hasMilestones ? 'Hide modules' : 'Hide related content' })
+      ).toBeVisible();
+    }
+  );
 
   it('shows the milestone duration only when estimatedMinutes is authored, omitting it entirely otherwise', () => {
     render(
@@ -197,7 +273,7 @@ describe('RecommendationsSection', () => {
     // duration renders through the translated key rather than a hardcoded
     // "min" string, not the interpolated count.
     const milestonesList = screen.getByTestId(testIds.contextPanel.recommendationMilestones(0));
-    expect(milestonesList).toHaveTextContent('({{count}} min)');
+    expect(milestonesList).toHaveTextContent('{{minutes}} min');
     expect(milestonesList).not.toHaveTextContent('(undefined min)');
     expect(milestonesList).not.toHaveTextContent('NaN');
   });
@@ -239,7 +315,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(screen.getByRole('button', { name: /Start (guide|path)/ }));
 
     expect(openDocsPage).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
@@ -286,7 +362,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    expect(screen.getByText('Interactive guide')).toBeInTheDocument();
+    expect(screen.getByText('Guide')).toBeInTheDocument();
     expect(screen.queryByText('Learning path')).not.toBeInTheDocument();
   });
 
@@ -328,7 +404,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Summary' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Read more' }));
 
     expect(toggleSummaryExpansion).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json'
@@ -370,12 +446,12 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    expect(screen.queryByRole('button', { name: 'Summary' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Read more' })).not.toBeInTheDocument();
     expect(screen.getByText('Learn alerting basics.')).toBeInTheDocument();
     expect(screen.getByText('{{percent}}% complete')).toBeInTheDocument();
   });
 
-  it('keeps the Summary collapse button when short summary has expandable milestone details', () => {
+  it('keeps the module disclosure when short summary has expandable milestone details', () => {
     render(
       <RecommendationsSection
         recommendations={[
@@ -411,8 +487,8 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'Summary' })).toBeInTheDocument();
-    expect(screen.queryByText('Learn alerting basics.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show modules' })).toBeInTheDocument();
+    expect(screen.getByText('Learn alerting basics.')).toBeInTheDocument();
   });
 
   it('shows completion percentage for package with completionPercentage set', () => {

@@ -142,6 +142,7 @@ describe('openfeature', () => {
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].trackingKey).toBe('intercept_docs_links');
         expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].trackingKey).toBe('progress_analytics');
         expect(pathfinderFeatureFlags['pathfinder.progress-records'].trackingKey).toBe('progress_records');
+        expect(pathfinderFeatureFlags['pathfinder.recommend-completions'].trackingKey).toBe('recommend_completions');
       });
     });
 
@@ -181,6 +182,19 @@ describe('openfeature', () => {
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.progress-records'].valueType).toBe('boolean');
         expect(pathfinderFeatureFlags['pathfinder.progress-records'].defaultValue).toBe(false);
+      });
+    });
+
+    it('pathfinder.recommend-completions is a boolean kill switch that defaults to true', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.recommend-completions'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.recommend-completions'].defaultValue).toBe(false);
       });
     });
 

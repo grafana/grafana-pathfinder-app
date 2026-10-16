@@ -1,8 +1,3 @@
-/**
- * Error boundary for MyLearningTab to prevent panel crashes.
- * REACT: Error boundary to prevent panel crashes (R6)
- */
-
 import React, { Component, ReactNode } from 'react';
 import { Icon, Button } from '@grafana/ui';
 import { pushFaroError } from '../../../lib/faro';
@@ -13,12 +8,9 @@ interface MyLearningErrorBoundaryState {
 
 interface MyLearningErrorBoundaryProps {
   children: ReactNode;
+  fallbackMessage?: string;
 }
 
-/**
- * Error boundary component that catches errors in MyLearningTab
- * and displays a fallback UI instead of crashing the entire panel.
- */
 // eslint-disable-next-line no-restricted-syntax -- Error boundaries require componentDidCatch (no hook equivalent)
 export class MyLearningErrorBoundary extends Component<MyLearningErrorBoundaryProps, MyLearningErrorBoundaryState> {
   state: MyLearningErrorBoundaryState = { hasError: false };
@@ -38,7 +30,7 @@ export class MyLearningErrorBoundary extends Component<MyLearningErrorBoundaryPr
       return (
         <div style={{ padding: 16, textAlign: 'center' }}>
           <Icon name="exclamation-triangle" size="xl" />
-          <p style={{ marginTop: 8 }}>Unable to load learning progress</p>
+          <p style={{ marginTop: 8 }}>{this.props.fallbackMessage ?? 'Unable to load learning progress'}</p>
           <Button size="sm" variant="secondary" onClick={() => this.setState({ hasError: false })}>
             Try again
           </Button>

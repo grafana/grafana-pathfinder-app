@@ -370,6 +370,29 @@ describe('fetchPackageContent', () => {
 });
 
 describe('fetchPackageManifest', () => {
+  it.each(['future', 42, { future: true }, 'markdown'])(
+    'retains parsed remote metadata and exact raw output for format %p',
+    async (format) => {
+      const label = '  Literal <b> & **syntax**  ';
+      const manifest = { ...sampleManifest, prerequisites: [{ id: 'notice', label, format }] };
+      mockFetchJsonOnce(sampleIndex);
+      mockFetchJsonOnce(manifest);
+
+      const result = await fetchPackageManifest('business-value');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) {
+        return;
+      }
+      expect(result.raw).toEqual(manifest);
+      expect(result.validation.isValid).toBe(true);
+      expect(result.parsed).toMatchObject({
+        prerequisites: [{ id: 'notice', label, ...(format === 'markdown' ? { format } : {}) }],
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    }
+  );
+
   it('returns manifest + parsed when the file is well-formed', async () => {
     mockFetchJsonOnce(sampleIndex);
     mockFetchJsonOnce(sampleManifest);

@@ -52,7 +52,8 @@ jest.mock('../global-state/completion-store', () => ({
 }));
 
 import { reportInteraction } from '@grafana/runtime';
-import { interactiveCompletionStorage, milestoneCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import { StorageKeys } from '../lib/storage-keys';
+import { interactiveCompletionStorage, learningProgressStorage } from '../lib/user-storage';
 import {
   markMilestoneDone,
   journeyMilestonePercentages,
@@ -90,6 +91,14 @@ afterEach(() => {
   unsubscribe();
 });
 
+// Seeds the historical record shape directly: the legacy store no longer has a writer.
+function seedLegacyMilestones(journeyBase: string, slugs: string[]): void {
+  localStorage.setItem(
+    StorageKeys.MILESTONE_COMPLETION,
+    JSON.stringify({ [journeyBase]: slugs, [journeyBase.replace(/\/+$/, '')]: slugs })
+  );
+}
+
 describe('legacy milestone backfill against real storage (pf-1925-backfill-lost-updates)', () => {
   it('persists every legacy-complete milestone, and the whole-journey completion still fires once the last one completes', async () => {
     const base = 'https://grafana.com/docs/learning-journeys/linux/';
@@ -98,8 +107,7 @@ describe('legacy milestone backfill against real storage (pf-1925-backfill-lost-
 
     // Two milestones already complete in the LEGACY store only — the shape a
     // learner who used the product before this PR shipped is in.
-    await milestoneCompletionStorage.markCompleted(base, 'm1');
-    await milestoneCompletionStorage.markCompleted(base, 'm2');
+    seedLegacyMilestones(base, ['m1', 'm2']);
 
     getPathsDataMock.mockReturnValue({
       paths: [{ id: 'linux-path', url: base, badgeId: 'linux-badge' }],
@@ -238,8 +246,7 @@ describe('whole-journey completion without a prior backfill read (Cursor Bugbot 
     const base = 'https://grafana.com/docs/learning-journeys/linux/';
     const urls = [`${base}m1/`, `${base}m2/`, `${base}m3/`];
 
-    await milestoneCompletionStorage.markCompleted(base, 'm1');
-    await milestoneCompletionStorage.markCompleted(base, 'm2');
+    seedLegacyMilestones(base, ['m1', 'm2']);
 
     getPathsDataMock.mockReturnValue({
       paths: [{ id: 'linux-path', url: base, badgeId: 'linux-badge' }],

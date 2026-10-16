@@ -57,8 +57,9 @@ async function installFixtures(
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...settings } } });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
-    route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
+  await page.route(
+    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+    (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
   );
   await page.route(catalogUrl, (route) =>
     route.fulfill({
@@ -88,7 +89,7 @@ for (const theme of ['light', 'dark']) {
     await expect(page.getByLabel('Your website')).toBeFocused();
     await page.getByLabel('Your website').fill('ftp://example.com');
     await page.getByLabel('Your website').press('Enter');
-    await expect(page.getByRole('dialog', { name: 'Kiosk mode' }).getByRole('alert')).toContainText(
+    await expect(page.getByTestId(testIds.kioskMode.overlay).getByRole('alert')).toContainText(
       'Enter a website address'
     );
     await page.getByLabel('Your website').fill('https://example.com');

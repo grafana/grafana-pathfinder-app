@@ -251,7 +251,7 @@ describe('versioned report contract', () => {
     });
 
     expect(report).toMatchObject({
-      schemaVersion: '1.1.0',
+      schemaVersion: E2E_REPORT_SCHEMA_VERSION,
       outcome: 'infrastructure_error',
       errorCode: 'TRANSITION_FAILED',
       transitionKind: 'tab-close-failed',
@@ -359,7 +359,10 @@ describe('writeReport self-validation', () => {
   });
 
   it('still writes a diagnostic report when validation fails', () => {
-    const invalid = { schemaVersion: '1.1.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
+    const invalid = {
+      schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+      outcome: 'not-a-real-outcome',
+    } as unknown as E2ETestReport;
     const out = join(dir, 'report.json');
 
     const schemaValid = writeReport(invalid, out);
@@ -368,5 +371,36 @@ describe('writeReport self-validation', () => {
     expect(written.outcome).toBe('not-a-real-outcome');
     expect(schemaValid).toBe(false);
     expect(errorSpy).toHaveBeenCalled();
+  });
+});
+
+describe('mutation authorization report evidence', () => {
+  it('preserves authorization and side-effect evidence in single and nested reports', () => {
+    const data = ranGuide('mutating-guide');
+    data.guide.targetUrl = 'https://docs.example/';
+    data.guide.sideEffects = { level: 'mutating', reasons: [] };
+    data.mutationAuthorization = { hostname: 'docs.example', source: 'cli-explicit-host' };
+    const single = generateReport(data);
+    expect(E2ETestReportSchema.safeParse(single).success).toBe(true);
+    expect(single.target.mutationAuthorization).toEqual(data.mutationAuthorization);
+    expect(single.guide.sideEffects?.level).toBe('mutating');
+    const multi = generateMultiGuideReport([data]);
+    expect(MultiGuideReportSchema.safeParse(multi).success).toBe(true);
+    expect(multi.reports[0]?.target.mutationAuthorization).toEqual(data.mutationAuthorization);
+    expect(generateReport(ranGuide('readonly-guide')).target).not.toHaveProperty('mutationAuthorization');
+  });
+
+  it.each([
+    { hostname: 'https://docs.example', source: 'cli-explicit-host' },
+    { hostname: 'DOCS.EXAMPLE', source: 'cli-explicit-host' },
+    { hostname: 'docs.example', source: 'metadata' },
+    { hostname: 'docs.example' },
+    true,
+  ])('rejects malformed authorization evidence %j', (evidence) => {
+    const report = generateReport(ranGuide('guide'));
+    expect(
+      E2ETestReportSchema.safeParse({ ...report, target: { ...report.target, mutationAuthorization: evidence } })
+        .success
+    ).toBe(false);
   });
 });

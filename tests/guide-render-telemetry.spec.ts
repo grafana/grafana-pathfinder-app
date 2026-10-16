@@ -38,8 +38,9 @@ test('correlates private and CDN failures with committed rendering without leaki
       },
     });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
-    route.fulfill({ status: 404, json: { error: 'settings-upstream-unavailable' } })
+  await page.route(
+    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+    (route) => route.fulfill({ json: { state: 'not-configured' } })
   );
   await page.route('**/api/plugins/grafana-pathfinder-app/resources/custom-guide?*', async (route) => {
     const id = new URL(route.request().url()).searchParams.get('name');

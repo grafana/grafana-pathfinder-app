@@ -8,7 +8,7 @@ import {
 } from '../../../global-state/completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from '../../../global-state/content-key';
 import { StorageKeys, buildVersionedSectionStorageKey } from '../../../lib/storage-keys';
-import { guideCompletionMarkStorage, milestoneCompletionStorage } from '../../../lib/user-storage';
+import { guideCompletionMarkStorage } from '../../../lib/user-storage';
 import { journeyMilestonePercentages } from '../../../docs-retrieval/learning-journey-helpers';
 import type { Milestone } from '../../../types/content.types';
 import { resetGuideProgress } from './resetGuideProgress';
@@ -155,7 +155,10 @@ describe('resetGuideProgress integration — a milestone reset stays reset despi
     // Pre-migration production data: only the legacy store has this milestone
     // marked complete, exactly like a real learner who finished it before
     // this migration shipped.
-    await milestoneCompletionStorage.markCompleted(JOURNEY_BASE, MILESTONE_SLUG);
+    localStorage.setItem(
+      StorageKeys.MILESTONE_COMPLETION,
+      JSON.stringify({ [JOURNEY_BASE]: [MILESTONE_SLUG], [JOURNEY_BASE.replace(/\/+$/, '')]: [MILESTONE_SLUG] })
+    );
 
     // The first read backfills the legacy completion into
     // interactiveCompletionStorage — this is the real, intended behavior, and

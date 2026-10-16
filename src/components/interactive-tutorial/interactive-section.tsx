@@ -12,6 +12,9 @@ import {
 import { useStepChecker, stripTabLocalRequirements } from '../../requirements-manager';
 import { useIsAlignmentPaused, useAlignmentStartingLocation } from '../../global-state/alignment-pending-context';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
+import { evaluateChoiceConditions } from '../../lib/choice-response';
+import { useGuideResponsesOptional } from '../../docs-retrieval';
+import { setGuideSectionVisibility, forgetGuideSectionVisibility } from '../../global-state/active-guide-index';
 import { logger } from '../../lib/logging';
 import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
 import { InteractiveStep, resetStepCounter } from './interactive-step';
@@ -160,7 +163,8 @@ export function InteractiveSection({
   className,
   id, // HTML id attribute from parsed content
   sectionId: derivedSectionId, // `sectionRuntimeId`, stamped on by the JSON parser
-  autoCollapse, // Author control for auto-collapse behavior
+  autoCollapse,
+  whenRequirementsUnmet = 'disable',
 }: InteractiveSectionProps) {
   const sectionId = useMemo(() => {
     // The parser's derivation wins: it is the same function the block index
@@ -215,9 +219,9 @@ export function InteractiveSection({
   // Detect if we're in preview mode (block editor preview)
   // Preview mode uses a special URL pattern: block-editor://preview/{guide-id}
   const isPreviewMode = useMemo(() => {
-    const contentKey = getContentKey();
+    const contentKey = resolveOwnerContentKey?.() ?? getContentKey();
     return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
-  }, []);
+  }, [resolveOwnerContentKey]);
 
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
@@ -249,6 +253,29 @@ export function InteractiveSection({
     hints,
     checkRequirementsFromData,
   });
+
+  const focusReturnRoot = useRef<Element | null>(null);
+  const hadContentFocus = useRef(false);
+  const guideResponses = useGuideResponsesOptional();
+  const choiceVisibility = evaluateChoiceConditions(requirements, guideResponses?.responses ?? {});
+  const visibilityPassed = choiceVisibility ?? sectionRequirementsStatus.passed;
+  const progressVisibility =
+    guideResponses?.isLoading || (choiceVisibility === undefined && sectionRequirementsStatus.checking)
+      ? undefined
+      : visibilityPassed;
+  useEffect(() => {
+    if (whenRequirementsUnmet === 'disable') {
+      return;
+    }
+    const contentKey = resolveOwnerContentKey?.() ?? getContentKey();
+    if (setGuideSectionVisibility(contentKey, sectionId, progressVisibility)) {
+      refreshAndNotifyGuideProgress(contentKey);
+    }
+  }, [resolveOwnerContentKey, sectionId, whenRequirementsUnmet, progressVisibility]);
+  useEffect(() => {
+    const contentKey = resolveOwnerContentKey?.() ?? getContentKey();
+    return () => forgetGuideSectionVisibility(contentKey, sectionId);
+  }, [resolveOwnerContentKey, sectionId]);
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
@@ -1348,6 +1375,23 @@ export function InteractiveSection({
   // and label IIFEs share a single result instead of recomputing.
   const resumeInfo = getResumeInfo();
 
+  const requirementsHideContent = whenRequirementsUnmet !== 'disable' && !visibilityPassed;
+  useEffect(() => {
+    if (!requirementsHideContent) {
+      return;
+    }
+    handleSectionCancel();
+    if (hadContentFocus.current) {
+      const checkbox = focusReturnRoot.current?.querySelector<HTMLInputElement>('[data-choice-question] input');
+      checkbox?.focus();
+      hadContentFocus.current = false;
+    }
+  }, [requirementsHideContent, handleSectionCancel]);
+
+  if (requirementsHideContent && whenRequirementsUnmet === 'hide') {
+    return null;
+  }
+
   return (
     <div
       id={sectionId}
@@ -1356,10 +1400,19 @@ export function InteractiveSection({
       }`}
       data-testid={testIds.interactive.section(sectionId)}
       data-interactive-section="true"
+      onFocusCapture={(event) => {
+        hadContentFocus.current = true;
+        focusReturnRoot.current = event.currentTarget.closest('[data-guide-content-root]');
+      }}
+      onBlurCapture={(event) => {
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) {
+          hadContentFocus.current = false;
+        }
+      }}
     >
       <div className={`interactive-section-header${isCollapsed ? ' collapsed' : ''}`}>
         {/* Show collapse toggle when completed OR when in preview mode (for guide authors) */}
-        {(isCompleted || isPreviewMode) && (
+        {!requirementsHideContent && (isCompleted || isPreviewMode) && (
           <button
             className="interactive-section-toggle-button"
             onClick={toggleCollapse}
@@ -1382,181 +1435,187 @@ export function InteractiveSection({
         )}
       </div>
 
-      {!isCollapsed && description && <div className="interactive-section-description">{description}</div>}
+      {!requirementsHideContent && (
+        <>
+          {!isCollapsed && description && <div className="interactive-section-description">{description}</div>}
 
-      {/* Section requirements status banner */}
-      {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
-        <div
-          className="interactive-section-requirements-banner"
-          data-testid={testIds.interactive.sectionRequirementsBanner(sectionId)}
-        >
-          <div className="interactive-section-requirements-content">
-            <span className="interactive-section-requirements-icon">🔒</span>
-            <span className="interactive-section-requirements-message">
-              {sectionRequirementsStatus.explanation || 'Requirements not yet met'}
-            </span>
-          </div>
-          {sectionRequirementsStatus.canFix && (
-            <div className="interactive-step-requirement-buttons">
-              <button
-                type="button"
-                className="interactive-requirement-retry-btn"
-                data-testid={testIds.interactive.requirementFixButton(sectionId)}
-                onClick={fixSectionRequirements}
-              >
-                Fix this
-              </button>
+          {/* Section requirements status banner */}
+          {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
+            <div
+              className="interactive-section-requirements-banner"
+              data-testid={testIds.interactive.sectionRequirementsBanner(sectionId)}
+            >
+              <div className="interactive-section-requirements-content">
+                <span className="interactive-section-requirements-icon">🔒</span>
+                <span className="interactive-section-requirements-message">
+                  {sectionRequirementsStatus.explanation || 'Requirements not yet met'}
+                </span>
+              </div>
+              {sectionRequirementsStatus.canFix && (
+                <div className="interactive-step-requirement-buttons">
+                  <button
+                    type="button"
+                    className="interactive-requirement-retry-btn"
+                    data-testid={testIds.interactive.requirementFixButton(sectionId)}
+                    onClick={fixSectionRequirements}
+                  >
+                    Fix this
+                  </button>
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* Implied-0th-step alignment hint: surfaces in every section while a
+          {/* Implied-0th-step alignment hint: surfaces in every section while a
           prompt is up, so users who scroll past the top banner still see why
           steps are inactive. */}
-      {!isCollapsed && isAlignmentPaused && alignmentStartingLocation && (
-        <div className="interactive-section-alignment-banner" data-testid={testIds.alignmentPrompt.sectionHint}>
-          <span className="interactive-section-alignment-message">
-            Steps are paused.{' '}
-            <button
-              type="button"
-              className="interactive-section-alignment-link"
-              onClick={() => {
-                const target = document.querySelector(`[data-testid="${testIds.alignmentPrompt.container}"]`);
-                if (target) {
-                  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }}
-            >
-              Open the navigation prompt
-            </button>{' '}
-            to continue.
-          </span>
-        </div>
-      )}
-
-      {!isCollapsed && (
-        <ol className="interactive-section-content">{wrapSectionChildrenForNumbering(enhancedChildren)}</ol>
-      )}
-
-      <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
-        {isCollapsed ? (
-          <Button
-            onClick={handleResetSection}
-            disabled={disabled || isRunning || isCompletedByObjectives}
-            size="sm"
-            variant="secondary"
-            className="interactive-section-reset-button"
-            data-testid={testIds.interactive.resetSectionButton(sectionId)}
-            title="Reset section and clear all step completion"
-          >
-            Reset Section
-          </Button>
-        ) : isRunning ? (
-          /* Running state - show progress bar and status */
-          <div className="interactive-guided-executing">
-            <div className="interactive-guided-step-indicator">
-              <span className="interactive-guided-step-badge">
-                Step {executingStepNumber || 1} of {stepComponents.length}
+          {!isCollapsed && isAlignmentPaused && alignmentStartingLocation && (
+            <div className="interactive-section-alignment-banner" data-testid={testIds.alignmentPrompt.sectionHint}>
+              <span className="interactive-section-alignment-message">
+                Steps are paused.{' '}
+                <button
+                  type="button"
+                  className="interactive-section-alignment-link"
+                  onClick={() => {
+                    const target = document.querySelector(`[data-testid="${testIds.alignmentPrompt.container}"]`);
+                    if (target) {
+                      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
+                >
+                  Open the navigation prompt
+                </button>{' '}
+                to continue.
               </span>
             </div>
-            <div className="interactive-guided-instruction">
-              <span className="interactive-guided-instruction-icon">⚡</span>
-              <span className="interactive-guided-instruction-text">Running step {executingStepNumber || 1}...</span>
-            </div>
-            <div className="interactive-guided-progress">
-              <div
-                className="interactive-guided-progress-fill"
-                style={{ width: `${((executingStepNumber - 1) / stepComponents.length) * 100}%` }}
-              />
-              <div
-                className="interactive-guided-progress-active"
-                style={{
-                  left: `${((executingStepNumber - 1) / stepComponents.length) * 100}%`,
-                  width: `${(1 / stepComponents.length) * 100}%`,
-                }}
-              />
-            </div>
-            <Button
-              onClick={handleSectionCancel}
-              disabled={disabled}
-              size="sm"
-              variant="secondary"
-              className="interactive-guided-cancel-btn"
-              title="Cancel section execution"
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : sectionKind === 'awaiting-ack' ? (
-          /* Acknowledgement gate (issue #842) — surfaces only when every
+          )}
+
+          {!isCollapsed && (
+            <ol className="interactive-section-content">{wrapSectionChildrenForNumbering(enhancedChildren)}</ol>
+          )}
+
+          <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
+            {isCollapsed ? (
+              <Button
+                onClick={handleResetSection}
+                disabled={disabled || isRunning || isCompletedByObjectives}
+                size="sm"
+                variant="secondary"
+                className="interactive-section-reset-button"
+                data-testid={testIds.interactive.resetSectionButton(sectionId)}
+                title="Reset section and clear all step completion"
+              >
+                Reset Section
+              </Button>
+            ) : isRunning ? (
+              /* Running state - show progress bar and status */
+              <div className="interactive-guided-executing">
+                <div className="interactive-guided-step-indicator">
+                  <span className="interactive-guided-step-badge">
+                    Step {executingStepNumber || 1} of {stepComponents.length}
+                  </span>
+                </div>
+                <div className="interactive-guided-instruction">
+                  <span className="interactive-guided-instruction-icon">⚡</span>
+                  <span className="interactive-guided-instruction-text">
+                    Running step {executingStepNumber || 1}...
+                  </span>
+                </div>
+                <div className="interactive-guided-progress">
+                  <div
+                    className="interactive-guided-progress-fill"
+                    style={{ width: `${((executingStepNumber - 1) / stepComponents.length) * 100}%` }}
+                  />
+                  <div
+                    className="interactive-guided-progress-active"
+                    style={{
+                      left: `${((executingStepNumber - 1) / stepComponents.length) * 100}%`,
+                      width: `${(1 / stepComponents.length) * 100}%`,
+                    }}
+                  />
+                </div>
+                <Button
+                  onClick={handleSectionCancel}
+                  disabled={disabled}
+                  size="sm"
+                  variant="secondary"
+                  className="interactive-guided-cancel-btn"
+                  title="Cancel section execution"
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : sectionKind === 'awaiting-ack' ? (
+              /* Acknowledgement gate (issue #842) — surfaces only when every
              interactive step is done (or the section is 100% passive) AND
              the user hasn't yet clicked Mark. */
-          <Button
-            onClick={handleMarkSectionComplete}
-            disabled={disabled}
-            size="md"
-            variant="primary"
-            className="interactive-section-do-button"
-            data-testid={testIds.interactive.markSectionCompleteButton(sectionId)}
-            title="Mark section as complete and continue"
-          >
-            Mark section as complete
-          </Button>
-        ) : (
-          // Catch-all action button. The disabled clause's
-          // `stepComponents.length === 0` guard only applies to the Do-
-          // Section path — an all-passive section has zero interactive
-          // children but reaches `done(ack)` via the Mark gate and must
-          // still be Reset-able afterwards.
-          <Button
-            onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
-            disabled={
-              disabled ||
-              !sectionRequirementsStatus.passed ||
-              isCompletedByObjectives ||
-              (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
-            }
-            size="md"
-            variant={isCompleted ? 'secondary' : 'primary'}
-            className="interactive-section-do-button"
-            data-testid={
-              stepsCompleted && !isCompletedByObjectives
-                ? testIds.interactive.resetSectionButton(sectionId)
-                : testIds.interactive.doSectionButton(sectionId)
-            }
-            title={(() => {
-              if (isCompletedByObjectives) {
-                return 'Already done!';
-              }
-              if (stepsCompleted && !isCompletedByObjectives) {
-                return 'Reset section and clear all step completion to allow manual re-interaction';
-              }
-              if (resumeInfo.isResume) {
-                const stepWord = resumeInfo.remainingSteps === 1 ? 'step' : 'steps';
-                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} ${stepWord} remaining`;
-              }
-              return (
-                hints ||
-                `Run through all ${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'} in sequence`
-              );
-            })()}
-          >
-            {(() => {
-              if (isCompletedByObjectives) {
-                return 'Already done!';
-              }
-              if (stepsCompleted && !isCompletedByObjectives) {
-                return 'Reset section';
-              }
-              if (resumeInfo.isResume) {
-                return `▶ Resume (${resumeInfo.remainingSteps} ${resumeInfo.remainingSteps === 1 ? 'step' : 'steps'})`;
-              }
-              return `▶ Do Section (${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'})`;
-            })()}
-          </Button>
-        )}
-      </div>
+              <Button
+                onClick={handleMarkSectionComplete}
+                disabled={disabled}
+                size="md"
+                variant="primary"
+                className="interactive-section-do-button"
+                data-testid={testIds.interactive.markSectionCompleteButton(sectionId)}
+                title="Mark section as complete and continue"
+              >
+                Mark section as complete
+              </Button>
+            ) : (
+              // Catch-all action button. The disabled clause's
+              // `stepComponents.length === 0` guard only applies to the Do-
+              // Section path — an all-passive section has zero interactive
+              // children but reaches `done(ack)` via the Mark gate and must
+              // still be Reset-able afterwards.
+              <Button
+                onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
+                disabled={
+                  disabled ||
+                  !sectionRequirementsStatus.passed ||
+                  isCompletedByObjectives ||
+                  (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
+                }
+                size="md"
+                variant={isCompleted ? 'secondary' : 'primary'}
+                className="interactive-section-do-button"
+                data-testid={
+                  stepsCompleted && !isCompletedByObjectives
+                    ? testIds.interactive.resetSectionButton(sectionId)
+                    : testIds.interactive.doSectionButton(sectionId)
+                }
+                title={(() => {
+                  if (isCompletedByObjectives) {
+                    return 'Already done!';
+                  }
+                  if (stepsCompleted && !isCompletedByObjectives) {
+                    return 'Reset section and clear all step completion to allow manual re-interaction';
+                  }
+                  if (resumeInfo.isResume) {
+                    const stepWord = resumeInfo.remainingSteps === 1 ? 'step' : 'steps';
+                    return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} ${stepWord} remaining`;
+                  }
+                  return (
+                    hints ||
+                    `Run through all ${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'} in sequence`
+                  );
+                })()}
+              >
+                {(() => {
+                  if (isCompletedByObjectives) {
+                    return 'Already done!';
+                  }
+                  if (stepsCompleted && !isCompletedByObjectives) {
+                    return 'Reset section';
+                  }
+                  if (resumeInfo.isResume) {
+                    return `▶ Resume (${resumeInfo.remainingSteps} ${resumeInfo.remainingSteps === 1 ? 'step' : 'steps'})`;
+                  }
+                  return `▶ Do Section (${nonNoopSteps.length} ${nonNoopSteps.length === 1 ? 'step' : 'steps'})`;
+                })()}
+              </Button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

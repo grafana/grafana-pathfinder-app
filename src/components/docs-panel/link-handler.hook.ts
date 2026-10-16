@@ -157,6 +157,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
       if (
         anchor &&
+        anchor.target !== '_blank' &&
         !startElement &&
         !target.closest('[data-side-journey-link]') &&
         !target.closest('[data-related-journey-link]') &&

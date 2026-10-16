@@ -1,12 +1,5 @@
-/**
- * Section Block Form
- *
- * Form for creating/editing section blocks.
- * Nested blocks are managed via drag-and-drop in the main editor.
- */
-
 import React, { useState, useCallback, useRef } from 'react';
-import { Button, Field, Input, useStyles2, Alert, Switch } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, Alert, Switch, Select } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { ConditionChipsField } from './ConditionChipsField';
 import {
@@ -19,24 +12,15 @@ import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonSectionBlock } from '../../../types/json-guide.types';
 
-/**
- * Type guard for section blocks
- */
 function isSectionBlock(block: JsonBlock): block is JsonSectionBlock {
   return block.type === 'section';
 }
 
-/**
- * Generate a default unique section ID
- */
 function generateDefaultSectionId(): string {
   const randomNum = Math.floor(10000 + Math.random() * 90000);
   return `guide-section-${randomNum}`;
 }
 
-/**
- * Generate a section ID from a title
- */
 function generateIdFromTitle(title: string): string {
   const generated = title
     .toLowerCase()
@@ -47,9 +31,6 @@ function generateIdFromTitle(title: string): string {
   return generated ? `section-${generated}` : '';
 }
 
-/**
- * Section block form component
- */
 export function SectionBlockForm({
   initialData,
   onSubmit,
@@ -59,20 +40,19 @@ export function SectionBlockForm({
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
-  // Initialize from existing data or defaults
   const initial = initialData && isSectionBlock(initialData) ? initialData : null;
   const [sectionId, setSectionId] = useState(initial?.id ?? generateDefaultSectionId());
   const [title, setTitle] = useState(initial?.title ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [objectives, setObjectives] = useState(initial?.objectives?.join(', ') ?? '');
   const [autoCollapse, setAutoCollapse] = useState(initial?.autoCollapse ?? true);
+  const [whenRequirementsUnmet, setWhenRequirementsUnmet] = useState<
+    NonNullable<JsonSectionBlock['whenRequirementsUnmet']>
+  >(initial?.whenRequirementsUnmet ?? 'disable');
 
-  // Preserve nested blocks when editing (but don't display them in the form)
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
 
-  // Build the section block from current form state
   const buildBlock = useCallback((): JsonSectionBlock => {
-    // Parse requirements and objectives
     const reqArray = requirements
       .split(',')
       .map((r) => r.trim())
@@ -90,8 +70,9 @@ export function SectionBlockForm({
       ...(reqArray.length > 0 && { requirements: reqArray }),
       ...(objArray.length > 0 && { objectives: objArray }),
       ...(autoCollapse === false && { autoCollapse: false }),
+      ...(whenRequirementsUnmet !== 'disable' && { whenRequirementsUnmet }),
     };
-  }, [sectionId, title, requirements, objectives, autoCollapse]);
+  }, [sectionId, title, requirements, objectives, autoCollapse, whenRequirementsUnmet]);
 
   const handleSubmit = useCallback(
     (e: React.SubmitEvent) => {
@@ -122,12 +103,10 @@ export function SectionBlockForm({
     setObjectives((prev) => removeTokenFromConditionField(prev, bad));
   }, []);
 
-  // Handle title change - just update title, don't auto-generate ID yet
   const handleTitleChange = useCallback((value: string) => {
     setTitle(value);
   }, []);
 
-  // Auto-generate ID from title on blur, but only if ID field is empty
   const handleTitleBlur = useCallback(() => {
     if (!sectionId.trim() && title.trim()) {
       const generated = generateIdFromTitle(title);
@@ -137,7 +116,6 @@ export function SectionBlockForm({
     }
   }, [title, sectionId]);
 
-  // Handle ID change
   const handleIdChange = useCallback((value: string) => {
     setSectionId(value);
   }, []);
@@ -173,7 +151,10 @@ export function SectionBlockForm({
       </Field>
 
       {/* Requirements */}
-      <Field label="Requirements" description="Conditions that must be met before this section is accessible">
+      <Field
+        label="Requirements"
+        description="All conditions must pass before section execution is enabled. Choose how unmet requirements affect visibility below."
+      >
         <ConditionChipsField
           value={requirements}
           onChange={setRequirements}
@@ -187,6 +168,20 @@ export function SectionBlockForm({
         onRemoveToken={removeRequirementsToken}
         testId="section-block-requirements-lint"
       />
+
+      <Field label="When requirements are not met" htmlFor="section-visibility-mode">
+        <Select<NonNullable<JsonSectionBlock['whenRequirementsUnmet']>>
+          inputId="section-visibility-mode"
+          aria-label="When requirements are not met"
+          value={whenRequirementsUnmet}
+          options={[
+            { label: 'Show section, disable execution', value: 'disable' },
+            { label: 'Show heading only', value: 'heading-only' },
+            { label: 'Hide entire section', value: 'hide' },
+          ]}
+          onChange={(option) => setWhenRequirementsUnmet(option.value!)}
+        />
+      </Field>
 
       {/* Objectives */}
       <Field
@@ -243,5 +238,4 @@ export function SectionBlockForm({
   );
 }
 
-// Add display name for debugging
 SectionBlockForm.displayName = 'SectionBlockForm';

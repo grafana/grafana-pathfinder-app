@@ -15,6 +15,34 @@ function renderForm(onSubmit: (block: JsonBlock) => void = jest.fn()) {
 }
 
 describe('InputBlockForm', () => {
+  it('authors text and checkbox groups when randomUUID is unavailable', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(crypto, 'randomUUID');
+    Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined });
+    try {
+      const onSubmit = jest.fn();
+      const { promptInput, variableNameInput, submitButton } = renderForm(onSubmit);
+      fireEvent.change(promptInput, { target: { value: 'Choose environments' } });
+      fireEvent.change(variableNameInput, { target: { value: 'name' } });
+      fireEvent.click(submitButton);
+      expect(onSubmit.mock.calls[0]![0].inputType).toBe('text');
+      fireEvent.change(variableNameInput, { target: { value: '' } });
+      fireEvent.click(screen.getByRole('radio', { name: 'Checkbox group' }));
+      expect((variableNameInput as HTMLInputElement).value).toMatch(/^choices_[\w]+$/);
+      fireEvent.change(screen.getByLabelText('Option 1'), { target: { value: 'Development' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Add option' }));
+      fireEvent.change(screen.getByLabelText('Option 2'), { target: { value: 'Production' } });
+      fireEvent.click(submitButton);
+      const block = onSubmit.mock.calls[1]![0];
+      expect(JsonInputBlockSchema.safeParse(block).success).toBe(true);
+      expect(new Set(block.choices.map((choice: { id: string }) => choice.id)).size).toBe(2);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(crypto, 'randomUUID', descriptor);
+      } else {
+        Reflect.deleteProperty(crypto, 'randomUUID');
+      }
+    }
+  });
   it('keeps submit disabled until required fields are filled', () => {
     const { promptInput, variableNameInput, submitButton } = renderForm();
 
@@ -115,6 +143,26 @@ describe('InputBlockForm', () => {
       inputType: 'text',
       variableName: 'datasourceName',
     });
+  });
+
+  it('creates checkbox groups and preserves option IDs across label edits', () => {
+    const onSubmit = jest.fn();
+    const { promptInput, variableNameInput, submitButton } = renderForm(onSubmit);
+    fireEvent.change(promptInput, { target: { value: 'Which environments?' } });
+    fireEvent.change(variableNameInput, { target: { value: 'environments' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Checkbox group' }));
+    expect(submitButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Option 1'), { target: { value: 'Development' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add option' }));
+    fireEvent.change(screen.getByLabelText('Option 2'), { target: { value: 'Production' } });
+    fireEvent.click(submitButton);
+    const block = onSubmit.mock.calls[0]![0];
+    expect(JsonInputBlockSchema.safeParse(block).success).toBe(true);
+    expect(block.choices).toHaveLength(2);
+    const ids = block.choices.map((choice: { id: string }) => choice.id);
+    fireEvent.change(screen.getByLabelText('Option 1'), { target: { value: 'Local development' } });
+    fireEvent.click(submitButton);
+    expect(onSubmit.mock.calls[1]![0].choices.map((choice: { id: string }) => choice.id)).toEqual(ids);
   });
 
   describe('the datasource variant', () => {
