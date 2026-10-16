@@ -417,3 +417,110 @@ describe('member launch keeps the loader manifest reachable', () => {
     ).toBeNull();
   });
 });
+
+describe('a milestone narrows its path starting location', () => {
+  const pathManifest = { ...slimCatalogueManifest, startingLocation: '/x-start' };
+
+  it("keeps the milestone's own starting location over the path's", async () => {
+    mockFetch.mockReturnValue(backendGuideResource({ startingLocation: '/a-start' }));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/a-start');
+    expect(result.content?.metadata.packageManifest?.id).toBe('fe-alerting-path');
+  });
+
+  it('keeps a starting location App Platform left under additionalFields over the path one', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({ additionalFields: { startingLocation: '/a-start' } }));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/a-start');
+  });
+
+  it("falls back to the path's starting location when the milestone declares none", async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/x-start');
+  });
+});
+
+describe('a CDN milestone narrows its path starting location', () => {
+  const CDN = 'https://interactive-learning.grafana.net/packages';
+  const pathUrl = `${CDN}/x-path/content.json`;
+  const aUrl = `${CDN}/a-guide/content.json`;
+  const bUrl = `${CDN}/b-guide/content.json`;
+  const pathManifest = { id: 'x-path', type: 'path', milestones: ['a-guide', 'b-guide'], startingLocation: '/x-start' };
+  const milestones = [
+    { id: 'a-guide', number: 1, title: 'A', url: aUrl, isActive: false, startingLocation: '/a-start' },
+    { id: 'b-guide', number: 2, title: 'B', url: bUrl, isActive: false },
+  ];
+
+  afterEach(() => {
+    setPackageResolverFactory(() => Promise.reject(new Error('resolver reset')));
+  });
+
+  function cdnContent(url: string) {
+    return {
+      content: {
+        content: '{"id":"guide","title":"Guide","blocks":[]}',
+        type: 'interactive' as const,
+        url,
+        lastFetched: '2026-10-13T00:00:00.000Z',
+        metadata: { title: url },
+      },
+    };
+  }
+
+  async function startingLocationFor(url: string, explicitGuideId?: string) {
+    const result = await fetchPackageContent(
+      url,
+      pathManifest,
+      milestones,
+      undefined,
+      cdnContent(url),
+      explicitGuideId
+    );
+    return result.content?.metadata.packageManifest?.startingLocation;
+  }
+
+  it("uses the resolved milestone's own starting location when the loader attaches no manifest", async () => {
+    expect(await startingLocationFor(aUrl)).toBe('/a-start');
+    expect(await startingLocationFor(aUrl, 'a-guide')).toBe('/a-start');
+  });
+
+  it('leaves a milestone that declares none without a starting location of its own', async () => {
+    expect(await startingLocationFor(bUrl, 'b-guide')).toBeUndefined();
+  });
+
+  it("keeps the path's starting location on its own landing page", async () => {
+    expect(await startingLocationFor(pathUrl)).toBe('/x-start');
+  });
+
+  it("uses a track-only guide's own starting location over the path's", async () => {
+    const tUrl = `${CDN}/t-guide/content.json`;
+    setPackageResolver({
+      resolve: async (id: string) =>
+        id === 't-guide'
+          ? {
+              ok: true,
+              id,
+              contentUrl: tUrl,
+              manifestUrl: '',
+              repository: 'cdn',
+              manifest: { startingLocation: '/t-start' },
+            }
+          : { ok: false, id, error: { code: 'not-found', message: 'not found' } },
+    } as never);
+    const trackedPath = {
+      ...pathManifest,
+      tracks: [{ trackId: 'deep-dive', label: 'Deep dive', guides: ['t-guide'] }],
+    };
+
+    const result = await fetchPackageContent(tUrl, trackedPath, milestones, undefined, cdnContent(tUrl), 't-guide');
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/t-start');
+  });
+});
