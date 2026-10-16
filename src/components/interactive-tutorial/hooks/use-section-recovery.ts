@@ -66,6 +66,7 @@ export function useSectionRecovery(
   const lastReadyUrl = useRef<string | undefined>(undefined);
   const armedKey = useRef<string | undefined>(undefined);
   const pendingSince = useRef<number | null>(null);
+  const hintSince = useRef<{ key: string; at: number } | null>(null);
   const settlingUntil = useRef(0);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const gaveUp = useRef<{ key: string; index?: number } | null>(null);
@@ -116,6 +117,7 @@ export function useSectionRecovery(
             lastReadyUrl.current = currentPath();
           }
           gaveUp.current = null;
+          hintSince.current = null;
           setUnrestorableKey(undefined);
           endPause(restored ? 'restore' : 'self');
           return answer(true);
@@ -129,10 +131,18 @@ export function useSectionRecovery(
           gaveUp.current = null;
         }
         if (armedKey.current !== current.key || !result.canRestore || gaveUp.current) {
-          setUnrestorableKey(current.key);
+          const now = Date.now();
+          if (gaveUp.current || (hintSince.current?.key === current.key && now - hintSince.current.at >= CONFIRM_MS)) {
+            setUnrestorableKey(current.key);
+          } else if (hintSince.current?.key !== current.key) {
+            hintSince.current = { key: current.key, at: now };
+            clearTimeout(confirmTimer.current);
+            confirmTimer.current = setTimeout(() => void latestRun.current(false), NAVIGATION_SETTLE_MS);
+          }
           endPause('unrestorable');
           return answer(true);
         }
+        hintSince.current = null;
         setUnrestorableKey(undefined);
         if (pausedNow.current) {
           return answer(false);

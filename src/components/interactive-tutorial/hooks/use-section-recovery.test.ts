@@ -112,6 +112,16 @@ it('leaves the step to explain itself when nothing can be restored', async () =>
   expect(hook.result.current.unrestorable).toBe(false);
 });
 
+it('waits for a missing target to stay missing before pointing at a setup step', async () => {
+  inspect.mockResolvedValue(STUCK);
+  const hook = render();
+  await settle();
+  expect(hook.result.current.unrestorable).toBe(false);
+  inspect.mockResolvedValue(PASS);
+  await settle(750);
+  expect(hook.result.current.unrestorable).toBe(false);
+});
+
 it('reports a restorable drift as paused, not unrestorable, and forgets a stale plan', async () => {
   const hook = render();
   await settle();
