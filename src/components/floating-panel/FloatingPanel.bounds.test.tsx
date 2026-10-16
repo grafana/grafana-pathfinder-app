@@ -69,6 +69,18 @@ describe('floating panel navigation layout bounds', () => {
     expect(screen.getByLabelText('Interactive learning floating panel')).toHaveStyle({ height: '400px' });
   });
 
+  it('keeps the resize hit area inset from viewport edges and above scrolling content', () => {
+    mountPanel();
+    expect(screen.getByLabelText('Interactive learning floating panel')).toHaveStyle({ boxSizing: 'border-box' });
+    expect(screen.getByTestId('floating-panel-resize')).toHaveStyle({
+      bottom: '6px',
+      right: '6px',
+      width: '20px',
+      height: '20px',
+      zIndex: '3',
+    });
+  });
+
   it('fits below minimum viewport dimensions without persisting automatic shrink', () => {
     mountPanel();
     act(() => {
