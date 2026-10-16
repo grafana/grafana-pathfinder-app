@@ -46,6 +46,17 @@ interface ComputeNextActionDeps {
   isPathCompleted: (pathId: string) => boolean;
 }
 
+/** Per-guide URL first so a partially-completed URL-based path opens its next module, not its base (#744). */
+export function resolveCurrentGuideUrl(path: Pick<LearningPath, 'url'>, guide: Pick<PathGuide, 'id' | 'url'>): string {
+  if (guide.url) {
+    return guide.url;
+  }
+  if (path.url) {
+    return path.url;
+  }
+  return getPathsData().guideMetadata[guide.id]?.url ?? `bundled:${guide.id}`;
+}
+
 /**
  * Computes the next learning action from available paths.
  *
@@ -92,24 +103,10 @@ export function computeNextAction(deps: ComputeNextActionDeps): NextLearningActi
     return null;
   }
 
-  // Prefer the resolved per-guide URL (path-scoped via getPathGuides) so
-  // partially-completed URL-based paths open the actual next module
-  // instead of the path base / first module (issue #744). Fall back to
-  // the path base URL, then to static metadata, then to bundled.
-  let guideUrl: string;
-  if (currentGuide.url) {
-    guideUrl = currentGuide.url;
-  } else if (targetPath.url) {
-    guideUrl = targetPath.url;
-  } else {
-    const metadata = getPathsData().guideMetadata[currentGuide.id];
-    guideUrl = metadata?.url ?? `bundled:${currentGuide.id}`;
-  }
-
   return {
     guideId: currentGuide.id,
     guideTitle: currentGuide.title,
-    guideUrl,
+    guideUrl: resolveCurrentGuideUrl(targetPath, currentGuide),
     pathTitle: targetPath.title,
     pathProgress: getPathProgress(targetPath.id),
   };
