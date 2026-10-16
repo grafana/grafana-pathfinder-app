@@ -361,8 +361,8 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
             <Alert severity="warning" title="Experimental — drives the authenticated DOM" className={styles.infoAlert}>
               <Text variant="body">
                 Once paired, the controller tab can run guide actions (navigation, clicks, form fills) against this
-                Grafana session. Enable only on trusted instances. Disable to hide the affordance and the live-tab
-                executor entirely.
+                Grafana session. Only pair windows running trusted guide content. Turn this off to hide the affordance
+                and the live-tab executor entirely.
               </Text>
             </Alert>
           )}

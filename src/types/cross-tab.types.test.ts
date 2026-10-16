@@ -238,6 +238,16 @@ describe('validateCrossTabMessage', () => {
     expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff' }))).toBeNull();
   });
 
+  it.each([
+    null,
+    [],
+    {},
+    { doc: 7, milestoneUrl: 'backend-guide:one' },
+    { doc: 'backend-guide:path', milestoneUrl: 'backend-guide:one', trackId: false },
+  ])('rejects malformed reader positions (%j)', (position) => {
+    expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff', action: 'reopen', position }))).toBeNull();
+  });
+
   it('accepts a well-formed step-complete', () => {
     const message = envelope({ kind: 'step-complete', stepId: 's1', runId: 'run-1', ok: true });
     expect(validateCrossTabMessage(message)).toBe(message);

@@ -195,7 +195,12 @@ plugin.init = function () {
   });
 
   // Capture deep-link parameters before the handler strips them from the URL.
-  const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
+  const {
+    doc: docsParam,
+    controller: controllerParam,
+    controllerMilestone,
+    controllerTrack,
+  } = parsePathfinderDeepLink(window.location.search);
   const controllerPairing = parseControllerPairingHash(window.location.hash);
   if (controllerPairing && window.location.hash) {
     const cleanUrl = new URL(window.location.href);
@@ -230,7 +235,13 @@ plugin.init = function () {
             .then(async ({ createCompatRoot }) => {
               const root = await createCompatRoot(container);
               root.render(
-                React.createElement(LazyGuideReaderOverlay, { doc: docsParam, mode: 'controller', controllerPairing })
+                React.createElement(LazyGuideReaderOverlay, {
+                  doc: docsParam,
+                  mode: 'controller',
+                  controllerPairing,
+                  initialMilestoneUrl: controllerMilestone,
+                  initialTrackId: controllerTrack,
+                })
               );
             })
             .catch((err) => {

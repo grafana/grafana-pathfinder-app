@@ -1,3 +1,4 @@
+import { readerReturnChannel } from '../../global-state/auto-launch';
 import { OBSERVATION_HANDOFF_EVENT } from '../../global-state/observation/handoff';
 import { createPassiveObserver } from './passive-observer';
 import { conditionLabel } from '../../lib/condition-input';
@@ -483,6 +484,9 @@ export function installLiveTabExecutor(
             }
           } else if (validated.action === 'reopen') {
             if (handedOffSidebar && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
+              if (validated.position) {
+                readerReturnChannel.emit(validated.position);
+              }
               sidebarState.openSidebar('Interactive learning');
             }
             handedOffSidebar = false;
