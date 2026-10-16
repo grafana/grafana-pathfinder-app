@@ -56,6 +56,7 @@ jest.mock('../../docs-retrieval', () => ({
   getNextMilestoneIdFromContent: jest.fn(),
   getPreviousMilestoneIdFromContent: jest.fn(),
   getJourneyProgress: jest.fn(),
+  journeyProgressFromMilestones: jest.fn(() => 0),
   setJourneyCompletionPercentage: jest.fn(),
   getMilestoneSlug: jest.fn(),
   markMilestoneDone: jest.fn(),
@@ -70,7 +71,15 @@ jest.mock('../../package-engine', () => ({
   createCompositeResolver: jest.fn(),
 }));
 
+jest.mock('../completion-panel/CompletionPanel', () => ({
+  CompletionPanel: ({ nextModule, onContinue }: import('../completion-panel/CompletionPanel').CompletionPanelProps) =>
+    nextModule
+      ? require('react').createElement('button', { onClick: onContinue }, `Continue to ${nextModule.title}`)
+      : null,
+}));
+
 jest.mock('../../lib/user-storage', () => ({
+  interactiveCompletionStorage: { getAll: jest.fn(async () => ({})) },
   tabStorage: {
     getTabs: jest.fn(),
     setTabs: jest.fn(),
@@ -86,7 +95,8 @@ jest.mock('../../lib/analytics', () => ({
   setupScrollTracking: jest.fn(),
   reportAppInteraction: jest.fn(),
   createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
-  UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction' },
+  UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction', OpenResourceClick: 'open_resource_click' },
+  AnalyticsContentType: { LearningJourney: 'learning-journey' },
   getContentTypeForAnalytics: jest.fn(),
 }));
 
@@ -219,6 +229,9 @@ jest.mock('../../hooks', () => ({}));
 // Import under test
 // ---------------------------------------------------------------------------
 
+import React from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import ReaderCompletionPanel from '../completion-panel/ReaderCompletionPanel';
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
 import {
@@ -321,6 +334,82 @@ describe.each([false, true])('milestone navigation failure with docs loader %s',
     await expect(panel.loadTab('journey-tab', 'bundled:next')).resolves.toBeUndefined();
     expect(panel.getActiveTab()).toMatchObject({ error: 'Network unavailable', isLoading: false });
   });
+});
+
+describe('completion card destination agrees with real milestone navigation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(false);
+    const helpers = jest.requireActual('../../docs-retrieval/learning-journey-helpers');
+    (getNextMilestoneUrlFromContent as jest.Mock).mockImplementation(helpers.getNextMilestoneUrl);
+    (getNextMilestoneIdFromContent as jest.Mock).mockImplementation(helpers.getNextMilestoneId);
+  });
+
+  afterEach(() => {
+    (getNextMilestoneUrlFromContent as jest.Mock).mockReset();
+    (getNextMilestoneIdFromContent as jest.Mock).mockReset();
+  });
+
+  it.each([false, true])(
+    'loads the advertised unlocked destination after consecutive placeholders (track-only %s)',
+    async (trackOnly) => {
+      const milestones = [
+        { id: 'one', title: 'One', url: 'bundled:one', number: 1, isActive: true },
+        { title: 'Two', url: '', number: 2, isActive: false, isLocked: true },
+        { title: 'Three', url: '', number: 3, isActive: false, isLocked: true },
+        { id: 'four', title: 'Four', url: 'bundled:four', number: 4, isActive: false },
+      ];
+      const content: PreparedRawContent = {
+        ...preparedContent,
+        type: trackOnly ? 'interactive' : 'learning-journey',
+        url: 'bundled:one',
+        metadata: trackOnly
+          ? { title: 'One', trackMemberBaseUrl: 'bundled:path' }
+          : {
+              title: 'One',
+              learningJourney: {
+                baseUrl: 'bundled:path',
+                currentMilestone: 1,
+                totalMilestones: milestones.length,
+                milestones,
+              },
+            },
+      };
+      const panel = new CombinedLearningJourneyPanel();
+      panel.setState({
+        tabs: [
+          {
+            ...makeTab('journey-tab'),
+            content,
+            ...(trackOnly && { activeTrackId: 'selected', activeTrackMilestones: milestones }),
+          },
+        ],
+        activeTabId: 'journey-tab',
+      });
+      const nextContent = { ...preparedContent, url: 'bundled:four' };
+      mockFetchContent.mockResolvedValueOnce({ content: nextContent });
+      const load = jest.spyOn(panel, 'loadTab');
+      render(
+        React.createElement(ReaderCompletionPanel, {
+          content,
+          sequence: { currentMilestone: 1, milestones },
+          celebrating: false,
+          onContinue: () => panel.navigateToNextMilestone({ rejectOnError: true }),
+        })
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Continue to Four' }));
+      });
+
+      expect(load).toHaveBeenCalledWith('journey-tab', 'bundled:four', {
+        rejectOnError: true,
+        explicitGuideId: 'four',
+      });
+      expect(mockFetchContent).toHaveBeenCalledWith('bundled:four', expect.anything());
+      expect(panel.getActiveTab()).toMatchObject({ content: nextContent, currentUrl: 'bundled:four' });
+    }
+  );
 });
 
 describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
