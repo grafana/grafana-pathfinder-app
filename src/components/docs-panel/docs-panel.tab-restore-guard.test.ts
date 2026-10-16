@@ -236,6 +236,8 @@ jest.mock('../../hooks', () => ({}));
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { tabStorage } from '../../lib/user-storage';
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
+import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -382,6 +384,60 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect(guide.title).toBe('Renamed in full screen');
     expect(guide.content).toBe(loadedContent);
     expect(guide.pathContext).toEqual({ learningJourney: { milestones: [] } });
+  });
+
+  it('keeps the resolved interactive type when a guide finishes loading during restoration', async () => {
+    const url = 'bundled:welcome-to-grafana';
+    const tab: LearningJourneyTab = {
+      id: 'startup-guide',
+      title: 'Welcome to Grafana',
+      baseUrl: url,
+      currentUrl: url,
+      type: 'docs',
+      content: null,
+      isLoading: true,
+      error: null,
+    };
+    let finishActiveTabRead!: (id: string) => void;
+    let signalSnapshotRead!: () => void;
+    const snapshotRead = new Promise<void>((resolve) => {
+      signalSnapshotRead = resolve;
+    });
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([RESTORED_TABS[0], { ...tab }]);
+    mockRestoreActiveTabFromStorage.mockImplementationOnce(() => {
+      signalSnapshotRead();
+      return new Promise<string>((resolve) => {
+        finishActiveTabRead = resolve;
+      });
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [panel.state.tabs[0]!, tab], activeTabId: tab.id });
+    const restore = panel.restoreTabsAsync();
+    await snapshotRead;
+
+    (shouldUseDocsLoader as jest.Mock).mockReturnValueOnce(true);
+    (loadDocsTabContentResult as jest.Mock).mockResolvedValueOnce({
+      content: {
+        content: '# Welcome to Grafana',
+        metadata: { title: tab.title },
+        type: 'interactive',
+        url,
+        lastFetched: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    await panel.loadTab(tab.id, url, { source: 'url_param' });
+    const loaded = panel.state.tabs.find((candidate) => candidate.id === tab.id)!;
+    expect(loaded.type).toBe('interactive');
+
+    finishActiveTabRead(tab.id);
+    await restore;
+
+    const restored = panel.state.tabs.find((candidate) => candidate.id === tab.id)!;
+    expect(restored.type).toBe('interactive');
+    expect(restored.content).toBe(loaded.content);
+    expect(restored.isLoading).toBe(false);
+    expect(panel.state.activeTabId).toBe(tab.id);
+    expect(loadDocsTabContentResult).toHaveBeenCalledTimes(1);
   });
 
   it('drops in-memory content on force restore when currentUrl changed in storage', async () => {
