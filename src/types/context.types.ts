@@ -6,6 +6,7 @@
  */
 
 import type { PackageOpenInfo } from './content-panel.types';
+import type { RecommendCompletionsWire } from './recommender-completions.schema';
 
 export interface DataSource {
   id?: number;
@@ -123,6 +124,7 @@ export interface ContextPayload {
   platform: string;
   source?: string; // Cloud instance source
   language?: string; // User's preferred language/locale
+  completions?: RecommendCompletionsWire;
 }
 
 export interface RecommenderResponse {

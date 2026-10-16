@@ -1,3 +1,4 @@
+import { createCloudAuthPolicy } from './cloud-auth';
 import { unsafeCloudGuidesInChain, unsafeSharedStackMessage, unsafeSharedStackSkipResults } from './cloud-routing';
 import { ExitCode } from './exit-codes';
 import type { PackageMeta } from './e2e-results';
@@ -78,5 +79,46 @@ describe('unsafeCloudGuidesInChain', () => {
         sideEffects,
       },
     ]);
+  });
+});
+
+describe('exact-host mutation chain gate', () => {
+  const auth = createCloudAuthPolicy({
+    cloudInstanceAdminTokenSpecs: ['docs.example=DOCS', 'play.grafana.org=PLAY'],
+    allowCloudInstanceMutations: ['docs.example'],
+    env: { DOCS: 'docs-admin', PLAY: 'play-admin' },
+  });
+
+  it.each(['mutating', 'possibly_mutating', 'unknown', undefined] as const)(
+    'permits %s only on its own authorized target',
+    (level) => {
+      const meta = (targetUrl?: string): PackageMeta => ({
+        packageId: 'guide',
+        tier: 'cloud',
+        targetUrl,
+        ...(level ? { sideEffects: { level, reasons: [] } } : {}),
+      });
+      const chain = [{ id: 'authorized' }, { id: 'wrong-host' }, { id: 'missing-target' }];
+      const metadata = new Map([
+        ['authorized', meta('https://docs.example/')],
+        ['wrong-host', meta('https://play.grafana.org/')],
+        ['missing-target', meta()],
+      ]);
+      expect(unsafeCloudGuidesInChain(chain, metadata, auth).map((guide) => guide.id)).toEqual([
+        'wrong-host',
+        'missing-target',
+      ]);
+      expect(unsafeCloudGuidesInChain(chain, metadata).map((guide) => guide.id)).toEqual(
+        chain.map((guide) => guide.id)
+      );
+      expect(metadata.get('authorized')?.sideEffects?.level).toBe(level);
+    }
+  );
+
+  it('keeps readonly chains unchanged without mutation permission', () => {
+    const metadata = new Map<string, PackageMeta>([
+      ['guide', { packageId: 'guide', tier: 'cloud', sideEffects: { level: 'readonly', reasons: [] } }],
+    ]);
+    expect(unsafeCloudGuidesInChain([{ id: 'guide' }], metadata)).toEqual([]);
   });
 });

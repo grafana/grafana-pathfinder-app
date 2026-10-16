@@ -12,7 +12,7 @@
  * contract, and changes to its response shape must be reflected here.
  */
 
-import { ManifestJsonObjectSchema } from '../../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../../lib/runtime-manifest';
 import type { ManifestJson } from '../../types/package.types';
 import { preserveAuthoredStartingLocation } from './starting-location';
 
@@ -102,6 +102,6 @@ async function fetchManifest(manifestUrl: string): Promise<ManifestJson | undefi
   } catch {
     return undefined;
   }
-  const parsed = ManifestJsonObjectSchema.loose().safeParse(raw);
+  const parsed = RuntimeManifestJsonObjectSchema.safeParse(raw);
   return parsed.success ? (preserveAuthoredStartingLocation(raw, parsed.data) as ManifestJson) : undefined;
 }

@@ -162,20 +162,18 @@ async function performFetch(): Promise<PackageRecommendationsResponse | null> {
   }
 }
 
-/**
- * Fetch the online package recommendations index, using process-cached results
- * after the first call. Returns an empty array when:
- *  - the browser is offline (navigator.onLine === false)
- *  - a previous fetch failed during this session (sticky)
- *  - the backend returned a malformed response
- *
- * Never throws. Concurrent callers share a single in-flight promise so the
- * backend is hit at most once per cache window. Callers may stop awaiting
- * (e.g. a boot-budget timeout race); the in-flight fetch keeps running and
- * still populates the cache for later calls.
- */
-export async function fetchOnlinePackageRecommendations(): Promise<PackageRecommendationsResponse> {
+// Concurrent callers share the request; explicit refresh clears session suppression.
+export async function fetchOnlinePackageRecommendations(
+  options: { refresh?: boolean } = {}
+): Promise<PackageRecommendationsResponse> {
   attachOnlineListenerOnce();
+
+  if (options.refresh) {
+    cache = null;
+    unavailable = false;
+    suppressionReported = false;
+    failureDiagnostics = undefined;
+  }
 
   if (cache) {
     return cache;

@@ -29,7 +29,7 @@ import { lastValueFrom } from 'rxjs';
 import { isBackendApiRuledOut, guideReadUrl } from '../utils/interactive-guides-api';
 import { logger } from '../lib/logging';
 
-import { ManifestJsonObjectSchema } from '../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
 import type {
   ContentJson,
   ManifestJson,
@@ -228,7 +228,7 @@ function buildManifest(
     // sole input to the durable completion key (guideSource,
     // completion-identity.ts), so a missing value would mislabel a private
     // guide's provenance.
-    const parsed = ManifestJsonObjectSchema.loose().safeParse({
+    const parsed = RuntimeManifestJsonObjectSchema.safeParse({
       ...spec.manifest,
       id: resolvedId,
       repository: APP_PLATFORM_REPOSITORY,

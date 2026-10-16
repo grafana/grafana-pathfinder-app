@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -17,7 +18,7 @@ func (a *App) handlePathfinderSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, resource, name string, maxBytes int64) {
-	client, namespace, ok := a.appPlatformReadClient(w, r, resource)
+	client, namespace, ok := a.appPlatformReadClient(w, r, resource, "get")
 	if !ok {
 		return
 	}
@@ -27,6 +28,10 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 		status := appPlatformReadErrorStatus(err)
 
 		message := "app platform read failed"
+		if resource == "pathfindersettings" && r.URL.Query().Get("absence") == "explicit" && isSettingsNotConfigured(err) {
+			a.writeJSON(w, map[string]string{"state": "not-configured"}, http.StatusOK)
+			return
+		}
 		if resource == "pathfindersettings" && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
 			message = "settings-upstream-unavailable"
 		}
@@ -36,7 +41,7 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 	a.writeJSON(w, body, http.StatusOK)
 }
 
-func (a *App) appPlatformReadClient(w http.ResponseWriter, r *http.Request, resource string) (*appPlatformListClient, string, bool) {
+func (a *App) appPlatformReadClient(w http.ResponseWriter, r *http.Request, resource, operation string) (*appPlatformListClient, string, bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
@@ -44,18 +49,18 @@ func (a *App) appPlatformReadClient(w http.ResponseWriter, r *http.Request, reso
 		return nil, "", false
 	}
 	if status := a.validIDToken(r); status != identityVerified {
-		a.writeProxyError(w, status.capabilityReason(), http.StatusForbidden, proxyGateDiagnostic("identity-unavailable", resource, "get", "identity"))
+		a.writeProxyError(w, status.capabilityReason(), http.StatusForbidden, proxyGateDiagnostic("identity-unavailable", resource, operation, "identity"))
 		return nil, "", false
 	}
 	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
 	cfg := config.GrafanaConfigFromContext(r.Context())
 	if cfg == nil || namespace == "" || a.oboExchanger == nil {
-		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, "get", "configuration"))
+		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, operation, "configuration"))
 		return nil, "", false
 	}
 	appURL, err := cfg.AppURL()
 	if err != nil || appURL == "" {
-		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, "get", "configuration"))
+		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, operation, "configuration"))
 		return nil, "", false
 	}
 	return newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context())), namespace, true
@@ -67,6 +72,31 @@ func (c *appPlatformListClient) getSettings(ctx context.Context, namespace strin
 
 func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource, name string, maxBytes int64) (json.RawMessage, error) {
 	return c.getPath(ctx, appPlatformGroup+"/v1alpha1", namespace, resource, name, nil, maxBytes)
+}
+
+func isSettingsNotConfigured(err error) bool {
+	var upstream *appPlatformUpstreamError
+	if !errors.As(err, &upstream) || upstream.status != http.StatusNotFound {
+		return false
+	}
+	var status struct {
+		Kind       string `json:"kind"`
+		APIVersion string `json:"apiVersion"`
+		Status     string `json:"status"`
+		Reason     string `json:"reason"`
+		Code       int    `json:"code"`
+		Details    struct {
+			Group  string            `json:"group"`
+			Kind   string            `json:"kind"`
+			Name   string            `json:"name"`
+			Causes []json.RawMessage `json:"causes"`
+		} `json:"details"`
+	}
+	return json.Unmarshal(upstream.body, &status) == nil &&
+		status.Kind == "Status" && status.APIVersion == "v1" && status.Status == "Failure" &&
+		status.Reason == "NotFound" && status.Code == http.StatusNotFound &&
+		status.Details.Group == appPlatformGroup && status.Details.Kind == "pathfindersettings" &&
+		status.Details.Name == "default" && len(status.Details.Causes) == 0
 }
 
 func readAttempt(r *http.Request) int {

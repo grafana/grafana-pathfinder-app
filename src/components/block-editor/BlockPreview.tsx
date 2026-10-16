@@ -14,6 +14,7 @@ import { ContentRenderer, type ContentRendererCompletion } from '../content-rend
 import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
+import { usePublishSurfaceContentKey } from '../../hooks';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import type { JsonGuide } from './types';
 import type { ContentParseResult, RawContent } from '../../types/content.types';
@@ -47,6 +48,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
 
   // Progress key matches the URL used in content rendering
   const progressKey = `block-editor://preview/${guide.id}`;
+  usePublishSurfaceContentKey(progressKey);
   const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
 
   // Force ContentRenderer remount when progress is cleared (locally or by a sibling

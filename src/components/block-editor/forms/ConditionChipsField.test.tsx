@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { ChoiceInputsProvider } from './ChoiceInputsContext';
 import { ConditionChipsField } from './ConditionChipsField';
 import { StorageKeys } from '../../../lib/storage-keys';
 
@@ -148,6 +149,66 @@ describe('ConditionChipsField — adding a chip', () => {
     fireEvent.change(screen.getByTestId('rf-add-type'), { target: { value: 'is-admin' } });
     fireEvent.click(screen.getByRole('button', { name: /^Add$/i }));
 
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConditionChipsField — checkbox option conditions', () => {
+  function renderChoices(onChange = jest.fn()) {
+    render(
+      <ChoiceInputsProvider
+        blocks={[
+          {
+            type: 'input',
+            inputType: 'checkbox-group',
+            prompt: 'Which integrations?',
+            variableName: 'integrations',
+            choices: [
+              { id: 'slack-stable', text: 'Slack' },
+              { id: 'teams-stable', text: 'Teams' },
+            ],
+          },
+          {
+            type: 'input',
+            inputType: 'checkbox-group',
+            prompt: 'Which environments?',
+            variableName: 'environments',
+            choices: [{ id: 'production', text: 'Production' }],
+          },
+        ]}
+      >
+        <ConditionChipsField value="" onChange={onChange} mode="requirements" testId="rf" />
+      </ChoiceInputsProvider>
+    );
+    return onChange;
+  }
+
+  it('offers the checkbox condition inside Add condition, not as a standalone section', () => {
+    const onChange = renderChoices();
+    expect(screen.queryByText('Question')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    fireEvent.change(screen.getByTestId('rf-add-type'), { target: { value: 'checkbox-option-selected' } });
+    const add = screen.getByRole('button', { name: 'Add' });
+    expect(add).toBeDisabled();
+    fireEvent.change(screen.getByTestId('rf-add-arg-question'), { target: { value: 'integrations' } });
+    expect(add).toBeDisabled();
+    fireEvent.change(screen.getByTestId('rf-add-arg-option'), { target: { value: 'slack-stable' } });
+    expect(add).toBeEnabled();
+    fireEvent.click(add);
+    expect(onChange).toHaveBeenCalledWith('var-integrations:includes:slack-stable');
+    expect(screen.queryByText('Question')).not.toBeInTheDocument();
+  });
+
+  it('clears the selected option when the question changes and cancels without adding a chip', () => {
+    const onChange = renderChoices();
+    fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    fireEvent.change(screen.getByTestId('rf-add-type'), { target: { value: 'checkbox-option-selected' } });
+    fireEvent.change(screen.getByTestId('rf-add-arg-question'), { target: { value: 'integrations' } });
+    fireEvent.change(screen.getByTestId('rf-add-arg-option'), { target: { value: 'teams-stable' } });
+    fireEvent.change(screen.getByTestId('rf-add-arg-question'), { target: { value: 'environments' } });
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+    expect(screen.getByTestId('rf-add-arg-option')).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onChange).not.toHaveBeenCalled();
   });
 });

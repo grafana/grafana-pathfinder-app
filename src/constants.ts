@@ -289,5 +289,6 @@ export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;
 export enum ROUTES {
   Home = '',
   Context = 'context',
+  Browse = 'browse',
   FullScreen = 'fullscreen',
 }

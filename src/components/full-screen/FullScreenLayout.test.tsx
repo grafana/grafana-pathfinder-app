@@ -8,9 +8,10 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FullScreenLayout } from './FullScreenLayout';
 import { testIds } from '../../constants/testIds';
+import { reportAppInteraction } from '../../lib/analytics';
 
 const mockTheme = {
   isDark: false,
@@ -40,7 +41,11 @@ jest.mock('@grafana/ui', () => {
   return {
     Button: ({ children, onClick, ...rest }: any) => Real.createElement('button', { onClick, ...rest }, children),
     IconButton: ({ name, onClick, tooltip, ...rest }: any) =>
-      Real.createElement('button', { onClick, 'aria-label': rest['aria-label'] || tooltip, ...rest }, name),
+      Real.createElement(
+        'button',
+        { onClick, 'aria-label': rest['aria-label'] || tooltip, title: tooltip, ...rest },
+        name
+      ),
     useStyles2: (fn: any) => fn(mockTheme),
   };
 });
@@ -48,6 +53,11 @@ jest.mock('@grafana/ui', () => {
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { FullScreenCopyLink: 'full_screen_copy_link' },
+}));
+
+const mockCopyTextToClipboard = jest.fn();
+jest.mock('../../lib/clipboard', () => ({
+  copyTextToClipboard: (text: string) => mockCopyTextToClipboard(text),
 }));
 
 describe('FullScreenLayout', () => {
@@ -193,5 +203,42 @@ describe('FullScreenLayout', () => {
     );
 
     expect(screen.queryByTestId('custom-sub-header')).not.toBeInTheDocument();
+  });
+
+  describe('copy-link button', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    function clickCopyLink() {
+      render(
+        <FullScreenLayout title="My guide" hasActiveGuide={true} guideUrl="bundled:foo" onExit={() => {}}>
+          <div />
+        </FullScreenLayout>
+      );
+      const button = screen.getByTestId(testIds.fullScreenMode.copyLinkButton);
+      fireEvent.click(button);
+      return button;
+    }
+
+    it('shows the copied state and reports the copy when it succeeds', async () => {
+      mockCopyTextToClipboard.mockResolvedValue(true);
+
+      const button = clickCopyLink();
+
+      await waitFor(() => expect(button).toHaveAttribute('title', 'Copied!'));
+      expect(button).toHaveTextContent('check');
+      expect(reportAppInteraction).toHaveBeenCalledWith('full_screen_copy_link', { guide_url: 'bundled:foo' });
+    });
+
+    it('shows the failed state and reports nothing when the copy fails', async () => {
+      mockCopyTextToClipboard.mockResolvedValue(false);
+
+      const button = clickCopyLink();
+
+      await waitFor(() => expect(button).toHaveAttribute('title', 'Could not copy the link'));
+      expect(button).toHaveTextContent('exclamation-triangle');
+      expect(reportAppInteraction).not.toHaveBeenCalled();
+    });
   });
 });

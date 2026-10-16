@@ -35,13 +35,11 @@
  * absolute. And because the allowlist key omits the line number (see
  * violationKey), a second violation structurally identical to a grandfathered
  * one — same file, same method, same url expression — collapses onto that
- * existing key and stays silently grandfathered; the exposure is bounded to
- * the remaining file in the baseline, and shrinks to nothing as #1975 is paid down.
+ * existing key and stays silently grandfathered. With the allowlist empty,
+ * that exposure is gone.
  *
- * One pre-existing violation remains grandfathered in
- * ALLOWED_DIRECT_APP_PLATFORM_READS below for the editor's guide list. Paying it down is tracked in
- * https://github.com/grafana/grafana-pathfinder-app/issues/1975; no new
- * violation can land on top of it.
+ * The allowlist, ALLOWED_DIRECT_APP_PLATFORM_READS below, is empty: no direct
+ * read is grandfathered, so any new violation fails this test.
  */
 
 import * as fs from 'fs';
@@ -61,23 +59,10 @@ import {
 } from './import-graph';
 
 // ---------------------------------------------------------------------------
-// The allowlist — the ratchet baseline (see #1975 for the pay-down plan)
+// The allowlist — the ratchet baseline, now empty
 // ---------------------------------------------------------------------------
 
-// The editor needs full resources to preserve metadata and spec during saves.
-const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [
-  {
-    violation: 'utils/fetchBackendGuides.ts — GET collectionUrl(namespace)',
-    reason:
-      'Pre-existing defect (not a design choice): a direct read of the interactive-guides collection, the ' +
-      "same failure mode as incident 5857. An anonymous viewer's read fails the storage layer's delegated " +
-      'service-token check and 403s; this call swallows that 403 as "endpoint not rolled out yet" and ' +
-      'returns an empty list, so the anonymous visitor sees no custom guides and no error. ' +
-      'fetchCustomGuideRepository returns summaries, which are insufficient for editor saves. ' +
-      'Pay down this read with a plugin-backend proxy that preserves full resource metadata and spec.',
-    tracking: '#1975',
-  },
-];
+const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [];
 
 const ADVICE =
   'A direct browser read of App Platform ("/apis/..." — spelled inline, or produced by a url ' +
@@ -91,10 +76,9 @@ const ADVICE =
   'own rights — so the read 403s and the plugin fails to initialize. A plugin-backend proxy avoids ' +
   'that check entirely by minting a caller-scoped on-behalf-of token server-side.\n\n' +
   'Fix: add (or reuse) a GET route on the plugin backend — a proxy at `${PLUGIN_BACKEND_URL}/<route>` ' +
-  '— and read through it instead of calling getBackendSrv() directly. For catalogue summaries, ' +
-  'reuse fetchCustomGuideRepository in src/lib/custom-guide-repository-client.ts. The editor needs ' +
-  'a full-resource proxy that preserves metadata and spec for saves (#1975). See ' +
-  'docs/design/BACKEND_PROXY_PATTERN.md for the full pattern.\n\n' +
+  '— and read through it instead of calling getBackendSrv() directly. For a guide list specifically, ' +
+  'use the /custom-guides proxy for full editor resources or fetchCustomGuideRepository for the ' +
+  'slim catalogue. See docs/design/BACKEND_PROXY_PATTERN.md for the full pattern.\n\n' +
   'Administrative WRITES are a deliberate exception: a resolved PUT/POST/PATCH/DELETE stays on the ' +
   'direct App Platform API with its own optimistic-concurrency checks (see ' +
   'docs/design/BACKEND_PROXY_PATTERN.md, "Singleton settings reads") and is never flagged here.\n\n' +

@@ -921,6 +921,171 @@ describe('local cloud package CLI preflight', () => {
     expect(report.guide.id).toBe('cloud-guide');
   });
 
+  it.each([
+    {
+      name: 'no permission',
+      permissions: [],
+      credentials: [`docs.example=${tokenVariable}`],
+      expectedExit: ExitCode.SUCCESS,
+    },
+    {
+      name: 'wrong-host permission',
+      permissions: ['play.grafana.org'],
+      credentials: [`docs.example=${tokenVariable}`, `play.grafana.org=${tokenVariable}`],
+      expectedExit: ExitCode.SUCCESS,
+    },
+    {
+      name: 'missing credentials',
+      permissions: ['docs.example'],
+      credentials: [],
+      expectedExit: ExitCode.CONFIGURATION_ERROR,
+    },
+  ])('does not execute named mutation with $name', async ({ permissions, credentials, expectedExit }) => {
+    const packageDir = join(root, 'cloud-guide');
+    writeFileSync(
+      join(packageDir, 'manifest.json'),
+      JSON.stringify({
+        id: 'cloud-guide',
+        type: 'guide',
+        testEnvironment: { tier: 'cloud', instance: 'docs.example' },
+      })
+    );
+    writeFileSync(
+      join(packageDir, 'content.json'),
+      JSON.stringify({
+        id: 'cloud-guide',
+        title: 'Cloud guide',
+        blocks: [{ type: 'interactive', action: 'button', reftarget: 'Save', content: 'Test' }],
+      })
+    );
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = new URL(input.toString());
+      if (url.pathname === '/api/health') {
+        return jsonResponse({ database: 'ok', version: '12.0.0' });
+      }
+      if (url.pathname === '/api/serviceaccounts/search') {
+        return jsonResponse({ serviceAccounts: [] });
+      }
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    });
+    const reportPath = join(root, 'unauthorized-report.json');
+    const execution = runE2e(
+      E2eCommand.parse({
+        package: packageDir,
+        repository: root,
+        tier: 'cloud',
+        cloudInstanceAdminToken: credentials,
+        allowCloudInstanceMutations: permissions,
+        output: reportPath,
+        artifacts: join(root, 'artifacts'),
+      })
+    );
+    if (expectedExit === ExitCode.SUCCESS) {
+      await expect(execution).resolves.toMatchObject({ status: 'ok' });
+    } else {
+      await expect(execution).rejects.toThrow(`CLI exited with ${expectedExit}`);
+    }
+    expect(runPlaywrightTests).not.toHaveBeenCalled();
+    expect(runPlaywrightChain).not.toHaveBeenCalled();
+    const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+    expect(JSON.stringify(report)).not.toContain('mutationAuthorization');
+    if (expectedExit === ExitCode.SUCCESS) {
+      expect(report.preRunSkipped).toEqual([expect.objectContaining({ reason: 'skipped_unsafe_shared_stack' })]);
+    }
+  });
+
+  it.each([
+    { action: 'button', reftarget: 'Save', level: 'mutating' },
+    { action: 'formfill', reftarget: '#input', level: 'possibly_mutating' },
+    { action: undefined, reftarget: '#unknown', level: 'unknown' },
+  ])(
+    'executes explicitly authorized $level named guides and reports evidence',
+    async ({ action, reftarget, level }) => {
+      const host = 'docs.example';
+      const packageDir = join(root, 'cloud-guide');
+      writeFileSync(
+        join(packageDir, 'manifest.json'),
+        JSON.stringify({
+          id: 'cloud-guide',
+          type: 'guide',
+          testEnvironment: { tier: 'cloud', instance: host },
+        })
+      );
+      writeFileSync(
+        join(packageDir, 'content.json'),
+        JSON.stringify({
+          id: 'cloud-guide',
+          title: 'Cloud guide',
+          blocks: [
+            level === 'unknown'
+              ? { type: 'terminal', command: 'echo test', content: 'Test' }
+              : { type: 'interactive', action, reftarget, content: 'Test' },
+          ],
+        })
+      );
+      fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(input.toString());
+        if (url.hostname !== host) {
+          throw new Error(`Unexpected target: ${url.origin}`);
+        }
+        if (url.pathname === '/api/health') {
+          return jsonResponse({ database: 'ok', version: '12.0.0' });
+        }
+        if (url.pathname === '/api/serviceaccounts/search') {
+          return jsonResponse({ serviceAccounts: [] });
+        }
+        if (url.pathname === '/api/serviceaccounts') {
+          return jsonResponse({ id: 42 });
+        }
+        if (url.pathname === '/api/serviceaccounts/42/tokens') {
+          return jsonResponse({ key: runnerToken });
+        }
+        if (url.pathname === '/api/serviceaccounts/42' && init?.method === 'DELETE') {
+          return jsonResponse({});
+        }
+        throw new Error(`Unexpected request: ${url.pathname}`);
+      });
+      const data = fakeGuideData('cloud-guide', true);
+      data.guide.targetUrl = `https://${host}/`;
+      jest
+        .mocked(runPlaywrightTests)
+        .mockResolvedValue({ success: true, exitCode: ExitCode.SUCCESS, resultsData: data });
+      const reportPath = join(root, 'authorized-report.json');
+      await expect(
+        runE2e(
+          E2eCommand.parse({
+            package: packageDir,
+            repository: root,
+            tier: 'cloud',
+            cloudInstanceAdminToken: [`${host}=${tokenVariable}`],
+            allowCloudInstanceMutations: [host],
+            output: reportPath,
+            artifacts: join(root, 'artifacts'),
+          })
+        )
+      ).resolves.toMatchObject({ status: 'ok' });
+      expect(runPlaywrightTests).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          targetUrl: `https://${host}/`,
+          token: runnerToken,
+        })
+      );
+      expect(JSON.parse(readFileSync(reportPath, 'utf8'))).toMatchObject({
+        schemaVersion: '1.2.0',
+        outcome: 'passed',
+        target: { url: `https://${host}/`, mutationAuthorization: { hostname: host, source: 'cli-explicit-host' } },
+        guide: { sideEffects: { level } },
+      });
+      expect(
+        fetchSpy.mock.calls.some(
+          ([input, init]) =>
+            new URL(input.toString()).pathname === '/api/serviceaccounts/42' && init?.method === 'DELETE'
+        )
+      ).toBe(true);
+    }
+  );
+
   it('runs without minVersion and retires the fake lease once', async () => {
     allowRequiredPlugin();
     jest.mocked(runPlaywrightTests).mockResolvedValue({

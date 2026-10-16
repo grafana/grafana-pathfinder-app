@@ -168,6 +168,17 @@ function validateArgumentFormat(
       }
       break;
 
+    case ParameterizedRequirementPrefix.VARIABLE:
+      if (argument.includes(':includes:') && !/^\w+:includes:[A-Za-z0-9_-]{1,64}$/.test(argument)) {
+        return {
+          condition: fullCondition,
+          message: 'Choice conditions need a variable name and a valid option ID',
+          code: 'invalid_format',
+          path,
+        };
+      }
+      break;
+
     case ParameterizedRequirementPrefix.HAS_PERMISSION:
     case ParameterizedRequirementPrefix.HAS_DATASOURCE:
     case ParameterizedRequirementPrefix.DATASOURCE_CONFIGURED:
@@ -177,7 +188,6 @@ function validateArgumentFormat(
     case ParameterizedRequirementPrefix.HAS_FEATURE:
     case ParameterizedRequirementPrefix.IN_ENVIRONMENT:
     case ParameterizedRequirementPrefix.SECTION_COMPLETED:
-    case ParameterizedRequirementPrefix.VARIABLE:
     case ParameterizedRequirementPrefix.CODA_EXIT_ZERO:
       break;
 

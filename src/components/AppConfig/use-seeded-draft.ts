@@ -12,7 +12,7 @@ export interface SeededDraft<S> {
 }
 
 export function useSeededDraft<S extends object>(build: (config: ResolvedPathfinderConfig) => S): SeededDraft<S> {
-  const { config, isResolved } = usePathfinderPluginConfig();
+  const { config, isResolved } = usePathfinderPluginConfig({ refreshOnMount: true });
   const [changes, setChanges] = useState<Partial<S>>({});
   const edit = useCallback((patch: Partial<S>) => {
     setChanges((previous) => ({ ...previous, ...patch }));

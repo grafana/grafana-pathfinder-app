@@ -14,6 +14,18 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ## Current feature flags
 
+### `pathfinder.package-browser`
+
+**Type**: Boolean
+
+**Default**: `true`
+
+Controls the sidebar Browse entry and Browse all links. Set it to `false` to hide browsing during rollout. Browse offers starter content, topic shortcuts, and the full catalog. The browser uses existing package metadata and performs no prerequisite assessment. The `/browse` route opens the sidebar browser and returns to My learning.
+
+**Tracking key**: `package_browser`
+
+---
+
 ### `pathfinder.enabled`
 
 **Type**: Boolean
@@ -228,6 +240,27 @@ Records-mode minting requires the browser Web Locks API. Minting, completion, an
 Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-capability.ts`, and `completion-write-queue.ts`.
 
 **Tracking key**: `progress_records`
+
+---
+
+### `pathfinder.recommend-completions`
+
+**Type**: Boolean
+
+**Purpose**: Gate for attaching the user's completion history to `POST /api/v1/recommend`. See [Completion history in recommend requests](engines/context-engine.md#completion-history-in-recommend-requests).
+
+**Default**: `false`. The flag ships off until privacy and product sign-off and the terms notice cover completion history (tracked separately from this feature).
+
+**Behavior**:
+
+- **`true`**: each recommend request carries a `completions` object built from `GET /completion-records/my`, when that route reports the feature available.
+- **`false`**: no `/completion-records/my` request is made for recommendations and the request body has no `completions` key.
+
+The flag is read each time a recommend request is built, so a flip takes effect on the next request. Turning it on, or off again during an incident, reaches browsers only once a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` exist in deployment_tools.
+
+Implementation: `src/context-engine/recommend-completions-attachment.ts`.
+
+**Tracking key**: `recommend_completions`
 
 ---
 

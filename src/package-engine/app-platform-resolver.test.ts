@@ -2,6 +2,8 @@ import { of, throwError } from 'rxjs';
 import { AppPlatformPackageResolver } from './app-platform-resolver';
 import { resolveStartingLocation } from '../recovery/starting-location';
 import type { ManifestJson } from '../types/package.types';
+import { fetchPackageContent, setPackageResolver } from '../docs-retrieval/content-fetcher/package-content';
+import { getNextMilestoneUrl } from '../docs-retrieval/learning-journey-helpers';
 
 /** `PackageOpenInfo.packageManifest` is an untyped record; widen at the same seam the panel does. */
 const asPanelManifest = (manifest?: ManifestJson): Record<string, unknown> | undefined =>
@@ -203,6 +205,78 @@ describe('AppPlatformPackageResolver — verifyPublished (URL-only probe, #1561)
 });
 
 describe('AppPlatformPackageResolver — metadata-only', () => {
+  it.each(['metadata-only', true] as const)(
+    'keeps path navigation and literal prerequisite formats with loadContent=%s',
+    async (loadContent) => {
+      const prerequisites = [
+        { id: ' first ', label: ' <b>Literal</b> ', format: 'html' },
+        { id: 'numeric', label: '**Still literal**', format: 42 },
+        { id: 'object', label: '[Literal](https://example.com)', format: { type: 'markdown' } },
+        { id: 'markdown', label: '**Markdown**', format: 'markdown' },
+        { id: 'plain', label: 'Plain' },
+      ];
+      mockFetch
+        .mockReturnValueOnce(
+          of(
+            okResource({
+              manifest: {
+                type: 'path',
+                milestones: ['fe-alerting-01', 'fe-alerting-02'],
+                tracks: [{ trackId: 'extra', label: 'Extra', guides: ['track-guide'] }],
+                prerequisites,
+              },
+            })
+          )
+        )
+        .mockReturnValue(of(okResource()));
+      const resolver = new AppPlatformPackageResolver();
+      const resolution = await resolver.resolve('fe-alerting-path', { loadContent });
+
+      expect(resolution.ok).toBe(true);
+      if (!resolution.ok) {
+        return;
+      }
+      expect(resolution.manifest).toMatchObject({
+        id: 'fe-alerting-path',
+        type: 'path',
+        repository: 'app-platform',
+        milestones: ['fe-alerting-01', 'fe-alerting-02'],
+        tracks: [{ trackId: 'extra', label: 'Extra', guides: ['track-guide'] }],
+        prerequisites: [
+          { id: ' first ', label: ' <b>Literal</b> ' },
+          { id: 'numeric', label: '**Still literal**' },
+          { id: 'object', label: '[Literal](https://example.com)' },
+          { id: 'markdown', label: '**Markdown**', format: 'markdown' },
+          { id: 'plain', label: 'Plain' },
+        ],
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      setPackageResolver(resolver);
+      const result = await fetchPackageContent(
+        resolution.contentUrl,
+        asPanelManifest(resolution.manifest),
+        undefined,
+        resolution.repository,
+        {
+          content: {
+            url: resolution.contentUrl,
+            type: 'interactive',
+            content: JSON.stringify({ id: 'fe-alerting-path', title: 'Path', blocks: [] }),
+            lastFetched: '2026-01-01T00:00:00.000Z',
+            metadata: { title: 'Path' },
+          },
+        }
+      );
+
+      expect(result.content?.metadata.learningJourney?.currentMilestone).toBe(0);
+      expect(result.content?.metadata.learningJourney?.tracks?.[0]?.milestones[0]?.url).toBe(
+        'backend-guide:track-guide'
+      );
+      expect(result.content && getNextMilestoneUrl(result.content)).toBe('backend-guide:fe-alerting-01');
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+    }
+  );
+
   it('returns the persisted manifest without fetching content', async () => {
     mockFetch.mockReturnValue(
       of(

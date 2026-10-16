@@ -36,6 +36,7 @@ const SCRIPT_PATH = path.resolve(__dirname, '..', '..', 'scripts', 'upsert-learn
 // save or publish included. Remove this entry when the CUE declares it.
 const PRUNED_BY_CRD = new Set([
   'format', // The InteractiveGuide CRD has no input format field yet.
+  'whenRequirementsUnmet', // App Platform saves encode section visibility as a conditional wrapper.
 
   'defaultValue',
   'dataCheckQuery',

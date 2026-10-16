@@ -8,6 +8,8 @@ import {
   getGuideBlockCountProperties,
   reportStepSkipped,
 } from './analytics';
+import type { JsonBlock } from '../types/json-guide.types';
+import { createChoiceProgressModel } from './guide-stats/choice-progress';
 import { reportInteraction } from '@grafana/runtime';
 import { pushFaroUserAction } from './telemetry/bridge';
 import { computeGuideBlockIndex, guideProgress, type CountableBlock } from './guide-stats';
@@ -469,6 +471,41 @@ describe('step events: block progress properties', () => {
     publish();
 
     expect(buildInteractiveStepProperties({}, { stepId: 'rt:__standalone__:1' }).block_position).toBe(2);
+  });
+
+  it('identifies selected-path progress without sending authored option values', () => {
+    const blocks: JsonBlock[] = [
+      {
+        type: 'input',
+        inputType: 'checkbox-group',
+        prompt: 'Private question',
+        variableName: 'signals',
+        choices: [{ id: 'private-id', text: 'Private label' }],
+      },
+      {
+        type: 'section',
+        id: 'selected',
+        whenRequirementsUnmet: 'hide',
+        requirements: ['var-signals:includes:private-id'],
+        blocks: [{ type: 'markdown', content: 'Private content' }],
+      },
+    ];
+    const choiceIndex = computeGuideBlockIndex(blocks);
+    publishGuideIndex({
+      contentKey: GUIDE_KEY,
+      index: choiceIndex,
+      denominatorSource: 'live-pre-inlining',
+      choiceModel: createChoiceProgressModel(blocks, choiceIndex),
+      responses: {},
+    });
+    const properties = getGuideBlockCountProperties(GUIDE_KEY);
+    expect(properties).toMatchObject({
+      block_progress_rule_version: 'choice-path-v1',
+      total_block_count: 2,
+      active_block_count: 1,
+    });
+    expect(JSON.stringify(properties)).not.toContain('Private');
+    expect(JSON.stringify(properties)).not.toContain('private-id');
   });
 
   it('exposes the guide counts for a content key, and nothing without an index', () => {

@@ -12,7 +12,8 @@
 
 import { z } from 'zod';
 
-import { ContentJsonSchema, ManifestJsonObjectSchema } from '../../types/package.schema';
+import { ContentJsonSchema } from '../../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../../lib/runtime-manifest';
 import type { ManifestJson } from '../../types/package.types';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
 
@@ -474,7 +475,7 @@ export function composeAbortSignals(...signals: AbortSignal[]): { signal: AbortS
 /**
  * Fetch and loosely parse a manifest.json from a PR raw URL.
  *
- * Uses {@link ManifestJsonObjectSchema} (no cross-field refinement) so partial
+ * Uses {@link RuntimeManifestJsonObjectSchema} (no cross-field refinement) so partial
  * or in-progress manifests still yield enough metadata for the PR tester to
  * decide whether the PR contains a path/journey package. Returns `undefined`
  * for network errors, schema failures, or invalid JSON — callers fall back
@@ -505,7 +506,7 @@ export async function fetchPrManifest(rawUrl: string, signal?: AbortSignal): Pro
       return undefined;
     }
     const json: unknown = await response.json();
-    const parsed = ManifestJsonObjectSchema.safeParse(json);
+    const parsed = RuntimeManifestJsonObjectSchema.safeParse(json);
     if (!parsed.success) {
       return undefined;
     }

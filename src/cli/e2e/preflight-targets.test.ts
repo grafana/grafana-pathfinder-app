@@ -1,4 +1,4 @@
-import type { CloudAuthPolicy } from './cloud-auth';
+import { createCloudAuthPolicy, type CloudAuthPolicy } from './cloud-auth';
 import type { CloudStackPoolManagerConfig } from './cloud-stack-pool-manager';
 import type { PackageMeta } from './e2e-results';
 import type { ExecutionPlan, PlannedGuide } from './guide-chains';
@@ -11,6 +11,7 @@ const DEPENDENT_SHARED_URL = 'https://dependent.grafana.net/';
 const NO_AUTH_SHARED_URL = 'https://no-auth.grafana.net/';
 
 const cloudAuth: CloudAuthPolicy = {
+  allowsMutationsFor: () => false,
   targets: { sharedStackUrls: [READONLY_SHARED_URL, MUTATING_SHARED_URL, DEPENDENT_SHARED_URL] },
   adminTokenFor: (targetUrl) => {
     if (targetUrl === READONLY_SHARED_URL || targetUrl === MUTATING_SHARED_URL || targetUrl === DEPENDENT_SHARED_URL) {
@@ -140,6 +141,42 @@ describe('e2e preflight targets', () => {
 
     expect(targets).toEqual([GLOBAL_URL, READONLY_SHARED_URL]);
   });
+
+  it.each(['mutating', 'possibly_mutating', 'unknown'] as const)(
+    'preflights authorized %s shared targets while preserving unauthorized and pool exclusions',
+    (level) => {
+      const packageMetaById = packageMetaWithMutatingCloudChain();
+      packageMetaById.get('mutating-cloud')!.sideEffects = { level, reasons: [] };
+      const authorizedCloudAuth = createCloudAuthPolicy({
+        cloudInstanceAdminTokenSpecs: [
+          'learn.grafana.net=ADMIN_TOKEN',
+          'mutating.grafana.net=ADMIN_TOKEN',
+          'dependent.grafana.net=ADMIN_TOKEN',
+        ],
+        allowCloudInstanceMutations: ['mutating.grafana.net'],
+        env: { ADMIN_TOKEN: 'admin-token' },
+      });
+      const options = {
+        plan: planWithMutatingCloudChain(),
+        packageMetaById,
+        cloudAuth: authorizedCloudAuth,
+        cloudStackPoolManagerConfig: undefined,
+        globalUrl: GLOBAL_URL,
+      };
+
+      expect(preflightTargetUrlsForPlan(options)).toEqual([
+        GLOBAL_URL,
+        READONLY_SHARED_URL,
+        MUTATING_SHARED_URL,
+        DEPENDENT_SHARED_URL,
+      ]);
+      expect(preflightTargetUrlsForPlan({ ...options, cloudAuth })).toEqual([GLOBAL_URL, READONLY_SHARED_URL]);
+      expect(preflightTargetUrlsForPlan({ ...options, cloudStackPoolManagerConfig })).toEqual([
+        GLOBAL_URL,
+        READONLY_SHARED_URL,
+      ]);
+    }
+  );
 
   it('excludes readonly cloud guides that lack shared stack auth when manager stacks are available', () => {
     const plan: ExecutionPlan = {

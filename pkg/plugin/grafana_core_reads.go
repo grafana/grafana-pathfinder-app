@@ -52,7 +52,7 @@ type grafanaDashboardSearchResponse struct {
 // These routes serve the caller's own RBAC view, so nothing here may be cached.
 
 func (a *App) handleGrafanaUser(w http.ResponseWriter, r *http.Request) {
-	client, namespace, ok := a.appPlatformReadClient(w, r, "users")
+	client, namespace, ok := a.appPlatformReadClient(w, r, "users", "get")
 	if !ok {
 		return
 	}
@@ -65,7 +65,7 @@ func (a *App) handleGrafanaUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleGrafanaDashboard(w http.ResponseWriter, r *http.Request) {
-	client, namespace, ok := a.appPlatformReadClient(w, r, "dashboards")
+	client, namespace, ok := a.appPlatformReadClient(w, r, "dashboards", "get")
 	if !ok {
 		return
 	}
@@ -124,7 +124,7 @@ func (a *App) folderTitle(r *http.Request, client *appPlatformListClient, namesp
 }
 
 func (a *App) handleGrafanaDashboardSearch(w http.ResponseWriter, r *http.Request) {
-	client, namespace, ok := a.appPlatformReadClient(w, r, "search")
+	client, namespace, ok := a.appPlatformReadClient(w, r, "search", "get")
 	if !ok {
 		return
 	}
