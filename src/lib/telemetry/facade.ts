@@ -18,6 +18,7 @@ import {
   type CompletionWriteDegradation,
   type ContentFetchOutcome,
   type ContentFetchTier,
+  type RecommendCompletionsOutcome,
   type RecommenderErrorType,
   type RecommenderOutcome,
   type SequenceErrorClassification,
@@ -33,6 +34,39 @@ export function recordRecommenderFallback(errorType: RecommenderErrorType, fallb
     fallback_tier: fallbackTier,
     error_type: errorType,
   });
+}
+
+function completionItemBucket(count: number): string {
+  if (count <= 0) {
+    return '0';
+  }
+  if (count <= 10) {
+    return '1-10';
+  }
+  if (count <= 50) {
+    return '11-50';
+  }
+  return count < 250 ? '51-249' : '250';
+}
+
+export function recordRecommendCompletions(
+  outcome: RecommendCompletionsOutcome,
+  itemCount?: number,
+  truncated?: boolean,
+  waitMs?: number
+): void {
+  pushFaroEvent(TELEMETRY_EVENTS.recommendCompletions, {
+    outcome,
+    ...(itemCount !== undefined && { item_bucket: completionItemBucket(itemCount) }),
+    ...(truncated !== undefined && { truncated: String(truncated) }),
+  });
+  if (waitMs !== undefined) {
+    pushFaroMeasurement(
+      TELEMETRY_MEASUREMENTS.recommendCompletionsWait,
+      { recommend_completions_wait_ms: waitMs },
+      { outcome }
+    );
+  }
 }
 
 export function recordContentFetch(params: {
