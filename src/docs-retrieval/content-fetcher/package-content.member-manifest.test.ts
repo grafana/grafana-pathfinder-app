@@ -458,6 +458,10 @@ describe('a CDN milestone narrows its path starting location', () => {
     { id: 'b-guide', number: 2, title: 'B', url: bUrl, isActive: false },
   ];
 
+  afterEach(() => {
+    setPackageResolverFactory(() => Promise.reject(new Error('resolver reset')));
+  });
+
   function cdnContent(url: string) {
     return {
       content: {

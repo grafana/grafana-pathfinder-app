@@ -1144,28 +1144,63 @@ describe('CombinedLearningJourneyPanel — a milestone narrows its path starting
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
+  const ownStartingLocations: Record<string, string> = {
+    'bundled:x/content.json': PATH_START,
+    'bundled:a/content.json': MILESTONE_A_START,
+    'bundled:b/content.json': MILESTONE_B_START,
+  };
+  const pathManifest = { id: 'x', type: 'path', startingLocation: PATH_START };
+  const resolvedMilestones = [
+    { id: 'a', number: 1, title: 'A', url: 'bundled:a/content.json', isActive: false },
+    { id: 'b', number: 2, title: 'B', url: 'bundled:b/content.json', isActive: false },
+  ];
+
+  function mockPathLoader(
+    fetchPackageContent: (...args: any[]) => Promise<unknown>,
+    startingLocations: Record<string, string>
+  ) {
+    mockLoadDocsTabContentResult.mockImplementation(
+      (
+        url: string,
+        options: { packageInfo?: { packageManifest?: Record<string, unknown>; resolvedMilestones?: unknown[] } }
+      ) =>
+        fetchPackageContent(
+          url,
+          options.packageInfo?.packageManifest,
+          options.packageInfo?.resolvedMilestones,
+          undefined,
+          { content: makePathOrMilestoneContent(url, startingLocations[url]!) }
+        )
+    );
+  }
+
+  it('prompts with the milestone own start when opened directly with the path packageInfo', async () => {
+    const { fetchPackageContent } = jest.requireActual('../../docs-retrieval/content-fetcher/package-content');
+    mockPathLoader(fetchPackageContent, ownStartingLocations);
+
+    const panel = new CombinedLearningJourneyPanel();
+    const tabId = await openTabAndLoad(panel, 'bundled:a/content.json', 'home_page', {
+      packageManifest: pathManifest,
+      resolvedMilestones,
+    } as any);
+    await settle();
+
+    expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(MILESTONE_A_START);
+  });
+
   it('prompts with X on the landing page, A on milestone A, and B on milestone B', async () => {
     const docsRetrieval = jest.requireMock('../../docs-retrieval');
     const { fetchPackageContent } = jest.requireActual('../../docs-retrieval/content-fetcher/package-content');
-    const ownStartingLocations: Record<string, string> = {
-      'bundled:x/content.json': PATH_START,
-      'bundled:a/content.json': MILESTONE_A_START,
-      'bundled:b/content.json': MILESTONE_B_START,
-    };
-    mockLoadDocsTabContentResult.mockImplementation(
-      (url: string, options: { packageInfo?: { packageManifest?: Record<string, unknown> } }) =>
-        fetchPackageContent(url, options.packageInfo?.packageManifest, undefined, undefined, {
-          content: makePathOrMilestoneContent(url, ownStartingLocations[url]!),
-        })
-    );
+    mockPathLoader(fetchPackageContent, ownStartingLocations);
     docsRetrieval.getNextMilestoneUrlFromContent
       .mockReturnValueOnce('bundled:a/content.json')
       .mockReturnValueOnce('bundled:b/content.json');
 
     const panel = new CombinedLearningJourneyPanel();
     const tabId = await openTabAndLoad(panel, 'bundled:x/content.json', 'home_page', {
-      packageManifest: { type: 'path', startingLocation: PATH_START },
-    });
+      packageManifest: pathManifest,
+      resolvedMilestones,
+    } as any);
     await settle();
     expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(PATH_START);
 

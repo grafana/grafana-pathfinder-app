@@ -103,7 +103,7 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
     // already doing double duty as the title fallback above.
     const description = resolution.manifest?.description !== title ? resolution.manifest?.description : undefined;
     const estimatedMinutes = resolution.manifest?.estimatedMinutes;
-    const startingLocation = resolution.manifest?.startingLocation;
+    const startingLocation = readDeclaredStartingLocation(resolution.manifest);
 
     milestones.push({
       id,
@@ -115,7 +115,7 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
       ...(resolution.repository != null && { repository: resolution.repository }),
       ...(description != null && { description }),
       ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
-      ...(typeof startingLocation === 'string' && { startingLocation }),
+      ...(startingLocation != null && { startingLocation }),
       ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
     });
   }

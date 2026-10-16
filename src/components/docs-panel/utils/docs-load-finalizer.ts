@@ -33,9 +33,9 @@ export interface PendingAlignmentDecision {
  * so a guide opened from inside a learning path gets the same prompt as the
  * same guide opened standalone.
  *
- * A load that reuses the tab's `packageManifest` (a milestone step inside a
- * path) inverts that order: the guide on screen is closer to the reader than
- * the path that encloses it, so its own declaration narrows the path's.
+ * A path member (fetched content carries `journeyManifest`) inverts that
+ * order: `packageManifest` is then the enclosing path's, and the guide on
+ * screen is closer to the reader, so its own declaration narrows the path's.
  */
 export function resolveDocsLoadAlignment({
   requestedUrl,
