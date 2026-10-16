@@ -405,3 +405,27 @@ The row sent when a reader accepts **Reset and continue** on an assignment is co
 | `all`         | A reader confirms **Reset progress** in the My Learning footer                                                         | `my_learning_footer`                   | None                                                                     |
 
 Each reset reports once per action, never per member guide. An assignment reset clears only the guides the assignment does not credit, so it has its own scope and reports how many it cleared; a path restart and a full reset do not count what they clear. App Platform, CDN course, online-catalogue and assignment paths never send `path_id`, so a reset of one of those cannot be tied to its path. Rows from v2.20.1 and earlier have no `reset_scope`; every one of them is a per-guide reset, since nothing else reported. No mounted surface shows **Restart** today: the button appears only on a completed path card, My Learning renders every path card as incomplete, and `LearningPathsPanel`, which does pass real completion, is not mounted. Expect no `learning_path_card_restart` rows until a surface renders it.
+
+## Catalog interactions
+
+`pathfinder_catalog_interaction` groups Browse tab and Explore learning controls into one event, with `interaction_location=package_browser`:
+
+| `action`    | Trigger                                                               | Attributes                                                                     |
+| ----------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `tab_click` | Click the Browse tab, including when already selected                 | None                                                                           |
+| `search`    | Edited non-empty search committed with Enter or blur                  | `search_topic`                                                                 |
+| `topic`     | Click a topic shortcut or select a topic filter                       | `topic`, `control` (`shortcut` or `filter`)                                    |
+| `view`      | Explicitly switch Explore / All content, including Browse all content | `view`, `previous_view` (`explore` or `all`)                                   |
+| `source`    | Switch All / Official / Your organization                             | `content_source`, `previous_content_source` (`all`, `grafana`, `organization`) |
+
+Search reports only when the reader commits an edited non-empty query with Enter or leaves the search field. Pauses while typing never emit, even for recognized keywords. Enter followed by blur reports once. Consecutive commits with the same classified topic are suppressed until the query is cleared or the organization changes.
+
+Within a mounted catalog and organization scope, search events have a five-second cooldown. Rapid commits to different topics coalesce into the latest committed topic, reported when the cooldown ends. Further typing cancels that pending report until the edited query is committed again. Clearing cancels pending reporting and resets topic deduplication, but preserves the cooldown. Unmounting or changing organizations cancels pending events and resets tracking. Restoring a saved search and deleting an uncommitted query emit nothing. Clicking another control commits by blurring first; a subsequent Clear filters action cancels any queued report. This measures committed topic changes, not every query or keystroke. No raw search text, query length, or result metadata is sent.
+
+`search_topic` comes from exact matching against a fixed keyword/phrase dictionary in `src/lib/catalog-analytics.ts`, after case, whitespace, hyphen and underscore normalization. Examples: `Tempo` maps to `traces`, `k8s` to `kubernetes`, and `RUM` to `frontend-observability`. Coverage includes signals, application/frontend/database/cloud/infrastructure observability, synthetic monitoring, performance testing, IRM, SLOs, Alloy, OpenTelemetry, fleet management, adaptive telemetry, Assistant, investigations, knowledge graph, agent observability, costs, observability as code, administration, workflows, and onboarding. Arbitrary text and mixed phrases such as `dashboard for alice@example.com` report `other`; no keywords are extracted from longer text. This dictionary affects analytics only, not search results or visible topics.
+
+Topics use a fixed allowlist: `all`, `uncategorized`, the bundled guide categories `authoring`, `querying`, `reference` and `testing`, and every `search_topic` value except `other`. All other topics report `other`. That bucket holds organization-authored topics and any Grafana-published topic outside the list, so it cannot be split between the two.
+
+Automatic view changes caused by searching or choosing a topic do not emit `view`; resetting filters does not emit `source` or `topic`. Clicking an already selected view or source emits nothing. These events use the shared RudderStack pipeline and Faro mirror.
+
+Launches continue to use `pathfinder_open_resource_click` with `interaction_location=package_browser` and `pathfinder_guide_launch_surface_chosen` with `source=package_browser`. The resource click measures an attempt before loading, not a successful open. No additional launch event is emitted.

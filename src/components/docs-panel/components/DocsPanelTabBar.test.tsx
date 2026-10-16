@@ -30,6 +30,7 @@ jest.mock('../../../lib/analytics', () => ({
   getContentTypeForAnalytics: jest.fn(() => 'docs'),
   UserInteraction: {
     DocsPanelInteraction: 'docs_panel_interaction',
+    CatalogInteraction: 'catalog_interaction',
     GeneralPluginFeedbackButton: 'general_plugin_feedback_button',
     CloseTabClick: 'close_tab_click',
   },
@@ -94,6 +95,10 @@ describe('DocsPanelTabBar', () => {
     render(<DocsPanelTabBar {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
     expect(props.onSetActiveTab).toHaveBeenCalledWith('browse');
+    expect(jest.requireMock('../../../lib/analytics').reportAppInteraction).toHaveBeenCalledWith(
+      'catalog_interaction',
+      { action: 'tab_click', interaction_location: 'package_browser' }
+    );
     expect(props.onCloseTab).not.toHaveBeenCalled();
   });
 

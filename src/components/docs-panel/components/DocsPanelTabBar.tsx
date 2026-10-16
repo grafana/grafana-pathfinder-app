@@ -8,6 +8,7 @@ import { testIds } from '../../../constants/testIds';
 
 type DocsPanelStyles = ReturnType<typeof getDocsPanelStyles>;
 import { BROWSE_TAB_ID, RECOMMENDATIONS_TAB_ID, getGuideStripTabs, getTranslatedTitle } from '../utils';
+import { reportCatalogInteraction } from '../../../lib/catalog-analytics';
 import { TabBarActions } from './TabBarActions';
 import {
   reportAppInteraction,
@@ -96,7 +97,10 @@ export function DocsPanelTabBar({
       {browseEnabled && (
         <button
           className={`${styles.iconTab} ${activeTab?.type === 'browse' ? styles.iconTabActive : ''}`}
-          onClick={() => onSetActiveTab(BROWSE_TAB_ID)}
+          onClick={() => {
+            reportCatalogInteraction({ action: 'tab_click' });
+            onSetActiveTab(BROWSE_TAB_ID);
+          }}
           title={t('packageBrowser.browse', 'Browse')}
           aria-label={t('packageBrowser.browse', 'Browse')}
           aria-pressed={activeTab?.type === 'browse'}
