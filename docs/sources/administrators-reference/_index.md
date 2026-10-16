@@ -98,13 +98,13 @@ Use the **Interactive features** tab to adjust how steps behave. Select **Save c
 | Requirements check timeout                    | Time allowed for requirement validation, from 1,000 to 10,000 ms.                                                             | 3,000 ms  |
 | Guided step timeout                           | Time allowed to complete a guided step, from 5,000 to 120,000 ms.                                                             | 30,000 ms |
 | Enable AI-powered "Fix this" on failing steps | Offers Grafana Assistant help when a target cannot be found and built-in recovery is unavailable. Requires Grafana Assistant. | On        |
-| Enable "Open in interactive window"           | Allows a guide in a separate browser tab to control the original Grafana tab after pairing.                                   | Off       |
+| Enable "Open in interactive window"           | Allows a guide in a separate browser tab to control the original Grafana tab after pairing.                                   | On        |
 
 Turning off automatic step completion does not prevent a reader from using **Do it** or the guide's **Mark complete** control. Accepted AI repair suggestions affect the guide in the current session; they do not publish changes to the saved guide. Turning off AI repair leaves built-in recovery available.
 
 ### Use a separate interactive window
 
-The two-tab controller is experimental. When enabled, **Open in interactive window** opens the guide in another browser tab. Pairing requires a one-time code and explicit acceptance in the original Grafana tab. Once paired, guide actions run in that original tab with the signed-in user's permissions. Enable this feature only for trusted guide content and instances.
+The two-tab controller is experimental and enabled by default. Admins can turn it off with **Enable "Open in interactive window"**; an existing saved off preference stays off. **Open in interactive window** opens the guide in another browser tab. Pairing requires a one-time code and explicit acceptance in the original Grafana tab. Once paired, guide actions run in that original tab with the signed-in user's permissions. Only pair windows running trusted guide content.
 
 ## Manage custom guides
 

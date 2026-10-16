@@ -130,7 +130,7 @@ DOM sink and is **not** unconditionally safe to install — see the trust model.
 
 ## Entry gate and mount policy
 
-Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on two conditions: the `enableTwoTabController` admin setting (plugin config → Interactive features, default **off**), and `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. The admin setting ships the feature dark until an instance opts in; the kill-switch keeps it aligned with the rest of the plugin. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
+Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on two conditions: the `enableTwoTabController` admin setting (plugin config → Interactive features, default **on**), and `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. Admins can turn the feature off; an explicitly saved off preference overrides the default. The kill-switch keeps it aligned with the rest of the plugin. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
 
 ## Security / trust model
 

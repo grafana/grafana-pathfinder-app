@@ -308,9 +308,9 @@ describe('GuideReaderOverlay', () => {
         cover.url,
         expect.any(Object)
       );
-      expect(screen.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
       expect(window.__DocsPluginActiveTabUrl).toBe('backend-guide:step-3');
-      fireEvent.click(screen.getByRole('button', { name: 'Previous', exact: true }));
+      fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
       await screen.findByTestId('mock-content');
       expect(window.__DocsPluginActiveTabUrl).toBe('backend-guide:step-2');
     }
