@@ -125,6 +125,12 @@ describe('step-type-registry', () => {
       });
     });
 
+    it('passes a recovery hint through only when the section provides one', () => {
+      const recoveryHint = { stepId: 'section-test-step-1', stepNumber: 1 };
+      expect(INTERACTIVE_STEP_SCHEMA.toEnhancedProps(makeCtx({ recoveryHint })).recoveryHint).toBe(recoveryHint);
+      expect(INTERACTIVE_STEP_SCHEMA.toEnhancedProps(makeCtx())).not.toHaveProperty('recoveryHint');
+    });
+
     it('disabled formula: ORs baseDisabled', () => {
       const props = INTERACTIVE_STEP_SCHEMA.toEnhancedProps(makeCtx({ baseDisabled: true }));
       expect(props.disabled).toBe(true);

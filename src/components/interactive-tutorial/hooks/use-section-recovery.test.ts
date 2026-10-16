@@ -104,6 +104,27 @@ it('leaves the step to explain itself when nothing can be restored', async () =>
   });
   await settle(750);
   expect(hook.result.current.paused).toBe(false);
+  expect(hook.result.current.unrestorable).toBe(true);
+  inspect.mockResolvedValue(PASS);
+  await act(async () => {
+    await hook.result.current.recheck();
+  });
+  expect(hook.result.current.unrestorable).toBe(false);
+});
+
+it('reports a restorable drift as paused, not unrestorable, and forgets a stale plan', async () => {
+  const hook = render();
+  await settle();
+  await drift(hook);
+  expect(hook.result.current).toMatchObject({ paused: true, unrestorable: false });
+  restore.mockResolvedValue({ ...DRIFT, canRestore: false, gaveUp: true, failure: 'drifted' });
+  await act(async () => {
+    await hook.result.current.restore();
+  });
+  expect(hook.result.current).toMatchObject({ paused: false, unrestorable: true });
+  inspect.mockReturnValue(new Promise(() => undefined));
+  hook.rerender({ key: 'step-2' });
+  expect(hook.result.current.unrestorable).toBe(false);
 });
 
 it('restores, reports the outcome, and resolves the pause', async () => {

@@ -709,6 +709,23 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     to: { transform: 'rotate(360deg)' },
   },
 
+  '.interactive-step-recovery-hint': {
+    display: 'block',
+    marginTop: theme.spacing(0.5),
+    padding: 0,
+    border: 'none',
+    background: 'none',
+    font: 'inherit',
+    color: theme.colors.text.link,
+    textDecoration: 'underline',
+    cursor: 'pointer',
+  },
+
+  '.interactive-step-revealed': {
+    boxShadow: `0 0 0 2px ${theme.colors.primary.border}`,
+    transition: 'box-shadow 0.3s ease',
+  },
+
   '.interactive-step-requirement-buttons': {
     display: 'flex',
     gap: theme.spacing(1),

@@ -120,3 +120,18 @@ it('stops at an inline conditional between steps', () => {
   ]);
   expect(recipe([toggle('before'), { ...cursor(), opaqueBefore: true }])).toEqual(['resume-location']);
 });
+
+it('names the one-way step that set up the cursor target', () => {
+  const save = { stepId: 'save', kind: 'plain', targetAction: 'button', refTarget: 'Save' };
+  const fill = { stepId: 'fill', kind: 'plain', targetAction: 'formfill', refTarget: '#name' };
+  expect(deriveSectionRecoveryPlan([save, fill, toggle('row'), cursor()], 3, NONE)?.setupStepId).toBe('save');
+});
+
+it('names no setup step when the walk reaches the section start, a skipped step, or a conditional', () => {
+  const save = { stepId: 'save', kind: 'plain', targetAction: 'button', refTarget: 'Save' };
+  expect(deriveSectionRecoveryPlan([toggle('row'), cursor()], 1, NONE)?.setupStepId).toBeUndefined();
+  expect(deriveSectionRecoveryPlan([save, cursor()], 1, new Set(['save']))?.setupStepId).toBeUndefined();
+  expect(deriveSectionRecoveryPlan([save, { ...cursor(), opaqueBefore: true }], 1, NONE)?.setupStepId).toBeUndefined();
+  const guided = { stepId: 'guided', kind: 'guided', requirements: ['on-page:/explore'] };
+  expect(deriveSectionRecoveryPlan([save, guided], 1, NONE)?.setupStepId).toBeUndefined();
+});

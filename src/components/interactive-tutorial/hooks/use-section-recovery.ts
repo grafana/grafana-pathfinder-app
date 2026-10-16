@@ -58,6 +58,7 @@ export function useSectionRecovery(
   const { checkPostconditions } = useGuideRequirements();
   const [paused, setPaused] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [unrestorableKey, setUnrestorableKey] = useState<string | undefined>(undefined);
   const operation = useRef<AbortController | null>(null);
   const busy = useRef(false);
   const busyRestoring = useRef(false);
@@ -112,6 +113,7 @@ export function useSectionRecovery(
             lastReadyUrl.current = currentPath();
           }
           gaveUp.current = null;
+          setUnrestorableKey(undefined);
           endPause(restored ? 'restore' : 'self');
           return answer(true);
         }
@@ -124,9 +126,11 @@ export function useSectionRecovery(
           gaveUp.current = null;
         }
         if (armedKey.current !== current.key || !result.canRestore || gaveUp.current) {
+          setUnrestorableKey(current.key);
           endPause('unrestorable');
           return answer(true);
         }
+        setUnrestorableKey(undefined);
         if (pausedNow.current) {
           return answer(false);
         }
@@ -164,6 +168,7 @@ export function useSectionRecovery(
         const controller = new AbortController();
         operation.current = controller;
         if (!gate.current.enabled || gate.current.controllerMode) {
+          setUnrestorableKey(undefined);
           endPause('inactive');
           return answer(true);
         }
@@ -320,5 +325,6 @@ export function useSectionRecovery(
   }, []);
   const recheck = useCallback(() => run(false), [run]);
   const restore = useCallback(() => run(true), [run]);
-  return { paused, restoring, cancel, recheck, restore };
+  const unrestorable = !!plan && unrestorableKey === plan.key;
+  return { paused, restoring, unrestorable, cancel, recheck, restore };
 }

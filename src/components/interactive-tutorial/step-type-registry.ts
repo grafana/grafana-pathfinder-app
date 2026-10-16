@@ -16,7 +16,7 @@
  * jest.mock of the heavy step modules.
  */
 
-import type { StepInfo } from '../../types/component-props.types';
+import type { RecoveryHint, StepInfo } from '../../types/component-props.types';
 export const STEP_TYPE_KIND_KEYS = [
   'plain',
   'multistep',
@@ -59,6 +59,7 @@ export interface EnhanceContext {
   resetTrigger: number;
   onStepComplete: (stepId: string, skipStateUpdate?: boolean) => void;
   onStepReset: (stepId: string) => void;
+  recoveryHint?: RecoveryHint;
 }
 
 /** Parse-time key the JSON parser emits on `ParsedElement.type` for this step kind. */
@@ -146,6 +147,7 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
     onStepReset: ctx.onStepReset,
     disabled: disabledForOrchestratedStep(ctx),
     resetTrigger: ctx.resetTrigger,
+    ...(ctx.recoveryHint ? { recoveryHint: ctx.recoveryHint } : {}),
   }),
 };
 
