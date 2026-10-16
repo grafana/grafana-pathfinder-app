@@ -22,7 +22,6 @@ import { getGuideReaderStyles } from './guide-reader.styles';
 import { OutlineRail } from './OutlineRail';
 import { beginGuideLoad, finishGuideLoad, markGuideLoadStage } from '../../lib/telemetry/guide-load';
 import { diagnoseGuideError } from '../../lib/guide-diagnostics';
-import { useBooleanFlag } from '../../utils/openfeature';
 
 interface GuideReaderOverlayProps {
   doc: string;
@@ -100,7 +99,6 @@ function GuideReaderInner({
   mode: InteractiveMode;
   controllerPairing: ControllerPairingLaunch | null;
 }) {
-  const completionPanelEnabled = useBooleanFlag('pathfinder.completion-panel', true);
   const styles = useStyles2(getGuideReaderStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
@@ -116,8 +114,7 @@ function GuideReaderInner({
   const outlineItems = useDocumentOutline(contentRef, content?.url ?? null, contentReady);
   const { activeId, notifyJump } = useActiveOutlineItem(outlineItems, contentRef, backdropRef);
 
-  // Reset during render (not in an effect) when `doc` changes, so a new guide never
-  // briefly shows the outline extracted from the previous one.
+  // Reset before commit so a new guide cannot show the previous outline.
   const [trackedDoc, setTrackedDoc] = useState(doc);
   if (doc !== trackedDoc) {
     setTrackedDoc(doc);
@@ -126,9 +123,7 @@ function GuideReaderInner({
 
   const handleClose = useCallback(() => {
     window.close();
-    // window.close() only closes tabs the script itself opened; for a bookmarked
-    // or directly-navigated ?doc= URL it is a silent no-op. If the tab is still
-    // here a moment later, surface an in-overlay hint instead of failing silently.
+    // Browsers silently refuse window.close() for tabs the script did not open.
     closeTimerRef.current = window.setTimeout(() => {
       if (!window.closed) {
         setCloseBlocked(true);
@@ -213,7 +208,7 @@ function GuideReaderInner({
           className={contentClassName}
           onContentReady={handleContentReady}
           completion={{ kind: 'tracked', input: surfaceCompletionInput }}
-          completionPanelEnabled={completionPanelEnabled}
+          completionPanelEnabled={false}
         />
       </div>
     ) : null;
