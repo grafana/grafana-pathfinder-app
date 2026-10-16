@@ -84,6 +84,16 @@ quarter of the way through the second:
 Equal weight per milestone, by construction. A 27-block milestone and a 7-block
 milestone each contribute up to 25 points.
 
+### Choice-driven guides
+
+Guides with checkbox groups or section visibility controls use a selected-path exception to the legacy position rule. The authored index stays frozen. A projection excludes hidden content from the runtime denominator.
+
+Within each section, completion evidence credits preceding blocks in that section. It does not credit an independent, unfinished section. Section acknowledgements credit that section's content. Saved choices credit their input block, but an unanswered required group prevents completion.
+
+The universal completion button remains visible. It is disabled for unanswered required groups. A guide mark records the active path, so a later selection cannot complete new content automatically. Completed-step evidence and marked-block snapshots survive deselection and reselection.
+
+Guides without these features retain the legacy model. Conditional blocks retain their one-block counting rule. Analytics distinguish the selected-path rule with `choice-path-v1` and report `active_block_count` alongside authored counts.
+
 ## What the library actually looks like
 
 Two investigations measured the published library before these decisions were

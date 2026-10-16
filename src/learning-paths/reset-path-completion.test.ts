@@ -50,6 +50,7 @@ import {
   learningProgressStorage,
   milestoneCompletionStorage,
 } from '../lib/user-storage';
+import { StorageKeys } from '../lib/storage-keys';
 import { pathMemberContentKeys } from '../global-state/path-member-join';
 import { useLearningPaths } from './learning-paths.hook';
 
@@ -60,10 +61,18 @@ const GUIDES = ['fe-alerting-01', 'fe-alerting-02', 'fe-alerting-03'];
 const MEMBER_KEYS = GUIDES.flatMap((id) => [`bundled:${id}`, `backend-guide:${id}`]);
 const SENTINEL_KEY = 'backend-guide:unrelated-guide';
 
+// Seeds the historical record shape directly: the legacy store no longer has a writer.
+function seedLegacyMilestones(journeyKey: string, slugs: string[]): void {
+  const existing = JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}');
+  const merged = Array.from(new Set([...(existing[journeyKey] ?? []), ...slugs]));
+  localStorage.setItem(
+    StorageKeys.MILESTONE_COMPLETION,
+    JSON.stringify({ ...existing, [journeyKey]: merged, [journeyKey.replace(/\/+$/, '')]: merged })
+  );
+}
+
 async function seedCompletedCourse(): Promise<void> {
-  for (const guideId of GUIDES) {
-    await milestoneCompletionStorage.markCompleted(PATH_KEY, guideId);
-  }
+  seedLegacyMilestones(PATH_KEY, GUIDES);
   await journeyCompletionStorage.set(PATH_KEY, 100);
 }
 
@@ -114,7 +123,7 @@ describe('resetPath — App Platform path (no url)', () => {
 
     await renderAndResetPath();
 
-    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set());
+    expect(milestoneCompletionStorage.getCompletedSync(PATH_KEY)).toEqual(new Set());
   });
 
   it('clears the journey completion percentage stored under the path cover key', async () => {
@@ -127,12 +136,12 @@ describe('resetPath — App Platform path (no url)', () => {
 
   it('also clears the bundled cover key, for a bundled path that carries no url', async () => {
     const bundledKey = `bundled:${PATH_ID}`;
-    await milestoneCompletionStorage.markCompleted(bundledKey, GUIDES[0]!);
+    seedLegacyMilestones(bundledKey, [GUIDES[0]!]);
     await journeyCompletionStorage.set(bundledKey, 100);
 
     await renderAndResetPath();
 
-    await expect(milestoneCompletionStorage.getCompleted(bundledKey)).resolves.toEqual(new Set());
+    expect(milestoneCompletionStorage.getCompletedSync(bundledKey)).toEqual(new Set());
     await expect(journeyCompletionStorage.get(bundledKey)).resolves.toBe(0);
   });
 
@@ -386,7 +395,7 @@ describe('resetPathGuides', () => {
 
     const targetKeys = [`bundled:${GUIDES[0]}`, `backend-guide:${GUIDES[0]}`];
     const siblingKeys = MEMBER_KEYS.filter((key) => !targetKeys.includes(key));
-    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set(GUIDES.slice(1)));
+    expect(milestoneCompletionStorage.getCompletedSync(PATH_KEY)).toEqual(new Set(GUIDES.slice(1)));
     await expect(journeyCompletionStorage.get(PATH_KEY)).resolves.toBe(100);
     const [journeys, interactives] = await Promise.all([
       journeyCompletionStorage.getAll(),
@@ -428,7 +437,7 @@ describe('resetPathGuides', () => {
       guideMetadata: {},
     });
     const trackKeys = [`bundled:${trackOnly}`, `backend-guide:${trackOnly}`];
-    await milestoneCompletionStorage.markCompleted(PATH_KEY, trackOnly);
+    seedLegacyMilestones(PATH_KEY, [trackOnly]);
     for (const key of trackKeys) {
       await journeyCompletionStorage.set(key, 100);
       await guideCompletionMarkStorage.set(key, true);
@@ -436,7 +445,7 @@ describe('resetPathGuides', () => {
 
     await renderAndResetPathGuides(PATH_ID, [{ id: trackOnly }]);
 
-    await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set());
+    expect(milestoneCompletionStorage.getCompletedSync(PATH_KEY)).toEqual(new Set());
     const journeys = await journeyCompletionStorage.getAll();
     for (const key of trackKeys) {
       expect(key in journeys).toBe(false);
@@ -467,9 +476,7 @@ describe('resetPathGuides', () => {
           MILESTONE_SLUGS.map((slug, i) => [slug, { title: slug, estimatedMinutes: 5, url: MILESTONE_URLS[i] }])
         ),
       });
-      for (const slug of MILESTONE_SLUGS) {
-        await milestoneCompletionStorage.markCompleted(PATH_URL, slug);
-      }
+      seedLegacyMilestones(PATH_URL, MILESTONE_SLUGS);
       for (const url of [PATH_URL, ...MILESTONE_URLS]) {
         await interactiveCompletionStorage.set(url, 100);
         await journeyCompletionStorage.set(url, 100);
@@ -477,9 +484,7 @@ describe('resetPathGuides', () => {
 
       await renderAndResetPathGuides(URL_PATH_ID, [{ id: MILESTONE_SLUGS[0]! }]);
 
-      await expect(milestoneCompletionStorage.getCompleted(PATH_URL)).resolves.toEqual(
-        new Set(MILESTONE_SLUGS.slice(1))
-      );
+      expect(milestoneCompletionStorage.getCompletedSync(PATH_URL)).toEqual(new Set(MILESTONE_SLUGS.slice(1)));
       await expect(interactiveCompletionStorage.get(MILESTONE_URLS[0]!)).resolves.toBe(0);
       await expect(journeyCompletionStorage.get(MILESTONE_URLS[0]!)).resolves.toBe(0);
       for (const url of [PATH_URL, ...MILESTONE_URLS.slice(1)]) {

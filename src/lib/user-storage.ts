@@ -36,7 +36,6 @@ import { isSafeResponseName, MAX_INPUT_LENGTH } from './input-value';
  * SECURITY NOTE: Data is NOT encrypted. Do not store sensitive information.
  */
 
-import type { ConditionInput } from '../types/requirements.types';
 import { AppEvents } from '@grafana/data';
 import { getAppEvents, usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
@@ -225,10 +224,10 @@ export function __resetQuotaWarningForTests(): void {
 // TYPE DEFINITIONS
 // ============================================================================
 
-import type { UserStorage, StorageBackend, GrafanaUserStorage } from '../types/storage.types';
+import type { UserStorage, GrafanaUserStorage } from '../types/storage.types';
 
 // Re-export for backward compatibility with existing imports
-export type { UserStorage, StorageBackend, GrafanaUserStorage };
+export type { UserStorage, GrafanaUserStorage };
 
 // ============================================================================
 // STORAGE IMPLEMENTATION
@@ -239,20 +238,12 @@ export type { UserStorage, StorageBackend, GrafanaUserStorage };
  * This allows non-React code to use Grafana's user storage when available
  */
 let globalStorageInstance: UserStorage | null = null;
-let storageInitialized = false;
 
 /**
  * Sets the global storage instance (called from React components with access to Grafana storage)
  */
 export function setGlobalStorage(storage: UserStorage): void {
-  const wasInitialized = storageInitialized;
   globalStorageInstance = storage;
-  storageInitialized = true;
-
-  // Only log once when first initialized
-  if (!wasInitialized) {
-    // Migration will be triggered separately
-  }
 }
 
 /**
@@ -824,47 +815,8 @@ function serializeMilestoneMutation<T>(operation: () => Promise<T>): Promise<T> 
  * Stored as a map of journeyBaseUrl -> array of completed milestone slugs.
  */
 export const milestoneCompletionStorage = {
-  async getCompleted(journeyBaseUrl: string, milestoneUrls: string[] = []): Promise<Set<string>> {
-    try {
-      const storage = createUserStorage();
-      const data = await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION);
-      return getStoredMilestoneSlugs(data ?? {}, journeyBaseUrl, milestoneUrls);
-    } catch (error) {
-      logger.warn('Failed to load milestone completion', { error });
-      return new Set();
-    }
-  },
-
-  async markCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<void> {
-    return serializeMilestoneMutation(async () => {
-      try {
-        const storage = createUserStorage();
-        const data = (await storage.getItem<Record<string, string[]>>(StorageKeys.MILESTONE_COMPLETION)) || {};
-        const canonicalKey = getLearningJourneyBaseUrl(journeyBaseUrl);
-        const existing = getStoredMilestoneSlugs(data, canonicalKey);
-        existing.add(milestoneSlug);
-        const completedSlugs = Array.from(existing);
-        for (const storedKey of Object.keys(data)) {
-          if (getLearningJourneyBaseUrl(storedKey) === canonicalKey) {
-            data[storedKey] = completedSlugs;
-          }
-        }
-        data[canonicalKey] = completedSlugs;
-        data[journeyBaseUrl] = completedSlugs;
-        await storage.setItem(StorageKeys.MILESTONE_COMPLETION, data);
-      } catch (error) {
-        logger.warn('Failed to save milestone completion', { error });
-      }
-    });
-  },
-
-  async isCompleted(journeyBaseUrl: string, milestoneSlug: string): Promise<boolean> {
-    const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
-    return completed.has(milestoneSlug);
-  },
-
   /**
-   * The single-milestone counterpart to `markCompleted`, for the per-milestone
+   * Removes a single milestone from the legacy record, for the per-milestone
    * toolbar reset. Without this, resetting one milestone left this legacy
    * record untouched, and `backfillLegacyMilestoneCompletion`
    * (learning-journey-helpers.ts) — which exists precisely to carry a
@@ -875,7 +827,7 @@ export const milestoneCompletionStorage = {
    * reason; this only removes the one slug being reset, leaving the rest of
    * the journey's legacy record intact.
    *
-   * `milestoneUrls` mirrors `getCompleted`/`getCompletedSync`'s own alias
+   * `milestoneUrls` mirrors `getCompletedSync`'s own alias
    * matching (`getStoredMilestoneSlugs`'s `exactKeys`): a legacy record can
    * be stored under a milestone's own URL, not only under a key that
    * canonicalizes to the journey base.
@@ -1547,9 +1499,9 @@ export const sectionDoneStorage = {
  * content key alone: the mark evidences the whole guide, so unlike
  * `sectionAcknowledgementStorage` there is no section to qualify it with.
  *
- * Two-state — `true` or absent (`null`) — for the same reason that
- * namespace is: reset paths call `.clear()` rather than writing a `false`
- * sentinel, so absence is the only "not marked" representation.
+ * Ordinary guides store `true`. Choice guides store the marked block keys
+ * in the same entry. All reset paths therefore remove both the mark and its
+ * path evidence, without removing the reader's saved input selections.
  */
 function guideCompletionMarkKey(contentKey: string): string {
   return buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, contentKey);
@@ -1560,8 +1512,10 @@ export const guideCompletionMarkStorage = {
   async get(contentKey: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const marked = await storage.getItem<boolean>(guideCompletionMarkKey(contentKey));
-      return marked === true ? true : null;
+      const marked = await storage.getItem<true | { choiceCompletionKeys: string[] }>(
+        guideCompletionMarkKey(contentKey)
+      );
+      return marked === true || (marked && Array.isArray(marked.choiceCompletionKeys)) ? true : null;
     } catch {
       return null;
     }
@@ -1576,17 +1530,33 @@ export const guideCompletionMarkStorage = {
    */
   isMarked(contentKey: string): boolean {
     try {
-      return localStorage.getItem(guideCompletionMarkKey(contentKey)) === 'true';
+      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
+      return marked === true || Array.isArray(marked?.choiceCompletionKeys);
     } catch {
       return false;
     }
   },
 
+  /** Read only content-keyed completion evidence, never saved input responses. */
+  getChoiceCompletionKeys(contentKey: string): string[] {
+    try {
+      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
+      return Array.isArray(marked?.choiceCompletionKeys)
+        ? marked.choiceCompletionKeys.filter((key: unknown): key is string => typeof key === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  },
+
   /** Only `true` is accepted; use `.clear()` to remove an entry. */
-  async set(contentKey: string, isMarked: true): Promise<void> {
+  async set(contentKey: string, isMarked: true, choiceCompletionKeys?: string[]): Promise<void> {
     try {
       const storage = createUserStorage();
-      await storage.setItem(guideCompletionMarkKey(contentKey), isMarked);
+      await storage.setItem(
+        guideCompletionMarkKey(contentKey),
+        choiceCompletionKeys === undefined ? isMarked : { choiceCompletionKeys }
+      );
     } catch (error) {
       logger.warn('Failed to save guide completion mark', { error });
     }
@@ -1711,160 +1681,6 @@ export const completionEmittedStorage = createCompletionGuardStorage(StorageKeys
 
 export const completionReportedStorage = createCompletionGuardStorage(StorageKeys.COMPLETION_REPORTED_PREFIX);
 
-/**
- * Full screen mode state storage operations
- * Used to persist recording state across page refreshes
- */
-export interface PersistedFullScreenState {
-  state: 'inactive' | 'active' | 'editing' | 'bundling' | 'bundling-review';
-  singleCapture: boolean;
-  initialSectionId: string | null;
-}
-
-export interface PersistedBundledStep {
-  selector: string;
-  action: string;
-  selectorInfo: {
-    method: string;
-    isUnique: boolean;
-    matchCount: number;
-    contextStrategy?: string;
-  };
-  interactiveComment?: string;
-  requirements?: ConditionInput;
-}
-
-export interface PersistedSectionInfo {
-  sectionId?: string;
-  sectionTitle?: string;
-  description?: string;
-  interactiveComment?: string;
-  requirements?: ConditionInput;
-}
-
-export const fullScreenModeStorage = {
-  /**
-   * Gets the persisted full screen mode state
-   */
-  async getState(): Promise<PersistedFullScreenState | null> {
-    try {
-      const storage = createUserStorage();
-      return await storage.getItem<PersistedFullScreenState>(StorageKeys.FULLSCREEN_MODE_STATE);
-    } catch {
-      return null;
-    }
-  },
-
-  /**
-   * Sets the full screen mode state
-   */
-  async setState(state: PersistedFullScreenState): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.setItem(StorageKeys.FULLSCREEN_MODE_STATE, state);
-    } catch (error) {
-      logger.warn('Failed to save full screen mode state', { error });
-    }
-  },
-
-  /**
-   * Gets the bundled steps
-   */
-  async getBundledSteps(): Promise<PersistedBundledStep[]> {
-    try {
-      const storage = createUserStorage();
-      return (await storage.getItem<PersistedBundledStep[]>(StorageKeys.FULLSCREEN_BUNDLED_STEPS)) || [];
-    } catch {
-      return [];
-    }
-  },
-
-  /**
-   * Sets the bundled steps
-   */
-  async setBundledSteps(steps: PersistedBundledStep[]): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.setItem(StorageKeys.FULLSCREEN_BUNDLED_STEPS, steps);
-    } catch (error) {
-      logger.warn('Failed to save bundled steps', { error });
-    }
-  },
-
-  /**
-   * Gets the bundling action type
-   */
-  async getBundlingAction(): Promise<string | null> {
-    try {
-      const storage = createUserStorage();
-      return await storage.getItem<string>(StorageKeys.FULLSCREEN_BUNDLING_ACTION);
-    } catch {
-      return null;
-    }
-  },
-
-  /**
-   * Sets the bundling action type
-   */
-  async setBundlingAction(action: string | null): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      if (action === null) {
-        await storage.removeItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION);
-      } else {
-        await storage.setItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION, action);
-      }
-    } catch (error) {
-      logger.warn('Failed to save bundling action', { error });
-    }
-  },
-
-  /**
-   * Gets the section info for bundling
-   */
-  async getSectionInfo(): Promise<PersistedSectionInfo | null> {
-    try {
-      const storage = createUserStorage();
-      return await storage.getItem<PersistedSectionInfo>(StorageKeys.FULLSCREEN_SECTION_INFO);
-    } catch {
-      return null;
-    }
-  },
-
-  /**
-   * Sets the section info for bundling
-   */
-  async setSectionInfo(info: PersistedSectionInfo | null): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      if (info === null) {
-        await storage.removeItem(StorageKeys.FULLSCREEN_SECTION_INFO);
-      } else {
-        await storage.setItem(StorageKeys.FULLSCREEN_SECTION_INFO, info);
-      }
-    } catch (error) {
-      logger.warn('Failed to save section info', { error });
-    }
-  },
-
-  /**
-   * Clears all full screen mode state
-   */
-  async clear(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await Promise.all([
-        storage.removeItem(StorageKeys.FULLSCREEN_MODE_STATE),
-        storage.removeItem(StorageKeys.FULLSCREEN_BUNDLED_STEPS),
-        storage.removeItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION),
-        storage.removeItem(StorageKeys.FULLSCREEN_SECTION_INFO),
-      ]);
-    } catch (error) {
-      logger.warn('Failed to clear full screen mode state', { error });
-    }
-  },
-};
-
 // ============================================================================
 // LEARNING PROGRESS STORAGE
 // ============================================================================
@@ -1957,41 +1773,6 @@ export const learningProgressStorage = {
   },
 
   /**
-   * Updates streak information
-   */
-  async updateStreak(streakDays: number, lastActivityDate: string): Promise<void> {
-    try {
-      await learningProgressStorage.update({ streakDays, lastActivityDate });
-    } catch (error) {
-      logger.warn('Failed to update streak', { error });
-    }
-  },
-
-  /**
-   * Checks if a badge has been earned
-   */
-  async hasBadge(badgeId: string): Promise<boolean> {
-    try {
-      const progress = await learningProgressStorage.get();
-      return progress.earnedBadges.some((b) => b.id === badgeId);
-    } catch {
-      return false;
-    }
-  },
-
-  /**
-   * Checks if a guide has been completed
-   */
-  async hasCompletedGuide(guideId: string): Promise<boolean> {
-    try {
-      const progress = await learningProgressStorage.get();
-      return progress.completedGuides.includes(guideId);
-    } catch {
-      return false;
-    }
-  },
-
-  /**
    * Removes specific guide IDs from completedGuides (for path reset).
    * Preserves badges and other progress.
    */
@@ -2048,23 +1829,33 @@ export const learningProgressStorage = {
  *   "guide-id-2": { "region": "us-east-1" }
  * }
  */
+let guideResponseWrites: Promise<void> = Promise.resolve();
+
+function queueGuideResponseWrite(write: () => Promise<void>): Promise<void> {
+  const pending = guideResponseWrites.then(write);
+  guideResponseWrites = pending.catch(() => {});
+  return pending;
+}
+
 export const guideResponseStorage = {
   async mergeResponses(guideId: string, responses: Record<string, string>): Promise<void> {
-    if (
-      ['__proto__', 'prototype', 'constructor'].includes(guideId) ||
-      Object.entries(responses).some(([key, value]) => !isSafeResponseName(key) || value.length > MAX_INPUT_LENGTH)
-    ) {
-      throw new Error('Invalid guide inputs');
-    }
-    const storage = createUserStorage();
-    const all = await guideResponseStorage.getAll();
-    const previous = Object.hasOwn(all, guideId) ? all[guideId] : {};
-    await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: { ...previous, ...responses } });
-    window.dispatchEvent(
-      new CustomEvent(StorageEvents.GuideResponseChanged, {
-        detail: { guideId, variableName: '*', value: undefined },
-      })
-    );
+    return queueGuideResponseWrite(async () => {
+      if (
+        ['__proto__', 'prototype', 'constructor'].includes(guideId) ||
+        Object.entries(responses).some(([key, value]) => !isSafeResponseName(key) || value.length > MAX_INPUT_LENGTH)
+      ) {
+        throw new Error('Invalid guide inputs');
+      }
+      const storage = createUserStorage();
+      const all = await guideResponseStorage.getAll();
+      const previous = Object.hasOwn(all, guideId) ? all[guideId] : {};
+      await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: { ...previous, ...responses } });
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.GuideResponseChanged, {
+          detail: { guideId, variableName: '*', value: undefined },
+        })
+      );
+    });
   },
 
   /**
@@ -2113,106 +1904,84 @@ export const guideResponseStorage = {
   },
 
   /**
-   * Checks if a response exists
-   */
-  async hasResponse(guideId: string, variableName: string): Promise<boolean> {
-    const value = await guideResponseStorage.getResponse(guideId, variableName);
-    return value !== undefined;
-  },
-
-  /**
    * Sets a response value and dispatches event for reactive updates
    */
   async setResponse(guideId: string, variableName: string, value: GuideResponseValue): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const all = await guideResponseStorage.getAll();
+    return queueGuideResponseWrite(async () => {
+      try {
+        const storage = createUserStorage();
+        const all = await guideResponseStorage.getAll();
 
-      const guideRecord = Object.hasOwn(all, guideId) ? (all[guideId] ?? {}) : {};
-      guideRecord[variableName] = value;
-      all[guideId] = guideRecord;
+        const previous = Object.hasOwn(all, guideId) ? (all[guideId] ?? {}) : {};
+        const guideRecord = { ...previous, [variableName]: value };
+        await storage.setItem(StorageKeys.GUIDE_RESPONSES, { ...all, [guideId]: guideRecord });
 
-      await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
-
-      // Dispatch event to notify listeners (for requirements re-evaluation)
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.GuideResponseChanged, {
-          detail: { guideId, variableName, value },
-        })
-      );
-    } catch (error) {
-      logger.warn('Failed to set guide response', { error });
-    }
+        // Dispatch event to notify listeners (for requirements re-evaluation)
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.GuideResponseChanged, {
+            detail: { guideId, variableName, value },
+          })
+        );
+      } catch (error) {
+        logger.warn('Failed to set guide response', { error });
+      }
+    });
   },
 
   /**
    * Deletes a response and dispatches event
    */
   async deleteResponse(guideId: string, variableName: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const all = await guideResponseStorage.getAll();
+    return queueGuideResponseWrite(async () => {
+      try {
+        const storage = createUserStorage();
+        const all = await guideResponseStorage.getAll();
 
-      const guideRecord = Object.hasOwn(all, guideId) ? all[guideId] : undefined;
-      if (guideRecord) {
-        delete guideRecord[variableName];
-
-        // Clean up empty guide entries
-        if (Object.keys(guideRecord).length === 0) {
-          delete all[guideId];
+        const previous = Object.hasOwn(all, guideId) ? all[guideId] : undefined;
+        if (previous) {
+          const guideRecord = { ...previous };
+          delete guideRecord[variableName];
+          const next = { ...all, [guideId]: guideRecord };
+          if (Object.keys(guideRecord).length === 0) {
+            delete next[guideId];
+          }
+          await storage.setItem(StorageKeys.GUIDE_RESPONSES, next);
         }
 
-        await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
+        // Dispatch event to notify listeners
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.GuideResponseChanged, {
+            detail: { guideId, variableName, value: undefined },
+          })
+        );
+      } catch (error) {
+        logger.warn('Failed to delete guide response', { error });
       }
-
-      // Dispatch event to notify listeners
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.GuideResponseChanged, {
-          detail: { guideId, variableName, value: undefined },
-        })
-      );
-    } catch (error) {
-      logger.warn('Failed to delete guide response', { error });
-    }
+    });
   },
 
   /**
    * Clears all responses for a specific guide
    */
   async clearForGuide(guideId: string): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      const all = await guideResponseStorage.getAll();
+    return queueGuideResponseWrite(async () => {
+      try {
+        const storage = createUserStorage();
+        const all = await guideResponseStorage.getAll();
 
-      delete all[guideId];
-      await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
+        const next = { ...all };
+        delete next[guideId];
+        await storage.setItem(StorageKeys.GUIDE_RESPONSES, next);
 
-      // Dispatch event to notify listeners
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.GuideResponseChanged, {
-          detail: { guideId, variableName: '*', value: undefined },
-        })
-      );
-    } catch (error) {
-      logger.warn('Failed to clear guide responses', { error });
-    }
-  },
-
-  /**
-   * Clears all guide responses (for testing/reset)
-   */
-  async clearAll(): Promise<void> {
-    try {
-      const storage = createUserStorage();
-      await storage.removeItem(StorageKeys.GUIDE_RESPONSES);
-
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.GuideResponseChanged, {
-          detail: { guideId: '*', variableName: '*', value: undefined },
-        })
-      );
-    } catch (error) {
-      logger.warn('Failed to clear all guide responses', { error });
-    }
+        // Dispatch event to notify listeners
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.GuideResponseChanged, {
+            detail: { guideId, variableName: '*', value: undefined },
+          })
+        );
+      } catch (error) {
+        logger.warn('Failed to clear guide responses', { error });
+      }
+    });
   },
 };

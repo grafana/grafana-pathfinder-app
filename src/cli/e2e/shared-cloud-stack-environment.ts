@@ -8,7 +8,7 @@
  *
  * Scope: this isolates per-identity state (preferences, stars, sessions)
  * between chains. It does NOT reset org-global data (dashboards, data sources,
- * folders) created by guides — unsafe guides require isolated stack execution.
+ * folders) created by guides — non-readonly execution requires separate authorization or isolation.
  *
  * One SharedCloudStackEnvironment owns service-account lifecycle for one existing
  * cloud stack. Multi-instance runs create one per target origin with configured

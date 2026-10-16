@@ -93,6 +93,9 @@ export interface ContentMetadata {
    */
   packageManifest?: Record<string, unknown>;
 
+  /** Owning path/journey manifest retained when packageManifest describes a loaded member. */
+  journeyManifest?: Record<string, unknown>;
+
   /**
    * Recommendation-level repository (sibling of the manifest in the V1 wire
    * shape; V1PackageManifest has no repository of its own). Carried alongside
@@ -109,11 +112,9 @@ export interface ContentMetadata {
    * Foundations-relative navigation chrome, and no cover-page
    * misclassification — see `fetchPackageContent`'s isTrackOnlyMember
    * check). This field exists solely so `recordGuideCompletionForSurface`
-   * can still route its completion through the same
-   * `milestoneCompletionStorage` write a real milestone gets — keyed on
-   * this guide's own identity, not a fake milestone index — so the cover
-   * page's per-track row lock/unlock (which reads that store) sees it as
-   * done. `resolveExpectedMilestoneIds` never sees a real `milestones` list
+   * can still route its completion through `markMilestoneDone` like a real
+   * milestone — keyed on this guide's own identity, not a fake milestone
+   * index — so the cover page's per-track row lock/unlock sees it as done. `resolveExpectedMilestoneIds` never sees a real `milestones` list
    * for this path, so completing this guide can never satisfy the
    * whole-journey completion trigger (Path Tracks are not a completion
    * authority — COMPLETION-MODEL.md decision 10).
@@ -189,6 +190,8 @@ export interface Milestone {
   id?: string;
   number: number;
   title: string;
+  packageManifest?: Record<string, unknown>;
+  repository?: string;
   /** Author-provided estimate from the member's own manifest. Absent when not authored — never a guessed default. */
   estimatedMinutes?: number;
   url: string;

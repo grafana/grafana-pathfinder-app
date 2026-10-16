@@ -5,6 +5,7 @@ import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
 import { Icon, useStyles2, Alert, Button } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
+import { Prerequisites } from '../Prerequisites';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
@@ -101,7 +102,12 @@ function hasExpandableDetails(recommendation: Recommendation): boolean {
     Boolean(recommendation.pendingMilestoneIds?.length) ||
     Boolean(recommendation.pendingRecommendIds?.length) ||
     Boolean(recommendation.pendingSuggestIds?.length);
-  if (hasPendingDetails || Boolean(recommendation.milestones?.length)) {
+  const prerequisites = recommendation.manifest?.prerequisites;
+  if (
+    hasPendingDetails ||
+    Boolean(recommendation.milestones?.length) ||
+    (Array.isArray(prerequisites) && prerequisites.length > 0)
+  ) {
     return true;
   }
 
@@ -356,6 +362,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         details={
           hasExpandableDetails(recommendation) ? (
             <>
+              <Prerequisites prerequisites={recommendation.manifest?.prerequisites} />
               {recommendation.isResolvingDeferred && !recommendation.milestones && (
                 <div className={cx(skeletonStyles.skeleton, styles.deferredSkeleton)}>
                   {Array.from({

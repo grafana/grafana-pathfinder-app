@@ -57,6 +57,15 @@ export interface Author {
   team?: string;
 }
 
+export type PrerequisiteFormat = 'markdown';
+
+export interface Prerequisite {
+  id: string;
+  /** Literal by default; only the explicitly supported format opts into Markdown. */
+  label: string;
+  format?: PrerequisiteFormat;
+}
+
 // ============ TARGETING ============
 
 /**
@@ -248,6 +257,7 @@ export interface PackageMetadataFields {
   provides?: string[];
   conflicts?: string[];
   replaces?: string[];
+  prerequisites?: Prerequisite[];
 }
 
 // ============ MANIFEST (manifest.json) ============
@@ -286,6 +296,7 @@ export interface ManifestJson {
   provides?: string[];
   conflicts?: string[];
   replaces?: string[];
+  prerequisites?: Prerequisite[];
 
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;

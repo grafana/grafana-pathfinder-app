@@ -159,6 +159,75 @@ describe('RecommendationsSection', () => {
     expect(screen.queryByText('Guide')).not.toBeInTheDocument();
   });
 
+  it.each([
+    { featured: false, hasMilestones: true },
+    { featured: true, hasMilestones: true },
+    { featured: false, hasMilestones: false },
+    { featured: true, hasMilestones: false },
+  ])(
+    'shows prerequisites in expanded details with featured=$featured and milestones=$hasMilestones',
+    ({ featured, hasMilestones }) => {
+      const recommendation = {
+        title: 'Prometheus learning path',
+        url: '',
+        contentUrl: 'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
+        type: 'package' as const,
+        summary: 'Learn Prometheus step by step.',
+        manifest: {
+          id: 'prometheus-lj',
+          type: 'path',
+          prerequisites: [
+            {
+              id: 'prometheus',
+              label: 'A running [Prometheus server](https://example.com/prometheus).',
+              format: 'markdown',
+            },
+          ],
+        },
+        summaryExpanded: true,
+        totalSteps: hasMilestones ? 1 : 0,
+        milestones: hasMilestones
+          ? [{ number: 1, title: 'Install Prometheus', url: 'https://example.com/step-1' }]
+          : [],
+      };
+      render(
+        <RecommendationsSection
+          recommendations={featured ? [] : [recommendation]}
+          featuredRecommendations={featured ? [recommendation] : []}
+          customGuides={[]}
+          customGuidePaths={[]}
+          customGuideOrphans={[]}
+          isLoadingCustomGuides={false}
+          customGuidesExpanded
+          suggestedGuidesExpanded
+          isLoadingRecommendations={false}
+          isLoadingContext={false}
+          recommendationsError={null}
+          otherDocsExpanded={false}
+          showEnableRecommenderBanner={false}
+          openLearningJourney={jest.fn()}
+          openDocsPage={jest.fn()}
+          toggleCustomGuidesExpansion={jest.fn()}
+          toggleSuggestedGuidesExpansion={jest.fn()}
+          toggleSummaryExpansion={jest.fn()}
+          toggleOtherDocsExpansion={jest.fn()}
+        />
+      );
+
+      const prerequisite = screen.getByRole('link', { name: 'Prometheus server' });
+      expect(screen.getByRole('note')).toHaveTextContent('Prerequisites');
+      expect(prerequisite).toHaveAttribute('target', '_blank');
+      expect(prerequisite).toHaveAttribute('rel', 'noopener noreferrer');
+      if (hasMilestones) {
+        const milestone = screen.getByText('Install Prometheus');
+        expect(prerequisite.compareDocumentPosition(milestone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      expect(
+        screen.getByRole('button', { name: hasMilestones ? 'Hide modules' : 'Hide related content' })
+      ).toBeVisible();
+    }
+  );
+
   it('shows the milestone duration only when estimatedMinutes is authored, omitting it entirely otherwise', () => {
     render(
       <RecommendationsSection

@@ -242,7 +242,7 @@ describe('shared guide chain', () => {
 
     const report = generateMultiGuideReport(outcome.results, undefined, { id: 'test-path', type: 'path' });
 
-    expect(report.schemaVersion).toBe('1.1.0');
+    expect(report.schemaVersion).toBe('1.2.0');
     expect(report.reports.map((item) => item.guide.id)).toEqual(['first', 'second', 'dependent']);
     expect(MultiGuideReportSchema.safeParse(report).success).toBe(true);
   });

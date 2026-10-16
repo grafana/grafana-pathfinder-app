@@ -249,7 +249,7 @@ Surfaces novel external learning paths for the My Learning "Discover more" secti
 
 The module depends on several storage instances:
 
-- `learningProgressStorage` — persists `LearningProgress` and provides focused badge, streak, guide-removal, and reset operations
+- `learningProgressStorage` — persists `LearningProgress` and provides focused badge, guide-removal, and reset operations
 - `interactiveStepStorage` — per-guide interactive step progress (used by `resetPath`)
 - `interactiveCompletionStorage` — interactive guide completion flags (used by `resetPath`)
 - `journeyCompletionStorage` — journey-level completion (used by `resetPath`)

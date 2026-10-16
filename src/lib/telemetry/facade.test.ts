@@ -9,6 +9,7 @@ import {
   recordSettingsStoreResolved,
   recordStartupSettings,
   recordPanelReady,
+  recordRecommendCompletions,
   recordRecommenderFallback,
   recordRecommenderRequest,
   recordRequirementsExhausted,
@@ -43,6 +44,37 @@ describe('measurement and event domain operations', () => {
       fallback_tier: 'bundled+static',
       error_type: 'unavailable',
     });
+  });
+
+  it('recordRecommendCompletions buckets the item count and never carries guide data', () => {
+    recordRecommendCompletions('ok', 0, false);
+    recordRecommendCompletions('ok', 7, false);
+    recordRecommendCompletions('ok', 50, false);
+    recordRecommendCompletions('ok', 249, false);
+    recordRecommendCompletions('ok', 250, true);
+    recordRecommendCompletions('timeout');
+
+    const calls = mockPushFaroEvent.mock.calls.filter(([name]) => name === 'pathfinder_recommend_completions');
+    expect(calls.map(([, attrs]) => attrs)).toEqual([
+      { outcome: 'ok', item_bucket: '0', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '1-10', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '11-50', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '51-249', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '250', truncated: 'true' },
+      { outcome: 'timeout' },
+    ]);
+  });
+
+  it('recordRecommendCompletions emits the wait as a namespaced measurement only when given', () => {
+    recordRecommendCompletions('timeout', undefined, undefined, 500);
+    recordRecommendCompletions('disabled');
+
+    expect(mockPushFaroMeasurement).toHaveBeenCalledTimes(1);
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_recommend_completions_wait',
+      { recommend_completions_wait_ms: 500 },
+      { outcome: 'timeout' }
+    );
   });
 
   it('recordContentFetch and recordContentFetchFallback normalize the URL before it crosses the boundary', () => {

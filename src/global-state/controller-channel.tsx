@@ -11,6 +11,7 @@ import {
 } from '../lib/pairing-manager';
 import { generateSessionKeyPair } from '../security/cross-tab-crypto';
 import {
+  DEFAULT_STEP_WAIT_MS,
   SIGNED_MESSAGE_KINDS,
   type CheckRequirementsMessage,
   type CrossTabMessage,
@@ -366,7 +367,7 @@ export function ControllerChannelProvider({
   );
 
   const awaitStepResult = useCallback<ControllerChannel['awaitStepResult']>(
-    (stepId, runId, timeoutMs = 15 * 60_000) =>
+    (stepId, runId, timeoutMs = DEFAULT_STEP_WAIT_MS) =>
       new Promise<RemoteStepResult>((resolve) => {
         const key = `${stepId}:${runId}`;
         const timer = setTimeout(() => {

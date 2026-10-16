@@ -20,7 +20,8 @@ import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { resetContentKeyForTests } from '../../global-state/content-key';
-import { guideCompletionMarkStorage } from '../../lib/user-storage';
+import { guideCompletionMarkStorage, guideResponseStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import { evictAllContentCaches, peekGuidePercentage } from '../../global-state/completion-store';
 import { StorageEvents } from '../../lib/event-names';
 import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { UNTRACKED_COMPLETION, trackedCompletion } from '../../test-utils/content-renderer-completion';
@@ -128,6 +129,34 @@ async function clickWhenReady(): Promise<void> {
   fireEvent.click(button);
 }
 
+function makeChoiceContent(url = 'bundled:optional-choice-reload'): RawContent {
+  return makeContent({
+    url,
+    type: 'interactive',
+    content: JSON.stringify({
+      id: 'optional-choice-reload',
+      title: 'Optional choices',
+      blocks: [
+        {
+          type: 'input',
+          inputType: 'checkbox-group',
+          prompt: 'Signals?',
+          variableName: 'signals',
+          choices: [{ id: 'logs', text: 'Logs' }],
+        },
+        { type: 'markdown', id: 'common', content: 'Common content' },
+        {
+          type: 'section',
+          id: 'logs',
+          requirements: ['var-signals:includes:logs'],
+          whenRequirementsUnmet: 'hide',
+          blocks: [{ type: 'markdown', id: 'logs-step', content: 'Logs' }],
+        },
+      ],
+    }),
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
@@ -137,6 +166,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.restoreAllMocks();
+  evictAllContentCaches();
   jest.useRealTimers();
   localStorage.clear();
   delete window.__DocsPluginActiveTabUrl;
@@ -144,6 +175,46 @@ afterEach(() => {
 });
 
 describe('ContentRenderer — the universal Mark complete control', () => {
+  it('does not record completion while an optional choice guide reloads saved selections', async () => {
+    const content = makeChoiceContent();
+    let hydrate!: (responses: Record<string, string>) => void;
+    jest.spyOn(guideResponseStorage, 'getForGuide').mockReturnValue(
+      new Promise((resolve) => {
+        hydrate = resolve;
+      })
+    );
+    await guideCompletionMarkStorage.set(content.url, true, ['common']);
+    const savePercentage = jest.spyOn(interactiveCompletionStorage, 'set');
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(savePercentage).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.markComplete.button)).toBeDisabled();
+    await act(async () => {
+      hydrate({ signals: 'logs' });
+    });
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(66));
+    expect(recordCompletion).not.toHaveBeenCalled();
+    expect(savePercentage.mock.calls.some(([, percent]) => percent === 100)).toBe(false);
+  });
+  it('keeps marked preview paths in memory without saving completion or input responses', async () => {
+    const content = makeChoiceContent('block-editor://preview/choice-regression');
+    jest.spyOn(guideResponseStorage, 'getForGuide').mockResolvedValue({ signals: 'logs' });
+    const saveResponses = jest.spyOn(guideResponseStorage, 'setResponse');
+    const saveMark = jest.spyOn(guideCompletionMarkStorage, 'set');
+    const savePercentage = jest.spyOn(interactiveCompletionStorage, 'set');
+    render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
+    await clickWhenReady();
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(100));
+    await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
+    expect(saveResponses).not.toHaveBeenCalled();
+    expect(saveMark).not.toHaveBeenCalled();
+    expect(savePercentage).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['a prose-only guide', makeContent()],
     ['a guide with interactive steps', makeContent({ content: WITH_INTERACTIVE_STEP })],

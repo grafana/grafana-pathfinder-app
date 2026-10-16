@@ -1,7 +1,8 @@
 import { isAllowedContentUrl } from '../security';
-import { packageIdSchema, ManifestJsonObjectSchema } from '../types/package.schema';
+import { packageIdSchema } from '../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from './runtime-manifest';
 import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
-import type { RepositoryJson } from '../types/package.types';
+import { getManifestMemberIds, type RepositoryJson } from '../types/package.types';
 import type { CatalogFilters, CatalogPackage } from '../types/package-catalog.types';
 import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
 import type { CustomGuideRepositoryEntry } from './custom-guide-repository-client';
@@ -23,13 +24,15 @@ function activityCount(stats: unknown): number | undefined {
   return parsed.success && parsed.data.version === GUIDE_STATS_VERSION ? parsed.data.completableBlockCount : undefined;
 }
 
-function members(manifest?: Record<string, unknown>): string[] | undefined {
+const ORGANIZATION_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,252}$/;
+
+const isPublicId = (id: string) => packageIdSchema.safeParse(id).success;
+
+function members(manifest?: Record<string, unknown>, isValidId = isPublicId): string[] | undefined {
   if (!Array.isArray(manifest?.milestones)) {
     return undefined;
   }
-  const ids = manifest.milestones.filter(
-    (id): id is string => typeof id === 'string' && packageIdSchema.safeParse(id).success
-  );
+  const ids = manifest.milestones.filter((id): id is string => typeof id === 'string' && isValidId(id));
   return ids.length === manifest.milestones.length ? ids : undefined;
 }
 
@@ -69,7 +72,7 @@ export function onlineCatalog(response: PackageRecommendationsResponse): Catalog
     if (!isAllowedContentUrl(url)) {
       return [];
     }
-    const parsed = ManifestJsonObjectSchema.safeParse(entry.manifest);
+    const parsed = RuntimeManifestJsonObjectSchema.safeParse(entry.manifest);
     const manifest = parsed.success ? parsed.data : undefined;
     if (EXCLUDED_BUNDLED_IDS.has(entry.id) || manifest?.category === 'testing') {
       return [];
@@ -106,11 +109,7 @@ export function onlineCatalog(response: PackageRecommendationsResponse): Catalog
 
 export function organizationCatalog(entries: CustomGuideRepositoryEntry[]): CatalogPackage[] {
   return entries.flatMap((entry) => {
-    if (
-      entry.status !== 'published' ||
-      typeof entry.id !== 'string' ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,252}$/.test(entry.id)
-    ) {
+    if (entry.status !== 'published' || typeof entry.id !== 'string' || !ORGANIZATION_ID.test(entry.id)) {
       return [];
     }
     const manifest = { ...entry.manifest, id: entry.id, repository: 'app-platform' };
@@ -124,7 +123,7 @@ export function organizationCatalog(entries: CustomGuideRepositoryEntry[]): Cata
         source: 'organization' as const,
         category: displayText(entry.manifest?.category),
         url: `backend-guide:${entry.id}`,
-        memberIds: members(manifest),
+        memberIds: members(manifest, (id) => ORGANIZATION_ID.test(id)),
         packageInfo: { packageId: entry.id, packageManifest: manifest, repository: 'app-platform' },
       },
     ];
@@ -158,6 +157,19 @@ export function mergeCatalog(...sources: CatalogPackage[][]): CatalogPackage[] {
     seen.add(identity);
     return true;
   });
+}
+
+export function withoutPathMembers(items: CatalogPackage[]): CatalogPackage[] {
+  const members = new Set(
+    items.flatMap((item) =>
+      item.format === 'path'
+        ? [...(item.memberIds ?? []), ...getManifestMemberIds(item.packageInfo?.packageManifest)].map(
+            (id) => `${item.source}:${id}`
+          )
+        : []
+    )
+  );
+  return items.filter((item) => item.format === 'path' || !members.has(`${item.source}:${item.id}`));
 }
 
 export function filterCatalog(items: CatalogPackage[], filters: CatalogFilters): CatalogPackage[] {
