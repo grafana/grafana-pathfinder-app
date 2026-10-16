@@ -141,7 +141,8 @@ export function createPassiveObserver(
           changed();
         }
       },
-      (touched) => observe((action, since) => matchesFormfillState(action, (field) => touched(field, since)))
+      (touched) => observe((action, since) => matchesFormfillState(action, (field) => touched(field, since))),
+      paused
     );
     const navigation = observePassiveNavigation(() => {
       observe(matchesPassiveNavigation);

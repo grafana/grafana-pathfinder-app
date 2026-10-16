@@ -419,8 +419,10 @@ export class CompletionCoordinator {
       }));
   }
 
+  executing = () => [...this.entries.values()].some((entry) => entry.step.executing);
+
   observe(matches: (action: ObservedAction, since: number) => boolean) {
-    if ([...this.entries.values()].some((entry) => entry.step.executing)) {
+    if (this.executing()) {
       return;
     }
     for (const entry of this.prioritized()) {
@@ -439,7 +441,7 @@ export class CompletionCoordinator {
   }
 
   observeIndex(id: string, index: number) {
-    if ([...this.entries.values()].some((entry) => entry.step.executing)) {
+    if (this.executing()) {
       return;
     }
     const entry = this.entries.get(id);

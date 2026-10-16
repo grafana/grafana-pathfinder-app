@@ -809,3 +809,57 @@ it('provides no coordinator to a tab whose URL still says controller=1 outside c
     window.history.replaceState({}, '', previous);
   }
 });
+
+it('does not complete a formfill step from a field that assistance filled on another step', async () => {
+  jest.useFakeTimers();
+  try {
+    const done = jest.fn();
+    function FormStep() {
+      useObservedCompletion({
+        stepId: 'set-url',
+        executing: false,
+        eligible: true,
+        onComplete: done,
+        actions: [
+          { targetAction: 'formfill', refTarget: 'input[aria-label="url"]', targetValue: 'http://localhost:9090' },
+        ],
+        analytics: { location: 'test', targetAction: 'formfill', stepMeta: { stepId: 'set-url' } },
+      });
+      return null;
+    }
+    const tree = (executing: boolean) => (
+      <>
+        <input aria-label="url" defaultValue="http://localhost:9090" />
+        <button>Elsewhere</button>
+        <CompletionObservationProvider contentKey="guide">
+          <FormStep />
+          <Step executing={executing} onComplete={jest.fn()} />
+        </CompletionObservationProvider>
+      </>
+    );
+    const advance = async (ms: number) => {
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    };
+    const root = render(tree(true));
+    act(() => {
+      screen.getByLabelText('url').focus();
+    });
+    fireEvent.input(screen.getByLabelText('url'));
+    root.rerender(tree(false));
+    fireEvent.click(screen.getByText('Elsewhere'));
+    await advance(500);
+    expect(done).not.toHaveBeenCalled();
+
+    act(() => {
+      screen.getByText('Elsewhere').focus();
+      screen.getByLabelText('url').focus();
+    });
+    fireEvent.click(screen.getByText('Elsewhere'));
+    await advance(500);
+    expect(done).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
+});

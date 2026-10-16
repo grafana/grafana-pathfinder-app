@@ -192,7 +192,8 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
               }
             },
             (touched) =>
-              coordinator.observe((action, since) => matchesFormfillState(action, (field) => touched(field, since)))
+              coordinator.observe((action, since) => matchesFormfillState(action, (field) => touched(field, since))),
+            coordinator.executing
           )
         : () => {};
     let observe = observeActions();

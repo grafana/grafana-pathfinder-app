@@ -99,6 +99,36 @@ describe('formfill state', () => {
     }
   });
 
+  it('does not count a field that assistance focused or filled while paused', () => {
+    document.body.innerHTML =
+      '<input aria-label="url" value="http://localhost:9090"><button id="elsewhere">Elsewhere</button>';
+    jest.useFakeTimers();
+    try {
+      let assisting = false;
+      const settled = jest.fn((touched: (field: Element) => boolean) =>
+        matchesFormfillState(formfill('input[aria-label="url"]', 'http://localhost:9090'), touched)
+      );
+      const stop = observePassiveActions(
+        () => {},
+        settled,
+        () => assisting
+      );
+      const field = document.querySelector<HTMLInputElement>('input')!;
+      field.focus();
+      document.querySelector<HTMLButtonElement>('#elsewhere')!.focus();
+      assisting = true;
+      field.focus();
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      assisting = false;
+      eventOn(document.querySelector('#elsewhere')!);
+      jest.advanceTimersByTime(200);
+      expect(settled).toHaveLastReturnedWith(false);
+      stop();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('reads the choice a select renders beside its cleared input', () => {
     document.body.innerHTML = `
       <div class="value-container">

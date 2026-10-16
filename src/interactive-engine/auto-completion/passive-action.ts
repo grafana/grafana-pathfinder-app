@@ -155,7 +155,8 @@ export function matchesPassiveAction(action: ObservedAction, event: Event): bool
 
 export function observePassiveActions(
   onEvent: (event: Event) => void,
-  onSettled?: (touched: (field: Element, since?: number) => boolean) => void
+  onSettled?: (touched: (field: Element, since?: number) => boolean) => void,
+  paused: () => boolean = () => false
 ): () => void {
   const values = new WeakMap<Element, string>();
   const touchedFields = new WeakMap<Element, number>();
@@ -167,9 +168,16 @@ export function observePassiveActions(
       settling = setTimeout(() => onSettled(touched), SETTLE_MS);
     }
   };
+  const stamp = (field: Element) => {
+    if (paused()) {
+      touchedFields.delete(field);
+    } else {
+      touchedFields.set(field, nextObservationStamp());
+    }
+  };
   const touch = (event: Event) => {
     if (isFormField(event.target)) {
-      touchedFields.set(event.target, nextObservationStamp());
+      stamp(event.target);
     }
   };
   const listener = (event: Event) => {
@@ -178,7 +186,7 @@ export function observePassiveActions(
     }
     const target = event.target;
     if ((event.type === 'input' || event.type === 'change') && isFormField(target)) {
-      touchedFields.set(target, nextObservationStamp());
+      stamp(target);
       if (values.get(target) === target.value) {
         return;
       }
