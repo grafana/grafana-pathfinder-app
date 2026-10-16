@@ -44,6 +44,69 @@ jest.mock('../../docs-retrieval', () => ({
 
 const recordCompletion = jest.mocked(recordGuideCompletionForSurface);
 
+jest.mock('../completion-panel/ReaderCompletionPanel', () => ({
+  __esModule: true,
+  default: ({ onContinue }: { onContinue?: () => void }) => (
+    <div data-testid="completion-panel">
+      Guide complete
+      {onContinue && <button onClick={onContinue}>Continue to next module</button>}
+    </div>
+  ),
+}));
+
+describe('completion panel integration', () => {
+  it('restores guide labels and analytics for a flag-off track-only member', async () => {
+    const content = makeContent({
+      type: 'learning-journey',
+      metadata: { title: 'Track guide', trackMemberBaseUrl: baseUrl },
+    });
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled={false}
+        completionSequence={{ currentMilestone: 1, milestones, baseUrl }}
+        onContinueToNextMilestone={jest.fn()}
+      />
+    );
+    expect(await screen.findByRole('button', { name: 'Mark complete' })).toBeInTheDocument();
+    await clickWhenReady();
+    const event = markCompleteEvents().at(-1)?.[1];
+    expect(event).toEqual(expect.objectContaining({ completion_context: 'guide' }));
+    expect(event).not.toHaveProperty('current_milestone');
+    expect(event).not.toHaveProperty('total_milestones');
+    expect(screen.queryByTestId('completion-panel')).not.toBeInTheDocument();
+  });
+
+  it('keeps the completed module visible until the reader chooses the next module', async () => {
+    const content = makeMilestone();
+    const onContinue = jest.fn();
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled
+        onContinueToNextMilestone={onContinue}
+      />
+    );
+    const complete = await screen.findByRole('button', { name: 'Complete milestone' });
+    await waitFor(() => expect(complete).toBeEnabled());
+    fireEvent.click(complete);
+    expect(await screen.findByTestId('completion-panel')).toBeInTheDocument();
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(onContinue).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to next module' }));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps author previews on the existing footer even when the panel is enabled', async () => {
+    render(<ContentRenderer content={makePreview()} completion={UNTRACKED_COMPLETION} completionPanelEnabled />);
+    await clickWhenReady();
+    expect(screen.queryByTestId('completion-panel')).not.toBeInTheDocument();
+    expect(recordCompletion).not.toHaveBeenCalled();
+  });
+});
+
 function markCompleteEvents(): unknown[][] {
   return reportAppInteraction.mock.calls.filter(([interaction]) => interaction === UserInteraction.MarkCompleteClicked);
 }

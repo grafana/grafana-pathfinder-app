@@ -48,6 +48,12 @@ type FeatureFlag =
  * Naming convention: prefix with component name (e.g., pathfinder.feature-name)
  */
 const pathfinderFeatureFlags = {
+  'pathfinder.completion-panel': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'completion_panel',
+  },
   'pathfinder.package-browser': {
     valueType: 'boolean',
     values: [true, false],

@@ -223,7 +223,7 @@ describe('RecommendationsSection', () => {
         expect(prerequisite.compareDocumentPosition(milestone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       }
       expect(
-        screen.getByRole('button', { name: hasMilestones ? 'Hide modules' : 'Hide related content' })
+        screen.getByRole('button', { name: hasMilestones ? 'Hide milestones' : 'Hide related content' })
       ).toBeVisible();
     }
   );
@@ -487,7 +487,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'Show modules' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show milestones' })).toBeInTheDocument();
     expect(screen.getByText('Learn alerting basics.')).toBeInTheDocument();
   });
 

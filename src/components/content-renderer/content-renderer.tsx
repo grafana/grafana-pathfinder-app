@@ -100,7 +100,12 @@ import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
+import { config } from '@grafana/runtime';
+import { t } from '@grafana/i18n';
+import { MyLearningErrorBoundary } from '../docs-panel/components/MyLearningErrorBoundary';
 import { resolveFullScreenFallbackLocation, resolveFullScreenManifestLocation } from './full-screen-fallback-location';
+
+const ReaderCompletionPanel = React.lazy(() => import('../completion-panel/ReaderCompletionPanel'));
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -178,7 +183,9 @@ interface ContentRendererProps {
    * — leave it unset, which downgrades the label to "Mark complete"; the
    * control itself is never conditional.
    */
-  onContinueToNextMilestone?: () => void;
+  onContinueToNextMilestone?: () => void | Promise<void>;
+  completionSequence?: { currentMilestone: number; milestones: Milestone[]; baseUrl?: string };
+  completionPanelEnabled?: boolean;
   /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
   onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
   /** Forwarded to `LearningPathTableOfContents`'s own prop of the same name — see its doc. */
@@ -217,6 +224,8 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   onContentReady,
   completion,
   onContinueToNextMilestone,
+  completionSequence,
+  completionPanelEnabled = false,
   onActiveTrackChange,
   initialActiveTrackId,
   className,
@@ -224,6 +233,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
 }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
+  const scope = `${config?.namespace ?? ''}:${config?.bootData?.user?.orgId ?? ''}:${config?.bootData?.user?.id ?? ''}`;
   const guideCompleteCalledRef = useRef(false);
   const resolveOwnerContentKey = useCallback(() => resolveGuideContentKey(content.url), [content.url]);
 
@@ -601,13 +611,41 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   );
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
-      context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
+      key={completionPanelEnabled ? `${scope}:${content.url}` : undefined}
+      context={
+        (completionPanelEnabled && completionSequence) || (content.type === 'learning-journey' && journey)
+          ? 'milestone'
+          : 'guide'
+      }
       contentUrl={content.url}
       completionIdentity={completionIdentity}
-      currentMilestone={journey?.currentMilestone}
-      totalMilestones={journey?.totalMilestones}
+      currentMilestone={
+        (completionPanelEnabled ? completionSequence?.currentMilestone : undefined) ?? journey?.currentMilestone
+      }
+      totalMilestones={
+        (completionPanelEnabled ? completionSequence?.milestones.length : undefined) ?? journey?.totalMilestones
+      }
       onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
+      renderCompleted={
+        completionPanelEnabled && completion.kind === 'tracked' && !isBlockEditorPreviewUrl(content.url)
+          ? (celebrating) => (
+              <MyLearningErrorBoundary
+                fallbackMessage={t('completionPanel.unavailable', 'Completed. Next steps could not be loaded.')}
+              >
+                <React.Suspense fallback={<LoadingPlaceholder text={t('completionPanel.loading', 'Completed')} />}>
+                  <ReaderCompletionPanel
+                    content={content}
+                    completionIdentity={completionIdentity}
+                    sequence={completionSequence ?? journey}
+                    onContinue={onContinueToNextMilestone}
+                    celebrating={celebrating}
+                  />
+                </React.Suspense>
+              </MyLearningErrorBoundary>
+            )
+          : undefined
+      }
     />
   );
 

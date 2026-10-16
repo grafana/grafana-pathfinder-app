@@ -9,6 +9,8 @@ import { findDocPage } from '../../utils/find-doc-page';
 import { useGlobalActiveTabExposure } from '../docs-panel/hooks/useGlobalActiveTabExposure';
 import type { ContentFetchResult, RawContent } from '../../types/content.types';
 
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: (_flag: string, fallback: boolean) => fallback }));
+
 jest.mock('../../lib/telemetry/facade', () => ({
   ...jest.requireActual('../../lib/telemetry/facade'),
   recordGuideRender: jest.fn(),
