@@ -305,6 +305,32 @@ describe('state shared across surfaces', () => {
     expect(mockProvisionGcx).toHaveBeenCalledTimes(1);
   });
 
+  it('does not mint again when a caller installs into a session recovered onto the same VM', async () => {
+    act(() => invalidateGcxCredentialForSession('s_abc', 'vm-1'));
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onReady = jest.fn();
+    const step = renderHook(({ id }) => useGcxCredential(onReady, id, 'step-a'), { initialProps: { id: 's_abc' } });
+    await act(async () => step.result.current.run('s_abc'));
+    act(() => invalidateGcxCredentialForSession('s_def', 'vm-1'));
+    step.rerender({ id: 's_def' });
+    await act(async () => step.result.current.run('s_def'));
+    expect(mockProvisionGcx).toHaveBeenCalledTimes(1);
+    expect(step.result.current.state).toBe('ready');
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps ready GCX across same-VM recovery when the VM id arrives after the install started', async () => {
+    act(() => invalidateGcxCredentialForSession('s_abc', null));
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const hook = renderHook(({ id }) => useGcxCredential(undefined, id), { initialProps: { id: 's_abc' } });
+    await act(async () => hook.result.current.run('s_abc'));
+    act(() => invalidateGcxCredentialForSession('s_abc', 'vm-1'));
+    act(() => invalidateGcxCredentialForSession('s_def', 'vm-1'));
+    hook.rerender({ id: 's_def' });
+    expect(hook.result.current.state).toBe('ready');
+    expect(hook.result.current.credential).toBe(CREDENTIAL);
+  });
+
   it.each(['vm-2', null])('forgets ready GCX when the recovered VM is different or unknown (%s)', async (vmId) => {
     act(() => invalidateGcxCredentialForSession('s_abc', 'vm-1'));
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);

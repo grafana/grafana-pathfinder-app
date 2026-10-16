@@ -543,4 +543,50 @@ describe('automatic recovery', () => {
     expect(hook.result.current.error).toBe('Automatic reconnection stopped. Select Retry to try again.');
     expect(hook.result.current.sessionId).toBeNull();
   });
+
+  it('offers Retry at the recovery deadline even while a slow reattach is still provisioning', async () => {
+    const { hook, handlers } = await connectedHook();
+    await act(async () => handlers.current.onConnected?.('vm-existing'));
+    const outageStart = Date.now();
+    const slow = fakeSession('slow-session');
+    mockedCreateSession.mockImplementation(async () => {
+      if (Date.now() - outageStart < 250_000) {
+        throw new CodaError('still restarting', 'coda_unavailable', 503);
+      }
+      return slow.session;
+    });
+    act(() => handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
+    for (let elapsed = 0; elapsed < 299_000; elapsed += 1000) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+    }
+    expect(slow.handlers.current.onConnected).toBeDefined();
+    expect(hook.result.current.status).toBe('connecting');
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe('Automatic reconnection stopped. Select Retry to try again.');
+    expect(slow.close).toHaveBeenCalled();
+  });
+
+  it('clears the recovery deadline once a reattach connects', async () => {
+    const first = fakeSession();
+    const next = fakeSession('replacement-session');
+    const { hook } = await connectedHook(first);
+    await act(async () => first.handlers.current.onConnected?.('vm-existing'));
+    mockedCreateSession.mockResolvedValue(next.session);
+    act(() => first.handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    await act(async () => next.handlers.current.onConnected?.('vm-existing'));
+    await act(async () => {
+      jest.advanceTimersByTime(600_000);
+    });
+    expect(hook.result.current.status).toBe('connected');
+    expect(hook.result.current.sessionId).toBe('replacement-session');
+  });
 });

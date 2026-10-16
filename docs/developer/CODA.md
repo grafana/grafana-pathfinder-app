@@ -210,7 +210,9 @@ additive contract holding: a block without `gcx` behaves exactly as it did befor
 
 **Completed GCX setup follows the VM across recovered sessions.** `TerminalProvider` registers both
 the session ID and VM ID with `invalidateGcxCredentialForSession`. A new session on the same known VM
-inherits a completed install and its step ownership without minting another token. A different or
+inherits a completed install and its step ownership without minting another token, and a mint
+requested for a session that already holds a completed install does nothing. The VM ID is latched
+whenever it arrives for the installing session, even after the install started. A different or
 unknown VM clears the state. An unfinished install is never carried into a replacement session; its
 late result is ignored. A `null` session ID during an interruption preserves the stored result, but
 callers cannot use it until a connected session is available. `openTerminal` waits for that session

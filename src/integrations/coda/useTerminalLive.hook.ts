@@ -37,10 +37,12 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 
 export type { TerminalVMOptions };
 
+const RECOVERY_EXHAUSTED_MESSAGE = 'Automatic reconnection stopped. Select Retry to try again.';
+
 function codaSessionErrorMessage(err: unknown): string {
   const codaErr = toCodaError(err);
   if (codaErr.code === 'recovery_exhausted') {
-    return 'Automatic reconnection stopped. Select Retry to try again.';
+    return RECOVERY_EXHAUSTED_MESSAGE;
   }
   return codaErrorCodeMessage(codaErr.code, codaErr.message);
 }
@@ -111,6 +113,14 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   // Tracks the current session's VM for logging and identity changes.
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
+  // SDK 1.11 checks its outage budget only between attempts, so a slow reattach can outlive it.
+  const recoveryDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRecoveryDeadline = useCallback(() => {
+    if (recoveryDeadlineRef.current) {
+      clearTimeout(recoveryDeadlineRef.current);
+      recoveryDeadlineRef.current = null;
+    }
+  }, []);
 
   // Provision progress bar state (animated bar during pending/provisioning)
   const provisionProgressRef = useRef<{
@@ -133,6 +143,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
   // Exec must never reuse a closed session id.
   const cleanup = useCallback(() => {
+    clearRecoveryDeadline();
     setSessionId(null);
     currentVmIdRef.current = null;
     setVmId(null);
@@ -152,7 +163,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       provisionProgressRef.current = null;
     }
     lastStatusLineRef.current = '';
-  }, []);
+  }, [clearRecoveryDeadline]);
 
   useEffect(() => {
     return cleanup;
@@ -202,9 +213,28 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             setStatus('connecting');
           }
         },
-        onReconnect: () => {
+        onReconnect: ({ outageMs, budgetMs }) => {
           setError(null);
           terminal.writeln('\r\nReconnecting to sandbox...');
+          if (recoveryDeadlineRef.current) {
+            return;
+          }
+          recoveryDeadlineRef.current = setTimeout(
+            () => {
+              recoveryDeadlineRef.current = null;
+              if (sessionRef.current !== session) {
+                return;
+              }
+              cleanup();
+              connectionLogRef.current.error('Sandbox recovery deadline passed during a reattach', undefined, {
+                backendErrorCode: 'recovery_exhausted',
+                category: 'backend_error',
+              });
+              setError(RECOVERY_EXHAUSTED_MESSAGE);
+              setStatus('error');
+            },
+            Math.max(0, budgetMs - outageMs)
+          );
         },
         onOutput: (data) => {
           terminal.write(data);
@@ -280,6 +310,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
 
         onConnected: ({ vmId, sessionId: nextSessionId, expiresAt, reattached }) => {
+          clearRecoveryDeadline();
           setSessionId(nextSessionId);
           setError(null);
           if (vmId) {
@@ -341,7 +372,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
       });
     },
-    [cleanup, rememberVmId]
+    [cleanup, clearRecoveryDeadline, rememberVmId]
   );
 
   const connect = useCallback(

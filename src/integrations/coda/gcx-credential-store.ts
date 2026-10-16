@@ -94,6 +94,9 @@ export function resetGcxCredentialStore(): void {
 export function invalidateGcxCredentialForSession(sessionId: string | null, vmId: string | null = null): void {
   connectedSessionId = sessionId;
   connectedVmId = vmId;
+  if (sessionId && sessionId === snapshot.sessionId && vmId) {
+    snapshotVmId ??= vmId;
+  }
   if (sessionId && snapshot.sessionId && sessionId !== snapshot.sessionId) {
     if (snapshot.state === 'ready' && snapshotVmId && snapshotVmId === vmId) {
       generation += 1;
@@ -144,6 +147,9 @@ export async function runGcxCredential(
     return;
   }
   if (snapshot.state === 'provisioning') {
+    return;
+  }
+  if (!token && snapshot.state === 'ready' && snapshot.sessionId === sessionId) {
     return;
   }
 
