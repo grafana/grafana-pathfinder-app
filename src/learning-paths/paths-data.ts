@@ -31,7 +31,7 @@ export interface PathsDataSet {
  * Cloud gets the full superset (OSS + cloud paths); OSS gets only OSS paths.
  */
 export function getPathsData(): PathsDataSet {
-  const isCloud = config.bootData?.settings?.cloudMigrationIsTarget ?? false;
+  const isCloud = config.cloudMigrationIsTarget ?? false;
   const raw = isCloud ? cloudPathsData : ossPathsData;
   return {
     paths: raw.paths as LearningPath[],

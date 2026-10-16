@@ -17,7 +17,8 @@ import {
   createAssistantContextItem,
   type ChatContextItem,
 } from '@grafana/assistant';
-import { getDataSourceSrv, locationService } from '@grafana/runtime';
+import { locationService } from '@grafana/runtime';
+import { listDataSources } from '../../lib/datasource/datasource-registry';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { buildAssistantStorageKey } from '../../lib/storage-keys';
@@ -93,8 +94,7 @@ export function useAssistantGeneration(options: UseAssistantGenerationOptions): 
 
   const getDatasourceContext = useCallback(async (): Promise<DatasourceContext> => {
     try {
-      const dataSourceSrv = getDataSourceSrv();
-      const dataSources = await dataSourceSrv.getList();
+      const dataSources = await listDataSources();
 
       const location = locationService.getLocation();
       let currentDatasource = null;

@@ -9,25 +9,13 @@ import type { PackageOpenInfo } from './content-panel.types';
 import type { RecommendCompletionsWire } from './recommender-completions.schema';
 
 export interface DataSource {
-  id: number;
+  id?: number;
   uid: string;
   name: string;
   type: string;
   url?: string;
   isDefault?: boolean;
   access?: string;
-}
-
-export interface Plugin {
-  id: string;
-  name: string;
-  type: string;
-  info: {
-    description: string;
-    version: string;
-  };
-  enabled: boolean;
-  pinned: boolean;
 }
 
 export interface DashboardSearchResult {
@@ -46,11 +34,10 @@ export interface DashboardSearchResult {
 }
 
 export interface DashboardInfo {
-  id?: number;
   title?: string;
   uid?: string;
   tags?: string[];
-  folderId?: number;
+  folderUid?: string;
   folderTitle?: string;
 }
 

@@ -191,15 +191,17 @@ The sibling frontend rule (browser reads proxied, admin writes direct) is docume
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
 
 `package_recommendations.go` is the exception and must not be assimilated into that shape: it fetches
-a public CDN index anonymously behind a host allowlist, with no namespace and one process-wide
-6-hour cache. Because that cache is shared across users, per-user data must never be routed into it.
+a public CDN index anonymously behind a host allowlist, with no namespace and one 6-hour cache per
+`*App` instance. Because that cache is shared across users, per-user data must never be routed into it.
+No backend cache lives in package-level state: a multi-tenant runtime serves many stacks from one
+process, and the SDK instance manager gives each its own `*App`.
 
 **File map:**
 
 | File                                | Role                                                                                                              |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `main.go`                           | Plugin entrypoint. Calls `app.Manage("grafana-pathfinder-app", plugin.NewApp, ...)`                                |
-| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the per-user rate limiter (completion writes and `GET /assignments/my`). |
+| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, the per-user rate limiter (completion writes and `GET /assignments/my`), and the per-instance completion and package-index caches. |
 | `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`.                      |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory). Owns `timeNow`. |
 | `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`): per-user collation of a namespace LIST behind a single-flight TTL cache with stale-serve. Backend proxy pattern §4-§7. |
@@ -212,6 +214,7 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | `plugin/assignment_satisfaction.go` | Per-request satisfaction evaluation, plus background and on-read `status.satisfied` writes. |
 | `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
 | `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |
+| `plugin/grafana_core_reads.go`      | Per-request, uncached reads of core App Platform groups on the caller's behalf (`/grafana/user`, `/grafana/dashboard`, `/grafana/dashboard-search`); the frontend falls back to legacy `/api/*` when the proxy is unavailable (`src/lib/grafana-core-client.ts`). |
 | `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
 | `plugin/settings.go`                | Parses `JSONData` and decrypts `SecureJSONData`. Reads only `secureJsonData.accessToken` into `OBOToken`; the exchange namespace comes from plugin-context, not settings. |
 | `plugin/app_platform_client.go`     | Shared paginated LIST and create client for App Platform proxies: URL building, per-page caps, per-request `X-Access-Token` minting, redirects disabled, error classification. Backend proxy pattern §1. |
@@ -221,7 +224,8 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 **Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
 
 `/package-recommendations`, `/completion-records` (POST create), `/completion-records/my`,
-`/completion-records/capability`, `/assignments/my`, `/custom-guide-repository`, `/health`.
+`/completion-records/capability`, `/assignments/my`, `/custom-guide-repository`, `/custom-guide`,
+`/pathfinder-settings`, `/grafana/user`, `/grafana/dashboard`, `/grafana/dashboard-search`, `/health`.
 
 **Security boundaries:**
 

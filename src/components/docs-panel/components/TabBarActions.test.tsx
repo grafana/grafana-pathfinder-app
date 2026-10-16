@@ -15,6 +15,13 @@ jest.mock('../../../integrations/assistant-integration', () => ({ useIsAssistant
 
 // Mock @grafana/runtime - all mock values defined inline for hoisting compatibility
 jest.mock('../../../lib/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
+jest.mock('../../../utils/current-user-role', () => {
+  const isAdmin = () => {
+    const user = jest.requireMock('@grafana/runtime').config.bootData.user;
+    return user.isGrafanaAdmin === true || user.orgRole === 'Admin';
+  };
+  return { currentUserIsAdmin: isAdmin, useCurrentUserIsAdmin: isAdmin };
+});
 jest.mock('@grafana/runtime', () => {
   const mockPublish = jest.fn();
   const mockPush = jest.fn();

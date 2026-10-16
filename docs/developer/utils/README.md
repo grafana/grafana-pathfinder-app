@@ -32,6 +32,7 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 - `timeout-manager.ts` - Centralized timeout/debounce management
 - `dev-mode.ts` - Development mode utilities
 - `openfeature.ts` - Feature toggle utilities
+- `boot-feature-toggles.ts` - Reads a Grafana boot feature toggle, treating the empty multi-tenant map as unknown
 - `openfeature-tracking.ts` - OpenFeature hook for tracking flag evaluations to analytics
 - `sidebar-auto-open.ts` - Config-driven sidebar auto-open on launch (open-panel-on-launch)
 - `experiments/` - The live A/B experiments, the enrolled-arm registry read by analytics, and the `window.__pathfinderExperiment` debug surface
@@ -112,7 +113,8 @@ async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): P
 **Key exports**:
 
 - `APP_PLATFORM_GROUP` and `APP_PLATFORM_API_VERSION` - API group and version
-- `isBackendApiAvailable()` - Checks the Grafana aggregation feature toggle
+- `isBackendApiAvailable()` - True when the Grafana aggregation feature toggle is confirmed on; gates direct App Platform reads and writes
+- `isBackendApiRuledOut()` - True when populated boot toggles lack it; proxied reads probe when the boot toggles are empty (multi-tenancy)
 - `collectionUrl()` and `itemUrl()` - Build namespace-scoped API URLs
 
 **Used by**:

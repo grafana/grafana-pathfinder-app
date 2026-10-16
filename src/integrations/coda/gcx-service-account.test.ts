@@ -14,6 +14,7 @@ import {
   assertServiceAccountIsMintable,
   gcxServiceAccountName,
 } from './gcx-service-account';
+import { resetCurrentUserForTests } from '../../utils/current-user-role';
 
 const mockFetch = jest.fn();
 const mockUser: { id?: unknown; isSignedIn?: boolean; login?: string; orgId?: number; orgRole?: string } = {};
@@ -27,12 +28,16 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
+let mockPlatform = 'oss';
+jest.mock('../../lib/platform', () => ({ currentPlatform: () => mockPlatform }));
+
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
 }));
 
 const SEARCH = '/api/serviceaccounts/search';
 const ORGS = '/api/user/orgs';
+const LIVE_USER = '/api/plugins/grafana-pathfinder-app/resources/grafana/user';
 
 type Answer = { data: unknown } | { error: unknown };
 
@@ -68,6 +73,8 @@ function urlsFetched(): string[] {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetCurrentUserForTests();
+  mockPlatform = 'oss';
   Object.keys(mockUser).forEach((key) => delete (mockUser as Record<string, unknown>)[key]);
   Object.assign(mockUser, { id: 42, isSignedIn: true, login: 'a.b', orgId: 1, orgRole: 'Admin' });
 });
@@ -144,6 +151,32 @@ describe('assertServiceAccountIsMintable', () => {
     await expect(assertServiceAccountIsMintable('coda-gcx-u42')).rejects.toMatchObject({
       code: ACCOUNT_OUTRANKS_CALLER,
     });
+  });
+
+  it('prefers the live IAM role over the legacy org list', async () => {
+    answers({
+      [SEARCH]: { data: { serviceAccounts: [{ name: 'coda-gcx-u42', role: 'Admin' }] } },
+      [LIVE_USER]: { data: { spec: { role: 'Editor' } } },
+      [ORGS]: { data: [{ orgId: 1, role: 'Admin' }] },
+    });
+
+    await expect(assertServiceAccountIsMintable('coda-gcx-u42')).rejects.toMatchObject({
+      code: ACCOUNT_OUTRANKS_CALLER,
+    });
+    expect(urlsFetched()).not.toContain(ORGS);
+  });
+
+  it('holds the mint back on Grafana Cloud rather than reading the legacy org list', async () => {
+    mockPlatform = 'cloud';
+    answers({
+      [SEARCH]: { data: { serviceAccounts: [{ name: 'coda-gcx-u42', role: 'Editor' }] } },
+      [ORGS]: { data: [{ orgId: 1, role: 'Admin' }] },
+    });
+
+    await expect(assertServiceAccountIsMintable('coda-gcx-u42')).rejects.toMatchObject({
+      code: ACCOUNT_CHECK_UNAVAILABLE,
+    });
+    expect(urlsFetched()).not.toContain(ORGS);
   });
 
   it('reads the role for the org the caller is actually in', async () => {

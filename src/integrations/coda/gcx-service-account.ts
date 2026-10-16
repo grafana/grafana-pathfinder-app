@@ -12,10 +12,12 @@
  * later; a pass has to be an answer, not the absence of one.
  */
 
-import { config, getBackendSrv } from '@grafana/runtime';
+import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 import { logger } from '../../lib/logging';
+import { currentPlatform } from '../../lib/platform';
+import { currentUser, refreshCurrentUser } from '../../utils/current-user-role';
 import { CodaError } from './coda-api';
 
 const ROLE_RANK: Record<string, number> = { None: 0, Viewer: 1, Editor: 2, Admin: 3 };
@@ -39,9 +41,9 @@ interface UserOrg {
  * person's account, at that account's role. Ids do not collide.
  */
 export function gcxServiceAccountName(): string {
-  const user = config.bootData?.user;
-  const id = user?.isSignedIn ? user.id : undefined;
-  if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) {
+  const user = currentUser();
+  const id = user.isSignedIn ? user.id : undefined;
+  if (id === undefined) {
     throw new CodaError('There is no signed-in Grafana user to mint a token for.', 'no_user', 401);
   }
   return `coda-gcx-u${id}`;
@@ -88,6 +90,15 @@ async function readJson<T>(url: string): Promise<T | undefined> {
  * boot-time snapshot is exactly the wrong side of the comparison.
  */
 async function readCallerRank(): Promise<number> {
+  const live = await refreshCurrentUser();
+  const liveRank = live?.role === undefined ? undefined : ROLE_RANK[live.role];
+  if (liveRank !== undefined) {
+    return liveRank;
+  }
+  if (currentPlatform() === 'cloud') {
+    throw checkUnavailable('Your current Grafana role');
+  }
+
   let orgs: UserOrg[] | undefined;
   try {
     orgs = await readJson<UserOrg[]>('/api/user/orgs');
@@ -95,7 +106,7 @@ async function readCallerRank(): Promise<number> {
     throw checkUnavailable('Your current Grafana role');
   }
 
-  const orgId = config.bootData?.user?.orgId;
+  const { orgId } = currentUser();
   const role = (Array.isArray(orgs) ? orgs.find((org) => org.orgId === orgId) : undefined)?.role;
   const rank = role === undefined ? undefined : ROLE_RANK[role];
   if (rank === undefined) {

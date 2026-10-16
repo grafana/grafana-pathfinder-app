@@ -22,6 +22,13 @@ jest.mock('../utils/dev-mode', () => ({
   isDevModeEnabledGlobal: jest.fn(() => false),
 }));
 
+const mockListDataSources = jest.fn().mockResolvedValue([]);
+const mockGetDataSourceSettings = jest.fn();
+jest.mock('../lib/datasource/datasource-registry', () => ({
+  listDataSources: () => mockListDataSources(),
+  getDataSourceSettings: (uid: string) => mockGetDataSourceSettings(uid),
+}));
+
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(() => ({
     get: jest.fn(),
@@ -392,17 +399,20 @@ describe('ContextService: Completion Percentage Storage Selection', () => {
 
 describe('context data-source reads', () => {
   it('includes data sources returned by the shared API', async () => {
-    const dataSources = [{ uid: 'prometheus', type: 'prometheus', name: 'Prometheus' }];
-    const get = jest.fn().mockResolvedValue(dataSources);
+    const settings = { id: 1, uid: 'prometheus', type: 'prometheus', name: 'Prometheus' };
+    mockListDataSources.mockResolvedValueOnce([{ uid: 'prometheus' }]);
+    mockGetDataSourceSettings.mockResolvedValueOnce(settings);
+    const get = jest.fn().mockResolvedValue(null);
     jest.mocked(getBackendSrv).mockReturnValue({ get } as never);
 
     const context = await ContextService.getContextData();
 
-    expect(context.dataSources).toEqual(dataSources);
-    expect(get).toHaveBeenCalledWith('/api/datasources');
+    expect(context.dataSources).toEqual([expect.objectContaining(settings)]);
+    expect(get).not.toHaveBeenCalledWith('/api/datasources');
   });
 
   it('keeps context available when the data-source request fails', async () => {
+    mockListDataSources.mockRejectedValueOnce(new Error('Offline'));
     const get = jest.fn().mockRejectedValue(new Error('Offline'));
     jest.mocked(getBackendSrv).mockReturnValue({ get } as never);
 

@@ -6,12 +6,8 @@ import { createGuideMetadataTool, getGuideCustomizationContext } from './guide-c
 jest.mock('./tools/datasource-metadata.tool', () => ({ createDatasourceMetadataTool: jest.fn() }));
 jest.mock('@grafana/runtime', () => ({
   config: {
-    bootData: {
-      settings: {
-        buildInfo: { version: '13.2.2', versionString: 'Grafana Cloud' },
-        featureToggles: { queryEditorNext: false },
-      },
-    },
+    buildInfo: { version: '13.2.2', versionString: 'Grafana Cloud' },
+    featureToggles: { queryEditorNext: false },
   },
   createOpenFeatureOFREPWebProvider: jest.fn(() => ({
     resolveBooleanEvaluation: (key: string) =>
@@ -44,7 +40,7 @@ it('includes version and relevant flags without query parameters or unrelated se
   expect(JSON.stringify(context)).not.toContain('private');
   expect(context).not.toHaveProperty('search');
   expect(locationService.getLocation).toHaveBeenCalled();
-  expect(config.bootData.settings.featureToggles.queryEditorNext).toBe(false);
+  expect(config.featureToggles.queryEditorNext).toBe(false);
 });
 
 it('requires an explicit available UID and limits lookups across generation and repair', async () => {

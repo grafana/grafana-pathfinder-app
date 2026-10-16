@@ -1,10 +1,11 @@
 import { config } from '@grafana/runtime';
 
+import { currentUser } from '../utils/current-user-role';
 import { StorageKeys } from './storage-keys';
 
 function storageKey(): string | undefined {
-  const user = config.bootData?.user;
-  if (!user?.id || !user.orgId) {
+  const user = currentUser();
+  if (!user.id || !user.orgId) {
     return undefined;
   }
   return `${StorageKeys.DEV_MODE_OPT_IN}:${encodeURIComponent(config.appSubUrl || '')}:${user.orgId}:${user.id}`;

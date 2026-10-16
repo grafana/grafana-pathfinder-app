@@ -8,7 +8,7 @@ export type GrafanaPlatform = 'oss' | 'cloud';
  */
 export function currentPlatform(): GrafanaPlatform {
   try {
-    return config.bootData?.settings?.buildInfo?.versionString?.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
+    return config.buildInfo?.versionString?.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
   } catch {
     return 'oss';
   }

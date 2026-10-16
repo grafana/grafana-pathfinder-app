@@ -40,9 +40,8 @@ function readUiFeatures() {
 }
 
 export function getGuideCustomizationContext() {
-  const settings = config.bootData?.settings;
   return {
-    grafanaVersion: settings?.buildInfo?.version ?? 'unknown',
+    grafanaVersion: config.buildInfo?.version ?? 'unknown',
     platform: currentPlatform(),
     currentPath: locationService.getLocation().pathname,
     uiFeatures: readUiFeatures(),
