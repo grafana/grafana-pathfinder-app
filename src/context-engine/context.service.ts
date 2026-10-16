@@ -49,9 +49,8 @@ import {
   type OnlinePackageEntry,
   type PackageMatchExpr,
 } from '../lib/package-recommendations-client';
-import { getHighlightedGuideConfig } from '../utils/openfeature';
+import { getAutoOpenGuideFeatured } from '../utils/experiments/auto-open-guide/featured';
 import { completionsForRecommend, reportCompletionsAttachment } from './recommend-completions-attachment';
-import { buildSyntheticFeaturedRecommendation, matchesHighlightedGuidePage } from '../utils/experiments';
 
 // Hoisted to module scope so the recursive `usesOnlySupportedMatchPredicates`
 // walk doesn't allocate (and discard) an identical Set on every node.
@@ -211,7 +210,7 @@ export class ContextService {
         const fallbackResult = await this.getFallbackRecommendations(contextData, merged);
         return {
           ...fallbackResult,
-          featuredRecommendations: this.injectHighlightedGuide(
+          featuredRecommendations: this.injectAutoOpenGuide(
             [],
             contextData.currentPath,
             fallbackResult.recommendations
@@ -233,11 +232,7 @@ export class ContextService {
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
         ...fallbackResult,
-        featuredRecommendations: this.injectHighlightedGuide(
-          [],
-          contextData.currentPath,
-          fallbackResult.recommendations
-        ),
+        featuredRecommendations: this.injectAutoOpenGuide([], contextData.currentPath, fallbackResult.recommendations),
         error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
         errorType: 'other',
         usingFallbackRecommendations: true,
@@ -468,7 +463,7 @@ export class ContextService {
 
         return {
           recommendations: sortedRecommendations,
-          featuredRecommendations: this.injectHighlightedGuide(
+          featuredRecommendations: this.injectAutoOpenGuide(
             filteredFeaturedRecommendations,
             contextData.currentPath,
             sortedRecommendations
@@ -536,7 +531,7 @@ export class ContextService {
 
     return {
       ...fallbackResult,
-      featuredRecommendations: this.injectHighlightedGuide([], contextData.currentPath, fallbackResult.recommendations),
+      featuredRecommendations: this.injectAutoOpenGuide([], contextData.currentPath, fallbackResult.recommendations),
       error: userMessage,
       errorType,
       usingFallbackRecommendations: true,
@@ -770,34 +765,16 @@ export class ContextService {
   }
 
   /**
-   * Prepend a synthetic Featured-slot card driven by the
-   * `pathfinder.highlighted-guide-experiment` flag.
-   *
-   * No-ops when:
-   *   - variant is 'excluded' (or default)
-   *   - current path doesn't match the flag's `pages[]`
-   *   - `guideId` cannot be resolved to a known doc page
-   *   - the same guide is already in the bundled (regular) recommendations
-   *     (the existing dedup machinery would suppress it anyway)
-   *
-   * When the same URL is already in `featured`, the existing card is promoted
-   * to position 0 rather than duplicated. This guarantees the configured guide
-   * lands in the prime slot whether or not the recommender already surfaced it.
+   * Prepend the auto-open guide experiment's matched guide to the Featured slot,
+   * for enrolled treatment users only. An existing card for the same URL is
+   * promoted rather than duplicated; one already in the regular list is left alone.
    */
-  private static injectHighlightedGuide(
+  private static injectAutoOpenGuide(
     featured: Recommendation[],
     currentPath: string,
     bundled: Recommendation[]
   ): Recommendation[] {
-    const config = getHighlightedGuideConfig();
-    if (config.variant === 'excluded') {
-      return featured;
-    }
-    if (!matchesHighlightedGuidePage(config.pages, currentPath)) {
-      return featured;
-    }
-
-    const synthetic = buildSyntheticFeaturedRecommendation(config.guideId, config.docType);
+    const synthetic = getAutoOpenGuideFeatured(currentPath);
     if (!synthetic) {
       return featured;
     }

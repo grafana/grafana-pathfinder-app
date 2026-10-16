@@ -137,9 +137,7 @@ export interface UseInteractiveElementsOptions {
 // UTILITY HOOKS
 // ============================================================================
 
-/**
- * Text selection position
- */
+/** Coordinates relative to the guide content container. */
 export interface SelectionPosition {
   top: number;
   left: number;

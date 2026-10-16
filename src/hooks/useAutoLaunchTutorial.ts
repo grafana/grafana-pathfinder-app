@@ -1,3 +1,4 @@
+import type { ReaderPosition } from '../types/cross-tab.types';
 // Shared auto-launch routing: the panel surfaces (sidebar, floating, fullscreen)
 // subscribe to `autoLaunchChannel` through this hook so source coercion and the
 // learning-journey rule live in one place instead of drifting across copies.
@@ -6,7 +7,7 @@ import { useEffect } from 'react';
 
 import { coerceLaunchSource, type LaunchSource } from '../recovery';
 import { shouldOpenAsLearningJourney } from '../utils/pathfinder-search-params';
-import { autoLaunchChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
+import { autoLaunchChannel, readerReturnChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
 
 export type { AutoLaunchTutorialDetail };
 
@@ -16,6 +17,7 @@ export type { AutoLaunchTutorialDetail };
  * cross the components-tier boundary.
  */
 export interface AutoLaunchPanel {
+  restoreReaderPosition?(position: ReaderPosition): Promise<void>;
   openLearningJourney(url: string, title: string, opts?: { source?: LaunchSource }): void;
   openDocsPage(url: string, title: string, opts?: { source?: LaunchSource }): void;
 }
@@ -44,6 +46,12 @@ export interface UseAutoLaunchTutorialOptions {
 }
 
 export function useAutoLaunchTutorial(panel: AutoLaunchPanel, options?: UseAutoLaunchTutorialOptions): void {
+  useEffect(() => {
+    return readerReturnChannel.subscribe((position) => {
+      void panel.restoreReaderPosition?.(position);
+    });
+  }, [panel]);
+
   const onIncoming = options?.onIncoming;
   const onLaunched = options?.onLaunched;
   const skipLaunch = options?.skipLaunch;

@@ -3,8 +3,6 @@
 export { getActiveExperiments } from './active-experiments';
 export { subscribeToEnrollment } from './enrollment-notifier';
 export { createExperimentDebugger } from './experiment-debug';
-export { initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } from './highlighted-guide-orchestrator';
-export { buildSyntheticFeaturedRecommendation, matchesHighlightedGuidePage } from './highlighted-guide-utils';
 export {
   enrollInteractiveLearningBannerExperiment,
   getEnrolledInteractiveLearningBannerConfig,

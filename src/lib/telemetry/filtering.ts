@@ -17,6 +17,21 @@ import {
   HELP_BUTTON_CLICK_EVENT,
   HELP_BUTTON_DISMISS_EVENT,
 } from '../../constants/help-button-experiment';
+import {
+  AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
+  AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+} from '../../constants/auto-open-guide-experiment';
+
+// Experiments that enroll while Pathfinder is closed: their control arms never open it.
+const CLOSED_SURFACE_EXPERIMENT_IDS: ReadonlySet<string> = new Set([
+  HELP_BUTTON_EXPERIMENT_ID,
+  AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+]);
+const CLOSED_SURFACE_EXPERIMENT_EVENTS: ReadonlySet<string> = new Set([
+  HELP_BUTTON_CLICK_EVENT,
+  HELP_BUTTON_DISMISS_EVENT,
+  AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
+]);
 
 const APP_NAME = packageJson.name;
 const LOCAL_OVERRIDE_KEY = 'pathfinder.faro.local';
@@ -241,9 +256,8 @@ export function passesActivityGate(item: TransportItem<APIEvent>): boolean {
   if (
     isEventItem(item) &&
     ((item.payload.name === 'experiment_viewed' &&
-      item.payload.attributes?.experiment_id === HELP_BUTTON_EXPERIMENT_ID) ||
-      item.payload.name === HELP_BUTTON_CLICK_EVENT ||
-      item.payload.name === HELP_BUTTON_DISMISS_EVENT)
+      CLOSED_SURFACE_EXPERIMENT_IDS.has(String(item.payload.attributes?.experiment_id))) ||
+      CLOSED_SURFACE_EXPERIMENT_EVENTS.has(item.payload.name))
   ) {
     return true;
   }

@@ -1,3 +1,4 @@
+import { readerReturnChannel } from '../../global-state/auto-launch';
 import { waitFor } from '@testing-library/react';
 import { getAppEvents } from '@grafana/runtime';
 import { installLiveTabExecutor, resetLiveTabExecutorForTests, DEFAULT_PACING } from './live-tab-executor';
@@ -771,6 +772,19 @@ describe('installLiveTabExecutor', () => {
     transport.emit(stampSidebarHandoff('reopen'));
 
     await waitFor(() => expect(sidebarState.openSidebar).toHaveBeenCalled());
+    uninstall();
+  });
+
+  it('returns the signed reader position when reopening the sidebar', async () => {
+    const returned = jest.fn();
+    const unsubscribe = readerReturnChannel.subscribe(returned);
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    const position = { doc: 'backend-guide:path', milestoneUrl: 'backend-guide:three', trackId: 'builder' };
+    transport.emit(stampSidebarHandoff('close'));
+    transport.emit({ ...stampSidebarHandoff('reopen'), position } as CrossTabMessage);
+    await waitFor(() => expect(returned).toHaveBeenCalledWith(position));
+    unsubscribe();
     uninstall();
   });
 

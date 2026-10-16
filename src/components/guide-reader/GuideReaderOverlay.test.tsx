@@ -2,12 +2,25 @@ import React from 'react';
 import { render, renderHook, screen, fireEvent, act } from '@testing-library/react';
 import { GuideReaderOverlay } from './GuideReaderOverlay';
 import { testIds } from '../../constants/testIds';
-import { fetchUnifiedContent } from '../../docs-retrieval';
+import { fetchUnifiedContent, fetchPackageContent } from '../../docs-retrieval';
 import { recordGuideRender } from '../../lib/telemetry/facade';
 import { getActiveTabUrl } from '../../global-state/content-key';
 import { findDocPage } from '../../utils/find-doc-page';
 import { useGlobalActiveTabExposure } from '../docs-panel/hooks/useGlobalActiveTabExposure';
-import type { ContentFetchResult, RawContent } from '../../types/content.types';
+import type { ReaderPosition } from '../../types/cross-tab.types';
+import type { ContentFetchResult, Milestone, RawContent } from '../../types/content.types';
+
+const mockReturnPositions: Array<ReaderPosition | undefined> = [];
+jest.mock('../../global-state/controller-channel', () => {
+  const actual = jest.requireActual('../../global-state/controller-channel');
+  return {
+    ...actual,
+    ControllerChannelProvider: (props: React.ComponentProps<typeof actual.ControllerChannelProvider>) => {
+      mockReturnPositions.push(props.position);
+      return <actual.ControllerChannelProvider {...props} />;
+    },
+  };
+});
 
 jest.mock('../../lib/telemetry/facade', () => ({
   ...jest.requireActual('../../lib/telemetry/facade'),
@@ -20,7 +33,9 @@ jest.mock('../../lib/faro', () => ({
 }));
 
 jest.mock('../../docs-retrieval', () => ({
+  ...jest.requireActual('../../docs-retrieval'),
   fetchUnifiedContent: jest.fn(),
+  fetchPackageContent: jest.fn(),
 }));
 
 // Feature provider needs no real OpenFeature client for this test.
@@ -33,12 +48,32 @@ jest.mock('../OpenFeatureProvider', () => ({
 // internals (covered by its own suite).
 const mockRenderedCompletions: unknown[] = [];
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: ({ content, completion }: { content: RawContent; completion: unknown }) => {
+  ContentRenderer: ({
+    content,
+    completion,
+    onActiveTrackChange,
+  }: {
+    content: RawContent;
+    completion: unknown;
+    onActiveTrackChange?: (id: string | null, milestones: Milestone[] | null) => void;
+  }) => {
     const { useInteractiveMode } = require('../../global-state/interactive-mode-context');
     mockRenderedCompletions.push(completion);
     return (
       <div data-testid="mock-content" data-load-id={content.loadContext?.loadId}>
         mode:{useInteractiveMode()}
+        <button
+          onClick={() =>
+            onActiveTrackChange?.('alternate', [
+              { id: 'alternate', number: 1, title: 'Alternate', url: 'backend-guide:alternate', isActive: false },
+            ])
+          }
+        >
+          Choose track
+        </button>
+        <button data-journey-start="true" data-milestone-url="backend-guide:step-1">
+          Get started
+        </button>
       </div>
     );
   },
@@ -52,6 +87,7 @@ describe('GuideReaderOverlay', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRenderedCompletions.length = 0;
+    mockReturnPositions.length = 0;
     closeSpy = jest.spyOn(window, 'close').mockImplementation(() => {});
   });
 
@@ -160,6 +196,280 @@ describe('GuideReaderOverlay', () => {
 
     const content = await screen.findByTestId('mock-content');
     expect(content).toHaveTextContent('mode:interactive');
+  });
+
+  it('loads backend path metadata and navigates from its cover through milestones and back', async () => {
+    const manifest = { id: 'path', type: 'path', repository: 'app-platform', milestones: ['step-1', 'step-2'] };
+    const milestones = [1, 2].map((number) => ({
+      number,
+      id: `step-${number}`,
+      title: `Step ${number}`,
+      url: `backend-guide:step-${number}`,
+      isActive: false,
+    }));
+    const page = (currentMilestone: number): RawContent => ({
+      url: currentMilestone ? `backend-guide:step-${currentMilestone}` : 'backend-guide:path',
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        title: 'Path',
+        packageManifest: manifest,
+        repository: 'app-platform',
+        learningJourney: { baseUrl: 'backend-guide:path', currentMilestone, totalMilestones: 2, milestones },
+      },
+    });
+    mockFetchContent.mockResolvedValue({ content: page(0) });
+    const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+    packageFetch.mockImplementation(async (url) => ({
+      content: page(url === 'backend-guide:path' ? 0 : Number(url.slice(-1))),
+    }));
+    render(<GuideReaderOverlay doc="backend-guide:path" mode="controller" />);
+    await screen.findByTestId('mock-content');
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Get started' }));
+    await screen.findByTestId('mock-content');
+    expect(packageFetch).toHaveBeenLastCalledWith(
+      'backend-guide:step-1',
+      manifest,
+      milestones,
+      'app-platform',
+      undefined,
+      'step-1',
+      'backend-guide:path',
+      expect.any(Object)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByTestId('mock-content');
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(screen.getByTestId('mock-content')).toHaveTextContent('mode:controller');
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    await screen.findByTestId('mock-content');
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    await screen.findByTestId('mock-content');
+    expect(packageFetch).toHaveBeenLastCalledWith(
+      'backend-guide:path',
+      manifest,
+      milestones,
+      'app-platform',
+      undefined,
+      undefined,
+      'backend-guide:path',
+      expect.any(Object)
+    );
+  });
+
+  it.each([false, true])(
+    'opens the requested third milestone without rendering the cover (track: %s)',
+    async (withTrack) => {
+      const milestones = [1, 2, 3].map((number) => ({
+        number,
+        id: `step-${number}`,
+        title: `Step ${number}`,
+        url: `backend-guide:step-${number}`,
+        isActive: false,
+      }));
+      const manifest = { id: 'path', type: 'path', repository: 'app-platform' };
+      const cover: RawContent = {
+        url: 'backend-guide:path',
+        type: 'learning-journey',
+        content: '',
+        lastFetched: '',
+        metadata: {
+          title: 'Path',
+          packageManifest: manifest,
+          repository: 'app-platform',
+          learningJourney: {
+            baseUrl: 'backend-guide:path',
+            currentMilestone: 0,
+            totalMilestones: 3,
+            milestones,
+            tracks: withTrack ? [{ trackId: 'advanced', label: 'Advanced', milestones }] : undefined,
+          },
+        },
+      };
+      mockFetchContent.mockResolvedValue({ content: cover });
+      const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+      packageFetch.mockImplementation(async (url) => ({
+        content: {
+          ...cover,
+          url,
+          metadata: {
+            ...cover.metadata,
+            learningJourney: {
+              ...cover.metadata.learningJourney!,
+              currentMilestone: url === cover.url ? 0 : Number(url.slice(-1)),
+            },
+          },
+        },
+      }));
+      render(
+        <GuideReaderOverlay
+          doc={cover.url}
+          mode="controller"
+          initialMilestoneUrl="backend-guide:step-3"
+          initialTrackId={withTrack ? 'advanced' : undefined}
+        />
+      );
+      await screen.findByTestId('mock-content');
+      expect(packageFetch).toHaveBeenLastCalledWith(
+        'backend-guide:step-3',
+        manifest,
+        milestones,
+        'app-platform',
+        undefined,
+        'step-3',
+        cover.url,
+        expect.any(Object)
+      );
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+      expect(window.__DocsPluginActiveTabUrl).toBe('backend-guide:step-3');
+      fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+      await screen.findByTestId('mock-content');
+      expect(window.__DocsPluginActiveTabUrl).toBe('backend-guide:step-2');
+    }
+  );
+
+  it('opens the requested milestone of a docs journey without a package manifest', async () => {
+    const base = 'https://grafana.com/docs/learning-journeys/linux';
+    const milestones = [1, 2].map((number) => ({
+      number,
+      title: `Step ${number}`,
+      url: `${base}/step-${number}/`,
+      isActive: false,
+    }));
+    const page = (url: string, currentMilestone: number): RawContent => ({
+      url,
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        title: 'Linux',
+        learningJourney: { baseUrl: base, currentMilestone, totalMilestones: 2, milestones },
+      },
+    });
+    const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+    mockFetchContent.mockImplementation(async (url) => ({
+      content: url === base ? page(`${base}/content.json`, 0) : page(`${url}content.json`, 2),
+    }));
+    render(<GuideReaderOverlay doc={base} mode="controller" initialMilestoneUrl={`${base}/step-2/`} />);
+    await screen.findByTestId('mock-content');
+    expect(mockFetchContent).toHaveBeenLastCalledWith(`${base}/step-2/`, expect.any(Object));
+    expect(packageFetch).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
+  });
+
+  it('keeps the opening milestone and track in the handback throughout initial loading', async () => {
+    let resolveCover!: (value: ContentFetchResult) => void;
+    let resolveMilestone!: (value: ContentFetchResult) => void;
+    mockFetchContent.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCover = resolve;
+      })
+    );
+    const doc = 'backend-guide:path';
+    const milestone = { id: 'three', number: 1, title: 'Third', url: 'backend-guide:three', isActive: false };
+    const manifest = { id: 'path', type: 'path' };
+    const cover: RawContent = {
+      url: doc,
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        title: 'Path',
+        packageManifest: manifest,
+        learningJourney: {
+          baseUrl: doc,
+          currentMilestone: 0,
+          totalMilestones: 0,
+          milestones: [],
+          tracks: [{ trackId: 'builder', label: 'Builder', milestones: [milestone] }],
+        },
+      },
+    };
+    const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+    packageFetch.mockResolvedValueOnce({ content: cover });
+    packageFetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMilestone = resolve;
+        })
+    );
+    render(
+      <GuideReaderOverlay doc={doc} mode="controller" initialMilestoneUrl={milestone.url} initialTrackId="builder" />
+    );
+    const expected = { doc, milestoneUrl: milestone.url, trackId: 'builder' };
+    expect(mockReturnPositions.at(-1)).toEqual(expected);
+    await act(async () => resolveCover({ content: cover }));
+    expect(packageFetch).toHaveBeenCalledTimes(2);
+    expect(mockReturnPositions.at(-1)).toEqual(expected);
+    await act(async () =>
+      resolveMilestone({
+        content: {
+          ...cover,
+          url: `${milestone.url}/unstyled.html`,
+          metadata: {
+            ...cover.metadata,
+            learningJourney: {
+              ...cover.metadata.learningJourney!,
+              currentMilestone: 1,
+              milestones: [milestone],
+            },
+          },
+        },
+      })
+    );
+    expect(mockReturnPositions.at(-1)).toEqual(expected);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(mockReturnPositions.at(-1)?.milestoneUrl).toBe(doc);
+  });
+
+  it('uses the selected track for arrow navigation', async () => {
+    const milestone = {
+      id: 'alternate',
+      number: 1,
+      title: 'Alternate',
+      url: 'backend-guide:alternate',
+      isActive: false,
+    };
+    const manifest = { id: 'path', type: 'path' };
+    const content: RawContent = {
+      url: 'backend-guide:path',
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        title: 'Path',
+        packageManifest: manifest,
+        repository: 'app-platform',
+        learningJourney: {
+          baseUrl: 'backend-guide:path',
+          currentMilestone: 0,
+          totalMilestones: 0,
+          milestones: [],
+          tracks: [{ trackId: 'alternate', label: 'Alternate', milestones: [milestone] }],
+        },
+      },
+    };
+    mockFetchContent.mockResolvedValue({ content });
+    const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+    packageFetch.mockResolvedValue({ content });
+    render(<GuideReaderOverlay doc="backend-guide:path" mode="controller" />);
+    await screen.findByTestId('mock-content');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose track' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByTestId('mock-content');
+    expect(packageFetch).toHaveBeenLastCalledWith(
+      'backend-guide:alternate',
+      manifest,
+      [],
+      'app-platform',
+      undefined,
+      'alternate',
+      'backend-guide:path',
+      expect.any(Object)
+    );
   });
 
   it('closes the tab when the close button is clicked', async () => {
