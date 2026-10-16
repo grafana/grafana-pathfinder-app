@@ -104,7 +104,7 @@ export class GuidedHandler {
     );
   }
 
-  private createGuidedStepArbiter(stepIndex: number, totalSteps: number): GuidedStepArbiter {
+  private createGuidedStepArbiter(): GuidedStepArbiter {
     let result: CompletionResult | null = null;
     let resolvePromise!: (result: CompletionResult) => void;
     const promise = new Promise<CompletionResult>((resolve) => {
@@ -126,36 +126,6 @@ export class GuidedHandler {
           result = 'error';
         }
 
-        const isFinalStep = stepIndex === totalSteps - 1;
-        const isSuccessfulCompletion = result === 'completed' || result === 'skipped';
-
-        if (isFinalStep && isSuccessfulCompletion) {
-          const progressBarUpdated = this.updateProgressBarTo100();
-          if (progressBarUpdated) {
-            // Wait for the configured delay to let the user see 100% completion
-            // Make this cancellable - if the step is aborted during the delay, resolve immediately
-            await new Promise<void>((resolveDelay) => {
-              const delayTimeoutId = setTimeout(() => {
-                resolveDelay();
-              }, INTERACTIVE_CONFIG.guided.progressBarCompletionDelayMs);
-              this.pendingTimeouts.push(delayTimeoutId);
-
-              // If already aborted, resolve immediately
-              if (this.currentAbortController?.signal.aborted) {
-                clearTimeout(delayTimeoutId);
-                resolveDelay();
-              } else {
-                // Listen for abort during the delay
-                const handleAbort = () => {
-                  clearTimeout(delayTimeoutId);
-                  resolveDelay();
-                };
-                this.currentAbortController?.signal.addEventListener('abort', handleAbort, { once: true });
-              }
-            });
-          }
-        }
-
         resolvePromise(result);
         return result;
       },
@@ -170,7 +140,7 @@ export class GuidedHandler {
     timeout: number,
     onActionCompleted?: () => void
   ): Promise<CompletionResult> {
-    const arbiter = this.createGuidedStepArbiter(stepIndex, totalSteps);
+    const arbiter = this.createGuidedStepArbiter();
 
     try {
       this.cleanupListeners();
@@ -191,7 +161,11 @@ export class GuidedHandler {
         logger.warn(`Guided step ${stepIndex + 1} uses an action the guided handler cannot drive`, {
           targetAction: action.targetAction,
         });
-        return this.finishGuidedStep(await arbiter.settle(action.isSkippable ? 'skipped' : 'error'), stepIndex);
+        return this.finishGuidedStep(
+          await arbiter.settle(action.isSkippable ? 'skipped' : 'error'),
+          stepIndex,
+          totalSteps
+        );
       }
 
       const refTarget = action.refTarget;
@@ -214,7 +188,7 @@ export class GuidedHandler {
         );
       } catch (elementNotFoundError) {
         if (action.isSkippable) {
-          return this.finishGuidedStep('skipped', stepIndex);
+          return this.finishGuidedStep('skipped', stepIndex, totalSteps);
         }
         throw elementNotFoundError;
       }
@@ -238,7 +212,7 @@ export class GuidedHandler {
         action.refTarget!
       );
 
-      return this.finishGuidedStep(await arbiter.promise, stepIndex);
+      return this.finishGuidedStep(await arbiter.promise, stepIndex, totalSteps);
     } catch (error) {
       const settledResult = arbiter.getResult();
       if (settledResult === null) {
@@ -247,14 +221,16 @@ export class GuidedHandler {
         logger.warn(`Guided step ${stepIndex + 1} settled before setup failed`, { error, result: settledResult });
       }
       const result = settledResult ?? (await arbiter.settle('error'));
-      return this.finishGuidedStep(result, stepIndex);
+      return this.finishGuidedStep(result, stepIndex, totalSteps);
     }
   }
 
-  private finishGuidedStep(result: CompletionResult, stepIndex: number): CompletionResult {
-    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
+  private finishGuidedStep(result: CompletionResult, stepIndex: number, totalSteps: number): CompletionResult {
+    const successful = result === 'completed' || result === 'skipped';
+    if (successful && !this.completedSteps.includes(stepIndex)) {
       this.completedSteps.push(stepIndex);
     }
+    const completedBox = successful && stepIndex === totalSteps - 1 ? this.prepareCompletedBox() : null;
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
@@ -263,6 +239,9 @@ export class GuidedHandler {
       this.cleanupListeners(true);
     } catch (error) {
       logger.error('Guided cleanup failed', { error });
+    }
+    if (completedBox) {
+      document.body.appendChild(completedBox);
     }
     return result;
   }
@@ -278,7 +257,7 @@ export class GuidedHandler {
     timeout: number
   ): Promise<CompletionResult> {
     this.cleanupListeners();
-    const arbiter = this.createGuidedStepArbiter(stepIndex, totalSteps);
+    const arbiter = this.createGuidedStepArbiter();
     this.currentAbortController = new AbortController();
     const signal = this.currentAbortController.signal;
     if (action.isSkippable) {
@@ -303,7 +282,7 @@ export class GuidedHandler {
       action.targetComment || 'Complete this step to continue',
       action.isSkippable
     );
-    return this.finishGuidedStep(await arbiter.promise, stepIndex);
+    return this.finishGuidedStep(await arbiter.promise, stepIndex, totalSteps);
   }
 
   /**
@@ -422,6 +401,7 @@ export class GuidedHandler {
     commentBox.appendChild(content);
 
     document.body.appendChild(commentBox);
+    this.currentCommentBox = commentBox;
   }
 
   /**
@@ -895,7 +875,7 @@ export class GuidedHandler {
       this.pendingIntervals.push(rectUpdateInterval);
 
       const handleClick = (event: Event) => {
-        if (isResolved || completing) {
+        if (isResolved || completing || arbiter.getResult() !== null) {
           return;
         }
 
@@ -1187,14 +1167,47 @@ export class GuidedHandler {
       this.navigationManager.clearAllHighlights();
     }
   }
-  private updateProgressBarTo100(): boolean {
-    const container = this.currentCommentBox ?? document;
-    const progressBar = container.querySelector(`.${INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS}`) as HTMLElement | null;
+  private prepareCompletedBox(): HTMLElement | null {
+    const box = this.currentCommentBox;
+    if (!box?.isConnected) {
+      return null;
+    }
+    // Detach before highlight cleanup so the done box no longer tracks the action target.
+    box.remove();
+    box.setAttribute('data-guided-state', 'completed');
+    box.setAttribute('data-ready', 'true');
+    box.querySelectorAll('button').forEach((button) => button.remove());
+    box.querySelector('.interactive-comment-buttons')?.remove();
+    let progressBar = box.querySelector<HTMLElement>(`.${INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS}`);
     if (!progressBar) {
-      return false;
+      const container = document.createElement('div');
+      container.className = 'interactive-comment-progress-container';
+      progressBar = document.createElement('div');
+      progressBar.className = INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS;
+      container.appendChild(progressBar);
+      box.querySelector('.interactive-comment-content')?.prepend(container);
     }
     progressBar.style.width = '100%';
-    return true;
+    box.querySelectorAll('.interactive-comment-dot').forEach((dot) => {
+      dot.classList.remove('interactive-comment-dot--current');
+      dot.classList.add('interactive-comment-dot--completed');
+    });
+    box.querySelectorAll('.interactive-comment-step-item').forEach((step) => {
+      step.classList.remove('interactive-comment-step-current');
+      step.classList.add('interactive-comment-step-completed');
+    });
+    const close = document.createElement('button');
+    close.className = 'interactive-comment-nav-btn';
+    close.textContent = 'Close';
+    close.onclick = (event) => {
+      event.stopPropagation();
+      box.remove();
+    };
+    const buttons = document.createElement('div');
+    buttons.className = 'interactive-comment-buttons';
+    buttons.appendChild(close);
+    (box.querySelector('.interactive-comment-content') ?? box).appendChild(buttons);
+    return box;
   }
 
   cancel(): void {

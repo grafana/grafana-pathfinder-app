@@ -11,7 +11,7 @@ export type { InteractiveRequirementsCheck, CheckResult } from './interactive.ho
 export { updateInteractiveThemeColors } from '../styles/interactive.styles';
 
 // Navigation manager
-export { NavigationManager } from './navigation-manager';
+export { NavigationManager, performedStepPercent } from './navigation-manager';
 export type { NavigationOptions, CommentBoxOptions, CommentBoxStepInfo } from './navigation-manager';
 
 // State management

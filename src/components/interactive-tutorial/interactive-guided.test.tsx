@@ -159,6 +159,7 @@ jest.mock('../../interactive-engine', () => ({
     ensureElementVisible: jest.fn().mockResolvedValue(undefined),
   })),
   matchesStepAction: jest.fn().mockReturnValue(false),
+  performedStepPercent: jest.requireActual('../../interactive-engine/navigation-manager').performedStepPercent,
 }));
 
 // ─── Mock panel-mode (full-screen -> sidebar handoff) ────────────────────────
@@ -186,9 +187,14 @@ beforeEach(() => {
 });
 
 describe('InteractiveGuided terminal presentation with real handler and comment box', () => {
-  it.each(['completed', 'skipped'] as const)(
-    'synchronizes both single-step bars on %s and persists before dismissal',
-    async (outcome) => {
+  it.each([
+    { outcome: 'completed', total: 1 },
+    { outcome: 'skipped', total: 1 },
+    { outcome: 'completed', total: 2 },
+    { outcome: 'skipped', total: 2 },
+  ] as const)(
+    'synchronizes both bars on $outcome in a $total-action tour and persists before dismissal',
+    async ({ outcome, total }) => {
       jest.useFakeTimers();
       const { GuidedHandler: RealGuidedHandler } = jest.requireActual(
         '../../interactive-engine/action-handlers/guided-handler'
@@ -224,14 +230,12 @@ describe('InteractiveGuided terminal presentation with real handler and comment 
         <InteractiveGuided
           stepId="paired-progress"
           onComplete={onComplete}
-          internalActions={[
-            {
-              targetAction: 'button',
-              refTarget: '#paired-target',
-              targetComment: 'Activate the target',
-              isSkippable: true,
-            },
-          ]}
+          internalActions={Array.from({ length: total }, () => ({
+            targetAction: 'button' as const,
+            refTarget: '#paired-target',
+            targetComment: 'Activate the target',
+            isSkippable: true,
+          }))}
         />
       );
       try {
@@ -241,9 +245,17 @@ describe('InteractiveGuided terminal presentation with real handler and comment 
         });
         expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '0%' });
         expect(view.container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '0%' });
+        if (total === 2) {
+          await act(async () => {
+            target.click();
+            await jest.advanceTimersByTimeAsync(500);
+          });
+          expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '50%' });
+          expect(view.container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '50%' });
+        }
         await act(async () => {
           if (outcome === 'skipped') {
-            document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
+            document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: total - 1 } }));
           } else {
             target.click();
           }

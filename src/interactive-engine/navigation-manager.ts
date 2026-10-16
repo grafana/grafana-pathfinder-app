@@ -52,10 +52,14 @@ export interface CommentBoxStepInfo {
   progress: 'performed' | 'position';
 }
 
+export function performedStepPercent(completedCount: number, total: number): number {
+  return (completedCount / total) * 100;
+}
+
 function progressBarPercent(stepInfo: CommentBoxStepInfo): number {
   switch (stepInfo.progress) {
     case 'performed':
-      return (stepInfo.completedSteps.length / stepInfo.total) * 100;
+      return performedStepPercent(stepInfo.completedSteps.length, stepInfo.total);
     case 'position':
       return ((stepInfo.current + 1) / stepInfo.total) * 100;
     default:
