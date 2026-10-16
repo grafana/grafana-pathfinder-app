@@ -1,22 +1,18 @@
-/**
- * Discover More Section
- *
- * Novel, external content pulled from the upstream package index. Always
- * offers something new to explore; fails soft to an empty state when the
- * index is unavailable or offline.
- */
-
 import React from 'react';
-import { Icon } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
+import { openCatalogBrowser } from '../../docs-panel/utils/open-catalog-browser';
+import { useBooleanFlag } from '../../../utils/openfeature';
 import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
-import type { DiscoverMoreItem } from '../../../learning-paths';
+import type { DiscoverMoreItem, CatalogProgress } from '../../../learning-paths';
 import { useVerticalOverflow } from '../../../hooks';
 import { SkeletonLoader } from '../../SkeletonLoader';
 import { DiscoverMoreCard } from '../DiscoverMoreCard';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
+
+import type { CatalogPackage } from '../../../types/package-catalog.types';
 
 interface DiscoverMoreSectionProps {
   items: DiscoverMoreItem[];
@@ -24,6 +20,10 @@ interface DiscoverMoreSectionProps {
   onStart: (item: DiscoverMoreItem) => void;
   startingId: string | null;
   startDisabled: boolean;
+  catalogItems?: CatalogPackage[];
+  scope?: string;
+  progress?: Map<string, CatalogProgress>;
+  launchError?: { key: string; message: string } | null;
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
@@ -34,7 +34,12 @@ export function DiscoverMoreSection({
   startingId,
   startDisabled,
   styles,
+  catalogItems,
+  scope,
+  progress,
+  launchError,
 }: DiscoverMoreSectionProps) {
+  const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
   const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
 
   return (
@@ -42,6 +47,15 @@ export function DiscoverMoreSection({
       <div className={styles.sectionHeader}>
         <Icon name="compass" size="md" className={styles.sectionIcon} />
         <h2 className={styles.sectionTitle}>{t('myLearning.discoverMore', 'Discover more')}</h2>
+        {browseEnabled && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => openCatalogBrowser({ source: 'my_learning_discover_more' })}
+          >
+            {t('packageBrowser.browseAll', 'Browse all')}
+          </Button>
+        )}
       </div>
       <p className={styles.sectionDescription}>
         {t('myLearning.discoverMoreDescription', 'Structured paths to help you master Grafana step by step')}
@@ -61,11 +75,15 @@ export function DiscoverMoreSection({
         >
           {items.map((item) => (
             <DiscoverMoreCard
-              key={item.id}
+              key={item.key ?? item.id}
               item={item}
               onStart={onStart}
-              isStarting={startingId === item.id}
+              isStarting={startingId === (item.key ?? item.id)}
               startDisabled={startDisabled}
+              items={catalogItems}
+              scope={scope}
+              progress={progress}
+              launchError={launchError?.key === (item.key ?? item.id) ? launchError.message : undefined}
             />
           ))}
         </div>

@@ -52,6 +52,13 @@
   ],
   "PackageRecommendationsResponse": [
     {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*plugin.guideProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
+    {
       "field": "BaseURL",
       "json": "baseUrl",
       "type": "string",
@@ -72,6 +79,124 @@
       "json": "match",
       "type": "json.RawMessage",
       "wire": "json",
+      "omitempty": false
+    }
+  ],
+  "assignmentCapability": [
+    {
+      "field": "Available",
+      "json": "available",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
+  "assignmentEntry": [
+    {
+      "field": "TargetType",
+      "json": "targetType",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "TargetID",
+      "json": "targetId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "TrackID",
+      "json": "trackId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "TargetSource",
+      "json": "targetSource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "RuleID",
+      "json": "ruleId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "AssignedBy",
+      "json": "assignedBy",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "AssignedAt",
+      "json": "assignedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "DueAt",
+      "json": "dueAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "AcceptCompletionsFrom",
+      "json": "acceptCompletionsFrom",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Satisfied",
+      "json": "satisfied",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Guides",
+      "json": "guides",
+      "type": "[]plugin.assignmentGuideEntry",
+      "wire": "array<object>",
+      "omitempty": true
+    },
+    {
+      "field": "Lifecycle",
+      "json": "lifecycle",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    }
+  ],
+  "assignmentGuideEntry": [
+    {
+      "field": "GuideID",
+      "json": "guideId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Completed",
+      "json": "completed",
+      "type": "bool",
+      "wire": "boolean",
       "omitempty": false
     }
   ],
@@ -138,9 +263,37 @@
       "type": "int64",
       "wire": "integer",
       "omitempty": false
+    },
+    {
+      "field": "LatestDurationSeconds",
+      "json": "latestDurationSeconds",
+      "type": "int64",
+      "wire": "integer",
+      "omitempty": true
+    },
+    {
+      "field": "LastRecordedAt",
+      "json": "lastRecordedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "LatestAttemptStartedAt",
+      "json": "latestAttemptStartedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
     }
   ],
   "completionCapability": [
+    {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*plugin.guideProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
     {
       "field": "Available",
       "json": "available",
@@ -153,6 +306,13 @@
       "json": "reason",
       "type": "string",
       "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "ProgressRecords",
+      "json": "progressRecords",
+      "type": "bool",
+      "wire": "boolean",
       "omitempty": true
     }
   ],
@@ -202,6 +362,13 @@
       "omitempty": true
     },
     {
+      "field": "Tracks",
+      "json": "tracks",
+      "type": "[]struct",
+      "wire": "array<object>",
+      "omitempty": true
+    },
+    {
       "field": "Category",
       "json": "category",
       "type": "string",
@@ -246,6 +413,29 @@
       "omitempty": true
     }
   ],
+  "customGuideManifest.tracks": [
+    {
+      "field": "TrackID",
+      "json": "trackId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Label",
+      "json": "label",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Guides",
+      "json": "guides",
+      "type": "[]string",
+      "wire": "array<string>",
+      "omitempty": false
+    }
+  ],
   "customGuideRepositoryEntry": [
     {
       "field": "ID",
@@ -277,6 +467,13 @@
     }
   ],
   "customGuideRepositoryResponse": [
+    {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*plugin.guideProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
     {
       "field": "Capability",
       "json": "capability",
@@ -336,7 +533,183 @@
       "omitempty": false
     }
   ],
+  "customGuidesResponse": [
+    {
+      "field": "Items",
+      "json": "items",
+      "type": "[]json.RawMessage",
+      "wire": "array<json>",
+      "omitempty": false
+    }
+  ],
+  "guideProxyDiagnostic": [
+    {
+      "field": "Stage",
+      "json": "stage",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Resource",
+      "json": "resource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Operation",
+      "json": "operation",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Outcome",
+      "json": "outcome",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "UpstreamStatus",
+      "json": "upstreamStatus",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": true
+    },
+    {
+      "field": "Cache",
+      "json": "cache",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "CacheAgeMS",
+      "json": "cacheAgeMs",
+      "type": "int64",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "ManifestFailures",
+      "json": "manifestFailures",
+      "type": "map[string]int",
+      "wire": "record<integer>",
+      "omitempty": true
+    },
+    {
+      "field": "BudgetExhausted",
+      "json": "budgetExhausted",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": true
+    }
+  ],
+  "inProgressCompletion": [
+    {
+      "field": "GuideSource",
+      "json": "guideSource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideID",
+      "json": "guideId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideTitle",
+      "json": "guideTitle",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideCategory",
+      "json": "guideCategory",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "PathID",
+      "json": "pathId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "CompletionPercent",
+      "json": "completionPercent",
+      "type": "int64",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "LastUpdatedAt",
+      "json": "lastUpdatedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "AttemptStartedAt",
+      "json": "attemptStartedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
+  "myAssignmentsResponse": [
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "plugin.assignmentCapability",
+      "wire": "object",
+      "omitempty": false
+    },
+    {
+      "field": "UserID",
+      "json": "userId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Assignments",
+      "json": "assignments",
+      "type": "[]plugin.assignmentEntry",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "AsOf",
+      "json": "asOf",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
   "myCompletionsResponse": [
+    {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*plugin.guideProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
     {
       "field": "Capability",
       "json": "capability",
@@ -355,6 +728,13 @@
       "field": "Completions",
       "json": "completions",
       "type": "[]plugin.collatedCompletion",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "InProgress",
+      "json": "inProgress",
+      "type": "[]plugin.inProgressCompletion",
       "wire": "array<object>",
       "omitempty": false
     },

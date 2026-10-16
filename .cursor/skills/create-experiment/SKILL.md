@@ -1,6 +1,6 @@
 ---
 name: create-experiment
-description: 'Set up a new A/B experiment in Grafana Pathfinder end to end — MTFF flag, variant validation, enrollment seam, exposure and behaviour analytics, QA overrides, tests, docs, and a retirement plan. Use when the user runs `/create-experiment`, asks to add or run an experiment or A/B test, add a treatment/control variant, gate a feature behind an experiment flag, or wire exposure tracking. Also use when reviewing or retiring an existing experiment.'
+description: 'Set up, review, or retire an A/B experiment in Grafana Pathfinder end to end: MTFF flag, variant validation, enrollment seam, exposure analytics, QA overrides, tests, docs, and a retirement plan. Use for `/create-experiment` or any request to add an experiment, a variant, or an experiment-gated feature.'
 ---
 
 # create-experiment — Set up a Pathfinder A/B experiment
@@ -52,7 +52,7 @@ Three arms, always: `excluded` (not in the experiment), `control` (in it, curren
 
 `EXPERIMENT_VARIANTS`, defined in `src/types/openfeature.types.ts` and re-exported from `src/utils/openfeature.ts`, is the runtime vocabulary and derives the TypeScript union. Adding an arm also requires an explicit policy in both total projections: `EXPERIMENT_VARIANT_EMITS_EXPOSURE` in `src/utils/openfeature-tracking.ts` and `EXPERIMENT_VARIANT_PRECEDENCE` in `src/lib/analytics.ts`. The compiler should fail until both decisions are made.
 
-The compiler does not cover the runtime arm gates in `src/utils/experiments/highlighted-guide-orchestrator.ts` and `src/context-engine/context.service.ts`; review both explicitly when adding an arm.
+The compiler does not cover runtime arm gates (`variant === 'treatment'` checks in the experiment modules under `src/utils/experiments/` and anything they feed); review each explicitly when adding an arm.
 
 ### 2. Create the experiment module
 
@@ -135,15 +135,15 @@ Add `UserInteraction` members in `src/lib/analytics.ts` for the arm's own intera
 
 ### 7. Make it QA-able
 
-`window.__pathfinderExperiment.setOverride` works for any registered flag automatically. Beyond that:
+Use Grafana's feature-control UI with `?featureControl=true` to set registered flags during QA. Beyond that:
 
-- Fire `reportFeatureFlagExposure` explicitly on the override branch of your reader — overrides bypass the client, so `TrackingHook` never sees them and QA runs would otherwise produce no analytics.
+- Keep flag evaluation on the OpenFeature client so `TrackingHook` records the exposure normally.
 - For a lazy experiment, add a **getter** to `src/utils/experiments/experiment-debug.ts`, following whichever lazy experiment is current. A captured snapshot would always read as not-enrolled, and a getter that evaluates would enroll the tester by opening DevTools.
 
 ### 8. Test
 
 - Arm resolution: each variant, plus rejection cases (unknown variant, missing field, non-object, null, thrown evaluation) all landing on `excluded`.
-- Override honoured, and a rejected override falling through to remote.
+- Feature-control values honoured, and rejected values falling back to `excluded`.
 - Enrichment: arm absent from `getActiveExperiments` when excluded.
 - For a lazy experiment: **no evaluation before enrollment**, exactly one evaluation across repeated calls, and `getActiveExperiments` not evaluating. Plus the call-site tripwire from step 3.
 - Treatment UI: renders for `treatment`, renders nothing for `control` and `excluded`, and each analytics event fires with the expected payload.

@@ -31,6 +31,17 @@ const COMPLETION_RECORDS_STATIC_IMPORT_RE =
   /(?:from\s+['"]|require\(['"])\.{1,2}(?:\/\.\.)*\/completion-records(?:\/[^'"]*)?['"]/;
 
 describe('telemetry entry-bundle import discipline', () => {
+  it('surface detection does not import the full UI test-ID catalog', () => {
+    const source = fs.readFileSync(path.join(__dirname, 'surface.ts'), 'utf8');
+    expect(source).not.toContain('constants/testIds');
+  });
+
+  it('the entry does not eagerly initialize translations', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../../module.tsx'), 'utf8');
+    expect(source).not.toContain("from '@grafana/i18n'");
+    expect(source).not.toContain('await initPluginTranslations');
+  });
+
   it.each(ENTRY_EAGER_FILES)('%s does not import the telemetry barrel', (relativePath) => {
     const source = fs.readFileSync(path.join(__dirname, '../../', relativePath), 'utf8');
     expect(source).not.toMatch(BARREL_IMPORT_RE);

@@ -18,6 +18,7 @@ import { render, waitFor } from '@testing-library/react';
 import type { RawContent } from '../../types/content.types';
 import { getTotalDocumentSteps } from '../../global-state/section-registry';
 import { ContentRenderer } from './content-renderer';
+import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -63,7 +64,12 @@ describe('ContentRenderer — section registry stays single-entry per section', 
     // Truth: 5. The bug reported 7 — the id-less section's steps counted twice.
     const html = jsonGuide([{ id: 'with-author-id', steps: 2 }, { steps: 3 }]);
 
-    render(<ContentRenderer content={makeContent(html, 'https://ex/section-registry-guide')} />);
+    render(
+      <ContentRenderer
+        completion={UNTRACKED_COMPLETION}
+        content={makeContent(html, 'https://ex/section-registry-guide')}
+      />
+    );
 
     await waitFor(() => expect(getTotalDocumentSteps()).toBeGreaterThan(0));
     expect(getTotalDocumentSteps()).toBe(5);
@@ -74,7 +80,9 @@ describe('ContentRenderer — section registry stays single-entry per section', 
     // per-section counter drift would compound rather than cancel out.
     const html = jsonGuide([{ steps: 2 }, { steps: 4 }]);
 
-    render(<ContentRenderer content={makeContent(html, 'https://ex/all-idless-guide')} />);
+    render(
+      <ContentRenderer completion={UNTRACKED_COMPLETION} content={makeContent(html, 'https://ex/all-idless-guide')} />
+    );
 
     await waitFor(() => expect(getTotalDocumentSteps()).toBeGreaterThan(0));
     expect(getTotalDocumentSteps()).toBe(6);

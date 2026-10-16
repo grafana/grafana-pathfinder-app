@@ -32,6 +32,7 @@ import { buildStatsSpec } from './commands/build-stats';
 import { createSpec } from './commands/create';
 import { e2eSpec } from './commands/e2e';
 import { editBlockSpec } from './commands/edit-block';
+import { findGuidesSpec } from './commands/find-guides';
 import { inspectSpec } from './commands/inspect';
 import { moveBlockSpec } from './commands/move-block';
 import { removeBlockSpec } from './commands/remove-block';
@@ -112,6 +113,7 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
       repoUrl: 'url',
       resolverUrl: 'url',
       cloudInstanceAdminToken: 'host=envVar',
+      allowCloudInstanceMutations: 'hostname',
       cloudUrl: 'url',
       cloudStackPoolManagerUrl: 'url',
       cloudStackPoolManagerToken: 'envVar',
@@ -143,6 +145,17 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
     negatable: { lint: 'Suppress lint output' },
   },
   schema: { positionals: ['name'] },
+  // Repeat --queries, --categories, and --exclude-ids once per value.
+  'find-guides': {
+    placeholders: {
+      queries: 'text',
+      pageUrl: 'path',
+      categories: 'category',
+      excludeIds: 'id',
+      limit: 'n',
+      instanceUrl: 'url',
+    },
+  },
   requirements: {
     omitted: ['format', 'quiet'],
     inherits: ['format', 'quiet'],
@@ -174,6 +187,7 @@ const RENDERED: Record<string, Command> = {
   'build-snippets': mountCommander(buildSnippetsSpec, PRESENTATIONS['build-snippets']),
   'build-graph': mountCommander(buildGraphSpec, PRESENTATIONS['build-graph']),
   schema: mountCommander(schemaSpec, PRESENTATIONS.schema),
+  'find-guides': mountCommander(findGuidesSpec, PRESENTATIONS['find-guides']),
   requirements: mountCommanderGroup(requirementsGroup, PRESENTATIONS.requirements),
   mcp: mountCommander(mcpSpec, PRESENTATIONS.mcp).version(CURRENT_SCHEMA_VERSION),
 };

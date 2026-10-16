@@ -1,15 +1,17 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { usePluginContext } from '@grafana/data';
 import { getConfigWithDefaults } from '../constants';
+import { resolvePathfinderAvailability, getPathfinderStartupDecision } from '../utils/pathfinder-enablement';
 import { initializeConfiguredSurfaces } from '../utils/configured-bootstrap';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { fetchPluginSettings } from '../utils/utils.plugin';
-import { fetchPathfinderSettingsSnapshot } from '../utils/pathfinder-settings-api';
+import { fetchPathfinderSettingsSnapshot, hasCachedSettingsAbsence } from '../utils/pathfinder-settings-api';
 import { adoptLegacyDevModeOptIn, hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
 import {
   __resetPathfinderPluginConfigForTests,
   publishPathfinderPluginConfig,
   refreshPathfinderPluginConfig,
+  readPathfinderStartupPreference,
   usePathfinderPluginConfig,
   waitForPathfinderPluginConfig,
 } from './usePathfinderPluginConfig';
@@ -22,6 +24,7 @@ jest.mock('../utils/utils.plugin', () => ({
 
 jest.mock('../utils/pathfinder-settings-api', () => ({
   fetchPathfinderSettingsSnapshot: jest.fn(),
+  hasCachedSettingsAbsence: jest.fn(),
 }));
 
 // Kept hermetic: the real module reads localStorage and Grafana boot data, and
@@ -39,6 +42,7 @@ jest.mock('@grafana/data', () => ({
 
 const mockFetchPluginSettings = fetchPluginSettings as jest.MockedFunction<typeof fetchPluginSettings>;
 const mockFetchTenant = fetchPathfinderSettingsSnapshot as jest.MockedFunction<typeof fetchPathfinderSettingsSnapshot>;
+const mockCachedAbsence = hasCachedSettingsAbsence as jest.MockedFunction<typeof hasCachedSettingsAbsence>;
 const mockOptIn = resolveDevModeOptIn as jest.MockedFunction<typeof resolveDevModeOptIn>;
 const mockLegacyOptIn = hasLegacyDevModeOptIn as jest.MockedFunction<typeof hasLegacyDevModeOptIn>;
 const mockAdoptLegacy = adoptLegacyDevModeOptIn as jest.MockedFunction<typeof adoptLegacyDevModeOptIn>;
@@ -72,6 +76,7 @@ beforeEach(() => {
   mockFetchPluginSettings.mockResolvedValue(pluginSettings());
   // Default posture: no App Platform resource, so the jsonData tier is in play.
   mockFetchTenant.mockResolvedValue(null);
+  mockCachedAbsence.mockReturnValue(false);
   mockOptIn.mockReturnValue(false);
   mockLegacyOptIn.mockReturnValue(false);
   mockPluginContext.mockReturnValue(null);
@@ -407,6 +412,36 @@ describe('getConfigWithDefaults idempotence', () => {
 });
 
 describe('recovery after a failed settings read', () => {
+  it('keeps the fallback available during retries without publishing defaults as authoritative', async () => {
+    mockFetchTenant.mockRejectedValueOnce(new Error('token exchange failed'));
+    const { result } = renderHook(() => usePathfinderPluginConfig());
+    await waitFor(() => expect(result.current.hasError).toBe(true));
+
+    let recover!: (value: ReturnType<typeof tenantSnapshot>) => void;
+    mockFetchTenant.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          recover = resolve;
+        })
+    );
+    let retry!: ReturnType<typeof refreshPathfinderPluginConfig>;
+    act(() => {
+      retry = refreshPathfinderPluginConfig();
+    });
+
+    expect(result.current.hasError).toBe(true);
+    expect(result.current.isResolved).toBe(false);
+    expect(readGlobal()).toBeUndefined();
+
+    await act(async () => {
+      recover(tenantSnapshot({ enableLiveSessions: true }));
+      await retry;
+    });
+    expect(result.current.hasError).toBeUndefined();
+    expect(result.current.isResolved).toBe(true);
+    expect(result.current.config.enableLiveSessions).toBe(true);
+  });
+
   it('retries on a later mount, sharing that retry across concurrent callers', async () => {
     mockFetchPluginSettings.mockRejectedValueOnce(new Error('temporary outage'));
     const first = renderHook(() => usePathfinderPluginConfig());
@@ -455,5 +490,96 @@ describe('recovery after a failed settings read', () => {
     publishPathfinderPluginConfig({ enableTwoTabController: false });
     expect(effects.mountExecutor).toHaveBeenCalledTimes(1);
     expect(await waitForPathfinderPluginConfig()).toBe(readGlobal());
+  });
+});
+
+it('honours a tenant opt-out after a plugin read failure and records the read error', async () => {
+  mockFetchPluginSettings.mockRejectedValue({ status: 403 });
+  mockFetchTenant.mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
+  expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('disabled');
+  expect(getPathfinderStartupDecision().outcome).toBe('read-error');
+  expect(readGlobal()).toBeUndefined();
+});
+
+it.each([403, 503])(
+  'ignores stale legacy false when the enabled tenant resource cannot be read (%s)',
+  async (status) => {
+    const storedTenant = tenantSnapshot({ pathfinderEnabled: true });
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ pathfinderEnabled: false }));
+    mockFetchTenant.mockResolvedValue(storedTenant);
+    expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('enabled');
+
+    __resetPathfinderPluginConfigForTests();
+    mockFetchTenant.mockRejectedValue({ status });
+    expect(await resolvePathfinderAvailability(true, readPathfinderStartupPreference)).toBe('enabled');
+    expect(getPathfinderStartupDecision().outcome).toBe('read-error');
+    expect(readGlobal()).toBeUndefined();
+  }
+);
+
+describe('panel and configuration opens after a cached absence', () => {
+  const openPanel = () => renderHook(() => usePathfinderPluginConfig({ refreshOnMount: true }));
+  const flush = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+  it('does not re-read when startup already read from the server', async () => {
+    await readPathfinderStartupPreference();
+    openPanel();
+    openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads once after a cached startup, shared by concurrent opens and later opens', async () => {
+    mockCachedAbsence.mockReturnValue(true);
+    mockFetchTenant.mockResolvedValueOnce(null).mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
+    await readPathfinderStartupPreference();
+    expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: true });
+    const first = openPanel();
+    openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+    expect(mockFetchTenant).toHaveBeenLastCalledWith({ useCachedAbsence: false });
+    expect(first.result.current.config.pathfinderEnabled).toBe(false);
+    first.rerender();
+    openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits for an in-flight cached startup read before re-reading', async () => {
+    mockCachedAbsence.mockReturnValue(true);
+    let finishStartup!: (value: null) => void;
+    mockFetchTenant
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishStartup = resolve;
+          })
+      )
+      .mockResolvedValue(tenantSnapshot({ pathfinderEnabled: false }));
+    const startup = readPathfinderStartupPreference();
+    openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(1);
+    finishStartup(null);
+    await startup;
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+    expect(readGlobal()?.pathfinderEnabled).toBe(false);
+  });
+
+  it('keeps the startup preference when the re-read fails', async () => {
+    mockCachedAbsence.mockReturnValue(true);
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ pathfinderEnabled: false }));
+    mockFetchTenant.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('refresh unavailable'));
+    await readPathfinderStartupPreference();
+    const panel = openPanel();
+    await flush();
+    expect(mockFetchTenant).toHaveBeenCalledTimes(2);
+    expect(readGlobal()?.pathfinderEnabled).toBe(false);
+    expect(panel.result.current.isResolved).toBe(true);
   });
 });

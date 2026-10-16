@@ -1,3 +1,5 @@
+import { decodeChoiceSelection, encodeChoiceSelection } from '../../lib/choice-response';
+import { normalizeHttpOrigin, normalizeHttpUrl, describeHttpInput } from '../../lib/input-value';
 /**
  * Input Block Renderer
  *
@@ -6,7 +8,7 @@
  */
 
 import type { ConditionInput } from '../../types/requirements.types';
-import React, { useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useId, ReactNode } from 'react';
 import { css } from '@emotion/css';
 import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Combobox, type ComboboxOption } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -24,7 +26,9 @@ export interface InputBlockProps {
   /** The prompt text (markdown supported) */
   prompt: string;
   /** Input type: text, boolean, or datasource */
-  inputType: 'text' | 'boolean' | 'datasource';
+  inputType: 'text' | 'boolean' | 'datasource' | 'checkbox-group';
+  choices?: Array<{ id: string; text: string }>;
+  format?: 'http-origin' | 'http-url';
   /** Variable name for storing the response */
   variableName: string;
   /** Placeholder for text input */
@@ -102,17 +106,16 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-/**
- * Input Block component for collecting user responses.
- */
 export function InputBlock({
   inputType,
+  choices,
   variableName,
   placeholder,
   checkboxLabel,
   defaultValue,
   required = false,
   pattern,
+  format,
   validationMessage,
   skippable = false,
   children,
@@ -124,8 +127,40 @@ export function InputBlock({
 }: InputBlockProps) {
   const styles = useStyles2(getStyles);
   const responseContext = useGuideResponsesOptional();
+  const promptId = useId();
+  const optionIds = choices?.map((choice) => choice.id) ?? [];
+  const selection = decodeChoiceSelection(responseContext?.getResponse(variableName), optionIds);
+  useEffect(() => {
+    if (inputType !== 'checkbox-group' || !responseContext || responseContext.isLoading) {
+      return;
+    }
+    const stored = responseContext.getResponse(variableName);
+    const ids = choices?.map((choice) => choice.id) ?? [];
+    const normalized = encodeChoiceSelection(decodeChoiceSelection(stored, ids), ids);
+    if (stored !== undefined && normalized !== stored) {
+      if (normalized) {
+        responseContext.setResponse(variableName, normalized);
+      } else {
+        responseContext.deleteResponse(variableName);
+      }
+    }
+  }, [inputType, choices, responseContext, variableName]);
 
-  // Get datasources (memoized to avoid re-fetching on every render)
+  const handleChoiceChange = (id: string, checked: boolean) => {
+    const next = checked ? [...selection, id] : selection.filter((selected) => selected !== id);
+    const encoded = encodeChoiceSelection(next, optionIds);
+    if (encoded) {
+      responseContext?.setResponse(variableName, encoded);
+    } else {
+      responseContext?.deleteResponse(variableName);
+    }
+    reportAppInteraction(UserInteraction.InputBlockSubmit, {
+      input_type: 'checkbox-group',
+      variable_name: variableName,
+      is_update: responseContext?.hasResponse(variableName) ?? false,
+    });
+  };
+
   const datasources = useMemo(
     () => (inputType === 'datasource' ? filterDatasourcesByType(datasourceFilter) : []),
     [inputType, datasourceFilter]
@@ -177,7 +212,6 @@ export function InputBlock({
     timeTo: dataCheckTimeTo,
   });
 
-  // Compile pattern regex if provided
   const patternRegex = useMemo(() => {
     if (!pattern) {
       return null;
@@ -190,11 +224,16 @@ export function InputBlock({
     }
   }, [pattern]);
 
-  // Validate text input
   const validateTextInput = useCallback(
     (value: string): boolean => {
       if (required && !value.trim()) {
         setValidationError('This field is required');
+        return false;
+      }
+      if (format && value && normalizeHttpUrl(value) === null) {
+        setValidationError(
+          'Enter a website address, such as example.com or https://example.com/shop, without embedded credentials'
+        );
         return false;
       }
       if (patternRegex && value.trim() && !patternRegex.test(value)) {
@@ -204,10 +243,9 @@ export function InputBlock({
       setValidationError(null);
       return true;
     },
-    [required, patternRegex, validationMessage]
+    [required, patternRegex, validationMessage, format]
   );
 
-  // Validate datasource selection
   const validateDatasourceInput = useCallback(
     (value: string | null): boolean => {
       if (required && !value) {
@@ -265,7 +303,6 @@ export function InputBlock({
     });
   }, [runDataCheck, dataCheckType, variableName]);
 
-  // Handle reset/clear
   const handleReset = useCallback(() => {
     if (responseContext) {
       responseContext.deleteResponse(variableName);
@@ -283,7 +320,6 @@ export function InputBlock({
     setValidationError(null);
   }, [responseContext, variableName, inputType, defaultValue, resetDataCheck]);
 
-  // Handle save
   const handleSave = useCallback(() => {
     if (inputType === 'text') {
       if (!validateTextInput(textValue)) {
@@ -291,10 +327,16 @@ export function InputBlock({
       }
       if (responseContext) {
         const wasAlreadySaved = isSaved;
-        responseContext.setResponse(variableName, textValue.trim());
+        responseContext.setResponse(
+          variableName,
+          format === 'http-origin' && textValue
+            ? normalizeHttpOrigin(textValue)!
+            : format === 'http-url' && textValue
+              ? normalizeHttpUrl(textValue)!
+              : textValue.trim()
+        );
         setIsSaved(true);
 
-        // Track submission (no input values captured for privacy)
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
           input_type: inputType,
           variable_name: variableName,
@@ -307,7 +349,6 @@ export function InputBlock({
         responseContext.setResponse(variableName, boolValue);
         setIsSaved(true);
 
-        // Track submission (no input values captured for privacy)
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
           input_type: inputType,
           variable_name: variableName,
@@ -323,7 +364,6 @@ export function InputBlock({
         responseContext.setResponse(variableName, datasourceValue ?? '');
         setIsSaved(true);
 
-        // Track submission (no input values captured for privacy)
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
           input_type: inputType,
           variable_name: variableName,
@@ -337,19 +377,17 @@ export function InputBlock({
     boolValue,
     datasourceValue,
     validateTextInput,
+    format,
     validateDatasourceInput,
     responseContext,
     variableName,
     isSaved,
   ]);
 
-  // Handle skip
   const handleSkip = useCallback(() => {
     setIsSaved(true);
   }, []);
 
-  // Sync with external changes to the response (e.g., reset, initial load, cross-device sync)
-  // Uses event subscription pattern to satisfy lint rules about setState in effects
   // Also handles initial sync when context finishes loading via a custom event
   useEffect(() => {
     // Handler for response changes (including initial load completion)
@@ -421,7 +459,12 @@ export function InputBlock({
       case 'text':
         return (
           <div className={styles.inputContainer}>
-            <Field label="" invalid={!!validationError} error={validationError}>
+            <Field
+              label=""
+              invalid={!!validationError}
+              error={validationError}
+              description={describeHttpInput(textValue, format)}
+            >
               <Input
                 value={textValue}
                 onChange={handleTextChange}
@@ -429,6 +472,27 @@ export function InputBlock({
                 data-testid={testIds.interactive.inputField(variableName)}
               />
             </Field>
+          </div>
+        );
+
+      case 'checkbox-group':
+        return (
+          <div
+            role="group"
+            aria-labelledby={promptId}
+            className={styles.checkboxContainer}
+            data-choice-question={variableName}
+          >
+            {choices?.map((choice) => (
+              <Checkbox
+                key={choice.id}
+                label={choice.text}
+                checked={selection.includes(choice.id)}
+                disabled={responseContext.isLoading}
+                onChange={(event) => handleChoiceChange(choice.id, event.currentTarget.checked)}
+              />
+            ))}
+            {required && selection.length === 0 && <p role="status">Select at least one option to continue</p>}
           </div>
         );
 
@@ -487,16 +551,22 @@ export function InputBlock({
   };
 
   return (
-    <div className={styles.container}>
-      {/* Prompt/Question */}
-      <div className={styles.promptContainer}>{children}</div>
+    <div
+      className={styles.container}
+      data-required-choice-unanswered={
+        inputType === 'checkbox-group' && required && selection.length === 0 ? 'true' : undefined
+      }
+    >
+      <div className={styles.promptContainer} id={promptId}>
+        {children}
+      </div>
 
       {/* Input field based on type */}
       {renderInput()}
 
       {/* Actions - same for all input types */}
       <div className={styles.buttonContainer}>
-        {skippable && !required && !isSaved && (
+        {inputType !== 'checkbox-group' && skippable && !required && !isSaved && (
           <Button
             variant="secondary"
             size="sm"
@@ -507,14 +577,14 @@ export function InputBlock({
           </Button>
         )}
 
-        {isSaved && (
+        {(inputType === 'checkbox-group' ? selection.length > 0 : isSaved) && (
           <span className={styles.savedIndicator}>
             <Icon name="check" />
             Saved
           </span>
         )}
 
-        {isSaved && (
+        {(inputType === 'checkbox-group' ? selection.length > 0 : isSaved) && (
           <Button
             variant="secondary"
             size="sm"
@@ -525,14 +595,16 @@ export function InputBlock({
           </Button>
         )}
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleSave}
-          data-testid={testIds.interactive.inputSaveButton(variableName)}
-        >
-          {isSaved ? 'Update' : 'Save'}
-        </Button>
+        {inputType !== 'checkbox-group' && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSave}
+            data-testid={testIds.interactive.inputSaveButton(variableName)}
+          >
+            {isSaved ? 'Update' : 'Save'}
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { sleep } from '../async-utils';
 /**
  * Selector Pipeline
  * Unified strategy escalation pipeline that chains all resolution strategies
@@ -18,6 +19,7 @@ import { isCssSelector } from './selector-detector';
 
 export interface PipelineConfig {
   reftarget: string;
+  signal?: AbortSignal;
   action?: string;
   delays?: number[];
   relaxOnRetry?: boolean;
@@ -44,6 +46,7 @@ export interface PipelineResult {
  */
 export async function resolveSelectorPipeline(config: PipelineConfig): Promise<PipelineResult | null> {
   const { reftarget, action, delays = [200, 600, 1800], relaxOnRetry = true } = config;
+  config.signal?.throwIfAborted();
   const effectiveAction = action ?? 'highlight';
 
   // Resolve any prefixes (grafana:, panel:, etc.)
@@ -71,7 +74,7 @@ export async function resolveSelectorPipeline(config: PipelineConfig): Promise<P
 
   // Stage 2: Retry with exponential backoff (confidence 0.95)
   for (let i = 0; i < delays.length; i++) {
-    await sleep(delays[i]!);
+    await sleep(delays[i]!, config.signal);
 
     // On retry 2+ (i >= 1), optionally relax child combinators
     const shouldRelax = relaxOnRetry && i >= 1 && !isButtonText && resolvedSelector.includes('>');
@@ -141,8 +144,4 @@ function attemptResolve(selector: string, isButtonText: boolean): AttemptResult 
     };
   }
   return null;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -22,6 +22,7 @@ import {
   type ErrorClassification,
   type RunnerProvenance,
   type ReportSummary,
+  type ReportTarget,
   type ArtifactPaths,
   type StepCoverage,
   type ReportStepResult,
@@ -65,6 +66,7 @@ export interface TestStepResult {
 export interface TestResultsData {
   /** Guide metadata  */
   guide: GuideMetadata;
+  mutationAuthorization?: ReportTarget['mutationAuthorization'];
   /** ISO timestamp when test started */
   timestamp: string;
   startedAt?: string;
@@ -211,6 +213,7 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
     endedAt,
     target: {
       url: targetUrl,
+      ...(data.mutationAuthorization ? { mutationAuthorization: data.mutationAuthorization } : {}),
       ...(data.guide.tier ? { tier: data.guide.tier } : {}),
       ...(data.guide.instance ? { instance: data.guide.instance } : {}),
     },

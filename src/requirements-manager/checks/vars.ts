@@ -7,6 +7,7 @@
  * Supports wildcard `*`, boolean `true`/`false`, and exact string match.
  */
 
+import { decodeChoiceSelection, parseChoiceRequirement } from '../../lib/choice-response';
 import { getCompatibilityGuideId } from '../../global-state/guide-identity';
 import { guideResponseStorage } from '../../lib/user-storage';
 import type { CheckResultError } from '../../types/requirements.types';
@@ -30,6 +31,18 @@ export async function guideVariableCheck(check: string, explicitGuideId?: string
 
     const guideId = explicitGuideId ?? getCompatibilityGuideId();
     const actualValue = await guideResponseStorage.getResponse(guideId, variableName);
+
+    const choice = parseChoiceRequirement(check);
+    if (expectedValue.startsWith('includes:')) {
+      const pass = choice !== null && decodeChoiceSelection(actualValue).includes(choice.optionId);
+      return {
+        requirement: check,
+        pass,
+        ...(choice === null && { verdict: 'invalid' as const }),
+        error: pass ? undefined : 'Select the matching option in the question above',
+        context: { variableName, expectedValue, actualValue, guideId },
+      };
+    }
 
     // Check for wildcard (any non-empty value)
     if (expectedValue === '*') {

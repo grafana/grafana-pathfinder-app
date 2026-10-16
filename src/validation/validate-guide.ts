@@ -12,6 +12,7 @@ import {
   type ValidationWarning,
 } from './errors';
 import { detectUnknownFields } from './unknown-fields';
+import { validateChoiceReferences } from './choice-references';
 import { validateBlockConditions, type ConditionIssue } from './condition-validator';
 import { customErrorMap } from './error-map';
 import { normalizeJsonGuideAliases } from './normalize-guide-aliases';
@@ -107,6 +108,7 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
   // 3. Condition validation (NEW) - only runs after Zod validates structure
   const conditionIssues = validateBlockConditions(result.data as JsonGuide);
   warnings.push(...conditionIssues.map(conditionIssueToWarning));
+  warnings.push(...validateChoiceReferences(result.data as JsonGuide));
 
   // 4. Additional suggestions
   if (result.data.blocks.length === 0) {

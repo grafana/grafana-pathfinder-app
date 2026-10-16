@@ -10,14 +10,30 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { FloatingPanelContent } from './FloatingPanelContent';
 
+const mockRenderedCompletions: unknown[] = [];
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => (
-    <button onClick={onGuideComplete}>Complete rendered guide</button>
-  ),
+  ContentRenderer: ({
+    completion,
+    onActiveTrackChange,
+    initialActiveTrackId,
+  }: {
+    completion: unknown;
+    onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
+    initialActiveTrackId?: string | null;
+  }) => {
+    mockRenderedCompletions.push(completion);
+    return (
+      <>
+        <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
+        <button onClick={() => onActiveTrackChange?.('builder', [])}>Select builder track</button>
+      </>
+    );
+  },
 }));
 
-jest.mock('../../docs-retrieval', () => ({
-  recordGuideCompletionForSurface: jest.fn(),
+// The hooks barrel pulls @grafana/runtime in through user-storage.
+jest.mock('../../hooks', () => ({
+  usePublishSurfaceContentKey: jest.fn(),
 }));
 
 jest.mock('../docs-panel/link-handler.hook', () => ({
@@ -26,6 +42,7 @@ jest.mock('../docs-panel/link-handler.hook', () => ({
 
 jest.mock('../docs-panel/components', () => ({
   AlignmentPrompt: () => null,
+  GuideVersionNotice: () => null,
   LearningJourneyMilestoneToolbar: jest.fn(() => null),
 }));
 
@@ -38,9 +55,9 @@ jest.mock('@grafana/ui', () => ({
   useTheme2: () => ({}),
 }));
 
-const { recordGuideCompletionForSurface } = jest.requireMock('../../docs-retrieval');
 const { useLinkClickHandler } = jest.requireMock('../docs-panel/link-handler.hook');
 const { LearningJourneyMilestoneToolbar } = jest.requireMock('../docs-panel/components');
+const { usePublishSurfaceContentKey } = jest.requireMock('../../hooks');
 
 function content(overrides: Record<string, unknown> = {}): any {
   return {
@@ -75,6 +92,7 @@ function panelModel(): DocsPanelModelOperations {
     navigateToPreviousMilestone: jest.fn(),
     canNavigateNext: jest.fn(),
     canNavigatePrevious: jest.fn(),
+    setActiveTrackId: jest.fn(),
     openDevToolsTab: jest.fn(),
     openEditorTab: jest.fn(),
     updateEditorTabTitle: jest.fn(),
@@ -86,25 +104,134 @@ function panelModel(): DocsPanelModelOperations {
 }
 
 beforeEach(() => {
-  recordGuideCompletionForSurface.mockClear();
+  mockRenderedCompletions.length = 0;
   useLinkClickHandler.mockClear();
   LearningJourneyMilestoneToolbar.mockClear();
+  usePublishSurfaceContentKey.mockClear();
+});
+
+describe('FloatingPanelContent content key publication', () => {
+  it("publishes the active tab's currentUrl", () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith('https://example.com/remote-guide/content.json');
+  });
+
+  it('falls back to baseUrl when the tab has no currentUrl', () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab({ currentUrl: '' })} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith('https://example.com/remote-guide');
+  });
+
+  it('publishes nothing when no content is loaded', () => {
+    render(<FloatingPanelContent content={null} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(usePublishSurfaceContentKey).toHaveBeenLastCalledWith(undefined);
+  });
 });
 
 describe('FloatingPanelContent completion emission', () => {
-  it('routes a completed guide through the shared surface-neutral emitter', () => {
+  it('hands the renderer its view-level identity for the shared surface-neutral emitter', () => {
     render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
-
-    expect(recordGuideCompletionForSurface).toHaveBeenCalledWith({
-      baseUrl: 'https://example.com/remote-guide',
-      contentUrl: 'https://example.com/remote-guide/content.json',
-      currentUrl: 'https://example.com/remote-guide/content.json',
-      contentType: 'docs',
-      metadata: content().metadata,
-      guideTitle: 'My guide',
+    expect(mockRenderedCompletions.at(-1)).toEqual({
+      kind: 'tracked',
+      input: {
+        baseUrl: 'https://example.com/remote-guide',
+        contentUrl: 'https://example.com/remote-guide/content.json',
+        currentUrl: 'https://example.com/remote-guide/content.json',
+        contentType: 'docs',
+        metadata: content().metadata,
+        guideTitle: 'My guide',
+      },
+      onComplete: undefined,
     });
+  });
+
+  it('passes its onGuideComplete callback to run after the completion is recorded', () => {
+    const onGuideComplete = jest.fn();
+    render(
+      <FloatingPanelContent
+        content={content()}
+        activeTab={activeTab()}
+        model={panelModel()}
+        onGuideComplete={onGuideComplete}
+      />
+    );
+
+    expect(mockRenderedCompletions.at(-1)).toEqual(
+      expect.objectContaining({ kind: 'tracked', onComplete: onGuideComplete })
+    );
+  });
+});
+
+// This ContentRenderer also remounts on every content URL change (its own
+// `key={content.url}`), so it needs the same initialActiveTrackId restore
+// path the sidebar surface has, gated on the same activeTrackPathId match
+// (see the sibling test group in DocsPanelContentArea.test.tsx for the
+// leftover-across-paths rationale).
+describe('FloatingPanelContent active track tab restore', () => {
+  it("records the selecting cover page's own manifest id alongside the trackId", () => {
+    const model = panelModel();
+    render(
+      <FloatingPanelContent
+        content={content({ type: 'learning-journey', metadata: { packageManifest: { id: 'path-a' } } })}
+        activeTab={activeTab()}
+        model={model}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select builder track' }));
+
+    expect(model.setActiveTrackId).toHaveBeenCalledWith('tab-1', 'builder', [], 'path-a');
+  });
+
+  it('restores initialActiveTrackId when the stored selection matches the current cover manifest id', () => {
+    render(
+      <FloatingPanelContent
+        content={content({ type: 'learning-journey', metadata: { packageManifest: { id: 'path-a' } } })}
+        activeTab={activeTab({ activeTrackId: 'builder', activeTrackPathId: 'path-a' })}
+        model={panelModel()}
+      />
+    );
+
+    expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('builder');
+  });
+
+  it('withholds initialActiveTrackId when the stored selection was recorded for a different path', () => {
+    render(
+      <FloatingPanelContent
+        // Path B, which happens to declare a same-named "builder" track.
+        content={content({ type: 'learning-journey', metadata: { packageManifest: { id: 'path-b' } } })}
+        activeTab={activeTab({ activeTrackId: 'builder', activeTrackPathId: 'path-a' })}
+        model={panelModel()}
+      />
+    );
+
+    expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('');
+  });
+
+  // learningJourney.baseUrl is a resolved fetch URL, not a stable path
+  // identity — a raw/PR-tester cover URL and the resolver's canonical URL
+  // for the SAME manifest id are legitimately different strings, and
+  // returning via Previous fetches the canonical one. The restore must
+  // survive that.
+  it('restores initialActiveTrackId when the manifest id matches even though learningJourney.baseUrl differs (raw vs canonical cover URL)', () => {
+    render(
+      <FloatingPanelContent
+        content={content({
+          type: 'learning-journey',
+          metadata: {
+            packageManifest: { id: 'path-a' },
+            learningJourney: { baseUrl: 'https://cdn.example.com/canonical/path-a/' },
+          },
+        })}
+        activeTab={activeTab({ activeTrackId: 'builder', activeTrackPathId: 'path-a' })}
+        model={panelModel()}
+      />
+    );
+
+    expect(screen.getByTestId('initial-active-track-id')).toHaveTextContent('builder');
   });
 });
 

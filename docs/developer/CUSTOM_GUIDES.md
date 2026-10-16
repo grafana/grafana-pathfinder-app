@@ -35,6 +35,20 @@ A custom guide moves through three states:
 
 The **JSON** view edits the complete guide document. Invalid JSON or an invalid guide cannot be applied, and the editor remains in JSON view with inline validation errors. A valid change is applied when you switch to **Edit** or **Preview**; leaving JSON view clears the saved JSON draft. Loading, importing, or starting another guide also replaces the current local draft.
 
+### Customizing a public guide
+
+Organization admins and Grafana server admins can open a standalone public JSON guide and select **More options** → **Edit as private guide**. This opens an independent copy in the visual block editor with a new ID and “(copy)” appended to its title. If an editor draft already exists, confirm **Replace draft** or cancel to keep it.
+
+Edit the copy, select **Save**, and then **Publish** to make it available on your stack. The public original remains unchanged and can still appear in recommendations. Shared snippets become editable blocks in the copy; later source updates do not change those blocks. External media remains hosted at its original location.
+
+Learning journeys and paths, including their cover pages and milestones, cannot be copied through this action. Existing private guides are edited through the guide library.
+
+When Grafana Assistant is available, admins can also select **Customize with Assistant**. Describe the audience, what readers should learn or do, and any environment details to include. Assistant receives the full guide, with shared snippets expanded, and these answers. Select **Customize and open editor** to generate the copy, then review and edit it before saving or publishing. An existing editor draft is only replaced after confirmation; cancelling or a generation error leaves it intact. Declining replacement returns to the customization dialog with your answers and generated copy, so you can review it again without regenerating.
+
+Customization also sends the available data-source inventory (names, types and UIDs) and Grafana context to Assistant. Every request includes the current page path, which can contain a dashboard UID or slug. Its tools can also return live Prometheus, Loki, Tempo and Pyroscope metadata, including label values. UI inspection returns match counts for structural selectors and Grafana registry tokens; it rejects raw attribute selectors, pseudo-selectors, escapes and registry arguments other than the fixed Code radio option. Consider these data transfers when deciding what to include in a customization request. Usage telemetry records the attempt, success or failure with the fixed source `private-guide`; it does not include your answers, guide content, data-source metadata or generated output.
+
+The modal shows generation progress and elapsed time. If the response fails guide validation, Assistant makes one repair attempt using the validation errors. If it still fails, the modal shows the validation details and keeps your answers for another attempt.
+
 ### Undo, preview, and progress
 
 - **Undo** and **Redo** are available in Edit view for changes made during the current editor session. History is not persisted across a browser refresh and is cleared when a guide is loaded or reset.
@@ -86,6 +100,35 @@ Click **•••** → **Unpublish**. The guide is removed from the docs panel 
 
 ---
 
+## Choice-driven sections
+
+A checkbox group lets readers select any combination of author-defined options. The question can cover integrations, environments, signals, or another topic.
+
+1. Add an **Input** block.
+2. Select **Checkbox group**.
+3. Enter a question and a distinct variable name.
+4. Add option labels.
+5. If readers must select an option, enable **Required**.
+6. Add a **Section** after the input.
+7. Under **Requirements**, click **Add condition**.
+8. Select **Checkbox option selected** as the condition type.
+9. Select the question and an **Includes option** value.
+10. Click **Add**.
+11. Select **Hide entire section** under **When requirements are not met**.
+12. Add the section's content.
+
+All section requirements must pass. **Show heading only** hides the content but keeps the heading. The default, **Show section, disable execution**, keeps existing guides unchanged.
+
+Readers' selections save immediately. Option IDs stay unchanged after label edits. Removal of an option does not update its conditions automatically. Guide validation reports these references.
+
+Choice-driven progress excludes hidden content. Completion evidence remains after deselection, so a completed section remains complete after reselection. A newly selected, unfinished section lowers progress. Required groups with no selection prevent guide completion. Optional groups permit an empty selection.
+
+The **Mark complete** button records the current selected path, not future selections. Existing guides without checkbox groups or visibility controls retain position-based progress. Conditional blocks retain their existing one-block counting model.
+
+Import [the signals example](interactive-examples/choice-driven-guide.json) to try three independent sections in preview. Use the same pattern for other topics.
+
+App Platform saves use compatibility markers and conditional wrappers because the current CRD does not preserve the visibility field. Raw JSON uploads must use the compatibility encoding to preserve these settings.
+
 ## Viewing guides in the docs panel
 
 Published guides appear under **Custom guides** in the Pathfinder sidebar docs panel. They are available to all users on the Grafana instance where the guide was published.
@@ -126,7 +169,7 @@ scripts/upsert-learning-path.sh \
   --package ./drilldown-logs-lj
 ```
 
-Guides uploaded this way can be loaded and edited in the editor like any other, including a path's **cover page**. Save, publish, and unpublish each layer the editor-owned fields over the spec last read and carry `metadata.annotations` and `metadata.labels` through, so `spec.manifest` survives the write and a later `upsert-learning-path.sh` run still recognises the package as its own. The editor additionally _derives_ the manifest fields the content determines — `type` (only when there was none), `repository` (only when minting a fresh manifest), and `additionalFields.stats` / `additionalFields.startingLocation` — and leaves every other manifest field exactly as it read it. `startingLocation` is the one field the editor both writes and clears, so it only touches it when it can tell the value is its own: either nothing was inherited, or the inherited value is exactly what the blocks read alongside it derive. Removing the `on-page:` requirement therefore removes the prompt, while a `startingLocation` that arrived with an uploaded package survives a title-only edit rather than being erased by it. A cover page's `type` and `milestones` are never rewritten, and a path keeps its rolled-up stats rather than gaining the cover page's own counts. The exception is the overwrite-confirm prompt described under [collision detection](#collision-detection): confirming an overwrite writes a guide that did not come from the stored resource, so it deliberately inherits neither the manifest nor the provenance annotations.
+Guides uploaded this way can be loaded and edited in the editor like any other, including a path's **cover page**. Save, publish, and unpublish each layer the editor-owned fields over the spec last read and carry `metadata.annotations` and `metadata.labels` through, so `spec.manifest` survives the write and a later `upsert-learning-path.sh` run still recognises the package as its own. The editor additionally _derives_ the manifest fields the content determines — `type` (only when there was none), `repository` (only when minting a fresh manifest), and `additionalFields.stats` / `additionalFields.startingLocation` — and leaves every other manifest field exactly as it read it. `startingLocation` is the one field the editor both writes and clears, so it only touches it when it can tell the value is its own: either nothing was inherited, or the inherited value is exactly what the blocks read alongside it derive. Removing the `on-page:` requirement therefore removes the prompt, while a `startingLocation` that arrived with an uploaded package survives a title-only edit rather than being erased by it. A cover page's `type`, `milestones`, and `tracks` (Path Tracks RFC) are never rewritten, and a path keeps its rolled-up stats rather than gaining the cover page's own counts. The exception is the overwrite-confirm prompt described under [collision detection](#collision-detection): confirming an overwrite writes a guide that did not come from the stored resource, so it deliberately inherits neither the manifest nor the provenance annotations.
 
 For a declarative workflow rather than a script, the same API is reachable from Terraform through `grafana_apps_generic_resource` — which also deletes guides that leave your configuration and detects out-of-band edits, neither of which the scripts do. See [`TERRAFORM.md`](TERRAFORM.md) for a worked example and the one caveat that matters (block fields the CRD prunes become a plan that never converges).
 

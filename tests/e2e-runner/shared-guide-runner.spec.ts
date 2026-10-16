@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 
-import { test } from '../fixtures';
+import { test } from './fixtures';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from '../../src/cli/e2e/e2e-reporter';
 import {
   E2E_ENV,

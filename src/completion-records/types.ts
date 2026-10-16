@@ -1,3 +1,5 @@
+import type { GuideStatsSummary } from '../types/guide-stats.schema';
+
 /**
  * Shared types for the completion-recorder boundary.
  *
@@ -26,10 +28,17 @@ export interface CompletionKey {
 
 export type CompletionKind = 'guide' | 'journey';
 
-/** How the completion happened. Today only 'objectives' is produced (see brief §2). */
+/** Explicit guide mark, credited skipped steps, or other completion evidence. */
 export type CompletionSource = 'objectives' | 'manual' | 'skipped';
 
 export type CompletionCategory = 'interactive' | 'documentation' | 'learning-journey';
+
+/**
+ * `records` attempts send partial progress and carry their id on the wire;
+ * `analytics` attempts only feed product analytics. Fixed when the attempt is
+ * minted, so a flag flip mid-attempt cannot change how it is named.
+ */
+export type AttemptMode = 'records' | 'analytics';
 
 /**
  * A single terminal-completion fact handed to the recorder. Carries the
@@ -40,13 +49,25 @@ export interface CompletionFact extends CompletionKey {
   guideTitle: string;
   guideCategory: CompletionCategory;
   pathId?: string;
-  /** 0..100. Terminal completions are ~100 (partial-progress never reaches here). */
+  /** Always 100: the recorder carries terminal facts only. An attempt's partial progress never passes through it. */
   completionPercent: number;
   source: CompletionSource;
   /** ISO 8601, client-observed time of completion. */
   completedAt: string;
   durationMs?: number;
+  /** Set by the recorder on an attempt-eligible guide completion. Not sent on the wire. */
+  attemptId?: string;
+  attemptMode?: AttemptMode;
+  attemptStartedAt?: number;
+  /** Live rendered-guide counts for analytics; not part of the durable write body. */
+  guideStats?: GuideStatsSummary;
+  /** Analytics only: `guideSource` was resolved, not a default. */
+  sourceConfirmed?: boolean;
+  /** Analytics only: the learning path a milestone belongs to. */
+  pathIdentity?: PathAnalyticsIdentity;
 }
+
+export type PathAnalyticsIdentity = CompletionKey & { sourceConfirmed: boolean };
 
 /** A fact whose `kind` is pinned to 'guide' — the only shape `recordGuideCompletion` accepts. */
 export type GuideCompletionFact = CompletionFact & { kind: 'guide' };

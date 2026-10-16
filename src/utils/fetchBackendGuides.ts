@@ -1,11 +1,8 @@
-/**
- * Shared utility for fetching backend guides from the App Platform (GAP) group.
- */
-
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
-import { collectionUrl, isBackendApiAvailable } from './interactive-guides-api';
+import { PLUGIN_BACKEND_URL } from '../constants';
+import { isBackendApiAvailable } from './interactive-guides-api';
 
 // Re-exported so existing importers (e.g. BlockEditor) keep a stable path.
 export { isBackendApiAvailable };
@@ -18,10 +15,7 @@ interface BackendGuidesList {
 const UNAVAILABLE_STATUSES = new Set([400, 403, 404, 405, 501, 503]);
 
 /**
- * Fetch guides from the backend API. Returns an empty array if the endpoint is
- * unavailable or on error. When publishedOnly is true, only guides with
- * spec.status === 'published' are returned; guides with missing/undefined
- * status are treated as draft and excluded.
+ * Optional endpoints return an empty list; other errors reach the editor.
  */
 export async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): Promise<any[]> {
   if (!isBackendApiAvailable() || !namespace) {
@@ -31,7 +25,7 @@ export async function fetchBackendGuides(namespace: string, publishedOnly?: bool
   try {
     const response = await lastValueFrom(
       getBackendSrv().fetch<BackendGuidesList>({
-        url: collectionUrl(namespace),
+        url: `${PLUGIN_BACKEND_URL}/custom-guides`,
         method: 'GET',
         showErrorAlert: false,
       })
@@ -50,12 +44,10 @@ export async function fetchBackendGuides(namespace: string, publishedOnly?: bool
       (err as { statusCode?: number })?.statusCode ??
       (err as { data?: { statusCode?: number } })?.data?.statusCode;
 
-    // Endpoint may not be rolled out yet - treat as unavailable.
     if (status && UNAVAILABLE_STATUSES.has(status)) {
       return [];
     }
 
-    // Re-throw for caller to handle.
     throw err;
   }
 }

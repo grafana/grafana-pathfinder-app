@@ -1,21 +1,32 @@
 import type { ConditionInput } from './requirements.types';
 import type { InternalAction } from './interactive-actions.types';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
-// Derived by exclusion rather than restated: a field the engine reads off an
-// action must reach the live tab, and hand-listing the fields is what dropped
-// targetState on this wire three times over. Only `requirements` stays behind —
-// the controller gates them, the live tab replays. Fields added to
-// InternalAction therefore reach the wire by default rather than by remembering.
+// Derive by exclusion so new engine fields cannot silently disappear from the wire.
 export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
 
-/** Narrow an engine action to what the wire carries. */
 export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {
   const { requirements, ...wire } = action;
   return wire;
+}
+
+// How long the controller waits for a step-complete before it gives up on a run.
+export const DEFAULT_STEP_WAIT_MS = 15 * 60_000;
+
+// The live tab gives each guided substep INTERACTIVE_CONFIG.guided.stepTimeout
+// (live-tab-executor runGuided); the extra 10s per substep is controller-side
+// slack. The live tab runs commands one at a time, so a guided command can wait
+// behind another run before its budget starts: DEFAULT_STEP_WAIT_MS stays the
+// floor, and blocks whose budget is longer than that get the longer wait.
+export function guidedStepWaitMs(remainingSubsteps: number): number {
+  return Math.max(
+    DEFAULT_STEP_WAIT_MS,
+    Math.max(1, remainingSubsteps) * (INTERACTIVE_CONFIG.guided.stepTimeout + 10_000)
+  );
 }
 
 export interface CrossTabAction extends CrossTabInternalAction {
@@ -84,10 +95,17 @@ export interface ControllerAuthFields {
 
 export interface StepCommandMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'step-command';
+  startIndex?: number;
   phase: 'show' | 'do';
   stepId: string;
   runId: string;
   action: CrossTabAction;
+}
+
+export interface StepCancelMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'step-cancel';
+  stepId: string;
+  runId: string;
 }
 
 // Controller announces its session public key so the live tab can show a
@@ -122,6 +140,7 @@ export interface SidebarHandoffMessage extends CrossTabEnvelope, Partial<Control
 // Requirement round-trip (controller → live → controller); requestId correlates
 // each reply to its request since several steps may be in flight.
 export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  passive?: boolean;
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
@@ -174,8 +193,44 @@ export interface StepProgressMessage extends CrossTabEnvelope {
   total: number;
 }
 
+export interface ObservationSubscriptionMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'observation-subscribe';
+  generation: number;
+  subscriptionId: string;
+  guideKey: string;
+  revision: number;
+  steps: Array<{
+    id: string;
+    cursor: number;
+    epoch?: number;
+    actions: Array<{ targetAction: string; refTarget?: string; targetValue?: string }>;
+  }>;
+}
+export interface ObservationCancelMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'observation-cancel';
+  subscriptionId: string;
+}
+export interface ObservationEvidenceMessage extends CrossTabEnvelope {
+  kind: 'observation-evidence';
+  subscriptionId: string;
+  guideKey: string;
+  id: string;
+  index: number;
+}
+
+export interface ObservationChangeMessage extends CrossTabEnvelope {
+  kind: 'observation-change';
+  subscriptionId: string;
+  guideKey: string;
+}
+
 export type CrossTabMessage =
+  | ObservationChangeMessage
+  | ObservationSubscriptionMessage
+  | ObservationCancelMessage
+  | ObservationEvidenceMessage
   | StepCommandMessage
+  | StepCancelMessage
   | HeartbeatMessage
   | SidebarHandoffMessage
   | CheckRequirementsMessage
@@ -202,6 +257,9 @@ export type CrossTabPayload = CrossTabMessage extends infer M
 // sides MUST agree — this is the single source of truth they share.
 export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Set([
   'step-command',
+  'step-cancel',
+  'observation-subscribe',
+  'observation-cancel',
   'check-requirements',
   'fix-requirement',
   'sidebar-handoff',
@@ -259,10 +317,22 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
   }
   const action = message.action;
   if (
+    message.startIndex !== undefined &&
+    (!Number.isInteger(message.startIndex) ||
+      (message.startIndex as number) < 0 ||
+      !Array.isArray(action.internalActions) ||
+      (message.startIndex as number) >= action.internalActions.length)
+  ) {
+    return false;
+  }
+  if (
     typeof action.refTarget !== 'string' ||
     typeof action.targetAction !== 'string' ||
     !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
-    !isOptionalTargetState(action.targetState)
+    !isOptionalTargetState(action.targetState) ||
+    (action.lazyRender !== undefined && typeof action.lazyRender !== 'boolean') ||
+    !isOptionalString(action.scrollContainer) ||
+    !isOptionalString(action.openGuide)
   ) {
     return false;
   }
@@ -281,7 +351,10 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
           isOptionalString(sub.refTarget) &&
           isOptionalString(sub.targetValue) &&
           isOptionalString(sub.targetComment) &&
-          isOptionalTargetState(sub.targetState)
+          isOptionalTargetState(sub.targetState) &&
+          (sub.lazyRender === undefined || typeof sub.lazyRender === 'boolean') &&
+          isOptionalString(sub.scrollContainer) &&
+          isOptionalString(sub.openGuide)
       )
     );
   }
@@ -336,6 +409,7 @@ function isBoundedConditionInput(value: unknown): boolean {
 function isValidCheckRequirements(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
+    (message.passive === undefined || typeof message.passive === 'boolean') &&
     typeof message.stepId === 'string' &&
     isBoundedConditionInput(message.requirements) &&
     isOptionalString(message.targetAction) &&
@@ -441,8 +515,55 @@ function isValidPairingAccept(message: Record<string, unknown>): boolean {
 // validated field-by-field against this table before dispatch. Each new
 // message kind adds its case here on the branch that introduces it; the
 // Record over CrossTabMessage['kind'] makes a missing case a compile error.
+// The live tab only matches subscribed actions, so inert verbs that a step can
+// still contain are accepted here without widening KNOWN_TARGET_ACTIONS.
+const OBSERVABLE_TARGET_ACTIONS: ReadonlySet<string> = new Set([...KNOWN_TARGET_ACTIONS, 'noop', 'popout']);
+
+function isValidObservationSubscription(message: Record<string, unknown>): boolean {
+  return (
+    isBoundedString(message.subscriptionId, 128) &&
+    isBoundedString(message.guideKey, 4096) &&
+    Number.isSafeInteger(message.generation) &&
+    (message.generation as number) >= 0 &&
+    Number.isSafeInteger(message.revision) &&
+    (message.revision as number) >= 0 &&
+    Array.isArray(message.steps) &&
+    message.steps.length <= 256 &&
+    message.steps.every(
+      (step) =>
+        isRecord(step) &&
+        isBoundedString(step.id, 4096) &&
+        Number.isSafeInteger(step.cursor) &&
+        (step.epoch === undefined || (Number.isSafeInteger(step.epoch) && (step.epoch as number) >= 0)) &&
+        Array.isArray(step.actions) &&
+        step.actions.length <= 256 &&
+        (step.cursor as number) >= 0 &&
+        (step.cursor as number) <= step.actions.length &&
+        step.actions.every(
+          (action) =>
+            isRecord(action) &&
+            typeof action.targetAction === 'string' &&
+            OBSERVABLE_TARGET_ACTIONS.has(action.targetAction) &&
+            (action.refTarget === undefined || isBoundedString(action.refTarget, 4096)) &&
+            (action.targetValue === undefined || isBoundedString(action.targetValue, 16384))
+        )
+    )
+  );
+}
+
 const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, unknown>) => boolean> = {
   'step-command': isValidStepCommand,
+  'step-cancel': (message) => typeof message.stepId === 'string' && typeof message.runId === 'string',
+  'observation-subscribe': isValidObservationSubscription,
+  'observation-cancel': (m) => isBoundedString(m.subscriptionId, 128),
+  'observation-change': (m) => isBoundedString(m.subscriptionId, 128) && isBoundedString(m.guideKey, 4096),
+  'observation-evidence': (m) =>
+    isBoundedString(m.subscriptionId, 128) &&
+    isBoundedString(m.guideKey, 4096) &&
+    isBoundedString(m.id, 4096) &&
+    Number.isSafeInteger(m.index) &&
+    (m.index as number) >= 0 &&
+    (m.index as number) < 256,
   heartbeat: isValidHeartbeat,
   'sidebar-handoff': isValidSidebarHandoff,
   'check-requirements': isValidCheckRequirements,

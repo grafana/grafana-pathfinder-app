@@ -1,134 +1,60 @@
-# Release Process
+# Release process
 
-This document describes how releases are created and managed for the Grafana Pathfinder plugin.
+Cloud plugin promotion and rollback are governed by the [deployment_tools release guide](https://github.com/grafana/deployment_tools/blob/master/docs/grafana-pathfinder/RELEASE.md) and [incident runbook](https://github.com/grafana/deployment_tools/blob/master/docs/grafana-pathfinder/RUNBOOK.md). This document describes source preparation, artifacts and workflow contracts. CLI/MCP publishing is independent of plugin rollout.
 
-## Release Workflows
+## Release workflows
 
-The project uses several GitHub Actions workflows for different release scenarios:
+| Workflow                                                  | Trigger and responsibility                                                                        |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [Plugins - CD](../../.github/workflows/publish.yml)       | Manual dispatch; build/catalog publication and provisioned Cloud deployment via shared CD v11.2.0 |
+| [Tag-based release](../../.github/workflows/release.yml)  | A pushed `v*` tag builds GitHub plugin artifacts; it is not the Cloud deployment procedure        |
+| [CLI publishing](../../.github/workflows/cli-publish.yml) | Relevant PRs build/test; relevant main pushes publish the CLI container as described below        |
 
-### 1. Tag-Based Plugin Releases (`.github/workflows/release.yml`)
+## Version management
 
-- **Trigger**: Push of version tags matching pattern `v*` (e.g., `v1.0.0`)
-- **Process**:
-  - Uses `grafana/plugin-actions/build-plugin` action
-  - Builds the plugin for distribution
-  - Plugin signing is available but currently commented out
-  - Creates GitHub release with built artifacts
+`package.json` owns the plugin semantic version; keep lockfile version entries and changelog aligned using the repository's release-prep workflow. `src/plugin.json` contains `%VERSION%`, replaced during the build. Prepare a reviewed new version for a fix rather than replacing a published artifact.
 
-### 2. Manual Publishing (`.github/workflows/publish.yml`)
+Shared CD normally leaves the main-branch version unsuffixed, uses a commit suffix for other branches, and applies special prod-canary suffix behavior. Do not assume all dev builds have a suffix: inspect the resolved commit and published version in the run. A workflow's selected ref and its **branch** input are distinct; use main for both in the production path and verify the resulting tag SHA.
 
-- **Trigger**: Manual workflow dispatch
-- **Purpose**: Deploy to specific environments (dev/ops/prod)
-- **Process**:
-  - Allows selection of branch and target environment
-  - Supports docs-only publishing option
-  - Uses Grafana's shared CI workflows
-  - Does not publish to plugin catalog as pending (disabled via `publish-to-catalog-as-pending: false`)
+## Release process steps
 
-### 3. CLI / MCP continuous publish (`.github/workflows/cli-publish.yml`)
+1. Prepare the version/changelog PR from current main and run required source CI. Review compatibility with the Go resource proxy, persisted settings, APIs and external content.
+2. Dispatch **Plugins - CD** with the release branch as input **branch**, **environment=dev**, **docs-only=false**. Record the exact build SHA/version and validate the affected user journey in dev under the operational guide.
+3. Merge the reviewed source PR. Check the resulting main commit and repeat relevant checks if it differs from what was tested.
+4. Follow the operational guide to dispatch main to **prod**, verify each wave and approve the production gates. The current workflow disables Playwright in CD; its success does not replace browser validation.
+5. Verify tag/artifact provenance and complete GitHub release notes/publication after operational verification. Record release and deployment evidence separately.
 
-- **Trigger**:
-  - `pull_request` to `main` (CLI-relevant paths): build CLI, build image, smoke test. No push.
-  - `push` to `main` (CLI-relevant paths): same, plus push the resulting Docker image to GHCR as `:latest` and `:main-<short-sha>`, cosign-sign the digest, and smoke-test the pushed image.
-- **Process**:
-  - Builds the CLI via `npm run build:cli`.
-  - Generates a minimal runtime `package.json` (Commander, Zod, and the Model Context Protocol SDK only) via `scripts/cli-build-utils.js runtime-package <out>` so the image doesn't pull the plugin's full dependency tree.
-  - Builds `Dockerfile.cli` and pushes to `ghcr.io/grafana/pathfinder-cli:latest` plus `ghcr.io/grafana/pathfinder-cli:main-<short-sha>`.
-  - Authenticates to GHCR with the always-present `GITHUB_TOKEN` — no repo secrets are required to operate this workflow.
-- **No npm publish, no Docker Hub, no tag-driven release.** The image is the only consumable artifact. Pin to `:main-<sha>` for reproducibility; track `:latest` for "tip of trunk."
+### Tag and GitHub release responsibilities
 
-See [CLI and MCP continuous publish](#cli-and-mcp-continuous-publish) below for the operator playbook.
+Shared CD can create `v<version>` and a **draft GitHub release** after successful catalog publication when production is targeted. It does not wait for Argo deployment health. Do not push a separate tag as a routine prerequisite to Cloud publishing.
 
-## Build Process
+The shared workflow's tag creation uses the workflow context SHA; verify it matches the intended tested commit, particularly if workflow ref and build branch differ. An existing tag can be retained by the workflow, so a green run does not prove a pre-existing tag is correct. Stop and resolve mismatched provenance with the release owner; do not overwrite released tags/artifacts to hide a mismatch.
 
-### Webpack Configuration (`.config/webpack/webpack.config.ts`)
+A deliberate tag push invokes `release.yml` for artifact publication. Use that route only when artifact publication is the intended operation, not to bypass Cloud promotion gates. Its signing configuration is commented out; this does not describe the separate shared CD signing path. Inspect the actual artifact/signing result rather than assuming all plugin releases are unsigned.
 
-- **Build Tool**: Webpack 5 with TypeScript support
-- **Entry Point**: `src/module.tsx`
-- **Output**: AMD modules for Grafana plugin system
-- **Version Injection**: Automatically replaces `%VERSION%` and `%TODAY%` placeholders in `plugin.json` and `README.md`
-- **Asset Processing**: Copies static assets, handles localization files, and generates source maps
+## Deployment environments
 
-### Build Commands
+The workflow offers `dev`, `ops` and `prod`. Dev targets dev only; ops targets ops/staging only. With the current `prod-targets-all` default, prod traverses dev → ops/staging → prod-canary → prod. Argo defaults require manual approval for prod-canary and prod. Pathfinder configures deployment PR auto-merge for dev/ops only. Follow the live run's parameters and links in `#pathfinder-app-release`.
+
+There is no fixed Pathfinder Argo workflow name: shared CD uses the `grafana-plugins-deploy` template in namespace `grafana-plugins-cd`. Workflow completion, deployment PR merge, reconciliation, and a healthy browser are separate milestones.
+
+## Build process
+
+Webpack enters `src/module.tsx`, builds the frontend bundle and replaces version/date placeholders. The plugin distribution also includes its backend proxy artifacts through the release build. Local commands:
 
 ```bash
-npm run build          # Production build
-npm run dev            # Development watch mode
-npm run sign           # Sign plugin for distribution
+npm run build  # production frontend build
+npm run dev    # development watch mode
+npm run sign   # signing operation; requires appropriate credentials
 ```
 
-## Version Management
+Use the release workflow's artifacts as the distribution evidence; a local frontend build alone does not prove the complete release was published or deployed.
 
-### Semver Sources
+## Monitoring and notifications
 
-- **Primary**: `package.json` version field
-- **Plugin Manifest**: `src/plugin.json` uses `%VERSION%` placeholder
-- **Build Process**: Webpack replaces placeholders with actual version
+Use `#pathfinder-app-release` for release progress and `#grafana-pathfinder-alerts` / Pathfinder On Call for incidents. The operational guide links current dashboards, read-only gcx queries and recovery checks. Missing telemetry or idle traffic is not a healthy-release result.
 
-### Version Suffixing
-
-- **CD Builds**: Add git commit SHA suffix (`+abcdef`)
-- **Release Builds**: Use clean semantic version from `package.json`
-
-## Deployment Environments
-
-### Environment Progression
-
-1. **Development** (`dev`) - Manual via publish workflow; can deploy a PR branch
-2. **Operations** (`ops`) - Manual via publish workflow
-3. **Production** (`prod`) - Manual via publish workflow
-
-### Plugin Scope
-
-- **Scope**: `universal` (available for both on-prem and Grafana Cloud)
-- **Deployment Type**: `provisioned` (managed by Grafana)
-
-## Release Artifacts
-
-### Generated Files (in `dist/` directory)
-
-- `module.js` - Main plugin bundle
-- `plugin.json` - Plugin manifest with version info
-- `README.md` - Documentation with version placeholders replaced
-- `CHANGELOG.md` - Release notes
-- Localization files for 20+ languages
-- Static assets (images, icons)
-
-## Release Process Steps
-
-### For Official Releases
-
-1. Update version in `package.json`
-2. Create and push version tag (`git tag v1.1.32 && git push origin v1.1.32`)
-3. GitHub Actions automatically builds and creates release
-4. Optionally sign plugin for distribution
-
-### For Development Deployments
-
-1. Run the manual publish workflow
-2. Select the `dev` environment and the branch to deploy
-3. Monitor via Slack channel `#pathfinder-app-release`
-
-### For Production Deployments
-
-1. Use manual publish workflow
-2. Select target environment (ops/prod)
-3. Choose branch to deploy from
-4. Monitor deployment via Argo Workflow
-
-## Monitoring and Notifications
-
-- **Slack Channel**: `#pathfinder-app-release`
-- **Argo Workflow**: `pathfinder-argo-workflow`
-- **Auto-merge**: Enabled for dev and ops environments
-
-## Plugin Signing
-
-Plugin signing is available but currently disabled. To enable:
-
-1. Generate an access policy token from Grafana
-2. Add token to repository secrets as `policy_token`
-3. Uncomment the signing configuration in `.github/workflows/release.yml`
+For a demonstrated release regression, stop promotion and restore a compatible known-good wave pin using the operational runbook. Build a new corrective version after dev validation; do not simply resume the faulty release. External guides/package indexes and persisted API data are not reverted by plugin rollback.
 
 ## CLI and MCP continuous publish
 
@@ -136,10 +62,10 @@ The `pathfinder-cli` Docker image at `ghcr.io/grafana/pathfinder-cli` is rebuilt
 
 ### Tags published on each relevant main merge
 
-| Tag                                               | Stability                                                         |
-| ------------------------------------------------- | ----------------------------------------------------------------- |
-| `ghcr.io/grafana/pathfinder-cli:latest`           | Tip of relevant changes on `main`. Use for "follow trunk."        |
-| `ghcr.io/grafana/pathfinder-cli:main-<short-sha>` | Immutable per-commit pointer. Use for reproducible deploys / pin. |
+| Tag                                               | Stability                                                  |
+| ------------------------------------------------- | ---------------------------------------------------------- |
+| `ghcr.io/grafana/pathfinder-cli:latest`           | Tip of relevant changes on `main`. Use for "follow trunk." |
+| `ghcr.io/grafana/pathfinder-cli:main-<short-sha>` | Per-commit tag. Record/pin its digest for reproducibility. |
 
 ### Versioning
 

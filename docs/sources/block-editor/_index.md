@@ -1,8 +1,9 @@
 ---
 title: Block editor
 menuTitle: Block editor
-description: Author and publish your own interactive guides directly inside Grafana with the block editor.
-weight: 50
+description: Create interactive guides with the block editor in Grafana, record steps, save drafts, publish content for your organization, and import or export guide JSON.
+weight: 20
+review_date: 2026-09-30
 keywords:
   - block editor
   - custom guide
@@ -12,7 +13,7 @@ keywords:
 
 # Block editor
 
-The block editor is a visual authoring tool built into Pathfinder. You can use it to compose your own interactive guides without writing any JSON, save them as drafts, publish them to your Grafana instance, and update them as your processes change.
+The block editor is a visual authoring tool built into Interactive learning. You can use it to compose your own interactive guides without writing any JSON, save them as drafts, publish them to your Grafana instance, and update them as your processes change.
 
 This page walks you through:
 
@@ -30,72 +31,62 @@ This page walks you through:
 
 ## Who can use the block editor
 
-The block editor is available to users with **editor** or **admin** permissions in Grafana. The editor tab does not appear in the sidebar for viewers. Published guides are visible to **all** users on the Grafana instance, regardless of role.
+The block editor is available to users with the Editor or Admin role in Grafana. The **Create guide** menu item is not available to users with the Viewer role. Published guides are visible to users in the same Grafana organization, regardless of role.
 
-Custom guides are private to the Grafana stack they are published on — they are stored in the Pathfinder backend that runs alongside Grafana and are not shared between stacks or organizations.
+Publishing requires server storage to be available on your stack. Published custom guides are shared within the current Grafana organization. Other authors with the required access can load guides from the library. When publishing is unavailable, you can still author guides locally and export their JSON.
 
 ## Open the block editor
 
-The block editor lives inside the Pathfinder docs panel.
+The block editor lives inside the Interactive learning sidebar.
 
-1. Click the **Help** icon in the top navigation bar to open the Pathfinder sidebar.
-1. In the sidebar's tab bar, click the **Editor** tab (pencil icon).
+1. Click the **Help** icon in the top navigation bar to open the Interactive learning sidebar.
+1. Open **More options** (the three-dot menu) and select **Create guide**.
 
-![Pathfinder sidebar with the Editor tab selected](/media/docs/pathfinder/block-editor-tab.png)
-
-If you don't see the Editor tab, your account does not have the editor or admin role on this Grafana instance — ask an administrator to update your permissions.
+If **Create guide** is missing, check that you are signed in with the Editor or Admin role.
 
 ## Anatomy of the editor
 
 When you open the editor for a new guide, you see the empty canvas:
 
-![Empty block editor canvas](/media/docs/pathfinder/block-editor-empty.png)
+![Block editor with a new guide, Edit, Preview, and JSON views, the Save button, and Add block control.](/media/docs/pathfinder/2026-09-30/block-editor.jpg)
 
-| Area                         | What it does                                                                                                           |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Title** (top)              | Click to give your guide a name. Pathfinder generates a unique ID from the title on first save.                        |
-| **Status badge** (top right) | Tracks where the guide lives — Saved (browser only), Draft, Draft modified, Published, Published modified.             |
-| **New**                      | Start a fresh guide. The current guide is auto-saved before clearing.                                                  |
-| **View mode toggle**         | Switch between Edit, Preview, and JSON views.                                                                          |
-| **Pop out**                  | Detach the guide into a floating, resizable window — useful when you need the right sidebar for something else.        |
-| **More actions** (⋮)         | Import a guide from JSON, copy/download the current guide as JSON, take a guided tour, and (when published) unpublish. |
-| **Add Block** (bottom)       | Open the block palette to choose the next block to add.                                                                |
+| Area                                 | What it does                                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Title                                | Name the guide. The editor generates an ID from its title; saved guides retain their identity when renamed. |
+| Status badge                         | Shows whether the guide is a draft or published and whether it has local changes.                           |
+| View mode toggle                     | Switch between **Edit**, **Preview**, and **JSON**.                                                         |
+| **Save**, **Publish**, or **Update** | Save a draft or publish changes when server storage is available.                                           |
+| More actions                         | Start a new guide, open the library, import or export JSON, change display mode, or take a tour.            |
+| **Undo** and **Redo**                | Reverse or reapply changes during your editing session.                                                     |
+| Add block                            | Open the palette to add content or interactive steps.                                                       |
 
 ## Create your first guide
 
-The fastest way to learn the editor is to build a small guide end to end.
+Create a guide with an introduction and an interactive step, then preview and publish it.
 
 ### 1. Name your guide
 
-Click the title at the top and type a name. Press **Enter** or click away to confirm. The first time you save, the editor creates a unique guide ID by slugifying the title and appending a four-character random suffix (for example, `setting-up-dashboards-a3f9`). The ID is locked after the first save — renaming the title later does not change it.
+Click the title at the top and type a name. Press **Enter** or click away to confirm. You can rename a saved guide later without creating a separate guide.
 
 ### 2. Add your first block
 
-Click **+ Add Block** at the bottom of the editor. The block palette opens with every block type available on this instance:
-
-![Block palette showing all available block types](/media/docs/pathfinder/block-editor-palette.png)
+Click **Add block** at the bottom of the editor. The block palette opens with every block type available on this instance:
 
 Pick **Markdown** for a plain text introduction. Each block type opens its own form:
-
-![Markdown block form](/media/docs/pathfinder/block-editor-markdown-form.png)
 
 Fill in the content and click **Add block**. The form closes and your block appears in the canvas.
 
 ### 3. Add interactive steps
 
-To teach a user how to do something in Grafana, add an **Interactive** block. The form has an Action Type dropdown (highlight, button, form fill, navigate, hover, info, popout) and a Target selector field with a built-in **Pick element** button:
+To teach a user how to do something in Grafana, add an **Interactive** block. The form has an **Action Type** dropdown and, for actions that target an element, a **Target selector** field with a built-in **Pick element** button:
 
-![Interactive block form with Show me / Do it](/media/docs/pathfinder/block-editor-interactive-form.png)
+Click **Pick element**, then click the Grafana element you want the guide to target. The editor fills in a selector, which identifies that element. Check the selector health badge, then click **Test** to highlight the match and confirm that it is the intended element.
 
-The **Pick element** button activates a click-anywhere selector picker — point at the element you want the guide to highlight, click it, and the editor fills in the most stable selector it can find. The Selector Health badge next to the field gives you a green/yellow/red signal on how robust the selector is, and the **Test** button flashes the matched element on the page so you can confirm it's the right one.
-
-For automated sequences, use a **Multistep** block (the system performs each step in order when the user clicks Do it). For sequences the user must perform themselves, use a **Guided** block (the system highlights each step and waits for the user to act). A guided block's step actions are narrower than a multistep's: `navigate` and `popout` aren't offered, because neither gives the reader anything to do.
+For automated sequences, use a **Multistep** block (the system performs each step in order when the user clicks **Do it**). For sequences the user must perform themselves, use a **Guided** block (the system highlights each step and waits for the user to act). A guided block's step actions are narrower than a multistep's: `navigate` and `popout` aren't offered, because neither gives the reader anything to do.
 
 ### 4. Group steps with sections
 
-When you have several related steps, wrap them in a **Section** block. Sections give the user a single "Do section" button that runs the entire sequence and adds clear visual structure to your guide.
-
-![Section block form](/media/docs/pathfinder/block-editor-section-form.png)
+When you have several related steps, wrap them in a **Section** block. Sections give the user a single **Do section** button that runs the entire sequence and adds clear visual structure to your guide.
 
 If you turn on **Add and record**, the editor immediately enters [recording mode](#record-interactive-steps) and captures every interaction you perform in Grafana as steps inside the new section.
 
@@ -103,33 +94,33 @@ If you turn on **Add and record**, the editor immediately enters [recording mode
 
 Keep adding blocks until your guide tells a complete story. The canvas shows each block in order with quick edit, duplicate, and delete buttons:
 
-![Block editor with a few blocks added](/media/docs/pathfinder/block-editor-with-blocks.png)
-
-You can drag blocks by their handle to reorder them, or use **Select blocks** to choose any root or nested block. The selection toolbar can delete one or more blocks in a single confirmed, undoable change; when at least two mergeable steps are selected, it also offers multistep or guided grouping.
+You can drag blocks by their handle to reorder them, or open **More actions** and use **Select blocks** to choose any root or nested block. The selection toolbar can delete one or more blocks in a single confirmed, undoable change; when at least two mergeable steps are selected, it also offers multistep or guided grouping.
 
 ### 6. Save and publish
 
-The primary button in the header reflects your guide's lifecycle. Start with **Save as draft** — see the [Save, publish, and update](#save-publish-and-update) section below for the full flow.
+Click **Save** to save a draft, then **Publish** when the guide is ready for readers. Refer to [Save, publish, and update](#save-publish-and-update) for details.
 
 ## The block types
 
-| Block           | Use it for                                                                                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Markdown**    | Formatted text — headings, lists, code blocks, tables, links.                                                                                                                                    |
-| **Image**       | An embedded image with optional dimensions.                                                                                                                                                      |
-| **Video**       | A YouTube embed or a native HTML5 video.                                                                                                                                                         |
-| **Section**     | A container that groups related steps and adds a "Do section" button.                                                                                                                            |
-| **Collapsible** | A container that hides its content behind a toggle the user expands.                                                                                                                             |
-| **Conditional** | Two branches of content — show one branch when conditions pass, the other when they fail. Conditions use the same syntax as requirements (for example, `has-datasource:prometheus`, `is-admin`). |
-| **Interactive** | A single step with **Show me** and **Do it** buttons that highlight or perform an action in Grafana.                                                                                             |
-| **Multistep**   | A sequence of actions that runs automatically when the user clicks **Do it**.                                                                                                                    |
-| **Guided**      | A sequence the user performs themselves — Pathfinder highlights each step and waits for the user to act.                                                                                         |
-| **Quiz**        | A knowledge-check with single or multiple-choice answers.                                                                                                                                        |
-| **Input**       | A prompt that collects a value from the user (text, checkbox, or data source picker) and stores it as a variable for later steps to reference.                                                   |
-| **Code block**  | A code snippet with copy-to-clipboard and, in supported contexts, an Insert button that types the code into a Grafana Monaco editor.                                                             |
-| **Challenge**   | A hands-on task the user has to solve, with progressive hints and a **Check my work** button that evaluates a success condition. Runs against the user's own Grafana or in a sandbox VM.         |
-| **Grot guide**  | A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.                                                                                         |
-| **Snippet**     | A reference to a published snippet — the guide always renders the latest version of the snippet's content.                                                                                       |
+| Block       | Use it for                                                                                                                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Markdown    | Formatted text—headings, lists, code blocks, tables, links.                                                                                                                                    |
+| Divider     | A visual separator between parts of your guide.                                                                                                                                                |
+| Callout     | A labeled box that highlights a message.                                                                                                                                                       |
+| Image       | An embedded image with optional dimensions.                                                                                                                                                    |
+| Video       | A YouTube embed or a native HTML5 video.                                                                                                                                                       |
+| Section     | A container that groups related steps and adds a **Do section** button.                                                                                                                        |
+| Collapsible | A container that hides its content behind a toggle the user expands.                                                                                                                           |
+| Conditional | Two branches of content—show one branch when conditions pass, the other when they fail. Conditions use the same syntax as requirements (for example, `has-datasource:prometheus`, `is-admin`). |
+| Interactive | A single step with **Show me** and **Do it** buttons that highlight or perform an action in Grafana.                                                                                           |
+| Multistep   | A sequence of actions that runs automatically when the user clicks **Do it**.                                                                                                                  |
+| Guided      | A sequence the user performs themselves—Pathfinder highlights each step and waits for the user to act.                                                                                         |
+| Quiz        | A knowledge-check with single or multiple-choice answers.                                                                                                                                      |
+| Input       | A prompt that collects a value from the user (text, checkbox, or data source picker) and stores it as a variable for later steps to reference.                                                 |
+| Code block  | A code snippet with copy-to-clipboard and, in supported contexts, an **Insert** button that inserts the code into a supported Grafana code editor.                                             |
+| Challenge   | A hands-on task the user has to solve, with progressive hints and a **Check my work** button that evaluates a success condition. Runs against the user's own Grafana or in a sandbox VM.       |
+| Grot guide  | A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.                                                                                       |
+| Snippet     | A reference to a published snippet—the guide always renders the latest version of the snippet's content.                                                                                       |
 
 If your administrator has enabled the Coda terminal integration, the palette also exposes **Terminal** (a runnable shell command) and **Terminal connect** (a button that provisions a sandbox VM and opens a terminal panel) blocks. A challenge block only needs the terminal integration when it runs in sandbox VM mode.
 
@@ -138,53 +129,55 @@ If your administrator has enabled the Coda terminal integration, the palette als
 You don't have to write selectors by hand. Click **Add and record** on a section block, or **Record** on an empty multistep or guided block, to enter recording mode. A banner appears at the bottom of the screen and the editor watches what you do in Grafana:
 
 - A click on a button is recorded as a `button` action.
-- Typing in an input is recorded as a `formfill` action when you blur the field.
-- Hold **Shift** while clicking to record a `hover` step instead of a click — handy for menus and rows that only show their actions on hover.
+- Typing in an input is recorded as a `formfill` action when you leave the field.
+- Hold **Shift** while clicking to record a `hover` step instead of a click—handy for menus and rows that only show their actions on hover.
 - Hold **Alt** while clicking to force a `formfill` capture on any element.
 
-Click **Stop** in the banner when you're done. Each recorded action becomes a step inside the active block. You can then edit individual steps (drag to reorder, change action type, tweak target, add tooltips) just like manually-created ones.
+Click **Stop** in the banner when you're done. Each recorded action becomes a step inside the active block. You can then edit individual steps (drag to reorder, change action type, tweak target, add tooltips) just like manually created ones.
 
 ## Save, publish, and update
 
-Pathfinder tracks two storage tiers for every guide:
+The editor saves your work in two places:
 
-- **Browser (localStorage)** — auto-saves while you work so a refresh never loses progress. The "Saved" / "Saving…" indicator in the header reflects this.
-- **Pathfinder backend** — saves drafts and published guides on the server. The status badge (Draft, Published, etc.) reflects this.
+- **This browser**: Automatically saves your working copy in this browser. Clearing browser storage removes that copy, so export important work or save it to the library. The **Saved** or **Saving** indicator in the header reflects this browser copy.
+- **Guide library**: Saves drafts and published guides for this stack when the service is available. The status badge shows whether the guide is a draft or published.
 
 ### Lifecycle
 
-| Current state              | Primary button      | What it does                                                          |
-| -------------------------- | ------------------- | --------------------------------------------------------------------- |
-| Not saved                  | **Save as draft**   | Saves to the backend as a draft. Assigns a guide ID if one isn't set. |
-| Draft, no changes          | **Publish**         | Makes the guide live in the docs panel for all users.                 |
-| Draft, unsaved changes     | **Update draft**    | Saves your latest changes to the draft without publishing.            |
-| Published, no changes      | (no primary action) | The guide is live and in sync.                                        |
-| Published, unsaved changes | **Update**          | Pushes your latest changes to the live guide.                         |
+| Current state              | Primary button | What it does                                                            |
+| -------------------------- | -------------- | ----------------------------------------------------------------------- |
+| Not saved                  | Save           | Saves to the server as a draft. Assigns a guide ID if one isn't set.    |
+| Draft, no changes          | Publish        | Makes the guide live in the Interactive learning sidebar for all users. |
+| Draft, unsaved changes     | Save           | Saves your latest changes to the draft without publishing.              |
+| Published, no changes      | Update         | Saves the guide while keeping it published.                             |
+| Published, unsaved changes | Update         | Pushes your latest changes to the live guide.                           |
 
-The **⋮** menu always exposes the alternative actions for your current state — for example, **Publish** when the primary is Update draft, or **Unpublish** when the guide is published:
-
-![More actions menu](/media/docs/pathfinder/block-editor-more-actions.png)
+Open **More actions** for other available actions, such as **Publish** for a draft or **Unpublish** for a published guide.
 
 ### Edit a published guide
 
-1. Open the **Library** from the editor header.
+1. Open **More actions** > **Library** in the editor.
 1. Click **Load** next to the guide.
-1. Make your changes — the badge changes to **Published (modified)**.
+1. Make your changes—the badge changes to **Published (modified)**.
 1. Click **Update** to push the changes live. Users see the new version on their next refresh.
 
 ### Unpublish
 
-Open the **⋮** menu and pick **Unpublish**. The guide disappears from the docs panel immediately, but the draft stays in your library so you can re-publish whenever you're ready.
+Open **More actions** and select **Unpublish**. The guide returns to draft status and is removed from the published catalog. It stays in your library so you can publish it again. Readers might need to refresh to see the updated catalog.
 
 ## The guide library
 
-Click **Library** in the header to see every guide stored in the Pathfinder backend, both drafts and published. From the library you can:
+Open **More actions** > **Library** to see saved drafts and published guides.
+
+![Editor More actions menu with Library, Publish, display options, Import, and Download JSON.](/media/docs/pathfinder/2026-09-30/editor-actions.jpg)
+
+The menu item appears once there is a saved guide and server storage is available. From the library you can:
 
 - **Load** a guide into the editor for editing.
 - **Delete** a guide permanently (you'll be asked to confirm).
 - **Refresh** the list to pick up changes made by other authors.
 
-Drafts are only visible in the library — they don't appear in the docs panel sidebar. Only published guides reach end users.
+Drafts are only visible in the library—they don't appear in the Interactive learning sidebar. Only published guides reach end users.
 
 ## View modes
 
@@ -196,56 +189,50 @@ The default authoring view. The block palette and per-block edit/delete buttons 
 
 ### Preview
 
-A read-only render of how the guide looks to end users. Use it to check formatting, conditional branches, and overall flow before you publish.
-
-![Preview view mode](/media/docs/pathfinder/block-editor-preview-view.png)
+A preview of how the guide looks to readers. Use it to check formatting, conditional branches, and overall flow before you publish.
 
 ### JSON
 
-The raw JSON of the guide. You can edit it directly here for fine-grained tweaks or to paste in a guide someone else shared with you.
+The guide in JSON format. You can edit it directly or paste in a guide someone shared with you.
 
-![JSON view mode](/media/docs/pathfinder/block-editor-json-view.png)
+Fix invalid JSON or validation errors before returning to **Edit**. Avoid starting a new guide with a heading that repeats the guide title. Existing guides with a duplicate opening heading can still return to the visual editor so you can repair them.
 
-If your edit produces invalid JSON, or a guide that fails validation, the editor refuses to switch back to Edit mode until you fix it. One rule here is easy to trip over: the first block must not start with a heading that repeats the guide title.
-
-A `guided` block whose steps use the `navigate` or `popout` actions is a different case. Those actions don't work in a guided block, but the editor still loads the guide, so you can open one that was published before the rule existed and repair it. The step is flagged as a warning on import, and as an error in Edit mode, and you can't export the guide or open a pull request for it until you fix the step.
+Guided blocks do not support `navigate` or `popout` actions. If you import an older guide that includes them, change those steps in **Edit** mode before exporting the guide or opening a pull request.
 
 ## The pop out button
 
-The **Pop out** button next to the view mode toggle detaches the entire docs panel into a floating, resizable, draggable window. This is helpful when:
+Open **More actions** > **Pop out** to move the editor into a floating window. Drag or resize the window while recording steps or comparing your guide with Grafana. Select **Dock** to return it to the sidebar.
 
-- You're recording a guide and need the right sidebar for something else (for example, Grafana Assistant).
-- You want to compare side-by-side what an end user sees while you author.
-- You're presenting and need the guide above another tool.
+Select **More actions** > **Full screen** for a larger authoring workspace. Use the back control to leave full screen.
 
-You can drag the floating window anywhere on screen, resize it from any edge, or minimize it to a small pill. Click **Pop out** again (or drag the window back to the right edge) to dock it back into the sidebar.
-
-You can also build a `popout` step type into your guide — see [Interactive types](../../developer/interactive-examples/interactive-types.md#popout) for the schema reference.
+You can also add an interactive `popout` action to move the reader's guide between the sidebar and a floating window during a guide.
 
 ## Troubleshooting
 
-### The Editor tab isn't visible
+### Create guide is missing
 
-You need editor or admin permissions on this Grafana instance. Ask an administrator to update your role, or check that you're logged in as the right user.
+You need the Editor or Admin role on this Grafana instance. Ask an administrator to update your role, or check that you're logged in as the right user.
 
-### Selector Health badge is yellow or red
+### Selector health badge is yellow or red
 
 The badge measures how stable the selector is likely to be across Grafana versions. Yellow usually means the selector is too generic (matches several elements). Red typically means it depends on auto-generated CSS class names that are likely to change. Use **Pick element** again, or click **Show alternatives** in the form to see other candidates with their stability scores.
 
 ### Recording captured the wrong step
 
-Stop recording, edit or delete the unwanted step from the canvas, and start a new recording. Steps captured during recording are otherwise identical to manually-created ones, so any post-recording cleanup happens in the same forms.
+Stop recording, edit or delete the unwanted step from the canvas, and start a new recording. Steps captured during recording are otherwise identical to manually created ones, so any post-recording cleanup happens in the same forms.
 
-### "Save as draft" is greyed out
+### Save and publish controls are missing
 
-The Pathfinder backend isn't reachable. The editor falls back to localStorage-only saving when this happens, so your work is not lost — but you need backend connectivity to save, publish, or share guides. Check with your Grafana administrator that the Pathfinder backend is healthy.
+These controls require server storage on your stack. Without it, the editor saves your working copy in this browser. Use **More actions** > **Download JSON** to keep a separate copy, and ask your administrator whether server storage is available.
 
-### My guide doesn't appear in the docs panel after publishing
+If a server save reports an error, retry after connectivity is restored. A browser auto-save does not mean that the draft or published guide was updated on the server.
 
-Refresh the page. The docs panel reads the list of published custom guides on load.
+### My guide doesn't appear in the Interactive learning sidebar after publishing
 
-## See also
+Refresh the page. The Interactive learning sidebar reads the list of published custom guides on load.
 
-- [Interactive types](../../developer/interactive-examples/interactive-types.md) — reference for every action type, including `popout`.
-- [JSON guide format](../../developer/interactive-examples/json-guide-format.md) — full schema for the JSON you see in JSON view mode.
-- [Selectors reference](../../developer/interactive-examples/selectors-reference.md) — how to choose stable selectors when the picker doesn't pick the one you want.
+## Share or move a guide
+
+To use a guide on another stack, select **More actions** > **Download JSON**, then open the editor on the destination stack and select **More actions** > **Import**. Check selectors, data source names, and links in the destination Grafana before publishing.
+
+For advanced authoring details, refer to the repository references for [interactive actions](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/interactive-examples/interactive-types.md), [JSON guide format](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/interactive-examples/json-guide-format.md), and [selectors](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/interactive-examples/selectors-reference.md).

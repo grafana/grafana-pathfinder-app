@@ -1,7 +1,9 @@
+import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import { config, getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { defer, lastValueFrom, retry, throwError, timer } from 'rxjs';
 
 import {
+  PLUGIN_BACKEND_URL,
   PathfinderPluginConfig,
   TENANT_SETTING_BOUNDS,
   TENANT_SETTING_KEYS,
@@ -10,6 +12,12 @@ import {
 import { logger } from '../lib/logging';
 import type { SettingsStoreOutcome } from '../lib/telemetry/facade';
 import { APP_PLATFORM_API_VERSION, isBackendApiAvailable } from './interactive-guides-api';
+import {
+  readSettingsAbsenceCache,
+  rememberSettingsAbsence,
+  forgetSettingsAbsence,
+  invalidateSettingsAbsence,
+} from './pathfinder-settings-cache';
 
 const RESOURCE = 'pathfindersettings';
 
@@ -29,6 +37,7 @@ export interface PathfinderSettingsSpec extends Omit<PathfinderTenantSettings, '
 }
 
 interface PathfinderSettingsResource {
+  state?: 'not-configured';
   metadata?: { name?: string; resourceVersion?: string };
   spec?: Partial<PathfinderSettingsSpec>;
 }
@@ -42,6 +51,8 @@ export interface PathfinderSettingsSnapshot {
 const UNAVAILABLE_STATUSES = new Set([404, 405, 501]);
 const RETRYABLE_UPDATE_STATUSES = new Set([404, 405, 500, 501, 502, 503, 504]);
 const UPDATE_RETRY_DELAYS_MS = [250, 750];
+const RETRYABLE_READ_STATUSES = new Set([500, 502, 503, 504]);
+const READ_RETRY_DELAYS_MS = [500, 1500];
 
 function statusOf(err: unknown): number | undefined {
   const e = err as { status?: number; statusCode?: number; data?: { statusCode?: number } };
@@ -101,20 +112,66 @@ export function configToSpec(cfg: PathfinderPluginConfig): Partial<PathfinderSet
   return spec as Partial<PathfinderSettingsSpec>;
 }
 
-export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSettingsSnapshot | null> {
+export function hasCachedSettingsAbsence(): boolean {
+  return isSettingsApiAvailable() && readSettingsAbsenceCache()?.absent === true;
+}
+
+export async function fetchPathfinderSettingsSnapshot({
+  useCachedAbsence = false,
+}: { useCachedAbsence?: boolean } = {}): Promise<PathfinderSettingsSnapshot | null> {
   if (!isSettingsApiAvailable()) {
     recordSettingsStoreResolved('api-unavailable');
     return null;
   }
 
+  const absenceCache = readSettingsAbsenceCache();
+  if (useCachedAbsence && absenceCache?.absent) {
+    recordSettingsStoreResolved('not-created');
+    return null;
+  }
+  forgetSettingsAbsence(absenceCache);
+  let readAttempt = 0;
   try {
     const response = await lastValueFrom(
-      getBackendSrv().fetch<PathfinderSettingsResource>({
-        url: itemUrl(config.namespace),
-        method: 'GET',
-        showErrorAlert: false,
-      })
+      defer(() => {
+        readAttempt += 1;
+        return getBackendSrv().fetch<PathfinderSettingsResource>({
+          url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
+          method: 'GET',
+          params: { absence: 'explicit', ...(readAttempt > 1 ? { attempt: readAttempt } : {}) },
+          showErrorAlert: false,
+        });
+      }).pipe(
+        retry({
+          count: READ_RETRY_DELAYS_MS.length,
+          delay: (err: unknown, attempt) => {
+            const status = statusOf(err);
+            const delay = READ_RETRY_DELAYS_MS[attempt - 1];
+            const diagnostics = (err as { data?: { diagnostics?: { reason?: string; upstreamStatus?: number } } })?.data
+              ?.diagnostics;
+            // The proxy maps upstream 401 to 502 to avoid expiring the Grafana session.
+            if (
+              delay === undefined ||
+              !status ||
+              !RETRYABLE_READ_STATUSES.has(status) ||
+              diagnostics?.upstreamStatus === 401 ||
+              diagnostics?.upstreamStatus === 403 ||
+              diagnostics?.upstreamStatus === 504 ||
+              diagnostics?.reason === 'timeout'
+            ) {
+              return throwError(() => err);
+            }
+            return timer(delay);
+          },
+        })
+      )
     );
+
+    if (response.data?.state === 'not-configured' && !response.data.spec && !response.data.metadata) {
+      rememberSettingsAbsence(absenceCache);
+      recordSettingsStoreResolved('not-created');
+      return null;
+    }
 
     const spec = response.data?.spec;
     if (!spec) {
@@ -125,19 +182,25 @@ export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSetti
       throw new Error('Pathfinder settings response has no resource version');
     }
 
+    invalidateSettingsAbsence(absenceCache);
     recordSettingsStoreResolved('resource');
     return { config: specToConfig(spec), spec, resourceVersion: response.data?.metadata?.resourceVersion };
   } catch (err) {
     const status = statusOf(err);
-    if (status && UNAVAILABLE_STATUSES.has(status)) {
+    if (
+      status &&
+      UNAVAILABLE_STATUSES.has(status) &&
+      (err as { data?: { error?: string } }).data?.error === 'settings-upstream-unavailable'
+    ) {
       recordSettingsStoreResolved(status === 404 ? 'not-created' : 'kind-not-served');
       return null;
     }
+    reportProxyFailure(err);
     if (status === 403) {
       recordSettingsStoreResolved('forbidden');
     } else {
       recordSettingsStoreResolved('read-error');
-      logger.warn('Failed to read Pathfinder settings resource', { error: err });
+      logger.warn('Failed to read Pathfinder settings resource', { reason: 'read-error', status });
     }
     throw err;
   }
@@ -173,11 +236,15 @@ export async function savePathfinderSettings(
     data: requestBody(spec, base?.resourceVersion),
     showErrorAlert: false,
   };
+  const absenceCache = readSettingsAbsenceCache();
+  invalidateSettingsAbsence(absenceCache);
   for (let attempt = 0; ; attempt++) {
     try {
       await lastValueFrom(getBackendSrv().fetch(request));
+      invalidateSettingsAbsence(absenceCache);
       return true;
     } catch (err) {
+      invalidateSettingsAbsence(absenceCache);
       const status = statusOf(err);
       if (base && status && RETRYABLE_UPDATE_STATUSES.has(status) && attempt < UPDATE_RETRY_DELAYS_MS.length) {
         // Reuse the read version: even an ambiguous prior success cannot overwrite a concurrent edit.

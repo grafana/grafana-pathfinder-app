@@ -2,15 +2,16 @@
  * CDN repository client.
  *
  * Read-only fetcher for the public Pathfinder package CDN. Read by the
- * `pathfinder_read_repository` / `pathfinder_launch_package` MCP tools (P6 in
- * `docs/design/AI-AUTHORING-IMPLEMENTATION.md`) and by `e2e --remote`, which is why it
+ * `pathfinder_read_repository` / `pathfinder_launch_package` / `pathfinder_find_guides`
+ * MCP tools (P6 in `docs/design/AI-AUTHORING-IMPLEMENTATION.md`) and by `e2e --remote`, which is why it
  * sits here rather than under either of them: fetching a public index is not adaptation,
  * and a runner reaching into an adapter's folder for it was the only place that
  * dependency ran the wrong way.
  *
  * Design notes:
  *   - No auth — repository is public.
- *   - 60-second in-process TTL on `repository.json` only. Per-package
+ *   - 60-second in-process TTL on `repository.json` only, keyed by base URL
+ *     (cache and single-flight alike). Per-package
  *     `content.json` / `manifest.json` fetches are uncached because they
  *     are small, accessed by id, and the cache invalidation story for
  *     individual packages is not worth the complexity.
@@ -27,7 +28,8 @@
 
 import type { z } from 'zod';
 
-import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryEntrySchema } from '../../types/package.schema';
+import { ContentJsonSchema, RepositoryEntrySchema } from '../../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../../lib/runtime-manifest';
 import type { RepositoryEntry } from '../../types/package.types';
 
 const DEFAULT_REPOSITORY_URL = 'https://interactive-learning.grafana.net/packages/';
@@ -58,6 +60,8 @@ export type RepositoryIndexResult =
       packages: RepositoryPackage[];
       rawIndex: Record<string, unknown>;
       validation: ValidationReport;
+      /** `ETag`, else `Last-Modified`, of the fetched `repository.json`; absent when the CDN sent neither. */
+      catalogVersion?: string;
     }
   | RepositoryClientError;
 
@@ -73,12 +77,11 @@ export type PackageJsonResult<T> =
 
 interface IndexCacheEntry {
   at: number;
-  baseUrl: string;
   result: Extract<RepositoryIndexResult, { ok: true }>;
 }
 
-let indexCache: IndexCacheEntry | null = null;
-let indexInFlight: Promise<RepositoryIndexResult> | null = null;
+const indexCache = new Map<string, IndexCacheEntry>();
+const indexInFlight = new Map<string, Promise<RepositoryIndexResult>>();
 
 /**
  * Resolve the repository base URL, always trailing-slash terminated so callers
@@ -121,20 +124,20 @@ export function buildPackageFileUrl(baseUrl: string, entryPath: string, fileName
 export async function fetchRepositoryIndex(baseUrlOverride?: string): Promise<RepositoryIndexResult> {
   const baseUrl = getRepositoryBaseUrl(baseUrlOverride);
   const now = Date.now();
-  if (indexCache && indexCache.baseUrl === baseUrl && now - indexCache.at < REPOSITORY_INDEX_TTL_MS) {
-    return indexCache.result;
+  const cached = indexCache.get(baseUrl);
+  if (cached && now - cached.at < REPOSITORY_INDEX_TTL_MS) {
+    return cached.result;
   }
-  // Concurrent callers (e.g. tools that fetch content.json and manifest.json
-  // in parallel) share one in-flight request so we hit the CDN once per
-  // cache miss, not N times.
-  if (indexInFlight) {
-    return indexInFlight;
+  const pending = indexInFlight.get(baseUrl);
+  if (pending) {
+    return pending;
   }
 
-  indexInFlight = doFetchRepositoryIndex(baseUrl, now).finally(() => {
-    indexInFlight = null;
+  const request = doFetchRepositoryIndex(baseUrl, now).finally(() => {
+    indexInFlight.delete(baseUrl);
   });
-  return indexInFlight;
+  indexInFlight.set(baseUrl, request);
+  return request;
 }
 
 async function doFetchRepositoryIndex(baseUrl: string, now: number): Promise<RepositoryIndexResult> {
@@ -183,9 +186,10 @@ async function doFetchRepositoryIndex(baseUrl: string, now: number): Promise<Rep
     packages,
     rawIndex,
     validation: { isValid: issues.length === 0, issues },
+    ...(fetched.version ? { catalogVersion: fetched.version } : {}),
   };
 
-  indexCache = { at: now, baseUrl, result };
+  indexCache.set(baseUrl, { at: now, result });
   return result;
 }
 
@@ -227,7 +231,7 @@ export async function fetchPackageContent(id: string): Promise<PackageJsonResult
 
 /**
  * Fetch a package's `manifest.json`. Validation is non-fatal — uses
- * `ManifestJsonObjectSchema.loose()` so unknown fields surface as raw
+ * `RuntimeManifestJsonObjectSchema` so unknown fields surface as raw
  * properties without failing.
  */
 export async function fetchPackageManifest(id: string): Promise<PackageJsonResult<Record<string, unknown>>> {
@@ -243,7 +247,7 @@ export async function fetchPackageManifest(id: string): Promise<PackageJsonResul
       message: `Cannot construct manifest.json URL for "${id}" — baseUrl or path is empty after trimming`,
     };
   }
-  return parseFetched(url, ManifestJsonObjectSchema.loose());
+  return parseFetched(url, RuntimeManifestJsonObjectSchema);
 }
 
 /**
@@ -252,8 +256,8 @@ export async function fetchPackageManifest(id: string): Promise<PackageJsonResul
  * `src/lib/package-recommendations-client.ts`.
  */
 export function __resetRepositoryClientForTests(): void {
-  indexCache = null;
-  indexInFlight = null;
+  indexCache.clear();
+  indexInFlight.clear();
 }
 
 // ----------------- internals -----------------
@@ -262,7 +266,7 @@ function normalizeIssuePath(path: readonly PropertyKey[]): Array<string | number
   return path.map((segment) => (typeof segment === 'symbol' ? segment.toString() : segment));
 }
 
-async function fetchJson(url: string): Promise<{ ok: true; value: unknown } | RepositoryClientError> {
+async function fetchJson(url: string): Promise<{ ok: true; value: unknown; version?: string } | RepositoryClientError> {
   let response: Response;
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -291,7 +295,8 @@ async function fetchJson(url: string): Promise<{ ok: true; value: unknown } | Re
       message: err instanceof Error ? err.message : String(err),
     };
   }
-  return { ok: true, value };
+  const version = response.headers?.get('etag') ?? response.headers?.get('last-modified') ?? undefined;
+  return { ok: true, value, ...(version ? { version } : {}) };
 }
 
 async function parseFetched<T>(url: string, schema: z.ZodType<T>): Promise<PackageJsonResult<Record<string, unknown>>> {

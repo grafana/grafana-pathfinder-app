@@ -1,4 +1,9 @@
-import { validateCrossTabMessage, type RemoteRequirementError, type WireMirrors } from './cross-tab.types';
+import {
+  guidedStepWaitMs,
+  validateCrossTabMessage,
+  type RemoteRequirementError,
+  type WireMirrors,
+} from './cross-tab.types';
 import type { CheckResultError } from './requirements.types';
 
 function envelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -12,10 +17,92 @@ describe('validateCrossTabMessage', () => {
       phase: 'do',
       stepId: 's1',
       runId: 'run-1',
-      action: { targetAction: 'button', refTarget: 'Save' },
+      action: { targetAction: 'navigate', refTarget: '/dashboards', openGuide: 'bundled:guide' },
     });
     expect(validateCrossTabMessage(message)).toBe(message);
   });
+
+  it('rejects a step-command with a non-string openGuide', () => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 's1',
+      runId: 'run-1',
+      action: { targetAction: 'navigate', refTarget: '/dashboards', openGuide: 42 },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
+  });
+
+  it.each([0, 1])('accepts composite retry index %s', (startIndex) => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 's1',
+      runId: 'r1',
+      startIndex,
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [
+          { targetAction: 'button', refTarget: '#one' },
+          { targetAction: 'button', refTarget: '#two' },
+        ],
+      },
+    });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([-1, 0.5, 2, '1', null, NaN, Infinity])('rejects invalid composite retry index %s', (startIndex) => {
+    expect(
+      validateCrossTabMessage(
+        envelope({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 's1',
+          runId: 'r1',
+          startIndex,
+          action: {
+            targetAction: 'guided',
+            refTarget: '',
+            internalActions: [
+              { targetAction: 'button', refTarget: '#one' },
+              { targetAction: 'button', refTarget: '#two' },
+            ],
+          },
+        })
+      )
+    ).toBeNull();
+  });
+
+  it.each([undefined, []])('rejects a retry index without any composite substeps (%s)', (internalActions) => {
+    expect(
+      validateCrossTabMessage(
+        envelope({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 's1',
+          runId: 'r1',
+          startIndex: 0,
+          action: { targetAction: 'button', refTarget: '#one', internalActions },
+        })
+      )
+    ).toBeNull();
+  });
+
+  it('accepts a step-cancel with both run identifiers', () => {
+    const message = envelope({ kind: 'step-cancel', stepId: 's1', runId: 'r1' });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([{ stepId: undefined }, { stepId: 1 }, { runId: undefined }, { runId: 1 }])(
+    'rejects malformed step-cancel identifiers %j',
+    (invalid) => {
+      expect(
+        validateCrossTabMessage(envelope({ kind: 'step-cancel', stepId: 's1', runId: 'r1', ...invalid }))
+      ).toBeNull();
+    }
+  );
 
   it('accepts a well-formed heartbeat', () => {
     const message = envelope({ kind: 'heartbeat', role: 'live' });
@@ -269,5 +356,74 @@ describe('condition array transport', () => {
     expect(
       validateCrossTabMessage(envelope({ kind, requestId: 'r', stepId: 's', requirements: 'a'.repeat(16385) }))
     ).toBeNull();
+  });
+});
+
+describe('observation message validation', () => {
+  const subscription = (steps: unknown) =>
+    envelope({
+      kind: 'observation-subscribe',
+      generation: 1,
+      subscriptionId: 'sub-1',
+      guideKey: 'bundled:guide',
+      revision: 0,
+      steps,
+    });
+
+  it('accepts pending steps that still contain inert noop and popout actions', () => {
+    const message = subscription([
+      { id: 'info', cursor: 0, actions: [{ targetAction: 'noop' }] },
+      { id: 'dock', cursor: 0, actions: [{ targetAction: 'popout', targetValue: 'floating' }] },
+      { id: 'save', cursor: 0, actions: [{ targetAction: 'button', refTarget: 'Save' }] },
+    ]);
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it('accepts a non-negative integer reset epoch on a step', () => {
+    const message = subscription([{ id: 's', cursor: 0, epoch: 7, actions: [{ targetAction: 'noop' }] }]);
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([
+    ['an unknown action verb', [{ id: 's', cursor: 0, actions: [{ targetAction: 'execute' }] }]],
+    ['a cursor past the last action', [{ id: 's', cursor: 2, actions: [{ targetAction: 'button', refTarget: 'a' }] }]],
+    ['a negative cursor', [{ id: 's', cursor: -1, actions: [{ targetAction: 'button', refTarget: 'a' }] }]],
+    ['a fractional epoch', [{ id: 's', cursor: 0, epoch: 1.5, actions: [{ targetAction: 'noop' }] }]],
+    ['a negative epoch', [{ id: 's', cursor: 0, epoch: -1, actions: [{ targetAction: 'noop' }] }]],
+    ['too many steps', Array.from({ length: 257 }, (_, i) => ({ id: `s${i}`, cursor: 0, actions: [] }))],
+  ])('rejects a subscription with %s', (_name, steps) => {
+    expect(validateCrossTabMessage(subscription(steps))).toBeNull();
+  });
+
+  it('bounds cancel, change and evidence identifiers', () => {
+    expect(validateCrossTabMessage(envelope({ kind: 'observation-cancel', subscriptionId: 'sub-1' }))).not.toBeNull();
+    expect(
+      validateCrossTabMessage(envelope({ kind: 'observation-cancel', subscriptionId: 'x'.repeat(129) }))
+    ).toBeNull();
+    expect(
+      validateCrossTabMessage(envelope({ kind: 'observation-change', subscriptionId: 'sub-1', guideKey: 'g' }))
+    ).not.toBeNull();
+    const evidence = { kind: 'observation-evidence', subscriptionId: 'sub-1', guideKey: 'g', id: 'step' };
+    expect(validateCrossTabMessage(envelope({ ...evidence, index: 0 }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...evidence, index: 256 }))).toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...evidence, index: 1.5 }))).toBeNull();
+  });
+
+  it('accepts only a boolean passive flag on check-requirements', () => {
+    const check = { kind: 'check-requirements', requestId: 'r1', stepId: 's1', requirements: ['exists-reftarget'] };
+    expect(validateCrossTabMessage(envelope({ ...check, passive: true }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...check, passive: 'yes' }))).toBeNull();
+  });
+});
+
+describe('guidedStepWaitMs', () => {
+  it('never waits less than the default step wait', () => {
+    expect(guidedStepWaitMs(0)).toBe(15 * 60_000);
+    expect(guidedStepWaitMs(2)).toBe(15 * 60_000);
+  });
+
+  it('covers the live tab budget plus slack for each substep left', () => {
+    expect(guidedStepWaitMs(8)).toBe(8 * 130_000);
+    expect(guidedStepWaitMs(20)).toBe(20 * 130_000);
   });
 });

@@ -1,21 +1,12 @@
-/**
- * Gates for the two tabs whose availability depends on runtime state:
- * Create Guide (editor role) and Dev Tools (pathfinder-dev-mode).
- *
- * Single derivation point. The model prunes tabs from panel state using these
- * flags, so a spurious `false` removes a tab the user is entitled to — and
- * `getConfigWithDefaults({})` yields `devMode: false`, which makes an
- * unresolved plugin config read identically to "dev mode off". Callers must
- * pass the config they actually resolved rather than an empty fallback.
- */
-
 import { config } from '@grafana/runtime';
 import type { PathfinderPluginConfig } from '../../../constants';
+import { getFeatureFlagValue } from '../../../utils/openfeature';
 import { isDevModeEnabled } from '../../../utils/dev-mode';
 
 export interface TabGates {
   allowEditor: boolean;
   allowDevTools: boolean;
+  allowBrowse: boolean;
 }
 
 /** Editor-role predicate shared by the model gate and the renderer's menu gate. */
@@ -28,6 +19,7 @@ export function resolveTabGates(pluginConfig: PathfinderPluginConfig | undefined
   return {
     allowEditor: isCurrentUserEditor(),
     allowDevTools: isDevModeEnabled(pluginConfig || {}),
+    allowBrowse: getFeatureFlagValue('pathfinder.package-browser', true),
   };
 }
 
@@ -41,5 +33,9 @@ export function didGateClose(previous: TabGates | null, next: TabGates): boolean
   if (!previous) {
     return false;
   }
-  return (previous.allowEditor && !next.allowEditor) || (previous.allowDevTools && !next.allowDevTools);
+  return (
+    (previous.allowEditor && !next.allowEditor) ||
+    (previous.allowDevTools && !next.allowDevTools) ||
+    (previous.allowBrowse && !next.allowBrowse)
+  );
 }

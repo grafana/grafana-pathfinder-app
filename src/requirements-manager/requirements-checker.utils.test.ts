@@ -5,7 +5,8 @@ import {
   RequirementsCheckOptions,
   validateInteractiveRequirements,
 } from './requirements-checker.utils';
-import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
+import { locationService, config, hasPermission, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
+import { hasDataSourceCheck } from './checks/grafana-api';
 import * as grafanaApi from '../lib/grafana-api';
 import { getContentKey } from '../global-state/content-key';
 
@@ -41,8 +42,8 @@ jest.mock('@grafana/runtime', () => ({
     featureToggles: {},
   },
   hasPermission: jest.fn(),
-  getDataSourceSrv: jest.fn(),
   getBackendSrv: jest.fn(),
+  getDataSourceSrv: jest.fn(),
 }));
 
 jest.mock('../lib/grafana-api', () => ({
@@ -165,9 +166,7 @@ describe('requirements-checker.utils', () => {
   describe('hasDataSourceCHECK', () => {
     it('should check for specific data source', async () => {
       const mockDataSources = [{ name: 'Prometheus', uid: 'prom1', type: 'prometheus' }];
-      (getDataSourceSrv as jest.Mock).mockReturnValue({
-        getList: () => mockDataSources,
-      });
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:prometheus',
@@ -179,9 +178,7 @@ describe('requirements-checker.utils', () => {
 
     it('should match by normalized type (strip grafana- prefix and -datasource suffix)', async () => {
       const mockDataSources = [{ name: 'My Custom DS', uid: 'td1', type: 'grafana-testdata-datasource' }];
-      (getDataSourceSrv as jest.Mock).mockReturnValue({
-        getList: () => mockDataSources,
-      });
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:testdata',
@@ -193,9 +190,7 @@ describe('requirements-checker.utils', () => {
 
     it('should fail when no matching data source exists', async () => {
       const mockDataSources = [{ name: 'Prometheus', uid: 'prom1', type: 'prometheus' }];
-      (getDataSourceSrv as jest.Mock).mockReturnValue({
-        getList: () => mockDataSources,
-      });
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:testdata',
@@ -1121,5 +1116,56 @@ describe('structured check verdicts', () => {
     const options = { requirements: [token], maxRetries: 0 };
     expect(await checkRequirements(options)).toMatchObject({ pass: true, verdict: 'invalid' });
     expect(await checkPostconditions(options)).toMatchObject({ pass: false, verdict: 'invalid' });
+  });
+});
+
+describe('has-datasource sources and error policy', () => {
+  const local = (list: Array<{ name: string; type: string; uid: string }>) =>
+    (getDataSourceSrv as jest.Mock).mockReturnValue({ getList: () => list });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('answers from the local list without a request when the data source is already known', async () => {
+    local([{ name: 'TestData', type: 'grafana-testdata-datasource', uid: 'td' }]);
+    const result = await hasDataSourceCheck('has-datasource:testdata');
+    expect(result.pass).toBe(true);
+    expect(grafanaApi.fetchDataSources).not.toHaveBeenCalled();
+  });
+
+  it.each(['grafana', 'mixed', 'dashboard'])('never matches the built-in %s data source', async (type) => {
+    (getDataSourceSrv as jest.Mock).mockReturnValue({
+      getList: () => [{ name: `-- ${type} --`, type, uid: type, meta: { builtIn: true } }],
+    });
+    (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([]);
+    const result = await hasDataSourceCheck(`has-datasource:${type}`);
+    expect(result.pass).toBe(false);
+    expect(grafanaApi.fetchDataSources).toHaveBeenCalled();
+  });
+
+  it('asks the API for a data source created outside this page', async () => {
+    local([]);
+    (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([{ name: 'Prom', type: 'prometheus', uid: 'p' }]);
+    const result = await hasDataSourceCheck('has-datasource:prometheus');
+    expect(result.pass).toBe(true);
+  });
+
+  it.each([401, 403])('treats the local list as complete when the API denies the read (%s)', async (status) => {
+    local([]);
+    (grafanaApi.fetchDataSources as jest.Mock).mockRejectedValue(Object.assign(new Error('denied'), { status }));
+    const result = await hasDataSourceCheck('has-datasource:prometheus');
+    expect(result.pass).toBe(false);
+    expect(result.verdict).toBeUndefined();
+  });
+
+  it('reports a transient API failure as unavailable, not as a missing data source', async () => {
+    local([]);
+    (grafanaApi.fetchDataSources as jest.Mock).mockRejectedValue(
+      Object.assign(new Error('bad gateway'), { status: 502 })
+    );
+    const result = await hasDataSourceCheck('has-datasource:prometheus');
+    expect(result.pass).toBe(false);
+    expect(result.verdict).toBe('unavailable');
   });
 });

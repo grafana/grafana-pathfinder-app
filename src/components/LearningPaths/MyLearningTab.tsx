@@ -11,15 +11,27 @@ import { useStyles2, Icon } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
+import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
+import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import type { LearningPath } from '../../types/learning-paths.types';
-import { useLearningPaths, useDiscoverMore, BADGES, getPathsData, type DiscoverMoreItem } from '../../learning-paths';
+import {
+  useLearningPaths,
+  useDiscoverMore,
+  useCatalogProgress,
+  selectContinueLearning,
+  pathCatalogIdentities,
+  useMyAssignments,
+  BADGES,
+  getPathsData,
+  type DiscoverMoreItem,
+} from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
-import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, AnalyticsContentType, type ResetScope } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { StorageEvents } from '../../lib/event-names';
@@ -43,6 +55,8 @@ import { MyCoursesSection } from './sections/MyCoursesSection';
 import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
+import { useCatalogLaunch } from './useCatalogLaunch';
+import { ContinueLearningSection } from './sections/ContinueLearningSection';
 import { CompletedSection } from './sections/CompletedSection';
 
 interface MyLearningTabProps {
@@ -63,10 +77,13 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   // stays the correctness guard. Shared by course cards and Discover More.
   const [launchingId, setLaunchingId] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const preparingLoadRef = useRef<GuideLoadContext | undefined>(undefined);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      finishGuideLoad(preparingLoadRef.current, 'cancelled');
+      preparingLoadRef.current = undefined;
     };
   }, []);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
@@ -75,56 +92,91 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     paths,
     badgesWithStatus,
     progress,
-    getPathGuides,
+    getPathGuides: getLocalPathGuides,
     getPathProgress,
     isPathCompleted,
     getGuideUrlForPath,
     resetPath,
+    resetPathGuides,
     streakInfo,
     isLoading,
   } = useLearningPaths();
 
+  const { assignmentByTargetId, onlinePaths, getPathGuides } = useMyAssignments({
+    paths,
+    getPathProgress,
+    getPathGuides: getLocalPathGuides,
+    completedGuides: progress.completedGuides,
+    resolveNavLinks: resolvePackageNavLinks,
+  });
+
+  // An unsatisfied assignment keeps a path in My Courses even at 100% local
+  // progress; online-catalogue paths exist only because they're assigned, so
+  // their wire `satisfied`/`progress` decide the section.
   const inProgress = useMemo(() => {
-    return paths
-      .filter((path) => getPathProgress(path.id) < 100)
-      .sort((a, b) => getPathProgress(b.id) - getPathProgress(a.id));
-  }, [paths, getPathProgress]);
+    const local = paths.filter((path) => {
+      const assignment = assignmentByTargetId.get(path.id);
+      const hasOutstandingAssignment = Boolean(assignment && !assignment.satisfied);
+      return hasOutstandingAssignment || getPathProgress(path.id) < 100;
+    });
+    const online = onlinePaths.filter((path) => !assignmentByTargetId.get(path.id)?.satisfied);
+    return [...local, ...online].sort(
+      (a, b) =>
+        (assignmentByTargetId.get(b.id)?.progress ?? getPathProgress(b.id)) -
+        (assignmentByTargetId.get(a.id)?.progress ?? getPathProgress(a.id))
+    );
+  }, [paths, onlinePaths, getPathProgress, assignmentByTargetId]);
 
   const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
-  const courses = useMemo(() => inProgress.filter((path) => !path.isPrivate), [inProgress]);
+  // An assigned private path also surfaces here, same as an online-catalogue
+  // one — alongside Private Paths, not instead of it; duplication is fine.
+  const courses = useMemo(
+    () => inProgress.filter((path) => !path.isPrivate || assignmentByTargetId.get(path.id)),
+    [inProgress, assignmentByTargetId]
+  );
 
-  const completedPaths = useMemo(() => paths.filter((path) => isPathCompleted(path.id)), [paths, isPathCompleted]);
+  const completedPaths = useMemo(() => {
+    const local = paths.filter((path) => isPathCompleted(path.id));
+    const online = onlinePaths.filter((path) => assignmentByTargetId.get(path.id)?.satisfied);
+    return [...local, ...online];
+  }, [paths, onlinePaths, isPathCompleted, assignmentByTargetId]);
 
-  const excludeTitles = useMemo(
-    () => new Set([...inProgress, ...completedPaths].map((path) => path.title)),
+  const excludeIdentities = useMemo(
+    () => pathCatalogIdentities([...inProgress, ...completedPaths]),
     [inProgress, completedPaths]
   );
-  const { items: discoverItems, isLoading: discoverLoading } = useDiscoverMore({ excludeTitles });
+  const {
+    items: discoverCandidates,
+    isLoading: discoverLoading,
+    catalog,
+  } = useDiscoverMore({ excludeIdentities, count: Number.MAX_SAFE_INTEGER });
+  const catalogProgress = useCatalogProgress(catalog.items, catalog.scope);
+  const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress);
+  const continueItems = useMemo(
+    () => selectContinueLearning(catalog.items, catalogProgress, excludeIdentities),
+    [catalog.items, catalogProgress, excludeIdentities]
+  );
+  const discoverItems = useMemo(
+    () => discoverCandidates.filter((item) => (catalogProgress.get(item.key ?? '')?.percent ?? 0) === 0).slice(0, 5),
+    [discoverCandidates, catalogProgress]
+  );
 
-  // Fetch + snippet-expand + classify the target, then hand the prepared
-  // launch to the host so it can pick the surface without re-fetching. The
-  // fetch happens while My Learning stays mounted; on failure My Learning stays
-  // visible and the error is surfaced rather than committing a surface.
-  // Shared by every launch path (URL-based, manifest cover, static/App
-  // Platform guide) — assumes the caller already holds launchInFlightRef.
   const performLaunch = useCallback(
     async (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-      const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo });
-      // The prepare step can outlive this page (the fetches are bounded but
-      // slow-CDN cases run tens of seconds). If the user navigated away,
-      // drop the result — launching now would yank them to /fullscreen from
-      // wherever they landed.
       if (!mountedRef.current) {
         return;
       }
+      const loadContext = beginGuideLoad(url);
+      preparingLoadRef.current = loadContext;
+      const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo, loadContext });
+      if (!mountedRef.current) {
+        return;
+      }
+      preparingLoadRef.current = undefined;
       if (result.ok) {
         onOpenGuide(result.launch);
       } else {
-        // Log context reaches Faro attributes verbatim, so only stable,
-        // low-cardinality values go in: the URL loses its query and fragment,
-        // and the classification code stands in for `result.error`, whose free
-        // text can echo fetched-guide values. The user sees a translated
-        // generic message either way.
+        // Fetched error messages can contain private guide content.
         logger.error('[MyLearning] Guide launch preparation failed', {
           content_url: normalizeTelemetryUrl(url),
           error_code: result.errorCode,
@@ -182,6 +234,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         const packageInfo: PackageOpenInfo = {
           packageId: path.id,
           packageManifest: { ...path.manifest, id: path.id },
+          trackId: assignmentByTargetId.get(path.id)?.trackId,
         };
         const [navLink] = await resolvePackageNavLinks([path.id]);
         if (!mountedRef.current) {
@@ -222,12 +275,14 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         }
       }
     },
-    [performLaunch, getGuideUrlForPath]
+    [performLaunch, getGuideUrlForPath, assignmentByTargetId]
   );
+
+  const allPaths = useMemo(() => [...paths, ...onlinePaths], [paths, onlinePaths]);
 
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
-      const parentPath = paths.find((p) => p.id === pathId);
+      const parentPath = allPaths.find((p) => p.id === pathId);
 
       // Manifest-backed (package) paths — App Platform and public/CDN course
       // packages alike — always land on their own cover page from My Learning,
@@ -304,28 +359,24 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       void launch(guideUrl, title, pathId, packageInfo);
     },
-    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
+    [launch, allPaths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
 
-  const handleDiscoverStart = useCallback(
-    (item: DiscoverMoreItem) => {
-      reportAppInteraction(UserInteraction.OpenResourceClick, {
-        content_title: item.title,
-        content_url: item.contentUrl,
-        content_type: AnalyticsContentType.LearningJourney,
-        interaction_location: 'my_learning_discover_more',
-      });
-
-      // prepareGuideLaunch backfills packageInfo from the URL when absent, but
-      // the manifest is already inlined here — passing it saves that re-fetch.
-      const packageInfo: PackageOpenInfo | undefined = item.manifest
+  const handleDiscoverStart = (item: DiscoverMoreItem) => {
+    const entry = item.catalogPackage ?? {
+      key: item.key ?? `online-cdn:${item.id}`,
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      format: 'path' as const,
+      source: 'grafana' as const,
+      url: item.contentUrl,
+      packageInfo: item.manifest
         ? { packageId: item.id, packageManifest: { ...item.manifest, id: item.id } }
-        : undefined;
-
-      void launch(item.contentUrl, item.title, item.id, packageInfo);
-    },
-    [launch]
-  );
+        : undefined,
+    };
+    return catalogLaunch.launch(entry, 'my_learning_discover_more');
+  };
 
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
@@ -336,9 +387,13 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // second lever to stop it.
       discardQueuedCompletionWrites();
 
+      reportAppInteraction(UserInteraction.ResetProgressClick, {
+        reset_scope: 'all' satisfies ResetScope,
+        interaction_location: 'my_learning_footer',
+      });
+
       await learningProgressStorage.clear();
 
-      // Clear journey completion percentages
       const completions = await journeyCompletionStorage.getAll();
       for (const url of Object.keys(completions)) {
         await journeyCompletionStorage.clear(url);
@@ -439,7 +494,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         onContinue={handleOpenGuide}
         onReset={resetPath}
         launchingPathId={launchingId}
-        launchDisabled={launchingId !== null}
+        launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
         styles={styles}
       />
 
@@ -448,12 +503,14 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         <div className={styles.columnsRow}>
           <MyCoursesSection
             courses={courses}
+            assignmentByTargetId={assignmentByTargetId}
             getPathGuides={getPathGuides}
             getPathProgress={getPathProgress}
             onContinue={handleOpenGuide}
             onReset={resetPath}
+            onResetGuides={resetPathGuides}
             launchingPathId={launchingId}
-            launchDisabled={launchingId !== null}
+            launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
             styles={styles}
           />
 
@@ -468,12 +525,28 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         </div>
       </div>
 
+      <ContinueLearningSection
+        items={continueItems}
+        catalogItems={catalog.items}
+        scope={catalog.scope}
+        progress={catalogProgress}
+        onContinue={catalogLaunch.launch}
+        launchingKey={catalogLaunch.launchingKey}
+        launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
+        launchError={catalogLaunch.launchError}
+        styles={styles}
+      />
+
       <DiscoverMoreSection
         items={discoverItems}
         isLoading={discoverLoading}
         onStart={handleDiscoverStart}
-        startingId={launchingId}
-        startDisabled={launchingId !== null}
+        startingId={catalogLaunch.launchingKey}
+        startDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
+        catalogItems={catalog.items}
+        scope={catalog.scope}
+        progress={catalogProgress}
+        launchError={catalogLaunch.launchError}
         styles={styles}
       />
 

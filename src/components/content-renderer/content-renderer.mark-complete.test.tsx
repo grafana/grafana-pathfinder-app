@@ -20,8 +20,11 @@ import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { resetContentKeyForTests } from '../../global-state/content-key';
-import { guideCompletionMarkStorage } from '../../lib/user-storage';
+import { guideCompletionMarkStorage, guideResponseStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import { evictAllContentCaches, peekGuidePercentage } from '../../global-state/completion-store';
 import { StorageEvents } from '../../lib/event-names';
+import { recordGuideCompletionForSurface } from '../../docs-retrieval';
+import { UNTRACKED_COMPLETION, trackedCompletion } from '../../test-utils/content-renderer-completion';
 import { ContentRenderer } from './content-renderer';
 
 jest.mock('@grafana/i18n', () => ({
@@ -33,6 +36,13 @@ jest.mock('../../lib/analytics', () => ({
   ...jest.requireActual('../../lib/analytics'),
   reportAppInteraction: (...args: unknown[]) => reportAppInteraction(...args),
 }));
+
+jest.mock('../../docs-retrieval', () => ({
+  ...jest.requireActual('../../docs-retrieval'),
+  recordGuideCompletionForSurface: jest.fn(),
+}));
+
+const recordCompletion = jest.mocked(recordGuideCompletionForSurface);
 
 function markCompleteEvents(): unknown[][] {
   return reportAppInteraction.mock.calls.filter(([interaction]) => interaction === UserInteraction.MarkCompleteClicked);
@@ -79,6 +89,34 @@ async function clickWhenReady(): Promise<void> {
   fireEvent.click(button);
 }
 
+function makeChoiceContent(url = 'bundled:optional-choice-reload'): RawContent {
+  return makeContent({
+    url,
+    type: 'interactive',
+    content: JSON.stringify({
+      id: 'optional-choice-reload',
+      title: 'Optional choices',
+      blocks: [
+        {
+          type: 'input',
+          inputType: 'checkbox-group',
+          prompt: 'Signals?',
+          variableName: 'signals',
+          choices: [{ id: 'logs', text: 'Logs' }],
+        },
+        { type: 'markdown', id: 'common', content: 'Common content' },
+        {
+          type: 'section',
+          id: 'logs',
+          requirements: ['var-signals:includes:logs'],
+          whenRequirementsUnmet: 'hide',
+          blocks: [{ type: 'markdown', id: 'logs-step', content: 'Logs' }],
+        },
+      ],
+    }),
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
@@ -88,6 +126,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.restoreAllMocks();
+  evictAllContentCaches();
   jest.useRealTimers();
   localStorage.clear();
   delete window.__DocsPluginActiveTabUrl;
@@ -95,31 +135,77 @@ afterEach(() => {
 });
 
 describe('ContentRenderer — the universal Mark complete control', () => {
+  it('does not record completion while an optional choice guide reloads saved selections', async () => {
+    const content = makeChoiceContent();
+    let hydrate!: (responses: Record<string, string>) => void;
+    jest.spyOn(guideResponseStorage, 'getForGuide').mockReturnValue(
+      new Promise((resolve) => {
+        hydrate = resolve;
+      })
+    );
+    await guideCompletionMarkStorage.set(content.url, true, ['common']);
+    const savePercentage = jest.spyOn(interactiveCompletionStorage, 'set');
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(savePercentage).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.markComplete.button)).toBeDisabled();
+    await act(async () => {
+      hydrate({ signals: 'logs' });
+    });
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(66));
+    expect(recordCompletion).not.toHaveBeenCalled();
+    expect(savePercentage.mock.calls.some(([, percent]) => percent === 100)).toBe(false);
+  });
+  it('keeps marked preview paths in memory without saving completion or input responses', async () => {
+    const content = makeChoiceContent('block-editor://preview/choice-regression');
+    jest.spyOn(guideResponseStorage, 'getForGuide').mockResolvedValue({ signals: 'logs' });
+    const saveResponses = jest.spyOn(guideResponseStorage, 'setResponse');
+    const saveMark = jest.spyOn(guideCompletionMarkStorage, 'set');
+    const savePercentage = jest.spyOn(interactiveCompletionStorage, 'set');
+    render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
+    await clickWhenReady();
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(100));
+    await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
+    expect(saveResponses).not.toHaveBeenCalled();
+    expect(saveMark).not.toHaveBeenCalled();
+    expect(savePercentage).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['a prose-only guide', makeContent()],
     ['a guide with interactive steps', makeContent({ content: WITH_INTERACTIVE_STEP })],
     ['a milestone', makeMilestone()],
     ['a block-editor preview', makePreview()],
   ])('renders on %s', (_label, content) => {
-    render(<ContentRenderer content={content} />);
+    render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
 
     expect(screen.getByTestId(testIds.markComplete.button)).toBeInTheDocument();
   });
 
   it('labels the milestone form "Mark complete and continue" when there is somewhere to continue to', () => {
-    render(<ContentRenderer content={makeMilestone()} onContinueToNextMilestone={jest.fn()} />);
+    render(
+      <ContentRenderer
+        content={makeMilestone()}
+        completion={UNTRACKED_COMPLETION}
+        onContinueToNextMilestone={jest.fn()}
+      />
+    );
 
     expect(screen.getByTestId(testIds.markComplete.button)).toHaveTextContent('Mark complete and continue');
   });
 
   it('labels a standalone guide "Mark complete"', () => {
-    render(<ContentRenderer content={makeContent()} />);
+    render(<ContentRenderer content={makeContent()} completion={UNTRACKED_COMPLETION} />);
 
     expect(screen.getByTestId(testIds.markComplete.button)).toHaveTextContent('Mark complete');
   });
 
   it('omits the control on a path cover page, which is a table of contents rather than a guide', () => {
-    render(<ContentRenderer content={makeMilestone(0)} />);
+    render(<ContentRenderer content={makeMilestone(0)} completion={UNTRACKED_COMPLETION} />);
 
     expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument();
   });
@@ -127,7 +213,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
   it('marks the guide the reader is actually on', async () => {
     const content = makeContent();
     window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
 
     await clickWhenReady();
 
@@ -137,12 +223,12 @@ describe('ContentRenderer — the universal Mark complete control', () => {
   it('re-resolves the key when the guide changes, so a mark lands on the new milestone', async () => {
     const first = makeMilestone();
     window.__DocsPluginActiveTabUrl = first.url;
-    const { rerender } = render(<ContentRenderer content={first} onGuideComplete={jest.fn()} />);
+    const { rerender } = render(<ContentRenderer content={first} completion={trackedCompletion(first)} />);
     await screen.findByTestId(testIds.markComplete.button);
 
     const second = makeContent({ url: `${baseUrl}/configure/` });
     window.__DocsPluginActiveTabUrl = second.url;
-    rerender(<ContentRenderer content={second} onGuideComplete={jest.fn()} />);
+    rerender(<ContentRenderer content={second} completion={trackedCompletion(second)} />);
 
     await clickWhenReady();
 
@@ -155,14 +241,13 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     // its active tab URL is the ambient content key.
     const openGuideUrl = `${baseUrl}/set-up/`;
     window.__DocsPluginActiveTabUrl = openGuideUrl;
-    const onGuideComplete = jest.fn();
-    render(<ContentRenderer content={makePreview()} onGuideComplete={onGuideComplete} />);
+    render(<ContentRenderer content={makePreview()} completion={trackedCompletion(makePreview())} />);
 
     await clickWhenReady();
 
     // The durable completion record is the one irreversible side effect, so it
     // belongs behind the same guard as the mark and the analytics event.
-    expect(onGuideComplete).not.toHaveBeenCalled();
+    expect(recordCompletion).not.toHaveBeenCalled();
     expect(markCompleteEvents()).toEqual([]);
     expect(await guideCompletionMarkStorage.get(PREVIEW_URL)).toBeNull();
     expect(await guideCompletionMarkStorage.get(openGuideUrl)).toBeNull();
@@ -171,43 +256,56 @@ describe('ContentRenderer — the universal Mark complete control', () => {
   it('treats a real guide whose URL merely contains "devtools" as a real guide', async () => {
     const content = makeContent({ url: `${baseUrl}/devtools-setup/` });
     window.__DocsPluginActiveTabUrl = content.url;
-    const onGuideComplete = jest.fn();
-    render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} />);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
 
     await clickWhenReady();
 
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'manual', contentKey: expect.any(String) })
+    );
     expect(markCompleteEvents()).toHaveLength(1);
     await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
   });
 
   it.each([
-    ['guide', makeContent()],
-    ['milestone', makeMilestone()],
-  ])('reports one %s click with that discriminator', async (discriminator, content) => {
-    window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
+    ['guide', makeContent(), {}, {}],
+    [
+      'milestone',
+      makeMilestone(),
+      { guide_source: 'unresolved', guide_visibility: 'private' },
+      { current_milestone: 1, total_milestones: 1 },
+    ],
+  ])(
+    'reports one %s click with that discriminator',
+    async (discriminator, content, identityProperties, milestoneProperties) => {
+      window.__DocsPluginActiveTabUrl = content.url;
+      render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
 
-    await clickWhenReady();
+      await clickWhenReady();
 
-    expect(markCompleteEvents()).toEqual([
-      [
-        UserInteraction.MarkCompleteClicked,
-        {
-          interaction_location: 'content_footer',
-          completion_context: discriminator,
-          completion_percentage_before: 0,
-        },
-      ],
-    ]);
-  });
+      expect(markCompleteEvents()).toEqual([
+        [
+          UserInteraction.MarkCompleteClicked,
+          {
+            ...identityProperties,
+            interaction_location: 'content_footer',
+            completion_context: discriminator,
+            completion_percentage_before: 0,
+            block_progress_rule_version: 'block-position-v1',
+            ...milestoneProperties,
+          },
+        ],
+      ]);
+    }
+  );
 
   it('reports a URL-typed standalone tutorial as a guide, matching how its completion is recorded', async () => {
     // `determineContentType` types any /tutorials/ URL as a journey, but with
     // no journey metadata the completion is recorded as a standalone guide.
     const content = makeContent({ type: 'learning-journey', url: 'https://grafana.com/docs/tutorials/foo/' });
     window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
 
     await clickWhenReady();
 
@@ -219,11 +317,10 @@ describe('ContentRenderer — the universal Mark complete control', () => {
   it('records a completion again after a reset re-arms the control', async () => {
     const content = makeContent();
     window.__DocsPluginActiveTabUrl = content.url;
-    const onGuideComplete = jest.fn();
-    render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} />);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
 
     await clickWhenReady();
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
     await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
 
     // What every reset path does: drop the mark, then announce the clear.
@@ -234,16 +331,15 @@ describe('ContentRenderer — the universal Mark complete control', () => {
 
     await clickWhenReady();
 
-    expect(onGuideComplete).toHaveBeenCalledTimes(2);
+    expect(recordCompletion).toHaveBeenCalledTimes(2);
     await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
   });
 
   it('records one completion when a clear is followed by the automatic route and then a click', async () => {
     jest.useFakeTimers();
-    const onGuideComplete = jest.fn();
     const content = makeContent();
     window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} />);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
     await act(async () => {
       jest.advanceTimersByTime(300);
     });
@@ -258,19 +354,18 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     act(() => {
       dispatchProgress({ kind: 'guide', contentKey: content.url, percentage: 100, hasProgress: true });
     });
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByTestId(testIds.markComplete.button));
 
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
   });
 
   it('records one completion when the click is followed by the automatic route', async () => {
     jest.useFakeTimers();
-    const onGuideComplete = jest.fn();
     const content = makeContent();
     window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} />);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
 
     // The renderer ignores progress events until content settles; the async
     // act also settles the footer's stored-mark read.
@@ -283,6 +378,91 @@ describe('ContentRenderer — the universal Mark complete control', () => {
       dispatchProgress({ kind: 'guide', contentKey: content.url, percentage: 100, hasProgress: true });
     });
 
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('mark-complete guide identity', () => {
+  it.each([
+    ['bundled:reading/content.json', { title: 'Reading' }, 'reading', 'bundled'],
+    [
+      'bundled:reading/content.json',
+      { title: 'Reading', packageManifest: { id: 'reading', type: 'guide', repository: 'bundled' } },
+      'reading',
+      'bundled',
+    ],
+    [
+      'https://grafana.com/docs/example/finish/content.json',
+      {
+        title: 'Finish',
+        repository: 'online-cdn',
+        packageManifest: { id: 'parent-path' },
+        learningJourney: { baseUrl: 'https://grafana.com/docs/example/' },
+      },
+      'finish',
+      'online-cdn',
+    ],
+  ])(
+    'attributes a mark on %s to the same guide identity as terminal completion',
+    async (url, metadata, guideId, guideSource) => {
+      const content = makeContent({ url: url as string, metadata: metadata as RawContent['metadata'] });
+      window.__DocsPluginActiveTabUrl = content.url;
+      render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
+      await clickWhenReady();
+      expect(markCompleteEvents()[0]?.[1]).toMatchObject({
+        guide_id: guideId,
+        guide_source: guideSource,
+        guide_visibility: 'public',
+        ...(guideSource === 'online-cdn' && { path_id: 'parent-path' }),
+      });
+      expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_title');
+    }
+  );
+
+  it("takes the milestone from the surface's tab URLs, as the completion writer does", async () => {
+    const content = makeContent({
+      url: 'https://grafana.com/docs/example/finish/content.json',
+      metadata: {
+        title: 'Finish',
+        repository: 'online-cdn',
+        learningJourney: { baseUrl: 'https://grafana.com/docs/example/' },
+      } as RawContent['metadata'],
+    });
+    window.__DocsPluginActiveTabUrl = content.url;
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content, {
+          baseUrl: 'https://grafana.com/docs/example/',
+          currentUrl: 'https://grafana.com/docs/example/configure/',
+        })}
+      />
+    );
+    await clickWhenReady();
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online-cdn' });
+  });
+
+  it.each(['app-platform', 'remote-repo:private-company'])('omits private identifiers for %s', async (repository) => {
+    const content = makeContent({
+      url: 'backend-guide:private-guide',
+      metadata: { title: 'Private title', repository, packageManifest: { id: 'private-guide' } },
+    });
+    window.__DocsPluginActiveTabUrl = content.url;
+    render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
+    await clickWhenReady();
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_visibility: 'private' });
+    expect(JSON.stringify(markCompleteEvents()[0]?.[1])).not.toMatch(/private-guide|Private title|private-company/);
+  });
+
+  it('does not guess a published source for an unresolved manifest', async () => {
+    const content = makeContent({
+      url: 'https://customer.example/internal',
+      metadata: { title: 'Private title', packageManifest: { id: 'private-guide' } },
+    });
+    window.__DocsPluginActiveTabUrl = content.url;
+    render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
+    await clickWhenReady();
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_source: 'unresolved', guide_visibility: 'private' });
+    expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_id');
   });
 });

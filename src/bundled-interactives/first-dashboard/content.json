@@ -36,7 +36,7 @@
             },
             {
               "action": "highlight",
-              "reftarget": "div[data-testid=\"data-source-card\"]:has(small:contains(\"TestData\")) button:nth-match(1)",
+              "reftarget": "div[role=\"option\"]:has(img[src$=\"/testdata.svg\"]), div[data-testid=\"data-source-card\"]:has(img[src$=\"/testdata.svg\"]) button",
               "requirements": ["exists-reftarget"],
               "tooltip": "In real-world scenarios, you'd connect to data sources like Prometheus for metrics, Loki for logs, or databases like PostgreSQL. For learning purposes, Grafana includes TestData - a built-in data source that generates realistic sample data without requiring any external setup. This lets you practice building dashboards right away."
             }
@@ -141,14 +141,15 @@
           "type": "interactive",
           "action": "highlight",
           "reftarget": "button[data-testid=\"data-testid Tab Visualizations\"]",
-          "content": "Select **All visualizations** to browse every panel type.",
-          "tooltip": "Bar chart is not listed under suggested visualizations. Open **All visualizations** to find it.",
-          "requirements": ["exists-reftarget"]
+          "content": "If the visualization picker has tabs, select **All visualizations**. Otherwise, skip this step.",
+          "tooltip": "Older Grafana versions show all visualization types immediately.",
+          "requirements": ["exists-reftarget"],
+          "skippable": true
         },
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "div[data-testid=\"data-testid Plugin visualization item Bar chart\"]",
+          "reftarget": "grafana:components.PluginVisualization.item:Bar chart",
           "content": "Change the visualization to **Bar chart** to compare altitudes.",
           "tooltip": "For comparing Jack and Jill's final altitudes, a bar chart makes the difference instantly clear - you can see at a glance who climbed higher!",
           "requirements": ["exists-reftarget"]
@@ -165,7 +166,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "input[id=\"barchart-unit\"]",
+          "reftarget": "input[id=\"barchart-unit\"], input[id=\"unit\"]",
           "targetvalue": "ALT",
           "requirements": ["exists-reftarget"],
           "content": "We can give our walking data meaning by setting a unit.",
@@ -177,18 +178,18 @@
           "steps": [
             {
               "action": "highlight",
-              "reftarget": "button[data-testid='data-testid Save dashboard button']",
+              "reftarget": "grafana:components.NavToolbar.editDashboard.saveButton",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "formfill",
-              "reftarget": "input[aria-label=\"Save dashboard title field\"]",
+              "reftarget": "grafana:components.Drawer.DashboardSaveDrawer.saveAsTitleInput",
               "targetvalue": "Walking adventure",
               "requirements": ["exists-reftarget"]
             },
             {
               "action": "highlight",
-              "reftarget": "button[data-testid=\"data-testid Save dashboard drawer button\"]",
+              "reftarget": "grafana:components.Drawer.DashboardSaveDrawer.saveButton",
               "requirements": ["exists-reftarget"]
             }
           ]

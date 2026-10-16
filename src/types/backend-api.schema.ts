@@ -1,5 +1,5 @@
 /**
- * Zod schemas for the four App Platform backend response envelopes.
+ * Zod schemas for the App Platform backend response envelopes.
  *
  * These describe **wire truth** — what `pkg/plugin` actually emits — not what
  * the hand-written client interfaces wish it emitted. Where the two disagree,
@@ -22,6 +22,19 @@ import { GuideStatsSummarySchema } from './guide-stats.schema';
 /** Any JSON value. Mirrors Go `json.RawMessage` / `interface{}` passthrough. */
 export const JsonValueSchema = z.json();
 
+export const GuideProxyDiagnosticWireSchema = z.strictObject({
+  stage: z.string().optional(),
+  resource: z.string().optional(),
+  operation: z.string().optional(),
+  outcome: z.enum(['ok', 'error', 'degraded']),
+  reason: z.string().optional(),
+  upstreamStatus: z.number().int().min(100).max(599).optional(),
+  cache: z.enum(['hit', 'shared', 'refresh', 'stale']).optional(),
+  cacheAgeMs: z.number().int().nonnegative(),
+  manifestFailures: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  budgetExhausted: z.boolean().optional(),
+});
+
 // ============ /completion-records/capability ============
 
 /**
@@ -29,8 +42,11 @@ export const JsonValueSchema = z.json();
  * @coupling Go struct: completionCapability
  */
 export const CompletionCapabilityWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   available: z.boolean(),
   reason: z.string().optional(),
+  /** Present (true) when this plugin build accepts attempt upserts. Absent on older builds. */
+  progressRecords: z.boolean().optional(),
 });
 
 // ============ /completion-records/my ============
@@ -46,11 +62,29 @@ export const CollatedCompletionWireSchema = z.strictObject({
   latestCompletedAt: z.string(),
   latestSource: z.string(),
   maxCompletionPercent: z.number().int(),
+  latestDurationSeconds: z.number().int().optional(),
+  lastRecordedAt: z.string().optional(),
+  latestAttemptStartedAt: z.string().optional(),
+});
+
+/**
+ * A guide whose most recent activity is an unfinished attempt.
+ * @coupling Go struct: inProgressCompletion
+ */
+export const InProgressCompletionWireSchema = z.strictObject({
+  guideSource: z.string(),
+  guideId: z.string(),
+  guideTitle: z.string(),
+  guideCategory: z.string(),
+  pathId: z.string(),
+  completionPercent: z.number().int(),
+  lastUpdatedAt: z.string(),
+  attemptStartedAt: z.string().optional(),
 });
 
 /**
  * `completions` is a required array, never nullable and never `.catch([])`:
- * the handler builds a non-nil slice unconditionally (`collateByUser` and
+ * the handler builds a non-nil slice unconditionally (`writeMyCompletions` and
  * `handleMyCompletions` in completion_records.go) and
  * `TestMyCompletions_UnknownUserEmptyList` asserts it serializes as `[]`.
  * A `null` here is a Go bug that should fail loudly rather than be absorbed.
@@ -58,9 +92,68 @@ export const CollatedCompletionWireSchema = z.strictObject({
  * @coupling Go struct: myCompletionsResponse
  */
 export const MyCompletionsResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CompletionCapabilityWireSchema,
   userId: z.string().optional(),
   completions: z.array(CollatedCompletionWireSchema),
+  /** Always present, `[]` when empty, for the same reason as `completions`. */
+  inProgress: z.array(InProgressCompletionWireSchema),
+  asOf: z.string().optional(),
+});
+
+// ============ /assignments/my ============
+
+/**
+ * `assignmentCapability` (pkg/plugin/assignments.go).
+ * @coupling Go struct: assignmentCapability
+ */
+export const AssignmentCapabilityWireSchema = z.strictObject({
+  available: z.boolean(),
+  reason: z.string().optional(),
+});
+
+/**
+ * One guide within an assignment's target, on the wire — the per-guide
+ * detail behind `satisfied`.
+ * @coupling Go struct: assignmentGuideEntry
+ */
+export const AssignmentGuideEntryWireSchema = z.strictObject({
+  guideId: z.string(),
+  completed: z.boolean(),
+});
+
+/**
+ * One assigned obligation.
+ * @coupling Go struct: assignmentEntry
+ */
+export const AssignmentEntryWireSchema = z.strictObject({
+  targetType: z.string(),
+  targetId: z.string(),
+  trackId: z.string().optional(),
+  targetSource: z.string().optional(),
+  ruleId: z.string().optional(),
+  assignedBy: z.string().optional(),
+  assignedAt: z.string().optional(),
+  dueAt: z.string().optional(),
+  acceptCompletionsFrom: z.string().optional(),
+  satisfied: z.boolean(),
+  guides: z.array(AssignmentGuideEntryWireSchema).optional(),
+  lifecycle: z.string(),
+});
+
+/**
+ * `assignments` is a required array, never nullable and never `.catch([])`,
+ * for the same reason as `completions`: `shapeAssignments`.
+ * An empty array means the caller genuinely has no
+ * obligations, which is a different statement from `capability.available`
+ * being false — a `null` here is a Go bug that should fail loudly.
+ *
+ * @coupling Go struct: myAssignmentsResponse
+ */
+export const MyAssignmentsResponseWireSchema = z.strictObject({
+  capability: AssignmentCapabilityWireSchema,
+  userId: z.string().optional(),
+  assignments: z.array(AssignmentEntryWireSchema),
   asOf: z.string().optional(),
 });
 
@@ -76,6 +169,13 @@ export const CustomGuideCapabilityWireSchema = z.strictObject({
 export const CustomGuideAuthorWireSchema = z.strictObject({
   name: z.string().optional(),
   team: z.string().optional(),
+});
+
+/** @coupling Go struct: customGuideManifest.tracks */
+export const CustomGuideTrackWireSchema = z.strictObject({
+  trackId: z.string(),
+  label: z.string(),
+  guides: z.array(z.string()),
 });
 
 /**
@@ -119,6 +219,7 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   repository: z.string().optional(),
   description: z.string().optional(),
   milestones: z.array(z.string()).optional(),
+  tracks: z.array(CustomGuideTrackWireSchema).optional(),
   category: z.string().optional(),
   author: CustomGuideAuthorWireSchema.optional(),
   depends: z.array(JsonValueSchema).optional(),
@@ -140,9 +241,15 @@ export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
  * @coupling Go struct: customGuideRepositoryResponse
  */
 export const CustomGuideRepositoryResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CustomGuideCapabilityWireSchema,
   guides: z.array(CustomGuideRepositoryEntryWireSchema),
   asOf: z.string().optional(),
+});
+
+// Full resources stay arbitrary JSON so unknown metadata and spec fields survive.
+export const CustomGuidesResponseWireSchema = z.strictObject({
+  items: z.array(JsonValueSchema),
 });
 
 // ============ /package-recommendations ============
@@ -170,6 +277,7 @@ export const PackageEntryWireSchema = z.strictObject({
 
 /** @coupling Go struct: PackageRecommendationsResponse */
 export const PackageRecommendationsResponseWireSchema = z.strictObject({
+  diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   baseUrl: z.string(),
   packages: z.array(PackageEntryWireSchema),
 });
@@ -183,18 +291,26 @@ export const PackageRecommendationsResponseWireSchema = z.strictObject({
  * struct — or a stale schema — fails.
  */
 export const GO_STRUCT_SCHEMAS = {
+  guideProxyDiagnostic: GuideProxyDiagnosticWireSchema,
   PackageRecommendationsResponse: PackageRecommendationsResponseWireSchema,
   PackageEntry: PackageEntryWireSchema,
   PackageTargeting: PackageTargetingWireSchema,
   customGuideRepositoryResponse: CustomGuideRepositoryResponseWireSchema,
+  customGuidesResponse: CustomGuidesResponseWireSchema,
   customGuideCapability: CustomGuideCapabilityWireSchema,
   customGuideRepositoryEntry: CustomGuideRepositoryEntryWireSchema,
   customGuideManifest: CustomGuideManifestWireSchema,
   customGuideStats: CustomGuideStatsWireSchema,
   'customGuideManifest.author': CustomGuideAuthorWireSchema,
+  'customGuideManifest.tracks': CustomGuideTrackWireSchema,
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,
   collatedCompletion: CollatedCompletionWireSchema,
+  inProgressCompletion: InProgressCompletionWireSchema,
+  myAssignmentsResponse: MyAssignmentsResponseWireSchema,
+  assignmentCapability: AssignmentCapabilityWireSchema,
+  assignmentEntry: AssignmentEntryWireSchema,
+  assignmentGuideEntry: AssignmentGuideEntryWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
@@ -208,13 +324,17 @@ export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
 export const BACKEND_RESPONSE_ENVELOPES = {
   'package-recommendations': 'PackageRecommendationsResponse',
   'custom-guide-repository': 'customGuideRepositoryResponse',
+  'custom-guides': 'customGuidesResponse',
   'completion-records-my': 'myCompletionsResponse',
   'completion-records-capability': 'completionCapability',
+  'assignments-my': 'myAssignmentsResponse',
 } as const satisfies Record<string, GoStructName>;
 
 export type BackendResponseEnvelopeKey = keyof typeof BACKEND_RESPONSE_ENVELOPES;
 
 export type MyCompletionsResponseWire = z.infer<typeof MyCompletionsResponseWireSchema>;
+export type MyAssignmentsResponseWire = z.infer<typeof MyAssignmentsResponseWireSchema>;
+export type AssignmentEntryWire = z.infer<typeof AssignmentEntryWireSchema>;
 export type CustomGuideRepositoryResponseWire = z.infer<typeof CustomGuideRepositoryResponseWireSchema>;
 export type PackageRecommendationsResponseWire = z.infer<typeof PackageRecommendationsResponseWireSchema>;
 export type CompletionCapabilityWire = z.infer<typeof CompletionCapabilityWireSchema>;

@@ -5,9 +5,9 @@ import * as ts from 'typescript';
 // module.tsx uses top-level `await`, which @swc/jest transpiles to CommonJS and
 // cannot execute, so the bootstrap cannot be imported and run here. It is still
 // the only place the durable completion-write hook is armed: if that call is
-// dropped, moved off plugin.init, or sunk below one of init's early returns,
-// completion recording silently stops for every surface and no behavioural test
-// anywhere fails. This asserts the wiring structurally instead.
+// dropped, moved off plugin.init, or sunk below a surface-specific early return,
+// completion recording can silently stop for that surface. Pin the import and
+// arming position structurally alongside the behavioural module tests.
 //
 // Arming is deferred behind a dynamic import so the write stack stays out of
 // module.js, so the pinned shape is "one statement of plugin.init that imports
@@ -118,10 +118,11 @@ describe('module bootstrap arms the durable completion-write hook', () => {
     expect(armCalls).toHaveLength(1);
   });
 
-  it('calls it before any of init’s early returns', () => {
+  it('calls it after the availability gate and before surface-specific early returns', () => {
     const body = findPluginInitBody();
     const armIndex = body.findIndex(isArmCall);
-    const firstReturnIndex = body.findIndex(containsReturn);
+    expect(body[0]!.getText(sourceFile)).toContain('if (!pathfinderEnabled)');
+    const firstReturnIndex = body.findIndex((statement, index) => index > 0 && containsReturn(statement));
 
     expect(armIndex).toBeGreaterThanOrEqual(0);
     if (firstReturnIndex >= 0) {

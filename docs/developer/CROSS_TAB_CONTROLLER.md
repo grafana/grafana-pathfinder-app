@@ -59,7 +59,7 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 (`source: 'pathfinder'`, a per-tab `senderId` used to drop self-echoes, and a
 `timestamp`):
 
-- `step-command` — `{ phase: 'show' | 'do', stepId, runId, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, internalActions? } }`.
+- `step-command` — `{ phase: 'show' | 'do', stepId, runId, startIndex?, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, lazyRender?, scrollContainer?, openGuide?, internalActions? } }`.
   `targetState` carries an authored `targetstate` through to the live tab so
   toggle actions converge on the requested state instead of clicking blindly.
   Composite steps carry their ordered sub-actions in `internalActions`; the
@@ -68,8 +68,16 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   `multistep` replays with staged pacing (see [Replay pacing](#replay-pacing));
   a `guided` step runs through the live tab's `GuidedHandler` instead — it
   highlights each target and waits for the user.
-- `step-complete` — `{ stepId, runId, ok }`, live → controller, signals a
-  composite actually finished so the controller marks completion only then.
+- `step-cancel` — `{ stepId, runId }`, a signed controller → live command that
+  aborts the matching run without waiting behind the execution queue.
+- `step-complete` — `{ stepId, runId, ok }`, live → controller, acknowledges
+  simple and composite actions. The controller registers its waiter before
+  sending and normally completes only after success and any post-verification.
+  Simple actions wait up to 30 seconds; composite actions wait up to 15 minutes.
+  A negative acknowledgement is an action failure, distinct from an acknowledgement
+  timeout. Explicit `completeEarly` Do it actions complete on dispatch without an
+  acknowledgement waiter, timeout cancellation, or post-verification gate;
+  authored objectives still gate that completion.
 - `step-progress` — `{ stepId, runId, index, total }`, live → controller, reports which
   internal action a composite is replaying so the controller can animate per-step
   progress while it runs on the live tab. `runId` prevents a late reply from a
@@ -80,7 +88,39 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 - `sidebar-handoff` — `{ action: 'close' | 'reopen' }`, transfers ownership of
   the sidebar while the controller is active.
 - `check-requirements` / `requirement-result` — the requirement round-trip
-  (controller → live → controller), correlated by `requestId`.
+  (controller → live → controller), correlated by `requestId`. `passive: true`
+  marks a passive completion check: the live tab evaluates it as a postcondition
+  with no retries and answers `unavailable` while it is hidden.
+- `observation-subscribe` — `{ generation, subscriptionId, guideKey, revision, steps: [{ id, cursor, epoch?, actions }] }`,
+  a signed controller → live command that installs passive matchers for the
+  steps the controller is waiting on, in the order a shared action should
+  credit them; the live tab reports a match for the first step only. Each
+  action carries only `targetAction`, `refTarget` and `targetValue`. The controller batches
+  coordinator changes over 50 milliseconds and re-sends every 2 seconds; the live tab drops a subscription
+  it has not heard about for 6 seconds, ignores a lower `generation` for the
+  same session, and accepts the inert `noop` and `popout` actions without
+  widening `KNOWN_TARGET_ACTIONS`. Within one subscription the live tab may run
+  ahead of the sent cursor for up to 3 seconds after reporting an action, while
+  the controller applies it; after that it takes the sent cursor, so a report
+  the controller dropped or rejected means repeating the action rather than a
+  stalled step. A new `epoch` means that step was reset, so the live tab takes
+  the sent cursor and ignores fields the reader touched before it.
+- `observation-cancel` — `{ subscriptionId }`, signed controller → live; a
+  guide reset, reconnect and unmount cancel the old subscription. A single
+  step or section reset keeps it and changes only that step's `epoch`.
+- `observation-evidence` — `{ subscriptionId, guideKey, id, index }`, live →
+  controller, reports that the reader performed action `index` of step `id`.
+  Only identifiers cross the channel; input values and DOM content stay in the
+  live tab.
+- `observation-change` — `{ subscriptionId, guideKey }`, live → controller,
+  asks the controller to recheck objectives after a click, input, change or
+  navigation in the live tab.
+
+An intentional surface handoff also carries partial action cursors, and the ids
+of steps the reader acted on (so shared-action priority survives), through the
+`pathfinder-observation-handoff` localStorage key, a one-use record that expires
+after 10 seconds.
+
 - `fix-requirement` / `fix-result` — a "Fix this" routed to the live tab,
   correlated by `requestId`.
 
@@ -132,8 +172,9 @@ drive that Grafana. The controller→live command path is therefore
   accept does nothing. Competing valid challenges fail closed (the prompt is
   cleared and both launches revoked); a rejected session stays suppressed; an
   expired pending challenge can be retried.
-- **Signed commands.** Every side-effecting message — `step-command`,
-  `check-requirements`, `fix-requirement`, `sidebar-handoff` — is ECDSA-signed
+- **Signed commands.** Every side-effecting message — `step-command`, `step-cancel`,
+  `check-requirements`, `fix-requirement`, `sidebar-handoff`, `observation-subscribe`,
+  `observation-cancel` — is ECDSA-signed
   and bound to `sessionId`, `liveTabId`, the command body, a fresh `sigNonce`,
   and a `sigTs`. The executor's auth gate (`verifySignedMessage`) checks the
   accepted session, the `sessionId`/`liveTabId` match, the timestamp window (up
@@ -166,14 +207,17 @@ Defense in depth on top of authentication:
 
 **Replies are unauthenticated (by design).** Authentication covers the
 controller→live **command** direction. The reverse direction — `requirement-result`,
-`fix-result`, `step-progress`, `step-complete`, and the `live` heartbeat — is
-**not** signed. The controller trusts replies whose `senderId` matches its paired
+`fix-result`, `step-progress`, `step-complete`, `observation-evidence`,
+`observation-change`, and the `live` heartbeat — is **not** signed. The controller trusts replies whose `senderId` matches its paired
 tab (see [Tab pairing](#tab-pairing)), but `senderId` is a forgeable plaintext
 field, so a same-origin script can spoof reply _content_ — telling the controller
 a requirement passed, a fix succeeded, or a step completed when it did not, or
 faking presence. It **cannot** issue commands or cause any action on the live tab;
 that still requires the controller private key. Replies are correlated by an
-unguessable `requestId`, which raises the bar for blind forgery. Signing replies
+unguessable `requestId`, which raises the bar for blind forgery. A
+`subscriptionId` is not a secret: a forged `observation-evidence` can advance a
+step without objectives one action at a time and so complete it, but it cannot
+satisfy an objective or drive the live tab. Signing replies
 is deliberately out of scope: it would require the live tab to mint and the
 controller to verify a second keypair, to defend against an attacker who — by
 assumption — already has same-origin code execution and strictly more direct

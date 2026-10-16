@@ -4,12 +4,17 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TabBarActions } from './TabBarActions';
+import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
 import { PLUGIN_BASE_URL } from '../../../constants';
+import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
+
+jest.mock('../../../integrations/assistant-integration', () => ({ useIsAssistantAvailable: jest.fn(() => false) }));
 
 // Mock @grafana/runtime - all mock values defined inline for hoisting compatibility
+jest.mock('../../../lib/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
 jest.mock('@grafana/runtime', () => {
   const mockPublish = jest.fn();
   const mockPush = jest.fn();
@@ -76,6 +81,7 @@ function makeTab(overrides: Record<string, unknown> = {}): any {
 describe('TabBarActions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(currentPlatform).mockReturnValue('cloud');
   });
 
   describe('rendering', () => {
@@ -156,7 +162,85 @@ describe('TabBarActions', () => {
     });
   });
 
+  describe('Copy link to guide', () => {
+    const writeText = jest.fn();
+    const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    const guideTab = () =>
+      makeTab({ type: 'interactive', baseUrl: 'bundled:welcome-to-grafana', currentUrl: 'bundled:welcome-to-grafana' });
+
+    beforeEach(() => {
+      writeText.mockReset().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText } });
+    });
+
+    it('is the first menu item for a selected guide tab', () => {
+      render(<TabBarActions activeTab={guideTab()} />);
+      openMenu();
+      expect(screen.getAllByRole('menuitem')[0]).toHaveTextContent('Copy link to guide');
+    });
+
+    it.each(['recommendations', 'devtools', 'editor'])('is hidden on the %s tab', (type) => {
+      render(<TabBarActions activeTab={makeTab({ type })} />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: 'Copy link to guide' })).not.toBeInTheDocument();
+    });
+
+    it('is hidden when no tab is active or the URL cannot be shared', () => {
+      const { unmount } = render(<TabBarActions />);
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: 'Copy link to guide' })).not.toBeInTheDocument();
+      unmount();
+      render(
+        <TabBarActions activeTab={makeTab({ baseUrl: 'http://localhost:1/x', currentUrl: 'http://localhost:1/x' })} />
+      );
+      openMenu();
+      expect(screen.queryByRole('menuitem', { name: 'Copy link to guide' })).not.toBeInTheDocument();
+    });
+
+    it('copies a sidebar-mode link and confirms with a notice', async () => {
+      render(<TabBarActions activeTab={guideTab()} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link to guide' }));
+      await waitFor(() =>
+        expect(mockPublish).toHaveBeenCalledWith({ type: 'alert-success', payload: ['Link copied to clipboard'] })
+      );
+      const copied = new URL(writeText.mock.calls[0][0]);
+      expect(copied.pathname).toBe(PLUGIN_BASE_URL);
+      expect(copied.searchParams.get('doc')).toBe('bundled:welcome-to-grafana');
+      expect(copied.searchParams.get('panelMode')).toBe('sidebar');
+      expect(copied.searchParams.get('source')).toBe('shared_link');
+    });
+
+    it('shows an error notice when the clipboard write fails', async () => {
+      writeText.mockRejectedValue(new Error('denied'));
+      render(<TabBarActions activeTab={guideTab()} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link to guide' }));
+      await waitFor(() =>
+        expect(mockPublish).toHaveBeenCalledWith({ type: 'alert-error', payload: ['Could not copy the link'] })
+      );
+    });
+  });
+
   describe('Settings menu item permissions', () => {
+    it.each([
+      ['Admin', false, true],
+      ['Viewer', true, true],
+      ['Editor', false, false],
+      ['Viewer', false, false],
+    ])('shows public preview opt-out for %s, Grafana admin %s: %s', (orgRole, isGrafanaAdmin, visible) => {
+      mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
+      render(<TabBarActions />);
+      fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+      const item = screen.queryByRole('menuitem', { name: 'Classic Help menu settings Beta' });
+      if (visible) {
+        expect(item).toBeInTheDocument();
+        fireEvent.click(item!);
+        expect(mockPush).toHaveBeenCalledWith('/plugins/grafana-pathfinder-app?page=configuration');
+      } else {
+        expect(item).not.toBeInTheDocument();
+      }
+    });
     beforeEach(() => {
       // Reset mock config to Admin for each test
       mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
@@ -324,16 +408,13 @@ describe('TabBarActions', () => {
       expect(screen.queryByRole('menuitem', { name: /dev tools/i })).not.toBeInTheDocument();
     });
 
-    it('is last in the menu and focuses the tab on click', () => {
+    it('focuses the dev tools tab on click', () => {
       const onOpenDevToolsTab = jest.fn();
       const { reportAppInteraction } = require('../../../lib/analytics');
       render(<TabBarActions isDevMode onOpenDevToolsTab={onOpenDevToolsTab} />);
       openMenu();
 
-      const items = screen.getAllByRole('menuitem');
-      expect(items[items.length - 1]).toHaveAccessibleName(/dev tools/i);
-
-      fireEvent.click(items[items.length - 1]!);
+      fireEvent.click(screen.getByRole('menuitem', { name: /dev tools/i }));
       expect(onOpenDevToolsTab).toHaveBeenCalledTimes(1);
       expect(reportAppInteraction).toHaveBeenCalledWith(
         'docs_panel_interaction',
@@ -375,4 +456,60 @@ describe('TabBarActions', () => {
       });
     });
   });
+});
+
+describe('Edit as private guide menu', () => {
+  const content = {
+    url: 'https://grafana.com/guide/content.json',
+    type: 'interactive',
+    metadata: { title: 'Guide' },
+    content: '{}',
+    isNativeJson: true,
+  };
+
+  it.each([
+    ['Admin', false, true],
+    ['Editor', false, false],
+    ['Viewer', false, false],
+    ['Viewer', true, true],
+  ])('checks role %s and server admin %s', (orgRole, isGrafanaAdmin, visible) => {
+    jest.mocked(useIsAssistantAvailable).mockReturnValue(true);
+    mockConfig.bootData.user = { orgRole, isGrafanaAdmin };
+    render(<TabBarActions activeTab={makeTab({ content })} onOpenEditorTab={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(Boolean(screen.queryByText('Edit as private guide'))).toBe(visible);
+    expect(Boolean(screen.queryByText('Customize with Assistant'))).toBe(visible);
+  });
+
+  it('hides customization when Assistant is unavailable', () => {
+    jest.mocked(useIsAssistantAvailable).mockReturnValue(false);
+    mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+    render(<TabBarActions activeTab={makeTab({ content })} onOpenEditorTab={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.queryByText('Customize with Assistant')).not.toBeInTheDocument();
+    expect(screen.getByText('Edit as private guide')).toBeInTheDocument();
+  });
+
+  it('does not offer copying a path even when its active content is JSON', () => {
+    jest.mocked(useIsAssistantAvailable).mockReturnValue(true);
+    mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+    render(
+      <TabBarActions
+        activeTab={makeTab({ content, packageInfo: { packageManifest: { type: 'path' } } })}
+        onOpenEditorTab={jest.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.queryByText('Edit as private guide')).not.toBeInTheDocument();
+    expect(screen.queryByText('Customize with Assistant')).not.toBeInTheDocument();
+  });
+});
+
+it('keeps Settings but hides the classic Help menu action for OSS admins', () => {
+  jest.mocked(currentPlatform).mockReturnValue('oss');
+  mockConfig.bootData.user = { orgRole: 'Admin', isGrafanaAdmin: false };
+  render(<TabBarActions />);
+  fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+  expect(screen.getByRole('menuitem', { name: 'Settings' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Classic Help menu settings Beta' })).not.toBeInTheDocument();
 });

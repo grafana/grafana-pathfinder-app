@@ -10,6 +10,7 @@ import { useTimeoutManager } from '../utils/timeout-manager';
 import { StorageEvents } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
+import { subscribeToAutoOpenGuideEnrollment } from '../utils/experiments/auto-open-guide/state';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
@@ -200,6 +201,9 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     return unsubscribe;
   }, [debouncedRefresh]);
 
+  // The auto-open guide's Featured card depends on an activation that can land after the first fetch.
+  useEffect(() => subscribeToAutoOpenGuideEnrollment(debouncedRefresh), [debouncedRefresh]);
+
   // Listen for progress cleared events to refresh recommendations
   useEffect(() => {
     const handleProgressCleared = () => {
@@ -274,14 +278,14 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   const openLearningJourney = useCallback(
     (url: string, title: string) => {
-      onOpenLearningJourney?.(url, title);
+      return onOpenLearningJourney?.(url, title);
     },
     [onOpenLearningJourney]
   );
 
   const openDocsPage = useCallback(
     (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-      onOpenDocsPage?.(url, title, packageInfo);
+      return onOpenDocsPage?.(url, title, packageInfo);
     },
     [onOpenDocsPage]
   );

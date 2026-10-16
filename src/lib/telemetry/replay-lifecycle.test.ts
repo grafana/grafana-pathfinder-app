@@ -90,10 +90,6 @@ describe('session replay lifecycle across session-attribute stamps', () => {
     expect(faro.api.getSession()?.attributes?.['surface']).toBe('fullscreen');
   });
 
-  // pauseRecording/resumeRecording are `private` in the SDK and reached through
-  // a cast, so the compiler checks nothing and the unit mock defines the names
-  // it asserts against. This drives the real recorder: rename either upstream
-  // and this goes red instead of the pause silently never firing in production.
   it('pauses and resumes the real recorder through the surface controller', () => {
     controller.pause();
     expect(recordingEvents()).toEqual(['faro.session_recording.started', 'faro.session_recording.paused']);

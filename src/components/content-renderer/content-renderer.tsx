@@ -1,9 +1,18 @@
+import { CompletionObservationProvider } from './completion-observation-provider';
+import type { CompletionSource } from '../../completion-records/types';
+
+import { handleKioskLinkClick } from '../../utils/kiosk-navigation';
+import { getGuideResponseId } from '../../lib/guide-response-id';
+import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBoundary';
+import { finishGuideLoad, pauseGuideLoad, resumeGuideLoad } from '../../lib/telemetry/guide-load';
+import { useIsAlignmentPaused } from '../../global-state/alignment-pending-context';
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
+import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, useStyles2 } from '@grafana/ui';
+import { getSelectionStyles } from './content-renderer.styles';
 
-import { RawContent, ContentParseResult, GuideCountingSource } from '../../types/content.types';
+import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
 import { logger } from '../../lib/logging';
 import {
   parseHTMLToComponents,
@@ -24,8 +33,11 @@ import {
   useGuideResponses,
   isJourneyCoverPage,
   getCurrentMilestone,
+  resolveSurfaceCompletionIdentity,
+  recordGuideCompletionForSurface,
+  type SurfaceCompletionInput,
 } from '../../docs-retrieval';
-import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
@@ -60,25 +72,35 @@ import {
 import { substituteVariables } from '../../utils/variable-substitution';
 import {
   STANDALONE_SECTION_ID,
+  getGuideCompletionSource,
+  peekGuidePercentage,
   isBlockEditorPreviewUrl,
   refreshGuidePercentageOnLoad,
+  refreshAndNotifyGuideProgress,
 } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { useGuideIdentityRegistration } from './useGuideIdentityRegistration';
+import { GuideContentKeyContext } from '../interactive-tutorial/guide-content-key-context';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import {
   evictGuideIndex,
+  getGuideIndex,
   getGuideIndexEvictionRevision,
   publishGuideIndex,
+  setGuideChoiceResponses,
   subscribeGuideIndexEvictions,
 } from '../../global-state/active-guide-index';
 import { resolveCountedBlockStepId } from '../../global-state/guide-step-id-resolver';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { createChoiceProgressModel } from '../../lib/guide-stats/choice-progress';
 import { selectCountingTree } from '../../lib/guide-counting-source';
 import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
-import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
+import { resolveFullScreenFallbackLocation, resolveFullScreenManifestLocation } from './full-screen-fallback-location';
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -113,17 +135,43 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
         targetElement!.classList.remove('fragment-highlight');
       }, 3000);
     } else {
-      logger.warn(`Fragment element not found: #${fragment}`);
+      logger.warn('Fragment element not found');
     }
-  } catch (error) {
-    logger.warn(`Error scrolling to fragment #${fragment}`, { error });
+  } catch {
+    logger.warn('Error scrolling to fragment');
+  }
+}
+
+/**
+ * How a mount takes part in completion recording. Required, so a surface that
+ * renders a guide cannot silently record nothing. `onComplete` runs after the
+ * completion is recorded, for UI that reacts to it.
+ */
+export type ContentRendererCompletion =
+  | { kind: 'tracked'; input: SurfaceCompletionInput; onComplete?: () => void }
+  | { kind: 'untracked'; reason: 'preview' };
+
+function recordCompletion(
+  completion: ContentRendererCompletion,
+  source: CompletionSource | undefined,
+  contentKey: string
+): void {
+  switch (completion.kind) {
+    case 'tracked':
+      recordGuideCompletionForSurface({ ...completion.input, source, contentKey });
+      completion.onComplete?.();
+      return;
+    case 'untracked':
+      return;
+    default:
+      assertExhaustive(completion);
   }
 }
 
 interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
-  onGuideComplete?: () => void;
+  completion: ContentRendererCompletion;
   /**
    * Advance to the next milestone, for the milestone form of the Mark complete
    * control. Surfaces that cannot navigate — or that are on the last milestone
@@ -131,31 +179,53 @@ interface ContentRendererProps {
    * control itself is never conditional.
    */
   onContinueToNextMilestone?: () => void;
+  /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
+  onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
+  /** Forwarded to `LearningPathTableOfContents`'s own prop of the same name — see its doc. */
+  initialActiveTrackId?: string | null;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-// Style to hide default browser selection highlight
-const selectionStyle = css`
-  ::selection {
-    background-color: rgba(255, 136, 0, 0.3);
-    color: inherit;
-  }
-`;
-
 // Memoize ContentRenderer to prevent re-renders when parent re-renders
 // but content prop hasn't changed
-export const ContentRenderer = React.memo(function ContentRenderer({
+export const ContentRenderer = React.memo(function ContentRenderer(props: ContentRendererProps) {
+  const context = props.content.loadContext;
+  const paused = useIsAlignmentPaused();
+  useGuideIdentityRegistration(props.content.url, props.completion.kind === 'tracked' ? props.completion.input : null);
+  useEffect(() => {
+    if (paused) {
+      pauseGuideLoad(context, true);
+    } else {
+      resumeGuideLoad(context);
+    }
+    return () => pauseGuideLoad(context);
+  }, [context, paused]);
+  return (
+    <GuideRenderBoundary key={context?.loadId ?? props.content.url} context={context}>
+      <GuideLoadTelemetryContext.Provider value={context}>
+        <ContentRendererInner {...props} />
+      </GuideLoadTelemetryContext.Provider>
+    </GuideRenderBoundary>
+  );
+});
+
+const stripTrailingSlashes = (key: string): string => key.replace(/\/+$/, '');
+
+const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
-  onGuideComplete,
+  completion,
   onContinueToNextMilestone,
+  onActiveTrackChange,
+  initialActiveTrackId,
   className,
   containerRef,
 }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
   const guideCompleteCalledRef = useRef(false);
+  const resolveOwnerContentKey = useCallback(() => resolveGuideContentKey(content.url), [content.url]);
 
   // Text selection tracking for assistant integration
   const selectionState = useTextSelection(activeRef);
@@ -167,42 +237,57 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   // (inline callbacks in parent cause effect to re-mount - R12 anti-pattern protection)
   const completedSectionsRef = useRef<Set<string>>(new Set());
 
-  // Store onGuideComplete in a ref so we can use the latest version without it
+  // Store completion in a ref so we can use the latest version without it
   // causing the event listener effect to re-mount (which would lose tracked sections)
-  const onGuideCompleteRef = useRef(onGuideComplete);
+  const completionRef = useRef(completion);
   useEffect(() => {
-    onGuideCompleteRef.current = onGuideComplete;
-  }, [onGuideComplete]);
+    completionRef.current = completion;
+  }, [completion]);
 
   const markCompleteRearmedRef = useRef(false);
 
-  // The one gate every completion route passes through — the automatic
-  // section/step routes below and the Mark complete control at the foot of the
-  // content alike — so a guide records exactly one completion however it was
-  // finished, and a click followed by an auto-complete does not record twice.
-  // Emitting also spends any pending re-arm: whichever route gets here first
-  // is the one completion, so a later click cannot re-open a gate that has
-  // already closed on this guide.
-  const triggerGuideComplete = useCallback(() => {
-    if (guideCompleteCalledRef.current) {
-      return;
-    }
-    guideCompleteCalledRef.current = true;
-    markCompleteRearmedRef.current = false;
-    onGuideCompleteRef.current?.();
-  }, []);
+  // The first terminal trigger owns the completion cause until a reset.
+  const triggerGuideComplete = useCallback(
+    (source?: CompletionSource) => {
+      const key = resolveGuideContentKey(content.url);
+      if (source !== 'manual' && getGuideIndex(key)?.choiceModel && peekGuidePercentage(key) !== 100) {
+        return;
+      }
+      if (guideCompleteCalledRef.current) {
+        return;
+      }
+      guideCompleteCalledRef.current = true;
+      markCompleteRearmedRef.current = false;
+      const contentKey = resolveGuideContentKey(content.url);
+      recordCompletion(completionRef.current, source ?? getGuideCompletionSource(contentKey), contentKey);
+    },
+    [content.url]
+  );
 
-  // The Mark complete route's own entry to that gate. A reset arms this route
-  // and only this route, so the reader's next click records once; the gate
-  // closes again inside `triggerGuideComplete`, leaving the automatic routes
-  // exactly the state they would have seen without the reset.
   const triggerGuideCompleteFromMark = useCallback(() => {
     if (markCompleteRearmedRef.current) {
       markCompleteRearmedRef.current = false;
       guideCompleteCalledRef.current = false;
     }
-    triggerGuideComplete();
+    triggerGuideComplete('manual');
   }, [triggerGuideComplete]);
+
+  useEffect(
+    () =>
+      subscribeProgressEvent((detail) => {
+        const key = resolveGuideContentKey(content.url);
+        if (detail.kind !== 'guide' || detail.contentKey !== key || !getGuideIndex(key)?.choiceModel) {
+          return;
+        }
+        if (detail.percentage < 100) {
+          guideCompleteCalledRef.current = false;
+          completedSectionsRef.current.clear();
+        } else if (peekGuidePercentage(key) === 100) {
+          triggerGuideComplete();
+        }
+      }),
+    [content.url, triggerGuideComplete]
+  );
 
   // Reset tracking state when content changes (new guide = fresh start)
   useEffect(() => {
@@ -286,8 +371,16 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     };
 
     const handleSectionComplete = (event: Event) => {
-      const { sectionId } = (event as CustomEvent).detail;
+      const { sectionId, contentKey, hydrated } = (event as CustomEvent).detail;
+      if (stripTrailingSlashes(contentKey) !== stripTrailingSlashes(resolveGuideContentKey(effectContentUrl))) {
+        return;
+      }
       completedSectionsRef.current.add(sectionId);
+
+      // A hydrated section counts toward the tally but cannot itself complete the guide.
+      if (hydrated) {
+        return;
+      }
 
       // CRITICAL: Don't trigger completion until content has settled
       // This prevents old component events from triggering completion on new content
@@ -363,14 +456,13 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         return; // This handler was created for different content
       }
       const detail = (event as CustomEvent).detail;
-      const currentTabUrl = window.__DocsPluginActiveTabUrl;
-      if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
-        // Only trigger if the event is for the current page (strict equality after normalization).
+      if (detail?.completionPercentage >= 100 && detail?.contentKey) {
+        // Only trigger if the event is for the rendered guide (strict equality after normalization).
         // Bidirectional startsWith would produce false matches when URLs share a common prefix
         // (e.g., /docs/dashboard matching /docs/dashboard-variables).
         const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
-        const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
-        if (eventKeyNorm === tabUrlNorm) {
+        const ownKeyNorm = resolveGuideContentKey(effectContentUrl).replace(/\/+$/, '');
+        if (eventKeyNorm === ownKeyNorm) {
           triggerGuideComplete();
         }
       }
@@ -380,7 +472,11 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     // based on the discriminant.
     const unsubscribeProgress = subscribeProgressEvent((detail) => {
       if (detail.kind === 'section' && detail.completed) {
-        handleSectionComplete(new CustomEvent('section', { detail: { sectionId: detail.sectionId } }));
+        handleSectionComplete(
+          new CustomEvent('section', {
+            detail: { sectionId: detail.sectionId, contentKey: detail.contentKey, hydrated: detail.hydrated },
+          })
+        );
       } else if (detail.kind === 'step' && detail.completed) {
         handleStepComplete();
       } else if (detail.kind === 'guide') {
@@ -405,7 +501,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         clearTimeout(debounceTimer);
       }
     };
-  }, [activeRef, content?.url, triggerGuideComplete]); // Removed onGuideComplete - using ref instead
+  }, [activeRef, content?.url, triggerGuideComplete]); // completion is read through a ref
 
   // Expose current content key globally for interactive persistence.
   // MUST be useLayoutEffect so the global is set before children's useEffect
@@ -441,25 +537,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processedContent, content.hashFragment]);
 
-  useEffect(() => {
-    if (onContentReady) {
-      const timer = setTimeout(onContentReady, 50);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [processedContent, onContentReady]);
-
-  // Derive guide ID from content URL for response storage
-  const guideId = useMemo(() => {
-    // Use the URL path as the guide identifier, or fallback to 'default'
-    try {
-      const url = new URL(content.url, window.location.origin);
-      // Remove leading slash and use path as ID
-      return url.pathname.replace(/^\//, '').replace(/\//g, '-') || 'default';
-    } catch {
-      return content.url || 'default';
-    }
-  }, [content.url]);
+  const guideId = useMemo(() => getGuideResponseId(content.url, window.location.origin), [content.url]);
 
   // Mirror this guide for compatibility callers outside the scoped provider.
   useLayoutEffect(() => registerCompatibilityGuideId(guideId), [guideId]);
@@ -469,62 +547,96 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   const packageManifestDescription = content.metadata.packageManifest?.description;
   const pathId = typeof packageManifestId === 'string' ? packageManifestId : undefined;
   const pathDescription = typeof packageManifestDescription === 'string' ? packageManifestDescription : undefined;
-  // Full-screen -> sidebar handoff target (see interactive-engine/interactive.hook.ts):
-  // prefer the current milestone's own starting location, then the course's.
+  // Full-screen handoff prefers milestone, member, then owning journey location.
   // `/` and empty/missing both mean "no real signal" for this feature specifically
   // — the existing alignment system (resolveStartingLocation) treats `/` as a
   // real, confirmation-gated target for its own unrelated purpose; this handoff
   // has no confirmation step, so a bare default must not silently relocate the user.
-  const courseStartingLocation = content.metadata.packageManifest?.startingLocation;
   const fullScreenFallbackLocation =
     resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
-    resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
+    resolveFullScreenManifestLocation(content.metadata.packageManifest) ??
+    resolveFullScreenManifestLocation(content.metadata.journeyManifest);
   const isCoverPage = isJourneyCoverPage(content);
+  const packageManifest = content.metadata.packageManifest;
+  const prerequisites =
+    !isCoverPage && journey && (packageManifest?.type === 'path' || packageManifest?.type === 'journey')
+      ? undefined
+      : packageManifest?.prerequisites;
+  const hasPrerequisites = Array.isArray(prerequisites) && prerequisites.length > 0;
+  const hasCoverContents = Boolean(isCoverPage && journey && journey.milestones.length > 0);
   const beforeContent =
-    isCoverPage && journey && journey.milestones.length > 0 ? (
-      <LearningPathTableOfContents
-        milestones={journey.milestones}
-        baseUrl={journey.baseUrl}
-        pathId={pathId}
-        title={content.metadata.title}
-        description={pathDescription}
-      />
+    hasPrerequisites || hasCoverContents ? (
+      <>
+        <Prerequisites prerequisites={prerequisites} />
+        {hasCoverContents && journey && (
+          <LearningPathTableOfContents
+            milestones={journey.milestones}
+            baseUrl={journey.baseUrl}
+            pathId={pathId}
+            title={content.metadata.title}
+            description={pathDescription}
+            tracks={journey.tracks}
+            onActiveTrackChange={onActiveTrackChange}
+            initialActiveTrackId={initialActiveTrackId}
+          />
+        )}
+      </>
     ) : null;
 
   // Unconditional for every guide and every milestone (COMPLETION-MODEL.md,
   // decision 2). A path's cover page is the one thing it is absent from, and
   // that is not the deleted predicate: a table of contents is neither a guide
   // nor a milestone, and marking it complete would record a guide nobody read.
+  const { baseUrl: completionBaseUrl, currentUrl: completionCurrentUrl } =
+    completion.kind === 'tracked' ? completion.input : { baseUrl: undefined, currentUrl: content.url };
+  const completionIdentity = useMemo(
+    () =>
+      resolveSurfaceCompletionIdentity({
+        baseUrl: completionBaseUrl,
+        contentUrl: content.url,
+        currentUrl: completionCurrentUrl,
+        metadata: content.metadata,
+      }),
+    [completionBaseUrl, completionCurrentUrl, content.url, content.metadata]
+  );
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
       context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
       contentUrl={content.url}
+      completionIdentity={completionIdentity}
+      currentMilestone={journey?.currentMilestone}
+      totalMilestones={journey?.totalMilestones}
       onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
     />
   );
 
   return (
-    <GuideResponseProvider guideId={guideId}>
-      <GuideRequirementsProvider guideId={guideId}>
-        <ContentWithVariables
-          processedContent={processedContent}
-          countingSource={content.countingSource}
-          contentType={content.type}
-          baseUrl={content.url}
-          title={content.metadata.title}
-          isNativeJson={content.isNativeJson ?? false}
-          onContentReady={onContentReady}
-          activeRef={activeRef}
-          className={className}
-          selectionState={selectionState}
-          documentContext={documentContext}
-          beforeContent={beforeContent}
-          afterContent={afterContent}
-          fullScreenFallbackLocation={fullScreenFallbackLocation}
-        />
-      </GuideRequirementsProvider>
-    </GuideResponseProvider>
+    <GuideContentKeyContext.Provider value={resolveOwnerContentKey}>
+      <GuideResponseProvider guideId={guideId}>
+        <GuideRequirementsProvider guideId={guideId}>
+          <CompletionObservationProvider key={content.url} contentKey={content.url}>
+            <ContentWithVariables
+              processedContent={processedContent}
+              countingSource={content.countingSource}
+              contentType={content.type}
+              baseUrl={content.url}
+              title={content.metadata.title}
+              isNativeJson={content.isNativeJson ?? false}
+              onContentReady={onContentReady}
+              activeRef={activeRef}
+              className={className}
+              selectionState={selectionState}
+              documentContext={documentContext}
+              beforeContent={beforeContent}
+              coverTocSuppliesTitle={hasCoverContents}
+              afterContent={afterContent}
+              fullScreenFallbackLocation={fullScreenFallbackLocation}
+            />
+          </CompletionObservationProvider>
+        </GuideRequirementsProvider>
+      </GuideResponseProvider>
+    </GuideContentKeyContext.Provider>
   );
 });
 
@@ -543,6 +655,7 @@ interface ContentWithVariablesProps {
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  coverTocSuppliesTitle: boolean;
   afterContent?: React.ReactNode;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
@@ -561,18 +674,23 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  coverTocSuppliesTitle,
   afterContent,
   fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
+  const selectionStyle = useStyles2(getSelectionStyles);
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
-  const { responses } = useGuideResponses();
+  const { responses, isLoading: responsesLoading } = useGuideResponses();
 
   // Intercept clicks on interactive-learning links inside content.
   // Instead of navigating away, open the guide as a new tab in the sidebar.
   const handleContentClick = useCallback((e: React.MouseEvent) => {
+    if (handleKioskLinkClick(e.nativeEvent, true)) {
+      return;
+    }
     const anchor = (e.target as Element).closest?.('a[href]');
-    if (!anchor) {
+    if (!anchor || anchor.getAttribute('target')?.toLowerCase() === '_blank') {
       return;
     }
     const href = anchor.getAttribute('href');
@@ -626,6 +744,7 @@ function ContentWithVariables({
   return (
     <div
       ref={activeRef}
+      data-guide-content-root="true"
       className={`${className} ${selectionStyle}`}
       data-pathfinder-content="true"
       onClick={handleContentClick}
@@ -637,7 +756,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && isNativeJson && !beforeContent && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && !coverTocSuppliesTitle && <h1 className={titleStyle}>{title}</h1>}
       {beforeContent}
       <ContentProcessor
         html={processedContent}
@@ -646,6 +765,7 @@ function ContentWithVariables({
         baseUrl={baseUrl}
         onReady={onContentReady}
         responses={responses}
+        responsesLoading={responsesLoading}
         fullScreenFallbackLocation={fullScreenFallbackLocation}
       />
       {afterContent}
@@ -671,6 +791,7 @@ interface ContentProcessorProps {
   onReady?: () => void;
   /** User responses for variable substitution at render time */
   responses: Record<string, unknown>;
+  responsesLoading: boolean;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
 }
@@ -680,9 +801,13 @@ function ContentProcessor({
   countingSource,
   baseUrl,
   responses,
+  responsesLoading,
   fullScreenFallbackLocation,
+  onReady,
 }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const loadContext = React.useContext(GuideLoadTelemetryContext);
+  const alignmentPaused = useIsAlignmentPaused();
 
   // Reset interactive counters only when content changes (not on every render)
   // This must run BEFORE parsing to ensure clean state for section registration
@@ -795,7 +920,7 @@ function ContentProcessor({
       logger.warn(
         '[ContentRenderer] Expanded guide carries no usable pre-inlining tree; no canonical index published',
         {
-          content_key: contentKey,
+          reason: 'counting-source-unavailable',
         }
       );
       return;
@@ -811,10 +936,12 @@ function ContentProcessor({
       }
       lastPublishedPreviewGuideRef.current = { contentKey, guide: rawGuide };
     }
+    const index = computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId });
     publishGuideIndex({
       contentKey,
-      index: computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
+      index,
       denominatorSource: 'live-pre-inlining',
+      choiceModel: createChoiceProgressModel(countingGuide.blocks, index),
     });
     // A percentage persisted under the deleted step-count rule is read back
     // verbatim by the new position-based one and is systematically higher,
@@ -826,10 +953,28 @@ function ContentProcessor({
     refreshGuidePercentageOnLoad(contentKey);
   }, [rawGuide, countingGuide, baseUrl, guideIndexEvictionRevision]);
 
+  React.useLayoutEffect(() => {
+    if (responsesLoading) {
+      setGuideChoiceResponses(resolveGuideContentKey(baseUrl), undefined);
+    }
+  }, [responsesLoading, baseUrl]);
+
+  useEffect(() => {
+    const key = resolveGuideContentKey(baseUrl);
+    if (!responsesLoading && getGuideIndex(key)?.choiceModel) {
+      setGuideChoiceResponses(key, responses);
+      refreshAndNotifyGuideProgress(key);
+    }
+  }, [responses, responsesLoading, baseUrl, rawGuide, guideIndexEvictionRevision]);
+
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
   const overlayKey = `${html}\x00${baseUrl}`;
-  const [snippetOverlay, setSnippetOverlay] = useState<{ key: string; result: ContentParseResult } | null>(null);
+  const [snippetOverlay, setSnippetOverlay] = useState<{
+    key: string;
+    result: ContentParseResult;
+    degraded: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!guideWithSnippetRefs) {
@@ -837,20 +982,52 @@ function ContentProcessor({
     }
     let cancelled = false;
     (async () => {
-      const resolved = await inlineSnippetRefsInGuide(guideWithSnippetRefs);
+      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs);
       if (cancelled) {
         return;
       }
-      setSnippetOverlay({ key: overlayKey, result: parseJsonGuide(resolved, baseUrl) });
-    })();
+      setSnippetOverlay({
+        key: overlayKey,
+        result: parseJsonGuide(resolved.guide, baseUrl),
+        degraded: resolved.unresolvedSnippetIds.length > 0,
+      });
+    })().catch(() => {
+      if (!cancelled) {
+        setSnippetOverlay({ key: overlayKey, result: baseParseResult, degraded: true });
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [guideWithSnippetRefs, baseUrl, overlayKey]);
+  }, [guideWithSnippetRefs, baseUrl, overlayKey, baseParseResult]);
 
   const overlayMatchesCurrent = snippetOverlay?.key === overlayKey;
-  const parseResult = overlayMatchesCurrent && snippetOverlay ? snippetOverlay.result : baseParseResult;
+  const currentSnippetOverlay = overlayMatchesCurrent ? snippetOverlay : null;
+  const parseResult = currentSnippetOverlay?.result ?? baseParseResult;
   const isResolvingSnippets = guideWithSnippetRefs !== null && !overlayMatchesCurrent;
+
+  const readyReported = useRef<string | null>(null);
+  useEffect(() => {
+    if (isResolvingSnippets || alignmentPaused || readyReported.current === overlayKey) {
+      return;
+    }
+    readyReported.current = overlayKey;
+    const source = loadContext?.source ?? 'other';
+    if (!parseResult.isValid || !parseResult.data) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'parse-error' });
+    } else if (parseResult.data.elements.length === 0) {
+      finishGuideLoad(loadContext, 'error', { source, stage: 'render', reason: 'empty-content' });
+    } else {
+      if (parseResult.warnings.length > 0 && !currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'parse-error' });
+      }
+      if (currentSnippetOverlay?.degraded) {
+        finishGuideLoad(loadContext, 'degraded', { source, stage: 'render', reason: 'snippet-unavailable' });
+      }
+      finishGuideLoad(loadContext, 'rendered');
+      onReady?.();
+    }
+  }, [parseResult, isResolvingSnippets, alignmentPaused, overlayKey, loadContext, onReady, currentSnippetOverlay]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {
@@ -934,7 +1111,7 @@ function ContentProcessor({
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    logger.error('Content parsing failed', { errors: parseResult.errors });
+    // Parser details can contain private guide content; only the typed outcome is reported.
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -1328,6 +1505,7 @@ function renderParsedElement(
           id={element.props.id} // Pass the HTML id attribute
           sectionId={element.props.sectionId}
           autoCollapse={element.props.autoCollapse}
+          whenRequirementsUnmet={element.props.whenRequirementsUnmet}
         >
           {renderChildren(element.children)}
         </InteractiveSection>
@@ -1369,6 +1547,9 @@ function renderParsedElement(
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}
+          formHint={element.props.formHint}
+          validateInput={element.props.validateInput}
+          openGuide={element.props.openGuide}
           title={sub(element.props.title)}
           lazyRender={element.props.lazyRender}
           scrollContainer={element.props.scrollContainer}
@@ -1533,9 +1714,11 @@ function renderParsedElement(
           variableName={element.props.variableName}
           placeholder={sub(element.props.placeholder)}
           checkboxLabel={sub(element.props.checkboxLabel)}
+          choices={element.props.choices}
           defaultValue={element.props.defaultValue}
           required={element.props.required}
           pattern={element.props.pattern}
+          format={element.props.format}
           validationMessage={sub(element.props.validationMessage)}
           requirements={element.props.requirements}
           skippable={element.props.skippable}
@@ -1754,7 +1937,7 @@ function renderParsedElement(
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        logger.error('Invalid element type for parsed element', { element });
+        logger.error('Invalid element type for parsed element');
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 
@@ -1806,26 +1989,4 @@ function renderParsedElement(
         );
       }
   }
-}
-
-export function useContentRenderer(content: RawContent | null) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isReady, setIsReady] = React.useState(false);
-
-  const handleContentReady = React.useCallback(() => {
-    setIsReady(true);
-  }, []);
-
-  const renderer = React.useMemo(() => {
-    if (!content) {
-      return null;
-    }
-    return <ContentRenderer content={content} containerRef={containerRef} onContentReady={handleContentReady} />;
-  }, [content, handleContentReady]);
-
-  return {
-    renderer,
-    containerRef,
-    isReady,
-  };
 }

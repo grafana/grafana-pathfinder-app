@@ -137,6 +137,27 @@ describe('fetchAppPlatformLearningPaths', () => {
     });
   });
 
+  it('includes a guide referenced only by a track, not by milestones, so resetPath can clear its completion', async () => {
+    mockFetchCustomGuideRepository.mockResolvedValue([
+      {
+        id: 'fe-alerting-path',
+        title: 'Alerting enablement',
+        status: 'published',
+        manifest: {
+          type: 'path',
+          milestones: ['fe-alerting-01'],
+          tracks: [{ trackId: 'builder', label: 'Builder', guides: ['fe-alerting-01', 'track-only-guide'] }],
+        },
+      },
+      { id: 'fe-alerting-01', title: 'Alerting module 1', status: 'published' },
+      { id: 'track-only-guide', title: 'Track-only guide', status: 'published' },
+    ]);
+
+    const result = await fetchAppPlatformLearningPaths('stacks-123');
+
+    expect(result.paths[0]!.guides).toEqual(['fe-alerting-01', 'track-only-guide']);
+  });
+
   it('falls back to id when a path manifest has no description', async () => {
     mockFetchCustomGuideRepository.mockResolvedValue([
       {

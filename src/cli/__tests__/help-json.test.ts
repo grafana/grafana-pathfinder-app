@@ -25,6 +25,12 @@ describe('helpJsonForCommand', () => {
     expect(helpJsonForCommand(command)).toEqual(renderInterface(spec, CLI_VIEW));
   });
 
+  it('describes the local cloud checkout-directory repository input', () => {
+    const help = helpJsonForCommand(COMMANDER_COMMANDS.get('e2e')!);
+    const repository = help.optional.find((field) => field.name === 'repository');
+    expect(repository?.description).toContain('checkout directory for a local cloud package');
+  });
+
   it('renders a group root the same way renderGroupInterface does', () => {
     const command = COMMANDER_COMMANDS.get('add-block')!;
     const group = cliGroup('add-block')!;

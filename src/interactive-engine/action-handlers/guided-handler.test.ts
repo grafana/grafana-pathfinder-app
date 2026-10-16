@@ -42,7 +42,8 @@ describe('GuidedHandler', () => {
     mockNavigationManager.ensureNavigationOpen = jest.fn().mockResolvedValue(undefined);
     mockNavigationManager.ensureElementVisible = jest.fn().mockResolvedValue(undefined);
     mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
-    mockNavigationManager.clearAllHighlights = jest.fn();
+    mockNavigationManager.clearOwnedHighlights = jest.fn();
+    mockNavigationManager.getOwnedCommentBox = jest.fn(() => document.querySelector('.interactive-comment-box'));
 
     mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
@@ -107,7 +108,7 @@ describe('GuidedHandler', () => {
         document.body.appendChild(box);
         return target;
       });
-      mockNavigationManager.clearAllHighlights.mockImplementation(() => {
+      mockNavigationManager.clearOwnedHighlights.mockImplementation(() => {
         document.querySelectorAll('.interactive-comment-box').forEach((box) => box.remove());
       });
     });
@@ -116,6 +117,40 @@ describe('GuidedHandler', () => {
       guidedHandler.cancel();
       jest.useRealTimers();
       document.body.replaceChildren();
+    });
+
+    it('retains and cancels only its own final box when another overlay exists', async () => {
+      const foreignBox = document.createElement('div');
+      foreignBox.className = 'interactive-comment-box';
+      foreignBox.dataset.foreign = 'true';
+      const foreignBar = document.createElement('div');
+      foreignBar.className = 'interactive-comment-progress-bar';
+      foreignBar.style.width = '37%';
+      foreignBox.appendChild(foreignBar);
+      document.body.prepend(foreignBox);
+      mockNavigationManager.getOwnedCommentBox.mockImplementation(() =>
+        document.querySelector('.interactive-comment-box:not([data-foreign])')
+      );
+      mockNavigationManager.clearOwnedHighlights.mockImplementation(() => {
+        mockNavigationManager.getOwnedCommentBox()?.remove();
+      });
+      const pending = guidedHandler.executeGuidedStep(
+        { targetAction: 'button', refTarget: '#terminal-target' },
+        0,
+        1,
+        5000
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      document.querySelector<HTMLButtonElement>('#terminal-target')!.click();
+      expect(await pending).toBe('completed');
+      const doneBox = document.querySelector('[data-guided-state="completed"]')!;
+      expect(doneBox).toBeInTheDocument();
+      expect(doneBox.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+      expect(foreignBar).toHaveStyle({ width: '37%' });
+      guidedHandler.cancel();
+      expect(doneBox).not.toBeInTheDocument();
+      expect(foreignBox).toBeInTheDocument();
+      expect(mockNavigationManager.clearAllHighlights).not.toHaveBeenCalled();
     });
 
     it('retains the final informational step with a done bar instead of Continue, Skip or Cancel', async () => {
@@ -181,7 +216,7 @@ describe('GuidedHandler', () => {
     );
   });
 
-  describe('resetProgress', () => {
+  describe('sequence progress', () => {
     const runTwoStepSequence = async (labelPrefix: string) => {
       for (const stepIndex of [0, 1]) {
         await guidedHandler.executeGuidedStep(
@@ -193,14 +228,14 @@ describe('GuidedHandler', () => {
           },
           stepIndex,
           2,
-          5
+          1000
         );
       }
     };
 
-    const firstPaintOf = (labelPrefix: string) =>
+    const paintOf = (labelPrefix: string, stepIndex: number) =>
       (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls.find((call) =>
-        String(call[1]).includes(`${labelPrefix} step 0`)
+        String(call[1]).includes(`${labelPrefix} step ${stepIndex}`)
       )?.[3];
 
     beforeEach(() => {
@@ -210,23 +245,70 @@ describe('GuidedHandler', () => {
       mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
     });
 
-    it('clears prior-run credit so a restarted sequence paints from zero', async () => {
-      await runTwoStepSequence('run A');
-      expect(firstPaintOf('run A')).toMatchObject({ current: 0, completedSteps: [] });
-
-      guidedHandler.resetProgress();
-      await runTwoStepSequence('run B');
-
-      expect(firstPaintOf('run B')).toMatchObject({ current: 0, total: 2, completedSteps: [], progress: 'performed' });
+    afterEach(() => {
+      document.querySelectorAll('.interactive-comment-box').forEach((element) => element.remove());
     });
 
-    it('carries stale credit into a second sequence when it is not called', async () => {
+    it('can complete successive local runs without secure-context randomUUID', async () => {
+      const descriptor = Object.getOwnPropertyDescriptor(crypto, 'randomUUID');
+      Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined });
+      try {
+        await runTwoStepSequence('insecure A');
+        await runTwoStepSequence('insecure B');
+        expect(paintOf('insecure B', 1)).toMatchObject({ completedSteps: [0] });
+      } finally {
+        if (descriptor) {
+          Object.defineProperty(crypto, 'randomUUID', descriptor);
+        } else {
+          Reflect.deleteProperty(crypto, 'randomUUID');
+        }
+      }
+    });
+
+    it('retains completed-step credit within a sequence', async () => {
+      await runTwoStepSequence('run A');
+
+      expect(paintOf('run A', 0)).toEqual({ current: 0, total: 2, completedSteps: [], progress: 'performed' });
+      expect(paintOf('run A', 1)).toEqual({ current: 1, total: 2, completedSteps: [0], progress: 'performed' });
+    });
+
+    it('starts a second sequence from zero without a caller resetting progress', async () => {
       await runTwoStepSequence('run A');
       await runTwoStepSequence('run B');
 
-      // Guard: this is the state resetProgress exists to prevent - a full bar
-      // beside a "Step 1 of 2" badge. interactive-guided.tsx calls it at run start.
-      expect(firstPaintOf('run B')).toMatchObject({ current: 0, completedSteps: [0, 1] });
+      expect(paintOf('run A', 1)).toMatchObject({ completedSteps: [0] });
+      expect(paintOf('run B', 0)).toEqual({ current: 0, total: 2, completedSteps: [], progress: 'performed' });
+      expect(paintOf('run B', 1)).toEqual({ current: 1, total: 2, completedSteps: [0], progress: 'performed' });
+    });
+
+    it('clears prior-run credit before painting a noop first step', async () => {
+      await runTwoStepSequence('run A');
+
+      const noopStep = guidedHandler.executeGuidedStep(
+        { targetAction: 'noop', targetComment: 'run B step 0' },
+        0,
+        2,
+        1000
+      );
+      const commentBox = document.querySelector('.interactive-comment-box[data-noop="true"]');
+
+      expect(commentBox).not.toBeNull();
+      expect(commentBox!.querySelectorAll('.interactive-comment-step-item')).toHaveLength(2);
+      expect(commentBox!.querySelector('.interactive-comment-step-item')).toHaveClass(
+        'interactive-comment-step-current'
+      );
+      expect(commentBox!.querySelectorAll('.interactive-comment-step-completed')).toHaveLength(0);
+
+      document.dispatchEvent(new CustomEvent('guided-noop-continue', { detail: { stepIndex: 0 } }));
+      await expect(noopStep).resolves.toBe('completed');
+      await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'run B step 1' },
+        1,
+        2,
+        1000
+      );
+
+      expect(paintOf('run B', 1)).toEqual({ current: 1, total: 2, completedSteps: [0], progress: 'performed' });
     });
   });
 
@@ -271,7 +353,7 @@ describe('GuidedHandler', () => {
         },
         0,
         1,
-        5
+        1000
       );
 
       expect(result).toBe('completed');
@@ -298,7 +380,7 @@ describe('GuidedHandler', () => {
         'pathfinder_do_it_button_click',
         { target_action: 'highlight', ref_target: refTarget, step_index: 0, total_steps: 1 },
         expect.any(Function),
-        10_005,
+        11_000,
         { critical: true, outcomeFrom: expect.any(Function) }
       );
 
@@ -325,7 +407,7 @@ describe('GuidedHandler', () => {
         { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: '<p>Click Add</p>' },
         0,
         1,
-        5
+        1000
       );
 
       expect(result).toBe('completed');
@@ -387,7 +469,7 @@ describe('GuidedHandler', () => {
         { targetAction: 'highlight', refTarget: '#drawer', targetState: true },
         0,
         1,
-        5
+        1000
       );
 
       expect(result).toBe('completed');
@@ -418,7 +500,7 @@ describe('GuidedHandler', () => {
       expect(result).toBe('completed');
       expect(eventOrder).toEqual(['completion persisted', 'route changed']);
       expect(button.isConnected).toBe(false);
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
 
     it('keeps completed when highlighting throws after an early click', async () => {
@@ -450,7 +532,7 @@ describe('GuidedHandler', () => {
       mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
         button.click();
       });
-      mockNavigationManager.clearAllHighlights = jest.fn(() => {
+      mockNavigationManager.clearOwnedHighlights = jest.fn(() => {
         throw new Error('cleanup failed');
       });
 
@@ -533,7 +615,7 @@ describe('GuidedHandler', () => {
 
       expect(result).toBe('error');
       expect(onActionCompleted).toHaveBeenCalledTimes(1);
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
       expect((guidedHandler as any).activeListeners).toHaveLength(0);
       expect((guidedHandler as any).pendingTimeouts).toHaveLength(0);
       expect((guidedHandler as any).pendingIntervals).toHaveLength(0);
@@ -719,7 +801,7 @@ describe('GuidedHandler', () => {
       }
       expect(await pending).toBe(outcome);
       expect(progressBar.style.width).toBe('0%');
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
       expect(document.querySelector('[data-guided-state="completed"]')).toBeNull();
     });
 
@@ -777,7 +859,7 @@ describe('GuidedHandler', () => {
 
       const result = await completionPromise;
       expect(result).toBe('completed');
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
     it('shows 100% on single-step tour completion', async () => {
       const button = document.querySelector<HTMLButtonElement>('#target')!;
@@ -806,7 +888,7 @@ describe('GuidedHandler', () => {
 
       const result = await completionPromise;
       expect(result).toBe('completed');
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
 
     it('does NOT delay cleanup for non-final steps', async () => {
@@ -840,8 +922,7 @@ describe('GuidedHandler', () => {
       const result = await completionPromise;
       expect(result).toBe('completed');
 
-      // Cleanup should have been called immediately, without waiting for delay
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
 
     it('skipped final step also paints 100%', async () => {
@@ -880,7 +961,7 @@ describe('GuidedHandler', () => {
 
       const result = await completionPromise;
       expect(result).toBe('skipped');
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
 
     it('does NOT show 100% or delay for error results', async () => {
@@ -915,8 +996,7 @@ describe('GuidedHandler', () => {
       // Verify progress bar was NOT set to 100% (error case)
       expect(progressBar.style.width).toBe('66%');
 
-      // Cleanup should happen immediately without delay
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
 
     it('handles missing progress bar gracefully without crashing', async () => {
@@ -945,10 +1025,9 @@ describe('GuidedHandler', () => {
 
       await jest.advanceTimersByTimeAsync(0);
 
-      // Should complete without crashing
       const result = await completionPromise;
       expect(result).toBe('completed');
-      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
   });
 });

@@ -1,8 +1,9 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { RecommendationsSection } from './context-panel';
 import { PLUGIN_BASE_URL } from '../../constants';
 import { testIds } from '../../constants/testIds';
+import type { ResolvedAssignment } from '../../learning-paths';
 
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class {},
@@ -23,6 +24,13 @@ jest.mock('@grafana/runtime', () => {
 jest.mock('@grafana/i18n', () => ({
   t: jest.fn((key: string, fallback: string) => fallback),
 }));
+
+const paragraphHeight = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
+  this: HTMLElement
+) {
+  return this.tagName === 'P' && (this.textContent?.split(/\s+/).length ?? 0) > 20 ? 80 : 0;
+});
+afterAll(() => paragraphHeight.mockRestore());
 
 const { __mockPublish: mockPublish, __mockPush: mockPush } = jest.requireMock('@grafana/runtime');
 
@@ -101,7 +109,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(screen.getByRole('button', { name: /Start (guide|path)/ }));
 
     expect(openDocsPage).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
@@ -148,8 +156,77 @@ describe('RecommendationsSection', () => {
     );
 
     expect(screen.getByText('Learning path')).toBeInTheDocument();
-    expect(screen.queryByText('Interactive guide')).not.toBeInTheDocument();
+    expect(screen.queryByText('Guide')).not.toBeInTheDocument();
   });
+
+  it.each([
+    { featured: false, hasMilestones: true },
+    { featured: true, hasMilestones: true },
+    { featured: false, hasMilestones: false },
+    { featured: true, hasMilestones: false },
+  ])(
+    'shows prerequisites in expanded details with featured=$featured and milestones=$hasMilestones',
+    ({ featured, hasMilestones }) => {
+      const recommendation = {
+        title: 'Prometheus learning path',
+        url: '',
+        contentUrl: 'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
+        type: 'package' as const,
+        summary: 'Learn Prometheus step by step.',
+        manifest: {
+          id: 'prometheus-lj',
+          type: 'path',
+          prerequisites: [
+            {
+              id: 'prometheus',
+              label: 'A running [Prometheus server](https://example.com/prometheus).',
+              format: 'markdown',
+            },
+          ],
+        },
+        summaryExpanded: true,
+        totalSteps: hasMilestones ? 1 : 0,
+        milestones: hasMilestones
+          ? [{ number: 1, title: 'Install Prometheus', url: 'https://example.com/step-1' }]
+          : [],
+      };
+      render(
+        <RecommendationsSection
+          recommendations={featured ? [] : [recommendation]}
+          featuredRecommendations={featured ? [recommendation] : []}
+          customGuides={[]}
+          customGuidePaths={[]}
+          customGuideOrphans={[]}
+          isLoadingCustomGuides={false}
+          customGuidesExpanded
+          suggestedGuidesExpanded
+          isLoadingRecommendations={false}
+          isLoadingContext={false}
+          recommendationsError={null}
+          otherDocsExpanded={false}
+          showEnableRecommenderBanner={false}
+          openLearningJourney={jest.fn()}
+          openDocsPage={jest.fn()}
+          toggleCustomGuidesExpansion={jest.fn()}
+          toggleSuggestedGuidesExpansion={jest.fn()}
+          toggleSummaryExpansion={jest.fn()}
+          toggleOtherDocsExpansion={jest.fn()}
+        />
+      );
+
+      const prerequisite = screen.getByRole('link', { name: 'Prometheus server' });
+      expect(screen.getByRole('note')).toHaveTextContent('Prerequisites');
+      expect(prerequisite).toHaveAttribute('target', '_blank');
+      expect(prerequisite).toHaveAttribute('rel', 'noopener noreferrer');
+      if (hasMilestones) {
+        const milestone = screen.getByText('Install Prometheus');
+        expect(prerequisite.compareDocumentPosition(milestone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      expect(
+        screen.getByRole('button', { name: hasMilestones ? 'Hide modules' : 'Hide related content' })
+      ).toBeVisible();
+    }
+  );
 
   it('shows the milestone duration only when estimatedMinutes is authored, omitting it entirely otherwise', () => {
     render(
@@ -196,7 +273,7 @@ describe('RecommendationsSection', () => {
     // duration renders through the translated key rather than a hardcoded
     // "min" string, not the interpolated count.
     const milestonesList = screen.getByTestId(testIds.contextPanel.recommendationMilestones(0));
-    expect(milestonesList).toHaveTextContent('({{count}} min)');
+    expect(milestonesList).toHaveTextContent('{{minutes}} min');
     expect(milestonesList).not.toHaveTextContent('(undefined min)');
     expect(milestonesList).not.toHaveTextContent('NaN');
   });
@@ -238,7 +315,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(screen.getByRole('button', { name: /Start (guide|path)/ }));
 
     expect(openDocsPage).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
@@ -285,7 +362,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    expect(screen.getByText('Interactive guide')).toBeInTheDocument();
+    expect(screen.getByText('Guide')).toBeInTheDocument();
     expect(screen.queryByText('Learning path')).not.toBeInTheDocument();
   });
 
@@ -327,7 +404,7 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Summary' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Read more' }));
 
     expect(toggleSummaryExpansion).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json'
@@ -369,12 +446,12 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    expect(screen.queryByRole('button', { name: 'Summary' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Read more' })).not.toBeInTheDocument();
     expect(screen.getByText('Learn alerting basics.')).toBeInTheDocument();
     expect(screen.getByText('{{percent}}% complete')).toBeInTheDocument();
   });
 
-  it('keeps the Summary collapse button when short summary has expandable milestone details', () => {
+  it('keeps the module disclosure when short summary has expandable milestone details', () => {
     render(
       <RecommendationsSection
         recommendations={[
@@ -410,8 +487,8 @@ describe('RecommendationsSection', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'Summary' })).toBeInTheDocument();
-    expect(screen.queryByText('Learn alerting basics.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show modules' })).toBeInTheDocument();
+    expect(screen.getByText('Learn alerting basics.')).toBeInTheDocument();
   });
 
   it('shows completion percentage for package with completionPercentage set', () => {
@@ -609,6 +686,231 @@ describe('RecommendationsSection', () => {
     expect(openDocsPage).toHaveBeenCalledWith('bundled:visualization-metrics-lj/content.json', 'Visualize metrics', {
       packageId: 'visualization-metrics-lj',
       packageManifest: { id: 'visualization-metrics-lj', type: 'path' },
+    });
+  });
+});
+
+describe('suggested path assignment badges', () => {
+  const assignment = (overrides: Partial<ResolvedAssignment> = {}): ResolvedAssignment => ({
+    targetId: 'getting-started',
+    title: 'Getting started with Grafana',
+    overdue: false,
+    satisfied: false,
+    progress: 0,
+    ...overrides,
+  });
+
+  const todayDueAt = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T00:00:00Z`;
+  };
+
+  const renderSuggested = (props: Partial<React.ComponentProps<typeof RecommendationsSection>> = {}) =>
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Getting started with Grafana',
+            url: 'bundled:welcome-to-grafana',
+            type: 'learning-journey',
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+        assignments={[assignment({ dueAt: todayDueAt() })]}
+        {...props}
+      />
+    );
+
+  it('badges a suggested path that matches an assignment', () => {
+    const card = renderSuggested().getByTestId(testIds.contextPanel.recommendationCard(0));
+    expect(card).toHaveTextContent('Assigned');
+    expect(card).toHaveTextContent('Today');
+  });
+
+  it('does not badge a suggested guide', () => {
+    const card = renderSuggested({
+      recommendations: [
+        {
+          title: 'Getting started with Grafana',
+          url: 'bundled:welcome-to-grafana',
+          type: 'interactive',
+        },
+      ],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+    expect(card).not.toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Today');
+  });
+
+  it('shows Overdue when the assignment is past due', () => {
+    expect(
+      renderSuggested({
+        assignments: [assignment({ overdue: true, dueAt: '2020-01-01T00:00:00Z' })],
+      }).getByTestId(testIds.contextPanel.recommendationCard(0))
+    ).toHaveTextContent('Overdue');
+  });
+
+  it('shows Assigned without a due badge when there is no due date', () => {
+    const card = renderSuggested({ assignments: [assignment()] }).getByTestId(
+      testIds.contextPanel.recommendationCard(0)
+    );
+    expect(card).toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Today');
+    expect(card).not.toHaveTextContent('Overdue');
+  });
+
+  it('matches a package-backed recommendation by manifest id, not by title, even when a title match would disagree', () => {
+    // Title would match the second assignment; only the manifest id picks the overdue first.
+    const card = renderSuggested({
+      recommendations: [
+        {
+          title: 'Some Suggested Path',
+          url: 'https://example.com/packages/admin-path-1/',
+          type: 'package',
+          manifest: { id: 'admin-path-1', type: 'path' },
+        },
+      ],
+      assignments: [
+        assignment({
+          targetId: 'admin-path-1',
+          title: 'A Completely Different Title',
+          overdue: true,
+          dueAt: '2020-01-01T00:00:00Z',
+        }),
+        assignment({ targetId: 'unrelated-path', title: 'Some Suggested Path' }),
+      ],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).toHaveTextContent('Overdue');
+  });
+
+  it('shows no badge when the manifest id matches nothing, even if one assignment shares the title', () => {
+    const card = renderSuggested({
+      recommendations: [
+        {
+          title: 'Some Suggested Path',
+          url: 'https://example.com/packages/not-assigned/',
+          type: 'package',
+          manifest: { id: 'not-assigned', type: 'path' },
+        },
+      ],
+      assignments: [assignment({ targetId: 'unrelated-path', title: 'Some Suggested Path' })],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).not.toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Overdue');
+  });
+
+  it('shows no badge when two assignments share a title and the recommendation has no id to break the tie', () => {
+    // No manifest and an ambiguous title: show no badge rather than guess.
+    const card = renderSuggested({
+      assignments: [
+        assignment({ targetId: 'getting-started', overdue: true, dueAt: '2020-01-01T00:00:00Z' }),
+        assignment({ targetId: 'getting-started-private', dueAt: undefined }),
+      ],
+    }).getByTestId(testIds.contextPanel.recommendationCard(0));
+
+    expect(card).not.toHaveTextContent('Assigned');
+    expect(card).not.toHaveTextContent('Overdue');
+    expect(card).not.toHaveTextContent('Today');
+  });
+
+  describe('track routing', () => {
+    const trackedPath = {
+      title: 'Grafana Foundations',
+      url: '',
+      contentUrl: 'backend-guide:grafana-foundations-lp',
+      type: 'package' as const,
+      manifest: { id: 'grafana-foundations-lp', type: 'path' },
+    };
+    const trackedAssignment = () =>
+      assignment({ targetId: 'grafana-foundations-lp', title: 'Grafana Foundations', trackId: 'engineer' });
+
+    it('opens a suggested path on its assigned track', () => {
+      const openDocsPage = jest.fn();
+      renderSuggested({
+        recommendations: [trackedPath],
+        assignments: [trackedAssignment()],
+        openDocsPage,
+      });
+
+      fireEvent.click(screen.getByTestId(testIds.contextPanel.recommendationStartButton(0)));
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'backend-guide:grafana-foundations-lp',
+        'Grafana Foundations',
+        expect.objectContaining({ packageId: 'grafana-foundations-lp', trackId: 'engineer' })
+      );
+    });
+
+    it('opens a suggested path without a track when it has no assignment', () => {
+      const openDocsPage = jest.fn();
+      renderSuggested({ recommendations: [trackedPath], assignments: [], openDocsPage });
+
+      fireEvent.click(screen.getByTestId(testIds.contextPanel.recommendationStartButton(0)));
+
+      expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
+    });
+
+    it('badges a featured path and opens it on its assigned track', () => {
+      const openDocsPage = jest.fn();
+      renderSuggested({
+        recommendations: [],
+        featuredRecommendations: [trackedPath],
+        assignments: [trackedAssignment()],
+        openDocsPage,
+      });
+
+      const card = screen.getByTestId('featured-recommendation-card-0');
+      expect(card).toHaveTextContent('Assigned');
+
+      fireEvent.click(within(card).getByRole('button', { name: /Start/i }));
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'backend-guide:grafana-foundations-lp',
+        'Grafana Foundations',
+        expect.objectContaining({ trackId: 'engineer' })
+      );
+    });
+
+    it('opens an other-docs path on its assigned track', () => {
+      const openDocsPage = jest.fn();
+      const filler = [1, 2, 3, 4].map((n) => ({
+        title: `Filler ${n}`,
+        url: `https://grafana.com/docs/filler-${n}/`,
+        type: 'docs-page' as const,
+      }));
+      renderSuggested({
+        recommendations: [...filler, trackedPath],
+        otherDocsExpanded: true,
+        assignments: [trackedAssignment()],
+        openDocsPage,
+      });
+
+      fireEvent.click(
+        within(screen.getByTestId(testIds.contextPanel.otherDocItem(0))).getByText('Grafana Foundations')
+      );
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'backend-guide:grafana-foundations-lp',
+        'Grafana Foundations',
+        expect.objectContaining({ trackId: 'engineer' })
+      );
     });
   });
 });

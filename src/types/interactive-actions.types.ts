@@ -34,6 +34,8 @@ export const isGuidedDomActionType = (action: InteractiveActionType): action is 
  * Used for multi-step sequences where action types may vary
  */
 export interface InternalAction {
+  lazyRender?: boolean;
+  scrollContainer?: string;
   targetAction: string;
   refTarget?: string;
   targetValue?: string;
@@ -41,6 +43,7 @@ export interface InternalAction {
   targetState?: boolean | string;
   requirements?: ConditionInput;
   targetComment?: string; // Optional comment to display during this step
+  openGuide?: string; // Guide to open in sidebar after navigation
 }
 
 /**

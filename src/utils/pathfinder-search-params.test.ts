@@ -20,9 +20,20 @@ import {
 } from './pathfinder-search-params';
 
 describe('PATHFINDER_PARAMS', () => {
-  it('contains the documented seven params (kept in lock-step with parse + strip)', () => {
+  it('contains the documented params (kept in lock-step with parse + strip)', () => {
     expect([...PATHFINDER_PARAMS].sort()).toEqual(
-      ['controller', 'doc', 'kiosk_session', 'page', 'panelMode', 'source', 'type'].sort()
+      [
+        'controller',
+        'doc',
+        'kiosk_session',
+        'kiosk_name',
+        'page',
+        'panelMode',
+        'source',
+        'type',
+        'pathfinderKiosk',
+        'kioskRulesUrl',
+      ].sort()
     );
   });
 });
@@ -35,8 +46,11 @@ describe('parsePathfinderDeepLink', () => {
       source: undefined,
       page: undefined,
       kioskSession: undefined,
+      kioskName: undefined,
       panelMode: undefined,
       controller: false,
+      pathfinderKiosk: false,
+      kioskRulesUrl: undefined,
     });
   });
 
@@ -49,8 +63,11 @@ describe('parsePathfinderDeepLink', () => {
       source: 'learning-hub',
       page: '/explore',
       kioskSession: 'abc123',
+      kioskName: undefined,
       panelMode: 'fullscreen',
       controller: true,
+      pathfinderKiosk: false,
+      kioskRulesUrl: undefined,
     });
   });
 
@@ -58,6 +75,16 @@ describe('parsePathfinderDeepLink', () => {
     expect(parsePathfinderDeepLink('?controller=1').controller).toBe(true);
     expect(parsePathfinderDeepLink('?controller=0').controller).toBe(false);
     expect(parsePathfinderDeepLink('').controller).toBe(false);
+  });
+
+  it('validates and strips the kiosk name alongside its session', () => {
+    expect(parsePathfinderDeepLink('?kiosk_session=abc&kiosk_name=Customer-Onboarding').kioskName).toBe(
+      'customer-onboarding'
+    );
+    expect(parsePathfinderDeepLink('?kiosk_name=private%20title').kioskName).toBeUndefined();
+    const url = new URL('https://example.com/?kiosk_session=abc&kiosk_name=dem&keep=1');
+    stripPathfinderParams(url);
+    expect(url.search).toBe('?keep=1');
   });
 
   it('rejects unknown `type` values (typos drop to undefined rather than poisoning consumers)', () => {
@@ -100,7 +127,7 @@ describe('controller pairing hash', () => {
 describe('stripPathfinderParams', () => {
   it('removes every Pathfinder-controlled param while preserving foreign params', () => {
     const url = new URL(
-      'https://example.com/foo?doc=bar&type=learning-journey&source=hub&page=/explore&kiosk_session=xyz&panelMode=floating&controller=1&keep=this'
+      'https://example.com/foo?doc=bar&type=learning-journey&source=hub&page=/explore&kiosk_session=xyz&panelMode=floating&controller=1&pathfinderKiosk=1&kioskRulesUrl=https%3A%2F%2Fexample.com%2Fkiosk.json&kiosk=tv&keep=this'
     );
 
     stripPathfinderParams(url);
@@ -112,6 +139,9 @@ describe('stripPathfinderParams', () => {
     expect(url.searchParams.get('kiosk_session')).toBeNull();
     expect(url.searchParams.get('panelMode')).toBeNull();
     expect(url.searchParams.get('controller')).toBeNull();
+    expect(url.searchParams.get('pathfinderKiosk')).toBeNull();
+    expect(url.searchParams.get('kioskRulesUrl')).toBeNull();
+    expect(url.searchParams.get('kiosk')).toBe('tv');
     expect(url.searchParams.get('keep')).toBe('this');
   });
 
@@ -171,6 +201,22 @@ describe('buildPathfinderShareUrl', () => {
   });
 });
 
+describe('buildPathfinderShareUrl sidebar and source', () => {
+  const base = new URL('https://example.grafana.net/a/grafana-pathfinder-app');
+
+  it('sets panelMode=sidebar and source when requested', () => {
+    const out = new URL(
+      buildPathfinderShareUrl({ base, doc: 'bundled:foo', panelMode: 'sidebar', source: 'shared_link' })
+    );
+    expect(out.searchParams.get('panelMode')).toBe('sidebar');
+    expect(out.searchParams.get('source')).toBe('shared_link');
+  });
+
+  it('leaves source off by default', () => {
+    expect(new URL(buildPathfinderShareUrl({ base, doc: 'bundled:foo' })).searchParams.has('source')).toBe(false);
+  });
+});
+
 describe('buildFullScreenRouteUrl', () => {
   it('builds the in-app fullscreen route with both doc and type encoded', () => {
     const out = buildFullScreenRouteUrl({
@@ -214,5 +260,27 @@ describe('shouldOpenAsLearningJourney', () => {
     expect(shouldOpenAsLearningJourney('docs', 'recommender')).toBe(false);
     expect(shouldOpenAsLearningJourney('interactive', 'url_param')).toBe(false);
     expect(shouldOpenAsLearningJourney(undefined, undefined)).toBe(false);
+  });
+});
+
+describe('kiosk query parameters', () => {
+  it.each([
+    '',
+    '?kiosk=1',
+    '?pathfinderKiosk',
+    '?pathfinderKiosk=0',
+    '?pathfinderKiosk=true',
+    '?kioskRulesUrl=https://example.com',
+  ])('does not launch for %s', (search) => {
+    expect(parsePathfinderDeepLink(search).pathfinderKiosk).toBe(false);
+  });
+  it('decodes the kiosk selection', () => {
+    expect(
+      parsePathfinderDeepLink('?pathfinderKiosk=1&kioskRulesUrl=https%3A%2F%2Fexample.com%2Fkiosk.json%3Fv%3D2')
+    ).toMatchObject({ pathfinderKiosk: true, kioskRulesUrl: 'https://example.com/kiosk.json?v=2' });
+    expect(parsePathfinderDeepLink('?pathfinderKiosk=1&kioskRulesUrl=')).toMatchObject({
+      pathfinderKiosk: true,
+      kioskRulesUrl: undefined,
+    });
   });
 });

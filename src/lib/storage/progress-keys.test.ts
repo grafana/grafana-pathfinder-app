@@ -134,6 +134,7 @@ describe('sweepDiscardedProgressRecords', () => {
       ([name]) =>
         ![
           'INTERACTIVE_STEPS_PREFIX',
+          'INTERACTIVE_SKIPPED_STEPS_PREFIX',
           'SECTION_COLLAPSE_PREFIX',
           'SECTION_ACKNOWLEDGED_PREFIX',
           'SECTION_DONE_PREFIX',

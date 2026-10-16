@@ -1,0 +1,401 @@
+[
+  {
+    "group": "product-vocabulary",
+    "name": "metrics cardinality",
+    "user": "How do I reduce my metrics cardinality?",
+    "request": {
+      "queries": ["reduce metrics cardinality"]
+    },
+    "expect": ["reduce-metrics-cardinality"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "SLO",
+    "user": "Is there any help available for SLOs?",
+    "request": {
+      "queries": ["SLO", "service level objective"]
+    },
+    "expect": ["create-availability-slo-lj", "create-first-slo"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "adaptive logs",
+    "user": "Walk me through Adaptive Logs",
+    "request": {
+      "queries": ["adaptive logs"]
+    },
+    "expect": ["adaptive-logs-lj"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "k6 load test",
+    "user": "I want to run a k6 load test",
+    "request": {
+      "queries": ["k6 load test", "performance test"]
+    },
+    "expect": ["run-first-k6-test-lj", "get-started-k6-test-builder"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "git sync",
+    "user": "How do I set up Git Sync?",
+    "request": {
+      "queries": ["git sync"]
+    },
+    "expect": ["git-sync-setup", "git-sync-guide", "git-sync-use-lp"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "fleet management",
+    "user": "Help me onboard collectors into Fleet Management",
+    "request": {
+      "queries": ["fleet management", "onboard collector"]
+    },
+    "expect": ["fleet-management-onboarding"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "terraform dashboards",
+    "user": "Can I manage dashboards with Terraform?",
+    "request": {
+      "queries": ["terraform dashboard"]
+    },
+    "expect": ["deploy-dashboard-terraform-lp"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "logs drilldown",
+    "user": "Show me how Logs Drilldown works",
+    "request": {
+      "queries": ["logs drilldown"]
+    },
+    "expect": ["drilldown-logs-lj"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "dashboard variables",
+    "user": "How do dashboard variables work?",
+    "request": {
+      "queries": ["dashboard variables"]
+    },
+    "expect": ["interactive-dashboards-lj"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "transformations",
+    "user": "I need to transform my query results",
+    "request": {
+      "queries": ["data transformations", "transform query results"]
+    },
+    "expect": ["data-transformation-lp", "find-transformations", "transform-testdata-query"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "knowledge graph",
+    "user": "What is the knowledge graph?",
+    "request": {
+      "queries": ["knowledge graph"]
+    },
+    "expect": ["knowledge-graph-guide", "knowledge-graph-explore-service-relationships"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "LogQL",
+    "user": "Teach me LogQL",
+    "request": {
+      "queries": ["LogQL", "Loki query language"]
+    },
+    "expect": ["logql-101"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "playlists",
+    "user": "How do I rotate dashboards on a TV?",
+    "request": {
+      "queries": ["dashboard playlist"]
+    },
+    "expect": ["dashboard-playlists-guide"]
+  },
+  {
+    "group": "product-vocabulary",
+    "name": "assistant onboarding",
+    "user": "How do I get started with Grafana Assistant?",
+    "request": {
+      "queries": ["get started with Grafana Assistant"]
+    },
+    "expect": ["get-started-grafana-assistant-lj"]
+  },
+  {
+    "group": "user-wording",
+    "name": "log bill",
+    "user": "My log bill is too high",
+    "request": {
+      "queries": ["my log bill is too high", "adaptive logs", "log volume", "log cost"]
+    },
+    "expect": ["adaptive-logs-lj", "adaptive-logs-recommendations"]
+  },
+  {
+    "group": "user-wording",
+    "name": "too many series",
+    "user": "We have way too many metric series",
+    "request": {
+      "queries": ["too many metric series", "metrics cardinality", "adaptive metrics"]
+    },
+    "expect": ["reduce-metrics-cardinality", "adaptive-metrics-lj", "adaptive-metrics-recommendations"]
+  },
+  {
+    "group": "user-wording",
+    "name": "noisy alerts",
+    "user": "Our alerts are too noisy",
+    "request": {
+      "queries": ["noisy alerts", "alert noise", "silence alerts"]
+    },
+    "expect": ["alerting-query-language-lj"]
+  },
+  {
+    "group": "user-wording",
+    "name": "website down",
+    "user": "How do I know if my website is down?",
+    "request": {
+      "queries": ["is my website down", "website uptime", "synthetic monitoring", "http check"]
+    },
+    "expect": ["get-started-first-check", "detect-outages-synthetic-monitoring-lj", "sm-setting-up-your-first-check"]
+  },
+  {
+    "group": "user-wording",
+    "name": "api under load",
+    "user": "How fast is my API under load?",
+    "request": {
+      "queries": ["how fast is my api under load", "load testing", "k6 performance test"]
+    },
+    "expect": ["run-first-k6-test-lj", "get-started-k6-test-builder", "establish-k6-baseline-lj"]
+  },
+  {
+    "group": "user-wording",
+    "name": "slow service",
+    "user": "Why is my service slow?",
+    "request": {
+      "queries": ["why is my service slow", "service latency", "traces drilldown", "application observability"]
+    },
+    "expect": ["drilldown-traces-lj", "application-observability-investigate-service"]
+  },
+  {
+    "group": "user-wording",
+    "name": "k8s cluster",
+    "user": "I want to watch my k8s cluster",
+    "request": {
+      "queries": ["watch my k8s cluster", "kubernetes monitoring"]
+    },
+    "expect": ["kubernetes-lp", "k8s-connect-first-cluster", "grafana-k8s-tour"]
+  },
+  {
+    "group": "user-wording",
+    "name": "dashboards in github",
+    "user": "Can I keep my dashboards in GitHub?",
+    "request": {
+      "queries": ["store dashboards in github", "dashboards as code", "git sync"]
+    },
+    "expect": ["git-sync-guide", "git-sync-dashboards-lj", "git-sync-use-lp", "git-sync-setup"]
+  },
+  {
+    "group": "user-wording",
+    "name": "on-call",
+    "user": "How do I page someone when things break?",
+    "request": {
+      "queries": ["page someone when things break", "on-call", "incident response", "IRM"]
+    },
+    "expect": ["grafana-irm-configuration-lj", "irm-configuration"]
+  },
+  {
+    "group": "user-wording",
+    "name": "send logs",
+    "user": "How do I get my logs into Grafana Cloud?",
+    "request": {
+      "queries": ["send logs", "alloy loki"]
+    },
+    "expect": ["send-logs-alloy-loki-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "postgres",
+    "user": "Connect postgres",
+    "request": {
+      "queries": ["connect postgres"]
+    },
+    "expect": ["postgresql-data-source-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "postgresql",
+    "user": "PostgreSQL",
+    "request": {
+      "queries": ["postgresql"]
+    },
+    "expect": ["postgresql-data-source-lj", "postgresql-integration-lj", "postgresql-db-olly-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "mysql",
+    "user": "Monitor my MySQL database",
+    "request": {
+      "queries": ["mysql database"]
+    },
+    "expect": ["mysql-data-source-lj", "mysql-integration-lj", "mysql-db-olly-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "cloudwatch",
+    "user": "Query CloudWatch metrics",
+    "request": {
+      "queries": ["cloudwatch"]
+    },
+    "expect": ["cloudwatch-data-source-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "elastic",
+    "user": "Connect Elastic",
+    "request": {
+      "queries": ["elastic"]
+    },
+    "expect": ["elasticsearch-data-source-lj", "elasticsearch-logs-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "influx",
+    "user": "Add an Influx data source",
+    "request": {
+      "queries": ["influx data source"]
+    },
+    "expect": ["influxdb-data-source-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "google sheets",
+    "user": "Chart a Google Sheet",
+    "request": {
+      "queries": ["google sheets"]
+    },
+    "expect": ["google-sheets-data-source-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "remote write",
+    "user": "Send Prometheus metrics with remote write",
+    "request": {
+      "queries": ["prometheus remote write"]
+    },
+    "expect": ["prom-remote-write-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "csv",
+    "user": "Visualize a CSV file",
+    "request": {
+      "queries": ["csv", "infinity data source"]
+    },
+    "expect": ["infinity-csv-lj"]
+  },
+  {
+    "group": "data-source-variant",
+    "name": "mongo",
+    "user": "Monitor mongo",
+    "request": {
+      "queries": ["mongo"]
+    },
+    "expect": ["mongodb-integration-lj"]
+  },
+  {
+    "group": "page",
+    "name": "page: synthetic monitoring",
+    "user": "(on the Synthetic Monitoring app) What can help me here?",
+    "request": {
+      "pageUrl": "/a/grafana-synthetic-monitoring-app"
+    },
+    "expect": ["sm-setting-up-your-first-check", "get-started-first-check", "detect-outages-synthetic-monitoring-lj"]
+  },
+  {
+    "group": "page",
+    "name": "page: adaptive logs",
+    "user": "(on Adaptive Logs) Any guides for this page?",
+    "request": {
+      "pageUrl": "/a/grafana-adaptivelogs-app/overview"
+    },
+    "expect": ["adaptive-logs-lj"]
+  },
+  {
+    "group": "page",
+    "name": "page: k6",
+    "user": "(on Performance testing) What can I do here?",
+    "request": {
+      "pageUrl": "/a/k6-app"
+    },
+    "expect": [
+      "run-first-k6-test-lj",
+      "get-started-k6-test-builder",
+      "establish-k6-baseline-lj",
+      "automate-k6-cicd-lj",
+      "find-k6-limits-lj"
+    ]
+  },
+  {
+    "group": "page",
+    "name": "page: kubernetes",
+    "user": "(on Kubernetes Monitoring) Help",
+    "request": {
+      "pageUrl": "/a/grafana-k8s-app/home/overview"
+    },
+    "expect": ["grafana-k8s-tour", "kubernetes-lp"]
+  },
+  {
+    "group": "page",
+    "name": "page and query: postgres data source",
+    "user": "(on the Postgres data source page) How do I configure this?",
+    "request": {
+      "pageUrl": "/connections/datasources/postgres",
+      "queries": ["configure data source"]
+    },
+    "expect": ["postgresql-data-source-lj"]
+  },
+  {
+    "group": "path-crowding",
+    "name": "crowding: alerting for kubernetes",
+    "user": "Alerting for Kubernetes",
+    "request": {
+      "queries": ["alerting for kubernetes"]
+    },
+    "expect": ["kubernetes-lp"]
+  },
+  {
+    "group": "no-answer",
+    "name": "none: blockchain",
+    "user": "Can Grafana mine quantum blockchains?",
+    "request": {
+      "queries": ["quantum blockchain"]
+    }
+  },
+  {
+    "group": "no-answer",
+    "name": "none: SAML",
+    "user": "How do I configure SAML single sign-on?",
+    "request": {
+      "queries": ["SAML single sign-on", "SSO"]
+    }
+  },
+  {
+    "group": "no-answer",
+    "name": "none: jenkins",
+    "user": "Is there a Jenkins plugin walkthrough?",
+    "request": {
+      "queries": ["jenkins pipeline plugin"]
+    }
+  },
+  {
+    "group": "no-answer",
+    "name": "none: mobile crash reporting",
+    "user": "Track crashes in my iOS app",
+    "request": {
+      "queries": ["ios crash reporting"]
+    }
+  }
+]

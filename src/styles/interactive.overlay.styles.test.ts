@@ -33,3 +33,20 @@ describe('interactive comment box visibility', () => {
     expect(getComputedStyle(box).opacity).toBe('1');
   });
 });
+
+describe('guided highlight lifetime', () => {
+  beforeEach(() => {
+    document.getElementById('interactive-global-styles')?.remove();
+    addGlobalInteractiveStyles();
+  });
+
+  it.each(['outline', 'dot'])('keeps the guided %s visible without a terminal fade', (kind) => {
+    const highlight = document.createElement('div');
+    highlight.className = `interactive-highlight-${kind} interactive-highlight-persistent`;
+    document.body.appendChild(highlight);
+    const style = getComputedStyle(highlight);
+    expect(style.animation).not.toContain('fade');
+    expect(Number(style.opacity)).toBeGreaterThan(0);
+    highlight.remove();
+  });
+});

@@ -36,7 +36,7 @@ const COMPLETION_WRITE_URL = `${RESOURCES_URL}/completion-records`;
 const PACKAGE_RECOMMENDATIONS_URL = `${RESOURCES_URL}/package-recommendations`;
 
 /** The App Platform resource a `?doc=api:<id>` share link resolves to. */
-const APP_PLATFORM_GUIDES_GLOB = '**/apis/pathfinderbackend.ext.grafana.app/**/interactiveguides/**';
+const APP_PLATFORM_GUIDES_GLOB = `**${RESOURCES_URL}/custom-guide?*`;
 
 /** One completion fact as the queue persisted it. */
 export interface QueuedFact {
@@ -154,6 +154,10 @@ export async function stubPackageCatalogue(page: Page, fixtures: PackageFixture[
  */
 export async function stubAppPlatformGuide(page: Page, fixture: PackageFixture): Promise<void> {
   await page.route(APP_PLATFORM_GUIDES_GLOB, async (route: Route) => {
+    if (new URL(route.request().url()).searchParams.get('name') !== fixture.id) {
+      await route.fallback();
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',

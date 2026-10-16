@@ -7,6 +7,7 @@ import { SCHEMA_REGISTRY, listSchemas, exportSchema, exportAllSchemas } from '..
 
 const EXPECTED_SCHEMA_NAMES = [
   'guide',
+  'kiosk',
   'block',
   'content',
   'manifest',

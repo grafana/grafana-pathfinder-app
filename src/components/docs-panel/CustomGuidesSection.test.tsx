@@ -2,6 +2,11 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CustomGuidesSection } from './CustomGuidesSection';
 import type { PublishedGuide } from '../../utils/usePublishedGuides';
+import type { Milestone } from '../../types/content.types';
+import type { PackageOpenInfo } from '../../types/content-panel.types';
+import type { ResolvedAssignment } from '../../types/learning-paths.types';
+import { fetchPackageContent } from '../../docs-retrieval/content-fetcher/package-content';
+import { resolveDocsLoadAlignment } from './utils/docs-load-finalizer';
 
 jest.mock('@grafana/i18n', () => ({
   t: (key: string, fallback: string, vars?: Record<string, unknown>) => {
@@ -15,6 +20,20 @@ jest.mock('@grafana/i18n', () => ({
 const mockResolvePackageMilestones = jest.fn();
 jest.mock('../../docs-retrieval', () => ({
   resolvePackageMilestones: (ids: string[]) => mockResolvePackageMilestones(ids),
+}));
+
+jest.mock('../../docs-retrieval/content-fetcher', () => ({
+  fetchContent: jest.fn(),
+}));
+
+jest.mock('../../docs-retrieval/content-fetcher/package-resolver-registry', () => ({
+  getPackageResolver: async () => ({
+    resolve: async () => ({
+      ok: true,
+      contentUrl: 'backend-guide:fe-alerting-path',
+      repository: 'app-platform',
+    }),
+  }),
 }));
 
 const orphanGuide: PublishedGuide = { id: 'standalone-guide', title: 'A standalone guide', status: 'published' };
@@ -132,7 +151,7 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /View members/i }));
+    fireEvent.click(screen.getByRole('button', { name: /modules/i }));
 
     await waitFor(() => expect(screen.getByText('Alerting module 1')).toBeInTheDocument());
     expect(mockResolvePackageMilestones).toHaveBeenCalledWith(['fe-alerting-01', 'fe-alerting-02']);
@@ -173,9 +192,9 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
       />
     );
 
-    const drillIn = screen.getByRole('button', { name: /View members/i });
+    const drillIn = screen.getByRole('button', { name: /modules/i });
     fireEvent.click(drillIn); // expand -> loading
-    expect(screen.getByText('Loading members...')).toBeInTheDocument();
+    expect(screen.getByText('Loading modules…')).toBeInTheDocument();
     fireEvent.click(drillIn); // collapse while the resolve is still in flight
 
     // Late resolve must not resurrect the panel.
@@ -192,7 +211,206 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
     });
 
     expect(screen.queryByText('Alerting module 1')).not.toBeInTheDocument();
-    expect(screen.queryByText('Loading members...')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading modules…')).not.toBeInTheDocument();
+  });
+});
+
+describe('CustomGuidesSection — member starting location', () => {
+  const cases: Array<{
+    name: string;
+    coverFields: Record<string, unknown>;
+    memberManifest: Record<string, unknown>;
+    expectedLocation: string | null;
+  }> = [
+    {
+      name: 'uses the member top-level location instead of the cover location',
+      coverFields: {
+        startingLocation: '/connections',
+        additionalFields: { startingLocation: '/dashboards', coverOnly: true },
+      },
+      memberManifest: { startingLocation: '/alerting/routes' },
+      expectedLocation: '/alerting/routes',
+    },
+    {
+      name: 'keeps the member nested location and additional fields',
+      coverFields: {
+        startingLocation: '/connections',
+        additionalFields: { startingLocation: '/dashboards', coverOnly: true },
+      },
+      memberManifest: { additionalFields: { startingLocation: '/alerting/routes', memberOnly: true } },
+      expectedLocation: '/alerting/routes',
+    },
+    {
+      name: 'keeps the member additional fields when the cover has unrelated additional fields',
+      coverFields: { additionalFields: { coverOnly: true } },
+      memberManifest: { additionalFields: { startingLocation: '/alerting/routes', memberOnly: true } },
+      expectedLocation: '/alerting/routes',
+    },
+    {
+      name: 'does not inherit a cover top-level location when the member has none',
+      coverFields: { startingLocation: '/connections' },
+      memberManifest: {},
+      expectedLocation: null,
+    },
+    {
+      name: 'does not inherit a cover nested location when the member has none',
+      coverFields: { additionalFields: { startingLocation: '/connections', coverOnly: true } },
+      memberManifest: { additionalFields: { memberOnly: true } },
+      expectedLocation: null,
+    },
+  ];
+
+  it.each(cases)('$name', async ({ coverFields, memberManifest, expectedLocation }) => {
+    const coverManifest = { ...pathGuide.manifest, ...coverFields };
+    const originalManifest = JSON.stringify(coverManifest);
+    const path: PublishedGuide = { ...pathGuide, manifest: coverManifest };
+    const members: Milestone[] = [
+      {
+        number: 1,
+        title: 'Alerting module 1',
+        url: 'backend-guide:fe-alerting-01',
+        isActive: false,
+      },
+    ];
+    mockResolvePackageMilestones.mockResolvedValue(members);
+    const openDocsPage = jest.fn<void, [string, string, PackageOpenInfo?]>();
+
+    render(
+      <CustomGuidesSection
+        guides={[path]}
+        paths={[path]}
+        orphanGuides={[]}
+        isLoading={false}
+        expanded
+        onToggleExpanded={jest.fn()}
+        openDocsPage={openDocsPage}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /modules/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Alerting module 1/i }));
+
+    expect(openDocsPage).toHaveBeenCalledTimes(1);
+    expect(openDocsPage).toHaveBeenCalledWith('backend-guide:fe-alerting-01', 'Alerting enablement', {
+      packageId: path.id,
+      packageManifest: { ...pathGuide.manifest, id: path.id },
+      resolvedMilestones: members,
+      launchSource: 'custom_guide',
+    });
+    const [requestedUrl, , packageInfo] = openDocsPage.mock.calls[0]!;
+    expect(packageInfo?.packageManifest).not.toHaveProperty('startingLocation');
+    expect(packageInfo?.packageManifest).not.toHaveProperty('additionalFields');
+
+    const result = await fetchPackageContent(
+      requestedUrl,
+      packageInfo?.packageManifest,
+      packageInfo?.resolvedMilestones,
+      packageInfo?.repository,
+      {
+        content: {
+          content: '{"id":"fe-alerting-01","title":"Alerting module 1","blocks":[]}',
+          type: 'interactive',
+          url: requestedUrl,
+          lastFetched: '2026-09-27T00:00:00.000Z',
+          metadata: { title: 'Alerting module 1', packageManifest: memberManifest },
+        },
+      }
+    );
+
+    expect(result.content?.metadata.packageManifest?.additionalFields).toEqual(memberManifest.additionalFields);
+    expect(result.content?.metadata.learningJourney).toEqual({
+      currentMilestone: 1,
+      totalMilestones: 1,
+      milestones: members,
+      baseUrl: 'backend-guide:fe-alerting-path',
+      summary: undefined,
+    });
+    const alignment = resolveDocsLoadAlignment({
+      requestedUrl,
+      packageManifest: packageInfo?.packageManifest,
+      fetchedManifest: result.content?.metadata.packageManifest,
+      currentPath: '/explore',
+      launchSource: 'custom_guide',
+      isAdmin: false,
+      isFullScreen: false,
+    });
+    if (expectedLocation === null) {
+      expect(alignment).toBeUndefined();
+    } else {
+      expect(alignment).toEqual({
+        startingLocation: expectedLocation,
+        currentPath: '/explore',
+        launchSource: 'custom_guide',
+      });
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+    expect(openDocsPage).toHaveBeenLastCalledWith('backend-guide:fe-alerting-path', 'Alerting enablement', {
+      packageId: path.id,
+      packageManifest: { ...coverManifest, id: path.id },
+      resolvedMilestones: undefined,
+      launchSource: 'custom_guide',
+    });
+    expect(JSON.stringify(path.manifest)).toBe(originalManifest);
+  });
+});
+
+describe('CustomGuidesSection — assigned paths', () => {
+  const assignment = (overrides: Partial<ResolvedAssignment> = {}): ResolvedAssignment => ({
+    targetId: 'fe-alerting-path',
+    title: 'Alerting enablement',
+    trackId: 'engineer',
+    overdue: false,
+    satisfied: false,
+    progress: 0,
+    ...overrides,
+  });
+
+  const renderPaths = (assignments: ResolvedAssignment[], openDocsPage = jest.fn()) => {
+    render(
+      <CustomGuidesSection
+        guides={[pathGuide]}
+        paths={[pathGuide]}
+        orphanGuides={[]}
+        isLoading={false}
+        expanded
+        onToggleExpanded={jest.fn()}
+        openDocsPage={openDocsPage}
+        assignments={assignments}
+      />
+    );
+    return openDocsPage;
+  };
+
+  it('badges an assigned path and opens it on the assigned track', () => {
+    const openDocsPage = renderPaths([assignment()]);
+
+    expect(screen.getByText('Assigned')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+
+    expect(openDocsPage).toHaveBeenCalledWith(
+      'backend-guide:fe-alerting-path',
+      'Alerting enablement',
+      expect.objectContaining({ packageId: 'fe-alerting-path', trackId: 'engineer' })
+    );
+  });
+
+  it('shows no badge and no track when the assignment targets another path', () => {
+    const openDocsPage = renderPaths([assignment({ targetId: 'some-other-path' })]);
+
+    expect(screen.queryByText('Assigned')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+
+    expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
+  });
+
+  it('opens on the base sequence when the assignment names no resolvable track', () => {
+    const openDocsPage = renderPaths([assignment({ trackId: undefined })]);
+
+    expect(screen.getByText('Assigned')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
+
+    expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
   });
 });
 

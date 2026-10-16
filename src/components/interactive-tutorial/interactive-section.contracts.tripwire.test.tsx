@@ -10,7 +10,7 @@
  *
  * What is pinned:
  *   - `interactive-progress-saved`  : detail `{ contentKey, hasProgress, completionPercentage }`
- *   - `interactive-progress-cleared`: detail `{ contentKey }`
+ *   - `interactive-progress-cleared`: detail `{ contentKey, sectionId }`
  *   - `section-completed`           : detail `{ sectionId }` (on `document`)
  *   - `interactive-section-completed`: detail `{ sectionId }` (on `window`)
  *   - `interactive-step-completed`  : detail `{ stepId, sectionId }`
@@ -92,6 +92,7 @@ jest.mock('./interactive-conditional', () => {
 
 import { testIds } from '../../constants/testIds';
 import { InteractiveStep } from './interactive-step';
+import { GuideContentKeyContext } from './guide-content-key-context';
 import { InteractiveSection, resetInteractiveCounters, STEP_TYPE_LOOKUP } from './interactive-section';
 import { STEP_TYPE_SCHEMAS } from './step-type-registry';
 import { INTERACTIVE_STEP_COMPONENT_TYPES } from './section-child-classifier';
@@ -340,6 +341,36 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       }
     });
 
+    it('tags the section event with the owning renderer key as resolved at completion time', async () => {
+      const { events, unsubscribe } = recordSectionEvents();
+      let ownerKey = 'https://grafana.com/docs/journey/milestone-1/';
+      try {
+        render(
+          <GuideContentKeyContext.Provider value={() => ownerKey}>
+            <InteractiveSection id="contracts" title="Contracts section" autoCollapse={false}>
+              <InteractiveStep targetAction="highlight" refTarget=".a">
+                Step
+              </InteractiveStep>
+            </InteractiveSection>
+          </GuideContentKeyContext.Provider>
+        );
+        await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
+        ownerKey = 'https://grafana.com/docs/journey/milestone-2/';
+        act(() => {
+          screen.getByTestId(completeBtn(STEP_ID)).click();
+        });
+
+        await waitFor(() => {
+          const evt = events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section');
+          expect(evt!.detail).toEqual(
+            expect.objectContaining({ kind: 'section', contentKey: 'https://grafana.com/docs/journey/milestone-2/' })
+          );
+        });
+      } finally {
+        unsubscribe();
+      }
+    });
+
     it('dispatches pathfinder:progress (kind: section) with { sectionId } exactly once per completion', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
@@ -352,7 +383,13 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         await waitFor(() => {
           const sectionEvents = events.filter((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section');
           expect(sectionEvents).toHaveLength(1);
-          expect(sectionEvents[0]!.detail).toEqual({ kind: 'section', sectionId: SECTION_ID, completed: true });
+          expect(sectionEvents[0]!.detail).toEqual({
+            kind: 'section',
+            contentKey: '',
+            sectionId: SECTION_ID,
+            completed: true,
+            hydrated: false,
+          });
         });
       } finally {
         unsubscribe();
@@ -382,7 +419,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       }
     });
 
-    it('dispatches `interactive-progress-cleared` with { contentKey } on section reset', async () => {
+    it('dispatches `interactive-progress-cleared` with { contentKey, sectionId } on section reset', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -401,7 +438,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         await waitFor(() => {
           const evt = events.find((e) => e.name === 'interactive-progress-cleared');
           expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ contentKey: NON_PREVIEW_KEY });
+          expect(evt!.detail).toEqual({ contentKey: NON_PREVIEW_KEY, sectionId: SECTION_ID });
         });
       } finally {
         unsubscribe();
@@ -523,7 +560,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         await waitFor(() => {
           const evt = events.find((e) => e.name === 'interactive-progress-cleared');
           expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ contentKey: PREVIEW_KEY });
+          expect(evt!.detail).toEqual({ contentKey: PREVIEW_KEY, sectionId: SECTION_ID });
         });
       } finally {
         unsubscribe();

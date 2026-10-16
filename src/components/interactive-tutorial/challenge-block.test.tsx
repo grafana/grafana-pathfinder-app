@@ -9,6 +9,12 @@ import { execInSession } from '../../integrations/coda/coda-api';
 import { checkPostconditions, checkRequirements } from '../../requirements-manager';
 import { useStepCompletion } from '../../global-state/completion-store';
 import type { ConditionInput, StepStatus } from '../../types/requirements.types';
+import { reportStepSkipped } from '../../lib/analytics';
+
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportStepSkipped: jest.fn(),
+}));
 
 const { useStepChecker: realUseStepChecker } = jest.requireActual<
   typeof import('../../requirements-manager/step-checker.hook')
@@ -823,11 +829,47 @@ describe('ChallengeBlock', () => {
         stepId: 'ch-std-skip',
         successCriteria: 'has-dashboard-named:My Dashboard',
       };
-      render(<ChallengeBlock {...skipProps} />);
+      jest.mocked(reportStepSkipped).mockClear();
+      render(<ChallengeBlock {...skipProps} stepIndex={1} totalSteps={3} />);
       fireEvent.click(screen.getByRole('button', { name: /skip/i }));
 
       expect(mockMarkSkipped).toHaveBeenCalled();
       expect(disconnect).not.toHaveBeenCalled();
+      expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+      expect(reportStepSkipped).toHaveBeenCalledWith(
+        { targetAction: 'challenge', interactionLocation: 'challenge_block', skipReason: 'user' },
+        expect.objectContaining({ stepId: 'ch-std-skip', stepIndex: 1, totalSteps: 3 })
+      );
+    });
+
+    it('reports a skip after a failed check as after_failure', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: false,
+        error: [{ requirement: 'has-dashboard-named:My Dashboard', pass: false, error: 'No dashboard' }],
+      });
+      jest.mocked(reportStepSkipped).mockClear();
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          skippable
+          stepId="ch-std-failed-skip"
+          successCriteria="has-dashboard-named:My Dashboard"
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+      await waitFor(() => expect(screen.getByRole('button', { name: /check again/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+      expect(reportStepSkipped).toHaveBeenCalledWith(
+        { targetAction: 'challenge', interactionLocation: 'challenge_block', skipReason: 'after_failure' },
+        expect.objectContaining({ stepId: 'ch-std-failed-skip' })
+      );
     });
 
     it('skip in standard mode resets to ready rather than idle when completion is cleared', () => {
@@ -2310,6 +2352,99 @@ describe('ChallengeBlock', () => {
       });
 
       expect(disconnect).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    // Regression for #1896: handleStart's post-openTerminal continuation checked
+    // only cancelRequestedRef, with no liveness guard. Unmounting mid-provision
+    // let that continuation run to completion anyway and call claimSession() —
+    // registering a phantom holder for a dead instance that no cleanup effect
+    // would ever release (the one unmount cleanup already ran, before
+    // claimSession had anything to undo).
+    //
+    // The fix routes the unmounted case through the SAME ownership decision the
+    // sibling test above already exercises for Cancel ('disconnects terminal on
+    // cancel while connecting if openTerminal provisions a new session'): sole
+    // provisioner, nobody else holding or connecting → disconnect. That decision
+    // doesn't know or care *why* an instance is abandoning its claim, so a fixed
+    // dead instance disconnects its own abandoned provision immediately —
+    // checkpoint 1 below pins that as correct, not the bug. Checkpoint 2 is the
+    // actual regression this test targets: whether a *second*, live instance's
+    // own, independent disconnect decision is still reachable once the phantom
+    // holder is gone. Under the pre-fix bug, checkpoint 1 stays at 0 (dead never
+    // disconnects — it just silently holds the session forever) and checkpoint 2
+    // never moves either, because the surviving phantom holder makes
+    // hasOtherSessionHolders() report a second holder that does not exist.
+    it('does not let a phantom holder from an unmounted instance suppress a live instance’s disconnect', async () => {
+      const resolveCalls: Array<(sessionId: string) => void> = [];
+      const openTerminal = jest.fn().mockImplementation(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveCalls.push(resolve);
+          })
+      );
+      const SHARED_SESSION = 'ch-session-phantom-holder';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      // 1+2: Render and start the doomed challenge block.
+      const dead = render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-dead" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+      expect(openTerminal).toHaveBeenCalledTimes(1);
+
+      // 3+4: openTerminal is still pending; unmount before it resolves. The
+      // component's only cleanup effect runs now, while heldSessionIdRef is
+      // still null — there is nothing yet to release.
+      dead.unmount();
+
+      // 5: Resolve openTerminal now that the component is gone. The dead
+      // closure's continuation is not cancelled by unmounting and runs anyway.
+      await act(async () => {
+        resolveCalls[0]!(SHARED_SESSION);
+      });
+
+      // Checkpoint 1 — the dead instance's OWN disconnect: its abandoned
+      // provision is sole-owned and unshared (nothing else holds or is
+      // connecting to SHARED_SESSION yet), so the ownership rule the sibling
+      // Cancel test above proves tears it down immediately. This is the fix
+      // cleaning up after itself, not the bug this test targets — a
+      // regression back to the pre-fix behaviour would leave this at 0.
+      expect(disconnect).toHaveBeenCalledTimes(1);
+
+      // 6: activeSessionHolders is module-private, so the actual regression
+      // (a phantom holder outliving the dead instance) is demonstrated the
+      // way production code would ever notice it: through a second, live
+      // instance's own disconnect decision, below.
+
+      // 7: Mount a second, live challenge and start it against the same
+      // session id the dead instance was resolved with.
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-live" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+      expect(openTerminal).toHaveBeenCalledTimes(2);
+
+      // 8: Cancel while still connecting — identical shape to the sibling test
+      // above.
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveCalls[1]!(SHARED_SESSION);
+      });
+
+      // Checkpoint 2 — the live instance's OWN disconnect, ON TOP OF
+      // checkpoint 1's count (2 total, not a fresh 1). Live is the only thing
+      // alive holding this session, in the identical shape the sibling test
+      // proves must disconnect. If the dead instance's registration had
+      // outlived it — the original #1896 bug — hasOtherSessionHolders() would
+      // report a second holder that does not exist, and this count would
+      // still read 1: live's own disconnect suppressed by a holder nothing
+      // live-instance-side can see or account for.
+      expect(disconnect).toHaveBeenCalledTimes(2);
+
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
       });

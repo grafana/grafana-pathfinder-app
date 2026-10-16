@@ -497,7 +497,7 @@ export const JsonInteractiveBlockSchema = z
     objectives: z.array(ObjectiveTokenSchema).optional().describe(objectivesDescription('block')),
     skippable: z.boolean().optional().describe('Allow user to skip this block'),
     hint: z.string().optional().describe('Hint text shown if user is stuck'),
-    formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
+    formHint: z.string().optional().describe('Validation-failure message for formfill input fields'),
     validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
     showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
     doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
@@ -507,7 +507,10 @@ export const JsonInteractiveBlockSchema = z
     ),
     lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
     scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
-    openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
+    openGuide: z
+      .string()
+      .optional()
+      .describe('Guide ID to open during an internal navigate action (ignored for external http(s) targets)'),
     // Assistant customization props
     ...AssistantPropsSchema.shape,
     // Editor-only annotation (stripped on export)
@@ -518,7 +521,7 @@ export const JsonInteractiveBlockSchema = z
 The excerpt stops at the object literal; the `.refine()` chain that follows supplies the `Constraints:` block in `--help`, not option descriptions. `objectivesDescription` is a generator so the block, section and conditional-branch surfaces cannot drift apart — for a block it resolves to:
 
 ```text
-Conditions that automatically complete this block, in the same vocabulary as `requirements`. Checked first, before eligibility and requirements, so a block whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a block that creates one). Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.
+Conditions that automatically complete this block, in the same vocabulary as `requirements`. Every objective must be satisfied for completion, including after assistance. Checked first, before eligibility and requirements, so a block whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a block that creates one). Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.
 ```
 
 Fields without `.describe()` fall back to a generic description derived from the field name and type (e.g., `"scrollContainer (string, optional)"`). Descriptions should be added incrementally — start with the most commonly used block types and expand over time.
@@ -708,7 +711,7 @@ Optional:
   --do-it                           Enable "Do it" button
   --complete-early                  Allow completion before all steps done
   --verify <string>                 Post-action verification condition
-  --open-guide <string>             Guide ID to open when block completes
+  --open-guide <string>             Guide ID to open during an internal navigate action (ignored for external http(s) targets)
 
 Constraints:
   - Non-noop actions require --reftarget

@@ -12,22 +12,17 @@ import type { JsonValue } from '@openfeature/web-sdk';
 
 import {
   getFeatureFlagClient,
-  getFlagOverrides,
   parseExperimentVariant,
   warnExperimentRejection,
   type ExperimentConfig,
   type FeatureFlagName,
 } from '../openfeature';
-import { reportFeatureFlagExposure } from '../openfeature-tracking';
 import { notifyEnrollment } from './enrollment-notifier';
 import { logger } from '../../lib/logging';
 
 export const INTERACTIVE_LEARNING_BANNER_FLAG: FeatureFlagName = 'pathfinder.interactive-learning-banner-experiment';
 
-/**
- * Variant-only by design: the banner explains Pathfinder itself, so unlike the
- * highlighted-guide experiment it has no per-page targeting.
- */
+// Variant-only: the banner explains Pathfinder itself, so it has no per-page targeting.
 export interface InteractiveLearningBannerConfig {
   variant: ExperimentConfig['variant'];
 }
@@ -41,20 +36,6 @@ let enrolledConfig: InteractiveLearningBannerConfig | null = null;
 function readConfig(): InteractiveLearningBannerConfig {
   const flagName = INTERACTIVE_LEARNING_BANNER_FLAG;
   try {
-    const overrides = getFlagOverrides();
-    if (flagName in overrides) {
-      const override = overrides[flagName];
-      const overrideVariant = parseExperimentVariant(override);
-      if (overrideVariant) {
-        logger.warn(`[OpenFeature] Using local override for '${flagName}'`, { override });
-        // The override bypasses the client, so TrackingHook never sees it. Fire the
-        // exposure here so QA runs produce the same analytics as an MTFF assignment.
-        reportFeatureFlagExposure(flagName, { variant: overrideVariant });
-        return { variant: overrideVariant };
-      }
-      warnExperimentRejection('override', flagName, override);
-    }
-
     const client = getFeatureFlagClient();
     const value = client.getObjectValue(flagName, DEFAULT_INTERACTIVE_LEARNING_BANNER_CONFIG as unknown as JsonValue);
     const variant = parseExperimentVariant(value);

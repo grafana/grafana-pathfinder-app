@@ -62,6 +62,43 @@ describe('resolvePackageById', () => {
     expect(res.ok && res.manifest?.startingLocation).toBeUndefined();
   });
 
+  it.each(['future', 42, { future: true }, 'markdown'])(
+    'retains routing metadata for prerequisite format %p',
+    async (format) => {
+      const label = '  Literal <b> & **syntax**  ';
+      mockFetch((url) => ({
+        ok: true,
+        body: JSON.stringify(
+          url.endsWith('manifest.json')
+            ? {
+                id: 'g',
+                type: 'guide',
+                testEnvironment: { tier: 'local' },
+                prerequisites: [{ id: 'notice', label, format }],
+              }
+            : {
+                id: 'g',
+                contentUrl: 'https://cdn.test/g/content.json',
+                manifestUrl: 'https://cdn.test/g/manifest.json',
+              }
+        ),
+      }));
+
+      const result = await resolvePackageById('https://recommender.test', 'g');
+
+      expect(result.ok && result.manifest).toMatchObject({
+        id: 'g',
+        type: 'guide',
+        testEnvironment: { tier: 'local' },
+        prerequisites: [{ id: 'notice', label, ...(format === 'markdown' ? { format } : {}) }],
+      });
+      expect(result.ok && result.manifest?.prerequisites?.[0]?.format).toBe(
+        format === 'markdown' ? 'markdown' : undefined
+      );
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    }
+  );
+
   it('maps a 404 from the resolver to a failure', async () => {
     mockFetch(() => ({ ok: false, status: 404 }));
 

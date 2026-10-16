@@ -75,6 +75,7 @@ interface ReplacementHarnessOptions {
   resetClearsStorage?: boolean;
   resetRecreatesResidue?: boolean;
   closeError?: Error;
+  closePointerError?: Error;
   closeDetachesSteps?: boolean;
   capability?: {
     version: unknown;
@@ -138,19 +139,26 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   testIdResetButton.or.mockReturnValue(resetButton);
   testIdResetButton.first.mockReturnValue(testIdResetButton);
   roleResetButton.first.mockReturnValue(roleResetButton);
+  const closeTab = async () => {
+    if (options.closeError) {
+      throw options.closeError;
+    }
+    operations.push('close');
+    if (options.closeDetachesSteps !== false) {
+      [...resetSteps, ...closeSteps].forEach((step) => {
+        step.connected = false;
+      });
+    }
+    (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = '';
+  };
   const closeButton = {
     click: jest.fn().mockImplementation(async () => {
-      if (options.closeError) {
-        throw options.closeError;
+      if (options.closePointerError) {
+        throw options.closePointerError;
       }
-      operations.push('close');
-      if (options.closeDetachesSteps !== false) {
-        [...resetSteps, ...closeSteps].forEach((step) => {
-          step.connected = false;
-        });
-      }
-      (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = '';
+      await closeTab();
     }),
+    dispatchEvent: jest.fn().mockImplementation(closeTab),
   };
   const tabButton = {
     count: jest.fn().mockResolvedValue(1),
@@ -324,7 +332,7 @@ it('fails fatally when the plugin reset capability rejects reset', async () => {
     message: expect.stringContaining('Reset failed'),
   });
   expect(harness.resetButton.click).not.toHaveBeenCalled();
-  expect(harness.closeButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
 });
 
 it('fails fatally when the plugin reset capability does not settle', async () => {
@@ -346,7 +354,7 @@ it('fails fatally when the plugin reset capability does not settle', async () =>
     expect(harness.activeEvaluationCount()).toBe(0);
 
     expect(harness.resetButton.click).not.toHaveBeenCalled();
-    expect(harness.closeButton.click).not.toHaveBeenCalled();
+    expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
   } finally {
     jest.useRealTimers();
   }
@@ -377,7 +385,7 @@ it('observes a plugin reset rejection that occurs after the timeout', async () =
     await jest.advanceTimersByTimeAsync(1_000);
     expect(harness.activeEvaluationCount()).toBe(0);
     expect(harness.resetButton.click).not.toHaveBeenCalled();
-    expect(harness.closeButton.click).not.toHaveBeenCalled();
+    expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
   } finally {
     jest.useRealTimers();
   }
@@ -396,7 +404,7 @@ it('fails fatally for an unsupported plugin reset capability version', async () 
     message: expect.stringContaining('unsupported version 2'),
   });
   expect(harness.resetButton.click).not.toHaveBeenCalled();
-  expect(harness.closeButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
 });
 
 it('fails fatally for a non-numeric plugin reset capability version', async () => {
@@ -412,7 +420,7 @@ it('fails fatally for a non-numeric plugin reset capability version', async () =
     message: expect.stringContaining('unsupported version 1'),
   });
   expect(harness.resetButton.click).not.toHaveBeenCalled();
-  expect(harness.closeButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
 });
 
 it.each([
@@ -431,7 +439,7 @@ it.each([
     message: expect.stringContaining('resetActiveGuide is not callable'),
   });
   expect(harness.resetButton.click).not.toHaveBeenCalled();
-  expect(harness.closeButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
 });
 
 it('fails fatally when the plugin reset capability leaves scoped storage', async () => {
@@ -447,7 +455,7 @@ it('fails fatally when the plugin reset capability leaves scoped storage', async
     message: expect.stringContaining('still has matching progress storage'),
   });
   expect(harness.resetButton.click).not.toHaveBeenCalled();
-  expect(harness.closeButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
 });
 
 it('waits for reset synchronization before closing and detaches both step generations', async () => {
@@ -508,7 +516,7 @@ it('clears no-completion residue and closes without requiring Reset guide', asyn
 
   expect(harness.resetButton.waitFor).not.toHaveBeenCalled();
   expect(harness.resetButton.click).not.toHaveBeenCalled();
-  expect(harness.closeButton.click).toHaveBeenCalledTimes(1);
+  expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click', undefined, { timeout: 15_000 });
   expectMatchingStorageEmpty();
 });
 
@@ -520,7 +528,7 @@ it('fails fatally when stored completion has no Reset guide control', async () =
   await expect(replacement).rejects.toBeInstanceOf(FatalTransitionError);
   await expect(replacement).rejects.toMatchObject({ kind: 'reset-ambiguous' });
 
-  expect(harness.closeButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
   expect(localStorage.getItem(E2E_STORAGE_KEYS.steps)).not.toBeNull();
 });
 
@@ -536,7 +544,7 @@ it('fails fatally when legacy reset leaves stored completion after tab close', a
   });
 
   expect(harness.operations).toEqual(['reset', 'close']);
-  expect(harness.closeButton.click).toHaveBeenCalledTimes(1);
+  expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click', undefined, { timeout: 15_000 });
   expect(harness.page.waitForTimeout).not.toHaveBeenCalled();
 });
 
@@ -584,7 +592,7 @@ it('preserves malformed shared completion data and requires the reset path', asy
   expect(harness.resetButton.click).not.toHaveBeenCalled();
   expect(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION)).toBe(malformedCompletion);
   expect(localStorage.getItem(unrelatedStepKey)).toBe(JSON.stringify(['other-step']));
-  expect(harness.closeButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.dispatchEvent).not.toHaveBeenCalled();
 });
 
 it('opens a later guide when the prior milestone failed before tab activation', async () => {
@@ -645,6 +653,30 @@ it('reactivates and resets a prior E2E guide after browser globals reset', async
 
   expect(harness.operations).toEqual(['activate', 'reset', 'close']);
   expect(harness.tabButton.click).toHaveBeenCalledTimes(1);
+});
+
+it('closes the previous guide without dismissing a product modal that blocks pointer clicks', async () => {
+  const portal = document.createElement('div');
+  portal.id = 'grafana-portal-container';
+  const backdrop = document.createElement('div');
+  backdrop.setAttribute('role', 'presentation');
+  portal.appendChild(backdrop);
+  document.body.appendChild(portal);
+  const harness = replacementHarness({
+    resetControlCount: 0,
+    closePointerError: new Error('Modal backdrop intercepts pointer events'),
+  });
+
+  try {
+    await replacePreviousE2EGuide(harness.page);
+
+    expect(harness.operations).toEqual(['close']);
+    expect(harness.closeButton.click).not.toHaveBeenCalled();
+    expect(harness.closeButton.dispatchEvent).toHaveBeenCalledWith('click', undefined, { timeout: 15_000 });
+    expect(backdrop.isConnected).toBe(true);
+  } finally {
+    portal.remove();
+  }
 });
 
 it('fails fatally when the previous tab cannot close', async () => {

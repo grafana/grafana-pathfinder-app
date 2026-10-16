@@ -4,9 +4,17 @@ import {
   bindExperimentsProvider,
   setupScrollTracking,
   clearScrollTrackingCache,
+  buildInteractiveStepProperties,
+  getGuideBlockCountProperties,
+  reportStepSkipped,
 } from './analytics';
+import type { JsonBlock } from '../types/json-guide.types';
+import { createChoiceProgressModel } from './guide-stats/choice-progress';
 import { reportInteraction } from '@grafana/runtime';
 import { pushFaroUserAction } from './telemetry/bridge';
+import { computeGuideBlockIndex, guideProgress, type CountableBlock } from './guide-stats';
+import { evictAllGuideIndexes, publishGuideIndex } from '../global-state/active-guide-index';
+import { resetContentKeyForTests, setActiveTabUrl } from '../global-state/content-key';
 
 jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),
@@ -30,9 +38,38 @@ const mockReportInteraction = reportInteraction as jest.Mock;
 const mockPushFaroUserAction = pushFaroUserAction as jest.Mock;
 
 describe('reportAppInteraction', () => {
+  it('keeps the analytics outcome while the experiments SDK owns its Faro mirror', () => {
+    reportAppInteraction(
+      UserInteraction.HelpButtonClickedToolbar,
+      {
+        experiment_help_button_nudge: 'control',
+      },
+      { mirrorToFaro: false }
+    );
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_help_button_clicked_toolbar',
+      expect.objectContaining({ experiment_help_button_nudge: 'control' })
+    );
+    expect(mockPushFaroUserAction).not.toHaveBeenCalled();
+  });
+  it('removes private guide identifiers and authored metadata from the Faro mirror', () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open',
+      guide_url: 'backend-guide:private-resource',
+      guide_title: 'Private title',
+      guide_id: 'private-resource',
+      content: 'Private guide content',
+    });
+    const payload = mockPushFaroUserAction.mock.calls.at(-1)![1];
+    expect(payload.guide_url).toMatch(/^private-guide:/);
+    expect(payload.action).toBe('open');
+    expect(JSON.stringify(payload)).not.toContain('private-resource');
+    expect(JSON.stringify(payload)).not.toContain('Private');
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     delete (window as any).__pathfinderKioskSessionId;
+    delete window.__pathfinderKioskName;
   });
 
   it('includes kiosk_session_id when window global is set', () => {
@@ -56,6 +93,38 @@ describe('reportAppInteraction', () => {
     expect(mockReportInteraction).toHaveBeenCalledTimes(1);
     const properties = mockReportInteraction.mock.calls[0][1];
     expect(properties).not.toHaveProperty('kiosk_session_id');
+  });
+
+  it('preserves an explicit kiosk session over a previous guide session in both pipelines', () => {
+    window.__pathfinderKioskSessionId = 'previous-guide';
+    reportAppInteraction(UserInteraction.KioskDemoStarted, { kiosk_session_id: 'current-kiosk' });
+    const expected = expect.objectContaining({ kiosk_session_id: 'current-kiosk' });
+    expect(mockReportInteraction).toHaveBeenCalledWith('pathfinder_kiosk_demo_started', expected);
+    expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_kiosk_demo_started', expected);
+  });
+
+  it('includes the kiosk name on the panel-open event in both pipelines', () => {
+    window.__pathfinderKioskSessionId = 'current-session';
+    window.__pathfinderKioskName = 'customer-onboarding';
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'auto-open', source: 'kiosk_session' });
+    const expected = expect.objectContaining({
+      action: 'auto-open',
+      source: 'kiosk_session',
+      kiosk_session_id: 'current-session',
+      kiosk_name: 'customer-onboarding',
+    });
+    expect(mockReportInteraction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', expected);
+    expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_docs_panel_interaction', expected);
+  });
+
+  it('does not attribute an explicit new session to a stale kiosk name', () => {
+    window.__pathfinderKioskSessionId = 'previous-session';
+    window.__pathfinderKioskName = 'previous-kiosk';
+    reportAppInteraction(UserInteraction.KioskDemoStarted, { kiosk_session_id: 'new-session' });
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_kiosk_demo_started',
+      expect.objectContaining({ kiosk_name: 'unknown' })
+    );
   });
 
   it('omits kiosk_session_id when window global is empty string', () => {
@@ -145,7 +214,7 @@ describe('reportAppInteraction Faro mirroring', () => {
 });
 
 describe('reportAppInteraction experiment enrichment', () => {
-  const HIGHLIGHTED = 'pathfinder.highlighted-guide-experiment';
+  const EXPERIMENT = 'pathfinder.interactive-learning-banner-experiment';
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -165,7 +234,7 @@ describe('reportAppInteraction experiment enrichment', () => {
 
   it('passes the enrolled experiment through and rolls variant up to treatment', () => {
     bindExperimentsProvider(() => [
-      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+      { flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
     ]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
@@ -173,12 +242,12 @@ describe('reportAppInteraction experiment enrichment', () => {
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props.variant).toBe('treatment');
     expect(props.experiments).toEqual([
-      expect.objectContaining({ flag: HIGHLIGHTED, variant: 'treatment', guideId: 'g', docType: 'learning-journey' }),
+      expect.objectContaining({ flag: EXPERIMENT, variant: 'treatment', guideId: 'g', docType: 'learning-journey' }),
     ]);
   });
 
   it('rolls variant up to control when no enrolled experiment is treatment', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'control', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'control', pages: [], guideId: 'g' }]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -189,7 +258,7 @@ describe('reportAppInteraction experiment enrichment', () => {
     ['control before treatment', ['control', 'treatment']],
     ['treatment before control', ['treatment', 'control']],
   ] as const)('rolls multiple experiments up to treatment with %s', (_order, variants) => {
-    bindExperimentsProvider(() => variants.map((variant) => ({ flag: HIGHLIGHTED, variant, pages: [], guideId: 'g' })));
+    bindExperimentsProvider(() => variants.map((variant) => ({ flag: EXPERIMENT, variant, pages: [], guideId: 'g' })));
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -197,7 +266,7 @@ describe('reportAppInteraction experiment enrichment', () => {
   });
 
   it('rolls variant up to excluded when every experiment is excluded', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'excluded', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'excluded', pages: [], guideId: 'g' }]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -216,7 +285,7 @@ describe('reportAppInteraction experiment enrichment', () => {
 
   it('strips experiments from the Faro mirror but keeps it in the RudderStack payload', () => {
     bindExperimentsProvider(() => [
-      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+      { flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
     ]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
@@ -230,18 +299,18 @@ describe('reportAppInteraction experiment enrichment', () => {
   });
 
   it('does not enrich FeatureFlagEvaluated events (recursion guard)', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g' }]);
 
-    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: EXPERIMENT });
 
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props).not.toHaveProperty('experiments');
     expect(props).not.toHaveProperty('variant');
-    expect(props.flag_key).toBe(HIGHLIGHTED);
+    expect(props.flag_key).toBe(EXPERIMENT);
   });
 
   it('still mirrors flag exposures to Faro (beforeSend gates delivery, not the mirror)', () => {
-    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: EXPERIMENT });
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
   });
 });
@@ -298,5 +367,221 @@ describe('setupScrollTracking PanelScroll content_type', () => {
     expect(props.page_type).toBe('recommendations');
     expect(props.content_type).toBe('');
     cleanup();
+  });
+});
+
+describe('step events: block progress properties', () => {
+  const GUIDE_KEY = 'bundled:block-progress-guide';
+  const blocks: CountableBlock[] = [
+    { type: 'markdown' },
+    { type: 'interactive', id: 'open-menu' },
+    { type: 'section', id: 'explore', blocks: [{ type: 'markdown' }, { type: 'multistep' }] },
+    { type: 'conditional', whenTrue: [{ type: 'interactive' }], whenFalse: [{ type: 'markdown' }] },
+    { type: 'markdown' },
+  ];
+  const index = computeGuideBlockIndex(blocks, {
+    resolveStepId: (_block, { parentSectionId, index: childIndex }) => `rt:${parentSectionId}:${childIndex}`,
+  });
+  const [branchChildStepId] = [...index.branchChildPositions.keys()];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetContentKeyForTests();
+    setActiveTabUrl(GUIDE_KEY);
+  });
+
+  afterEach(() => {
+    evictAllGuideIndexes();
+    resetContentKeyForTests();
+    delete window.__DocsPluginActiveTabUrl;
+  });
+
+  function publish(contentKey = GUIDE_KEY) {
+    publishGuideIndex({ contentKey, index, denominatorSource: 'live-pre-inlining' });
+  }
+
+  it('adds the counted position and the guide counts when the active guide has an index', () => {
+    publish();
+
+    const props = buildInteractiveStepProperties(
+      { target_action: 'button' },
+      { stepId: 'rt:__standalone__:1', stepIndex: 0, totalSteps: 2 }
+    );
+
+    expect(props).toMatchObject({
+      block_position: 2,
+      block_progress_rule_version: 'block-position-v1',
+      guide_stats_version: 2,
+      total_block_count: 6,
+      completable_block_count: 2,
+      section_count: 1,
+    });
+  });
+
+  it('leaves completion_percentage as the step position over total_document_steps', () => {
+    publish();
+
+    const props = buildInteractiveStepProperties({}, { stepId: 'rt:__standalone__:1', stepIndex: 0, totalSteps: 4 });
+
+    expect(props.completion_percentage).toBe(25);
+    expect(props.current_step).toBe(1);
+    expect(props.total_document_steps).toBe(4);
+  });
+
+  it('credits a conditional branch child at its conditional, and an author id through positionsById', () => {
+    publish();
+
+    expect(buildInteractiveStepProperties({}, { stepId: branchChildStepId }).block_position).toBe(5);
+    expect(buildInteractiveStepProperties({}, { stepId: 'open-menu' }).block_position).toBe(2);
+  });
+
+  it('reports the same position the completion evidence rule credits for every addressable step', () => {
+    publish();
+    const stepIds = [
+      ...index.positionsByStepId.keys(),
+      ...index.branchChildPositions.keys(),
+      ...index.positionsById.keys(),
+    ];
+
+    for (const stepId of stepIds) {
+      const credited = guideProgress(index, [{ kind: 'do-it', blockId: stepId }]).position;
+      expect(buildInteractiveStepProperties({}, { stepId }).block_position).toBe(credited);
+    }
+  });
+
+  it.each([
+    ['the step has no position in the index', () => publish(), 'standalone-step-1'],
+    ['the active guide has no index', () => undefined, 'rt:__standalone__:1'],
+    ['the index belongs to another content key', () => publish('bundled:another-guide'), 'rt:__standalone__:1'],
+    ['the step has no id', () => publish(), undefined],
+  ])('omits every block property when %s', (_case, arrange, stepId) => {
+    arrange();
+
+    const props = buildInteractiveStepProperties({}, { stepId, stepIndex: 0, totalSteps: 2 });
+
+    expect(props).not.toHaveProperty('block_position');
+    expect(props).not.toHaveProperty('total_block_count');
+    expect(props).not.toHaveProperty('completable_block_count');
+    expect(props).not.toHaveProperty('section_count');
+  });
+
+  it('looks the index up under the content key the completion store resolves, including the legacy global', () => {
+    resetContentKeyForTests();
+    window.__DocsPluginActiveTabUrl = GUIDE_KEY;
+    publish();
+
+    expect(buildInteractiveStepProperties({}, { stepId: 'rt:__standalone__:1' }).block_position).toBe(2);
+  });
+
+  it('identifies selected-path progress without sending authored option values', () => {
+    const blocks: JsonBlock[] = [
+      {
+        type: 'input',
+        inputType: 'checkbox-group',
+        prompt: 'Private question',
+        variableName: 'signals',
+        choices: [{ id: 'private-id', text: 'Private label' }],
+      },
+      {
+        type: 'section',
+        id: 'selected',
+        whenRequirementsUnmet: 'hide',
+        requirements: ['var-signals:includes:private-id'],
+        blocks: [{ type: 'markdown', content: 'Private content' }],
+      },
+    ];
+    const choiceIndex = computeGuideBlockIndex(blocks);
+    publishGuideIndex({
+      contentKey: GUIDE_KEY,
+      index: choiceIndex,
+      denominatorSource: 'live-pre-inlining',
+      choiceModel: createChoiceProgressModel(blocks, choiceIndex),
+      responses: {},
+    });
+    const properties = getGuideBlockCountProperties(GUIDE_KEY);
+    expect(properties).toMatchObject({
+      block_progress_rule_version: 'choice-path-v1',
+      total_block_count: 2,
+      active_block_count: 1,
+    });
+    expect(JSON.stringify(properties)).not.toContain('Private');
+    expect(JSON.stringify(properties)).not.toContain('private-id');
+  });
+
+  it('exposes the guide counts for a content key, and nothing without an index', () => {
+    expect(getGuideBlockCountProperties(GUIDE_KEY)).toEqual({});
+
+    publish();
+
+    expect(getGuideBlockCountProperties(GUIDE_KEY)).toEqual({
+      block_progress_rule_version: 'block-position-v1',
+      guide_stats_version: 2,
+      total_block_count: 6,
+      completable_block_count: 2,
+      section_count: 1,
+    });
+  });
+});
+
+describe('reportStepSkipped', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetContentKeyForTests();
+  });
+
+  afterEach(() => {
+    evictAllGuideIndexes();
+    resetContentKeyForTests();
+  });
+
+  it('reports step_skipped with the same step properties as the other step events', () => {
+    setActiveTabUrl('bundled:skip-guide');
+    reportStepSkipped(
+      { targetAction: 'button', interactionLocation: 'interactive_step', skipReason: 'requirements_unmet' },
+      { stepId: 'step-a', stepIndex: 1, totalSteps: 4, sectionId: 'intro', sectionTitle: 'Intro' }
+    );
+
+    expect(mockReportInteraction).toHaveBeenCalledTimes(1);
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_step_skipped',
+      expect.objectContaining({
+        ...buildInteractiveStepProperties(
+          {},
+          { stepId: 'step-a', stepIndex: 1, totalSteps: 4, sectionId: 'intro', sectionTitle: 'Intro' }
+        ),
+        target_action: 'button',
+        interaction_location: 'interactive_step',
+        skip_reason: 'requirements_unmet',
+      })
+    );
+  });
+
+  it('carries the block properties when the skipped step is in a published guide index', () => {
+    setActiveTabUrl('bundled:skip-guide');
+    publishGuideIndex({
+      contentKey: 'bundled:skip-guide',
+      index: computeGuideBlockIndex([
+        { type: 'markdown' },
+        { type: 'interactive', id: 'skip-me' },
+        { type: 'markdown' },
+      ]),
+      denominatorSource: 'live-pre-inlining',
+    });
+
+    reportStepSkipped(
+      { targetAction: 'button', interactionLocation: 'interactive_step', skipReason: 'user' },
+      { stepId: 'skip-me', stepIndex: 0, totalSteps: 1 }
+    );
+
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_step_skipped',
+      expect.objectContaining({
+        block_position: 2,
+        total_block_count: 3,
+        completable_block_count: 1,
+        section_count: 0,
+        block_progress_rule_version: 'block-position-v1',
+      })
+    );
   });
 });

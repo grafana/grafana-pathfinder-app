@@ -67,7 +67,7 @@ export function TerminalBlockForm({
         <TextArea
           value={command}
           onChange={(e) => setCommand(e.currentTarget.value)}
-          placeholder="echo 'Hello from Pathfinder'"
+          placeholder="echo 'Hello from interactive learning'"
           rows={2}
         />
       </Field>

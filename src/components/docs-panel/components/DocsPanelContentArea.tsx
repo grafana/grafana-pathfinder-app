@@ -1,21 +1,6 @@
 import { usePathfinderPluginConfig } from '../../../hooks';
-/**
- * Content area for the docs panel — the 5+ branch switch that lives below
- * the tab bar.
- *
- * Renders one of:
- *   1. FullScreenModeNotice (when the full-screen page owns the session)
- *   2. ContextPanel (the recommendations tab)
- *   3. Dev Tools (SelectorDebugPanel, lazy-loaded)
- *   4. Editor (BlockEditor, lazy-loaded)
- *   5. Loading skeleton (with milestone bar still visible for journey
- *      tabs reloading between milestones — preserves nav context)
- *   6. Error state with retry
- *   7. ContentRenderer + content meta + milestone toolbar + footer
- *
- * Lazy imports are kept INSIDE this file so webpack sees the same dynamic-import
- * module specifiers and chunk resolution stays stable.
- */
+import { useBooleanFlag } from '../../../utils/openfeature';
+import { openGuideInSidebar } from '../utils/open-prepared-guide';
 import React, { Suspense, lazy, useSyncExternalStore } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -35,13 +20,15 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { recordGuideCompletionForSurface, journeyProgressFromMilestones } from '../../../docs-retrieval';
+import { journeyProgressFromMilestones, resolveActiveMilestoneToolbarContext } from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
+import { MyLearningErrorBoundary } from './MyLearningErrorBoundary';
 import { AlignmentPrompt } from './AlignmentPrompt';
+import { GuideVersionNotice } from './GuideVersionNotice';
 import { ErrorDisplay } from './ErrorDisplay';
 import { FullScreenModeNotice } from './FullScreenModeNotice';
 import { LoadingIndicator } from './LoadingIndicator';
@@ -49,6 +36,10 @@ import { LearningJourneyMilestoneToolbar } from './LearningJourneyMilestoneToolb
 import { PanelModeActionButtons } from './PanelModeActionButtons';
 import type { SceneObject } from '@grafana/scenes';
 import type { DocsPanelModelOperations, OpenDocsOptions } from '../types';
+
+const PackageBrowser = lazy(() =>
+  import('../../PackageBrowser/PackageBrowser').then((module) => ({ default: module.PackageBrowser }))
+);
 
 const SelectorDebugPanel = lazy(() =>
   import('../../SelectorDebugPanel').then((module) => ({
@@ -120,13 +111,27 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
   const { config: pluginConfig } = usePathfinderPluginConfig();
   const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
+  const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
+
+  // A restored track must belong to this cover's manifest ID.
+  const stableContentPathId = stableContent?.metadata.packageManifest?.id;
+  const activeCoverPathId = typeof stableContentPathId === 'string' ? stableContentPathId : undefined;
 
   const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
 
-  // The loading-state milestone bar below reads journeyProgressFromMilestones
-  // out of storage during render, so this re-render is what keeps it from
-  // painting a stale fill once evidence lands while the tab stays mounted.
+  // The loading toolbar also needs fresh completion evidence.
   useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
+
+  const surfaceCompletionInput = stableContent
+    ? {
+        baseUrl: activeTab?.baseUrl,
+        contentUrl: stableContent.url,
+        currentUrl: activeTab?.currentUrl,
+        contentType: stableContent.type,
+        metadata: stableContent.metadata,
+        guideTitle: activeTab?.title,
+      }
+    : null;
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -135,22 +140,38 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return <FullScreenModeNotice />;
         }
 
+        if (activeTab?.type === 'browse' && browseEnabled) {
+          return (
+            <MyLearningErrorBoundary
+              fallbackMessage={t('packageBrowser.renderError', 'Unable to load the guide browser')}
+            >
+              <Suspense fallback={<SkeletonLoader type="recommendations" />}>
+                <PackageBrowser onOpenGuide={openGuideInSidebar} />
+              </Suspense>
+            </MyLearningErrorBoundary>
+          );
+        }
+        if (activeTab?.type === 'browse') {
+          return <contextPanel.Component model={contextPanel} />;
+        }
         if (isRecommendationsTab) {
           return <contextPanel.Component model={contextPanel} />;
         }
 
-        // Defense in depth: authorization is checked again at the render
-        // boundary even though unauthorized tabs are pruned from model state.
+        // Enforce authorization at the render boundary as well as in model state.
         if (activeTab?.type === 'devtools' && isDevMode) {
           return (
             <div className={styles.devToolsContent} data-testid="devtools-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
                 <SelectorDebugPanel
                   onOpenDocsPage={(url: string, title: string, packageInfo?: PackageOpenInfo) => {
+                    const manifestId = packageInfo?.packageManifest?.id;
                     const opts: OpenDocsOptions = {
                       source: 'devtools',
                       skipReadyToBegin: true,
                       packageInfo,
+                      // Dev tools open covers, so the explicit identity is the manifest ID.
+                      explicitGuideId: typeof manifestId === 'string' ? manifestId : undefined,
                     };
                     return model.openDocsPage(url, title, opts);
                   }}
@@ -173,24 +194,26 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        // Reaching here with gated chrome means its authorization check above
-        // failed. Pruning removes the tab from state, but until that commits,
-        // render home rather than the content paths below, which assume a tab
-        // with a URL to fetch.
         if (activeTab?.type === 'devtools' || activeTab?.type === 'editor') {
           return <contextPanel.Component model={contextPanel} />;
         }
 
         if (activeTab?.isLoading) {
-          const ljMeta = activeTab.content?.metadata?.learningJourney;
+          const loadingActiveContext = activeTab.content
+            ? resolveActiveMilestoneToolbarContext(
+                activeTab.content,
+                activeTab.activeTrackId,
+                activeTab.activeTrackMilestones
+              )
+            : null;
           const showBarWhileLoading =
-            ljMeta &&
+            Boolean(loadingActiveContext) &&
             activeTab.content?.type === 'learning-journey' &&
             (activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type));
 
           return (
             <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
-              {showBarWhileLoading && (
+              {showBarWhileLoading && loadingActiveContext && (
                 <div className={styles.milestoneProgress}>
                   <div className={styles.progressInfo}>
                     <div className={styles.progressHeader}>
@@ -205,13 +228,13 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         className={styles.navButton}
                       />
                       <span className={styles.milestoneText}>
-                        {ljMeta.currentMilestone === 0
+                        {loadingActiveContext.currentMilestone === 0
                           ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                              total: ljMeta.totalMilestones,
+                              total: loadingActiveContext.totalMilestones,
                             })
                           : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                              current: ljMeta.currentMilestone,
-                              total: ljMeta.totalMilestones,
+                              current: loadingActiveContext.currentMilestone,
+                              total: loadingActiveContext.totalMilestones,
                             })}
                       </span>
                       <IconButton
@@ -229,11 +252,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       <div
                         className={styles.progressFill}
                         style={{
-                          // The shared calculation (docs/design/COMPLETION-MODEL.md,
-                          // decision 4) — earned progress, not navigation
-                          // position, so this must not climb just because the
-                          // reader turned pages without completing anything.
-                          width: `${journeyProgressFromMilestones(ljMeta.baseUrl, ljMeta.milestones)}%`,
+                          // Completion evidence, rather than navigation, controls the fill.
+                          width: `${journeyProgressFromMilestones(loadingActiveContext.baseUrl, loadingActiveContext.milestones)}%`,
                         }}
                       />
                     </div>
@@ -258,14 +278,20 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
         if (activeTab?.content && !activeTab.isLoading) {
           const isLearningJourneyTab = activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type);
+          // Keep the metadata row and milestone toolbar mutually exclusive.
           const showMilestoneProgress =
             isLearningJourneyTab &&
             activeTab.content?.type === 'learning-journey' &&
-            activeTab.content.metadata.learningJourney;
+            Boolean(
+              resolveActiveMilestoneToolbarContext(
+                activeTab.content,
+                activeTab.activeTrackId,
+                activeTab.activeTrackMilestones
+              )
+            );
 
           return (
             <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
-              {/* Return to Editor Banner - only shown for WYSIWYG preview */}
               {isWysiwygPreview && (
                 <div className={styles.returnToEditorBanner} data-testid={testIds.devTools.previewBanner}>
                   <div className={styles.returnToEditorLeft} data-testid={testIds.devTools.previewModeIndicator}>
@@ -282,8 +308,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </button>
                 </div>
               )}
-
-              {/* Content Meta for learning path pages (when no milestone progress is shown) */}
               {isLearningJourneyTab && !showMilestoneProgress && (
                 <div className={styles.contentMeta}>
                   <div className={styles.metaInfo}>
@@ -297,8 +321,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </div>
                 </div>
               )}
-
-              {/* Content Meta for docs/interactive — actions right-aligned */}
               {isDocsLikeTab(activeTab.type) && (
                 <div className={styles.contentMeta}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
@@ -385,10 +407,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </div>
                 </div>
               )}
-
-              {/* Milestone Progress - shared with the fullscreen surface via
-                  LearningJourneyMilestoneToolbar. Returns null for non-journey
-                  tabs so the consumer can render unconditionally. */}
               <LearningJourneyMilestoneToolbar
                 panel={model}
                 activeTab={activeTab}
@@ -397,11 +415,14 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 progressKey={progressKey}
                 onResetGuide={handleResetGuide}
               />
-
-              {/* Unified Content Renderer - works for both learning journeys and docs! */}
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                {stableContent && (
+                {stableContent && surfaceCompletionInput && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
+                    <GuideVersionNotice
+                      manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
+                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+                      guideTitle={activeTab?.title}
+                    />
                     {activeTab?.pendingAlignment && (
                       <AlignmentPrompt
                         startingLocation={activeTab.pendingAlignment.startingLocation}
@@ -413,9 +434,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         }}
                       />
                     )}
-                    {/* Treatment arm of the interactive-learning banner experiment; renders
-                        null otherwise. The context page carries the same banner, but a
-                        guide opened by ?doc= or auto-open never passes through it. */}
                     <InteractiveLearningBanner placement="guide" />
 
                     <ContentRenderer
@@ -428,18 +446,18 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContentReady={() => {
                         restoreScrollPosition();
                       }}
-                      onGuideComplete={() =>
-                        recordGuideCompletionForSurface({
-                          baseUrl: activeTab?.baseUrl,
-                          contentUrl: stableContent.url,
-                          currentUrl: activeTab?.currentUrl,
-                          contentType: stableContent.type,
-                          metadata: stableContent.metadata,
-                          guideTitle: activeTab?.title,
-                        })
-                      }
+                      completion={{ kind: 'tracked', input: surfaceCompletionInput }}
                       onContinueToNextMilestone={
                         model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
+                      }
+                      onActiveTrackChange={
+                        activeTab
+                          ? (trackId, milestones) =>
+                              model.setActiveTrackId(activeTab.id, trackId, milestones, activeCoverPathId)
+                          : undefined
+                      }
+                      initialActiveTrackId={
+                        activeTab?.activeTrackPathId === activeCoverPathId ? activeTab?.activeTrackId : undefined
                       }
                     />
                   </AlignmentPendingContext.Provider>

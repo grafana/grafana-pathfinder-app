@@ -88,6 +88,7 @@ describe('useContentReset', () => {
       content_url: 'https://example.com/guide',
       content_type: AnalyticsContentType.InteractiveGuide,
       interaction_location: 'docs_content_meta_header',
+      reset_scope: 'guide',
     });
 
     // Step 2: Storage clearing

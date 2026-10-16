@@ -9,10 +9,14 @@
  */
 
 export const StorageKeys = {
+  SETTINGS_ABSENT_PREFIX: 'grafana-pathfinder-settings-absent-v1:',
+  SETTINGS_GENERATION_PREFIX: 'grafana-pathfinder-settings-generation-v1:',
+  HELP_BUTTON_ATTENTION_DISMISSED_PREFIX: 'pathfinder-help-button-nudge-v1:dismissed:',
   JOURNEY_COMPLETION: 'grafana-pathfinder-app-journey-completion',
   INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
+  INTERACTIVE_SKIPPED_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-skipped-steps-',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: see buildVersionedSectionStorageKey
   // Superseded per-content marker. Nothing reads it; kept so the discard sweep can recognise and remove it.
   CONTENT_PROGRESS_V2_PREFIX: 'grafana-pathfinder-app-content-progress-v2:',
@@ -27,6 +31,10 @@ export const StorageKeys = {
   // `kind:guideSource:guideId` dedupe string (not a content key). Durable
   // half of completion-recorder.ts's exactly-once guard; survives a reload.
   COMPLETION_EMITTED_PREFIX: 'grafana-pathfinder-app-completion-emitted-',
+  // Dynamic: see buildVersionedContentStorageKey, keyed by `guideSource:guideId`.
+  // Device-local guide attempt (completion-records/guide-attempts.ts); never synced.
+  GUIDE_ATTEMPT_PREFIX: 'grafana-pathfinder-app-guide-attempt-',
+  COMPLETION_REPORTED_PREFIX: 'grafana-pathfinder-app-completion-reported-',
   // Full screen mode persistence (for page refreshes during recording)
   FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
@@ -44,17 +52,16 @@ export const StorageKeys = {
   // reassignment (e.g. control → treatment) yields a new key and re-fires, which is what
   // downstream A/B tools expect.
   EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
-  // Highlighted-guide experiment markers (used with hostname + guideId suffix). LocalStorage,
-  // not session — auto-open fires once per browser, not once per session.
-  HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
-  HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
+  // Auto-open guide experiment markers (used with `{hostname}:{guide}` suffix). LocalStorage,
+  // not session — each guide is offered once per browser, in every arm.
+  AUTO_OPEN_GUIDE_SHOWN_PREFIX: 'grafana-pathfinder-auto-open-guide-shown-',
+  // The auto-open guide visit already offered in this tab (sessionStorage, hostname suffix), so a
+  // reload on the same matched pages does not offer an overlapping experience.
+  AUTO_OPEN_GUIDE_VISIT_PREFIX: 'grafana-pathfinder-auto-open-guide-visit-',
   // Interactive-learning banner dismissal (used with a hostname suffix). Hostname-scoped
   // to match the other experiment markers, so one reset sweep clears them together.
   INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
-  // Dev/debug feature-flag overrides (localStorage). Read before the MTFF client.
-  FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
-  // This user's opt-in to developer surfaces (localStorage, like FLAG_OVERRIDES
-  // above). Per-user, so it lives here rather than in tenant settings — it
+  // This user's opt-in to developer surfaces (localStorage). Per-user, so it
   // replaces the old org-wide `devModeUserIds` array in plugin jsonData. Still
   // gated by the tenant-level `devMode`: both must be true.
   DEV_MODE_OPT_IN: 'grafana-pathfinder-app-dev-mode-opt-in',
@@ -124,6 +131,7 @@ export function buildAssistantStorageKey(contentKey: string, assistantId: string
  * of them and silently miss the fourth.
  */
 export const PROGRESS_SECTION_PREFIXES = [
+  StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX,
   StorageKeys.INTERACTIVE_STEPS_PREFIX,
   StorageKeys.SECTION_COLLAPSE_PREFIX,
   StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,

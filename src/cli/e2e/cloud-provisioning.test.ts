@@ -17,11 +17,15 @@ import {
   sweepCloudTargets,
 } from './cloud-provisioning';
 import type { CloudAuthPolicy } from './cloud-auth';
-import type { CloudChainCleanupRegistry } from './cloud-chain-cleanup-registry';
+import {
+  CloudChainCleanupRegistry as RealCloudChainCleanupRegistry,
+  type CloudChainCleanupRegistry,
+} from './cloud-chain-cleanup-registry';
 import type { CloudStackPoolManager } from './cloud-stack-pool-manager';
 import type { PackageMeta } from './e2e-results';
 
 const cloudAuth: CloudAuthPolicy = {
+  allowsMutationsFor: () => false,
   targets: { sharedStackUrls: ['https://learn.grafana.net/', 'https://play.grafana.org/'] },
   adminTokenFor: (targetUrl) => {
     if (targetUrl?.startsWith('https://learn.grafana.net')) {
@@ -111,6 +115,67 @@ describe('ProvisionedCloudTargets', () => {
     expect(playEnv.teardownChain).toHaveBeenCalledWith({ outcome: 'cancelled' });
   });
 
+  it.each(['shared', 'pool'] as const)(
+    'does not tear down a completed %s chain again during late interruption cleanup',
+    async (kind) => {
+      const registry = new RealCloudChainCleanupRegistry();
+      const lease = {
+        provisionChain: jest.fn(() => ({
+          kind: 'pool',
+          targetUrl: 'https://pool.grafana.net/',
+          token: 'pool-token',
+          stackSlug: 'pool',
+        })),
+        teardownChain: jest.fn(async () => []),
+      };
+      const provisioned = await provisionCloudTargetsForChain({
+        targetUrls: ['https://learn.grafana.net/'],
+        cloudAuth,
+        chain: [{ id: kind === 'pool' ? 'mutating' : 'readonly' }],
+        packageMetaById:
+          kind === 'pool'
+            ? mutatingCloudMeta()
+            : new Map([
+                ['readonly', { packageId: 'readonly', tier: 'cloud', targetUrl: 'https://learn.grafana.net/' }],
+              ]),
+        ...(kind === 'pool' ? { cloudStackPoolManager: poolManagerWithLease(lease) } : {}),
+        cloudChainCleanup: registry,
+        verbose: false,
+      });
+      const environment =
+        kind === 'pool' ? lease : (SharedCloudStackEnvironment as jest.Mock).mock.results.at(-1)!.value;
+      expect(environment.teardownChain).not.toHaveBeenCalled();
+      await expect(provisioned.teardownAll({ outcome: 'passed', used: true })).resolves.toEqual([]);
+      await expect(
+        registry.teardownAll({ outcome: 'cancelled', used: true, summary: 'Interrupted by SIGTERM' })
+      ).resolves.toEqual([]);
+      await expect(registry.teardownAll()).resolves.toEqual([]);
+      expect(environment.teardownChain).toHaveBeenCalledTimes(1);
+      expect(environment.teardownChain).toHaveBeenCalledWith({ outcome: 'passed', used: true });
+    }
+  );
+
+  it('registers shared targets for interrupted-run cleanup', async () => {
+    const registry = new RealCloudChainCleanupRegistry();
+    await provisionCloudTargetsForChain({
+      targetUrls: ['https://learn.grafana.net/'],
+      cloudAuth,
+      chain: [{ id: 'readonly' }],
+      packageMetaById: new Map([
+        ['readonly', { packageId: 'readonly', tier: 'cloud', targetUrl: 'https://learn.grafana.net/' }],
+      ]),
+      cloudChainCleanup: registry,
+      verbose: false,
+    });
+
+    const environment = (SharedCloudStackEnvironment as jest.Mock).mock.results.at(-1)?.value;
+    expect(environment).toBeDefined();
+    expect(await registry.teardownAll({ outcome: 'cancelled', used: true })).toEqual([]);
+    expect(environment.teardownChain).toHaveBeenCalledWith({ outcome: 'cancelled', used: true });
+    expect(await registry.teardownAll({ outcome: 'cancelled', used: true })).toEqual([]);
+    expect(environment.teardownChain).toHaveBeenCalledTimes(1);
+  });
+
   it('looks up isolated target URLs and tokens by guide id', async () => {
     const env = { teardownChain: jest.fn(async () => ['warning']) };
     const provisioned = new ProvisionedCloudTargets();
@@ -160,6 +225,31 @@ describe('chainNeedsCloudStack', () => {
       chainNeedsCloudStack({ chain: [{ id: 'mutating' }], packageMetaById, cloudAuth, hasIsolatedCloudStack: true })
     ).toBe(true);
   });
+
+  it.each(['possibly_mutating', 'mutating', 'unknown'] as const)(
+    'preserves pool selection for %s even with named mutation authorization',
+    (level) => {
+      const packageMetaById = new Map<string, PackageMeta>([
+        [
+          'guide',
+          {
+            packageId: 'guide',
+            tier: 'cloud',
+            targetUrl: 'https://learn.grafana.net/',
+            sideEffects: { level, reasons: [] },
+          },
+        ],
+      ]);
+      expect(
+        chainNeedsCloudStack({
+          chain: [{ id: 'guide' }],
+          packageMetaById,
+          cloudAuth: { ...cloudAuth, allowsMutationsFor: () => true },
+          hasIsolatedCloudStack: true,
+        })
+      ).toBe(true);
+    }
+  );
 
   it('uses an isolated stack for cloud guides that lack shared-stack auth', () => {
     const packageMetaById = new Map<string, PackageMeta>([
@@ -263,7 +353,7 @@ describe('provisionCloudTargetsForChain', () => {
     expect(first).toBeDefined();
     expect(second).toBeDefined();
     expect(first!.teardownChain).toHaveBeenCalledTimes(1);
-    expect(second!.teardownChain).not.toHaveBeenCalled();
+    expect(second!.teardownChain).toHaveBeenCalledTimes(1);
   });
 
   it('leases one manager stack for an unsafe cloud chain', async () => {

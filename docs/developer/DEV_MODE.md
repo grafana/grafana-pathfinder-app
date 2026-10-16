@@ -15,7 +15,7 @@ Dev mode enables developer and testing capabilities such as the DOM selector deb
 
 It used to be a `devModeUserIds: number[]` array in plugin `jsonData`: a per-user allow-list kept in an org-wide, provisioning-owned blob. Grafana replaces `jsonData` wholesale on every write, so opting one person in rewrote every plugin setting — which is how toggling dev mode once unpinned the plugin from the nav (`aa1c2efd`).
 
-`localStorage` was chosen over the hybrid user-storage layer because the config bootstrap and `isDevModeEnabledGlobal()` are synchronous and `module.tsx` is on the critical path, and importing `lib/user-storage` would drag zod into `module.js`. The repo already keeps dev/debug toggles locally — see `StorageKeys.FLAG_OVERRIDES`.
+`localStorage` was chosen over the hybrid user-storage layer because the config bootstrap and `isDevModeEnabledGlobal()` are synchronous and `module.tsx` is on the critical path, and importing `lib/user-storage` would drag zod into `module.js`. The repo keeps the remaining dev/debug toggles locally; feature flags are controlled through Grafana's feature-control UI.
 
 The old unscoped browser key is ignored because its owner cannot be established. Missing user or org identity fails closed.
 

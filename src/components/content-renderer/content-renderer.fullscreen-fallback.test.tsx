@@ -15,6 +15,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { RawContent } from '../../types/content.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { ContentRenderer } from './content-renderer';
+import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 import { resetCompletionStoreForTests } from '../../global-state/completion-store';
 
 jest.mock('@grafana/i18n', () => ({
@@ -78,7 +79,7 @@ function renderGuide(content: Partial<RawContent> = {}): void {
     metadata: { title: 'Fullscreen fallback guide' },
     ...content,
   };
-  render(<ContentRenderer content={raw} />);
+  render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} />);
 }
 
 describe('fullScreenFallbackLocation reaches a rendered InteractiveStep', () => {
@@ -100,6 +101,134 @@ describe('fullScreenFallbackLocation reaches a rendered InteractiveStep', () => 
     const elementData = mockExecute.mock.calls[0]![0] as InteractiveElementData;
     expect(elementData.fullScreenFallbackLocation).toBe('/connections');
   });
+
+  it('uses the owning journey manifest when the loaded member omits a starting location', async () => {
+    renderGuide({
+      metadata: {
+        title: 'Fullscreen fallback guide',
+        packageManifest: { id: 'member', type: 'guide' },
+        journeyManifest: { id: 'owner', type: 'journey', startingLocation: '/owner/start' },
+      },
+    });
+
+    fireEvent.click(screen.getByText('Go there'));
+
+    await waitFor(() => expect(mockExecute).toHaveBeenCalled());
+    const elementData = mockExecute.mock.calls[0]![0] as InteractiveElementData;
+    expect(elementData.fullScreenFallbackLocation).toBe('/owner/start');
+  });
+
+  it('prefers the member starting location over the owning journey fallback', async () => {
+    renderGuide({
+      metadata: {
+        title: 'Fullscreen fallback guide',
+        packageManifest: { id: 'member', type: 'guide', startingLocation: '/member/start' },
+        journeyManifest: { id: 'owner', type: 'journey', startingLocation: '/owner/start' },
+      },
+    });
+
+    fireEvent.click(screen.getByText('Go there'));
+
+    await waitFor(() => expect(mockExecute).toHaveBeenCalled());
+    const elementData = mockExecute.mock.calls[0]![0] as InteractiveElementData;
+    expect(elementData.fullScreenFallbackLocation).toBe('/member/start');
+  });
+
+  it.each([
+    {
+      name: 'nested member before typed owner',
+      member: { additionalFields: { startingLocation: '/member/start' } },
+      owner: { startingLocation: '/owner/start' },
+      expected: '/member/start',
+    },
+    {
+      name: 'typed member before nested member',
+      member: { startingLocation: '/typed/member', additionalFields: { startingLocation: '/nested/member' } },
+      owner: { startingLocation: '/owner/start' },
+      expected: '/typed/member',
+    },
+    {
+      name: 'nested owner when member has no signal',
+      member: {},
+      owner: { additionalFields: { startingLocation: '/owner/start' } },
+      expected: '/owner/start',
+    },
+    {
+      name: 'nested member when typed member is a root default',
+      member: { startingLocation: '/', additionalFields: { startingLocation: '/member/start' } },
+      owner: { startingLocation: '/owner/start' },
+      expected: '/member/start',
+    },
+    {
+      name: 'nested owner when typed member is a root default',
+      member: { startingLocation: '/' },
+      owner: { additionalFields: { startingLocation: '/owner/start' } },
+      expected: '/owner/start',
+    },
+    {
+      name: 'owner when nested member is a root default',
+      member: { additionalFields: { startingLocation: '/' } },
+      owner: { additionalFields: { startingLocation: '/owner/start' } },
+      expected: '/owner/start',
+    },
+    {
+      name: 'owner when member additional fields are malformed',
+      member: { additionalFields: [{ startingLocation: '/invalid/member' }] },
+      owner: { startingLocation: '/owner/start' },
+      expected: '/owner/start',
+    },
+  ])('preserves starting-location precedence: $name', async ({ member, owner, expected }) => {
+    renderGuide({
+      metadata: {
+        title: 'Fullscreen fallback guide',
+        packageManifest: { id: 'member', type: 'guide', ...member },
+        journeyManifest: { id: 'owner', type: 'journey', ...owner },
+      },
+    });
+
+    fireEvent.click(screen.getByText('Go there'));
+
+    await waitFor(() => expect(mockExecute).toHaveBeenCalled());
+    const elementData = mockExecute.mock.calls[0]![0] as InteractiveElementData;
+    expect(elementData.fullScreenFallbackLocation).toBe(expected);
+  });
+
+  it.each([
+    { milestoneLocation: '/milestone/start', expected: '/milestone/start' },
+    { milestoneLocation: '/', expected: '/member/start' },
+  ])(
+    'prefers a real milestone location, not the root default: $milestoneLocation',
+    async ({ milestoneLocation, expected }) => {
+      renderGuide({
+        type: 'learning-journey',
+        metadata: {
+          title: 'Fullscreen fallback guide',
+          packageManifest: { id: 'member', type: 'guide', additionalFields: { startingLocation: '/member/start' } },
+          journeyManifest: { id: 'owner', type: 'journey', startingLocation: '/owner/start' },
+          learningJourney: {
+            currentMilestone: 1,
+            totalMilestones: 1,
+            baseUrl: 'backend-guide:owner',
+            milestones: [
+              {
+                number: 1,
+                title: 'Member',
+                url: 'backend-guide:member',
+                isActive: true,
+                startingLocation: milestoneLocation,
+              },
+            ],
+          },
+        },
+      });
+
+      fireEvent.click(screen.getByText('Go there'));
+
+      await waitFor(() => expect(mockExecute).toHaveBeenCalled());
+      const elementData = mockExecute.mock.calls[0]![0] as InteractiveElementData;
+      expect(elementData.fullScreenFallbackLocation).toBe(expected);
+    }
+  );
 
   it('leaves it undefined when no manifest starting location is authored', async () => {
     renderGuide();
@@ -148,7 +277,7 @@ function renderButtonGuide(): void {
     lastFetched: '2026-08-14T00:00:00.000Z',
     metadata: { title: 'Fullscreen handoff button guide' },
   };
-  render(<ContentRenderer content={raw} />);
+  render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={raw} />);
 }
 
 describe('full-screen handoff gate reaches the handler for non-navigate actions', () => {

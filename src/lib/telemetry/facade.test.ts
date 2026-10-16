@@ -1,60 +1,33 @@
 import {
+  recordAssignmentTargetsUnresolved,
+  recordGuideRequest,
+  recordGuideRender,
   recordContentFetch,
+  recordKioskCatalogLoaded,
   recordContentFetchFallback,
   recordCustomGuideCatalogueUnavailable,
   recordSettingsStoreResolved,
+  recordStartupSettings,
   recordPanelReady,
+  recordRecommendCompletions,
   recordRecommenderFallback,
   recordRecommenderRequest,
   recordRequirementsExhausted,
   recordSequenceActionError,
-  withGuideOpenAction,
 } from './facade';
-import { pushFaroEvent, pushFaroMeasurement, withFaroUserAction, USER_ACTION_TIMEOUT_MEDIUM_MS } from './faro-adapter';
+import { pushFaroEvent, pushFaroMeasurement, pushFaroUserAction } from './faro-adapter';
 
 jest.mock('./faro-adapter', () => ({
   pushFaroEvent: jest.fn(),
+  pushFaroUserAction: jest.fn(),
   pushFaroMeasurement: jest.fn(),
-  withFaroUserAction: jest.fn((_name: string, _attrs: unknown, work: () => unknown) => work()),
-  USER_ACTION_TIMEOUT_MEDIUM_MS: 60_000,
 }));
 
 const mockPushFaroEvent = pushFaroEvent as jest.Mock;
 const mockPushFaroMeasurement = pushFaroMeasurement as jest.Mock;
-const mockWithFaroUserAction = withFaroUserAction as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
-});
-
-describe('withGuideOpenAction', () => {
-  it('wraps the load in a critical pathfinder_docs_panel_interaction action with a normalized URL', async () => {
-    await withGuideOpenAction('https://grafana.com/docs/page/?token=secret#frag', async () => 'completed');
-
-    expect(mockWithFaroUserAction).toHaveBeenCalledWith(
-      'pathfinder_docs_panel_interaction',
-      { action: 'open_guide', content_url: 'grafana.com/docs/page/' },
-      expect.any(Function),
-      USER_ACTION_TIMEOUT_MEDIUM_MS,
-      expect.objectContaining({ critical: true })
-    );
-  });
-
-  it('bounds guide loads by the medium timeout, not the 30s default — a multi-tier fetch can legitimately outrun it', async () => {
-    await withGuideOpenAction('bundled:welcome', async () => 'completed');
-
-    const timeoutArg = mockWithFaroUserAction.mock.calls[0][3];
-    expect(timeoutArg).toBe(USER_ACTION_TIMEOUT_MEDIUM_MS);
-    expect(timeoutArg).not.toBeUndefined();
-  });
-
-  it('maps resolved loader outcomes so failed opens are never stamped ok', async () => {
-    await withGuideOpenAction('bundled:welcome', async () => 'error');
-
-    const options = mockWithFaroUserAction.mock.calls[0][4];
-    expect(options.outcomeFrom('completed')).toBe('ok');
-    expect(options.outcomeFrom('error')).toBe('error');
-  });
 });
 
 describe('measurement and event domain operations', () => {
@@ -71,6 +44,37 @@ describe('measurement and event domain operations', () => {
       fallback_tier: 'bundled+static',
       error_type: 'unavailable',
     });
+  });
+
+  it('recordRecommendCompletions buckets the item count and never carries guide data', () => {
+    recordRecommendCompletions('ok', 0, false);
+    recordRecommendCompletions('ok', 7, false);
+    recordRecommendCompletions('ok', 50, false);
+    recordRecommendCompletions('ok', 249, false);
+    recordRecommendCompletions('ok', 250, true);
+    recordRecommendCompletions('timeout');
+
+    const calls = mockPushFaroEvent.mock.calls.filter(([name]) => name === 'pathfinder_recommend_completions');
+    expect(calls.map(([, attrs]) => attrs)).toEqual([
+      { outcome: 'ok', item_bucket: '0', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '1-10', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '11-50', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '51-249', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '250', truncated: 'true' },
+      { outcome: 'timeout' },
+    ]);
+  });
+
+  it('recordRecommendCompletions emits the wait as a namespaced measurement only when given', () => {
+    recordRecommendCompletions('timeout', undefined, undefined, 500);
+    recordRecommendCompletions('disabled');
+
+    expect(mockPushFaroMeasurement).toHaveBeenCalledTimes(1);
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_recommend_completions_wait',
+      { recommend_completions_wait_ms: 500 },
+      { outcome: 'timeout' }
+    );
   });
 
   it('recordContentFetch and recordContentFetchFallback normalize the URL before it crosses the boundary', () => {
@@ -144,4 +148,57 @@ describe('measurement and event domain operations', () => {
       outcome: 'kind-not-served',
     });
   });
+
+  it('recordAssignmentTargetsUnresolved emits the count of unresolvable targets', () => {
+    recordAssignmentTargetsUnresolved(2);
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_assignment_target_unresolved', {
+      reason: 'unresolvable-target',
+      count: 2,
+    });
+  });
+});
+
+it('emits private guide diagnostics without private identifiers, bodies or messages', () => {
+  recordGuideRequest({
+    context: { loadId: 'load', source: 'app-platform', guideRef: 'opaque' },
+    url: 'backend-guide:private-resource',
+    role: 'content',
+    durationMs: 10,
+    diagnostic: { source: 'app-platform', stage: 'validate', reason: 'schema-invalid', validationCount: 2 },
+  });
+  const payload = mockPushFaroEvent.mock.calls[0]![1];
+  expect(payload.content_url).toMatch(/^private-guide:/);
+  expect(payload.validation_count).toBe('2');
+  expect(JSON.stringify(payload)).not.toContain('private-resource');
+  recordGuideRender({ loadId: 'load', source: 'app-platform', guideRef: 'opaque' }, 'error', 10, {
+    source: 'app-platform',
+    stage: 'fetch',
+    reason: 'http-error',
+    statusCode: 404,
+  });
+  expect(pushFaroUserAction).toHaveBeenLastCalledWith(
+    'pathfinder_docs_panel_interaction',
+    expect.objectContaining({ action: 'open_guide', phase: 'render', outcome: 'error', load_id: 'load' })
+  );
+  expect(mockPushFaroEvent).toHaveBeenLastCalledWith(
+    'pathfinder_guide_render',
+    expect.objectContaining({ http_status: '404', stage: 'fetch' })
+  );
+});
+
+it('records the served kiosk tier and degradation without catalog content', () => {
+  recordKioskCatalogLoaded('bundled', true);
+  expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_kiosk_catalog_loaded', {
+    tier: 'bundled',
+    degraded: true,
+  });
+});
+
+it('records bounded startup settings latency and fail-open outcome without identities', () => {
+  recordStartupSettings(3000, 'timeout');
+  expect(pushFaroMeasurement).toHaveBeenCalledWith(
+    'pathfinder_startup_settings',
+    { startup_settings_ms: 3000 },
+    { outcome: 'timeout' }
+  );
 });

@@ -1,3 +1,4 @@
+import { scrollUntilElementFound } from './dom-utils';
 /**
  * Selector Retry Utility
  * Wraps selector resolution with exponential backoff retry for resilience
@@ -9,6 +10,9 @@
 import { resolveSelectorPipeline } from './selector-pipeline';
 
 export interface RetryConfig {
+  signal?: AbortSignal;
+  lazyRender?: boolean;
+  scrollContainer?: string;
   delays: number[];
   relaxOnRetry: boolean;
 }
@@ -48,12 +52,20 @@ export async function resolveWithRetry(
 ): Promise<ResolvedElement | null> {
   const mergedConfig = { ...DEFAULT_RETRY_CONFIG, ...config };
 
-  const pipelineResult = await resolveSelectorPipeline({
+  let pipelineResult = await resolveSelectorPipeline({
     reftarget,
     action,
     delays: mergedConfig.delays,
     relaxOnRetry: mergedConfig.relaxOnRetry,
+    signal: mergedConfig.signal,
   });
+  if (!pipelineResult && mergedConfig.lazyRender) {
+    await scrollUntilElementFound(reftarget, {
+      scrollContainerSelector: mergedConfig.scrollContainer,
+      signal: mergedConfig.signal,
+    });
+    pipelineResult = await resolveSelectorPipeline({ reftarget, action, delays: [], signal: mergedConfig.signal });
+  }
 
   if (!pipelineResult) {
     return null;

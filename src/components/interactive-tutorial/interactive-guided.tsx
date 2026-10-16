@@ -1,36 +1,50 @@
-import { usePathfinderPluginConfig } from '../../hooks';
+import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
+import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { getActiveTabUrl, getContentKey, getContentKeyOverride } from '../../global-state/content-key';
+import { getGuidedSession } from './guided-session';
 import type { ConditionInput } from '../../types/requirements.types';
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
+import React, {
+  useState,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import {
-  GuidedHandler,
-  InteractiveStateManager,
-  NavigationManager,
-  matchesStepAction,
-  performedStepPercent,
-  type DetectedActionEvent,
-} from '../../interactive-engine';
+  reportAppInteraction,
+  reportStepSkipped,
+  UserInteraction,
+  buildInteractiveStepProperties,
+  type StepSkipReason,
+} from '../../lib/analytics';
+import { NavigationManager, performedStepPercent } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
-import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
-import { getInteractiveConfig } from '../../constants/interactive-config';
-import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
-import { type AuthoredGuidedAction, isGuidedDomActionType } from '../../types/interactive-actions.types';
+import {
+  useStepChecker,
+  validateInteractiveRequirements,
+  useGuideRequirements,
+  dispatchFix,
+} from '../../requirements-manager';
+import { type AuthoredGuidedAction } from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
-import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { CompletionWaitingStatus } from './completion-waiting-status';
+import { resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
-import { toCrossTabInternalAction } from '../../types/cross-tab.types';
-import type { ProgressReason } from '../../global-state/progress-events';
+import { guidedStepWaitMs, toCrossTabInternalAction } from '../../types/cross-tab.types';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 /**
@@ -132,6 +146,7 @@ interface GuidedUiStateInput {
   wasCancelled: boolean;
   isChecking: boolean;
   isEnabled: boolean;
+  isWaiting?: boolean;
 }
 
 export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
@@ -149,6 +164,9 @@ export function deriveGuidedUiState(input: GuidedUiStateInput): StepStateValue {
   }
   if (input.isCompleted) {
     return STEP_STATES.COMPLETED;
+  }
+  if (input.isWaiting) {
+    return STEP_STATES.WAITING;
   }
   if (input.isChecking) {
     return STEP_STATES.CHECKING;
@@ -170,7 +188,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       stepId,
       isEligibleForChecking = true,
       isCurrentlyExecuting = false,
-      onStepComplete,
+      onStepComplete: notifyStepComplete,
       onStepReset,
       title,
       children,
@@ -179,7 +197,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       hints,
       requirements,
       objectives,
-      onComplete,
+      onComplete: notifyComplete,
       skippable = false,
       completeEarly = false, // Default to false - only mark early if explicitly set
       stepTimeout = 120000, // 2 minute default timeout per step
@@ -208,37 +226,33 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
     );
 
-    // Local UI state
     const mode = useInteractiveMode();
     const controllerChannel = useControllerChannel();
-    const [isExecuting, setIsExecuting] = useState(false);
-    // Set when the user cancels a controller-mode run, so the awaiting branch
-    // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
+    const sessionKey = JSON.stringify([
+      getActiveTabUrl() ?? getContentKeyOverride() ?? getContentKey(),
+      sectionId,
+      renderedStepId,
+      internalActions,
+    ]);
+    const session = useMemo(() => getGuidedSession(sessionKey), [sessionKey]);
+    const { isExecuting, currentStepIndex, failedStepIndex, currentStepStatus, executionError, wasCancelled } =
+      useSyncExternalStore(session.subscribe, session.getSnapshot);
+    const {
+      runRef,
+      isExecutingRef,
+      setIsExecuting,
+      setCurrentStepIndex,
+      setFailedStepIndex,
+      setCurrentStepStatus,
+      setExecutionError,
+      setWasCancelled,
+      handler: guidedHandler,
+    } = session;
     const controllerCancelledRef = useRef(false);
     const activeRunIdRef = useRef<string>('');
     const allowCompletedRetryRef = useRef(false);
-    // Track mounted state so a full-screen handoff's navigation, which can
-    // unmount this instance while executeStep awaits it, doesn't resume work
-    // (or call setState) on a component that's already gone.
-    const isMountedRef = useRef(true);
-    useEffect(() => {
-      isMountedRef.current = true;
-      return () => {
-        isMountedRef.current = false;
-      };
-    }, []);
-    // Synchronous re-entrancy latch: `isExecuting` state isn't readable as
-    // true until React flushes the update, so a second click during the
-    // (300-3000ms) full-screen handoff wait below would pass the same stale
-    // `isExecuting === false` check and start a second run — which would
-    // also clobber the first run's listeners via guidedHandler's shared
-    // `cleanupListeners()`. A ref closes that window.
-    const isExecutingRef = useRef(false);
-    const [currentStepIndex, setCurrentStepIndex] = useState(0);
-    const [failedStepIndex, setFailedStepIndex] = useState(-1);
-    const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
-    const [executionError, setExecutionError] = useState<string | null>(null);
-    const [wasCancelled, setWasCancelled] = useState(false);
+    const handoffRef = useRef(false);
+    const hostRef = useRef(Symbol());
 
     // Completion lives in the store. Section-managed steps notify the parent;
     // standalone steps write directly.
@@ -249,52 +263,77 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // checker's own skip bridge writes `'skipped'` first; without this
     // reason plumbing the standalone store write here would silently
     // overwrite it with `'manual'`, making the event lie about intent.
-    const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
-    const isStandalone = !onStepComplete;
-    const persistCompletion = useCallback(
-      (reason: ProgressReason = 'manual') => {
-        if (isStandalone) {
-          markStepCompleted(renderedStepId, sectionId, reason);
-        }
+    const { completed: storedCompleted, reason: storedReason } = useStepCompletion(renderedStepId, sectionId);
+    const isStandalone = !notifyStepComplete;
+    const observation = useObservedCompletion({
+      stepId: renderedStepId,
+      sectionId,
+      objectives,
+      actions: internalActions,
+      eligible: isEligibleForChecking && !disabled,
+      executing: isExecuting || isCurrentlyExecuting,
+      resetTrigger,
+      onStepComplete: notifyStepComplete,
+      onComplete: notifyComplete,
+      analytics: {
+        location: 'interactive_guided_auto',
+        targetAction: 'guided',
+        refTarget: renderedStepId,
+        stepMeta: analyticsStepMeta,
       },
-      [isStandalone, renderedStepId, sectionId]
-    );
+    });
+    const { complete: persistCompletion, onStepComplete, onComplete } = observation;
     const persistReset = useCallback(() => {
       if (isStandalone) {
         resetStep(renderedStepId, sectionId);
       }
     }, [isStandalone, renderedStepId, sectionId]);
 
-    const { config: pluginConfig } = usePathfinderPluginConfig();
-    const interactiveConfig = useMemo(() => getInteractiveConfig(pluginConfig), [pluginConfig]);
-
-    // Create guided handler instance
-    const guidedHandler = useMemo(() => {
-      const stateManager = new InteractiveStateManager();
-      const navigationManager = new NavigationManager();
-      return new GuidedHandler(stateManager, navigationManager, waitForReactUpdates);
-    }, []);
-
-    // Cleanup on unmount: cancel any running guided interaction and clear highlights
-    // guidedHandler.cancel() already calls cleanupListeners(true) which clears highlights
-    // via the handler's own navigationManager instance - no need to create a new one
     useEffect(() => {
+      const mountedLocation = window.location.href;
+      const host = hostRef.current;
+      session.attach(host);
       return () => {
-        guidedHandler.cancel();
+        session.detach(host, handoffRef.current || session.hasNavigatedSince(mountedLocation));
       };
-    }, [guidedHandler]);
+    }, [session]);
 
-    // Handle reset trigger from parent section
+    useEffect(() => {
+      return session.bindCompletion(hostRef.current, () => {
+        persistCompletion();
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        onComplete?.();
+      });
+    }, [session, persistCompletion, onStepComplete, stepId, onComplete]);
+
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
+        session.cancel();
+        runRef.current = null;
+        isExecutingRef.current = false;
+        setIsExecuting(false);
         persistReset();
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local UI state when the parent bumps resetTrigger, alongside the persistReset store write
         setExecutionError(null);
         setCurrentStepIndex(0);
+        setFailedStepIndex(-1);
         setCurrentStepStatus('waiting');
         setWasCancelled(false);
       }
-    }, [resetTrigger, persistReset]);
+    }, [
+      resetTrigger,
+      persistReset,
+      isExecutingRef,
+      setIsExecuting,
+      session,
+      runRef,
+      setExecutionError,
+      setCurrentStepIndex,
+      setFailedStepIndex,
+      setCurrentStepStatus,
+      setWasCancelled,
+    ]);
 
     // Single source of truth: the completion store.
     const isCompleted = storedCompleted;
@@ -317,160 +356,244 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for requirements and objectives
-    // Auto-completion when objectives are met is handled internally by useStepChecker
-    const checker = useStepChecker({
+    const rawChecker = useStepChecker({
+      observedCompletion: observation.completion,
       requirements,
-      objectives,
+      objectives: observation.managed ? undefined : objectives,
       hints,
       stepId: stepId || renderedStepId,
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
       skippable,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
+      lazyRender: internalActions[0]?.lazyRender,
+      scrollContainer: internalActions[0]?.scrollContainer,
       disabled, // Pass through for auto-completion suppression
       sectionId, // Lets the checker write skip / objectives transitions to the store
       onStepComplete, // Pass through for objectives auto-completion
       onComplete, // Pass through for objectives auto-completion
     });
+    const checker = { ...rawChecker, isEnabled: rawChecker.isEnabled && !observation.waiting };
 
+    const { checkRequirements } = useGuideRequirements();
     const aiFixEnabled = useAiFixEnabled();
 
     // Combined completion state: objectives always win
     const isCompletedWithObjectives = storedCompleted || checker.completionReason === 'objectives';
 
-    const executeStep = useCallback(async (): Promise<boolean> => {
-      if (
-        !checker.isEnabled ||
-        (isCompletedWithObjectives && !allowCompletedRetryRef.current) ||
-        isExecuting ||
-        isExecutingRef.current
-      ) {
-        return false;
-      }
-      isExecutingRef.current = true;
-
-      try {
-        if (checker.completionReason === 'objectives') {
-          persistCompletion();
-          if (onStepComplete && stepId) {
-            onStepComplete(stepId);
-          }
-          if (onComplete) {
-            onComplete();
-          }
-          return true;
-        }
-
-        // Guided steps never route through executeInteractiveAction's own gate
-        // (see interactive.hook.ts), so a guided step needs the same full-screen
-        // -> sidebar handoff applied here directly, keyed off its inner actions'
-        // targetAction rather than the 'guided' container tag itself. Uses the
-        // shared predicate (not a local reimplementation) so this can't drift
-        // from the hook's own gate condition.
-        if (internalActions.some((action) => isGrafanaDrivingHandoffNeeded(action.targetAction))) {
-          await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
-        }
-
-        // Deliberately no isMountedRef bail-out here: the handoff's own
-        // navigation unmounts this full-screen instance on every successful
-        // run, not just a stale/raced one — bailing out here would mean the
-        // guided step never actually executes after docking, breaking the
-        // same continue-after-the-wait contract simple steps and code-block
-        // Insert already honor. isExecutingRef (untouched by the unmount
-        // cleanup effect) already fully serializes re-entrant calls on its
-        // own, so there's no race left for a mounted-check to guard against.
-        setIsExecuting(true);
-        setExecutionError(null);
-        guidedHandler.resetProgress();
-        setCurrentStepIndex(0);
-        setFailedStepIndex(-1);
-        setCurrentStepStatus('waiting');
-        setWasCancelled(false);
-        // Commit execution before overlay creation so idle controls and the overlay never overlap.
-        await waitForReactUpdates();
-
-        let completionPersisted = false;
-        const completeStep = () => {
-          if (completionPersisted) {
-            return;
-          }
-          persistCompletion();
-          if (onStepComplete && stepId) {
-            onStepComplete(stepId);
-          }
-          if (onComplete) {
-            onComplete();
-          }
-          completionPersisted = true;
-        };
-
-        try {
-          for (let i = 0; i < internalActions.length; i++) {
-            const action = internalActions[i];
-            setCurrentStepIndex(i);
-            setCurrentStepStatus('waiting');
-
-            const completeBeforeActionEffect =
-              completeEarly && i === internalActions.length - 1 ? completeStep : undefined;
-            const result = await guidedHandler.executeGuidedStep(
-              action!,
-              i,
-              internalActions.length,
-              stepTimeout,
-              completeBeforeActionEffect
-            );
-
-            if (result === 'completed' || result === 'skipped') {
-              if (completeEarly && i === internalActions.length - 1) {
-                completeStep();
-              }
-              setCurrentStepStatus('completed');
-              // Brief visual feedback before moving to next step
-              await new Promise((resolve) => setTimeout(resolve, 500));
-            } else if (result === 'timeout') {
-              setCurrentStepStatus('timeout');
-              setFailedStepIndex(i);
-              setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
-              return false;
-            } else if (result === 'cancelled') {
-              setWasCancelled(true);
-              return false;
-            } else if (result === 'error') {
-              setFailedStepIndex(i);
-              setExecutionError(`Step ${i + 1} failed. Click "Retry" to try again.`);
-              return false;
-            }
-          }
-          completeStep();
-          return true;
-        } catch (error) {
-          logger.error(`Guided execution failed: ${stepId}`, { error });
-          const errorMessage = error instanceof Error ? error.message : 'Guided execution failed';
-          setExecutionError(errorMessage);
+    const executeStep = useCallback(
+      async (startIndex = 0): Promise<boolean> => {
+        if (
+          (startIndex === 0 && !checker.isEnabled) ||
+          (isCompletedWithObjectives && !allowCompletedRetryRef.current) ||
+          isExecuting ||
+          isExecutingRef.current
+        ) {
           return false;
         }
-      } finally {
-        isExecutingRef.current = false;
-        if (isMountedRef.current) {
-          setIsExecuting(false);
-          setCurrentStepIndex(0);
+        const run = session.acquire();
+        if (!run) {
+          getAppEvents().publish({
+            type: 'alert-info',
+            payload: ['Another guided interaction is in progress', 'Finish or cancel it before starting this step.'],
+          });
+          return false;
         }
-      }
-    }, [
-      checker.isEnabled,
-      isCompletedWithObjectives,
-      isExecuting,
-      completeEarly,
-      stepId,
-      internalActions,
-      guidedHandler,
-      stepTimeout,
-      onStepComplete,
-      onComplete,
-      persistCompletion,
-      checker.completionReason,
-      fullScreenFallbackLocation,
-    ]);
+        isExecutingRef.current = true;
+        setIsExecuting(true);
+
+        try {
+          if (checker.completionReason === 'objectives') {
+            persistCompletion();
+            if (onStepComplete && stepId) {
+              onStepComplete(stepId);
+            }
+            if (onComplete) {
+              onComplete();
+            }
+            return true;
+          }
+
+          // Guided actions bypass the hook that normally owns sidebar handoff.
+          if (internalActions.some((action) => isGrafanaDrivingHandoffNeeded(action.targetAction))) {
+            handoffRef.current = true;
+            try {
+              await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
+            } finally {
+              handoffRef.current = false;
+            }
+          }
+
+          await session.waitForHost(run.signal);
+          setIsExecuting(true);
+          setExecutionError(null);
+          setCurrentStepIndex(startIndex);
+          setFailedStepIndex(-1);
+          setCurrentStepStatus('waiting');
+          setWasCancelled(false);
+          // Commit execution before overlay creation so idle controls and the overlay never overlap.
+          await waitForReactUpdates();
+
+          let completionPersisted = false;
+          const completeStep = () => {
+            if (completionPersisted || runRef.current !== run) {
+              return;
+            }
+            session.complete();
+            completionPersisted = true;
+          };
+
+          try {
+            for (let i = startIndex; i < internalActions.length; i++) {
+              await session.waitForHost(run.signal);
+              session.markActionStart();
+              const action = internalActions[i];
+              setCurrentStepIndex(i);
+              setCurrentStepStatus('waiting');
+              const validateAction = async () => {
+                if (!action!.requirements) {
+                  return true;
+                }
+                const options = {
+                  requirements: action!.requirements,
+                  targetAction: action!.targetAction,
+                  refTarget: action!.refTarget ?? '',
+                  targetValue: action!.targetValue,
+                  lazyRender: action!.lazyRender,
+                  scrollContainer: action!.scrollContainer,
+                };
+                const checked = await checkRequirements(options);
+                run.signal.throwIfAborted();
+                if (checked.pass) {
+                  return true;
+                }
+                const fixable = checked.error?.find((error) => error.canFix);
+                if (!fixable) {
+                  return false;
+                }
+                if (fixable.fixType === 'lazy-scroll' && action!.lazyRender) {
+                  await resolveWithRetry(options.refTarget, action!.targetAction, {
+                    delays: [],
+                    lazyRender: true,
+                    scrollContainer: action!.scrollContainer,
+                    signal: run.signal,
+                  });
+                } else {
+                  const navigationManager = new NavigationManager();
+                  const fixed = await dispatchFix({
+                    fixType: fixable.fixType,
+                    targetHref: fixable.targetHref,
+                    scrollContainer: action!.scrollContainer,
+                    requirements: action!.requirements,
+                    stepId: renderedStepId,
+                    navigationManager,
+                    fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
+                  });
+                  if (!fixed.ok) {
+                    return false;
+                  }
+                }
+                run.signal.throwIfAborted();
+                const rechecked = await checkRequirements(options);
+                run.signal.throwIfAborted();
+                return rechecked.pass;
+              };
+
+              const completeBeforeActionEffect =
+                completeEarly && i === internalActions.length - 1 ? completeStep : undefined;
+              const result = await guidedHandler.executeGuidedStep(
+                action!,
+                i,
+                internalActions.length,
+                stepTimeout,
+                completeBeforeActionEffect,
+                {
+                  signal: run.signal,
+                  revalidate: validateAction,
+                }
+              );
+
+              if (runRef.current !== run) {
+                return false;
+              }
+              if (result === 'completed' || result === 'skipped') {
+                if (i === internalActions.length - 1) {
+                  completeStep();
+                  return true;
+                }
+                setCurrentStepStatus('completed');
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              } else if (result === 'timeout') {
+                setCurrentStepStatus('timeout');
+                setFailedStepIndex(i);
+                setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
+                return false;
+              } else if (result === 'cancelled') {
+                setWasCancelled(true);
+                return false;
+              } else if (result === 'error') {
+                setFailedStepIndex(i);
+                setExecutionError(`Step ${i + 1} failed. Click "Retry" to try again.`);
+                return false;
+              }
+            }
+            run.signal.throwIfAborted();
+            completeStep();
+            return true;
+          } catch (error) {
+            if (run.signal.aborted) {
+              if (runRef.current === run) {
+                setWasCancelled(true);
+              }
+              return false;
+            }
+            logger.error(`Guided execution failed: ${stepId}`, { error });
+            const errorMessage = error instanceof Error ? error.message : 'Guided execution failed';
+            setExecutionError(errorMessage);
+            return false;
+          }
+        } catch (_error) {
+          if (!run.signal.aborted) {
+            setExecutionError('Could not start the guided interaction.');
+          }
+          return false;
+        } finally {
+          const ownsRun = runRef.current === run;
+          session.release(run);
+          if (ownsRun) {
+            isExecutingRef.current = false;
+            setIsExecuting(false);
+            setCurrentStepIndex(0);
+          }
+        }
+      },
+      [
+        session,
+        runRef,
+        isExecutingRef,
+        setIsExecuting,
+        setCurrentStepIndex,
+        setFailedStepIndex,
+        setCurrentStepStatus,
+        setExecutionError,
+        setWasCancelled,
+        checker.isEnabled,
+        checkRequirements,
+        renderedStepId,
+        isCompletedWithObjectives,
+        isExecuting,
+        completeEarly,
+        stepId,
+        internalActions,
+        guidedHandler,
+        stepTimeout,
+        onStepComplete,
+        onComplete,
+        persistCompletion,
+        checker.completionReason,
+        fullScreenFallbackLocation,
+      ]
+    );
 
     // Expose execute method for parent (section execution)
     useImperativeHandle(ref, () => {
@@ -479,253 +602,129 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       };
     }, [executeStep]);
 
-    // Auto-detection: Listen for user actions and auto-advance through guided steps
-    useEffect(() => {
-      // Only enable auto-detection if:
-      // 1. Feature is enabled in config
-      // 2. Step is eligible and enabled
-      // 3. Step is not already completed
-      // 4. Step is currently executing (guided mode - waiting for user)
-      if (
-        !interactiveConfig.autoDetection.enabled ||
-        !checker.isEnabled ||
-        isCompletedWithObjectives ||
-        !isExecuting || // Only listen while executing (in guided mode)
-        disabled
-      ) {
-        return;
-      }
-
-      const handleActionDetected = async (event: Event) => {
-        const customEvent = event as CustomEvent<DetectedActionEvent>;
-        const detectedAction = customEvent.detail;
-
-        // Check if the detected action matches the current step
-        const currentAction = internalActions[currentStepIndex];
-        if (!currentAction) {
+    // Handle "Do it" button click
+    const handleDoAction = useCallback(
+      async (startIndex = 0) => {
+        if (
+          disabled ||
+          isExecuting ||
+          (isCompletedWithObjectives && !allowCompletedRetryRef.current) ||
+          (startIndex === 0 && !checker.isEnabled)
+        ) {
           return;
         }
 
-        // Skip auto-detection for noop actions - they don't have a target element
-        if (currentAction.targetAction === 'noop') {
-          return;
-        }
-
-        // A pre-gate guide can carry a verb no detector matches; the handler
-        // reports that step failed, so there is nothing to auto-detect here.
-        if (!isGuidedDomActionType(currentAction.targetAction)) {
-          return;
-        }
-
-        // Non-noop actions require refTarget
-        const selector = currentAction.refTarget;
-        if (!selector) {
-          return;
-        }
-
-        // Try to find target element for coordinate-based matching
-        // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
-        let targetElement: HTMLElement | null = null;
-        try {
-          const actionType = currentAction.targetAction;
-
-          if (actionType === 'button') {
-            // Try text matching on primary
-            const buttons = findButtonByText(selector);
-            if (buttons.length > 0) {
-              targetElement = buttons[0] || null;
-            } else {
-              // Try CSS selector matching
-              const result = querySelectorAllEnhanced(selector);
-              const btnElements = result.elements.filter(
-                (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
-              );
-              if (btnElements.length > 0) {
-                targetElement = btnElements[0] || null;
-              }
-            }
-          } else if (actionType === 'highlight' || actionType === 'hover') {
-            // Use enhanced selector for other action types
-            const result = querySelectorAllEnhanced(selector);
-            if (result.elements.length > 0) {
-              targetElement = result.elements[0] || null;
-            }
-          } else if (actionType === 'formfill') {
-            // Find form elements for formfill actions
-            const result = querySelectorAllEnhanced(selector);
-            const formElements = result.elements.filter((el) => {
-              const tag = el.tagName.toLowerCase();
-              return tag === 'input' || tag === 'textarea' || tag === 'select';
-            });
-            if (formElements.length > 0) {
-              targetElement = formElements[0] || null;
-            }
-          }
-        } catch (error) {
-          // Element resolution failed, fall back to selector-based matching
-          logger.warn('Failed to resolve target element for coordinate matching', { error });
-        }
-
-        // Check if action matches (with coordinate support)
-        const matches = matchesStepAction(
-          detectedAction,
-          {
-            targetAction: currentAction.targetAction,
-            refTarget: selector,
-            targetValue: currentAction.targetValue,
-          },
-          targetElement
-        );
-
-        if (!matches) {
-          return; // Not a match for current step
-        }
-
-        // Notify the guided handler that user completed the step
-        // The handler is listening for this event to proceed
-        const stepCompletedEvent = new CustomEvent('guided-step-completed', {
-          detail: {
-            stepIndex: currentStepIndex,
-            stepId,
-          },
-        });
-        document.dispatchEvent(stepCompletedEvent);
-
-        // Track auto-completion in analytics
+        // Track analytics
         reportAppInteraction(
-          UserInteraction.StepAutoCompleted,
+          UserInteraction.DoItButtonClick,
           buildInteractiveStepProperties(
             {
               target_action: 'guided',
               ref_target: renderedStepId,
-              interaction_location: 'interactive_guided_auto',
-              completion_method: 'auto_detected',
-              internal_step_number: currentStepIndex + 1,
+              interaction_location: 'interactive_guided',
               internal_actions_count: internalActions.length,
             },
             analyticsStepMeta
           )
         );
-      };
 
-      // Subscribe to user-action-detected events
-      document.addEventListener('user-action-detected', handleActionDetected);
-
-      return () => {
-        document.removeEventListener('user-action-detected', handleActionDetected);
-      };
-    }, [
-      interactiveConfig.autoDetection.enabled,
-      checker.isEnabled,
-      isCompletedWithObjectives,
-      isExecuting,
-      disabled,
-      currentStepIndex,
-      internalActions,
-      stepId,
-      renderedStepId,
-      analyticsStepMeta,
-    ]);
-
-    // Handle "Do it" button click
-    const handleDoAction = useCallback(async () => {
-      if (disabled || isExecuting || isCompletedWithObjectives || !checker.isEnabled) {
-        return;
-      }
-
-      // Track analytics
-      reportAppInteraction(
-        UserInteraction.DoItButtonClick,
-        buildInteractiveStepProperties(
-          {
-            target_action: 'guided',
-            ref_target: renderedStepId,
-            interaction_location: 'interactive_guided',
-            internal_actions_count: internalActions.length,
-          },
-          analyticsStepMeta
-        )
-      );
-
-      if (mode === 'controller') {
-        if (!controllerChannel) {
-          // No live tab connected (NEW-1073-1): tell the user instead of toggling
-          // a spinner that resolves to nothing.
-          getAppEvents().publish({
-            type: 'alert-info',
-            payload: ['No live tab connected', 'Open a live Grafana tab to run this step there.'],
+        if (mode === 'controller') {
+          if (isExecutingRef.current) {
+            return;
+          }
+          if (!controllerChannel) {
+            getAppEvents().publish({
+              type: 'alert-info',
+              payload: ['No live tab connected', 'Open a live Grafana tab to run this step there.'],
+            });
+            return;
+          }
+          // Composite requirements use the entry gate to avoid repeated cross-tab round trips.
+          isExecutingRef.current = true;
+          setExecutionError(null);
+          setWasCancelled(false);
+          setCurrentStepStatus('waiting');
+          setCurrentStepIndex(startIndex);
+          controllerCancelledRef.current = false;
+          const runId = crypto.randomUUID();
+          activeRunIdRef.current = runId;
+          setIsExecuting(true);
+          // Subscribe before posting so the first live-tab progress tick cannot be lost.
+          let lastIndex = startIndex;
+          const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) => {
+            lastIndex = index;
+            setCurrentStepIndex(index);
+            setCurrentStepStatus('waiting');
           });
+          const completion = controllerChannel.awaitStepComplete(
+            renderedStepId,
+            runId,
+            guidedStepWaitMs(internalActions.length - startIndex)
+          );
+          controllerChannel.post({
+            kind: 'step-command',
+            startIndex,
+            phase: 'do',
+            stepId: renderedStepId,
+            runId,
+            action: {
+              targetAction: 'guided',
+              refTarget: '',
+              internalActions: internalActions.map(toCrossTabInternalAction),
+            },
+          });
+          try {
+            const finished = await completion;
+            if (finished) {
+              persistCompletion();
+              if (onStepComplete && stepId) {
+                onStepComplete(stepId);
+              }
+              if (onComplete) {
+                onComplete();
+              }
+            } else if (!controllerCancelledRef.current) {
+              setFailedStepIndex(lastIndex);
+              setExecutionError('The live tab did not finish this step. Retry the current step.');
+              getAppEvents().publish({
+                type: 'alert-warning',
+                payload: ['Step not completed', 'The live tab did not finish this step — please retry.'],
+              });
+            }
+          } finally {
+            isExecutingRef.current = false;
+            stopProgress?.();
+            setIsExecuting(false);
+          }
           return;
         }
-        // §6.4 (entry-only): composites are NOT re-gated at click time the way a
-        // simple step is (which calls checker.revalidate() before posting). A
-        // requirement round-trip can cost up to ~4s, and a composite would pay
-        // that per click on top of its staged replay, so we keep the entry gate
-        // only and let each sub-action fail on the live tab if a prereq regressed.
-        controllerCancelledRef.current = false;
-        const runId = crypto.randomUUID();
-        activeRunIdRef.current = runId;
-        setIsExecuting(true);
-        // Subscribe before posting so the first progress tick the live tab emits
-        // can't arrive before we're listening.
-        const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) => {
-          setCurrentStepIndex(index);
-          setCurrentStepStatus('waiting');
-        });
-        controllerChannel.post({
-          kind: 'step-command',
-          phase: 'do',
-          stepId: renderedStepId,
-          runId,
-          action: {
-            targetAction: 'guided',
-            refTarget: '',
-            internalActions: internalActions.map(toCrossTabInternalAction),
-          },
-        });
-        try {
-          const finished = await controllerChannel.awaitStepComplete(renderedStepId, runId);
-          if (finished) {
-            persistCompletion();
-            if (onStepComplete && stepId) {
-              onStepComplete(stepId);
-            }
-            if (onComplete) {
-              onComplete();
-            }
-          } else if (!controllerCancelledRef.current) {
-            // NEW-1073-3: the live tab didn't finish (it disconnected or the step
-            // failed there) and the user didn't cancel — surface a retry hint
-            // rather than silently leaving the step incomplete.
-            getAppEvents().publish({
-              type: 'alert-warning',
-              payload: ['Step not completed', 'The live tab did not finish this step — please retry.'],
-            });
-          }
-        } finally {
-          stopProgress?.();
-          setIsExecuting(false);
-        }
-        return;
-      }
 
-      await executeStep();
-    }, [
-      disabled,
-      isExecuting,
-      isCompletedWithObjectives,
-      checker.isEnabled,
-      executeStep,
-      internalActions,
-      renderedStepId,
-      analyticsStepMeta,
-      mode,
-      controllerChannel,
-      persistCompletion,
-      onStepComplete,
-      onComplete,
-      stepId,
-    ]);
+        await executeStep();
+      },
+      [
+        isExecutingRef,
+        setIsExecuting,
+        setCurrentStepIndex,
+        setFailedStepIndex,
+        setCurrentStepStatus,
+        setExecutionError,
+        setWasCancelled,
+        disabled,
+        isExecuting,
+        isCompletedWithObjectives,
+        checker.isEnabled,
+        executeStep,
+        internalActions,
+        renderedStepId,
+        analyticsStepMeta,
+        mode,
+        controllerChannel,
+        persistCompletion,
+        onStepComplete,
+        onComplete,
+        stepId,
+      ]
+    );
 
     // Handle step reset (redo functionality)
     const handleStepRedo = useCallback(() => {
@@ -742,53 +741,92 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-    }, [disabled, isExecuting, stepId, onStepReset, persistReset]);
+    }, [
+      disabled,
+      isExecuting,
+      stepId,
+      onStepReset,
+      persistReset,
+      setExecutionError,
+      setCurrentStepIndex,
+      setCurrentStepStatus,
+      setWasCancelled,
+    ]);
 
     const markSkipped = checker.markSkipped;
-    const handleSkipStep = useCallback(async () => {
-      await markSkipped?.();
-      setExecutionError(null);
-      setFailedStepIndex(-1);
-      setWasCancelled(false);
-      persistCompletion('skipped');
+    const handleSkipStep = useCallback(
+      async (skipReason: StepSkipReason) => {
+        if (!markSkipped || storedReason === 'skipped') {
+          return;
+        }
+        await markSkipped();
+        setExecutionError(null);
+        setFailedStepIndex(-1);
+        setWasCancelled(false);
+        persistCompletion('skipped');
+        reportStepSkipped(
+          { targetAction: 'guided', interactionLocation: 'interactive_guided', skipReason },
+          analyticsStepMeta
+        );
 
-      if (onStepComplete && stepId) {
-        onStepComplete(stepId);
-      }
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
 
-      if (onComplete) {
-        onComplete();
-      }
-    }, [stepId, onStepComplete, onComplete, persistCompletion, markSkipped]);
+        if (onComplete) {
+          onComplete();
+        }
+      },
+      [
+        stepId,
+        onStepComplete,
+        onComplete,
+        persistCompletion,
+        markSkipped,
+        storedReason,
+        analyticsStepMeta,
+        setExecutionError,
+        setFailedStepIndex,
+        setWasCancelled,
+      ]
+    );
 
     // Handle retry after timeout or cancellation
     const handleRetry = useCallback(async () => {
-      setExecutionError(null);
-      setCurrentStepStatus('waiting');
-      setWasCancelled(false);
       allowCompletedRetryRef.current = true;
       try {
-        await executeStep();
+        const startIndex = !wasCancelled && failedStepIndex >= 0 ? failedStepIndex : 0;
+        if (mode === 'controller') {
+          await handleDoAction(startIndex);
+        } else {
+          await executeStep(startIndex);
+        }
       } finally {
         allowCompletedRetryRef.current = false;
       }
-    }, [executeStep]);
+    }, [executeStep, wasCancelled, failedStepIndex, mode, handleDoAction]);
 
     // Handle cancel during guided execution
     const handleCancel = useCallback(async () => {
-      // In controller mode the run is remote: release the awaitStepComplete waiter
-      // so the await resolves and the spinner clears, and flag the cancel so the
-      // awaiting branch skips its "not completed" toast.
       controllerCancelledRef.current = true;
       controllerChannel?.cancelStepComplete(renderedStepId, activeRunIdRef.current);
-      guidedHandler.cancel();
+      session.cancel();
 
       setIsExecuting(false);
       setExecutionError(null);
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
       setWasCancelled(true);
-    }, [guidedHandler, controllerChannel, renderedStepId]);
+    }, [
+      session,
+      controllerChannel,
+      renderedStepId,
+      setIsExecuting,
+      setExecutionError,
+      setCurrentStepIndex,
+      setCurrentStepStatus,
+      setWasCancelled,
+    ]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 
@@ -804,6 +842,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       wasCancelled,
       isChecking: checker.isChecking,
       isEnabled: checker.isEnabled,
+      isWaiting: observation.waiting,
     });
 
     return (
@@ -817,12 +856,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-test-substep-index={isExecuting ? currentStepIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
-          checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
+          checker.isChecking ? 'checking' : rawChecker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }
       >
         {/* Title and description - always shown */}
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
+          {observation.waiting && (
+            <CompletionWaitingStatus id={renderedStepId} unmet={observation.unmet} onCheck={observation.retry} />
+          )}
           {children}
         </div>
 
@@ -833,7 +875,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           <div className="interactive-guided-idle">
             <div className="interactive-guided-actions">
               <Button
-                onClick={handleDoAction}
+                onClick={() => void handleDoAction()}
                 disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="primary"
@@ -847,18 +889,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               </Button>
               {skippable && (
                 <Button
-                  onClick={async () => {
-                    if (checker.markSkipped) {
-                      await checker.markSkipped();
-                      persistCompletion('skipped');
-                      if (onStepComplete && stepId) {
-                        onStepComplete(stepId);
-                      }
-                      if (onComplete) {
-                        onComplete();
-                      }
-                    }
-                  }}
+                  onClick={() => handleSkipStep('user')}
                   disabled={disabled || isAnyActionRunning}
                   size="sm"
                   variant="secondary"
@@ -1022,7 +1053,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 className="interactive-guided-retry-btn"
                 data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
               >
-                ↻ Try again
+                ↻ Retry current step
               </Button>
               {aiFixEnabled && failedStepIndex >= 0 && (
                 <AiFixButton
@@ -1043,7 +1074,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               )}
               {skippable && (
                 <Button
-                  onClick={handleSkipStep}
+                  onClick={() => handleSkipStep('after_failure')}
                   size="sm"
                   variant="secondary"
                   className="interactive-guided-skip-btn"
@@ -1076,7 +1107,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               </Button>
               {skippable && (
                 <Button
-                  onClick={handleSkipStep}
+                  onClick={() => handleSkipStep('user')}
                   size="sm"
                   variant="secondary"
                   className="interactive-guided-skip-btn"

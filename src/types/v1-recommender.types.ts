@@ -20,6 +20,12 @@ export interface V1AuthorInfo {
   team?: string;
 }
 
+export interface V1Prerequisite {
+  id: string;
+  label: string;
+  format?: 'markdown';
+}
+
 /**
  * Package metadata nested inside a package-backed V1Recommendation.
  * Carries manifest-derived fields: identity, type, dependency/navigation
@@ -35,6 +41,7 @@ export interface V1PackageManifest {
   category?: string;
   author?: V1AuthorInfo;
   startingLocation?: string;
+  minGrafanaVersion?: string;
   milestones?: string[];
   depends?: string[];
   recommends?: string[];
@@ -42,6 +49,7 @@ export interface V1PackageManifest {
   provides?: string[];
   conflicts?: string[];
   replaces?: string[];
+  prerequisites?: V1Prerequisite[];
 }
 
 /**

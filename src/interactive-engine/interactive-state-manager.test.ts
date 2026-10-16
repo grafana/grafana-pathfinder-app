@@ -23,6 +23,17 @@ describe('InteractiveStateManager', () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it('does not publish a pending completion after cancellation', async () => {
+    const controller = new AbortController();
+    const completed = jest.fn();
+    document.addEventListener('interactive-action-completed', completed);
+    const pending = manager.setState({ ...data, signal: controller.signal }, 'completed');
+    controller.abort();
+    await pending;
+    expect(completed).not.toHaveBeenCalled();
+    document.removeEventListener('interactive-action-completed', completed);
+  });
+
   it('should dispatch event on setState completed', async () => {
     const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
     await manager.setState(data, 'completed');

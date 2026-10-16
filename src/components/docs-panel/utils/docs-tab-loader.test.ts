@@ -35,6 +35,10 @@ describe('loadDocsTabContentResult', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
       undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       undefined
     );
     expect(mockFetchPackageById).not.toHaveBeenCalled();
@@ -53,7 +57,63 @@ describe('loadDocsTabContentResult', () => {
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
       undefined,
-      'app-platform'
+      'app-platform',
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    );
+  });
+
+  // Regression: the manifest guide id a click target already carried
+  // (GuideList's current row, the cover-page CTA) must reach
+  // fetchPackageContent so it can classify the load structurally instead of
+  // comparing resolved URLs.
+  it('threads explicitGuideId through to fetchPackageContent', async () => {
+    mockFetchPackageContent.mockResolvedValueOnce({ content: null, error: 'x', errorType: 'other' });
+
+    const packageManifest = { id: 'alerting-101', type: 'path', milestones: ['step-1'] };
+    await loadDocsTabContentResult('https://interactive-learning.grafana.net/packages/step-1/content.json', {
+      packageInfo: { packageId: 'alerting-101', packageManifest },
+      explicitGuideId: 'step-1',
+    });
+
+    expect(mockFetchPackageContent).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/step-1/content.json',
+      packageManifest,
+      undefined,
+      undefined,
+      undefined,
+      'step-1',
+      undefined,
+      undefined
+    );
+  });
+
+  // The cover page's own base URL, when docs-panel.tsx already knows it
+  // (the tab's outgoing content, right before a track-member click
+  // overwrites it), must reach fetchPackageContent so a transient failure
+  // of that request's OWN independent re-resolve doesn't silently drop the
+  // track-only guide's completion.
+  it('threads knownBaseUrl through to fetchPackageContent', async () => {
+    mockFetchPackageContent.mockResolvedValueOnce({ content: null, error: 'x', errorType: 'other' });
+
+    const packageManifest = { id: 'the-path', type: 'path', tracks: [{ trackId: 'builder', guides: ['t-only'] }] };
+    await loadDocsTabContentResult('https://interactive-learning.grafana.net/packages/t-only/content.json', {
+      packageInfo: { packageId: 'the-path', packageManifest },
+      explicitGuideId: 't-only',
+      knownBaseUrl: 'https://interactive-learning.grafana.net/packages/the-path/content.json',
+    });
+
+    expect(mockFetchPackageContent).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/t-only/content.json',
+      packageManifest,
+      undefined,
+      undefined,
+      undefined,
+      't-only',
+      'https://interactive-learning.grafana.net/packages/the-path/content.json',
+      undefined
     );
   });
 
@@ -72,7 +132,7 @@ describe('loadDocsTabContentResult', () => {
       },
     });
 
-    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest, undefined);
+    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest, undefined, undefined);
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
     expect(mockFetchContent).not.toHaveBeenCalled();
   });
@@ -88,6 +148,7 @@ describe('loadDocsTabContentResult', () => {
       content: null,
       error: UNRESOLVED_PACKAGE_ERROR,
       errorType: 'not-found',
+      diagnostic: { source: 'other', stage: 'resolve', reason: 'not-found' },
     });
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
@@ -111,4 +172,9 @@ describe('loadDocsTabContentResult', () => {
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
   });
+});
+
+it('classifies an empty docs URL before attempting a fetch', async () => {
+  const result = await loadDocsTabContentResult('  ');
+  expect(result.diagnostic).toEqual({ source: 'other', stage: 'resolve', reason: 'invalid-url' });
 });

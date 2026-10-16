@@ -167,19 +167,9 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         </Alert>
       )}
       <FieldSet label="Interactive guide features" className={styles.fieldSet}>
-        <Alert
-          title="Experimental feature"
-          severity={state.enableAutoDetection ? 'info' : 'warning'}
-          className={styles.alert}
-        >
-          {state.enableAutoDetection
-            ? 'Auto-completion detection is enabled. Tutorial steps will automatically complete when you perform actions yourself.'
-            : 'Auto-completion detection is disabled. You must click "Do it" buttons to complete tutorial steps.'}
-        </Alert>
-
         <div className={styles.section}>
           <Text variant="h4" weight="medium">
-            Auto-completion detection
+            Automatic completion
           </Text>
           <div className={styles.toggleSection}>
             <Switch
@@ -190,23 +180,14 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
             />
             <div className={styles.toggleLabels}>
               <Text variant="body" weight="medium">
-                Enable automatic step completion
+                Complete steps automatically
               </Text>
               <Text variant="body" color="secondary">
-                Automatically mark tutorial steps as complete when you perform actions yourself (without clicking
-                &quot;Do it&quot; buttons)
+                Open guides mark steps complete when their objectives are already met or readers perform the actions
+                themselves. Turn this off to complete steps only with Show me, Do it, or Mark complete.
               </Text>
             </div>
           </div>
-
-          {state.enableAutoDetection && (
-            <Alert severity="info" title="How it works" className={styles.infoAlert}>
-              <Text variant="body">
-                When enabled, the system detects your actions and completes tutorial steps automatically for a more
-                natural learning experience. Steps will still verify requirements before completion.
-              </Text>
-            </Alert>
-          )}
         </div>
 
         <div className={styles.divider} />

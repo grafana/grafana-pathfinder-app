@@ -149,6 +149,13 @@ type completionWriteRequest struct {
 	// and non-blank; never persisted. See completionRecordName for how it derives
 	// the record name.
 	IdempotencyKey string `json:"idempotencyKey"`
+
+	// AttemptID, when present, makes this write one attempt's progress: the
+	// record is named from (userID, attemptId) and updated in place
+	// (completion_records_attempt.go). Absent, the write is the legacy
+	// create-only completion and behaves exactly as before.
+	AttemptID        string `json:"attemptId,omitempty"`
+	AttemptStartedAt string `json:"attemptStartedAt,omitempty"`
 }
 
 // handleCreateCompletionRecord serves POST /completion-records.
@@ -181,13 +188,13 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	case identityUnverifiable, identitySigningKeysDown:
 		reason := status.capabilityReason()
 		a.ctxLogger(r.Context()).Info("completion write route unavailable (structural)", "reason", reason)
-		a.writeError(w, reason, http.StatusNotFound)
+		a.writeProxyError(w, reason, http.StatusNotFound, proxyGateDiagnostic("identity-unavailable", "completionrecords", "create", "identity"))
 		return
 	case identityUnknown, identityRejected:
-		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
+		a.writeProxyError(w, "unauthenticated", http.StatusUnauthorized, proxyGateDiagnostic("identity-unavailable", "completionrecords", "create", "identity"))
 		return
 	default:
-		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
+		a.writeProxyError(w, "unauthenticated", http.StatusUnauthorized, proxyGateDiagnostic("identity-unavailable", "completionrecords", "create", "identity"))
 		return
 	}
 	if userLogin == "" {
@@ -213,7 +220,7 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		// for this session; the front end re-arms on a later app load and
 		// re-attempts, so a stack that gains the backend later starts recording then.
 		a.ctxLogger(r.Context()).Info("completion write route unavailable (structural)", "namespace", namespace, "reason", reason)
-		a.writeError(w, reason, http.StatusNotFound)
+		a.writeProxyError(w, reason, http.StatusNotFound, proxyGateDiagnostic("proxy-unavailable", "completionrecords", "create", "configuration"))
 		return
 	}
 
@@ -226,6 +233,15 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	spec, err := a.buildCompletionSpec(r, req, userID, userLogin, userDisplayName, namespace)
 	if err != nil {
 		a.writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.AttemptID != "" {
+		spec.AttemptStartedAt = req.AttemptStartedAt
+		if spec.AttemptStartedAt == "" {
+			spec.AttemptStartedAt = req.CompletedAt
+		}
+		a.handleCompletionAttemptWrite(w, r, creator, namespace, userID, req.AttemptID, spec)
 		return
 	}
 
@@ -251,6 +267,17 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 
 	// Surface the new record promptly on the next GET /completion-records/my.
 	invalidateCompletionIndex(namespace)
+	a.writeSatisfiedAssignments(r, userID, completionRecordSpec{
+		UserID:            spec.UserID,
+		GuideID:           spec.GuideID,
+		GuideSource:       spec.GuideSource,
+		GuideTitle:        spec.GuideTitle,
+		GuideCategory:     spec.GuideCategory,
+		PathID:            spec.PathID,
+		Source:            spec.Source,
+		CompletedAt:       spec.CompletedAt,
+		CompletionPercent: spec.CompletionPercent,
+	})
 	a.ctxLogger(r.Context()).Debug("completion record created",
 		"namespace", namespace, "guideSource", spec.GuideSource, "guideId", spec.GuideID, "name", name)
 	a.writeJSON(w, map[string]string{"name": name}, http.StatusCreated)
@@ -296,6 +323,7 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 		{"pathId", req.PathID, completionMaxIDLen},
 		{"guideTitle", req.GuideTitle, completionMaxTitleLen},
 		{"idempotencyKey", req.IdempotencyKey, completionMaxIDLen},
+		{"attemptId", req.AttemptID, completionMaxIDLen},
 	} {
 		if err := validateBoundedText(f.name, f.value, f.max); err != nil {
 			return completionRecordWriteSpec{}, err
@@ -312,6 +340,17 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 	}
 	if req.CompletionPercent < 0 || req.CompletionPercent > 100 {
 		return completionRecordWriteSpec{}, fmt.Errorf("completionPercent out of range")
+	}
+	// The attempt id names the record, so it must be exactly what the client
+	// minted: no surrounding whitespace.
+	if req.AttemptID != "" && strings.TrimSpace(req.AttemptID) != req.AttemptID {
+		return completionRecordWriteSpec{}, fmt.Errorf("invalid attemptId")
+	}
+	if req.AttemptStartedAt != "" {
+		started, err := time.Parse(time.RFC3339Nano, req.AttemptStartedAt)
+		if err != nil || started.IsZero() || started.After(timeNow().Add(completionMaxClockSkew)) {
+			return completionRecordWriteSpec{}, fmt.Errorf("invalid attemptStartedAt")
+		}
 	}
 	if err := validateCompletedAt(req.CompletedAt); err != nil {
 		return completionRecordWriteSpec{}, err
@@ -394,28 +433,17 @@ func validateCompletedAt(s string) error {
 	return nil
 }
 
-// writeCompletionUpstreamError maps an upstream create failure onto the front-end
-// contract: transient (429/5xx/network → retryable, echoing Retry-After) vs
-// terminal (other 4xx → drop; an echoed 401 is retried client-side as transient).
 func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Request, err error) {
 	logger := a.ctxLogger(r.Context())
 	status, hasStatus := upstreamStatusOf(err)
 	if !hasStatus {
-		// Network / timeout / decode / token exchange — no HTTP status, treat as
-		// transient.
 		w.Header().Set("Retry-After", strconv.Itoa(completionWriteRetryAfterSeconds))
 		if isTokenExchangeError(err) {
-			// Retryable, but never routine: the credential IS provisioned (a stack
-			// without one never reaches here — see resolveCompletionWriteBackend), so
-			// a persistent failure means the environment is missing its delegated-
-			// permissions grant and every queued write will retry until the 30-day
-			// horizon. Log at the same Faro-visible level as the 403 decision so that
-			// is loud rather than silent.
-			logger.Warn("completion write token exchange failed (transient, retried)", "error", err)
+			logger.Warn("completion write token exchange failed (transient, retried)", "reason", classifyGuideProxyError(err).Reason)
 		} else {
-			logger.Debug("completion write transient (no upstream status)", "error", err)
+			logger.Debug("completion write transient (no upstream status)", "reason", classifyGuideProxyError(err).Reason)
 		}
-		a.writeError(w, "completion-write-unavailable", http.StatusServiceUnavailable)
+		a.writeProxyError(w, "completion-write-unavailable", http.StatusServiceUnavailable, appPlatformDiagnostic(err, "completionrecords", "create"))
 		return
 	}
 	if isTransientUpstreamStatus(status) {
@@ -424,43 +452,23 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 			retryAfter = strconv.Itoa(completionWriteRetryAfterSeconds)
 		}
 		w.Header().Set("Retry-After", retryAfter)
-		logger.Debug("completion write transient upstream failure", "status", status, "error", err)
+		logger.Debug("completion write transient upstream failure", "status", status, "reason", classifyGuideProxyError(err).Reason)
 		responseStatus := status
-		// An unexpected 2xx/3xx (including an unfollowed redirect) is not a real
-		// contract status to echo — normalize it to a retryable 502.
 		if status >= 200 && status < 400 {
 			responseStatus = http.StatusBadGateway
 		}
-		a.writeError(w, "completion-write-unavailable", responseStatus)
+		a.writeProxyError(w, "completion-write-unavailable", responseStatus, appPlatformDiagnostic(err, "completionrecords", "create"))
 		return
 	}
-	// Terminal 4xx: schema/validation rejected upstream, or identity-scoped
-	// 401/403. Echo the upstream status VERBATIM. The client drops only the
-	// genuine validation failures; 401 it retries as transient, and 403 and 404
-	// both disarm writes for the session while KEEPING the queued items. A 404 is
-	// preserved, not remapped: the create POSTs to the completionrecords
-	// COLLECTION, so an upstream 404 means the group/route is not served on this
-	// stack. That is the structural "route not deployed here" signal — never a
-	// per-record drop.
 	switch status {
 	case http.StatusUnauthorized:
-		// The handler's own 401 gate already rejected a missing/expired inbound ID
-		// token, so an upstream 401 means the MINTED access token was rejected —
-		// wrong audience, bad access policy, or scopes the CAP token does not carry —
-		// which does not self-heal while the client keeps retrying it as transient.
-		// Same retry-until-the-30-day-horizon shape the 403 and token-exchange warns
-		// exist for, so log at the same Faro-visible level.
-		logger.Warn("completion write unauthorized upstream (minted credential rejected, retried)", "status", status, "error", err)
+		logger.Warn("completion write unauthorized upstream (minted credential rejected, retried)", "status", status, "reason", classifyGuideProxyError(err).Reason)
 	case http.StatusForbidden:
-		// A 403 disarms the client for the session and retains the queued records,
-		// so nothing is lost — but it signals a systemic RBAC/grant-rollout denial
-		// that will not clear on its own, so log at a level the Faro telemetry
-		// layer surfaces rather than Debug/Info.
-		logger.Warn("completion write forbidden upstream (disarms client, records retained)", "status", status, "error", err)
+		logger.Warn("completion write forbidden upstream (disarms client, records retained)", "status", status, "reason", classifyGuideProxyError(err).Reason)
 	default:
-		logger.Info("completion write terminal upstream failure", "status", status, "error", err)
+		logger.Info("completion write terminal upstream failure", "status", status, "reason", classifyGuideProxyError(err).Reason)
 	}
-	a.writeError(w, "completion-write-rejected", status)
+	a.writeProxyError(w, "completion-write-rejected", status, appPlatformDiagnostic(err, "completionrecords", "create"))
 }
 
 // completionRecordName mints the DNS-safe object name for a create. The name is

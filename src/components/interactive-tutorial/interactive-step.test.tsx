@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { clearHeldCompletionRequests, renderWithCoordinator as render } from '../../test-utils/completion-coordinator';
 import { InteractiveStep, executeWithLazyScroll } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
@@ -7,6 +8,12 @@ import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../../lib/pairing-manager';
 import { testIds } from '../../constants/testIds';
 import { resetCompletionStoreForTests } from '../../global-state/completion-store';
+import { reportStepSkipped } from '../../lib/analytics';
+
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportStepSkipped: jest.fn(),
+}));
 
 describe('executeWithLazyScroll: step outcome propagation', () => {
   afterEach(() => {
@@ -180,6 +187,85 @@ describe('InteractiveStep: objectives', () => {
 
     await waitFor(() => expect(onStepComplete).toHaveBeenCalledWith('section-1-step-1'));
     expect(screen.getByTestId(testIds.interactive.stepCompleted('section-1-step-1'))).toBeInTheDocument();
+  });
+});
+
+describe('InteractiveStep: formfill validation', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  it('shows the form hint for a mismatch and becomes valid when the value matches', async () => {
+    const input = document.createElement('input');
+    input.name = 'validated-form';
+    document.body.appendChild(input);
+
+    render(
+      <InteractiveStep
+        stepId="validated-form-step"
+        targetAction="formfill"
+        refTarget="input[name='validated-form']"
+        targetValue="expected value"
+        formHint="Please enter the expected value"
+        validateInput
+      >
+        Enter the expected value
+      </InteractiveStep>
+    );
+
+    const step = screen.getByTestId(testIds.interactive.step('validated-form-step'));
+    fireEvent.input(input, { target: { value: 'wrong value' } });
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(step).toHaveAttribute('data-test-form-state', 'invalid');
+    expect(screen.getByTestId(testIds.interactive.formHintWarning('validated-form-step'))).toHaveTextContent(
+      'Please enter the expected value'
+    );
+
+    fireEvent.input(input, { target: { value: 'expected value' } });
+    await act(async () => jest.advanceTimersByTime(2000));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'completed'));
+    expect(screen.getByTestId(testIds.interactive.stepCompleted('validated-form-step'))).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.interactive.formHintWarning('validated-form-step'))).not.toBeInTheDocument();
+  });
+
+  it('validates a form target that appears after the step mounts', async () => {
+    render(
+      <InteractiveStep
+        stepId="late-form-step"
+        targetAction="formfill"
+        refTarget="input[name='late-validated-form']"
+        targetValue="expected value"
+        formHint="Please enter the expected value"
+        validateInput
+      >
+        Enter the expected value
+      </InteractiveStep>
+    );
+
+    const input = document.createElement('input');
+    input.name = 'late-validated-form';
+    document.body.appendChild(input);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => jest.advanceTimersByTime(50));
+    await act(async () => {});
+
+    const step = screen.getByTestId(testIds.interactive.step('late-form-step'));
+    fireEvent.input(input, { target: { value: 'wrong value' } });
+    await act(async () => {});
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(step).toHaveAttribute('data-test-form-state', 'invalid');
+    expect(screen.getByTestId(testIds.interactive.formHintWarning('late-form-step'))).toHaveTextContent(
+      'Please enter the expected value'
+    );
+
+    fireEvent.input(input, { target: { value: 'expected value' } });
+    await act(async () => {});
+    await act(async () => jest.advanceTimersByTime(2000));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'completed'));
   });
 });
 
@@ -445,22 +531,76 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     );
   });
 
+  it('does not post-verify a successful remote Show me preview', async () => {
+    const transport = makeTransport();
+    await renderPairedController(
+      transport,
+      <InteractiveStep
+        targetAction="highlight"
+        refTarget="#panel"
+        stepId="preview"
+        showMe
+        doIt={false}
+        postVerify="exists-selector(#created)"
+      >
+        Step
+      </InteractiveStep>
+    );
+    const button = await screen.findByRole('button', { name: /show me/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' })));
+    const command = transport.post.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.kind === 'step-command');
+    const checksBefore = countRequirementChecks(transport);
+    await act(async () => {
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live',
+        timestamp: 0,
+        kind: 'step-complete',
+        stepId: command.stepId,
+        runId: command.runId,
+        ok: true,
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.step('preview'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      )
+    );
+    expect(countRequirementChecks(transport)).toBe(checksBefore);
+    expect(screen.queryByText('Verification failed in the live tab.')).not.toBeInTheDocument();
+  });
+
   it('emits a "do" step-command when Do it is clicked', async () => {
     const transport = makeTransport();
     await renderPairedController(
       transport,
-      <InteractiveStep targetAction="button" refTarget="button[type='submit']" stepId="ctrl-do">
+      <InteractiveStep
+        targetAction="navigate"
+        refTarget="/dashboards"
+        openGuide="bundled:destination-guide"
+        stepId="ctrl-do"
+      >
         Step
       </InteractiveStep>
     );
 
-    const button = await screen.findByRole('button', { name: /do it/i });
+    const button = await screen.findByRole('button', { name: /go there/i });
     await waitFor(() => expect(button).not.toBeDisabled());
     fireEvent.click(button);
 
     await waitFor(() =>
       expect(transport.post).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'step-command', phase: 'do', stepId: 'ctrl-do' })
+        expect.objectContaining({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 'ctrl-do',
+          action: expect.objectContaining({ openGuide: 'bundled:destination-guide' }),
+        })
       )
     );
   });
@@ -556,6 +696,165 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     expect(screen.queryByRole('button', { name: /do it/i })).not.toBeInTheDocument();
   });
 
+  it('reports a negative remote acknowledgement as an action failure', async () => {
+    const transport = makeTransport();
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="button" refTarget="#ok" stepId="remote-failed">
+        Step
+      </InteractiveStep>
+    );
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' })));
+    const command = transport.post.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.kind === 'step-command');
+    await act(async () => {
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live',
+        timestamp: 0,
+        kind: 'step-complete',
+        stepId: command.stepId,
+        runId: command.runId,
+        ok: false,
+      });
+    });
+    expect(
+      screen.getByText('The action did not complete in the live tab. Restore the required state and try again.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Refresh both tabs/)).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.step('remote-failed'))).not.toHaveAttribute(
+      'data-test-step-state',
+      'completed'
+    );
+  });
+
+  it('shows refresh guidance when the live tab disconnects during an action', async () => {
+    const intervalSpy = jest.spyOn(global, 'setInterval');
+    const transport = makeTransport();
+    try {
+      await renderPairedController(
+        transport,
+        <InteractiveStep targetAction="button" refTarget="#ok" stepId="remote-disconnected">
+          Step
+        </InteractiveStep>
+      );
+      act(() => {
+        transport.emit({
+          source: 'pathfinder',
+          senderId: 'live',
+          timestamp: Date.now(),
+          kind: 'heartbeat',
+          role: 'live',
+        });
+      });
+      const heartbeatTick = intervalSpy.mock.calls.find(([, delay]) => delay === 2000)![0] as () => void;
+      const button = await screen.findByRole('button', { name: /do it/i });
+      await waitFor(() => expect(button).not.toBeDisabled());
+      fireEvent.click(button);
+      await waitFor(() =>
+        expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' }))
+      );
+      jest.useFakeTimers();
+      await act(async () => {
+        jest.setSystemTime(Date.now() + 6000);
+        heartbeatTick();
+      });
+      expect(
+        screen.getByText('The live tab did not confirm completion. Refresh both tabs and try again.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Restore the required state/)).not.toBeInTheDocument();
+      expect(screen.getByTestId(testIds.interactive.step('remote-disconnected'))).not.toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      );
+    } finally {
+      jest.useRealTimers();
+      intervalSpy.mockRestore();
+    }
+  });
+
+  it('does not cancel or fail a credited completeEarly remote action when no acknowledgement arrives', async () => {
+    const transport = makeTransport();
+    const onComplete = jest.fn();
+    await renderPairedController(
+      transport,
+      <InteractiveStep
+        targetAction="button"
+        refTarget="#ok"
+        stepId="early-remote"
+        completeEarly
+        onComplete={onComplete}
+      >
+        Step
+      </InteractiveStep>
+    );
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    jest.useFakeTimers();
+    try {
+      fireEvent.click(button);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(100);
+      });
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId(testIds.interactive.step('early-remote'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      );
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(31000);
+      });
+      expect(screen.getByTestId(testIds.interactive.step('early-remote'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      );
+      expect(transport.post).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-cancel' }));
+      expect(screen.queryByText(/Refresh both tabs/)).not.toBeInTheDocument();
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops a simple remote step after 30 seconds when an older live tab never acknowledges it', async () => {
+    const transport = makeTransport();
+    await renderPairedController(
+      transport,
+      <InteractiveStep targetAction="button" refTarget="#ok" stepId="old-peer">
+        Step
+      </InteractiveStep>
+    );
+    const button = await screen.findByRole('button', { name: /do it/i });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    jest.useFakeTimers();
+    try {
+      fireEvent.click(button);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(100);
+      });
+      expect(screen.getByTestId(testIds.interactive.step('old-peer'))).toHaveAttribute(
+        'data-test-step-state',
+        'executing'
+      );
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(30000);
+      });
+      expect(screen.getByTestId(testIds.interactive.step('old-peer'))).not.toHaveAttribute(
+        'data-test-step-state',
+        'executing'
+      );
+      expect(
+        screen.getByText('The live tab did not confirm completion. Refresh both tabs and try again.')
+      ).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('fails open to a stripped local check when the live tab never answers (§6.5)', async () => {
     const transport = makeTransport();
     // Pair under real timers first: it round-trips through actual WebCrypto
@@ -628,5 +927,150 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     // The provider still posts heartbeats; assert no step-command was dispatched.
     expect(transport.post).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' }));
     warn.mockRestore();
+  });
+});
+
+it('gates successful assistance and completeEarly through the observed objective', async () => {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  let satisfied = false;
+  const coordinator = new CompletionCoordinator(async () => satisfied);
+  const saved = jest.fn();
+  const completed = jest.fn();
+  render(
+    <>
+      <button id="observed-save" onClick={saved}>
+        Save example
+      </button>
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveStep
+          stepId="assisted-objective-gate"
+          targetAction="button"
+          refTarget="#observed-save"
+          objectives={['has-dashboard-named:Example']}
+          completeEarly
+          onComplete={completed}
+        >
+          Save the example
+        </InteractiveStep>
+      </CompletionObservationContext.Provider>
+    </>
+  );
+  document.querySelector<HTMLButtonElement>('#observed-save')!.scrollIntoView = jest.fn();
+  await act(async () => {
+    coordinator.start();
+  });
+  const assist = await screen.findByRole('button', { name: /do it/i });
+  await waitFor(() => expect(assist).toBeEnabled());
+  fireEvent.click(assist);
+  await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+  expect(await screen.findByTestId('interactive-completion-waiting-assisted-objective-gate')).toHaveTextContent(
+    'Waiting for completion'
+  );
+  expect(completed).not.toHaveBeenCalled();
+  await act(async () => {
+    satisfied = true;
+    coordinator.recheck();
+  });
+  await waitFor(() => expect(completed).toHaveBeenCalledTimes(1));
+  expect(saved).toHaveBeenCalledTimes(1);
+  coordinator.stop();
+});
+
+it('completes a section noop step under the coordinator once it is eligible', async () => {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  const coordinator = new CompletionCoordinator(async () => false);
+  const onStepComplete = jest.fn();
+  render(
+    <CompletionObservationContext.Provider value={coordinator}>
+      <InteractiveStep
+        stepId="section-info-step-1"
+        sectionId="section-info"
+        targetAction="noop"
+        refTarget=""
+        isEligibleForChecking
+        onStepComplete={onStepComplete}
+      >
+        Read this first
+      </InteractiveStep>
+    </CompletionObservationContext.Provider>
+  );
+  await waitFor(() => expect(onStepComplete).toHaveBeenCalledWith('section-info-step-1'));
+});
+
+afterEach(() => {
+  clearHeldCompletionRequests();
+});
+
+describe('InteractiveStep: step_skipped', () => {
+  beforeEach(() => {
+    jest.mocked(reportStepSkipped).mockClear();
+  });
+
+  afterEach(() => {
+    resetCompletionStoreForTests();
+  });
+
+  it('reports one user skip however often Skip is clicked, then stops offering it', async () => {
+    render(
+      <InteractiveStep stepId="user-skip" targetAction="highlight" refTarget="#anything" skippable>
+        Example
+      </InteractiveStep>
+    );
+
+    const skip = screen.getByTestId(testIds.interactive.skipButton('user-skip'));
+    await waitFor(() => expect(skip).toBeEnabled());
+    fireEvent.click(skip);
+    fireEvent.click(skip);
+
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.step('user-skip'))).toHaveAttribute(
+        'data-test-step-state',
+        'completed'
+      )
+    );
+    expect(screen.queryByTestId(testIds.interactive.skipButton('user-skip'))).not.toBeInTheDocument();
+    expect(reportStepSkipped).toHaveBeenCalledTimes(1);
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'highlight', interactionLocation: 'interactive_step', skipReason: 'user' },
+      expect.objectContaining({ stepId: 'user-skip' })
+    );
+  });
+
+  it('reports a skip past failed requirements as requirements_unmet', async () => {
+    render(
+      <InteractiveStep
+        stepId="requirements-skip"
+        targetAction="highlight"
+        refTarget="#anything"
+        requirements="on-page:/pathfinder-step-skipped-never-here"
+        skippable
+      >
+        Example
+      </InteractiveStep>
+    );
+
+    const skip = await screen.findByTestId(testIds.interactive.requirementSkipButton('requirements-skip'));
+    fireEvent.click(skip);
+
+    await waitFor(() => expect(reportStepSkipped).toHaveBeenCalledTimes(1));
+    expect(reportStepSkipped).toHaveBeenCalledWith(
+      { targetAction: 'highlight', interactionLocation: 'interactive_step', skipReason: 'requirements_unmet' },
+      expect.objectContaining({ stepId: 'requirements-skip' })
+    );
+  });
+
+  it('reports nothing on render or re-render', async () => {
+    const step = () => (
+      <InteractiveStep stepId="render-only" targetAction="highlight" refTarget="#anything" skippable>
+        Example
+      </InteractiveStep>
+    );
+    const { rerender } = render(step());
+    rerender(step());
+
+    await waitFor(() => expect(screen.getByTestId(testIds.interactive.skipButton('render-only'))).toBeEnabled());
+    expect(reportStepSkipped).not.toHaveBeenCalled();
   });
 });

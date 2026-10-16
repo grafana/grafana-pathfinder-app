@@ -13,6 +13,7 @@ import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
 import { ContentJsonSchema, ManifestJsonSchema } from '../types/package.schema';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
 import type { DependencyList, ManifestJson } from '../types/package.types';
+import { SEMVER_PATTERN } from './condition-validator';
 import type { ValidationError, ValidationWarning } from './errors';
 import { readJsonFile } from './package-io';
 import { validateGuide, type ValidationResult } from './validate-guide';
@@ -163,6 +164,7 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
       emitManifestMessages(manifestRead.parsed as Record<string, unknown>, manifest, messages);
       validateManifestSemantics(manifest, errors);
+      validateManifestCategory(manifestRead.parsed as Record<string, unknown>, errors);
 
       if (manifest.testEnvironment) {
         validateTestEnvironment(manifest.testEnvironment, messages);
@@ -240,6 +242,14 @@ export function validatePackageTree(
 // --- Internal helpers ---
 
 function validateManifestSemantics(manifest: ManifestJson, errors: ValidationError[]): void {
+  if (manifest.minGrafanaVersion !== undefined && !SEMVER_PATTERN.test(manifest.minGrafanaVersion)) {
+    errors.push({
+      message: `manifest.json: minGrafanaVersion "${manifest.minGrafanaVersion}" is not valid semver (major.minor.patch)`,
+      path: ['manifest.json', 'minGrafanaVersion'],
+      code: 'schema_validation',
+    });
+  }
+
   if (!manifest.milestones || manifest.milestones.length === 0) {
     return;
   }
@@ -269,6 +279,21 @@ function validateManifestSemantics(manifest: ManifestJson, errors: ValidationErr
       }
     }
   }
+}
+
+// CLI-only: ManifestJsonSchema stays lenient because the runtime also parses it,
+// and a guide without a category must still load there.
+function validateManifestCategory(raw: Record<string, unknown>, errors: ValidationError[]): void {
+  const category = raw['category'];
+  if (typeof category === 'string' && category.trim() !== '') {
+    return;
+  }
+
+  errors.push({
+    message: `manifest.json: "category" is required and must not be blank — ${remediationFor('category')}`,
+    path: ['manifest.json', 'category'],
+    code: 'schema_validation',
+  });
 }
 
 function emitManifestMessages(
@@ -308,7 +333,7 @@ function emitManifestMessages(
   }
 
   // Defaults with WARN
-  const warnFields = ['description', 'category', 'targeting', 'startingLocation'];
+  const warnFields = ['description', 'targeting', 'startingLocation'];
   for (const field of warnFields) {
     if (raw[field] === undefined) {
       messages.push({

@@ -43,7 +43,7 @@ describe('FullScreenModeNotice', () => {
   it('renders the icon, title, and informational body', () => {
     render(<FullScreenModeNotice />);
     expect(screen.getByTestId(testIds.fullScreenMode.notice)).toBeInTheDocument();
-    expect(screen.getByText('Pathfinder is in full screen')).toBeInTheDocument();
+    expect(screen.getByText('Interactive learning is in full screen')).toBeInTheDocument();
     expect(
       screen.getByText(
         'Switch tabs in the sidebar to queue what shows the next time you return to the full-screen page.'

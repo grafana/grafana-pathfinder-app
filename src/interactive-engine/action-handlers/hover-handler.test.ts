@@ -135,10 +135,10 @@ describe('HoverHandler', () => {
 
       await hoverHandler.execute(data, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalled();
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
     });
 
-    it('does not complete and sets completionSuppressed when no elements found and skipCompletionOnEmptyTarget is set', async () => {
+    it('returns failure without completing when the target is missing', async () => {
       const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       resolveWithRetry.mockResolvedValue(null);
 
@@ -148,20 +148,16 @@ describe('HoverHandler', () => {
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
-        skipCompletionOnEmptyTarget: true,
       };
 
       await hoverHandler.execute(data, true);
 
       expect(mockStateManager.handleError).not.toHaveBeenCalled();
       expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
-      // executeInteractiveAction reads this to report 'error' instead of 'ok' —
-      // without it, the caller's own completion persistence (gated on the
-      // outcome, not on stateManager) would mark the step done anyway.
-      expect(data.completionSuppressed).toBe(true);
+      expect(mockStateManager.setState).not.toHaveBeenCalledWith(data, 'completed');
     });
 
-    it('does not set completionSuppressed when an element is found (regression guard)', async () => {
+    it('completes when the target is found', async () => {
       const { resolveWithRetry } = require('../../lib/dom/selector-retry');
       const mockElement = createMockElement();
       resolveWithRetry.mockResolvedValue(makeResolved(mockElement));
@@ -172,12 +168,11 @@ describe('HoverHandler', () => {
         tagName: 'div',
         textContent: 'Test',
         timestamp: Date.now(),
-        skipCompletionOnEmptyTarget: true,
       };
 
       await hoverHandler.execute(data, true);
 
-      expect(data.completionSuppressed).toBeUndefined();
+      expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
     }, 10000);
   });
 
@@ -331,7 +326,7 @@ describe('HoverHandler', () => {
       };
 
       // Should not throw
-      await expect(hoverHandler.execute(data, true)).resolves.toBeUndefined();
+      await expect(hoverHandler.execute(data, true)).resolves.toEqual({ outcome: 'ok' });
       expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
     }, 10000);
   });

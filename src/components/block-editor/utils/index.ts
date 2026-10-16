@@ -3,7 +3,6 @@
  */
 
 export {
-  copyGuideToClipboard,
   downloadGuideAsFile,
   validateGuide,
   formatGuideJson,

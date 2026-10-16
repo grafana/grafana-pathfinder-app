@@ -65,6 +65,35 @@ describe('guideVariableCheck', () => {
     });
   });
 
+  describe('checkbox groups', () => {
+    it.each(Array.from({ length: 8 }, (_, mask) => mask))(
+      'matches every option in selection combination %i',
+      async (mask) => {
+        const options = ['metrics', 'logs', 'traces'];
+        const selected = options.filter((_, index) => mask & (1 << index));
+        storeResponses({ 'guide-a': { signals: selected.join(',') } });
+        for (const option of options) {
+          await expect(guideVariableCheck(`var-signals:includes:${option}`, 'guide-a')).resolves.toMatchObject({
+            pass: selected.includes(option),
+          });
+        }
+      }
+    );
+    it('supports unrelated domains without substring matches', async () => {
+      storeResponses({ 'guide-a': { environments: 'development,production-copy' } });
+      await expect(guideVariableCheck('var-environments:includes:development', 'guide-a')).resolves.toMatchObject({
+        pass: true,
+      });
+      await expect(guideVariableCheck('var-environments:includes:production', 'guide-a')).resolves.toMatchObject({
+        pass: false,
+      });
+      await expect(guideVariableCheck('var-environments:includes:', 'guide-a')).resolves.toMatchObject({
+        pass: false,
+        verdict: 'invalid',
+      });
+    });
+  });
+
   describe('guide scoping', () => {
     it('prefers an explicit guide id over the compatibility fallback', async () => {
       storeResponses({ 'guide-a': { accepted: true }, 'guide-b': { accepted: false } });

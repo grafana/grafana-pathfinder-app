@@ -145,8 +145,8 @@ export function GcxSetupPanel({
           forwarded unchanged and opaque to us before it reaches the backend. */}
       <span className={styles.warning} data-testid={testIds.tokenLifetime}>
         A pasted token keeps its own service account&apos;s role, so give it the least privilege that works — and an
-        expiry when you create it. Pathfinder cannot narrow, shorten or revoke one, so a token with no expiry stays
-        valid long after this sandbox is gone.
+        expiry when you create it. Interactive learning cannot narrow, shorten or revoke one, so a token with no expiry
+        stays valid long after this sandbox is gone.
       </span>
 
       <div className={styles.row}>

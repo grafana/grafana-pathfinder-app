@@ -1,0 +1,46 @@
+{
+  "rules": [
+    {
+      "title": "Core Grafana concepts",
+      "url": "https://interactive-learning.grafana.net/packages/core-grafana-concepts-lj/content.json",
+      "description": "Explore data sources, queries, dashboards, and alerting. No setup required.",
+      "type": "interactive",
+      "page": "/a/grafana-pathfinder-app"
+    },
+    {
+      "title": "Explore time series",
+      "url": "https://interactive-learning.grafana.net/guides/grafana-timeseries-signal-detective/content.json",
+      "description": "Build a time series panel with built-in sample data. Requires permission to create dashboards.",
+      "type": "interactive",
+      "page": "/dashboard/new"
+    },
+    {
+      "title": "Transform query results",
+      "url": "https://interactive-learning.grafana.net/guides/transform-testdata-query/content.json",
+      "description": "Shape sample data with transformations. Requires dashboard editing access and the TestData data source.",
+      "type": "interactive",
+      "page": "/dashboard/new"
+    },
+    {
+      "title": "Create dashboard playlists",
+      "url": "https://interactive-learning.grafana.net/guides/dashboard-playlists-guide/content.json",
+      "description": "Cycle through your dashboards in a playlist. Requires Editor access and at least two dashboards.",
+      "type": "interactive",
+      "page": "/playlists"
+    },
+    {
+      "title": "Configure Grafana IRM",
+      "url": "https://interactive-learning.grafana.net/packages/grafana-irm-configuration-lj/content.json",
+      "description": "Set up on-call schedules, escalation chains, and alert routing. Requires Grafana Cloud with IRM access.",
+      "type": "interactive",
+      "page": "/a/grafana-irm-app"
+    },
+    {
+      "title": "Get started with Frontend Observability",
+      "url": "https://interactive-learning.grafana.net/packages/welcome-frontend-observability/content.json",
+      "description": "Connect your web application with the Faro Web SDK. Requires Grafana Cloud with Frontend Observability access.",
+      "type": "interactive",
+      "page": "/a/grafana-kowalski-app"
+    }
+  ]
+}

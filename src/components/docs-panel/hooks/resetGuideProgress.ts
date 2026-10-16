@@ -12,6 +12,7 @@ import {
   guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
+  milestoneCompletionStorage,
 } from '../../../lib/user-storage';
 
 export interface ResetGuideProgressIdentity {
@@ -26,6 +27,16 @@ export interface ResetGuideProgressIdentity {
    * ordinary manifest-preferring path, matching the writer exactly.
    */
   milestoneSlug?: string;
+  /**
+   * The journey base URL `resolveActiveMilestoneSlug` resolved `milestoneSlug`
+   * against — required to also clear the legacy `milestoneCompletionStorage`
+   * record for this one slug. Without this, a pre-migration completion still
+   * sitting in that read-only legacy store gets read back by
+   * `backfillLegacyMilestoneCompletion` on the very next render and silently
+   * rewrites this reset back to done. Absent exactly when `milestoneSlug` is
+   * (see that field's own doc comment).
+   */
+  journeyBaseUrl?: string;
 }
 
 /**
@@ -45,11 +56,14 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
   await interactiveStepStorage.clearAllForContent(contentKey);
   await interactiveCompletionStorage.clear(contentKey);
   await guideCompletionMarkStorage.clear(contentKey);
+  if (identity?.milestoneSlug && identity.journeyBaseUrl) {
+    await milestoneCompletionStorage.removeCompleted(identity.journeyBaseUrl, identity.milestoneSlug, [contentKey]);
+  }
   // Storage removal does not invalidate mounted completion-store subscribers.
   evictContentCache(contentKey);
-  // Lifts the write-side exactly-once guard so re-marking this guide after
-  // the reset emits a fresh durable record instead of deduping against the
-  // completion this reset just erased. A milestone's identity is derived
+  // Lifts the write-side exactly-once guard and forgets the guide's attempt, so
+  // re-marking this guide after the reset emits a fresh durable record instead
+  // of deduping against the completion this reset just erased. A milestone's identity is derived
   // through the SAME function markMilestoneDone uses, not resolved here
   // independently — a manifest, if present, is never allowed to outrank the
   // slug for a milestone the way it correctly does for an ordinary guide.

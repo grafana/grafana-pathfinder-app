@@ -121,7 +121,7 @@ describe('useTerminalLive session lifetime', () => {
     expect(mockedListVMs).not.toHaveBeenCalled();
   });
 
-  it('loads the server-reported VM expiry once after connection', async () => {
+  it('refreshes the server-reported VM expiry while connected', async () => {
     jest.useFakeTimers();
     try {
       mockedListVMs.mockResolvedValue([activeVm]);
@@ -135,11 +135,12 @@ describe('useTerminalLive session lifetime', () => {
 
       expect(mockedListVMs).toHaveBeenCalledTimes(1);
       expect(hook.result.current.vmExpiresAt).toBe(activeVm.expiresAt);
+      expect(hook.result.current.lifetimeVM).toEqual(activeVm);
 
       act(() => {
         jest.advanceTimersByTime(60_000);
       });
-      expect(mockedListVMs).toHaveBeenCalledTimes(1);
+      expect(mockedListVMs).toHaveBeenCalledTimes(5);
     } finally {
       jest.useRealTimers();
     }
@@ -176,6 +177,19 @@ describe('useTerminalLive session lifetime', () => {
     expect(hook.result.current.vmExpiresAt).toBe(activeVm.expiresAt);
   });
 
+  it('retains expiry from status frames that establish or replace the VM identity', async () => {
+    const { hook, handlers } = await connectedHook();
+    const firstFrame = { state: 'active', vmId: 'first-vm', expiresAt: activeVm.expiresAt };
+    act(() => handlers.current.onStatus?.(firstFrame));
+    expect(hook.result.current.vmExpiresAt).toBe(activeVm.expiresAt);
+    const nextExpiry = '2026-09-14T13:00:00Z';
+    const secondFrame = { state: 'active', vmId: 'second-vm', expiresAt: nextExpiry };
+    act(() => handlers.current.onStatus?.(secondFrame));
+    expect(hook.result.current.vmExpiresAt).toBe(nextExpiry);
+    act(() => handlers.current.onStatus?.({ state: 'active', vmId: 'third-vm' }));
+    expect(hook.result.current.vmExpiresAt).toBeNull();
+  });
+
   it('holds the session id once connected', async () => {
     const { hook, handlers } = await connectedHook();
 
@@ -210,6 +224,19 @@ describe('useTerminalLive session lifetime', () => {
     expect(hook.result.current.status).toBe('disconnected');
     expect(hook.result.current.sessionId).toBeNull();
     expect(hook.result.current.vmExpiresAt).toBeNull();
+  });
+
+  it.each([
+    [
+      'instance_disposing',
+      'The sandbox connection was interrupted when the Coda plugin reloaded. Select Retry to reconnect.',
+    ],
+    ['recovery_exhausted', 'Automatic reconnection stopped. Select Retry to try again.'],
+  ])('shows an actionable final message for %s', async (code, message) => {
+    const { hook, handlers } = await connectedHook();
+    act(() => handlers.current.onError?.(new CodaError('Reconnecting…', code, 0)));
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe(message);
   });
 
   it('names an exhausted quota from the error code instead of the generic message', async () => {
@@ -418,4 +445,32 @@ describe('useTerminalLive teardown races', () => {
       jest.useRealTimers();
     }
   });
+});
+
+it.each(['vm_unreachable', 'host_identity_unverified', 'coda_auth_failed'])(
+  'offers replacement only for an identified unreachable VM (%s)',
+  async (code) => {
+    const { hook, handlers } = await connectedHook();
+    act(() => handlers.current.onStatus?.({ state: 'ssh_connecting', vmId: 'failed-vm' }));
+    act(() => handlers.current.onError?.(new CodaError('failed', code, 0)));
+    expect(hook.result.current.unreachableVmId).toBe(code === 'vm_unreachable' ? 'failed-vm' : null);
+    expect(hook.result.current.sessionId).toBeNull();
+    act(() => hook.result.current.disconnect());
+    expect(hook.result.current.unreachableVmId).toBeNull();
+  }
+);
+
+it('leaves the welcome to the guest and passes terminal output through unchanged', async () => {
+  const { handlers, terminalRef } = await connectedHook();
+  expect(terminalRef.current.writeln).toHaveBeenCalledTimes(1);
+  expect(terminalRef.current.writeln).toHaveBeenCalledWith('Connecting to sandbox...');
+  jest.mocked(terminalRef.current.writeln).mockClear();
+  act(() => {
+    handlers.current.onStatus?.({ state: 'ssh_connecting', message: 'Establishing SSH connection...' });
+    handlers.current.onConnected?.('vm-1');
+  });
+  expect(terminalRef.current.writeln).not.toHaveBeenCalled();
+  const output = 'Welcome to Coda, your ephemeral sandbox.\r\nARM64 · Docker\r\n';
+  act(() => handlers.current.onOutput?.(output));
+  expect(terminalRef.current.write).toHaveBeenLastCalledWith(output);
 });

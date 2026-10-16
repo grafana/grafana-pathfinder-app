@@ -12,17 +12,9 @@ import type { GuideStatsSummary } from '../../types/guide-stats.schema';
 
 import { computeGuideBlockIndex, type CountableBlock, type GuideBlockIndex } from './block-index';
 
-/**
- * Version of the stamped stats object. Bump it when the COUNTING RULE changes,
- * or when these fields change shape — the rule being the load-bearing trigger,
- * because a rule change leaves the shapes untouched while restating the
- * denominator of every already-stamped manifest and every percentage already
- * recorded against it. Without a bump, an old-rule stamp and a new-rule stamp
- * are byte-indistinguishable.
- *
- * NOT a content version: it says nothing about whether the guide changed.
- */
-export const GUIDE_STATS_VERSION = 1;
+import { GUIDE_STATS_VERSION } from './version';
+
+export { GUIDE_STATS_VERSION } from './version';
 
 /**
  * Re-exported from tier 0, where the Zod schema owns the shape so the writer

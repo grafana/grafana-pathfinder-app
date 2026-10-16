@@ -1,4 +1,5 @@
 import type { ControllerPairingLaunch } from '../lib/pairing-manager';
+import { parseKioskName } from '../lib/kiosk-attribution';
 
 /**
  * Centralized contract for Pathfinder deep-link query parameters.
@@ -21,7 +22,18 @@ import type { ControllerPairingLaunch } from '../lib/pairing-manager';
  * `searchParams.set` — no user-controlled keys are ever set.
  */
 
-export const PATHFINDER_PARAMS = ['doc', 'type', 'source', 'page', 'kiosk_session', 'panelMode', 'controller'] as const;
+export const PATHFINDER_PARAMS = [
+  'doc',
+  'type',
+  'source',
+  'page',
+  'kiosk_session',
+  'kiosk_name',
+  'panelMode',
+  'controller',
+  'pathfinderKiosk',
+  'kioskRulesUrl',
+] as const;
 export type PathfinderParam = (typeof PATHFINDER_PARAMS)[number];
 
 // Subset of PATHFINDER_PARAMS that activate the deep-link handler
@@ -55,18 +67,17 @@ export interface DeepLinkParams {
   page?: string;
   /** Kiosk session id from `?kiosk_session=`. */
   kioskSession?: string;
+  kioskName?: string;
   /** Surface mode from `?panelMode=`. Strict whitelist; unknowns drop to undefined. */
   panelMode?: PathfinderDeepLinkPanelMode;
   controller?: boolean;
+  pathfinderKiosk?: boolean;
+  kioskRulesUrl?: string;
 }
 
 const ALLOWED_TYPES: ReadonlySet<PathfinderDeepLinkType> = new Set(['learning-journey', 'docs', 'interactive']);
 const ALLOWED_PANEL_MODES: ReadonlySet<PathfinderDeepLinkPanelMode> = new Set(['sidebar', 'floating', 'fullscreen']);
 
-/**
- * Parse a `location.search` string (e.g. `?doc=foo&type=learning-journey`)
- * into a typed `DeepLinkParams`. Empty / unknown values become `undefined`.
- */
 export function parsePathfinderDeepLink(search: string): DeepLinkParams {
   const params = new URLSearchParams(search);
   const rawType = params.get('type') ?? undefined;
@@ -83,8 +94,11 @@ export function parsePathfinderDeepLink(search: string): DeepLinkParams {
     source: params.get('source') ?? undefined,
     page: params.get('page') ?? undefined,
     kioskSession: params.get('kiosk_session') ?? undefined,
+    kioskName: parseKioskName(params.get('kiosk_name')),
     panelMode,
     controller: params.get('controller') === '1',
+    pathfinderKiosk: params.get('pathfinderKiosk') === '1',
+    kioskRulesUrl: params.get('kioskRulesUrl')?.trim() || undefined,
   };
 }
 
@@ -136,7 +150,9 @@ export interface ShareLinkOpts {
    */
   guideType?: 'learning-journey' | 'docs';
   /** Surface to request via `?panelMode=`. Omit to leave the param off. */
-  panelMode?: 'floating' | 'fullscreen';
+  panelMode?: PathfinderDeepLinkPanelMode;
+  /** Analytics attribution via `?source=`. Omit to leave the param off. */
+  source?: string;
 }
 
 /**
@@ -159,6 +175,9 @@ export function buildPathfinderShareUrl(opts: ShareLinkOpts): string {
   }
   if (opts.guideType === 'learning-journey') {
     url.searchParams.set('type', opts.guideType);
+  }
+  if (opts.source) {
+    url.searchParams.set('source', opts.source);
   }
   return url.toString();
 }

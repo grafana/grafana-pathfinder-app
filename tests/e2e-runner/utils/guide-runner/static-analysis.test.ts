@@ -119,6 +119,6 @@ describe('estimateGuideTimeoutFromContent', () => {
       ],
     });
 
-    expect(estimateGuideTimeoutFromContent(content)).toBe(453_000);
+    expect(estimateGuideTimeoutFromContent(content)).toBe(455_000);
   });
 });

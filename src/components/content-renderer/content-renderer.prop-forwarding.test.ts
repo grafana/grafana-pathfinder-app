@@ -23,7 +23,7 @@ import type { JsonGuide } from '../../types/json-guide.types';
  * JSON guide gets silence. Documented here rather than fixed so this tripwire
  * can land without changing runtime behaviour; shrinking this list is the fix.
  */
-const KNOWN_UNFORWARDED = ['formHint', 'openGuide', 'validateInput'];
+const KNOWN_UNFORWARDED: string[] = [];
 
 /** Exercises every author-settable field on an interactive block. */
 const GUIDE = {
@@ -59,7 +59,9 @@ function forwardedProps(): Set<string> {
   const source = fs.readFileSync(path.resolve(__dirname, 'content-renderer.tsx'), 'utf8');
   const start = source.indexOf("case 'interactive-step':");
   expect(start).toBeGreaterThan(-1);
-  const block = source.slice(start, source.indexOf('</InteractiveStep>', start));
+  const end = source.indexOf('</InteractiveStep>', start);
+  expect(end).toBeGreaterThan(start);
+  const block = source.slice(start, end);
   return new Set(Array.from(block.matchAll(/element\.props\.(\w+)/g)).map((match) => match[1]!));
 }
 

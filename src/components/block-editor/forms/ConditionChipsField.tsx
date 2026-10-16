@@ -1,21 +1,3 @@
-/**
- * `ConditionChipsField` — structured editor for requirements / objectives.
- *
- * Replaces the comma-separated free-text input with a chip-list. Each
- * existing token renders as a chip (with delete) and a green-check badge
- * when it's auto-recoverable at runtime. An inline "Add condition" panel
- * lets the author pick a known type from a Combobox; for parameterized
- * prefixes the panel exposes a per-prefix helper.
- *
- * For power users a "View raw" toggle reveals the original
- * comma-separated `<Input>`, with the user's preferred default
- * persisted in `localStorage` so it sticks across sessions.
- *
- * Backwards compat: the underlying value is still the comma-separated
- * string `requirements: 'a, b, c'` — `onChange` emits the same shape so
- * existing form callsites swap in without other changes.
- */
-
 import React, { useCallback, useMemo, useState } from 'react';
 import { Button, Combobox, Field, Icon, Input, Tooltip, useStyles2, type ComboboxOption } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -30,6 +12,9 @@ import {
 import { isAutoRecoverableRequirement } from '../../../recovery';
 import { StorageKeys } from '../../../lib/storage-keys';
 import { usePersistedBoolean } from '../../../hooks';
+import { ChoiceConditionPicker } from './ChoiceConditionPicker';
+import { useChoiceInputs } from './ChoiceInputsContext';
+import { parseChoiceRequirement } from '../../../lib/choice-response';
 import { HELPER_BY_PREFIX } from './condition-helpers';
 
 const RAW_MODE_PREFERENCE_KEY = StorageKeys.BLOCK_EDITOR_CONDITION_RAW_MODE;
@@ -53,6 +38,14 @@ interface PickerOption extends ComboboxOption<string> {
   /** Whether the option represents a parameterized prefix (needs an argument). */
   isPrefix: boolean;
 }
+
+const CHOICE_CONDITION_TYPE = 'checkbox-option-selected';
+const CHOICE_PICKER_OPTION: PickerOption = {
+  value: CHOICE_CONDITION_TYPE,
+  label: 'Checkbox option selected',
+  description: 'A reader selected an option in a checkbox group',
+  isPrefix: true,
+};
 
 const PICKER_OPTIONS: PickerOption[] = [
   ...FIXED_REQUIREMENTS.map((token): PickerOption => ({
@@ -102,13 +95,21 @@ export function ConditionChipsField({
 }: ConditionChipsFieldProps) {
   const styles = useStyles2(getStyles);
   const tokens = useMemo(() => tokensFromString(value), [value]);
+  const choiceInputs = useChoiceInputs();
+  const pickerOptions =
+    choiceInputs.length > 0 && (mode === 'requirements' || mode === 'conditions')
+      ? [CHOICE_PICKER_OPTION, ...PICKER_OPTIONS]
+      : PICKER_OPTIONS;
+  const choiceLabel = (token: string) => {
+    const condition = parseChoiceRequirement(token);
+    const input = choiceInputs.find((item) => item.variableName === condition?.variableName);
+    const option = input?.choices?.find((item) => item.id === condition?.optionId);
+    return input && option ? `${input.prompt} includes ${option.text}` : token;
+  };
   const [isRawMode, setIsRawMode] = usePersistedBoolean(RAW_MODE_PREFERENCE_KEY);
   const [isAdding, setIsAdding] = useState(false);
   const [pickedOption, setPickedOption] = useState<PickerOption | null>(null);
   const [argValue, setArgValue] = useState('');
-  // Per-prefix helpers may compute their own validity (e.g. semver for
-  // `min-version:`); when they do, we trust them over our naive emptiness
-  // check. Default `true` so prefixes without helpers stay enabled.
   const [helperValid, setHelperValid] = useState(true);
 
   const toggleRawMode = useCallback(() => {
@@ -142,16 +143,23 @@ export function ConditionChipsField({
     if (!pickedOption) {
       return;
     }
-    const newToken = pickedOption.isPrefix ? `${pickedOption.value}${argValue.trim()}` : pickedOption.value;
+    if (pickedOption.isPrefix && (!argValue.trim() || !helperValid)) {
+      return;
+    }
+    const newToken =
+      pickedOption.value === CHOICE_CONDITION_TYPE
+        ? `var-${argValue.trim()}`
+        : pickedOption.isPrefix
+          ? `${pickedOption.value}${argValue.trim()}`
+          : pickedOption.value;
     if (!newToken || tokens.includes(newToken)) {
       cancelAdd();
       return;
     }
     onChange(tokensToString([...tokens, newToken]));
     cancelAdd();
-  }, [pickedOption, argValue, tokens, onChange, cancelAdd]);
+  }, [pickedOption, argValue, helperValid, tokens, onChange, cancelAdd]);
 
-  // Allow Enter inside the argument input to commit the add
   const onArgKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
@@ -162,8 +170,6 @@ export function ConditionChipsField({
     [commitAdd]
   );
 
-  // Raw-text mode: show the underlying input. The lint surfaced by
-  // ConditionLintMessages still renders below this from the parent.
   if (isRawMode) {
     return (
       <div data-testid={testId}>
@@ -179,10 +185,6 @@ export function ConditionChipsField({
     );
   }
 
-  // The example in PARAMETERIZED_REQUIREMENT_EXAMPLES is the full token
-  // (e.g. `has-role:editor`), but the value input only accepts the part
-  // after the prefix. Strip the prefix so the placeholder doesn't
-  // mislead authors into typing the prefix twice.
   const argPlaceholder = (() => {
     if (!pickedOption?.isPrefix) {
       return '';
@@ -193,14 +195,19 @@ export function ConditionChipsField({
     }
     return 'value';
   })();
-  const HelperForPrefix = pickedOption?.isPrefix ? HELPER_BY_PREFIX[pickedOption.value] : undefined;
+  const HelperForPrefix =
+    pickedOption?.value === CHOICE_CONDITION_TYPE
+      ? ChoiceConditionPicker
+      : pickedOption?.isPrefix
+        ? HELPER_BY_PREFIX[pickedOption.value]
+        : undefined;
 
   return (
     <div data-testid={testId}>
       <div className={styles.chipRow}>
         {tokens.length === 0 && <span className={styles.emptyHint}>{getPlaceholder(mode)}</span>}
         {tokens.map((token) => (
-          <Chip key={token} token={token} onRemove={() => removeChip(token)} />
+          <Chip key={token} token={token} label={choiceLabel(token)} onRemove={() => removeChip(token)} />
         ))}
         {!isAdding && (
           <Button size="sm" variant="secondary" fill="text" type="button" icon="plus" onClick={startAdd}>
@@ -218,16 +225,17 @@ export function ConditionChipsField({
         <div className={styles.addPanel} role="group" aria-label="Add condition">
           <Field label="Type" description="Pick a known requirement or parameterized prefix">
             <Combobox
-              options={PICKER_OPTIONS}
+              options={pickerOptions}
               value={pickedOption?.value ?? ''}
               onChange={(option) => {
                 if (!option) {
                   setPickedOption(null);
                   return;
                 }
-                const matched = PICKER_OPTIONS.find((o) => o.value === option.value) ?? null;
+                const matched = pickerOptions.find((o) => o.value === option.value) ?? null;
                 setPickedOption(matched);
                 setArgValue('');
+                setHelperValid(matched?.value !== CHOICE_CONDITION_TYPE);
               }}
               placeholder="Pick a type…"
               data-testid={testId ? `${testId}-add-type` : undefined}
@@ -282,17 +290,18 @@ export function ConditionChipsField({
 
 interface ChipProps {
   token: string;
+  label: string;
   onRemove: () => void;
 }
 
-function Chip({ token, onRemove }: ChipProps) {
+function Chip({ token, label, onRemove }: ChipProps) {
   const styles = useStyles2(getStyles);
   const isRecoverable = isAutoRecoverableRequirement(token);
   const isKnown = isValidRequirement(token);
   const tooltipBody = !isKnown
     ? `Unknown condition — open "View raw" to edit, or remove this chip.`
     : isRecoverable
-      ? 'Auto-recoverable: Pathfinder can fix this at runtime if it fails'
+      ? 'Auto-recoverable: interactive learning can fix this at runtime if it fails'
       : (REQUIREMENT_DESCRIPTIONS[token] ?? REQUIREMENT_DESCRIPTIONS[token.split(':')[0] + ':'] ?? 'Custom condition');
 
   const chipClass = `${styles.chip} ${!isKnown ? styles.chipUnknown : isRecoverable ? styles.chipRecoverable : styles.chipKnown}`;
@@ -302,7 +311,7 @@ function Chip({ token, onRemove }: ChipProps) {
       <span className={chipClass}>
         {isRecoverable && <Icon name="check-circle" size="sm" className={styles.chipRecoverableIcon} aria-hidden />}
         {!isKnown && <Icon name="exclamation-triangle" size="sm" className={styles.chipUnknownIcon} aria-hidden />}
-        <span className={styles.chipText}>{token}</span>
+        <span className={styles.chipText}>{label}</span>
         <button type="button" aria-label={`Remove ${token}`} onClick={onRemove} className={styles.chipRemoveButton}>
           <Icon name="times" size="sm" />
         </button>

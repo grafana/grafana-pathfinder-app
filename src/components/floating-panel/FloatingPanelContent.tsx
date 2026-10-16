@@ -1,8 +1,8 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { usePublishSurfaceContentKey } from '../../hooks';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
-import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -10,6 +10,7 @@ import type { RawContent } from '../../types/content.types';
 import type { LearningJourneyTab, PendingAlignment } from '../../types/content-panel.types';
 import {
   AlignmentPrompt,
+  GuideVersionNotice,
   LearningJourneyMilestoneToolbar,
   type MilestoneToolbarSurface,
 } from '../docs-panel/components';
@@ -110,13 +111,30 @@ export function FloatingPanelContent({
     [alignmentIsPending, alignmentStartingLocation]
   );
 
-  if (!content) {
+  const surfaceCompletionInput = content
+    ? {
+        baseUrl: activeTab?.baseUrl,
+        contentUrl: content.url,
+        currentUrl: activeTab?.currentUrl,
+        contentType: content.type,
+        metadata: content.metadata,
+        guideTitle: activeTab?.title,
+      }
+    : null;
+  usePublishSurfaceContentKey(content ? activeTab?.currentUrl || activeTab?.baseUrl : undefined);
+
+  if (!content || !surfaceCompletionInput) {
     return (
       <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-secondary)' }}>No guide content loaded</div>
     );
   }
 
   const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
+
+  // The active track restore's identity — see LearningJourneyTab.activeTrackPathId's
+  // doc comment for why this is the manifest id, not a resolved URL.
+  const contentPathId = content.metadata.packageManifest?.id;
+  const coverPathId = typeof contentPathId === 'string' ? contentPathId : undefined;
 
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
 
@@ -136,6 +154,11 @@ export function FloatingPanelContent({
             />
           </div>
         )}
+        <GuideVersionNotice
+          manifests={[activeTab?.packageInfo?.packageManifest, content?.metadata.packageManifest]}
+          guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+          guideTitle={activeTab?.title}
+        />
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
             <AlignmentPrompt
@@ -155,21 +178,14 @@ export function FloatingPanelContent({
           content={content}
           containerRef={contentRef}
           className={contentClassName}
-          onGuideComplete={() => {
-            // Emit the completion fact beneath the surface: floating and
-            // full-screen both render through here, so neither manager needs to
-            // wire emission and neither can silently drop it.
-            recordGuideCompletionForSurface({
-              baseUrl: activeTab?.baseUrl,
-              contentUrl: content.url,
-              currentUrl: activeTab?.currentUrl,
-              contentType: content.type,
-              metadata: content.metadata,
-              guideTitle: activeTab?.title,
-            });
-            onGuideComplete?.();
-          }}
+          completion={{ kind: 'tracked', input: surfaceCompletionInput, onComplete: onGuideComplete }}
           onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
+          onActiveTrackChange={
+            activeTab
+              ? (trackId, milestones) => model.setActiveTrackId(activeTab.id, trackId, milestones, coverPathId)
+              : undefined
+          }
+          initialActiveTrackId={activeTab?.activeTrackPathId === coverPathId ? activeTab?.activeTrackId : undefined}
         />
       </div>
     </AlignmentPendingContext.Provider>

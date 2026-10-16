@@ -1,5 +1,285 @@
 # Changelog
 
+## 2.23.0
+
+### Added
+
+- **Choice-driven guide sections**: Guides can ask readers to pick options in a checkbox group and show, collapse to a heading, or hide sections based on those choices. Progress counts only the selected path, completion evidence survives deselecting and reselecting an option, and the editor gains controls for checkbox groups, option conditions, and section visibility. Existing guides keep their current rendering and progress. (#2150)
+
+### Changed
+
+- **Guide browser lists path milestones once**: A guide that is a milestone of a learning path no longer appears again as a standalone card in All content, search results, topic counts, or the header count. It stays listed under its path's modules, and the Getting started single-guide card is unchanged. (#2156)
+
+## 2.22.1
+
+### Added
+
+- **Guide browser**: A Browse tab in Interactive learning lets people search and filter the full catalog of official and organization guides and learning paths, with topic shortcuts and a featured starter path. Returning to Browse keeps your search, filters, and scroll position, and My learning shows official guides and paths you have started but not finished. The `pathfinder.package-browser` flag can hide it. (#2142)
+
+### Fixed
+
+- **Repeated startup settings reads**: Reuse confirmed absent settings for up to ten minutes per browser tab, refresh on opening learning or configuration, and invalidate the cache when settings are saved. Diagnosed upstream timeouts no longer trigger settings-read retries. (#2134)
+
+- **Image-renderer startup**: Skip interactive learning initialization and settings reads in authenticated image-renderer sessions. (#2057)
+
+- **Restored guide progress**: Reopening a guide with completed sections no longer creates a new progress attempt or queues a partial completion write solely from restoring saved progress. (#2116)
+
+- **Website inputs**: Accept pasted website addresses with paths, queries, bare hostnames, or surrounding whitespace, preview normalized values, and derive an HTTP origin from the saved URL when required. (#2119)
+
+- **Clipboard fallback**: Copy actions handle unavailable or failing clipboard APIs and provide a fallback or visible failure feedback. (#2081)
+
+- **Editor guide lists**: Read App Platform guide lists through the plugin backend proxy. (#2093)
+
+- **Learning streaks across daylight saving changes**: Calculate yesterday in UTC so clock changes do not incorrectly reset or preserve a streak. (#2140)
+
+- **Settings retry diagnostics**: Log retried settings reads separately so retries do not inflate the initial-failure alert count. (#2058)
+
+### Security
+
+- **Go networking update**: Update `golang.org/x/net` to v0.60.0 with HTTP/2 security fixes. (#2120)
+
+### Chore
+
+- **Smaller startup bundle**: Defer translations and learning views until needed, keep initial JavaScript below 100 KB, and provide recovery when feature loading fails. (#2082)
+
+- **Consistent completion recording**: Centralize renderer completion wiring and strengthen coverage for completion origins and recording boundaries. (#2118, #2124)
+
+- **Guide statistics version**: Mark the updated counting rules as version 2 and align regression fixtures. (#1978, #2132)
+
+- **Automated-test analytics isolation**: Guard the shared fixture imports that suppress production analytics during browser tests. (#2133)
+
+- **Developer context cleanup**: Correct stale documentation paths and remove unused constants exports. (#2125)
+
+## 2.22.0
+
+### Added
+
+- **Learn button experiment**: An opt-in three-arm experiment tests whether a Learn button beside Grafana's Help button, with or without a "Try interactive learning" hint, helps people discover interactive learning. Grafana's own Help button is unchanged. (#2094)
+
+### Fixed
+
+- **Guide progress from floating, full-screen, and guide-reader surfaces**: Record progress, percentage, and Mark complete under the guide each surface renders, and fire guide completion at 100% even when no sidebar tab is open. (#2105)
+
+- **Section completion with multiple renderers**: Finishing a section in one renderer, such as the block-editor preview, no longer counts as progress for another mounted guide. (#2104)
+
+### Security
+
+- **MCP SDK and DOMPurify updates**: Update `@modelcontextprotocol/sdk` to 1.32.1 to fix GHSA-6qxp-vccf-f47h, where the OAuth client could send credentials to an authorization server chosen by the MCP server, and update `dompurify` to 3.4.16. (#2117)
+
+### Chore
+
+- **Dead App Platform guide fetch removal**: Remove an unused direct App Platform read and its transport ratchet exemption, with no change to startup behavior. (#2092)
+
+- **Completion-recording test coverage**: Pin that a partial progress record cannot satisfy an assignment, and cover concurrent milestone removals and rejected mutations in local storage. (#2114, #2110)
+
+## 2.21.0
+
+### Added
+
+- **Incremental guide progress records**: Save a reader's guide progress as one monotonic record per attempt, from the first real interaction through completion. Partial writes and progress analytics remain independently feature-flagged and off by default. (#2090)
+
+- **Public guide search for CLI and MCP clients**: Search the public guide catalog with bounded lexical ranking, filters, page targeting, and deterministic results through `pathfinder_find_guides`, with launch links that open the parent path for matching milestones. (#2048)
+
+- **Shareable guide links**: Copy a link from a guide's sidebar menu that opens the same accessible guide or journey milestone on the same Grafana instance without leaking dashboard state. (#2075)
+
+- **Assigned paths in side-panel recommendations**: Badge paths with unsatisfied assignments and open them directly on the assigned track instead of Fundamentals, matching My Learning. (#2106)
+
+- **Guide and journey completion analytics**: Report privacy-bounded completion events once at the recorder boundary, including manual, skipped, and objective-based completion sources and live guide structure metadata where available. (#2035)
+
+- **Block-aware step analytics**: Add rendered block positions and guide counts to step events, report bounded skip reasons, and identify public guides or milestones on Mark complete interactions. (#2059)
+
+- **Learning-path badge and reset analytics**: Report URL-path badge unlocks and distinguish guide, path, and full-progress resets without exposing private path identifiers. (#2060)
+
+### Fixed
+
+- **Grafana documentation link interception**: Open eligible Grafana documentation links in interactive learning from nested link elements and recover safely when the expected panel surface cannot accept the launch. A new remote feature flag can enable interception alongside the tenant setting. (#2053)
+
+- **Interactive learning user-facing name**: Replace the internal Pathfinder name throughout visible UI and accessibility text, with validation that prevents it from returning in user-facing copy. (#2045)
+
+- **Immediate guided-tour dismissal**: Closing a guide after an earlier navigation cancels its active tour immediately instead of leaving the highlight and session lock behind for several seconds. (#2051)
+
+- **Compound kiosk catalog failures**: When both a requested kiosk catalog and the configured default fail, warnings identify both failures while preserving the catalog that was ultimately served. (#2052)
+
+- **Named kiosk analytics sessions**: Correlate catalog views, controls, launches, and subsequent guide interactions with one bounded kiosk session and privacy-safe catalog name without allowing stale attribution to overwrite an explicit session. (#2085)
+
+- **Kiosk product-open analytics**: Report product-card and product-link launches as kiosk interactions before navigating, while keeping guide-start analytics distinct. (#2111)
+
+- **Published guide titles for API links**: Replace a temporary resource-id tab title with the published guide title after kiosk or shared-link content loads, without overwriting an existing catalog or path title. (#2047)
+
+- **Unresolvable path-member completion keys**: Exclude a path member from progress averages when any candidate key cannot be normalized safely instead of counting the member as unopened at zero percent. (#2054)
+
+- **Concurrent milestone completion writes**: Serialize local milestone completion mutations so simultaneous updates no longer overwrite one another. (#2074)
+
+- **Selected tracks after fullscreen**: Preserve the selected path track when leaving fullscreen or restoring a saved side-panel tab instead of returning to Fundamentals. (#2107)
+
+- **Synthetic analytics from CLI guide runs**: Disable RudderStack before Grafana initializes in CLI runner browser contexts, including reloads and new tabs, so automated guide tests do not send production analytics. (#2071)
+
+- **Always-on agent context budget**: Restore main-branch validation and add budget headroom by routing detailed writing and filing conventions to on-demand documentation. (#2072)
+
+### Chore
+
+- **App Platform transport validation**: Ratchet direct browser reads behind the plugin-backend proxy, grandfather the two existing violations with accountable follow-up, and reject new unproxied reads with remediation guidance. (#1974)
+
+- **Completion-recording developer guidance**: Document the end-to-end completion seam and route relevant review changes to its identity, progress, attempt, reset, and persistence invariants. (#2098)
+
+## 2.20.1
+
+### Added
+
+- **Direct product tiles in kiosk catalogs**: Catalog authors can offer Open product tiles alongside guided setup, taking users directly to a Grafana product without starting a guide or showing learning progress. Publish catalogs using the new field only after their target instances run a supporting Pathfinder version. (#2042)
+
+### Fixed
+
+- **Kiosk navigation and return links**: URL-launched kiosks keep their shareable launch parameters and restore the catalog on refresh or browser Back/Forward. Explicit exit and Escape clear those parameters, while guide footer links return to the kiosk from sidebar and floating mode. (#2042)
+
+## 2.20.0
+
+### Added
+
+- **Assigned learning paths on My Paths**: Paths assigned to the signed-in user appear at the top of My Paths and are badged in the recommendations panel, with completion evaluated live and server-side from the user's own completion records. (#1957)
+
+- **Cloud E2E runs for unpublished local packages**: Run unpublished guides and prerequisites from a local checkout against platform-leased Grafana Cloud stacks, without a commit or CDN publication. (#2009)
+
+- **Runtime Grafana floor for guide manifests**: Guides can declare an optional `minGrafanaVersion`, surfacing a warning in the sidebar and floating/full-screen content surfaces when the running Grafana version is below that floor. Steps remain usable; missing or unreadable versions don't warn. (#1714)
+
+- **Configurable kiosk exit button label**: Catalog authors can override the kiosk exit button's visible label and accessible name through a top-level `exitButtonLabel` field, replacing the fixed "Back to Grafana" text. (#2031)
+
+- **Edit public guides as private copies**: Admins can choose Edit as private guide from an open public JSON guide's menu to customize an independent copy in the visual block editor, using the existing private-guide save and publish flow. The public original stays unchanged. (#1969)
+
+- **Customize private guide copies with Assistant**: Customize with Assistant asks about audience, desired outcome, and environment, then sends that context plus the guide to Assistant for a revised copy that opens in the block editor for review before saving. (#1972)
+
+### Fixed
+
+- **Guided tours through docking and navigation**: A guide-scoped session now retains its handler, running state, and cancellation across host replacements, so starting a tour in full screen and then docking or navigating no longer locks out new starts or aborts the run early. (#2039)
+
+- **Milestone toolbar on track-only guides**: Reading a guide reached through a Path Tracks track now keeps the milestone navigation and progress toolbar at the top, scoped to that track's own sequence, instead of losing it. (#2033)
+
+- **Startup chunk recovery and error attribution**: Startup imports retry without blocking plugin registration after a transient plugin CDN failure, and browser error capture now requires an actual Pathfinder asset or source path instead of misattributing unrelated Firefox and ResizeObserver errors. (#2026)
+
+- **Hardened guided execution and recovery**: Guided interactions keep their highlight visible until the run ends, recover a replaced target within a bounded window, and give each run cancellation and ownership through target discovery, delayed actions, and cross-tab execution; failed actions report an explicit outcome instead of a false completion. (#2018)
+
+- **Local-tier package checks before a full checkout scan**: Selecting a local-tier package validates the selected manifest first, so an unrelated symbolic or hard link elsewhere in the checkout produces the expected tier-mismatch skip instead of a configuration error. (#2037)
+
+- **Path guide list styling**: Restyled path guide list rows with more spacing and a colored panel per row, and removed the single-line description truncation. (#2021)
+
+- **Settings reads during Grafana startup**: Settings reads retry on transient 500, 502, 503, or 504 responses while a newly started Grafana instance's aggregated API comes up, preserving authoritative failures and the existing absent-resource fallback. (#2025)
+
+- **Forwarded interactive step properties**: `openGuide`, `formHint`, and `validateInput` fields parsed from top-level JSON guides now reach the runtime across direct React actions, section orchestration, controller and cross-tab commands, and live-tab execution; explicit `openGuide` takes precedence over the legacy `?doc=` URL fallback. (#1633)
+
+### Chore
+
+- **Fundamentals tab label**: Renamed the learning path cover page's main Tracks tab from "Foundations" to "Fundamentals". (#2034)
+
+- **French locale parity**: Brought the French catalog to full en-US key parity, filling empty stubs and translating remaining strings across the path cover page, My Learning tab, and Pathfinder settings. (#2036)
+
+- **Public documentation refresh**: Refreshed the public Interactive learning documentation with the Grafana Cloud disable/re-enable procedure and clarified organization scope, reload behavior, and the distinction between disabling Pathfinder and disabling recommendations. (#2024)
+
+### Removed
+
+- **"Interactive Learning" wordmark in the docs panel tab bar**: Removed the wordmark and its adjacent divider from the recommendations rail, added in #1447. It read as unpolished branding rather than useful chrome; the recommendations icon button next to it is unaffected. (#2020)
+
+## 2.19.0
+
+> Deployment prerequisite: the organization opt-out requires the companion backend `pathfinderEnabled` settings schema. Verify settings-reader permissions before Cloud rollout; failed or timed-out settings reads leave Pathfinder enabled. (#2008)
+
+### Added
+
+- **Learning-path tracks**: Choose a named track alongside the default Foundations sequence on a path's cover page, with its own ordered guides and progress. Authoring, validation, repository builds, statistics, and E2E guide-chain resolution support track-specific content. (#1927)
+
+- **Organization opt-out**: Administrators can disable Pathfinder from plugin configuration and restore Grafana Cloud's classic Help menu after reload. Learning progress is preserved, and configuration remains accessible for re-enabling Pathfinder. (#2008)
+
+- **JSON-authored kiosk pages**: Build themed landing pages with hero text, launch forms, copyable commands, dividers, and guide tiles. Validated website and data source inputs can carry into a guide, while incompatible cached guides still open without transferring values. Standard tiles show saved completion percentages and a checkmark at 100%. (#1999)
+
+- **Themed kiosk banners and stack-aware commands**: Add compact Grafana-themed hero banners and use `{{grafana.stackUrl}}` in command blocks to insert the hosting HTTPS origin as a shell-quoted argument. Local and HTTP instances retain the `your-stack` placeholder. (#2007)
+
+- **Terminal steps in guide tests**: The E2E runner connects sandboxes and dispatches commands through the guide's controls, including optional Skip actions. Command completion confirms dispatch, not a successful shell exit or expected output. (#1980)
+
+- **Shared Grafana feature controls**: Use Grafana's OpenFeature providers and feature-control UI on Grafana 13.2 and later, while retaining the existing provider on older versions. (#1990)
+
+### Fixed
+
+- **Kiosk command layout and completion**: Compact command bars provide theme-aware Bash highlighting and copy feedback without shifting the layout. Guide tiles read saved completion consistently, and focus recovery handles inactive windows and controls disabled during submission. (#2000)
+
+- **Guide-specific starting locations**: Opening a guide from a custom path's member list preserves the guide's own starting location and additional fields instead of inheriting the cover's values. (#2011)
+
+- **Fresh guided sequences**: Starting or retrying a guided sequence clears credit from the previous run, including sequences opened across tabs. (#2012)
+
+- **Milestone progress without a slug**: Milestones whose URLs have no slug now use the full URL to find stored completion instead of incorrectly showing zero progress. (#1948)
+
+- **Actionable guide-test failures**: Blocked Show me and Do it controls report the underlying click failure with screenshots and DOM evidence instead of an infrastructure timeout. Genuine hard deadlines also attempt to capture evidence before closing the page. (#2010)
+
+- **Reliable kiosk navigation and keyboard focus**: Keep focus inside the kiosk after dismissing a data source dropdown, preserve drafts, and open alternative guides at the correct application route. (#1999)
+
+- **Advanced Prometheus guide**: Select the saved data source, target query A in Explore, and run each lesson's expression without changing other query rows. Corrected examples and section coordination keep later lessons from completing prematurely. (#1985)
+
+- **Interactive learning settings heading**: The Grafana Cloud settings section is titled "Interactive learning" instead of "Pathfinder public preview" in every locale. (#2019)
+
+- **Assistant customization controls stay visible**: Customize with Assistant, generation status, retry, and revert controls sit in the block's layout instead of appearing on hover, so compact sections cannot clip them and keyboard users can reach them. (#1984)
+
+### Chore
+
+- **Consistent milestone progress**: Cover pages, milestone toolbars, and My Learning use the same local completion calculation, preserving previously recorded milestone completion through a one-time backfill. (#1925)
+
+- **Stronger completion and kiosk regression coverage**: Derive conditional-step coverage from a shared registry and pin the bundled-catalog fallback when an unconfigured kiosk's selected catalog fails. (#1881, #1998)
+
+- **Focused agent context**: Limit always-loaded instructions, document known development pitfalls, and let review tooling load individual policy sections. (#2004, #2006)
+
+- **Remove unused sidebar test identifiers**: Remove test IDs left behind by the retired minimized sidebar component. (#1995)
+
+## 2.18.3
+
+### Added
+
+- **Shareable learning kiosks**: Open a learning catalog through a URL without changing instance-wide settings. Guides open on the current Grafana instance, with theme-aware cards and a visible exit control. (#1971)
+
+- **Codeblock insertion in guide tests**: The E2E runner executes Insert steps, waits for completion, and reports insertion failures. Optional codeblocks retain usable Skip controls when requirements are unmet. (#1979)
+
+### Fixed
+
+- **Preserve kiosk panel preferences**: Launching a kiosk guide no longer overwrites the saved panel mode. Unconfigured kiosks use bundled cards immediately, and catalog fallback warnings identify the catalog actually shown. (#1986)
+
+- **Clean up abandoned terminal provisioning**: Leaving a challenge while its terminal is connecting no longer leaves a stale session holder that prevents later challenges from disconnecting. (#1955)
+
+- **Keep the first-dashboard guide compatible**: Updated visualization, data-source, unit, and save selectors support newer Grafana versions while preserving the guide flow on Grafana 12.3–13.1. (#1382)
+
+- **Diagnose guide and App Platform failures**: Correlated diagnostics distinguish guide loading, validation, rendering, and upstream proxy failures while preserving existing retries and fallback behavior. Diagnostic events omit credentials and raw upstream error content. (#1936)
+
+## 2.18.2
+
+### Fixed
+
+- **Keep the learning sidebar available when settings fail**: Continue browsing with default settings when settings requests fail, logging a warning without displaying an error banner. Settings saves still require a successful authoritative read. (#1977)
+
+- **Interactive steps inside conditional blocks earn progress credit**: Steps inside `whenTrue`/`whenFalse` branches now count toward guide completion. Previously the completion index treated conditionals as opaque, so branch-child steps contributed no progress even though they completed and persisted correctly. (#1953)
+
+- **Session replay pauses through Faro's public API**: Telemetry session replay now pauses and resumes via Faro's public `pauseRecording()`/`resumeRecording()` methods instead of a private-method cast workaround, following the `@grafana/faro-web-sdk` 2.12.0 upgrade. (#1827)
+
+## 2.18.1
+
+### Fixed
+
+- **Settings and custom guides load through the backend proxy**: Settings, guide content, and publication checks use caller-scoped on-behalf-of tokens, matching the custom-guide catalogue. Upstream authentication failures no longer trigger Grafana's session-expiry handling, and failed settings reads cannot silently switch administrative writes to the legacy store. (#1966)
+
+- **Path resets preserve sibling progress**: Resetting a learning path no longer clears another path whose URL shares its prefix. (#1950)
+
+- **Consistent journey completion identity**: Journey completion records use the shared identity resolver and the correct default repository instead of always identifying themselves as bundled content. (#1939)
+
+- **Existing guides can leave JSON mode**: Guides with a pre-existing duplicate heading can return to the visual editor, undo, and restore their editing session. New duplicate headings remain validation errors. (#1960)
+
+- **Korean translations cover learning surfaces**: Fill missing and empty translations for path covers, My Learning, completion controls, and sidebar actions, and align inconsistent wording. (#1938)
+
+- **E2E journeys advance behind open modals**: The guide runner can close its current guide tab while a Grafana modal remains open for the next milestone. (#1947)
+
+### Added
+
+- **Open the connected sandbox in IDE**: The terminal toolbar offers IDE beside GCX when the Coda capability is enabled, opening the same VM without provisioning a replacement. Secondary terminal actions move into an overflow menu. (#1943)
+
+### Chore
+
+- **Stronger validation and steadier tests**: Add orphan-module and guided-action documentation checks, remove unused modules, batch validation subprocesses, and give hint assertions more retry headroom. (#1940, #1944, #1945, #1952, #1956)
+
+- **Clarified release procedures**: Document shared Cloud deployment, artifact version suffixes, and the distinction between publication and deployed health. (#1962)
+
 ## 2.18.0
 
 > Upgrade note: unfinished guides restart at the beginning once when upgrading to collision-safe progress storage. Completed guides, badges, streaks, and finished milestones are retained. Progress previously awarded for navigation can decrease under the new evidence-based calculation.
@@ -130,32 +410,42 @@
 
 - **Dependencies and automation**: Update Grafana packages to 13.2.1, Faro replay to ~2.11.0, `go-jose/v4` to 4.1.5, the Grafana Go plugin SDK to 0.296.4, Node.js to 24.21, Playwright to ~1.63.0, and plugin CI workflows to 11.2.0, alongside action digests and lockfile maintenance. Group non-major Renovate updates. (#1773, #1740, #1789, #1683, #1862, #1819, #1878, #1921)
 
+- **Architecture and git-hook ratchets**: Replace the last lateral imports between engine modules with support-tier bridges, and check git hook file mode, `set -e`, and the `lint-staged` configuration. (#1924, #1926)
+
 ## 2.17.0
 
 ### Added
 
 - **`pathfinder.coda-terminal` feature flag**: A remote switch that turns the Coda sandbox terminal on for a stack on its own, needing neither the dev-mode allowlist nor the `enableCodaTerminal` setting — the two manual, nothing-provisions-them steps it previously required. Enablement is now one shared accessor, `flag || (devMode && enableCodaTerminal)`. On the configuration page the flag is display-only: the Coda section appears without dev mode with its toggle on and disabled, labelled as flag-driven, and a save still writes the stack's own setting, so turning the flag off does not leave the stack silently enabled. Defaults off, which is what keeps a stack without `grafana-coda-app` from probing for it on every page load.
-
 - **Durable completion records**: Terminal bundled, remote, milestone, and journey completions are persisted as `CompletionRecord`s in the stack's Grafana App Platform store. Writes pass through the plugin backend so user attribution and stack scope are stamped server-side from the request context; whether a role may write is decided by upstream App Platform RBAC on the caller's own forwarded identity. The durable key `(guideSource, guideId)` uses the explicit/resolved repository (which wins over the manifest's own value, since the manifest schema defaults an absent repository) so real V1 and `online-cdn` guides persist under their true source. The subscriber is armed once from the universal plugin bootstrap, and fact emission is surface-neutral — completing a guide in the sidebar, floating panel, full-screen, or guide reader records the same fact. A whole-journey record requires every currently-expected milestone to be complete (not a bare count), so a revised journey cannot record from stale milestone progress. Completion UI remains synchronous: each fact is normalized and persisted to a bounded, user/org-scoped localStorage queue off the completion-emission path (no synchronous storage scan), then drained in the background. Concurrent tabs coordinate drains with a lease (capped items per pass, released between passes), the request is bounded below the lease TTL, and each POST carries the event's stable id as a required idempotency key so a retried or cross-tab send cannot mint a duplicate durable record. Retry backoff is clamped after jitter to a true maximum; 401/408/429/5xx retry while other 4xx drop. A 403 is never dropped: an absent grant is a condition of the stack, not a defect in the record, so it joins the same disarm-and-keep path a structural 404 takes — the completion is retained and drains once the grant lands — and reports its own telemetry reason so a grant that never arrives is discoverable instead of accumulating silently. Queued facts older than the backend's 30-day acceptance horizon are dropped locally rather than replayed, and degradation (missing route, dropped/evicted/expired records, persistence/drain failures) surfaces as a warn-level log plus one typed low-cardinality telemetry event. A record is durable only after the POST succeeds; clearing browser storage or evicting the bounded queue can still lose pending events. "Reset all learning progress" discards queued-but-unsent writes as well as local progress, so a reset cannot be followed by durable records appearing for the guides it just cleared. (Epic #1411, backend #1433, frontend #1434)
 - **Standalone private guides record completions**: A stack's own App Platform guides opened outside a package — orphan and flat-list entries, `?doc=api:<id>` share links, and auto-dock tab restore — carried no `packageInfo`, so the content producer emitted a title and nothing else and the durable write failed closed on the missing manifest id. Those launches now carry the guide's own stable identity, so completing a private guide records like any other. (#1664)
 - **Callout block**: A generic block for setting content apart — an author-written label plus a markdown body — for objectives, summaries, or a call to action. Wired through the schema, parser, renderer, the block editor (including inside `collapsible` and `conditional` branches), and the CLI's authoring registry. Deliberately has no type enum, so there is no per-value table that can drift between the renderer and the editor. (#1684)
 - **Manifests carry a canonical block count**: `pathfinder-cli build-stats` stamps each package's `manifest.json` with the completion denominator at build time, computed by one schema-driven module at tier 1 that the CLI, the upload script, the frontend, and a future Go port all share. The denominator is a guide's total block count excluding containers; `multistep`, `guided`, `conditional`, and `snippet-ref` each count as exactly one and are never traversed into. Computing at build time means no author asserts these numbers, so they cannot be wrong. (#1661)
 - **Unknown manifest keys reach `repository.json`**: The packaging CLI forwards any unrecognized top-level key from a package's `manifest.json` into that package's `repository.json` entry, instead of two independent layers silently dropping it. Adding package metadata is now a content-repo change rather than a CLI change plus a release. (#1662)
 - **Interactive-learning banner experiment**: `pathfinder.interactive-learning-banner-experiment` tests whether explaining interactive learning up front increases engagement. The treatment arm shows a dismissible explanatory banner above the context page's profile bar and above opened guide content on every surface; control renders nothing and is byte-identical to today. Enrollment emits one exposure the first time a Pathfinder panel opens. The banner has no call to action — this is the flag, the enrollment seams, and the surfaces only. (#1628)
+- **Course cover pages for package-backed paths**: Launching an App Platform or CDN course package opens a cover page with a summary card, module descriptions, sequential unlocking, and time estimates instead of jumping to the first milestone. (#1621)
+- **Consolidated milestone toolbar**: The learning-journey toolbar becomes one band with the title, "Milestone X of Y", compact navigation arrows, a menu for Open, Reset guide, Pop out, and Full screen, and a segmented progress bar. (#1685)
+- **Restyled knowledge checks**: Quiz blocks get a "Knowledge check" label, short choices sit side by side, and exactly four short choices use a two-by-two grid. (#1689, #1690)
+- **Editor-authored guides carry a manifest**: The block editor stamps a derived `spec.manifest` on every save, merged over the stored manifest so a learning path cover page keeps its type and milestones. (#1682)
 
 ### Changed
 
 - **Grafana 13.2.0 and React 19**: `react` and `react-dom` move to 19.2.8, matching what Grafana core 13.2 builds against, alongside `@grafana/{data,e2e-selectors,i18n,runtime,schema,ui}` 13.2.0 and `@grafana/faro-instrumentation-replay` 2.10. The two had to land together: the 13.2.0 packages declare a hard `react@">=19"` peer, so the version bump alone could not install. `@grafana/scenes`' stale `react@^18` peer cap is overridden at install time only — `react` is a webpack external, so the override cannot change what scenes resolves at runtime. The declared `grafanaDependency` is unchanged at `>=12.3.0-0`. (#1674)
+- **One schema per command, for both the CLI and MCP**: A command's parameters were previously stated three times — a Commander declaration, a Zod schema for content fields, and a projection that reconstructed the agent-facing interface out of Commander — so value types, requiredness, and which parameters existed at all could disagree between the CLI and an agent. Every command now declares one Zod schema that Commander and MCP both render, and the projection is deleted. Several long-standing consequences go with it: `set-manifest --target-platform` rejects a value outside `oss|cloud|enterprise` instead of writing it silently; an agent can clear a manifest list by sending an empty array, where the value was previously indistinguishable from an unset flag and discarded; `create --type` is reported by `--help --format json`, having been dropped there by a filter that matched the field's name rather than its origin; and `edit-block` loses `--no-validate`, which promised to skip post-edit validation and was never read, and `--id`, whose rename behaviour has always belonged to `rename-id` — both were already hidden from agents, so this is a CLI-only change. No parameter enters or leaves the agent-facing surface, but every parameter there now carries `required` explicitly instead of implying it by bucket, which is what lets `add-choice` state that a choice `id` is mandatory and `edit-block` stop claiming that eleven create-time fields are. `--help --format json` also stops guessing a parameter's role for the CLI-only commands: `move-block --branch` is reported as optional rather than addressing. Text help is unchanged apart from now stating defaults and choices it used to omit (`mcp --port` shows `8080`, `build-graph --lint` shows `true`, `e2e --tier` lists `local|cloud`), and the bare `pathfinder-cli --help --format json` reports the subcommand list rather than the root's own two global flags — per-command JSON help, which is the documented agent contract, keeps its shape. (#1710)
+- **Each surface writes in its own dialect**: The schema states what a parameter is; how it is spelled and what advice comes with it now belongs to whoever is reading. Three things follow. Failed input is reported at the command line the way a command line always has — `error: required option '--title <string>' not specified`, `error: option '--target-platform <platform>' argument 'bogus' is invalid. Allowed choices are oss, cloud, enterprise.` — while `--format json` and MCP keep the structured outcome with its code and full issue list, so one validation pass serves both without either inheriting the other's phrasing. Descriptions and messages carry parameter _references_ (`use at most one of {@before}/{@after}/{@position}`) that each surface spells: `--before` in text help, `before` to an agent, which removes the last `--flag` spellings from the agent-facing interface. And a fixable error names the command that fixes it (`ID_MISMATCH` → `rename-id`) instead of embedding `pathfinder-cli rename-id <dir> <chosen-id>` in its message, so the CLI prints a `Fix:` line and MCP — where that command is not a tool — prints nothing. Agents also stop receiving the `add-block` required-flag table and the "run `pathfinder-cli requirements list`" pointer, neither of which they can act on. Commands are listed from one manifest that neither surface owns, and the dependencies now run one way: the MCP layer reads no Commander object to discover what exists, nothing under `mcp/` mentions Commander at all, and no runner reaches into `mcp/` — `e2e --remote` used to import its CDN client from there, which now sits with the other utilities. The manifest itself no longer names `mcp`, since a command that launches an adapter is a fact about the surface offering it; the command line appends it. Text-help deltas are cosmetic: the `add-block` requirement table lists `--id` first (schema order), `(default: [])` no longer prints on repeatable flags, and three summaries lost CLI phrasing (`add-block`'s usage line, `set-manifest`'s "flags you pass", `move-block`'s `--into`). `set-manifest` and `edit-block` no longer append "See `--help` for the field list" when passed no fields. A numeric parameter still reports the bounds it accepts (`--position must be a non-negative integer`), now read off the schema rather than restated by a hand-written parser. (#1710)
+- **MCP authoring tools consolidated onto resource-shaped tools**: Ten per-verb tools are replaced by `pathfinder_manage_block` and `pathfinder_manage_guide`, each taking a kebab-case CLI `operation` plus an opaque `opts` bag discovered through `pathfinder_help`; `explicitId` is now `id`. `pathfinder_help` projects the Commander option surface into the exact camelCase keys a tool accepts, and the same projection preflights every call, so a withheld or misspelled parameter is rejected with `UNSUPPORTED_PARAMETER` instead of being silently dropped. Placement and reparenting (`before`, `after`, `position`, `orphanChildren`) stay withheld via the binding's own parameter blacklist — the CLI still offers all of them — so the MCP authoring procedure remains append-only. The read tools collapse the same way, onto `pathfinder_read_session` and `pathfinder_read_repository`, and `pathfinder_create_guide_template` is removed rather than renamed — a pre-populated starter guide has no role once authoring is sequential. No aliases are kept: clients pinned to any of those names must re-read `tools/list`. (#1639)
+- **`pathfinder_get_schema` follows the CLI's defaults**: The tool used to override two of them, and no longer does. `x-schema-version` is now omitted unless `includeVersion: true` is passed, where before it was included unless explicitly refused; and a call naming no schema returns `MISSING_NAME` instead of silently returning every schema. Both defaults now come from the `schema` command itself, so a consumer keying off `x-schema-version` must ask for it. (#1639)
+- **AI auto-heal on by default**: "Fix this" for failing interactive steps is enabled by default, and the `enableAiAutoHeal` setting becomes an admin kill switch. It still requires Grafana Assistant. (#1654)
+- **Cloud first-dashboard guide uses Grafana selectors**: `first-dashboard-cloud` targets Grafana's e2e selectors and declares Grafana 13.2.0 as its minimum test version. (#1383)
 
 ### Security
 
-- **Inbound Grafana ID tokens are cryptographically verified**: The App Platform proxies checked the caller's `X-Grafana-Id` token structurally rather than verifying it. A new verifier fetches the stack's JWKS from `{appURL}/api/signing-keys/keys` and checks the signature, `typ`, and `exp`, rejecting tokens that carry no `exp`. Each verifier is cached per app URL for at most five minutes, so a key removed from the live JWKS cannot stay trusted indefinitely, while the key cache's immediate re-fetch on an unknown `kid` still applies inside that window. The identity gate's boolean became a four-state status shared by all three routes — verified, rejected, unverifiable, and signing-keys-down — so a stack whose signing keys are temporarily down gets a retryable 503 with `Retry-After` rather than a soft-200 envelope. (#1604)
+- **Inbound Grafana ID tokens are cryptographically verified**: The App Platform proxies checked the caller's `X-Grafana-Id` token structurally rather than verifying it. A new verifier fetches the stack's JWKS from `{appURL}/api/signing-keys/keys` and checks the signature, `typ`, and `exp`, rejecting tokens that carry no `exp`. Each verifier is cached per app URL for at most five minutes, so a key removed from the live JWKS cannot stay trusted indefinitely, while the key cache's immediate re-fetch on an unknown `kid` still applies inside that window. The identity gate's boolean became a four-state status shared by all three routes — verified, rejected, unverifiable, and signing-keys-down — so a stack whose signing keys are temporarily down gets a retryable 503 with `Retry-After` rather than a soft-200 envelope. Grafana Cloud tokens, which auth-api signs, are verified against auth-api's key set after the stack's own, and bound to the stack's namespace. (#1604, #1700)
 - **`react-router-dom` 6.30.5**: Picks up the fix for CVE-2026-53668 / GHSA-jjmj-jmhj-qwj2, an open redirect that could lead to XSS in applications carrying open redirects (CVSS 6.9, medium). (#1680)
 
 ### Fixed
 
 - **Sandbox blocks no longer dead-end when dev mode is off**: The terminal panel and the block-level gates read different expressions — `isDevMode && enableCodaTerminal` versus `enableCodaTerminal` alone — so a stack with the setting on and dev mode off showed `terminal`, `terminal-connect`, and `challenge` blocks offering controls while `TerminalPanel` never mounted, leaving the learner on "the sandbox terminal is not available here". Both now share `isCodaTerminalEnabled`, so those blocks report the honest reason and point at Pathfinder's configuration instead. Blocks on such a stack change from an unusable control to a stated prerequisite.
-
 - **Discover more launches resolve their course context**: A path launched from My Learning before any docs-panel, sidebar, or full-screen instance had mounted rendered as a bare standalone document — no milestone toolbar, no progress chrome, no next/previous navigation. The package resolver was only ever registered from a panel constructor, so the launch raced ahead of it existing. It is now wired at plugin load. Discover more also carries the manifest it already fetched into the launch, saving a redundant sibling-manifest round trip. (#1638)
 - **Editor saves no longer destroy `spec.manifest` and provenance**: An App Platform PUT replaces the whole object, but the editor rebuilt `spec` and `metadata` from literals on every write. Saving a learning-path cover page deleted `spec.manifest`, silently collapsing the path into a flat guide whose milestones stopped rendering; every write erased `metadata.annotations`, including the provenance marks `scripts/upsert-learning-path.sh` stamps, so a later run of that script refused the package without `--overwrite`. Editor-owned spec fields now layer over the spec last read, and `resourceVersion`, `annotations`, and `labels` carry through all three writes. Both come from the same snapshot, so the 409 keeps guarding exactly the object whose unowned fields are being replayed. (#1663)
 - **Unverifiable write identity is a standing condition, not a transient one**: The completion-records write gate answered 401 for a stack with no resolvable app URL — and therefore no resolvable signing-keys URL. The write contract defines 401 as transient, so the client retried every queued write until the 30-day retention horizon and never disarmed. It now returns a structural 404 carrying its own reason string: the session disarms while retaining the queued records, and re-arms on a later app load. (#1660)
@@ -164,17 +454,19 @@
 - **E2E chains start where the previous guide finished**: Learning-path milestones often depend on resources an earlier milestone created at a dynamic route that no manifest can declare. A guide's final successful same-origin location now carries to the next guide in its dependency chain, so a URL milestone starts on the page it needs instead of restarting at `/`. Explicit authored locations still win. (#1651)
 - **E2E lease acquisition survives the dev environment's rate limit**: The pool manager paces lifecycle requests to stay within the dev API limit, but the runner aborted every request after 15 seconds — abandoning 15 lease requests that the pool manager later completed in 15 to 53 seconds, each consuming a stack whose one-time runner token the client could not replay. Acquisition now permits 90 seconds; retirement keeps its own 15-second deadline, and acquisition timeouts stay non-retryable. (#1672)
 - **E2E bootstrap retry budget covers a slow first paint**: Roughly 15 chains per run of 161 stopped waiting for `window.__pathfinderPluginConfig` at just under 10 seconds, on stacks that had been healthy for 26 to 58 minutes — a per-page initialization race rather than stack maturity. Each panel-open attempt now gets 20 seconds, with the existing single reload retry preserved, and the outer guide setup deadline rises from 120 to 140 seconds so the second attempt is not truncated. (#1688)
+- **Course deep links open the cover page**: A cold `?doc=backend-guide:<id>` link, such as a shared course link, resolves the guide's package and renders its cover page. (#1712)
+- **Starting-location prompt inside learning paths**: A guide opened from a learning path gets the same alignment prompt as when it is opened on its own. (#1692)
+- **MCP App Platform handoff keeps the manifest**: `pathfinder_finalize_for_app_platform` includes `spec.manifest` in its write descriptor, so a path authored through MCP no longer publishes as a flat guide, and it drops the undeclared `spec.type`. (#1687)
+- **Editor saves record the right schema version**: Block editor saves to App Platform are stamped with the schema version the editor emits instead of `1.0`. (#1686)
 
 ### Chore
 
 - **`create-experiment` skill**: The end-to-end recipe for setting up an A/B experiment — flag shape, variant validation, enrollment seam, exposure and behaviour analytics, QA overrides, tests, docs, and a teardown list. It exists because four of the platform's constraints are silent when violated: a boolean flag emits no exposure event and yields no readout, MTFF allocates per stack rather than per user, the registry's `values` array validates nothing at runtime, and a flag's first read is what defines enrollment. (#1629)
 - **Release workflow pinned to Node 24**: `grafana/plugin-actions/build-plugin` defaults its `node-version` to 20, which this repo has required Node 24 to build since well before the React 19 migration. Every tag-triggered release run had failed since December 2025, dying while loading `webpack.config.ts` because `undici` calls a Node 22+ API that Node 20 does not provide. (#1694)
 - **Resolver and learning-path docs refreshed**: A documentation maintenance pass corrected the package resolver chain, documented the lazy resolver registry and published-only App Platform bare-id resolution, and updated the learning-path reference for private-path routing and launch-context propagation. (#1659)
-
-### Changed
-
-- **One schema per command, for both the CLI and MCP**: A command's parameters were previously stated three times — a Commander declaration, a Zod schema for content fields, and a projection that reconstructed the agent-facing interface out of Commander — so value types, requiredness, and which parameters existed at all could disagree between the CLI and an agent. Every command now declares one Zod schema that Commander and MCP both render, and the projection is deleted. Several long-standing consequences go with it: `set-manifest --target-platform` rejects a value outside `oss|cloud|enterprise` instead of writing it silently; an agent can clear a manifest list by sending an empty array, where the value was previously indistinguishable from an unset flag and discarded; `create --type` is reported by `--help --format json`, having been dropped there by a filter that matched the field's name rather than its origin; and `edit-block` loses `--no-validate`, which promised to skip post-edit validation and was never read, and `--id`, whose rename behaviour has always belonged to `rename-id` — both were already hidden from agents, so this is a CLI-only change. No parameter enters or leaves the agent-facing surface, but every parameter there now carries `required` explicitly instead of implying it by bucket, which is what lets `add-choice` state that a choice `id` is mandatory and `edit-block` stop claiming that eleven create-time fields are. `--help --format json` also stops guessing a parameter's role for the CLI-only commands: `move-block --branch` is reported as optional rather than addressing. Text help is unchanged apart from now stating defaults and choices it used to omit (`mcp --port` shows `8080`, `build-graph --lint` shows `true`, `e2e --tier` lists `local|cloud`), and the bare `pathfinder-cli --help --format json` reports the subcommand list rather than the root's own two global flags — per-command JSON help, which is the documented agent contract, keeps its shape.
-- **Each surface writes in its own dialect**: The schema states what a parameter is; how it is spelled and what advice comes with it now belongs to whoever is reading. Three things follow. Failed input is reported at the command line the way a command line always has — `error: required option '--title <string>' not specified`, `error: option '--target-platform <platform>' argument 'bogus' is invalid. Allowed choices are oss, cloud, enterprise.` — while `--format json` and MCP keep the structured outcome with its code and full issue list, so one validation pass serves both without either inheriting the other's phrasing. Descriptions and messages carry parameter _references_ (`use at most one of {@before}/{@after}/{@position}`) that each surface spells: `--before` in text help, `before` to an agent, which removes the last `--flag` spellings from the agent-facing interface. And a fixable error names the command that fixes it (`ID_MISMATCH` → `rename-id`) instead of embedding `pathfinder-cli rename-id <dir> <chosen-id>` in its message, so the CLI prints a `Fix:` line and MCP — where that command is not a tool — prints nothing. Agents also stop receiving the `add-block` required-flag table and the "run `pathfinder-cli requirements list`" pointer, neither of which they can act on. Commands are listed from one manifest that neither surface owns, and the dependencies now run one way: the MCP layer reads no Commander object to discover what exists, nothing under `mcp/` mentions Commander at all, and no runner reaches into `mcp/` — `e2e --remote` used to import its CDN client from there, which now sits with the other utilities. The manifest itself no longer names `mcp`, since a command that launches an adapter is a fact about the surface offering it; the command line appends it. Text-help deltas are cosmetic: the `add-block` requirement table lists `--id` first (schema order), `(default: [])` no longer prints on repeatable flags, and three summaries lost CLI phrasing (`add-block`'s usage line, `set-manifest`'s "flags you pass", `move-block`'s `--into`). `set-manifest` and `edit-block` no longer append "See `--help` for the field list" when passed no fields. A numeric parameter still reports the bounds it accepts (`--position must be a non-negative integer`), now read off the schema rather than restated by a hand-written parser.
+- **Review and contributor tooling**: Shorter, cheaper PR reviews, a repository-owned community PR gate, security-reporting guidance for agents, and a refreshed guide-authoring entry point. (#1650, #1708, #1709, #1711)
+- **Pre-merge gate**: `npm run check` is declared in one script, and Go lint is enforced in the required CI gate. (#1696, #1698)
+- **Schema and test documentation**: Correct exported schema descriptions and document the E2E runner's opaque credentials. (#1703, #1704)
 
 ## 2.16.0
 
@@ -198,8 +490,6 @@
 ### Changed
 
 - **Sandbox terminals now come from the `grafana-coda-app` plugin**: Pathfinder's Coda backend — roughly 5,300 lines of Go covering the REST client, JWT refresh, the WebSocket-relay SSH transport, the PTY session, VM resolution, and quota and rate limiting — is deleted, and the terminal is rewired onto the versioned `v1` API of the separate [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app) plugin through its published `@grafana/coda-client` SDK. Pathfinder keeps the terminal UI and gives up only the backend, so the sandbox is available to any Grafana plugin instead of sitting behind Pathfinder's release cadence. Coda stays optional: availability is probed at runtime rather than declared as a plugin dependency, and an absent plugin means a hidden terminal, not an error. **Operators running Coda must re-enter their enrollment key at `/plugins/grafana-coda-app`** — plugin settings are per-plugin and `secureJsonData` is write-only, so the refresh token cannot be migrated. (#1468)
-- **MCP authoring tools consolidated onto resource-shaped tools**: Ten per-verb tools are replaced by `pathfinder_manage_block` and `pathfinder_manage_guide`, each taking a kebab-case CLI `operation` plus an opaque `opts` bag discovered through `pathfinder_help`; `explicitId` is now `id`. `pathfinder_help` projects the Commander option surface into the exact camelCase keys a tool accepts, and the same projection preflights every call, so a withheld or misspelled parameter is rejected with `UNSUPPORTED_PARAMETER` instead of being silently dropped. Placement and reparenting (`before`, `after`, `position`, `orphanChildren`) stay withheld via the binding's own parameter blacklist — the CLI still offers all of them — so the MCP authoring procedure remains append-only. The read tools collapse the same way, onto `pathfinder_read_session` and `pathfinder_read_repository`, and `pathfinder_create_guide_template` is removed rather than renamed — a pre-populated starter guide has no role once authoring is sequential. No aliases are kept: clients pinned to any of those names must re-read `tools/list`. (#1639)
-- **`pathfinder_get_schema` follows the CLI's defaults**: The tool used to override two of them, and no longer does. `x-schema-version` is now omitted unless `includeVersion: true` is passed, where before it was included unless explicitly refused; and a call naming no schema returns `MISSING_NAME` instead of silently returning every schema. Both defaults now come from the `schema` command itself, so a consumer keying off `x-schema-version` must ask for it. (#1639)
 
 ### Fixed
 
@@ -286,6 +576,7 @@
 - **Secondary step buttons size to their label**: The "Show me" and "Do it" buttons on interactive steps no longer render inside an oversized fixed-width button. (#1323)
 - **Resume/do section button uses correct singular and plural step counts**: The catch-all section action button and its tooltip no longer read "(1 steps)" when exactly one step remains. (#1325)
 - **Analytics `content_type` no longer diverges for the same interactive guide**: Standardizes `content_type`/`link_type` into shared enums so the same guide kind always reports the same value regardless of which button opened it, and fixes a `source_page` property that held a UI-location string instead of a URL, plus four dead `blockType` comparisons that could never match. The interactive-guide `content_type` value also moves from `interactive_guide` to `interactive-guide` to match the separator convention used elsewhere — update any saved RudderStack dashboard/query filtering on the old value. (#1363)
+- **"Full screen" button opens full screen instead of the home page**: The `panelMode=fullscreen` deep-link handoff no longer bounces back to home, and the full-screen route checks now work when Grafana is served under an `appSubUrl` sub-path — both the deep-link handler and the panel-mode self-heal compare against Grafana's basename-normalized router path instead of the raw browser pathname. (#1353)
 
 ### Chore
 
@@ -324,7 +615,7 @@
 - **Dock-to-sidebar action uses the columns icon**: Swaps the popout header's dock-to-sidebar icon from `angle-double-right` (read as navigate-forward) to `columns`, matching the layout the action produces. (#1303)
 - **Removed the redundant guide-toolbar "More options" menu**: The docs panel showed two "More options" menus at once; the toolbar's (which only duplicated "Give feedback") is gone, and its dev-only "Refresh" action moved into the tab-bar menu. (#1238)
 - **Two-tab controller formfill lands on backgrounded live tabs**: Formfill steps targeting the Monaco query editor now write through Monaco's model API instead of the hidden textarea, so they take effect on the live tab when driven from the two-tab controller. (#1181)
-- **"Full screen" button opens full screen instead of the home page**: The `panelMode=fullscreen` deep-link handoff no longer bounces back to home, and the full-screen route checks now work when Grafana is served under an `appSubUrl` sub-path — both the deep-link handler and the panel-mode self-heal compare against Grafana's basename-normalized router path instead of the raw browser pathname. (#1353)
+- **Cloud welcome and first-dashboard guide selectors**: The welcome guide highlights the Home breadcrumb again, with a guard if the selector drifts, and the first-dashboard guide finds the unit input, with Do it turned off for that step. (#1311)
 
 ### Security
 
@@ -379,7 +670,6 @@
 - **Two-tab controller gating** (epic #1133): The controller overlay and live-tab executor now mount on the same `shouldMountSidebar()` policy as the rest of Pathfinder rather than bare `pathfinderEnabled`, so they never appear in sessions where the sidebar is suppressed by experiment variant or 24h conditions. Per-run IDs added to the `step-command` / `step-complete` / `step-progress` wire messages let the controller discard replies from cancelled runs, preventing a stale `step-complete` from settling a subsequent retry. (#1145, #1146)
 - **React Compiler compliance**: Resolved the globals plus immutability, set-state-in-effect, and refs rules across the codebase and removed the lint disable block. (#1041, #1042, #1043)
 - **E2E step-completion reliability**: The guided substep loop and the post-interaction flow now treat a step unmount as completion, and step-locator attribute reads are bounded to prevent test-timeout hangs. (#982, #985, #1014)
-- **Analytics enrichment includes all enrolled experiments**: Event enrichment now includes every enrolled experiment rather than a subset. (#964)
 - **Image block URLs are validated**: Image block URLs are now validated before use. (#960)
 - **PR tester clamps stale persisted test mode**: A persisted test mode the current PR doesn't support is clamped to a supported mode instead of leaving the tester in an invalid state. (#1137)
 - **No redundant `dispatchEvents` after combobox fill**: Removes a redundant `dispatchEvents` call after a combobox fill in `handleDoMode`. (#966)
@@ -393,6 +683,7 @@
 - **`js-yaml` to v4.2.0**: Security advisory update. (#1037)
 - **`golang.org/x/net` to v0.55.0**: Go module security advisory update. (#958)
 - **`golang.org/x/crypto` to v0.53.0**: Routine Go module security bump. (#1022)
+- **Authenticated two-tab controller pairing**: The live tab ignores controller commands until the user accepts a pairing backed by an ECDSA challenge-response, with replay protection and deeper validation of nested message fields. The two-tab controller was still disabled in this release. (#1153, #1171, #1172)
 
 ### Chore
 
@@ -408,6 +699,13 @@
 - **Docs**: AI auto-heal flow plus admin opt-in (#998), dependency-aware E2E chaining and `--repository` (#1018), the `build-snippets` CLI command and `/coda/exec` endpoint (#1049), and a new `CONTRIBUTING.md` plus PR template with PR-scope guidance (#1122).
 - **Skills**: Rewrote the `pr-summary` skill for higher PR-process fidelity (#953) and increased `/review` depth and aggression (#1032).
 - **CI**: Cache `node_modules` by package-lock hash and drop the run-id handoff. (#992)
+- **Internal refactors and tooling**: Move badge and analytics logic out of learning-progress storage, route cloud guide side effects in E2E runs, update Playwright to 1.60.1, scope Go lint away from `node_modules`, and update code owners. (#1060, #1102, #1163, #1182, #1196)
+
+## 2.12.1
+
+### Fixed
+
+- **Analytics enrichment includes all enrolled experiments**: Event enrichment now includes every enrolled experiment rather than a subset. (#964)
 
 ## 2.12.0
 
@@ -442,6 +740,7 @@
 - **`golang.org/x/crypto` to v0.52.0**: Resolves CVE-2026-39833 (the in-memory keyring silently accepting unsupported `ConfirmBeforeUse` constraints) and rides a routine 0.50 → 0.52 Go security advisory bump. (#937)
 - **`lodash` 4.17.23 → 4.18.1**: Resolves CVE-2026-4800 (`_.template` code injection via untrusted `options.imports` key names; CVSS 8.1). Lock-file-only change; lodash is purely transitive via the `@grafana/*` packages and `slate`/`slate-react`. `npm audit fix` rode along a batch of unrelated transitive bumps (`dompurify` 3.3.2 → 3.4.7, `fast-uri` 3.0.6 → 3.1.2, `flatted` 3.3.3 → 3.4.2, `hono` 4.12.16 → 4.12.23, `ip-address` 10.1.0 → 10.2.0, `terser-webpack-plugin` 5.3.16 → 5.6.0, `@grafana/scenes` 8.2.5 → 8.2.6). Vulnerability count 22 → 11. (#936)
 - **Drop `protobufjs` to resolve CVE-2026-41242**: Removes the vulnerable `@protobufjs/utf8` transitive dependency entirely by bumping `@grafana/faro-web-tracing` 2.2.3 → 2.7.0 (whose `@opentelemetry/otlp-transformer` no longer requires protobufjs). `@grafana/faro-react` is pinned exact at 2.0.2 because newer versions add an incompatible `react-router@7` peer; `faro-web-sdk` dedups across both packages. (#933)
+- **`pathfinder-mcp` package name retired**: The MCP server runs as `pathfinder-cli mcp`, and the `pathfinder-mcp` binary is no longer shipped, so `npx pathfinder-mcp` resolves to nothing Grafana publishes after a namesquat. (#882)
 
 ### Chore
 
@@ -462,6 +761,7 @@
 - **Docs: trim `AGENTS.md` baseline by ~70%**: Compression pass on `AGENTS.md` to remove duplicated subsystem detail that lives in `.cursor/rules/systemPatterns.mdc`. Adds a routing table for on-demand context. (#891)
 - **`plugin-ci-workflows` CD v7.3.1 → v8.0.1 (GATB)** (#931)
 - **`grafana/plugin-actions` digest update** (#890)
+- **Agent hardening**: Correct agent-facing documentation, close loopholes in the tier ratchet, add the `/techdebt` skill to `/review`, and update code owners. (#903, #923, #934, #942)
 
 ## 2.11.0
 

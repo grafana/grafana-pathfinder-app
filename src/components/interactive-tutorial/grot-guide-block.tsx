@@ -232,7 +232,7 @@ const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, subHtml, onBac
               <button
                 className={styles.linkButton}
                 onClick={isDocsLink ? openInSidebar : openInNewTab}
-                title={isDocsLink ? 'Open in Pathfinder' : 'Open in new tab'}
+                title={isDocsLink ? 'Open in interactive learning' : 'Open in new tab'}
               >
                 <div className={styles.linkContent}>
                   <span className={styles.linkTitle}>{title}</span>

@@ -1,3 +1,4 @@
+import { OBSERVATION_HANDOFF_EVENT } from './observation/handoff';
 import type { ConditionInput } from '../types/requirements.types';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
@@ -11,8 +12,11 @@ import {
 } from '../lib/pairing-manager';
 import { generateSessionKeyPair } from '../security/cross-tab-crypto';
 import {
+  DEFAULT_STEP_WAIT_MS,
   SIGNED_MESSAGE_KINDS,
   type CheckRequirementsMessage,
+  type ObservationEvidenceMessage,
+  type ObservationChangeMessage,
   type CrossTabMessage,
   type CrossTabPayload,
   type FixRequirementMessage,
@@ -39,18 +43,25 @@ type RequestPayload =
   | Omit<CheckRequirementsMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>
   | Omit<FixRequirementMessage, 'source' | 'senderId' | 'timestamp' | 'requestId'>;
 
+type RemoteStepResult = 'completed' | 'failed' | 'timeout' | 'cancelled' | 'disconnected';
+
 interface ControllerChannel {
+  onObservation: (
+    id: string,
+    callback: (evidence: ObservationEvidenceMessage | ObservationChangeMessage) => void
+  ) => () => void;
   post: (payload: CrossTabPayload) => void;
   requestRequirementCheck: (
     stepId: string,
     requirements: ConditionInput,
-    opts?: { targetAction?: string; refTarget?: string; targetValue?: string }
+    opts?: { targetAction?: string; refTarget?: string; targetValue?: string; passive?: boolean }
   ) => Promise<RemoteRequirementResult | null>;
   requestFix: (
     stepId: string,
     opts: { requirements: ConditionInput; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
-  awaitStepComplete: (stepId: string, runId: string) => Promise<boolean>;
+  awaitStepResult: (stepId: string, runId: string, timeoutMs?: number) => Promise<RemoteStepResult>;
+  awaitStepComplete: (stepId: string, runId: string, timeoutMs?: number) => Promise<boolean>;
   cancelStepComplete: (stepId: string, runId: string) => void;
   onStepProgress: (stepId: string, runId: string, cb: (index: number, total: number) => void) => () => void;
 }
@@ -93,8 +104,11 @@ export function ControllerChannelProvider({
   // The one live tab this controller is bound to (first to send a `live`
   // heartbeat); replies from any other tab are ignored.
   const pairedLiveIdRef = useRef<string | null>(null);
+  const observationsRef = useRef(
+    new Map<string, (evidence: ObservationEvidenceMessage | ObservationChangeMessage) => void>()
+  );
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
-  const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
+  const stepCompletionRef = useRef<Map<string, (result: RemoteStepResult) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
 
   const signForLive = useCallback(
@@ -129,6 +143,7 @@ export function ControllerChannelProvider({
   }, [signForLive]);
 
   const postPreparedHandBack = useCallback((): boolean => {
+    document.dispatchEvent(new Event(OBSERVATION_HANDOFF_EVENT));
     const payload = preparedHandBackRef.current;
     if (!payload || payload.kind !== 'sidebar-handoff' || payload.sigTs === undefined) {
       return false;
@@ -201,7 +216,7 @@ export function ControllerChannelProvider({
         entry.resolve(entry.fallback);
       });
       pending.clear();
-      stepDone.forEach((resolve) => resolve(false));
+      stepDone.forEach((resolve) => resolve('disconnected'));
       stepDone.clear();
       stepProgressRef.current.clear();
     };
@@ -241,7 +256,9 @@ export function ControllerChannelProvider({
         message.kind !== 'requirement-result' &&
         message.kind !== 'fix-result' &&
         message.kind !== 'step-complete' &&
-        message.kind !== 'step-progress'
+        message.kind !== 'step-progress' &&
+        message.kind !== 'observation-evidence' &&
+        message.kind !== 'observation-change'
       ) {
         return;
       }
@@ -252,6 +269,10 @@ export function ControllerChannelProvider({
       // drive the live tab — that requires the controller private key. See
       // docs/developer/CROSS_TAB_CONTROLLER.md "Known limitations".
       if (pairedLiveIdRef.current === null || message.senderId !== pairedLiveIdRef.current) {
+        return;
+      }
+      if (message.kind === 'observation-evidence' || message.kind === 'observation-change') {
+        observationsRef.current.get(message.subscriptionId)?.(message);
         return;
       }
       if (message.kind === 'requirement-result') {
@@ -266,7 +287,7 @@ export function ControllerChannelProvider({
         const resolve = stepDone.get(key);
         if (resolve) {
           stepDone.delete(key);
-          resolve(message.ok);
+          resolve(message.ok ? 'completed' : 'failed');
         }
       }
     });
@@ -340,6 +361,7 @@ export function ControllerChannelProvider({
           targetAction: opts?.targetAction,
           refTarget: opts?.refTarget,
           targetValue: opts?.targetValue,
+          passive: opts?.passive,
         },
         null
       ),
@@ -362,22 +384,40 @@ export function ControllerChannelProvider({
     [request]
   );
 
-  const awaitStepComplete = useCallback<ControllerChannel['awaitStepComplete']>(
-    (stepId, runId) =>
-      new Promise<boolean>((resolve) => {
-        stepCompletionRef.current.set(`${stepId}:${runId}`, resolve);
+  const awaitStepResult = useCallback<ControllerChannel['awaitStepResult']>(
+    (stepId, runId, timeoutMs = DEFAULT_STEP_WAIT_MS) =>
+      new Promise<RemoteStepResult>((resolve) => {
+        const key = `${stepId}:${runId}`;
+        const timer = setTimeout(() => {
+          stepCompletionRef.current.delete(key);
+          post({ kind: 'step-cancel', stepId, runId });
+          resolve('timeout');
+        }, timeoutMs);
+        stepCompletionRef.current.set(key, (ok) => {
+          clearTimeout(timer);
+          resolve(ok);
+        });
       }),
-    []
+    [post]
   );
 
-  const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>((stepId, runId) => {
-    const key = `${stepId}:${runId}`;
-    const resolve = stepCompletionRef.current.get(key);
-    if (resolve) {
-      stepCompletionRef.current.delete(key);
-      resolve(false);
-    }
-  }, []);
+  const awaitStepComplete = useCallback<ControllerChannel['awaitStepComplete']>(
+    async (stepId, runId, timeoutMs) => (await awaitStepResult(stepId, runId, timeoutMs)) === 'completed',
+    [awaitStepResult]
+  );
+
+  const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>(
+    (stepId, runId) => {
+      post({ kind: 'step-cancel', stepId, runId });
+      const key = `${stepId}:${runId}`;
+      const resolve = stepCompletionRef.current.get(key);
+      if (resolve) {
+        stepCompletionRef.current.delete(key);
+        resolve('cancelled');
+      }
+    },
+    [post]
+  );
 
   const onStepProgress = useCallback<ControllerChannel['onStepProgress']>((stepId, runId, cb) => {
     const key = `${stepId}:${runId}`;
@@ -389,9 +429,37 @@ export function ControllerChannelProvider({
     };
   }, []);
 
+  const onObservation = useCallback(
+    (id: string, callback: (evidence: ObservationEvidenceMessage | ObservationChangeMessage) => void) => {
+      observationsRef.current.set(id, callback);
+      return () => {
+        observationsRef.current.delete(id);
+      };
+    },
+    []
+  );
+
   const channel = useMemo<ControllerChannel>(
-    () => ({ post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete, onStepProgress }),
-    [post, requestRequirementCheck, requestFix, awaitStepComplete, cancelStepComplete, onStepProgress]
+    () => ({
+      post,
+      onObservation,
+      requestRequirementCheck,
+      requestFix,
+      awaitStepResult,
+      awaitStepComplete,
+      cancelStepComplete,
+      onStepProgress,
+    }),
+    [
+      post,
+      onObservation,
+      requestRequirementCheck,
+      requestFix,
+      awaitStepResult,
+      awaitStepComplete,
+      cancelStepComplete,
+      onStepProgress,
+    ]
   );
 
   return (

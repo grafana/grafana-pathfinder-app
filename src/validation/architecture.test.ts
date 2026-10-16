@@ -138,12 +138,6 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1691',
   },
   {
-    violation: 'interactive-engine/auto-completion/useAutoDetection.ts -> hooks',
-    reason:
-      'Auto-detection consumes the shared resolved settings hook so tenant completion policy does not fall back to stale plugin metadata after App Platform saves.',
-    tracking: '#1691',
-  },
-  {
     violation: 'interactive-engine/interactive.hook.ts -> requirements-manager',
     reason:
       'Interactive execution delegates requirement checks to the requirements engine, forming the tracked cross-engine cycle.',
@@ -332,11 +326,6 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1923',
   },
   {
-    violation: 'components/SkeletonLoader/skeleton.styles.ts',
-    reason: 'Superseded duplicate — SkeletonLoader.tsx imports the newer styles/skeleton.styles.ts instead.',
-    tracking: '#1923',
-  },
-  {
     violation: 'components/UserProfileBar/index.ts',
     reason: 'Barrel with no importer — the sole consumer deep-imports UserProfileBar/UserProfileBar directly.',
     tracking: '#1923',
@@ -367,18 +356,8 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1923',
   },
   {
-    violation: 'components/docs-panel/MinimizedSidebarIcon.tsx',
-    reason: 'Dead component — only self-references remain anywhere in src/ (also named in a developer README).',
-    tracking: '#1923',
-  },
-  {
     violation: 'components/docs-panel/types.ts',
     reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
-    tracking: '#1923',
-  },
-  {
-    violation: 'constants/selectors.ts',
-    reason: 'No code importer anywhere in src/ — referenced only in two developer READMEs.',
     tracking: '#1923',
   },
   {
@@ -461,11 +440,6 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  * permanent.
  */
 const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
-  {
-    violation: 'types/backend-api.schema.ts',
-    reason: 'Imported only by validation/backend-api-contract.test.ts, the Go-to-TypeScript contract check.',
-    tracking: '#1923',
-  },
   {
     violation: 'types/v1-recommender.types.ts',
     reason:

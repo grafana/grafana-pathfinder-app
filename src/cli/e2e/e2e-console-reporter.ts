@@ -240,7 +240,8 @@ export function writeJsonReport(
   results: GuideRunResult[],
   outputPath: string | undefined,
   cleanupWarnings: string[] = [],
-  selection?: ExecutionSelection
+  selection?: ExecutionSelection,
+  localCloudSource = false
 ): boolean {
   if (!outputPath) {
     return true;
@@ -277,6 +278,9 @@ export function writeJsonReport(
         if (counts.failedGuides > 0 && !failureOutcomes.includes(report.outcome)) {
           report.outcome = 'failed';
         }
+      }
+      if (localCloudSource && report.outcome === 'passed' && report.summary.skippedGuides > 0) {
+        report.outcome = 'skipped';
       }
       if (cleanupWarnings.length > 0) {
         report.cleanupWarnings = cleanupWarnings;

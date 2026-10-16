@@ -46,6 +46,35 @@ describe('App Platform guide compatibility', () => {
     ]);
   });
 
+  it.each(['hide', 'heading-only'] as const)(
+    'round-trips checkbox groups and %s sections through CRD-compatible fields',
+    (mode) => {
+      const guide: JsonBlock[] = [
+        {
+          type: 'input',
+          inputType: 'checkbox-group',
+          prompt: 'Which environments?',
+          variableName: 'environments',
+          choices: [{ id: 'production', text: 'Production' }],
+        },
+        {
+          type: 'section',
+          id: 'production',
+          title: 'Production',
+          whenRequirementsUnmet: mode,
+          requirements: ['var-environments:includes:production'],
+          autoCollapse: false,
+          blocks: [{ type: 'markdown', content: 'Configure production' }],
+        },
+      ];
+      const encoded = encodeAppPlatformGuideBlocks(guide);
+      expect(encoded[0]).toMatchObject({ inputType: 'text' });
+      expect(encoded[1]).toMatchObject({ type: 'conditional' });
+      expect(JSON.stringify(encoded)).not.toContain('whenRequirementsUnmet');
+      expect(decodeAppPlatformGuideBlocks(encoded)).toEqual(guide);
+    }
+  );
+
   it('does not reinterpret ordinary markdown', () => {
     const markdown: JsonBlock[] = [{ type: 'markdown', id: 'rule', content: '---' }];
 

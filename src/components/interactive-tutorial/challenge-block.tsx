@@ -37,6 +37,7 @@ import {
 import type { ConditionInput } from '../../types/requirements.types';
 import { useGuideRequirements, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { reportStepSkipped } from '../../lib/analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { checkVerdict } from '../../lib/check-verdict';
 import { conditionTokens } from '../../lib/condition-input';
@@ -94,10 +95,10 @@ export interface ChallengeBlockProps {
   stepId?: string;
   isEligibleForChecking?: boolean;
   onStepComplete?: (stepId: string) => void;
-  // Accepted from content-renderer for parity with other blocks; unused locally.
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
+  sectionTitle?: string;
   disabled?: boolean;
   resetTrigger?: number;
 }
@@ -273,7 +274,10 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   stepId: providedStepId,
   isEligibleForChecking = true,
   onStepComplete,
+  stepIndex,
+  totalSteps,
   sectionId,
+  sectionTitle,
   disabled = false,
   resetTrigger,
 }) => {
@@ -369,6 +373,23 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       releaseSession();
     };
   }, [releaseSession]);
+
+  // Liveness guard for handleStart's post-openTerminal continuation.
+  // Unmounting does not cancel a pending `await terminalCtx.openTerminal(...)` —
+  // the continuation resumes regardless of mount state — so this is the only
+  // signal available to stop it from calling claimSession() and driving the
+  // rest of the mounted lifecycle once the component is gone (#1896). Same
+  // pattern as step-checker.hook.ts's isMountedRef: re-armed to true inside
+  // the mount effect so a StrictMode double-invoke doesn't leave it stuck
+  // false after the synthetic remount.
+  // REACT: abort on unmount (R4)
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const { completed: storedCompleted, reason: storedReason } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
@@ -692,7 +713,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     // Awaited rather than fire-and-forget: this resolves with the session that
     // actually ended up connected, which is the only id setup may run against.
     const nextSessionId = await terminalCtx.openTerminal(vmOpts);
-    if (cancelRequestedRef.current) {
+    // Cancelled and unmounted are two different reasons to abandon this claim,
+    // checked together: an explicit Cancel while still mounted, or having no
+    // component left at all to claim on behalf of. Either way the ownership
+    // and disconnect decision below is identical — only resetToIdle() (a UI
+    // state update) depends on which one happened, since there is no mounted
+    // component for it to update once isMountedRef.current is false.
+    if (cancelRequestedRef.current || !isMountedRef.current) {
       const currentLiveSessionId = terminalCtxRef.current?.sessionId;
       const isProvisioner = Boolean(nextSessionId) && nextSessionId !== sessionIdBeforeStart;
       const isDifferentSession = Boolean(currentLiveSessionId) && currentLiveSessionId !== nextSessionId;
@@ -703,7 +730,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         terminalCtxRef.current?.disconnect();
       }
       releaseSession();
-      resetToIdle();
+      if (isMountedRef.current) {
+        resetToIdle();
+      }
       return;
     }
     if (nextSessionId) {
@@ -785,6 +814,37 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     }
     resetToIdle();
   }, [state, resetToIdle, instanceId]);
+
+  const markSkipped = checker.markSkipped;
+  const handleSkip = useCallback(() => {
+    if (isCompleted) {
+      return;
+    }
+    const skipReason = state === 'failed-check' || state === 'setup-failed' ? 'after_failure' : 'user';
+    handleCancel();
+    markSkipped?.();
+    reportStepSkipped(
+      { targetAction: 'challenge', interactionLocation: 'challenge_block', skipReason },
+      { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+    );
+    onStepComplete?.(stepId);
+    window.dispatchEvent(
+      new CustomEvent('interactive-action-completed', {
+        detail: { stepId, blockType: 'challenge', state: 'completed' },
+      })
+    );
+  }, [
+    isCompleted,
+    state,
+    handleCancel,
+    markSkipped,
+    stepId,
+    stepIndex,
+    totalSteps,
+    sectionId,
+    sectionTitle,
+    onStepComplete,
+  ]);
 
   // Standard mode never touches Coda, so it must never see a Coda gate.
   const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate, codaEligibility, SANDBOX_SUBJECT) : null;
@@ -923,16 +983,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
               size="sm"
               variant="secondary"
               fill="text"
-              onClick={() => {
-                handleCancel();
-                checker.markSkipped?.();
-                onStepComplete?.(stepId);
-                window.dispatchEvent(
-                  new CustomEvent('interactive-action-completed', {
-                    detail: { stepId, blockType: 'challenge', state: 'completed' },
-                  })
-                );
-              }}
+              onClick={handleSkip}
               disabled={disabled}
               data-testid={testIds.interactive.skipButton(stepId)}
             >

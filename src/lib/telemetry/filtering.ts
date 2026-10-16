@@ -1,3 +1,5 @@
+import { opaqueGuideReference } from '../guide-diagnostics';
+import { TELEMETRY_EVENTS } from './types';
 import type { APIEvent, EventEvent, ExceptionEvent, LogEvent, TransportItem } from '@grafana/faro-web-sdk';
 import { config } from '@grafana/runtime';
 import packageJson from '../../../package.json';
@@ -10,6 +12,26 @@ import {
 import { currentPlatform } from '../platform';
 import { hasReportedPathfinderSurface, isPathfinderOpen } from './surface';
 import { normalizeTelemetryUrl, stripUrlSecrets } from './url';
+import {
+  HELP_BUTTON_EXPERIMENT_ID,
+  HELP_BUTTON_CLICK_EVENT,
+  HELP_BUTTON_DISMISS_EVENT,
+} from '../../constants/help-button-experiment';
+import {
+  AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
+  AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+} from '../../constants/auto-open-guide-experiment';
+
+// Experiments that enroll while Pathfinder is closed: their control arms never open it.
+const CLOSED_SURFACE_EXPERIMENT_IDS: ReadonlySet<string> = new Set([
+  HELP_BUTTON_EXPERIMENT_ID,
+  AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+]);
+const CLOSED_SURFACE_EXPERIMENT_EVENTS: ReadonlySet<string> = new Set([
+  HELP_BUTTON_CLICK_EVENT,
+  HELP_BUTTON_DISMISS_EVENT,
+  AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
+]);
 
 const APP_NAME = packageJson.name;
 const LOCAL_OVERRIDE_KEY = 'pathfinder.faro.local';
@@ -58,13 +80,21 @@ export function resolveFaroEnvironment(): { environment: FaroEnvironment; isLoca
   return { environment, isLocalOverride };
 }
 
-// Both derived from their source of truth (Grafana serves plugin assets from
-// /public/plugins/<id>/; sourcemapped frames use webpack://<package name>/),
-// so a plugin rename can't silently break the whitelist.
 const PLUGIN_ASSET_PATH = `/public/plugins/${pluginJson.id}/`;
 
 function isPathfinderStackFrame(filename: string | undefined): boolean {
-  return typeof filename === 'string' && (filename.includes(PLUGIN_ASSET_PATH) || filename.includes(APP_NAME));
+  if (!filename) {
+    return false;
+  }
+  try {
+    const url = new URL(filename);
+    if (url.protocol === 'webpack:') {
+      return url.hostname === APP_NAME && !url.pathname.includes('/node_modules/@grafana/faro-');
+    }
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.pathname.includes(PLUGIN_ASSET_PATH);
+  } catch {
+    return false;
+  }
 }
 
 // Exceptions we report explicitly (error boundaries, logger) must survive the
@@ -137,7 +167,9 @@ function isTrackedResourceUrl(resourceUrl: string | undefined): boolean {
 const EMBEDDED_URL_PATTERN = /https?:\/\/[^\s"'<>()[\]]+/g;
 
 function redactEmbeddedUrls(text: string): string {
-  return text.replace(EMBEDDED_URL_PATTERN, (match) => normalizeTelemetryUrl(match));
+  return text
+    .replace(EMBEDDED_URL_PATTERN, (match) => normalizeTelemetryUrl(match))
+    .replace(/backend-guide:[^\s"'<>()[\]]+/g, (match) => normalizeTelemetryUrl(match));
 }
 
 // Whitelist, not blocklist: Grafana core and other app plugins run their own
@@ -171,7 +203,18 @@ export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): Transp
       return null;
     }
     if (item.payload.name === 'faro.performance.resource') {
-      return isTrackedResourceUrl(item.payload.attributes?.['name']) ? item : null;
+      const name = item.payload.attributes?.['name'];
+      if (!isTrackedResourceUrl(name) || !name) {
+        return null;
+      }
+      const url = new URL(stripUrlSecrets(name));
+      if (url.pathname.includes('/api/v1/packages/')) {
+        url.pathname = `/api/v1/packages/private-${opaqueGuideReference(name)}`;
+      }
+      const redacted = url.href;
+      return redacted === name
+        ? item
+        : { ...item, payload: { ...item.payload, attributes: { ...item.payload.attributes, name: redacted } } };
     }
   }
   return item;
@@ -208,12 +251,24 @@ export function markPathfinderActive(): void {
   pathfinderWasOpen ||= hasReportedPathfinderSurface() && isPathfinderOpen();
 }
 
-// Attribution (filterPathfinderTelemetry) asks "is this ours?"; this gate
-// asks "is Pathfinder actually in use?". Everything except exceptions and
-// error-level logs is dropped until Pathfinder is open in one of its
-// surfaces, so collector sessions mean "used Pathfinder or Pathfinder
-// errored", not "loaded a Grafana page".
+// Explicit launch diagnostics can precede the first mounted Pathfinder surface.
 export function passesActivityGate(item: TransportItem<APIEvent>): boolean {
+  if (
+    isEventItem(item) &&
+    ((item.payload.name === 'experiment_viewed' &&
+      CLOSED_SURFACE_EXPERIMENT_IDS.has(String(item.payload.attributes?.experiment_id))) ||
+      CLOSED_SURFACE_EXPERIMENT_EVENTS.has(item.payload.name))
+  ) {
+    return true;
+  }
+  if (
+    isEventItem(item) &&
+    ((item.payload.name === TELEMETRY_EVENTS.guideRequest && Boolean(item.payload.attributes?.load_id)) ||
+      (item.payload.name === TELEMETRY_EVENTS.guideRender &&
+        (item.payload.attributes?.outcome === 'error' || item.payload.attributes?.outcome === 'timeout')))
+  ) {
+    return true;
+  }
   if (isExceptionItem(item)) {
     return true;
   }

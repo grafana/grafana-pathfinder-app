@@ -21,6 +21,18 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
 
+const mockRefreshSpy = jest.fn();
+jest.mock('../../global-state/completion-store', () => {
+  const actual = jest.requireActual('../../global-state/completion-store');
+  return {
+    ...actual,
+    refreshAndNotifyGuideProgress: (...args: unknown[]) => {
+      mockRefreshSpy(...args);
+      return actual.refreshAndNotifyGuideProgress(...args);
+    },
+  };
+});
+
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
 jest.mock('@grafana/ui', () => {
@@ -109,11 +121,16 @@ jest.mock('./interactive-conditional', () => {
 import { InteractiveStep } from './interactive-step';
 import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
 import {
+  executeInteractiveActionCalls,
   memoryStore,
   resetSectionHarness,
   silenceSectionWarnings,
   setCheckRequirementsResult,
+  setStepCheckerCompletionReason,
 } from '../../test-utils/interactive-section-harness';
+import { evictAllContentCaches, markStepCompleted, resetSteps } from '../../global-state/completion-store';
+import { StorageEvents } from '../../lib/event-names';
+import { subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
 
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +143,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  mockRefreshSpy.mockClear();
   resetSectionHarness();
   resetInteractiveCounters();
   (window as any).__DocsPluginActiveTabUrl = undefined;
@@ -543,5 +561,444 @@ describe('InteractiveSection — section requirements fix button (#476)', () => 
       const instance = results[results.length - 1].value;
       expect(instance.fixLocationRequirement).toHaveBeenCalledWith('/explore');
     });
+  });
+});
+
+describe('observed section objectives', () => {
+  it('completes its children through the shared coordinator without running actions', async () => {
+    const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+    const { CompletionObservationContext } = await import('../../global-state/observation/context');
+    const coordinator = new CompletionCoordinator(async () => true);
+    const root = render(
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveSection id="observed" title="Observed" objectives={['has-datasources']} autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            First
+          </InteractiveStep>
+          <InteractiveStep targetAction="highlight" refTarget=".b">
+            Second
+          </InteractiveStep>
+        </InteractiveSection>
+      </CompletionObservationContext.Provider>
+    );
+    await act(async () => {
+      coordinator.start();
+    });
+    const { useSectionCompletion } = await import('../../global-state/completion-store');
+    function Count() {
+      return <output>{useSectionCompletion('section-observed').size}</output>;
+    }
+    root.rerender(
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveSection id="observed" title="Observed" objectives={['has-datasources']} autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            First
+          </InteractiveStep>
+          <InteractiveStep targetAction="highlight" refTarget=".b">
+            Second
+          </InteractiveStep>
+        </InteractiveSection>
+        <Count />
+      </CompletionObservationContext.Provider>
+    );
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('2'));
+    coordinator.stop();
+  });
+});
+
+// ─── Hydrated completion is not a reader change (#2100) ─────────────────────
+
+const announcedAsChange = () => mockRefreshSpy.mock.calls.filter(([, origin]) => origin === 'change');
+
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+}
+
+function collectSectionEvents() {
+  const events: Array<Extract<ProgressEventDetail, { kind: 'section' }>> = [];
+  const unsubscribe = subscribeProgressEvent((detail) => {
+    if (detail.kind === 'section') {
+      events.push(detail);
+    }
+  });
+  return { events, unsubscribe };
+}
+
+describe('InteractiveSection — hydrated completion versus a reader completion (#2100)', () => {
+  it('announces a real completion as a change exactly once', async () => {
+    renderNoGateSection();
+    await click(complete(STEP_NOGATE));
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await settle();
+
+    expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+  });
+
+  it('does not announce a remounted completed section as a change', async () => {
+    const first = renderNoGateSection();
+    await click(complete(STEP_NOGATE));
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    first.unmount();
+    evictAllContentCaches();
+    mockRefreshSpy.mockClear();
+
+    renderNoGateSection();
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await settle();
+
+    expect(announcedAsChange()).toEqual([]);
+  });
+
+  it('does not announce a stored no-gate completion as a change, and marks its section event hydrated', async () => {
+    memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`, new Set([STEP_NOGATE]));
+    const { events, unsubscribe } = collectSectionEvents();
+    try {
+      renderNoGateSection();
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+      await settle();
+
+      expect(announcedAsChange()).toEqual([]);
+      expect(events).toEqual([
+        {
+          kind: 'section',
+          contentKey: expect.any(String),
+          sectionId: SECTION_NOGATE,
+          completed: true,
+          hydrated: true,
+        },
+      ]);
+      expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`)).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('does not announce a stored gated completion (restored acknowledgement) as a change', async () => {
+    memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_GATED}`, new Set([STEP_GATED]));
+    memoryStore.set(`section-ack::${NON_PREVIEW_KEY}::${SECTION_GATED}`, true);
+    const { events, unsubscribe } = collectSectionEvents();
+    try {
+      renderTrailingGateSection();
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await settle();
+
+      expect(announcedAsChange()).toEqual([]);
+      expect(events.map((e) => e.hydrated)).toEqual([true]);
+      expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_GATED}`)).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('announces a gated completion through the Mark button as a change, hydrated false', async () => {
+    const { events, unsubscribe } = collectSectionEvents();
+    try {
+      renderTrailingGateSection();
+      await click(complete(STEP_GATED));
+      await click(markButton(SECTION_GATED));
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await settle();
+
+      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+      expect(events.map((e) => e.hydrated)).toEqual([false]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('announces a completion made after a reset as a change even when the section mounted complete', async () => {
+    memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`, new Set([STEP_NOGATE]));
+    renderNoGateSection();
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await settle();
+    expect(announcedAsChange()).toEqual([]);
+
+    await click(redo(STEP_NOGATE));
+    await waitFor(() => expect(screen.getByTestId(doButton(SECTION_NOGATE))).toBeInTheDocument());
+    await click(complete(STEP_NOGATE));
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await settle();
+
+    expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+  });
+
+  it('keeps announcing an objectives-completed section as a change (decision pending in #2102)', async () => {
+    setStepCheckerCompletionReason('objectives');
+    const { events, unsubscribe } = collectSectionEvents();
+    try {
+      renderNoGateSection();
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+      expect(events.map((e) => e.hydrated)).toEqual([false]);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
+// ─── Section objectives with passive completion off ─────────────────────────
+// Both kill switches leave no coordinator (pinned in completion-observation-provider.test.tsx).
+
+const SECTION_OBJECTIVE = 'section-objective';
+const STEP_OBJECTIVE = `${SECTION_OBJECTIVE}-step-1`;
+
+function renderObjectiveSection() {
+  return render(
+    <InteractiveSection
+      id="objective"
+      title="Objective section"
+      objectives={['has-datasource:testdata']}
+      autoCollapse={false}
+    >
+      <InteractiveStep targetAction="highlight" refTarget=".a">
+        Step
+      </InteractiveStep>
+    </InteractiveSection>
+  );
+}
+
+describe('InteractiveSection — objectives without a completion coordinator', () => {
+  it('completes from its children under the previous rules, with no waiting row', async () => {
+    renderObjectiveSection();
+    await click(complete(STEP_OBJECTIVE));
+
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_OBJECTIVE))).toBeInTheDocument());
+    expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed');
+    expect(screen.queryByTestId(testIds.interactive.completionWaiting(SECTION_OBJECTIVE))).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /check completion/i })).not.toBeInTheDocument();
+    await settle();
+    expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`)).toBe(true);
+  });
+
+  it('restores a previously completed section and keeps its done bit for section-completed checks', async () => {
+    memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`, new Set([STEP_OBJECTIVE]));
+    memoryStore.set(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`, true);
+    renderObjectiveSection();
+
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_OBJECTIVE))).toBeInTheDocument());
+    await settle();
+    expect(screen.queryByTestId(testIds.interactive.completionWaiting(SECTION_OBJECTIVE))).not.toBeInTheDocument();
+    expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`)).toBe(true);
+  });
+});
+
+// ─── Section objective origin (#2102) ───────────────────────────────────────
+
+function collectGuideOrigins() {
+  const origins: Array<string | undefined> = [];
+  const unsubscribe = subscribeProgressEvent((detail) => {
+    if (detail.kind === 'guide') {
+      origins.push(detail.origin);
+    }
+  });
+  return { origins, unsubscribe };
+}
+
+async function renderObjectiveSectionWithCoordinator(check: () => Promise<boolean | undefined>) {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  const coordinator = new CompletionCoordinator(check);
+  render(
+    <CompletionObservationContext.Provider value={coordinator}>
+      <InteractiveSection
+        id="objective"
+        title="Objective section"
+        objectives={['has-datasource:testdata']}
+        autoCollapse={false}
+      >
+        <InteractiveStep targetAction="highlight" refTarget=".a">
+          Step
+        </InteractiveStep>
+      </InteractiveSection>
+    </CompletionObservationContext.Provider>
+  );
+  await act(async () => {
+    coordinator.start();
+  });
+  return coordinator;
+}
+
+describe('InteractiveSection — section objective origin', () => {
+  it('announces an objective already met on the first check as a load, never a reader change', async () => {
+    const sections = collectSectionEvents();
+    const guide = collectGuideOrigins();
+    try {
+      const coordinator = await renderObjectiveSectionWithCoordinator(async () => true);
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(announcedAsChange()).toEqual([]);
+      expect(sections.events.map((e) => e.hydrated)).toEqual([true]);
+      expect(guide.origins).not.toContain('change');
+      coordinator.stop();
+    } finally {
+      sections.unsubscribe();
+      guide.unsubscribe();
+    }
+  });
+
+  it('announces an objective the reader meets after opening as a change', async () => {
+    let met = false;
+    const sections = collectSectionEvents();
+    try {
+      const coordinator = await renderObjectiveSectionWithCoordinator(async () => met);
+      await settle();
+      met = true;
+      await act(async () => {
+        coordinator.recheck();
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+      expect(sections.events.map((e) => e.hydrated)).toEqual([false]);
+      coordinator.stop();
+    } finally {
+      sections.unsubscribe();
+    }
+  });
+
+  it('announces a section restored as done as hydrated, with no reader change', async () => {
+    memoryStore.set(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`, true);
+    const sections = collectSectionEvents();
+    const guide = collectGuideOrigins();
+    try {
+      renderObjectiveSection();
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(announcedAsChange()).toEqual([]);
+      expect(sections.events.map((e) => e.hydrated)).toEqual([true]);
+      expect(guide.origins).not.toContain('change');
+    } finally {
+      sections.unsubscribe();
+      guide.unsubscribe();
+    }
+  });
+});
+
+describe('InteractiveSection — section objectives across a Do section run and a guide reset', () => {
+  it('announces an objective the Do section run satisfies as a change, not a load', async () => {
+    const sections = collectSectionEvents();
+    try {
+      const coordinator = await renderObjectiveSectionWithCoordinator(
+        async () => executeInteractiveActionCalls.length > 0
+      );
+      await settle();
+      await click(doButton(SECTION_OBJECTIVE));
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+      );
+      await settle();
+
+      expect(executeInteractiveActionCalls.length).toBeGreaterThan(0);
+      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
+      expect(sections.events.map((e) => e.hydrated)).toEqual([false]);
+      coordinator.stop();
+    } finally {
+      sections.unsubscribe();
+    }
+  });
+
+  it('completes again after a step reset while its objective is still met', async () => {
+    const coordinator = await renderObjectiveSectionWithCoordinator(async () => true);
+    const section = () => screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE));
+    await waitFor(() => expect(section()).toHaveClass('completed'));
+    await settle();
+
+    await click(redo(STEP_OBJECTIVE));
+    await settle();
+
+    await waitFor(() => expect(section()).toHaveClass('completed'));
+    expect(announcedAsChange()).toEqual([]);
+    coordinator.stop();
+  });
+
+  it('drops an objective completion when the whole guide is reset', async () => {
+    let met = false;
+    const coordinator = await renderObjectiveSectionWithCoordinator(async () => met);
+    await settle();
+    met = true;
+    await act(async () => {
+      coordinator.recheck();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+    );
+    await settle();
+    mockRefreshSpy.mockClear();
+
+    met = false;
+    await act(async () => {
+      resetSteps([STEP_OBJECTIVE], SECTION_OBJECTIVE);
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: NON_PREVIEW_KEY } })
+      );
+      coordinator.reset();
+    });
+    await settle();
+
+    expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).not.toHaveClass('completed');
+    expect(announcedAsChange()).toEqual([]);
+    coordinator.stop();
+  });
+});
+
+describe('InteractiveSection — Do section with a step already waiting on its outcome', () => {
+  it('waits for the step instead of running it again, then finishes the section', async () => {
+    let verified = false;
+    const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+    const { CompletionObservationContext } = await import('../../global-state/observation/context');
+    const coordinator = new CompletionCoordinator(async () => verified);
+    const id = JSON.stringify([NON_PREVIEW_KEY, SECTION_NOGATE, STEP_NOGATE]);
+    coordinator.register({
+      id,
+      stepId: STEP_NOGATE,
+      sectionId: SECTION_NOGATE,
+      actions: [{ targetAction: 'highlight', refTarget: '.a' }],
+      verify: ['on-page:/done'],
+      eligible: true,
+      executing: false,
+      completed: false,
+      commit: () => markStepCompleted(STEP_NOGATE, SECTION_NOGATE, 'manual'),
+    });
+    render(
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveSection id="nogate" title="No-gate section" autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            Step
+          </InteractiveStep>
+        </InteractiveSection>
+      </CompletionObservationContext.Provider>
+    );
+    await act(async () => {
+      coordinator.start();
+      coordinator.request(id);
+    });
+    expect(coordinator.waiting(id)).toBe(true);
+
+    await click(doButton(SECTION_NOGATE));
+    await settle();
+    expect(executeInteractiveActionCalls).toHaveLength(0);
+
+    verified = true;
+    await act(async () => {
+      coordinator.recheck();
+    });
+    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    expect(executeInteractiveActionCalls).toHaveLength(0);
+    coordinator.stop();
   });
 });

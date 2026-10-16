@@ -45,6 +45,33 @@ describe('usePublishedGuides', () => {
     expect(result.current.orphanGuides.map((g) => g.id)).toEqual(['standalone-guide']);
   });
 
+  it('excludes a guide referenced only by a track from orphans', async () => {
+    mockFetchCustomGuideRepository.mockResolvedValue([
+      {
+        id: 'fe-alerting-path',
+        title: 'Alerting enablement',
+        status: 'published',
+        manifest: {
+          type: 'path',
+          repository: 'app-platform',
+          milestones: ['fe-alerting-01'],
+          tracks: [{ trackId: 'builder', label: 'Builder', guides: ['fe-alerting-01', 'fe-alerting-builder-02'] }],
+        },
+      },
+      { id: 'fe-alerting-01', title: 'Alerting module 1', status: 'published', manifest: { type: 'guide' } },
+      { id: 'fe-alerting-builder-02', title: 'Builder-only module', status: 'published', manifest: { type: 'guide' } },
+      { id: 'standalone-guide', title: 'A standalone guide', status: 'published' },
+    ]);
+
+    const { result } = renderHook(() => usePublishedGuides());
+
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+
+    // fe-alerting-builder-02 is only in the "builder" track, never in
+    // milestones — it must still count as referenced, not orphaned.
+    expect(result.current.orphanGuides.map((g) => g.id)).toEqual(['standalone-guide']);
+  });
+
   it('filters out unpublished (draft) guides', async () => {
     mockFetchCustomGuideRepository.mockResolvedValue([
       { id: 'draft-guide', title: 'Draft', status: 'draft' },

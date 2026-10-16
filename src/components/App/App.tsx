@@ -7,6 +7,7 @@ import { testIds } from '../../constants/testIds';
 import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
 import { fullScreenPage } from '../../pages/fullScreenPage';
+import { browsePage } from '../../pages/browsePage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { onPluginStart } from '../../context-engine';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
@@ -65,7 +66,7 @@ function ErrorFallback({ error, onReset }: { error: Error | null; onReset: () =>
       <div className={styles.content}>
         <h3 className={styles.title}>Something went wrong</h3>
         <p className={styles.message}>
-          The Pathfinder plugin encountered an error. You can try again or refresh the page.
+          The interactive learning plugin encountered an error. You can try again or refresh the page.
         </p>
         {error && <code className={styles.errorCode}>{error.message}</code>}
         <div className={styles.actions}>
@@ -127,7 +128,7 @@ const getErrorStyles = (theme: GrafanaTheme2) => ({
 
 function getSceneApp() {
   return new SceneApp({
-    pages: [homePage, docsPage, fullScreenPage],
+    pages: [homePage, docsPage, fullScreenPage, browsePage],
   });
 }
 

@@ -21,7 +21,7 @@ import (
 	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
-// Contract goldens for the four App Platform response envelopes
+// Contract goldens for the App Platform response envelopes
 // (docs/design/BACKEND_PROXY_PATTERN.md). Go and TypeScript describe these
 // shapes twice, in two processes, so no compiler can couple them; these
 // committed bytes are what does. `src/validation/backend-api-contract.test.ts`
@@ -65,14 +65,14 @@ type contractRoot struct {
 	typ reflect.Type
 }
 
-// contractRoots are the four in-scope envelopes. Every Coda route is out of
-// scope: #1468 deletes coda.go, coda_exec.go and resources.go.
 func contractRoots() []contractRoot {
 	return []contractRoot{
 		{"package-recommendations", reflect.TypeOf(PackageRecommendationsResponse{})},
 		{"custom-guide-repository", reflect.TypeOf(customGuideRepositoryResponse{})},
+		{"custom-guides", reflect.TypeOf(customGuidesResponse{})},
 		{"completion-records-my", reflect.TypeOf(myCompletionsResponse{})},
 		{"completion-records-capability", reflect.TypeOf(completionCapability{})},
+		{"assignments-my", reflect.TypeOf(myAssignmentsResponse{})},
 	}
 }
 
@@ -91,11 +91,17 @@ func contractCases() []contractCase {
 		{"custom-guide-repository.default", captureCustomGuideDefault},
 		{"custom-guide-repository.wire-widened-manifest", captureCustomGuideWireWidenedManifest},
 		{"custom-guide-repository.unavailable", captureCustomGuideUnavailable},
+		{"custom-guides.default", captureCustomGuidesDefault},
+		{"custom-guides.empty", captureCustomGuidesEmpty},
 		{"completion-records-my.default", captureMyCompletionsDefault},
 		{"completion-records-my.empty", captureMyCompletionsEmpty},
+		{"completion-records-my.in-progress", captureMyCompletionsInProgress},
 		{"completion-records-my.unavailable", captureMyCompletionsUnavailable},
 		{"completion-records-capability.available", captureCapabilityAvailable},
 		{"completion-records-capability.unavailable", captureCapabilityUnavailable},
+		{"assignments-my.default", captureMyAssignmentsDefault},
+		{"assignments-my.empty", captureMyAssignmentsEmpty},
+		{"assignments-my.unavailable", captureMyAssignmentsUnavailable},
 	}
 }
 
@@ -792,6 +798,25 @@ func captureCustomGuideUnavailable(t *testing.T) *httptest.ResponseRecorder {
 	return doCustomGuideGolden(t, r.WithContext(ctx))
 }
 
+func doCustomGuidesGolden(t *testing.T, upstreamBody string) *httptest.ResponseRecorder {
+	t.Helper()
+	freezeContractTime(t)
+	app, cfg := customGuidesTestApp(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(upstreamBody))
+	}, http.StatusOK)
+	rr := httptest.NewRecorder()
+	app.handleCustomGuides(rr, customGuideRequestWithConfig(t, "/custom-guides", "user:1", cfg))
+	return rr
+}
+
+func captureCustomGuidesDefault(t *testing.T) *httptest.ResponseRecorder {
+	return doCustomGuidesGolden(t, `{"items":[{"apiVersion":"pathfinderbackend.ext.grafana.app/v1alpha1","kind":"InteractiveGuide","metadata":{"name":"editor-guide","uid":"uid-editor","resourceVersion":"42","creationTimestamp":"2026-10-01T00:00:00Z","annotations":{"source":"editor"},"labels":{"team":"observability"}},"spec":{"id":"editor-guide","title":"Team guide","status":"draft","blocks":[{"type":"markdown","content":"Hello"}],"manifest":{"type":"guide"}},"futureField":{"preserve":true}}]}`)
+}
+
+func captureCustomGuidesEmpty(t *testing.T) *httptest.ResponseRecorder {
+	return doCustomGuidesGolden(t, `{"items":[]}`)
+}
+
 // --- Captures: /completion-records/* -----------------------------------------
 
 func doCompletionGolden(t *testing.T, r *http.Request, serve func(*App) http.HandlerFunc, records ...completionRecordSpec) *httptest.ResponseRecorder {
@@ -808,11 +833,34 @@ func completionCapabilityRoute(a *App) http.HandlerFunc { return a.handleComplet
 
 func captureMyCompletionsDefault(t *testing.T) *httptest.ResponseRecorder {
 	freezeContractTime(t)
+	annotated := func(r completionRecordSpec, duration int64, updated, started string) completionRecordSpec {
+		r.DurationSeconds, r.LastUpdatedAt, r.AttemptStartedAt = duration, updated, started
+		return r
+	}
 	return doCompletionGolden(t, completionRequest(t, "/completion-records/my", "user:1"), myCompletions,
-		rec("user:1", "app-platform", "fe-alerting-01", "Alerting module 1", "interactive", "fe-alerting-path", "objectives", "2026-03-30T09:00:00Z", 100),
+		annotated(rec("user:1", "app-platform", "fe-alerting-01", "Alerting module 1", "interactive", "fe-alerting-path", "objectives", "2026-03-30T09:00:00Z", 100), 742, "2026-03-30T09:00:05Z", "2026-03-30T08:47:00Z"),
 		rec("user:1", "app-platform", "fe-alerting-01", "Alerting module 1", "interactive", "fe-alerting-path", "manual", "2026-03-29T09:00:00Z", 60),
 		rec("user:1", "bundled", "linux", "Linux server integration", "interactive", "", "objectives", "2026-03-28T09:00:00Z", 80),
 		rec("user:2", "bundled", "loki", "Loki basics", "interactive", "", "objectives", "2026-03-27T09:00:00Z", 100),
+	)
+}
+
+func captureMyCompletionsInProgress(t *testing.T) *httptest.ResponseRecorder {
+	freezeContractTime(t)
+	partial := func(guideSource, guideID, title string, percent int64, updated string) completionRecordSpec {
+		r := rec("user:1", guideSource, guideID, title, "interactive", "", "objectives", "", percent)
+		r.LastUpdatedAt = updated
+		r.AttemptStartedAt = "2026-03-29T08:30:00Z"
+		return r
+	}
+	done := rec("user:1", "bundled", "linux", "Linux server integration", "interactive", "", "manual", "2026-03-28T09:00:00Z", 100)
+	done.LastUpdatedAt = "2026-03-28T09:00:00Z"
+	done.DurationSeconds = 310
+	done.AttemptStartedAt = "2026-03-28T08:50:00Z"
+	return doCompletionGolden(t, completionRequest(t, "/completion-records/my", "user:1"), myCompletions,
+		done,
+		partial("bundled", "linux", "Linux server integration", 40, "2026-03-29T09:00:00Z"),
+		partial("app-platform", "fe-alerting-01", "Alerting module 1", 60, "2026-03-30T09:00:00Z"),
 	)
 }
 
@@ -836,4 +884,49 @@ func captureCapabilityAvailable(t *testing.T) *httptest.ResponseRecorder {
 func captureCapabilityUnavailable(t *testing.T) *httptest.ResponseRecorder {
 	freezeContractTime(t)
 	return doCompletionGolden(t, completionRequest(t, "/completion-records/capability", ""), completionCapabilityRoute)
+}
+
+// --- Captures: /assignments/my -----------------------------------------------
+
+func doAssignmentsGolden(t *testing.T, r *http.Request, records ...assignmentSpec) *httptest.ResponseRecorder {
+	t.Helper()
+	withAssignmentLister(t, singlePageAssignmentLister(records...))
+	rr := httptest.NewRecorder()
+	newTestApp(t).handleMyAssignments(rr, r)
+	return rr
+}
+
+// One obligation of each shape the envelope can express, plus a second
+// subject's record that the caller filter must keep off the wire.
+func captureMyAssignmentsDefault(t *testing.T) *httptest.ResponseRecorder {
+	freezeContractTime(t)
+
+	bare := asg("user:1", "grafana-fundamentals", "", "all-new-joiners", "2026-03-30T09:00:00Z")
+
+	track := asg("user:1", "grafana-fundamentals", "seller", "sales-executives-seller-track", "2026-03-29T09:00:00Z")
+	track.AssignedBy = "gtm-enablement"
+	track.DueAt = "2026-05-15T00:00:00Z"
+
+	bounded := asg("user:1", "security-awareness", "", "annual-compliance-2026", "2026-03-28T09:00:00Z")
+	bounded.DueAt = "2026-04-15T00:00:00Z"
+	bounded.AcceptCompletionsFrom = "2026-01-01T00:00:00Z"
+
+	path := pathWithGuides(t)
+	completed := asg("user:1", path.ID, "", "onboarding-cohort", "2026-03-26T09:00:00Z")
+	withLister(t, singlePageLister(rec("user:1", "bundled", path.Guides[0], path.Guides[0], "interactive", path.ID, "objectives", "2026-03-27T15:00:00Z", 100)))
+
+	other := asg("user:2", "alerting-essentials", "", "oncall-rotation", "2026-03-27T09:00:00Z")
+
+	return doAssignmentsGolden(t, completionRequest(t, "/assignments/my", "user:1"), bare, track, bounded, completed, other)
+}
+
+func captureMyAssignmentsEmpty(t *testing.T) *httptest.ResponseRecorder {
+	freezeContractTime(t)
+	return doAssignmentsGolden(t, completionRequest(t, "/assignments/my", "user:nobody"),
+		asg("user:1", "grafana-fundamentals", "", "all-new-joiners", "2026-03-30T09:00:00Z"))
+}
+
+func captureMyAssignmentsUnavailable(t *testing.T) *httptest.ResponseRecorder {
+	freezeContractTime(t)
+	return doAssignmentsGolden(t, completionRequest(t, "/assignments/my", ""))
 }
