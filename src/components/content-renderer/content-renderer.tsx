@@ -9,7 +9,8 @@ import { useIsAlignmentPaused } from '../../global-state/alignment-pending-conte
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder } from '@grafana/ui';
+import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, useStyles2 } from '@grafana/ui';
+import { getSelectionStyles } from './content-renderer.styles';
 
 import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
 import { logger } from '../../lib/logging';
@@ -185,14 +186,6 @@ interface ContentRendererProps {
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
-
-// Style to hide default browser selection highlight
-const selectionStyle = css`
-  ::selection {
-    background-color: rgba(255, 136, 0, 0.3);
-    color: inherit;
-  }
-`;
 
 // Memoize ContentRenderer to prevent re-renders when parent re-renders
 // but content prop hasn't changed
@@ -685,6 +678,7 @@ function ContentWithVariables({
   afterContent,
   fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
+  const selectionStyle = useStyles2(getSelectionStyles);
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
   const { responses, isLoading: responsesLoading } = useGuideResponses();
