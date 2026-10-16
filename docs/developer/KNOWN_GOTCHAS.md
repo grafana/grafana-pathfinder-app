@@ -12,6 +12,14 @@ ln -s <main-checkout>/node_modules <worktree>/node_modules
 
 Tell subagents dispatched into worktrees about this before they start.
 
+## Typecheck cannot find `@grafana-experiments/sdk` in an older worktree
+
+A worktree whose `node_modules` predates the SDK dependency reports a handful of `TS2307` and implicit-`any` errors in `src/lib/telemetry/experiments.ts` and `src/utils/experiments/`, and nowhere else. Run `npm ci`; the errors are not from your branch.
+
+## `npm run i18n-extract` rewrites every locale file
+
+`src/locales/en-US/grafana-pathfinder-app.json` does not hold every `t()` key; many ship only as defaults in code. Running the extractor re-sorts and rewrites all 21 locale files, so do not run it for an ordinary change. Add a key to `en-US` by hand only when a reviewer or test asks for it.
+
 ## A local check fails on files you did not touch
 
 A local tool that is newer or older than the CI pin can report findings CI does not. Compare your version to the pin:

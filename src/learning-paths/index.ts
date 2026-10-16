@@ -73,6 +73,9 @@ export type { DueStatus } from './assignments-core';
 export type { ResolvedAssignment } from '../types/learning-paths.types';
 export { markCurrentGuide } from './mark-current-guide';
 
+export { selectHubResume, selectHubStats } from './hub-learning';
+export type { HubLearningDeps, HubResume, HubStats, HubDue } from './hub-learning';
+
 export { usePackageCatalog } from './package-catalog.hook';
 
 export { useCatalogProgress } from './catalog-progress.hook';

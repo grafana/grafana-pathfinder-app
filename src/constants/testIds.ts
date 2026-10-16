@@ -410,6 +410,21 @@ export const testIds = {
     trigger: 'feedback-button',
   },
 
+  // Sidebar hub
+  sidebarHub: {
+    container: 'sidebar-hub-container',
+    loading: 'sidebar-hub-loading',
+    myLearning: 'sidebar-hub-my-learning',
+    featured: 'sidebar-hub-featured',
+    featuredAction: 'sidebar-hub-featured-action',
+    resume: 'sidebar-hub-resume',
+    resumeAction: 'sidebar-hub-resume-action',
+    tiles: 'sidebar-hub-tiles',
+    tile: (name: string) => `sidebar-hub-tile-${name}`,
+    moreList: 'sidebar-hub-more-list',
+    row: (index: number) => `sidebar-hub-row-${index}`,
+  },
+
   // Help Footer
   helpFooter: {
     container: 'help-footer-container',

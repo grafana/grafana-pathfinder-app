@@ -3,6 +3,7 @@ import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
 import { LearningTopicIcon } from './LearningTopicIcon';
+import { getLearningAction } from './learning-action';
 import { getLearningTopicMetadata } from './learning-topic-visual';
 import { getLearningContentCardStyles } from './learning-content-card.styles';
 
@@ -99,12 +100,13 @@ export function LearningContentCard({
   const isExpanded = expanded ?? localExpanded;
   const canExpand = Boolean(details || truncated);
   const percent = typeof progress === 'number' && Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
+  const action = getLearningAction(kind, percent);
   const label =
-    kind === 'docs'
+    action === 'read'
       ? t('learningCard.read', 'Read')
-      : percent === 100
+      : action === 'review'
         ? t('learningCard.review', 'Review')
-        : percent > 0
+        : action === 'resume'
           ? t('learningCard.resume', 'Resume')
           : kind === 'path'
             ? t('learningCard.startPath', 'Start path')

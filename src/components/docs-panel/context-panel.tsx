@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { cx } from '@emotion/css';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
@@ -9,8 +9,9 @@ import { Prerequisites } from '../Prerequisites';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
+import { SidebarHub, getFirstName, type HubGuide, type HubSource } from '../SidebarHub';
 import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
-import { locationService, getAppEvents } from '@grafana/runtime';
+import { config, locationService, getAppEvents } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
@@ -34,7 +35,15 @@ import { usePublishedGuides, PublishedGuide } from '../../utils/usePublishedGuid
 import { ContextPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { useRecommendationsScrollPosition } from './hooks';
-import { useLearningPaths, useMyAssignments, type ResolvedAssignment } from '../../learning-paths';
+import {
+  useLearningPaths,
+  useMyAssignments,
+  selectHubResume,
+  selectHubStats,
+  type HubResume,
+  type ResolvedAssignment,
+} from '../../learning-paths';
+import { useBooleanFlag } from '../../utils/openfeature';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { LearningModuleList } from '../LearningContentCard/LearningModuleList';
 import { learningEffort } from '../LearningContentCard/learning-effort';
@@ -81,6 +90,16 @@ function assignmentForPath(
   const byTitle = assignments.filter((assignment) => assignment.title.trim().toLowerCase() === title);
   return byTitle.length === 1 ? byTitle[0] : undefined;
 }
+
+const getRecommendationKind = (displayType: Recommendation['type']): 'guide' | 'path' | 'docs' =>
+  displayType === 'docs-page' ? 'docs' : displayType === 'interactive' ? 'guide' : 'path';
+
+const getRecommendationTopic = (recommendation: Recommendation, contentUrl: string): string =>
+  catalogTopic({
+    id: typeof recommendation.manifest?.id === 'string' ? recommendation.manifest.id : contentUrl,
+    title: recommendation.title,
+    category: typeof recommendation.manifest?.category === 'string' ? recommendation.manifest.category : undefined,
+  });
 
 /** Maps a recommendation's effective display type onto the canonical analytics content_type. */
 const getContentTypeForDisplayType = (displayType: Recommendation['type']): AnalyticsContentType => {
@@ -195,6 +214,87 @@ const getRecommendationPackageInfo = (
   };
 };
 
+const HUB_MY_LEARNING_SOURCES: Record<HubSource, string> = {
+  header: 'hub_header',
+  assignments: 'hub_assignments',
+  'in-progress': 'hub_in_progress',
+  completed: 'hub_completed',
+};
+
+interface LaunchRecommendationOptions {
+  interactionLocation: string;
+  packageInfo: PackageOpenInfo | undefined;
+  openLearningJourney: (url: string, title: string) => void;
+  openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
+}
+
+function launchRecommendation(
+  recommendation: Recommendation,
+  { interactionLocation, packageInfo, openLearningJourney, openDocsPage }: LaunchRecommendationOptions
+) {
+  const contentUrl = getRecommendationContentUrl(recommendation);
+  const displayType = getEffectiveDisplayType(recommendation);
+  reportAppInteraction(UserInteraction.OpenResourceClick, {
+    content_title: recommendation.title,
+    content_url: contentUrl,
+    content_type: getContentTypeForAnalytics(contentUrl, getContentTypeForDisplayType(displayType)),
+    interaction_location: interactionLocation,
+    match_accuracy: recommendation.matchAccuracy || 0,
+    ...(displayType !== 'docs-page' && {
+      total_milestones: recommendation.totalSteps || 0,
+      completion_percentage: recommendation.completionPercentage ?? 0,
+    }),
+  });
+  return shouldUseDocsPageOpener(recommendation.type)
+    ? openDocsPage(contentUrl, recommendation.title, packageInfo)
+    : openLearningJourney(contentUrl, recommendation.title);
+}
+
+interface HubGuidesOptions {
+  recommendations: Recommendation[];
+  resume: Pick<HubResume, 'pathId' | 'guideUrl'> | undefined;
+  assignments: ResolvedAssignment[];
+  openLearningJourney: (url: string, title: string) => void;
+  openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
+}
+
+/** Keeps the engine's order; what the resume card already offers is left out. */
+function toHubGuides({ recommendations, resume, assignments, ...openers }: HubGuidesOptions): HubGuide[] {
+  const launchable = recommendations.filter((recommendation) => {
+    const contentUrl = getRecommendationContentUrl(recommendation);
+    return (
+      contentUrl !== '' &&
+      contentUrl !== resume?.guideUrl &&
+      (resume === undefined || recommendationTargetId(recommendation) !== resume.pathId)
+    );
+  });
+
+  return launchable.map((recommendation, index) => {
+    const contentUrl = getRecommendationContentUrl(recommendation);
+    const displayType = getEffectiveDisplayType(recommendation);
+    const kind = getRecommendationKind(displayType);
+    const packageInfo = getRecommendationPackageInfo(
+      recommendation,
+      assignmentForPath(recommendation, assignments)?.trackId
+    );
+    return {
+      key: contentUrl,
+      title: recommendation.title,
+      summary: recommendation.summary,
+      topic: getRecommendationTopic(recommendation, contentUrl),
+      kind,
+      effort: learningEffort(recommendation.manifest, kind),
+      progress: displayType === 'docs-page' ? undefined : recommendation.completionPercentage,
+      onLaunch: () =>
+        launchRecommendation(recommendation, {
+          interactionLocation: index === 0 ? 'hub_featured_card' : 'hub_more_recommended',
+          packageInfo,
+          ...openers,
+        }),
+    };
+  });
+}
+
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public static Component = ContextPanelRenderer;
 
@@ -294,18 +394,13 @@ export const RecommendationsSection = memo(function RecommendationsSection({
     const assignment = assignmentForPath(recommendation, assignments);
     const packageInfo = getRecommendationPackageInfo(recommendation, assignment?.trackId);
     const displayType = getEffectiveDisplayType(recommendation);
-    const kind = displayType === 'docs-page' ? 'docs' : displayType === 'interactive' ? 'guide' : 'path';
+    const kind = getRecommendationKind(displayType);
     const isExpanded = Boolean(recommendation.summaryExpanded);
     return (
       <LearningContentCard
         key={contentUrl || `${featured ? 'featured' : 'main'}-${index}`}
         title={recommendation.title}
-        topic={catalogTopic({
-          id: typeof recommendation.manifest?.id === 'string' ? recommendation.manifest.id : contentUrl,
-          title: recommendation.title,
-          category:
-            typeof recommendation.manifest?.category === 'string' ? recommendation.manifest.category : undefined,
-        })}
+        topic={getRecommendationTopic(recommendation, contentUrl)}
         kind={kind}
         description={recommendation.summary}
         progress={displayType === 'docs-page' ? undefined : recommendation.completionPercentage}
@@ -343,22 +438,14 @@ export const RecommendationsSection = memo(function RecommendationsSection({
           });
           toggleSummaryExpansion(contentUrl);
         }}
-        onLaunch={() => {
-          reportAppInteraction(UserInteraction.OpenResourceClick, {
-            content_title: recommendation.title,
-            content_url: contentUrl,
-            content_type: getContentTypeForAnalytics(contentUrl, getContentTypeForDisplayType(displayType)),
-            interaction_location: featured ? 'featured_card_button' : 'main_card_button',
-            match_accuracy: recommendation.matchAccuracy || 0,
-            ...(displayType !== 'docs-page' && {
-              total_milestones: recommendation.totalSteps || 0,
-              completion_percentage: recommendation.completionPercentage ?? 0,
-            }),
-          });
-          return shouldUseDocsPageOpener(recommendation.type)
-            ? openDocsPage(contentUrl, recommendation.title, packageInfo)
-            : openLearningJourney(contentUrl, recommendation.title);
-        }}
+        onLaunch={() =>
+          launchRecommendation(recommendation, {
+            interactionLocation: featured ? 'featured_card_button' : 'main_card_button',
+            packageInfo,
+            openLearningJourney,
+            openDocsPage,
+          })
+        }
         details={
           hasExpandableDetails(recommendation) ? (
             <>
@@ -695,8 +782,21 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   } = usePublishedGuides();
   const [customGuidesExpanded, setCustomGuidesExpanded] = useState(true);
   const [suggestedGuidesExpanded, setSuggestedGuidesExpanded] = useState(true);
-  const { paths, getPathProgress, getPathGuides, progress } = useLearningPaths();
-  const { notDone: assignedNotDone } = useMyAssignments({
+  const {
+    paths,
+    getPathProgress,
+    getPathGuides,
+    isPathCompleted,
+    progress,
+    isLoading: isLoadingLearning,
+  } = useLearningPaths();
+  const {
+    notDone: assignedNotDone,
+    assignmentByTargetId,
+    onlinePaths,
+    getPathGuides: getAssignedPathGuides,
+    hasLoaded: hasLoadedAssignments,
+  } = useMyAssignments({
     paths,
     getPathProgress,
     getPathGuides,
@@ -708,6 +808,84 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   // ContextPanelRenderer remounts when tabs change, causing listener cleanup
 
   const { recommendations, recommendationsError } = contextData;
+
+  const hubEnabled = useBooleanFlag('pathfinder.sidebar-hub', false);
+  const hubLearning = useMemo(() => {
+    if (!hubEnabled) {
+      return undefined;
+    }
+    const deps = {
+      paths: [...paths, ...onlinePaths],
+      assignmentByTargetId,
+      getPathProgress,
+      isPathCompleted,
+      getPathGuides: getAssignedPathGuides,
+    };
+    return {
+      resume: selectHubResume(deps),
+      stats: selectHubStats(deps, assignedNotDone, progress.completedGuides.length),
+    };
+  }, [
+    hubEnabled,
+    paths,
+    onlinePaths,
+    assignmentByTargetId,
+    getPathProgress,
+    isPathCompleted,
+    getAssignedPathGuides,
+    assignedNotDone,
+    progress.completedGuides.length,
+  ]);
+  const hubGuides = useMemo(
+    () =>
+      hubEnabled
+        ? toHubGuides({
+            recommendations: [...contextData.featuredRecommendations, ...recommendations],
+            resume: hubLearning?.resume ?? undefined,
+            assignments: assignedNotDone,
+            openLearningJourney,
+            openDocsPage,
+          })
+        : [],
+    [
+      hubEnabled,
+      contextData.featuredRecommendations,
+      recommendations,
+      hubLearning?.resume,
+      assignedNotDone,
+      openLearningJourney,
+      openDocsPage,
+    ]
+  );
+  const openMyLearning = useCallback((source: HubSource) => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'navigate_to_my_learning',
+      source: HUB_MY_LEARNING_SOURCES[source],
+    });
+    locationService.push(PLUGIN_BASE_URL);
+  }, []);
+  const resumeLearning = useCallback(
+    async (resume: HubResume) => {
+      reportAppInteraction(UserInteraction.OpenResourceClick, {
+        content_title: resume.pathTitle,
+        content_url: resume.guideUrl,
+        content_type: AnalyticsContentType.LearningJourney,
+        interaction_location: 'hub_resume_card',
+        completion_percentage: resume.percent,
+      });
+      if (!resume.manifest || resume.pathUrl) {
+        return openLearningJourney(resume.guideUrl, resume.guideTitle);
+      }
+      // Manifest-backed paths open on their cover, like My learning; the cover resumes the current module.
+      const [cover] = await resolvePackageNavLinks([resume.pathId]).catch(() => []);
+      return openDocsPage(cover?.contentUrl || resume.guideUrl, resume.pathTitle, {
+        packageId: resume.pathId,
+        packageManifest: { ...resume.manifest, id: resume.pathId },
+        ...(resume.trackId && { trackId: resume.trackId }),
+      });
+    },
+    [openDocsPage, openLearningJourney]
+  );
 
   const styles = useStyles2(getStyles);
 
@@ -740,36 +918,55 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           {/* Treatment arm of the interactive-learning banner experiment; renders null otherwise */}
           <InteractiveLearningBanner />
 
-          {/* User profile bar with learning stats and next action */}
-          <UserProfileBar onOpenGuide={openLearningJourney} />
+          {hubEnabled && hubLearning ? (
+            <>
+              <SidebarHub
+                userName={getFirstName(config.bootData?.user)}
+                guides={hubGuides}
+                resume={hubLearning.resume}
+                stats={hubLearning.stats}
+                isLoadingGuides={isLoadingRecommendations || contextData.isLoading}
+                isLoadingLearning={isLoadingLearning || !hasLoadedAssignments}
+                recommendationsError={recommendationsError}
+                onOpenMyLearning={openMyLearning}
+                onResume={resumeLearning}
+              />
+              {showEnableRecommenderBanner && <EnableRecommenderBanner />}
+            </>
+          ) : (
+            <>
+              {/* User profile bar with learning stats and next action */}
+              <UserProfileBar onOpenGuide={openLearningJourney} />
 
-          {/* Recommendations Section - Memoized to prevent unnecessary rerenders */}
-          <RecommendationsSection
-            recommendations={recommendations}
-            featuredRecommendations={contextData.featuredRecommendations}
-            customGuides={customGuides}
-            customGuidePaths={customGuidePaths}
-            customGuideOrphans={customGuideOrphans}
-            isLoadingCustomGuides={isLoadingCustomGuides}
-            customGuidesExpanded={customGuidesExpanded}
-            suggestedGuidesExpanded={suggestedGuidesExpanded}
-            isLoadingRecommendations={isLoadingRecommendations}
-            isLoadingContext={contextData.isLoading}
-            recommendationsError={recommendationsError}
-            otherDocsExpanded={otherDocsExpanded}
-            showEnableRecommenderBanner={showEnableRecommenderBanner}
-            openLearningJourney={openLearningJourney}
-            openDocsPage={openDocsPage}
-            toggleCustomGuidesExpansion={() => setCustomGuidesExpanded((prev) => !prev)}
-            toggleSuggestedGuidesExpansion={() => setSuggestedGuidesExpanded((prev) => !prev)}
-            toggleSummaryExpansion={toggleSummaryExpansion}
-            toggleOtherDocsExpansion={toggleOtherDocsExpansion}
-            assignments={assignedNotDone}
-          />
+              {/* Recommendations Section - Memoized to prevent unnecessary rerenders */}
+              <RecommendationsSection
+                recommendations={recommendations}
+                featuredRecommendations={contextData.featuredRecommendations}
+                customGuides={customGuides}
+                customGuidePaths={customGuidePaths}
+                customGuideOrphans={customGuideOrphans}
+                isLoadingCustomGuides={isLoadingCustomGuides}
+                customGuidesExpanded={customGuidesExpanded}
+                suggestedGuidesExpanded={suggestedGuidesExpanded}
+                isLoadingRecommendations={isLoadingRecommendations}
+                isLoadingContext={contextData.isLoading}
+                recommendationsError={recommendationsError}
+                otherDocsExpanded={otherDocsExpanded}
+                showEnableRecommenderBanner={showEnableRecommenderBanner}
+                openLearningJourney={openLearningJourney}
+                openDocsPage={openDocsPage}
+                toggleCustomGuidesExpansion={() => setCustomGuidesExpanded((prev) => !prev)}
+                toggleSuggestedGuidesExpansion={() => setSuggestedGuidesExpanded((prev) => !prev)}
+                toggleSummaryExpansion={toggleSummaryExpansion}
+                toggleOtherDocsExpansion={toggleOtherDocsExpansion}
+                assignments={assignedNotDone}
+              />
+            </>
+          )}
         </div>
 
         {/* Help Footer */}
-        <HelpFooter />
+        <HelpFooter variant={hubEnabled ? 'compact' : 'default'} />
       </div>
     </div>
   );
