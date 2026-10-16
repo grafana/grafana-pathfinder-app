@@ -42,14 +42,7 @@ type StepEffect = 'toggle' | 'transparent' | 'barrier';
 
 const TARGETED_ACTIONS = new Set(['button', 'highlight', 'formfill', 'hover']);
 const TRANSPARENT_ACTIONS = new Set(['formfill', 'hover', 'noop', 'popout']);
-const TRANSPARENT_KINDS = new Set([
-  'quiz',
-  'terminal',
-  'terminal-connect',
-  'codeblock',
-  'challenge',
-  'datasource-check',
-]);
+const TRANSPARENT_KINDS = new Set(['quiz', 'terminal', 'terminal-connect', 'codeblock']);
 
 function hasTargetState(step: RecoveryStepInput): boolean {
   return step.targetState !== undefined && step.targetState !== '';

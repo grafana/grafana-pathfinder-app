@@ -17,7 +17,7 @@ For the section's cursor step (the first incomplete step), the plan contains, in
    - returning to the URL where the cursor step was last ready, minus Pathfinder's own launch parameters, so Explore queries and dashboard variables survive;
    - replaying earlier toggles: completed `button` or `highlight` steps with a `targetstate`, walking back from the cursor.
 
-The walk stops at anything that may have changed the page in a way recovery cannot repeat: a `navigate`, a click without a `targetstate`, a multistep or guided block, a lazy-render toggle, or an inline conditional between steps. Form fills, hovers, noops, popouts, quizzes, terminal and code blocks pass through, because replay never re-types values; skipped steps pass through because they never ran. Only the latest toggle of a given control and attribute is kept.
+The walk stops at anything that may have changed the page in a way recovery cannot repeat: a `navigate`, a click without a `targetstate`, a multistep or guided block, a challenge, a data source check, a lazy-render toggle, or an inline conditional between steps. Challenges and data source checks stop it because the learner may have done anything to satisfy them. Form fills, hovers, noops, popouts, quizzes, terminal and code blocks pass through, because replay never re-types values; skipped steps pass through because they never ran. Only the latest toggle of a given control and attribute is kept.
 
 A toggle is replayed only if its target resolves to exactly one visible control that `isReplaySafeControl` accepts and whose state can be read; an unreadable state is never clicked blind. `navmenu-open` and `dashboard-*` requirements stay with the step's own **Fix this**, so the learner never sees two fixes for the same thing.
 

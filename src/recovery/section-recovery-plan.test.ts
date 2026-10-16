@@ -54,6 +54,8 @@ it.each([
   ['a multistep', { stepId: 'multi', kind: 'multistep' }],
   ['a guided step', { stepId: 'guided', kind: 'guided' }],
   ['a lazily rendered toggle', { ...toggle('lazy'), lazyRender: true }],
+  ['a challenge', { stepId: 'challenge', kind: 'challenge' }],
+  ['a data source check', { stepId: 'datasource', kind: 'datasource-check' }],
   ['an unknown step type', { stepId: 'future', kind: 'future-kind' }],
 ])('stops at %s, keeping only the toggles after it', (_name, barrier: RecoveryStepInput) => {
   expect(recipe([toggle('before'), barrier, toggle('after'), cursor()])).toEqual(['resume-location', '#after']);
