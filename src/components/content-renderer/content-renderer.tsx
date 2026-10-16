@@ -186,14 +186,6 @@ interface ContentRendererProps {
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-// Style to hide default browser selection highlight
-const selectionStyle = css`
-  ::selection {
-    background-color: rgba(255, 136, 0, 0.3);
-    color: inherit;
-  }
-`;
-
 // Memoize ContentRenderer to prevent re-renders when parent re-renders
 // but content prop hasn't changed
 export const ContentRenderer = React.memo(function ContentRenderer(props: ContentRendererProps) {
@@ -751,7 +743,7 @@ function ContentWithVariables({
     <div
       ref={activeRef}
       data-guide-content-root="true"
-      className={`${className} ${selectionStyle}`}
+      className={className}
       data-pathfinder-content="true"
       onClick={handleContentClick}
       style={{
