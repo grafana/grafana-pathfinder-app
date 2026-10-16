@@ -505,11 +505,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.saveTabsToStorage();
   }
 
-  /**
-   * Unified tab-loader entry point. Dispatches to the docs/package pipeline
-   * or the guide pipeline based on the tab's shape and the optional
-   * `packageInfo` input.
-   */
   public async loadTab(
     tabId: string,
     url: string,
@@ -518,13 +513,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       packageInfo?: PackageOpenInfo;
       prefetched?: RawContent;
       source?: LaunchSource;
-      /**
-       * The manifest guide id `url` resolved from, when the click target
-       * already carried one (GuideList's current row, the cover-page CTA —
-       * see link-handler.hook.ts). Threaded to fetchPackageContent so it can
-       * classify this load by a direct id lookup against the manifest
-       * instead of comparing resolved URLs.
-       */
+      // Keeps existing content mounted; the caller owns loading and error UI.
+      rejectOnError?: boolean;
       explicitGuideId?: string;
     }
   ): Promise<void> {
@@ -536,18 +526,24 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
     const tab = this.state.tabs.find((t) => t.id === tabId);
     const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+    const keepContentVisible = options?.rejectOnError === true && tab?.content != null;
+    let outcome: GuideLoadOutcome;
     if (needsDocsLoader) {
-      await this.loadDocsTabContent(
+      outcome = await this.loadDocsTabContent(
         tabId,
         url,
         options?.skipReadyToBegin,
         options?.packageInfo,
         options?.prefetched,
         options?.explicitGuideId,
-        loadContext
+        loadContext,
+        keepContentVisible
       );
     } else {
-      await this.loadTabContent(tabId, url, options?.prefetched, loadContext);
+      outcome = await this.loadTabContent(tabId, url, options?.prefetched, loadContext, keepContentVisible);
+    }
+    if (options?.rejectOnError && outcome === 'error') {
+      throw new Error('Failed to load the next module. Please try again.');
     }
   }
 
@@ -555,22 +551,24 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     tabId: string,
     url: string,
     prefetched?: RawContent,
-    loadContext?: GuideLoadContext
+    loadContext?: GuideLoadContext,
+    keepContentVisible = false
   ): Promise<GuideLoadOutcome> {
-    // Empty/corrupted tab URL — nothing to load, and not a successful open.
     if (!url || url.trim() === '') {
       logger.error(`loadTabContent called with an empty URL for tab ${tabId}`);
       finishGuideLoad(loadContext, 'error', { source: 'other', stage: 'resolve', reason: 'invalid-url' });
-      this.failTab(tabId, 'This tab has no content to load.');
+      if (!keepContentVisible) {
+        this.failTab(tabId, 'This tab has no content to load.');
+      }
       return 'error';
     }
 
-    this.setTabLoading(tabId);
+    if (!keepContentVisible) {
+      this.setTabLoading(tabId);
+    }
 
     try {
       const tab = this.state.tabs.find((t) => t.id === tabId);
-      // Prefetched content skips the network fetch (one-fetch launch) but runs
-      // the identical finalization below so journey/completion parity holds.
       const result = prefetched ? { content: prefetched } : await fetchContent(url, { loadContext });
 
       if (this.guideLoads.get(tabId) !== loadContext) {
@@ -588,9 +586,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           };
 
           if (currentMilestone === 0) {
-            // The cover-page component now owns the start/continue CTA, so skip
-            // the legacy injected "Ready to Begin" button here (matches the
-            // `skipReadyToBegin` default fetchContent's own callers already use).
+            // The cover-page component owns the start/continue CTA.
             content = rewriteGuideTrees(content, (guideJson) =>
               injectJourneyExtrasIntoJsonGuide(guideJson, learningJourney, true)
             );
@@ -614,13 +610,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
         const updatedTab = this.finishTabSuccess(tabId, () => ({ content, currentUrl: url }));
 
-        // Use learningJourney.baseUrl (the path's cover page URL) as the storage
-        // key so it matches the key used by context.service.ts when reading
-        // completion via getJourneyCompletionPercentageAsync(rec.contentUrl).
+        // Completion readers key journey progress by the cover URL.
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
-          // Journey-driven (learning-journey tabs only), and a journey completion never creates a guide attempt.
           setJourneyCompletionPercentage(
             completionKey,
             progress,
@@ -642,7 +635,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           'error',
           result.diagnostic ?? { source: loadContext?.source ?? 'other', stage: 'fetch', reason: 'unexpected-error' }
         );
-        this.failTab(tabId, result.error || 'Failed to load content');
+        if (!keepContentVisible) {
+          this.failTab(tabId, result.error || 'Failed to load content');
+        }
         return 'error';
       }
     } catch (error) {
@@ -651,7 +646,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
       finishGuideLoad(loadContext, 'error', diagnoseGuideError(error, loadContext?.source ?? 'other', 'prepare'));
       logger.error('Failed to load journey content');
-      this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load content');
+      if (!keepContentVisible) {
+        this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load content');
+      }
       return 'error';
     }
   }
@@ -753,7 +750,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  public async navigateToNextMilestone() {
+  public async navigateToNextMilestone(options?: { rejectOnError?: boolean }) {
     const activeTab = this.getActiveTab();
     if (activeTab && activeTab.content) {
       const nextUrl = getNextMilestoneUrlFromContent(
@@ -762,8 +759,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         activeTab.activeTrackMilestones
       );
       if (nextUrl) {
-        // Resolve the target by manifest ID, including selected-track members.
         await this.loadTab(activeTab.id, nextUrl, {
+          ...(options?.rejectOnError && { rejectOnError: true }),
           explicitGuideId: getNextMilestoneIdFromContent(
             activeTab.content,
             activeTab.activeTrackId,
@@ -966,43 +963,26 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     packageInfoArg?: PackageOpenInfo,
     prefetched?: RawContent,
     explicitGuideId?: string,
-    loadContext?: GuideLoadContext
+    loadContext?: GuideLoadContext,
+    keepContentVisible = false
   ): Promise<GuideLoadOutcome> {
-    // No early return for empty URLs — loadDocsTabContentResult handles all
-    // edge cases (empty URL with packageInfo falls back to fetchPackageById;
-    // empty URL without packageInfo returns a visible error). Surfacing errors
-    // is preferable to the old silent no-op for corrupted/restored tabs.
-
-    // Captured before this tab's content is replaced below: a track-exclusive
-    // guide is only ever reached by clicking it FROM its own path's cover,
-    // in this same tab — so the outgoing content, right up until this load
-    // overwrites it, is that cover's own learningJourney. Threaded through
-    // as a fallback so a transient failure of THIS load's own independent
-    // re-resolve of the path's id doesn't silently drop the guide's
-    // completion when the caller already knows the answer.
+    // Outgoing content preserves track identity if this load's path resolution fails.
     const outgoingContent = this.state.tabs.find((t) => t.id === tabId)?.content;
     const knownBaseUrl =
       outgoingContent?.metadata?.learningJourney?.baseUrl ?? outgoingContent?.metadata?.trackMemberBaseUrl;
 
-    this.setTabLoading(tabId);
+    if (!keepContentVisible) {
+      this.setTabLoading(tabId);
+    }
 
     try {
       const launchSource = this._consumeAutoLaunchSource();
       let packageInfo = packageInfoArg ?? this.state.tabs.find((t) => t.id === tabId)?.packageInfo;
-      // Auto-derive packageInfo when opening a package URL via deep-link or
-      // handoff (no recommender). Without the manifest, downstream rendering
-      // falls through to plain fetchContent and the milestone toolbar never
-      // appears. See package-info-from-url.ts for the URL pattern. Skipped for
-      // prefetched launches — `prepareGuideLaunch` already derived it.
+      // Deep links need a manifest to render milestone navigation.
       if (!prefetched && !packageInfo && isPackageContentUrl(url)) {
         packageInfo = await fetchPackageInfoFromUrl(url, loadContext);
       }
-      // Prefetched content skips the network fetch (one-fetch launch) but runs
-      // the identical finalization below so alignment / journey / package
-      // parity holds. skipReadyToBegin only exists inside that skipped fetch —
-      // prefetched content was built without it (prepareGuideLaunch doesn't
-      // pass it), so the combination cannot be honored; surface the conflict
-      // instead of silently rendering the wrong variant.
+      // skipReadyToBegin cannot alter already-prefetched content.
       if (prefetched && skipReadyToBegin) {
         logger.warn('[DocsPanel] skipReadyToBegin ignored for prefetched content');
       }
@@ -1016,7 +996,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
             loadContext,
           });
 
-      // Check if fetch succeeded or failed
       if (this.guideLoads.get(tabId) !== loadContext) {
         return 'error';
       }
@@ -1059,7 +1038,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           'error',
           result.diagnostic ?? { source: loadContext?.source ?? 'other', stage: 'fetch', reason: 'unexpected-error' }
         );
-        this.failTab(tabId, result.error || 'Failed to load documentation');
+        if (!keepContentVisible) {
+          this.failTab(tabId, result.error || 'Failed to load documentation');
+        }
         return 'error';
       }
     } catch (error) {
@@ -1068,7 +1049,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
       finishGuideLoad(loadContext, 'error', diagnoseGuideError(error, loadContext?.source ?? 'other', 'prepare'));
       logger.error('Failed to load docs content');
-      this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load documentation');
+      if (!keepContentVisible) {
+        this.failTab(tabId, error instanceof Error ? error.message : 'Failed to load documentation');
+      }
       return 'error';
     }
   }
