@@ -84,6 +84,81 @@ describe('GuidedHandler', () => {
     });
   });
 
+  describe('terminal presentation', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      document.body.replaceChildren();
+      const target = document.createElement('button');
+      target.id = 'terminal-target';
+      document.body.appendChild(target);
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [target], usedFallback: false });
+      mockNavigationManager.highlightWithComment.mockImplementation(async () => {
+        const box = document.createElement('div');
+        box.className = 'interactive-comment-box';
+        const bar = document.createElement('div');
+        bar.className = 'interactive-comment-progress-bar';
+        bar.style.width = '0%';
+        box.appendChild(bar);
+        for (const label of ['Skip', 'Cancel']) {
+          const button = document.createElement('button');
+          button.textContent = label;
+          box.appendChild(button);
+        }
+        document.body.appendChild(box);
+      });
+      mockNavigationManager.clearAllHighlights.mockImplementation(() => {
+        document.querySelectorAll('.interactive-comment-box').forEach((box) => box.remove());
+      });
+    });
+
+    afterEach(() => {
+      guidedHandler.cancel();
+      jest.useRealTimers();
+      document.body.replaceChildren();
+    });
+
+    it.each(['completed', 'skipped'] as const)(
+      'keeps a close-only done box after %s without delaying the result',
+      async (outcome) => {
+        const target = document.querySelector<HTMLButtonElement>('#terminal-target')!;
+        const activated = jest.fn();
+        target.addEventListener('click', activated);
+        const pending = guidedHandler.executeGuidedStep(
+          { targetAction: 'button', refTarget: '#terminal-target', isSkippable: true },
+          0,
+          1,
+          5000
+        );
+        await jest.advanceTimersByTimeAsync(0);
+        if (outcome === 'skipped') {
+          document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
+        } else {
+          target.click();
+        }
+        const activationsAtSettlement = activated.mock.calls.length;
+        document.dispatchEvent(new MouseEvent('click', { clientX: 10, clientY: 5, bubbles: true }));
+        expect(activated).toHaveBeenCalledTimes(activationsAtSettlement);
+        let result: unknown;
+        void pending.then((value) => {
+          result = value;
+        });
+        await jest.advanceTimersByTimeAsync(0);
+        expect(result).toBe(outcome);
+        const box = document.querySelector<HTMLElement>('.interactive-comment-box')!;
+        expect(box).not.toBeNull();
+        expect(box.querySelector<HTMLElement>('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+        expect(Array.from(box.querySelectorAll('button'), (button) => button.textContent)).toEqual(['Close']);
+        await jest.advanceTimersByTimeAsync(10000);
+        expect(box).toBeInTheDocument();
+        expect(jest.getTimerCount()).toBe(0);
+        box.querySelector('button')!.click();
+        expect(box).not.toBeInTheDocument();
+        expect(await pending).toBe(outcome);
+        expect(activated).toHaveBeenCalledTimes(activationsAtSettlement);
+      }
+    );
+  });
+
   describe('resetProgress', () => {
     const runTwoStepSequence = async (labelPrefix: string) => {
       for (const stepIndex of [0, 1]) {

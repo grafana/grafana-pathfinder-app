@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -54,6 +54,11 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { DoItButtonClick: 'do_it', StepAutoCompleted: 'auto' },
   buildInteractiveStepProperties: jest.fn(() => ({})),
+  createInteractionName: jest.fn(() => 'guided'),
+}));
+
+jest.mock('../../lib/faro', () => ({
+  withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
 }));
 
 jest.mock('../../lib/logging', () => ({
@@ -70,13 +75,15 @@ jest.mock('../../constants/interactive-config', () => ({
     guided: { stepTimeout: 120000, hoverDwell: 500 },
     delays: {},
   })),
-  INTERACTIVE_CONFIG: { guided: { stepTimeout: 120000 } },
+  INTERACTIVE_CONFIG: jest.requireActual('../../constants/interactive-config').INTERACTIVE_CONFIG,
 }));
 
 // ─── Mock DOM utils ──────────────────────────────────────────────────────────
 jest.mock('../../lib/dom', () => ({
   findButtonByText: jest.fn().mockReturnValue([]),
   querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false }),
+  isElementVisible: jest.fn(() => true),
+  resolveSelector: jest.fn((selector: string) => selector),
 }));
 
 // ─── Mock security ───────────────────────────────────────────────────────────
@@ -176,6 +183,95 @@ beforeEach(() => {
   mockMarkSkipped.mockImplementation(() => {
     mockStoredCompleted = true;
   });
+});
+
+describe('InteractiveGuided terminal presentation with real handler and comment box', () => {
+  it.each(['completed', 'skipped'] as const)(
+    'synchronizes both single-step bars on %s and persists before dismissal',
+    async (outcome) => {
+      jest.useFakeTimers();
+      const { GuidedHandler: RealGuidedHandler } = jest.requireActual(
+        '../../interactive-engine/action-handlers/guided-handler'
+      );
+      const { NavigationManager: RealNavigationManager } = jest.requireActual(
+        '../../interactive-engine/navigation-manager'
+      );
+      const { GuidedHandler } = jest.requireMock('../../interactive-engine');
+      const { querySelectorAllEnhanced } = jest.requireMock('../../lib/dom');
+      const target = document.createElement('button');
+      target.id = 'paired-target';
+      document.body.appendChild(target);
+      querySelectorAllEnhanced.mockReturnValue({ elements: [target], usedFallback: false });
+      const navigation = new RealNavigationManager();
+      navigation.ensureNavigationOpen = jest.fn().mockResolvedValue(undefined);
+      navigation.ensureElementVisible = jest.fn().mockResolvedValue(undefined);
+      navigation.highlightWithComment = jest.fn(
+        async (
+          _target: HTMLElement,
+          comment: string,
+          _cleanup: boolean,
+          info: unknown,
+          _skip: unknown,
+          cancel: () => void
+        ) => {
+          navigation.showCenteredComment(comment, info, cancel, undefined, undefined, { skipAnimations: true });
+        }
+      );
+      const handler = new RealGuidedHandler({}, navigation, async () => {});
+      GuidedHandler.mockImplementationOnce(() => handler);
+      const onComplete = jest.fn();
+      const view = render(
+        <InteractiveGuided
+          stepId="paired-progress"
+          onComplete={onComplete}
+          internalActions={[
+            {
+              targetAction: 'button',
+              refTarget: '#paired-target',
+              targetComment: 'Activate the target',
+              isSkippable: true,
+            },
+          ]}
+        />
+      );
+      try {
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '0%' });
+        expect(view.container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '0%' });
+        await act(async () => {
+          if (outcome === 'skipped') {
+            document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
+          } else {
+            target.click();
+          }
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+        expect(view.container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '100%' });
+        expect(view.container.querySelector('.interactive-guided-instruction')).not.toHaveTextContent(
+          'Activate the target'
+        );
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(10000);
+        });
+        expect(onComplete).toHaveBeenCalledTimes(1);
+        expect(mockStoredCompleted).toBe(true);
+        const box = document.querySelector('.interactive-comment-box')!;
+        expect(Array.from(box.querySelectorAll('button'), (button) => button.textContent)).toEqual(['Close']);
+        fireEvent.click(box.querySelector('button')!);
+        expect(box).not.toBeInTheDocument();
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      } finally {
+        view.unmount();
+        handler.cancel();
+        target.remove();
+        jest.useRealTimers();
+      }
+    }
+  );
 });
 
 describe('InteractiveGuided — double skip button (issue #786)', () => {
