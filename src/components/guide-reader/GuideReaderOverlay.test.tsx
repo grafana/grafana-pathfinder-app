@@ -377,6 +377,7 @@ describe('GuideReaderOverlay', () => {
       content: '',
       lastFetched: '',
       metadata: {
+        title: 'Path',
         packageManifest: manifest,
         learningJourney: {
           baseUrl: doc,
