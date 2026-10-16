@@ -256,6 +256,52 @@ it.each(['control', 'treatment'])(
   }
 );
 
+it('still pops treatment when the path moves within the offered pattern mid-activation', async () => {
+  window.history.replaceState(null, '', '/explore');
+  await flag({ variant: 'treatment', experiences: EXPERIENCES });
+  stop = await startAutoOpenGuideExperiment();
+  window.history.replaceState(null, '', '/explore/metrics');
+  await settle();
+
+  expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+  expect(offers()[0]![1]).toEqual(expect.objectContaining({ opened: true }));
+});
+
+it('does not offer an overlapping experience on a reload of the same pages', async () => {
+  const overlapping = [
+    { guide: 'bundled:first', pages: ['/explore*'] },
+    { guide: 'bundled:second', pages: ['/explore*'] },
+  ];
+  await start('/explore', { variant: 'control', experiences: overlapping });
+  stop?.();
+  jest.clearAllMocks();
+
+  await start('/explore/metrics', { variant: 'control', experiences: overlapping });
+  expect(offers()).toHaveLength(0);
+
+  await navigate('/alerting');
+  await navigate('/explore');
+  expect(offers()).toHaveLength(1);
+  expect(offers()[0]![1]).toEqual(expect.objectContaining({ experience_index: 1 }));
+});
+
+it('retries a visit whose activation was cut short by the tab going hidden', async () => {
+  const visibility = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  window.history.replaceState(null, '', '/explore');
+  await flag({ variant: 'treatment', experiences: EXPERIENCES });
+  stop = await startAutoOpenGuideExperiment();
+  visibility.mockReturnValue('hidden');
+  document.dispatchEvent(new Event('visibilitychange'));
+  await settle();
+  expect(attemptAutoOpen).not.toHaveBeenCalled();
+
+  visibility.mockReturnValue('visible');
+  document.dispatchEvent(new Event('visibilitychange'));
+  await settle();
+  expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+  visibility.mockRestore();
+});
+
 it('restores the arm at boot for an already-offered browser without a new exposure', async () => {
   await start('/explore', { variant: 'treatment', experiences: EXPERIENCES });
   stop?.();

@@ -55,6 +55,9 @@ export const StorageKeys = {
   // Auto-open guide experiment markers (used with `{hostname}:{guide}` suffix). LocalStorage,
   // not session — each guide is offered once per browser, in every arm.
   AUTO_OPEN_GUIDE_SHOWN_PREFIX: 'grafana-pathfinder-auto-open-guide-shown-',
+  // The auto-open guide visit already offered in this tab (sessionStorage, hostname suffix), so a
+  // reload on the same matched pages does not offer an overlapping experience.
+  AUTO_OPEN_GUIDE_VISIT_PREFIX: 'grafana-pathfinder-auto-open-guide-visit-',
   // Interactive-learning banner dismissal (used with a hostname suffix). Hostname-scoped
   // to match the other experiment markers, so one reset sweep clears them together.
   INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',

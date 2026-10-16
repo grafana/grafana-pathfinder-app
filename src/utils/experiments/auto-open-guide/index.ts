@@ -20,7 +20,7 @@ import { attemptAutoOpen, getCurrentPath } from '../../sidebar-auto-open';
 import { notifyEnrollment } from '../enrollment-notifier';
 import { installAutoLaunchOnMount } from './auto-launch';
 import { isAutoOpenGuideConfig, matchesExperience, type AutoOpenGuideConfig } from './config';
-import { hasAutoOpenGuideShown, markAutoOpenGuideShown } from './markers';
+import { hasAutoOpenGuideShown, markAutoOpenGuideShown, readConsumedVisit, writeConsumedVisit } from './markers';
 import { setAutoOpenGuideEnrollment } from './state';
 
 type EnrolledVariant = 'control' | 'treatment';
@@ -28,7 +28,6 @@ type EnrolledVariant = 'control' | 'treatment';
 interface Offer {
   index: number;
   guide: string;
-  path: string;
 }
 
 const isEnrolledVariant = (variant: string): variant is EnrolledVariant =>
@@ -61,7 +60,7 @@ function findOffer(targeting: AutoOpenGuideConfig, hostname: string, path: strin
   const index = targeting.experiences.findIndex(
     (experience) => matchesExperience(experience, path) && !hasAutoOpenGuideShown(hostname, experience.guide)
   );
-  return index === -1 ? null : { index, guide: targeting.experiences[index]!.guide, path };
+  return index === -1 ? null : { index, guide: targeting.experiences[index]!.guide };
 }
 
 function canPopOut(): boolean {
@@ -138,7 +137,11 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   let stopped = false;
   let pending: AbortController | undefined;
   let recheck = false;
-  let consumedVisit: string | undefined;
+  let consumedVisit = readConsumedVisit(hostname);
+  const consumeVisit = (visit: string | undefined) => {
+    consumedVisit = visit;
+    writeConsumedVisit(hostname, visit);
+  };
   const warnedUnavailable = new Set<string>();
 
   const apply = (offer: Offer, variant: EnrolledVariant, targeting: AutoOpenGuideConfig) => {
@@ -146,7 +149,8 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     notifyEnrollment();
     markAutoOpenGuideShown(hostname, offer.guide);
     const docPage = findDocPage(offer.guide);
-    const opened = variant === 'treatment' && docPage !== null && getCurrentPath() === offer.path && canPopOut();
+    const stillOnOffer = matchesExperience(targeting.experiences[offer.index]!, getCurrentPath());
+    const opened = variant === 'treatment' && docPage !== null && stillOnOffer && canPopOut();
     if (opened) {
       sidebarState.setPendingOpenSource('auto_open_guide_experiment', 'auto-open');
       installAutoLaunchOnMount(docPage);
@@ -168,9 +172,14 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
         pending = undefined;
         if (state.status === 'active' && isEnrolledVariant(state.variant)) {
           apply(offer, state.variant, targeting);
-        } else if (state.status === 'unavailable' && !warnedUnavailable.has(state.reason)) {
-          warnedUnavailable.add(state.reason);
-          logger.warn('[Pathfinder] Auto-open guide experiment unavailable', { reason: state.reason });
+        } else if (state.status === 'inactive' || (state.status === 'unavailable' && state.reason === 'disabled')) {
+          // A tab hidden mid-activation must not use up the visit; the next visibilitychange retries.
+          consumeVisit(undefined);
+        } else if (state.status === 'unavailable') {
+          if (!warnedUnavailable.has(state.reason)) {
+            warnedUnavailable.add(state.reason);
+            logger.warn('[Pathfinder] Auto-open guide experiment unavailable', { reason: state.reason });
+          }
         }
         if (recheck) {
           recheck = false;
@@ -200,15 +209,15 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     }
     const path = getCurrentPath();
     const visit = visitKey(targeting, path);
-    if (visit !== consumedVisit) {
-      consumedVisit = undefined;
+    if (consumedVisit !== undefined && visit !== consumedVisit) {
+      consumeVisit(undefined);
     }
     if (!visit || consumedVisit !== undefined || !canPopOut()) {
       return;
     }
     const offer = findOffer(targeting, hostname, path);
     if (offer) {
-      consumedVisit = visit;
+      consumeVisit(visit);
       activate(offer, targeting);
     }
   };
