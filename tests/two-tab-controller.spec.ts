@@ -2,6 +2,7 @@ import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { CROSS_TAB_CHANNEL } from '../src/types/cross-tab.types';
 import type { Page } from '@playwright/test';
+import { waitForGrafanaReady } from './helpers/grafana.helpers';
 
 /**
  * Real-browser adversarial coverage for the two-tab controller (#1142).
@@ -176,17 +177,18 @@ test.describe('two-tab controller — real-browser adversarial', () => {
 
     const liveB = await context.newPage();
     await liveB.goto('/');
-    await liveB.waitForLoadState('networkidle');
+    await waitForGrafanaReady(liveB);
 
     const liveAUrlBefore = liveA.url();
-    const liveBUrlBefore = liveB.url();
+    const liveBUrlBefore = new URL(liveB.url());
 
     await doIt(controller).click();
 
-    // The command drives the paired tab (A) away from its own baseline; the
-    // unpaired tab (B) never moves from its own baseline.
     await expect.poll(() => liveA.url()).not.toBe(liveAUrlBefore);
-    expect(liveB.url()).toBe(liveBUrlBefore);
+    // Grafana's home page can update time-range parameters without executing the navigation command.
+    const liveBUrlAfter = new URL(liveB.url());
+    expect(liveBUrlAfter.origin).toBe(liveBUrlBefore.origin);
+    expect(liveBUrlAfter.pathname).toBe(liveBUrlBefore.pathname);
   });
 
   test('a stale step-complete from a cancelled run does not settle the retried run', async ({ page }) => {

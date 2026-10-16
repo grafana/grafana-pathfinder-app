@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
+import { waitForGrafanaReady } from './helpers/grafana.helpers';
 
 /**
  * Helper function to handle "Fix this" buttons that may appear multiple times
@@ -132,8 +133,7 @@ test('should complete first two steps of Welcome to Grafana journey', async ({ p
   // Navigate to Grafana home page
   await page.goto('/');
 
-  // Wait for the page to load
-  await page.waitForLoadState('networkidle');
+  await waitForGrafanaReady(page);
 
   // Open the docs panel
   const helpButton = page.locator('button[aria-label="Help"]');
