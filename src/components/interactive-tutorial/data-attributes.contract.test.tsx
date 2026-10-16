@@ -23,7 +23,8 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { clearHeldCompletionRequests, renderWithCoordinator as render } from '../../test-utils/completion-coordinator';
 import { deriveInteractiveStepState, InteractiveStep } from './interactive-step';
 import { deriveMultiStepUiState, InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
@@ -860,4 +861,8 @@ describe.skip('E2E Integration Specs (require full app context)', () => {
 
   it.todo('All components: data-test-requirements-state updates on requirement check');
   it.todo('All components: fix button triggers fixRequirement and updates state');
+});
+
+afterEach(() => {
+  clearHeldCompletionRequests();
 });

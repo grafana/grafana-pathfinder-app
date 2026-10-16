@@ -224,6 +224,16 @@ const pathfinderFeatureFlags = {
     defaultValue: false,
     trackingKey: 'progress_records',
   },
+  /**
+   * Fleet kill switch for passive guide completion. Off, guides complete steps
+   * only through their own objective checks, Show me, Do it, and Mark complete.
+   */
+  'pathfinder.passive-completion': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'passive_completion',
+  },
   /** Gate for attaching the user's completion history to recommender requests; off until consent is settled. */
   'pathfinder.recommend-completions': {
     valueType: 'boolean',

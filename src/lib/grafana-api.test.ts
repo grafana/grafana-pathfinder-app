@@ -1,4 +1,10 @@
-import { fetchDataSources, fetchPlugins, fetchDashboardsByName } from './grafana-api';
+import {
+  DATA_SOURCES_FRESH_MS,
+  fetchDataSources,
+  fetchPlugins,
+  fetchDashboardsByName,
+  resetDataSourcesCacheForTests,
+} from './grafana-api';
 
 const mockGet = jest.fn();
 jest.mock('@grafana/runtime', () => ({ getBackendSrv: () => ({ get: mockGet }) }));
@@ -14,7 +20,10 @@ describe.each([
     args: [{ type: 'dash-db', limit: 100, deleted: false, query: 'CPU usage' }],
   },
 ])('$name shared API', ({ fetch, url, args }) => {
-  beforeEach(() => mockGet.mockReset());
+  beforeEach(() => {
+    mockGet.mockReset();
+    resetDataSourcesCacheForTests();
+  });
 
   it('returns the backend result without changing query semantics', async () => {
     const result = [{ id: 1 }];
@@ -33,5 +42,43 @@ describe.each([
     mockGet.mockRejectedValue(failure);
     await expect(fetch()).resolves.toEqual([]);
     await expect(fetch({ throwOnError: true })).rejects.toBe(failure);
+  });
+});
+
+describe('data source reads shared across callers', () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+    resetDataSourcesCacheForTests();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('shares one request between concurrent callers', async () => {
+    let resolve!: (value: unknown) => void;
+    mockGet.mockReturnValue(new Promise((r) => (resolve = r)));
+    const reads = Promise.all([fetchDataSources(), fetchDataSources({ throwOnError: true }), fetchDataSources()]);
+    resolve([{ name: 'A' }]);
+    await expect(reads).resolves.toEqual([[{ name: 'A' }], [{ name: 'A' }], [{ name: 'A' }]]);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses a settled read for the freshness window, then fetches again', async () => {
+    jest.useFakeTimers();
+    mockGet.mockResolvedValueOnce([{ name: 'A' }]).mockResolvedValueOnce([{ name: 'A' }, { name: 'B' }]);
+    await fetchDataSources();
+    jest.advanceTimersByTime(DATA_SOURCES_FRESH_MS - 1);
+    await expect(fetchDataSources()).resolves.toEqual([{ name: 'A' }]);
+    jest.advanceTimersByTime(2);
+    await expect(fetchDataSources()).resolves.toEqual([{ name: 'A' }, { name: 'B' }]);
+    expect(mockGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('holds a failed read for the same window so repeated checks do not hammer the API', async () => {
+    jest.useFakeTimers();
+    mockGet.mockRejectedValue(new Error('down'));
+    await expect(fetchDataSources({ throwOnError: true })).rejects.toThrow('down');
+    await expect(fetchDataSources({ throwOnError: true })).rejects.toThrow('down');
+    expect(mockGet).toHaveBeenCalledTimes(1);
   });
 });

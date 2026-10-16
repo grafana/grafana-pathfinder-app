@@ -154,10 +154,11 @@ Individual steps can also be marked skippable:
 - The application click handler runs after capture-phase completion work.
 - A final action without click activation stores completion after its result. This rule includes `hover`, `formfill`, `noop`, skip, and satisfied `targetstate` results.
 - Cancellation, timeout, or error does not store completion.
+- Authored objectives still gate completion: the early signal requests completion, and the block shows a waiting state until every objective is satisfied.
 
 Use this field when the final click can change routes or replace its target subtree.
 
-`InteractiveGuided` owns the idempotent completion write and completion callbacks. `GuidedHandler` owns listeners, timeouts, connectivity intervals, the overlay, click ordering, and cleanup.
+`InteractiveGuided` requests completion and owns its completion callbacks; the completion coordinator owns the idempotent write and keeps a gated request across a host unmount. `GuidedHandler` owns listeners, timeouts, connectivity intervals, the overlay, click ordering, and cleanup.
 
 ```json
 {
