@@ -402,3 +402,21 @@ The row sent when a reader accepts **Reset and continue** on an assignment is co
 | `all`         | A reader confirms **Reset progress** in the My Learning footer                                                         | `my_learning_footer`                   | None                                                                     |
 
 Each reset reports once per action, never per member guide. An assignment reset clears only the guides the assignment does not credit, so it has its own scope and reports how many it cleared; a path restart and a full reset do not count what they clear. App Platform, CDN course, online-catalogue and assignment paths never send `path_id`, so a reset of one of those cannot be tied to its path. Rows from v2.20.1 and earlier have no `reset_scope`; every one of them is a per-guide reset, since nothing else reported. No mounted surface shows **Restart** today: the button appears only on a completed path card, My Learning renders every path card as incomplete, and `LearningPathsPanel`, which does pass real completion, is not mounted. Expect no `learning_path_card_restart` rows until a surface renders it.
+
+## Catalog interactions
+
+`pathfinder_catalog_interaction` groups Browse tab and Explore learning controls into one event, with `interaction_location=package_browser`:
+
+| `action`    | Trigger                                                               | Attributes                                                     |
+| ----------- | --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `tab_click` | Click the Browse tab, including when already selected                 | None                                                           |
+| `search`    | Change an empty or whitespace-only query to non-empty                 | None                                                           |
+| `topic`     | Click a topic shortcut or select a topic filter                       | `topic`, `control` (`shortcut` or `filter`)                    |
+| `view`      | Explicitly switch Explore / All content, including Browse all content | `view`, `previous_view` (`explore` or `all`)                   |
+| `source`    | Switch All / Official / Your organization                             | `source`, `previous_source` (`all`, `grafana`, `organization`) |
+
+Search measures engagement, not distinct queries: further edits emit nothing until the query is cleared. Restoring a saved search emits nothing. No search text, derived keywords, query length, or result metadata is sent. Topics use a fixed allowlist (`all`, `dashboards`, `data-sources`, `alerting`, `metrics`, `logs`, `k6`, `getting-started`, `uncategorized`); all other topics report `other`.
+
+Automatic view changes caused by searching or choosing a topic do not emit `view`; resetting filters does not emit `source` or `topic`. Clicking an already selected view or source emits nothing. These events use the shared RudderStack pipeline and Faro mirror.
+
+Launches continue to use `pathfinder_open_resource_click` with `interaction_location=package_browser` and `pathfinder_guide_launch_surface_chosen` with `source=package_browser`. The resource click measures an attempt before loading, not a successful open. No additional launch event is emitted.

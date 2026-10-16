@@ -1,3 +1,4 @@
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { CatalogPackage } from '../../types/package-catalog.types';
@@ -49,6 +50,11 @@ afterAll(() => {
   global.IntersectionObserver = originalObserver;
   canvasSpy.mockRestore();
 });
+
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportAppInteraction: jest.fn(),
+}));
 
 jest.mock('../../learning-paths', () => ({
   useCatalogProgress: () => new Map(),
@@ -350,4 +356,47 @@ it('hides launch failures from the previous identity and ignores late scope laun
     finish({ ok: true, launch: { url: 'bundled:dashboard' } });
   });
   expect(onOpen).not.toHaveBeenCalled();
+});
+
+it('reports search engagement without query text or repeated keystrokes', () => {
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  expect(reportAppInteraction).not.toHaveBeenCalled();
+  const search = screen.getByLabelText('Search guides and paths');
+  for (const value of [' ', 'alice@example.com', 'alice@example.com dashboard']) {
+    fireEvent.change(search, { target: { value } });
+  }
+  expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'search',
+    interaction_location: 'package_browser',
+  });
+  fireEvent.change(search, { target: { value: '' } });
+  fireEvent.change(search, { target: { value: 'private' } });
+  expect(reportAppInteraction).toHaveBeenCalledTimes(2);
+});
+
+it('reports explicit source and view changes and topic shortcuts', () => {
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  for (const label of ['Official', 'Official', 'Your organization', 'All']) {
+    fireEvent.click(screen.getByRole('button', { name: label }));
+  }
+  expect(jest.mocked(reportAppInteraction).mock.calls.map(([, properties]) => properties)).toEqual([
+    { action: 'source', source: 'grafana', previous_source: 'all', interaction_location: 'package_browser' },
+    { action: 'source', source: 'organization', previous_source: 'grafana', interaction_location: 'package_browser' },
+    { action: 'source', source: 'all', previous_source: 'organization', interaction_location: 'package_browser' },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'view',
+    view: 'explore',
+    previous_view: 'all',
+    interaction_location: 'package_browser',
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Dashboards.*guides and paths/ }));
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'topic',
+    topic: 'dashboards',
+    control: 'shortcut',
+    interaction_location: 'package_browser',
+  });
 });

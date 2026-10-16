@@ -2,6 +2,7 @@ import React, { useCallback, useId, useLayoutEffect, useMemo, useRef, useSyncExt
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { CATALOG_BATCH_SIZE, type CatalogPackage, type CatalogViewState } from '../../types/package-catalog.types';
+import { reportCatalogInteraction } from '../../lib/catalog-analytics';
 import { filterCatalog, withoutPathMembers } from '../../lib/package-catalog';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { usePackageCatalog, useCatalogProgress } from '../../learning-paths';
@@ -62,6 +63,24 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
     },
     [catalog.scope]
   );
+  const selectView = (mode: CatalogViewState['mode']) => {
+    if (mode !== view.mode) {
+      reportCatalogInteraction({ action: 'view', view: mode, previousView: view.mode });
+    }
+    update(
+      mode === 'explore'
+        ? { mode, query: '', format: 'all', source: 'all', category: 'all', scrollTop: 0 }
+        : { mode, scrollTop: 0 }
+    );
+  };
+  const selectTopic = (topic: string, control: 'shortcut' | 'filter') => {
+    reportCatalogInteraction({ action: 'topic', topic, control });
+    update(
+      control === 'shortcut'
+        ? { category: topic, query: '', format: 'all', source: 'all', scrollTop: 0 }
+        : { category: topic, scrollTop: 0 }
+    );
+  };
   const progress = useCatalogProgress(catalog.items, catalog.scope);
   const browsable = useMemo(() => withoutPathMembers(catalog.items), [catalog.items]);
   const normalizedItems = useMemo(
@@ -177,16 +196,20 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
           value={view.query}
           prefix={<Icon name="search" />}
           placeholder={t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')}
-          onChange={(event) => update({ query: event.currentTarget.value, scrollTop: 0 })}
+          onChange={(event) => {
+            const query = event.currentTarget.value;
+            if (query.trim() && !view.query.trim()) {
+              reportCatalogInteraction({ action: 'search' });
+            }
+            update({ query, scrollTop: 0 });
+          }}
         />
         <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>
           <button
             type="button"
             className={styles.viewTab}
             aria-pressed={view.mode === 'explore'}
-            onClick={() =>
-              update({ mode: 'explore', query: '', format: 'all', source: 'all', category: 'all', scrollTop: 0 })
-            }
+            onClick={() => selectView('explore')}
           >
             {t('packageBrowser.explore', 'Explore')}
           </button>
@@ -194,7 +217,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             type="button"
             className={styles.viewTab}
             aria-pressed={view.mode === 'all'}
-            onClick={() => update({ mode: 'all', scrollTop: 0 })}
+            onClick={() => selectView('all')}
           >
             {t('packageBrowser.allContent', 'All content')}
           </button>
@@ -225,7 +248,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                   { value: 'all', label: t('packageBrowser.allTopics', 'All topics') },
                   ...categories.map((category) => ({ value: category.id, label: topicLabel(category.id) })),
                 ]}
-                onChange={(option) => update({ category: option.value ?? 'all', scrollTop: 0 })}
+                onChange={(option) => selectTopic(option.value ?? 'all', 'filter')}
               />
             </label>
             <fieldset className={styles.sourceFilter}>
@@ -243,7 +266,16 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                     type="button"
                     className={styles.sourceSegment}
                     aria-pressed={view.source === source.value}
-                    onClick={() => update({ source: source.value, scrollTop: 0 })}
+                    onClick={() => {
+                      if (source.value !== view.source) {
+                        reportCatalogInteraction({
+                          action: 'source',
+                          source: source.value,
+                          previousSource: view.source,
+                        });
+                      }
+                      update({ source: source.value, scrollTop: 0 });
+                    }}
                   >
                     {source.label}
                   </button>
@@ -302,9 +334,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                       key={topic.id}
                       type="button"
                       className={styles.topicShortcut}
-                      onClick={() =>
-                        update({ category: topic.id, query: '', format: 'all', source: 'all', scrollTop: 0 })
-                      }
+                      onClick={() => selectTopic(topic.id, 'shortcut')}
                     >
                       <LearningTopicIcon topic={topic.id} size="sm" />
                       <span className={styles.topicContent}>
@@ -320,13 +350,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             )}
             <div className={styles.exploreFooter}>
               <span>{t('packageBrowser.specificTask', 'Have something specific in mind?')}</span>
-              <Button
-                variant="primary"
-                fill="text"
-                size="sm"
-                icon="arrow-right"
-                onClick={() => update({ mode: 'all', scrollTop: 0 })}
-              >
+              <Button variant="primary" fill="text" size="sm" icon="arrow-right" onClick={() => selectView('all')}>
                 {t('packageBrowser.browseAllContent', 'Browse all content')}
               </Button>
             </div>
