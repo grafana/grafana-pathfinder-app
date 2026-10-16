@@ -197,7 +197,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
     const url = new URL(String(open.mock.calls[0]?.[0]));
     expect(url.searchParams.get('doc')).toBe('https://grafana.com/docs/learning-journeys/foo-canonical');
     expect(url.searchParams.get('controller')).toBe('1');
-    expect(url.searchParams.get('controllerMilestone')).toBe('https://grafana.com/docs/learning-journeys/foo/m1');
+    expect(url.searchParams.get('controllerMilestone')).toBe('m1');
     expect(url.hash).toContain('pairing_id=');
     open.mockRestore();
   });

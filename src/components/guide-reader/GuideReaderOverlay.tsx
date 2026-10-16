@@ -245,6 +245,9 @@ function GuideReaderInner({
       const milestone = (selectedTrack?.milestones ?? journey?.milestones)?.find(
         (item) => item.url === initialMilestoneUrl && !item.isLocked
       );
+      if (!cancelled && milestone && !manifest) {
+        return fetchUnifiedContent(milestone.url, { loadContext });
+      }
       if (!cancelled && milestone) {
         return fetchPackageContent(
           milestone.url,

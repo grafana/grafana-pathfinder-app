@@ -138,7 +138,7 @@ Both the controller overlay (`?controller=1` path) and the live-tab executor ins
 > [`docs/design/CONCERN_DETAILS.md`](../design/CONCERN_DETAILS.md) is the canonical review checklist
 > for these files. It fires on any single touch of the cross-tab files and enumerates
 > the trust invariants below — signed commands, gesture-to-accept pairing, the per-kind
-> validation gate, and the `enableTwoTabController` re-enable one-way door — that a
+> validation gate, and the `enableTwoTabController` default-on one-way door — that a
 > reviewer must confirm before merge.
 
 `BroadcastChannel` is shared by every script running on the same origin, so a
@@ -191,8 +191,8 @@ Defense in depth on top of authentication:
   or unknown-kind messages are dropped before the auth gate is even consulted.
 - **Install/entry gating.** The executor is installed, and the controller
   overlay mounted, only when the `enableTwoTabController` admin setting is on
-  _and_ `pathfinderEnabled` is true — a disabled plugin, or an instance that
-  hasn't opted in, exposes neither the sink nor the driver.
+  _and_ `pathfinderEnabled` is true — a disabled plugin, or an instance whose
+  admin turned the setting off, exposes neither the sink nor the driver.
 - **Same-build / same-origin / one-session assumption.** Controller and live
   tabs are the same plugin build in the same browser profile and session; there
   is no protocol-version negotiation and cross-version compatibility is not a

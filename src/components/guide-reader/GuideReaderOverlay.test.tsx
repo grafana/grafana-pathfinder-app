@@ -316,6 +316,36 @@ describe('GuideReaderOverlay', () => {
     }
   );
 
+  it('opens the requested milestone of a docs journey without a package manifest', async () => {
+    const base = 'https://grafana.com/docs/learning-journeys/linux';
+    const milestones = [1, 2].map((number) => ({
+      number,
+      title: `Step ${number}`,
+      url: `${base}/step-${number}/`,
+      isActive: false,
+    }));
+    const page = (url: string, currentMilestone: number): RawContent => ({
+      url,
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        title: 'Linux',
+        learningJourney: { baseUrl: base, currentMilestone, totalMilestones: 2, milestones },
+      },
+    });
+    const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+    mockFetchContent.mockImplementation(async (url) => ({
+      content: url === base ? page(`${base}/content.json`, 0) : page(`${url}content.json`, 2),
+    }));
+    render(<GuideReaderOverlay doc={base} mode="controller" initialMilestoneUrl={`${base}/step-2/`} />);
+    await screen.findByTestId('mock-content');
+    expect(mockFetchContent).toHaveBeenLastCalledWith(`${base}/step-2/`, expect.any(Object));
+    expect(packageFetch).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
+  });
+
   it('uses the selected track for arrow navigation', async () => {
     const milestone = {
       id: 'alternate',

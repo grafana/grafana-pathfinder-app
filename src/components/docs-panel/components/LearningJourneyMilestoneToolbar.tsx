@@ -208,7 +208,7 @@ export function LearningJourneyMilestoneToolbar({
   };
 
   const controllerAction = pickControllerTabOpenAction(activeMilestoneContext.baseUrl, activeTab.type, {
-    milestoneUrl: activeTab.content?.url || activeTab.currentUrl,
+    milestoneUrl: currentMs?.url,
     trackId: activeTab.activeTrackId,
   });
   const kebabMenu = (
