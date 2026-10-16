@@ -892,9 +892,8 @@ function planSurfaceCompletion(input: SurfaceCompletionInput) {
   const surfaceBase = baseUrl || contentUrl;
   // trackMemberBaseUrl fallback: a guide referenced only by a Path Tracks
   // `tracks` entry (never by `milestones`) carries no `learningJourney` — see
-  // its doc comment in content.types.ts — but still needs its completion
-  // routed through milestoneCompletionStorage under its own identity, the
-  // same store the cover page's per-track row lock/unlock reads.
+  // its doc comment in content.types.ts — but still needs markMilestoneDone
+  // under its own identity so the cover page's per-track lock/unlock sees it.
   // resolveExpectedMilestoneIds(metadata?.learningJourney) below safely
   // returns [] with no `learningJourney`, so this can never satisfy
   // markMilestoneDone's whole-journey completion trigger (COMPLETION-MODEL.md

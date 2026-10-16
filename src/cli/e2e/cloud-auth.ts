@@ -2,6 +2,7 @@ import { cloudInstanceUrl, sameOrigin, type CloudTargetCapabilities } from './e2
 
 export interface CloudAuthConfigInput {
   cloudInstanceAdminTokenSpecs?: string[];
+  allowCloudInstanceMutations?: string[];
   env?: NodeJS.ProcessEnv;
 }
 
@@ -9,6 +10,7 @@ export interface CloudAuthPolicy {
   targets: CloudTargetCapabilities;
   adminTokenFor(targetUrl: string | undefined): string | undefined;
   needsProvisioningFor(targetUrl: string | undefined): boolean;
+  allowsMutationsFor(targetUrl: string | undefined): boolean;
 }
 
 interface CloudInstanceAdminTokenConfig {
@@ -73,12 +75,34 @@ export function createCloudAuthPolicy(input: CloudAuthConfigInput): CloudAuthPol
   const env = input.env ?? process.env;
   const adminTokenConfig = parseCloudInstanceAdminTokenSpecs(input.cloudInstanceAdminTokenSpecs, env);
 
+  const mutationOrigins = new Set<string>();
+  for (const host of input.allowCloudInstanceMutations ?? []) {
+    const targetUrl = cloudInstanceUrl(host);
+    if (!targetUrl) {
+      throw new Error(`Invalid --allow-cloud-instance-mutations host "${host}". Expected a bare hostname.`);
+    }
+    const origin = new URL(targetUrl).origin;
+    if (mutationOrigins.has(origin)) {
+      throw new Error(`Duplicate --allow-cloud-instance-mutations entry for ${host}.`);
+    }
+    if (!adminTokenConfig.adminTokensByOrigin.has(origin)) {
+      throw new Error(`--allow-cloud-instance-mutations ${host} requires matching --cloud-instance-admin-token.`);
+    }
+    mutationOrigins.add(origin);
+  }
+
   return {
     targets: {
       sharedStackUrls: adminTokenConfig.targetUrls,
     },
     adminTokenFor(targetUrl) {
       return tokenForTarget(adminTokenConfig.adminTokensByOrigin, targetUrl);
+    },
+    allowsMutationsFor(targetUrl) {
+      if (!targetUrl || !tokenForTarget(adminTokenConfig.adminTokensByOrigin, targetUrl)) {
+        return false;
+      }
+      return mutationOrigins.has(new URL(targetUrl).origin);
     },
     needsProvisioningFor(targetUrl) {
       return Boolean(this.adminTokenFor(targetUrl));

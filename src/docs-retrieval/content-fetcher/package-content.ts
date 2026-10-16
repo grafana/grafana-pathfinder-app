@@ -402,7 +402,7 @@ export async function fetchPackageContent(
   let learningJourney: LearningJourneyMetadata | undefined;
   // Set only for a track-only member (see the isTrackOnlyMember branch
   // below) — carries just enough for recordGuideCompletionForSurface to
-  // route its completion write through milestoneCompletionStorage under
+  // route its completion through markMilestoneDone under
   // this guide's own identity, without resurrecting a fake milestone index.
   let trackMemberBaseUrl: string | undefined;
   let contentString = result.content.content;
@@ -474,7 +474,7 @@ export async function fetchPackageContent(
       // Previous/Next milestone arrows. trackMemberBaseUrl below is what
       // keeps its completion write alive despite that (see its own doc
       // comment in content.types.ts): without it, a second bug — this
-      // guide's completion never reaching milestoneCompletionStorage at
+      // guide's completion never being recorded at
       // all — would replace the one this branch fixes.
       if (milestoneIndex >= 0 || isCoverPageLoad) {
         const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;

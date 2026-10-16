@@ -113,6 +113,7 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
       repoUrl: 'url',
       resolverUrl: 'url',
       cloudInstanceAdminToken: 'host=envVar',
+      allowCloudInstanceMutations: 'hostname',
       cloudUrl: 'url',
       cloudStackPoolManagerUrl: 'url',
       cloudStackPoolManagerToken: 'envVar',

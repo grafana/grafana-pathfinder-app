@@ -31,7 +31,12 @@ export function assertTierHomogeneousChains(plan: ExecutionPlan, packageMetaById
 /** Preflight runs before manager leasing, so exclude guides that will run against isolated stacks. */
 export function preflightTargetUrlsForPlan(options: PreflightTargetUrlsForPlanOptions): string[] {
   const idsToSkip = new Set([
-    ...idsSkippedForUnsafeSharedStack(options.plan, options.packageMetaById, options.cloudStackPoolManagerConfig),
+    ...idsSkippedForUnsafeSharedStack(
+      options.plan,
+      options.packageMetaById,
+      options.cloudAuth,
+      options.cloudStackPoolManagerConfig
+    ),
     ...idsUsingCloudStack(
       options.plan,
       options.packageMetaById,
@@ -46,6 +51,7 @@ export function preflightTargetUrlsForPlan(options: PreflightTargetUrlsForPlanOp
 function idsSkippedForUnsafeSharedStack(
   plan: ExecutionPlan,
   packageMetaById: Map<string, PackageMeta>,
+  cloudAuth: CloudAuthPolicy | undefined,
   cloudStackPoolManagerConfig: CloudStackPoolManagerConfig | undefined
 ): Set<string> {
   const ids = new Set<string>();
@@ -53,7 +59,7 @@ function idsSkippedForUnsafeSharedStack(
     return ids;
   }
   for (const chain of plan.chains) {
-    if (unsafeCloudGuidesInChain(chain, packageMetaById).length > 0) {
+    if (unsafeCloudGuidesInChain(chain, packageMetaById, cloudAuth).length > 0) {
       for (const planned of chain) {
         ids.add(planned.id);
       }

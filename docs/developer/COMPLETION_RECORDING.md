@@ -122,6 +122,7 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 ### 7. Consumers of raw rows
 
 - `pkg/plugin/completion_records.go` `collateCompletions` — completed rows become completions; rows with an empty `completedAt` become `inProgress`, shown only if the attempt started after the last completion.
+- `src/completion-records/recommend-completions.ts` — projects `/completion-records/my` for the recommender. It reads the collated response, not raw rows, so partials arrive as `inProgress` and are never counted as completions. See [Completion history in recommend requests](engines/context-engine.md#completion-history-in-recommend-requests).
 - `pkg/plugin/assignment_satisfaction.go` — evaluates per row against `acceptCompletionsFrom`. A partial row is excluded today **only because** an empty `completedAt` fails `parseCompletionTime`. A new consumer must exclude partials explicitly.
 
 ### 8. Reset

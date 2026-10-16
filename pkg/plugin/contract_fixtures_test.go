@@ -833,8 +833,12 @@ func completionCapabilityRoute(a *App) http.HandlerFunc { return a.handleComplet
 
 func captureMyCompletionsDefault(t *testing.T) *httptest.ResponseRecorder {
 	freezeContractTime(t)
+	annotated := func(r completionRecordSpec, duration int64, updated, started string) completionRecordSpec {
+		r.DurationSeconds, r.LastUpdatedAt, r.AttemptStartedAt = duration, updated, started
+		return r
+	}
 	return doCompletionGolden(t, completionRequest(t, "/completion-records/my", "user:1"), myCompletions,
-		rec("user:1", "app-platform", "fe-alerting-01", "Alerting module 1", "interactive", "fe-alerting-path", "objectives", "2026-03-30T09:00:00Z", 100),
+		annotated(rec("user:1", "app-platform", "fe-alerting-01", "Alerting module 1", "interactive", "fe-alerting-path", "objectives", "2026-03-30T09:00:00Z", 100), 742, "2026-03-30T09:00:05Z", "2026-03-30T08:47:00Z"),
 		rec("user:1", "app-platform", "fe-alerting-01", "Alerting module 1", "interactive", "fe-alerting-path", "manual", "2026-03-29T09:00:00Z", 60),
 		rec("user:1", "bundled", "linux", "Linux server integration", "interactive", "", "objectives", "2026-03-28T09:00:00Z", 80),
 		rec("user:2", "bundled", "loki", "Loki basics", "interactive", "", "objectives", "2026-03-27T09:00:00Z", 100),
@@ -846,10 +850,13 @@ func captureMyCompletionsInProgress(t *testing.T) *httptest.ResponseRecorder {
 	partial := func(guideSource, guideID, title string, percent int64, updated string) completionRecordSpec {
 		r := rec("user:1", guideSource, guideID, title, "interactive", "", "objectives", "", percent)
 		r.LastUpdatedAt = updated
+		r.AttemptStartedAt = "2026-03-29T08:30:00Z"
 		return r
 	}
 	done := rec("user:1", "bundled", "linux", "Linux server integration", "interactive", "", "manual", "2026-03-28T09:00:00Z", 100)
 	done.LastUpdatedAt = "2026-03-28T09:00:00Z"
+	done.DurationSeconds = 310
+	done.AttemptStartedAt = "2026-03-28T08:50:00Z"
 	return doCompletionGolden(t, completionRequest(t, "/completion-records/my", "user:1"), myCompletions,
 		done,
 		partial("bundled", "linux", "Linux server integration", 40, "2026-03-29T09:00:00Z"),

@@ -112,11 +112,9 @@ export interface ContentMetadata {
    * Foundations-relative navigation chrome, and no cover-page
    * misclassification — see `fetchPackageContent`'s isTrackOnlyMember
    * check). This field exists solely so `recordGuideCompletionForSurface`
-   * can still route its completion through the same
-   * `milestoneCompletionStorage` write a real milestone gets — keyed on
-   * this guide's own identity, not a fake milestone index — so the cover
-   * page's per-track row lock/unlock (which reads that store) sees it as
-   * done. `resolveExpectedMilestoneIds` never sees a real `milestones` list
+   * can still route its completion through `markMilestoneDone` like a real
+   * milestone — keyed on this guide's own identity, not a fake milestone
+   * index — so the cover page's per-track row lock/unlock sees it as done. `resolveExpectedMilestoneIds` never sees a real `milestones` list
    * for this path, so completing this guide can never satisfy the
    * whole-journey completion trigger (Path Tracks are not a completion
    * authority — COMPLETION-MODEL.md decision 10).

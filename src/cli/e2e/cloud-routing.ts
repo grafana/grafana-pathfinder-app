@@ -1,3 +1,4 @@
+import type { CloudAuthPolicy } from './cloud-auth';
 import { ExitCode } from './exit-codes';
 import type { GuideRunResult, PackageMeta } from './e2e-results';
 import { isUnsafeSideEffectLevel } from './side-effects';
@@ -15,11 +16,16 @@ interface PlannedGuideForSkip extends PlannedGuideRef {
 
 export function unsafeCloudGuidesInChain(
   chain: PlannedGuideRef[],
-  packageMetaById: Map<string, PackageMeta>
+  packageMetaById: Map<string, PackageMeta>,
+  cloudAuth?: CloudAuthPolicy
 ): PlannedGuideRef[] {
   return chain.filter((planned) => {
     const meta = packageMetaById.get(planned.id);
-    return meta?.tier === 'cloud' && (!meta.sideEffects || isUnsafeSideEffectLevel(meta.sideEffects.level));
+    return (
+      meta?.tier === 'cloud' &&
+      (!meta.sideEffects || isUnsafeSideEffectLevel(meta.sideEffects.level)) &&
+      !cloudAuth?.allowsMutationsFor(meta.targetUrl)
+    );
   });
 }
 
