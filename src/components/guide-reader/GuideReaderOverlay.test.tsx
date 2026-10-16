@@ -7,7 +7,20 @@ import { recordGuideRender } from '../../lib/telemetry/facade';
 import { getActiveTabUrl } from '../../global-state/content-key';
 import { findDocPage } from '../../utils/find-doc-page';
 import { useGlobalActiveTabExposure } from '../docs-panel/hooks/useGlobalActiveTabExposure';
+import type { ReaderPosition } from '../../types/cross-tab.types';
 import type { ContentFetchResult, Milestone, RawContent } from '../../types/content.types';
+
+const mockReturnPositions: Array<ReaderPosition | undefined> = [];
+jest.mock('../../global-state/controller-channel', () => {
+  const actual = jest.requireActual('../../global-state/controller-channel');
+  return {
+    ...actual,
+    ControllerChannelProvider: (props: React.ComponentProps<typeof actual.ControllerChannelProvider>) => {
+      mockReturnPositions.push(props.position);
+      return <actual.ControllerChannelProvider {...props} />;
+    },
+  };
+});
 
 jest.mock('../../lib/telemetry/facade', () => ({
   ...jest.requireActual('../../lib/telemetry/facade'),
@@ -74,6 +87,7 @@ describe('GuideReaderOverlay', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRenderedCompletions.length = 0;
+    mockReturnPositions.length = 0;
     closeSpy = jest.spyOn(window, 'close').mockImplementation(() => {});
   });
 
@@ -344,6 +358,70 @@ describe('GuideReaderOverlay', () => {
     expect(packageFetch).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
+  });
+
+  it('keeps the opening milestone and track in the handback throughout initial loading', async () => {
+    let resolveCover!: (value: ContentFetchResult) => void;
+    let resolveMilestone!: (value: ContentFetchResult) => void;
+    mockFetchContent.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCover = resolve;
+      })
+    );
+    const doc = 'backend-guide:path';
+    const milestone = { id: 'three', number: 1, title: 'Third', url: 'backend-guide:three', isActive: false };
+    const manifest = { id: 'path', type: 'path' };
+    const cover: RawContent = {
+      url: doc,
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        packageManifest: manifest,
+        learningJourney: {
+          baseUrl: doc,
+          currentMilestone: 0,
+          totalMilestones: 0,
+          milestones: [],
+          tracks: [{ trackId: 'builder', label: 'Builder', milestones: [milestone] }],
+        },
+      },
+    };
+    const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+    packageFetch.mockResolvedValueOnce({ content: cover });
+    packageFetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMilestone = resolve;
+        })
+    );
+    render(
+      <GuideReaderOverlay doc={doc} mode="controller" initialMilestoneUrl={milestone.url} initialTrackId="builder" />
+    );
+    const expected = { doc, milestoneUrl: milestone.url, trackId: 'builder' };
+    expect(mockReturnPositions.at(-1)).toEqual(expected);
+    await act(async () => resolveCover({ content: cover }));
+    expect(packageFetch).toHaveBeenCalledTimes(2);
+    expect(mockReturnPositions.at(-1)).toEqual(expected);
+    await act(async () =>
+      resolveMilestone({
+        content: {
+          ...cover,
+          url: `${milestone.url}/unstyled.html`,
+          metadata: {
+            ...cover.metadata,
+            learningJourney: {
+              ...cover.metadata.learningJourney!,
+              currentMilestone: 1,
+              milestones: [milestone],
+            },
+          },
+        },
+      })
+    );
+    expect(mockReturnPositions.at(-1)).toEqual(expected);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(mockReturnPositions.at(-1)?.milestoneUrl).toBe(doc);
   });
 
   it('uses the selected track for arrow navigation', async () => {

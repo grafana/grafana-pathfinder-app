@@ -1,3 +1,4 @@
+import { isLearningJourneyUrl } from './utils/url-validation';
 import type { ReaderPosition } from '../../types/cross-tab.types';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import {
@@ -537,7 +538,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       this._pendingLaunchSource = options.source;
     }
     const tab = this.state.tabs.find((t) => t.id === tabId);
-    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+    const needsDocsLoader =
+      isPackageContentUrl(url) || options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
     if (needsDocsLoader) {
       await this.loadDocsTabContent(
         tabId,
@@ -818,7 +820,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         content: null,
         isLoading: true,
         error: null,
-        type: 'docs',
+        type: isLearningJourneyUrl(position.doc) ? 'learning-journey' : 'docs',
       };
       this.setState({ tabs: [...this.state.tabs, tab] });
     }

@@ -50,6 +50,8 @@ jest.mock('./context-panel', () => ({
 const mockFetchContent = jest.fn();
 jest.mock('../../docs-retrieval', () => ({
   fetchContent: (...args: unknown[]) => mockFetchContent(...args),
+  resolveActiveMilestoneSequence: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneSequence,
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
@@ -516,5 +518,104 @@ describe('CombinedLearningJourneyPanel.loadTab — learning-journey completion s
       expect.objectContaining({ guideTitle: 'Journey' }),
       { attemptEligible: false }
     );
+  });
+});
+
+describe('reader return loader routing', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockImplementation(
+      jest.requireActual('./utils/tab-validation').shouldUseDocsLoader
+    );
+    jest.requireMock('../../types/package.types').getPackageRenderType.mockReturnValue('learning-journey');
+  });
+
+  it.each(['backend-guide:path', 'https://interactive-learning.grafana.net/packages/path/content.json'])(
+    'enriches an existing path tab before restoring its track milestone (%s)',
+    async (doc) => {
+      const retrieval = jest.requireMock('../../docs-retrieval');
+      retrieval.isPackageContentUrl.mockReturnValue(true);
+      const manifest = { id: 'path', type: 'path' };
+      const packageInfo = { packageManifest: manifest, repository: 'app-platform' };
+      retrieval.fetchPackageInfoFromUrl.mockResolvedValue(packageInfo);
+      const milestone = { id: 'three', url: 'backend-guide:three', number: 1, title: 'Third', isActive: false };
+      const cover = {
+        ...preparedContent,
+        url: doc,
+        type: 'learning-journey',
+        metadata: {
+          title: 'Path',
+          packageManifest: manifest,
+          learningJourney: {
+            baseUrl: doc,
+            currentMilestone: 0,
+            milestones: [],
+            totalMilestones: 0,
+            tracks: [{ trackId: 'builder', label: 'Builder', milestones: [milestone] }],
+          },
+        },
+      };
+      (loadDocsTabContentResult as jest.Mock).mockResolvedValueOnce({ content: cover }).mockResolvedValueOnce({
+        content: {
+          ...cover,
+          url: milestone.url,
+          metadata: {
+            ...cover.metadata,
+            learningJourney: {
+              ...cover.metadata.learningJourney,
+              currentMilestone: 1,
+              milestones: [milestone],
+            },
+          },
+        },
+      });
+      const panel = new CombinedLearningJourneyPanel();
+      jest.spyOn(panel, 'restoreTabsAsync').mockResolvedValue();
+      panel.setState({ tabs: [{ ...makeTab('path-tab'), baseUrl: doc, type: 'learning-journey' }] });
+      await panel.restoreReaderPosition({ doc, milestoneUrl: milestone.url, trackId: 'builder' });
+      expect(retrieval.fetchPackageInfoFromUrl).toHaveBeenCalledWith(doc, expect.any(Object));
+      expect(loadDocsTabContentResult).toHaveBeenLastCalledWith(
+        milestone.url,
+        expect.objectContaining({
+          packageInfo,
+          explicitGuideId: 'three',
+        })
+      );
+      expect(panel.getActiveTab()).toEqual(
+        expect.objectContaining({
+          id: 'path-tab',
+          currentUrl: milestone.url,
+          type: 'learning-journey',
+          activeTrackId: 'builder',
+        })
+      );
+      expect(mockFetchContent).not.toHaveBeenCalled();
+    }
+  );
+
+  it('creates missing docs journey tabs with journey chrome and restores their milestone', async () => {
+    const doc = 'https://grafana.com/docs/learning-paths/example/';
+    jest.requireMock('../../docs-retrieval').isPackageContentUrl.mockReturnValue(false);
+    const milestone = { id: 'one', url: `${doc}one/`, number: 1, title: 'First', isActive: false };
+    const content = {
+      ...preparedContent,
+      type: 'learning-journey',
+      url: doc,
+      metadata: {
+        title: 'Path',
+        learningJourney: { baseUrl: doc, currentMilestone: 0, milestones: [milestone], totalMilestones: 1 },
+      },
+    };
+    mockFetchContent
+      .mockResolvedValueOnce({ content })
+      .mockResolvedValueOnce({ content: { ...content, url: milestone.url } });
+    const panel = new CombinedLearningJourneyPanel();
+    jest.spyOn(panel, 'restoreTabsAsync').mockResolvedValue();
+    panel.setState({ tabs: [] });
+    await panel.restoreReaderPosition({ doc, milestoneUrl: milestone.url });
+    expect(panel.getActiveTab()).toEqual(
+      expect.objectContaining({ type: 'learning-journey', currentUrl: milestone.url })
+    );
+    expect(loadDocsTabContentResult).not.toHaveBeenCalled();
   });
 });

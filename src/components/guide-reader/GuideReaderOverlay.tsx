@@ -140,14 +140,20 @@ function GuideReaderInner({
     guideId?: string;
   }>({ url: doc, isInitial: true });
   const [track, setTrack] = useState<{ id: string | null; milestones: Milestone[] | null }>({
-    id: null,
+    id: initialTrackId ?? null,
     milestones: null,
   });
   const [error, setError] = useState<string | null>(null);
-  const returnPosition = useMemo(
-    () => ({ doc, milestoneUrl: content?.url ?? navigation.url, trackId: track.id ?? undefined }),
-    [doc, content?.url, navigation.url, track.id]
-  );
+  const returnPosition = useMemo(() => {
+    const sequence = content ? resolveActiveMilestoneSequence(content, track.id, track.milestones) : null;
+    const milestone = sequence?.milestones.find((item) => item.number === sequence.currentMilestone);
+    return {
+      doc,
+      milestoneUrl:
+        milestone?.url ?? content?.url ?? (navigation.isInitial ? (initialMilestoneUrl ?? doc) : navigation.url),
+      trackId: track.id ?? undefined,
+    };
+  }, [doc, content, navigation, initialMilestoneUrl, track]);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const closeTimerRef = useRef<number | undefined>(undefined);
