@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.24.0
+
+### Added
+
+- **Completion while reading**: Open guides observe completed objectives and actions in the sidebar or paired interactive window without requiring Show me or Do it. Assistance waits for unmet objectives, and progress survives handoff between windows. Automatic observation can be disabled in settings. (#2055)
+- **Guide prerequisites**: Author-declared prerequisites appear in recommendation details, path covers, and guide content before learners begin. Optional restricted Markdown supports emphasis and HTTPS links without changing access or completion rules. (#2122)
+- **Completion-aware recommendations**: Recommendation requests can include a bounded completion history when the `pathfinder.recommend-completions` flag is enabled. The flag defaults to off. (#2143)
+- **Guide auto-open experiment**: An experiment built on the Grafana experiments SDK compares eligible readers who see an automatically opened guide with a control group that sees no change. Configured experiences select guides and matching pages. (#2135)
+- **Catalog discovery analytics**: Measure browse, search, topic, view, and content-source interactions. Search reporting uses allowlisted topic classifications without sending raw search text or private topic names. (#2172)
+- **Named testing-stack permissions**: CLI E2E guide chains can mutate a named Cloud testing stack only with matching credentials and explicit permission for that hostname. Permissions are checked separately for each target in a chain. (#2162)
+- **Manifest category validation**: CLI validation rejects missing, null, or blank categories and provides a fix hint. Runtime loading continues to accept guides without a category. (#2169)
+
+### Changed
+
+- **Two-tab mode defaults**: The interactive window is enabled when no preference has been saved; existing explicit off preferences remain off. (#2175)
+- **Objective-gated assistance**: Successful assistance waits for recognized objectives to be satisfied. External E2E runners must handle the new `waiting` step state; the bundled runner already does. (#2055)
+
+### Fixed
+
+- **Assistant text selection**: Use the native selection highlight and keep the Ask Assistant button aligned with the selected text. The button dismisses on scrolling, resizing, or outside clicks, while activation preserves the intended text. (#2178)
+- **Learning paths in the interactive window**: Backend learning paths support milestone navigation, selected tracks, and returning the latest position to the sidebar. Private paths no longer offer an external Open action that cannot load their content. (#2175)
+- **Floating panel sizing**: Long guides remain scrollable and resizable after navigation or shrinking the browser window, with a reachable resize grip and dimensions constrained to the viewport. (#2177)
+- **Selected guide text**: Text selections retain contrasting foreground and background colors across light, dark, and forced-colors themes, including syntax-highlighted code. (#2176)
+- **Long guided steps across tabs**: The interactive window waits long enough for the live tab's remaining guided substeps instead of timing out at a fixed fifteen minutes. (#2145)
+
+### Chore
+
+- **Storage API cleanup**: Remove unused storage helpers while preserving active behavior and stored-data compatibility. (#2163)
+
 ## 2.23.0
 
 ### Added
