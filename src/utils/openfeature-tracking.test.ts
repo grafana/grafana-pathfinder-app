@@ -27,10 +27,10 @@ jest.mock('./openfeature', () => ({
       defaultValue: true,
       trackingKey: 'pathfinder_enabled',
     },
-    'pathfinder.highlighted-guide-experiment': {
+    'pathfinder.interactive-learning-banner-experiment': {
       valueType: 'object',
       defaultValue: { variant: 'excluded' },
-      trackingKey: 'highlighted_guide_experiment',
+      trackingKey: 'interactive_learning_banner_experiment',
     },
     'pathfinder.no-tracking-key': {
       valueType: 'object',
@@ -76,65 +76,65 @@ describe('TrackingHook.after', () => {
   it('fires exposure for a treatment variant on first evaluation', () => {
     const hook = freshHook();
     hook.after(
-      ctx('pathfinder.highlighted-guide-experiment'),
+      ctx('pathfinder.interactive-learning-banner-experiment'),
       details({ variant: 'treatment', pages: [], guideId: '' })
     );
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
     expect(mockReportAppInteraction).toHaveBeenCalledWith('feature_flag_evaluated', {
-      flag_key: 'pathfinder.highlighted-guide-experiment',
+      flag_key: 'pathfinder.interactive-learning-banner-experiment',
       flag_value: JSON.stringify({ variant: 'treatment', pages: [], guideId: '' }),
-      tracking_key: 'highlighted_guide_experiment',
+      tracking_key: 'interactive_learning_banner_experiment',
       variant: 'treatment',
     });
   });
 
   it('writes a localStorage marker after firing so a fresh module instance does not re-fire', () => {
     let hook = freshHook();
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'treatment' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'treatment' }));
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
 
     // Simulate a page reload (fresh module → fresh in-memory Set, persistent marker stays).
     hook = freshHook();
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'treatment' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'treatment' }));
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
   });
 
   it('does not fire twice within a single page load even for repeated evaluations', () => {
     const hook = freshHook();
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'treatment' }));
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'treatment' }));
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'treatment' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'treatment' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'treatment' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'treatment' }));
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
   });
 
   it('re-fires when the user is reassigned to a different variant for the same flag', () => {
     let hook = freshHook();
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'control' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'control' }));
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
 
     // Next page load, MTFF rerolls and assigns this user to treatment.
     hook = freshHook();
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'treatment' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'treatment' }));
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(2);
     expect(mockReportAppInteraction.mock.calls[1]?.[1].variant).toBe('treatment');
   });
 
   it('writes the marker under a key that includes the hostname (cross-stack isolation)', () => {
     const hook = freshHook();
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'treatment' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'treatment' }));
     const writtenKey = Object.keys(localStorage).find((k) =>
       k.startsWith('grafana-pathfinder-experiment-exposure-reported-')
     );
     // Marker has shape `{prefix}{hostname}:{flag}:{variant}` — confirm the hostname segment is present
     // so two stacks on the same browser get independent dedup markers.
     expect(writtenKey).toMatch(
-      /grafana-pathfinder-experiment-exposure-reported-.+:pathfinder\.highlighted-guide-experiment:treatment$/
+      /grafana-pathfinder-experiment-exposure-reported-.+:pathfinder\.interactive-learning-banner-experiment:treatment$/
     );
   });
 
   it('skips excluded variants entirely', () => {
     const hook = freshHook();
-    hook.after(ctx('pathfinder.highlighted-guide-experiment'), details({ variant: 'excluded' }));
+    hook.after(ctx('pathfinder.interactive-learning-banner-experiment'), details({ variant: 'excluded' }));
     expect(mockReportAppInteraction).not.toHaveBeenCalled();
     // No marker written either — re-evaluation on a future arm reassignment should fire.
     expect(localStorage.length).toBe(0);
@@ -171,59 +171,59 @@ describe('reportFeatureFlagExposure', () => {
 
   it('fires exposure for a treatment variant on first call', () => {
     const report = freshReportFn();
-    report('pathfinder.highlighted-guide-experiment', {
+    report('pathfinder.interactive-learning-banner-experiment', {
       variant: 'treatment',
       pages: [],
       guideId: '',
     });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
     expect(mockReportAppInteraction).toHaveBeenCalledWith('feature_flag_evaluated', {
-      flag_key: 'pathfinder.highlighted-guide-experiment',
+      flag_key: 'pathfinder.interactive-learning-banner-experiment',
       flag_value: JSON.stringify({ variant: 'treatment', pages: [], guideId: '' }),
-      tracking_key: 'highlighted_guide_experiment',
+      tracking_key: 'interactive_learning_banner_experiment',
       variant: 'treatment',
     });
   });
 
   it('persists a marker so a fresh module instance does not re-fire', () => {
     let report = freshReportFn();
-    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'treatment', pages: [] });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
 
     report = freshReportFn();
-    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'treatment', pages: [] });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
   });
 
   it('dedups within a single page load even across repeated calls', () => {
     const report = freshReportFn();
-    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
-    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
-    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment', pages: [] });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'treatment', pages: [] });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'treatment', pages: [] });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'treatment', pages: [] });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
   });
 
   it('re-fires when the variant for the same flag changes', () => {
     let report = freshReportFn();
-    report('pathfinder.highlighted-guide-experiment', { variant: 'control' });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'control' });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(1);
 
     report = freshReportFn();
-    report('pathfinder.highlighted-guide-experiment', { variant: 'treatment' });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'treatment' });
     expect(mockReportAppInteraction).toHaveBeenCalledTimes(2);
     expect(mockReportAppInteraction.mock.calls[1]?.[1].variant).toBe('treatment');
   });
 
   it('skips excluded variants', () => {
     const report = freshReportFn();
-    report('pathfinder.highlighted-guide-experiment', { variant: 'excluded', pages: [] });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'excluded', pages: [] });
     expect(mockReportAppInteraction).not.toHaveBeenCalled();
     expect(localStorage.length).toBe(0);
   });
 
   it('skips prototype property names masquerading as variants', () => {
     const report = freshReportFn();
-    report('pathfinder.highlighted-guide-experiment', { variant: 'toString', pages: [] });
+    report('pathfinder.interactive-learning-banner-experiment', { variant: 'toString', pages: [] });
     expect(mockReportAppInteraction).not.toHaveBeenCalled();
   });
 

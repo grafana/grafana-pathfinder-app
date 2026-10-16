@@ -57,12 +57,12 @@ async function boot(
     handlePathfinderDeepLink: jest.fn(),
     installDeepLinkNavListener: jest.fn(),
     setPackageResolverFactory: jest.fn(),
-    setupHighlightedGuideAutoOpen: jest.fn(),
     armCompletionWriteHook: jest.fn(),
     clearExtensionSidebarDocked: jest.fn(),
     setPendingOpenSource: jest.fn(),
     recordStartupSettings: jest.fn(),
     startHelpButtonExperiment: jest.fn().mockResolvedValue(jest.fn()),
+    startAutoOpenGuideExperiment: jest.fn().mockResolvedValue(jest.fn()),
     onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
     setInterceptionEnabled: jest.fn(),
     ensurePluginTranslations: jest.fn().mockReturnValue(translationReady),
@@ -139,11 +139,11 @@ async function boot(
     },
     './utils/experiments/active-experiments': { getActiveExperiments: jest.fn() },
     './utils/experiments/help-button-attention': effects,
+    './utils/experiments/auto-open-guide': effects,
     './utils/experiments': {
       ...effects,
       createExperimentDebugger: jest.fn(),
       subscribeToEnrollment: jest.fn(),
-      initializeHighlightedGuideExperiment: () => ({}),
     },
     './utils/sidebar-auto-open': { getCurrentPath: () => '/', attemptAutoOpen: jest.fn() },
     './completion-records/completion-write-hook': effects,
@@ -189,7 +189,7 @@ it.each([
   expect(effects.handlePathfinderDeepLink).not.toHaveBeenCalled();
   expect(effects.installDeepLinkNavListener).not.toHaveBeenCalled();
   expect(effects.setPackageResolverFactory).not.toHaveBeenCalled();
-  expect(effects.setupHighlightedGuideAutoOpen).not.toHaveBeenCalled();
+  expect(effects.startAutoOpenGuideExperiment).not.toHaveBeenCalled();
   const Root = root.component!;
   render(<Root />);
   expect(await screen.findByText('Disabled')).toBeInTheDocument();

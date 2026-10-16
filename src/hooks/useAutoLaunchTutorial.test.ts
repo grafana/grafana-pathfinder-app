@@ -102,11 +102,8 @@ describe('useAutoLaunchTutorial', () => {
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
   });
 
-  it('passes the highlighted_guide_experiment source through as a typed LaunchSource', () => {
-    // Regression for the highlighted-guide auto-launch wiring: the orchestrator
-    // dispatches `auto-launch-tutorial` with `source: 'highlighted_guide_experiment'`,
-    // which must round-trip through `coerceLaunchSource` (not get dropped to
-    // undefined like an unknown literal would).
+  it('passes the auto_open_guide_experiment source through as a typed LaunchSource', () => {
+    // An unknown literal would be coerced to undefined and lose the experiment's attribution.
     const panel = makePanel();
     renderHook(() => useAutoLaunchTutorial(asPanel(panel)));
 
@@ -114,13 +111,13 @@ describe('useAutoLaunchTutorial', () => {
       url: 'bundled:onboarding',
       title: 'Onboarding',
       type: 'docs-page',
-      source: 'highlighted_guide_experiment',
+      source: 'auto_open_guide_experiment',
     });
 
     expect(panel.openDocsPage).toHaveBeenCalledWith(
       'bundled:onboarding',
       'Onboarding',
-      expect.objectContaining({ source: 'highlighted_guide_experiment' })
+      expect.objectContaining({ source: 'auto_open_guide_experiment' })
     );
   });
 

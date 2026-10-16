@@ -13,32 +13,27 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/** Clamp position so the panel stays within the viewport. */
-function clampToViewport(x: number, y: number, width: number, height: number): { x: number; y: number } {
+function getViewportSize(): { width: number; height: number } {
   return {
-    x: clamp(x, 0, window.innerWidth - width),
-    y: clamp(y, 0, window.innerHeight - height),
+    width: document.documentElement.clientWidth || window.innerWidth,
+    height: document.documentElement.clientHeight || window.innerHeight,
   };
 }
 
-/**
- * Clamp the entire geometry — both dimensions and position — so the
- * panel always renders within the current viewport. Used on mount and
- * on window resize so a position saved on a larger screen can never
- * leave the panel stranded off-screen when the user comes back on a
- * smaller window.
- *
- * Width/height clamp is one-way (shrink only) and is NOT persisted by
- * this function: the panel still renders smaller, but the next time the
- * viewport is large enough we want the user's preferred size restored.
- * Persisting only happens through explicit drag/resize gestures, where
- * the saved value reflects user intent.
- */
+function clampToViewport(x: number, y: number, width: number, height: number): { x: number; y: number } {
+  const viewport = getViewportSize();
+  return {
+    x: Math.max(0, clamp(x, 0, viewport.width - width)),
+    y: Math.max(0, clamp(y, 0, viewport.height - height)),
+  };
+}
+
+// Automatic clamps must not overwrite the user's preferred geometry.
 function clampGeometryToViewport(g: FloatingPanelGeometry): FloatingPanelGeometry {
-  const width = Math.min(g.width, Math.max(FLOATING_PANEL_MIN_WIDTH, window.innerWidth));
-  const height = Math.min(g.height, Math.max(FLOATING_PANEL_MIN_HEIGHT, window.innerHeight));
-  const x = Math.max(0, Math.min(g.x, window.innerWidth - width));
-  const y = Math.max(0, Math.min(g.y, window.innerHeight - height));
+  const viewport = getViewportSize();
+  const width = Math.min(g.width, viewport.width);
+  const height = Math.min(g.height, viewport.height);
+  const { x, y } = clampToViewport(g.x, g.y, width, height);
   return { ...g, x, y, width, height };
 }
 
@@ -110,12 +105,6 @@ function useDrag(
   return { onPointerDown, onPointerMove, onPointerUp };
 }
 
-/**
- * Hook for resizing the floating panel via a corner handle.
- *
- * Enforces min/max dimension constraints from constants.
- * Persists final geometry to PanelModeManager on release.
- */
 function useResize(
   geometry: FloatingPanelGeometry,
   setGeometry: React.Dispatch<React.SetStateAction<FloatingPanelGeometry>>
@@ -150,11 +139,15 @@ function useResize(
       if (!resizeStartRef.current) {
         return;
       }
-      const dx = e.clientX - resizeStartRef.current.startX;
-      const dy = e.clientY - resizeStartRef.current.startY;
-      const newWidth = clamp(resizeStartRef.current.originWidth + dx, FLOATING_PANEL_MIN_WIDTH, window.innerWidth);
-      const newHeight = clamp(resizeStartRef.current.originHeight + dy, FLOATING_PANEL_MIN_HEIGHT, window.innerHeight);
-      setGeometry((prev) => ({ ...prev, width: newWidth, height: newHeight }));
+      const { startX, startY, originWidth, originHeight } = resizeStartRef.current;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const viewport = getViewportSize();
+      setGeometry((prev) => ({
+        ...prev,
+        width: clamp(originWidth + dx, FLOATING_PANEL_MIN_WIDTH, viewport.width - prev.x),
+        height: clamp(originHeight + dy, FLOATING_PANEL_MIN_HEIGHT, viewport.height - prev.y),
+      }));
     },
     [setGeometry]
   );

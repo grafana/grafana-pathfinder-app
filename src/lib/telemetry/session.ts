@@ -2,7 +2,7 @@ import { logger } from '../logging';
 import { setFaroSessionAttributes } from './faro-adapter';
 
 // Wire schema of the `experiments` session attribute:
-// `{ v, cohorts: [{ flag, variant, guideId? }] }` — bump on shape changes.
+// `{ v, cohorts: [{ flag, variant }] }` — bump on shape changes.
 export const SESSION_EXPERIMENTS_SCHEMA_VERSION = 1;
 
 // Must stay at or below faro-adapter's MAX_ATTRIBUTE_LENGTH (500), or
@@ -12,7 +12,6 @@ const MAX_SESSION_EXPERIMENTS_LENGTH = 500;
 export interface SessionExperimentCohort {
   flag: string;
   variant: string;
-  guideId?: string;
 }
 
 interface ExperimentEntryLike {
@@ -25,11 +24,7 @@ export function buildSessionExperimentsValue(entries: ExperimentEntryLike[]): st
   if (entries.length === 0) {
     return null;
   }
-  const cohorts: SessionExperimentCohort[] = entries.map((entry) => ({
-    flag: entry.flag,
-    variant: entry.variant,
-    ...(typeof entry.guideId === 'string' && entry.guideId ? { guideId: entry.guideId } : {}),
-  }));
+  const cohorts: SessionExperimentCohort[] = entries.map((entry) => ({ flag: entry.flag, variant: entry.variant }));
   const serialized = JSON.stringify({ v: SESSION_EXPERIMENTS_SCHEMA_VERSION, cohorts });
   if (serialized.length > MAX_SESSION_EXPERIMENTS_LENGTH) {
     logger.warn('Session experiments payload exceeds the attribute cap; stamping empty cohorts', {

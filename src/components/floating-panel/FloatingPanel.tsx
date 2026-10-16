@@ -61,7 +61,6 @@ export function FloatingPanel({
   const { geometry, setPosition, drag, resize } = useDragResize();
   const { view, isDodging, contentRef, minimize, restoreFromPill } = useDodgeSession(setPosition);
 
-  // Auto-reposition to dodge interactive highlights and any open native modal
   useHighlightDodge(geometry, view === 'minimized', true);
 
   useEffect(() => {
@@ -70,8 +69,6 @@ export function FloatingPanel({
   }, []);
 
   const handleSwitchToSidebar = useCallback(() => {
-    // Don't call setMode here — the manager (onSwitchToSidebar) handles
-    // the full teardown: restore tab snapshot, reset guard, THEN set mode.
     onSwitchToSidebar();
   }, [onSwitchToSidebar]);
 
@@ -132,6 +129,8 @@ export function FloatingPanel({
           top: geometry.y,
           width: geometry.width,
           height: view === 'compact' ? 'auto' : geometry.height,
+          maxHeight: `min(${geometry.height}px, calc(100dvh - ${geometry.y}px))`,
+          maxWidth: `calc(100vw - ${geometry.x}px)`,
           // Keep mounted but hidden when minimized so ContentRenderer
           // and the interactive engine continue tracking progress
           display: isMinimized ? 'none' : undefined,
@@ -141,7 +140,6 @@ export function FloatingPanel({
         role="dialog"
         aria-label="Interactive learning floating panel"
       >
-        {/* Header — drag handle */}
         <div
           className={styles.header}
           onPointerDown={drag.onPointerDown}
@@ -189,14 +187,13 @@ export function FloatingPanel({
           </div>
         </div>
 
-        {/* Content area — always mounted for progress tracking */}
         <div ref={contentRef} className={styles.content}>
           {children}
         </div>
 
-        {/* Resize handle */}
-        {view === 'full' && (
+        {!isMinimized && (
           <div
+            data-testid="floating-panel-resize"
             className={styles.resizeHandle}
             onPointerDown={resize.onPointerDown}
             onPointerMove={resize.onPointerMove}
