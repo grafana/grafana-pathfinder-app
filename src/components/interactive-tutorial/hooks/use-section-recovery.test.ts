@@ -349,14 +349,26 @@ describe('readiness answers for Do Section', () => {
     await settle();
     await act(async () => {
       locationService.push('/dashboards');
-    });
-    act(() => {
-      void hook.result.current.recheck();
+      window.dispatchEvent(new Event('focus'));
     });
     hook.rerender({ suspended: true });
     await settle(750);
+    expect(inspect).toHaveBeenCalledTimes(1);
     const lastReadyUrl = jest.mocked(createRecoveryAdapter).mock.calls.at(-1)![3];
     expect(lastReadyUrl()).toBe('/explore?panes=abc');
+  });
+
+  it('remembers the page Do Section confirmed before its run starts', async () => {
+    locationService.push('/explore?panes=abc');
+    const hook = render();
+    await settle();
+    locationService.replace('/explore?panes=edited');
+    hook.rerender({ suspended: true });
+    await act(async () => {
+      await hook.result.current.recheck();
+    });
+    const lastReadyUrl = jest.mocked(createRecoveryAdapter).mock.calls.at(-1)![3];
+    expect(lastReadyUrl()).toBe('/explore?panes=edited');
   });
 
   it('does not restart an in-flight check when the event handler changes', async () => {

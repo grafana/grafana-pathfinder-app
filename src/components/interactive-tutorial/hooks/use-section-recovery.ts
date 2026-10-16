@@ -92,7 +92,10 @@ export function useSectionRecovery(
   }, []);
 
   const run = useCallback(
-    (restore: boolean): Promise<boolean> => {
+    (restore: boolean, beforeRun = false): Promise<boolean> => {
+      if (!restore && !beforeRun && gate.current.suspended) {
+        return Promise.resolve(lastAnswer.current);
+      }
       if (busy.current && (!restore || busyRestoring.current)) {
         return inFlight.current ?? Promise.resolve(lastAnswer.current);
       }
@@ -108,7 +111,7 @@ export function useSectionRecovery(
       ): boolean => {
         if (result.passed) {
           armedKey.current = current.key;
-          if (!gate.current.suspended && locationService.getLocation().pathname === startedOnPath) {
+          if (locationService.getLocation().pathname === startedOnPath) {
             lastReadyUrl.current = currentPath();
           }
           gaveUp.current = null;
@@ -195,6 +198,9 @@ export function useSectionRecovery(
           }
           if (controller.signal.aborted) {
             return inFlight.current && inFlight.current !== task ? inFlight.current : lastAnswer.current;
+          }
+          if (!restore && !beforeRun && gate.current.suspended) {
+            return lastAnswer.current;
           }
           if (!gate.current.enabled || gate.current.controllerMode) {
             endPause('inactive');
@@ -318,7 +324,7 @@ export function useSectionRecovery(
     busy.current = false;
     setRestoring(false);
   }, []);
-  const recheck = useCallback(() => run(false), [run]);
+  const recheck = useCallback(() => run(false, true), [run]);
   const restore = useCallback(() => run(true), [run]);
   return { paused, restoring, cancel, recheck, restore };
 }
