@@ -774,7 +774,6 @@ function ContentWithVariables({
           selectedText={selectionState.selectedText}
           position={selectionState.position}
           context={documentContext}
-          containerRef={activeRef}
         />
       )}
     </div>
