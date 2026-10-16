@@ -172,6 +172,11 @@ export const E2eCommand = z.object({
     .default([])
     .describe('Admin service-account token env var for a cloud target; repeat for multiple cloud instances')
     .meta(io),
+  allowCloudInstanceMutations: z
+    .array(z.string())
+    .default([])
+    .describe('Allow non-readonly cloud guides on this hostname with matching admin auth; repeat for multiple hosts')
+    .meta(control),
   cloudUrl: z
     .string()
     .default(DEFAULT_CLOUD_URL)
@@ -813,7 +818,7 @@ async function runChains(
       }
     }
 
-    const unsafeCloudGuides = unsafeCloudGuidesInChain(chain, packageMetaById);
+    const unsafeCloudGuides = unsafeCloudGuidesInChain(chain, packageMetaById, cloudAuth);
     if (unsafeCloudGuides.length > 0 && !cloudStackPoolManager) {
       const message = unsafeSharedStackMessage(unsafeCloudGuides.map((planned) => planned.id));
       console.log(`\n⊘ Skipping cloud chain: ${message}`);
@@ -1252,7 +1257,10 @@ function resolveLocalRunInputs(files: string[], options: E2ECommandOptions): Run
         assertLocalCloudCheckoutSources(options.repository, options.package);
       }
       const cloudAuth = explicitLocalCloudPackage
-        ? createCloudAuthPolicy({ cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken })
+        ? createCloudAuthPolicy({
+            cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken,
+            allowCloudInstanceMutations: options.allowCloudInstanceMutations,
+          })
         : undefined;
       const cloudStackPoolManagerConfig = explicitLocalCloudPackage
         ? createCloudStackPoolManagerConfig({
@@ -1355,11 +1363,18 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
   const mode = resolveRunMode(options);
 
   if (mode === 'local') {
+    if (options.allowCloudInstanceMutations.length > 0) {
+      createCloudAuthPolicy({
+        cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken,
+        allowCloudInstanceMutations: options.allowCloudInstanceMutations,
+      });
+    }
     return resolveLocalRunInputs(files, options);
   }
 
   const cloudAuth = createCloudAuthPolicy({
     cloudInstanceAdminTokenSpecs: options.cloudInstanceAdminToken,
+    allowCloudInstanceMutations: options.allowCloudInstanceMutations,
   });
   const cloudStackPoolManagerConfig = createCloudStackPoolManagerConfig({
     managerUrl: options.cloudStackPoolManagerUrl,
@@ -1488,6 +1503,15 @@ export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
         : undefined
     );
 
+    for (const result of outcome.results) {
+      const data = result.resultsData;
+      if (data?.guide.tier === 'cloud' && inputs.cloudAuth?.allowsMutationsFor(data.guide.targetUrl)) {
+        data.mutationAuthorization = {
+          hostname: new URL(data.guide.targetUrl!).hostname,
+          source: 'cli-explicit-host',
+        };
+      }
+    }
     reportResults(
       [...inputs.preRunSkipped, ...outcome.results],
       options,

@@ -10,6 +10,12 @@
 > named invariant in `docs/design/CONCERN_DETAILS.md` for what the denominator
 > module is allowed to own.
 
+## Completion evidence
+
+Opening a guide starts observing its active branch, including collapsed sections. For interactive, guided, and multistep blocks, every authored objective must return a satisfied verdict before completion, whether the reader acts independently or uses assistance. Existing outcomes count. With no objectives, ordered action evidence and authored verification determine completion. Section objectives retain their child-completion authority; quizzes, challenges, acknowledgement, and **Mark complete** keep their existing rules.
+
+This extends the completion evidence contract without changing the denominator or storage schema. The `observed` reason identifies manual action detection; `objectives` identifies verified outcomes, and `manual` identifies successful assistance. Tokens that are not condition types, such as legacy prose objectives, are dropped at parse time with an authoring warning and never gate completion; a recognised condition that is unsatisfied or unavailable keeps the block incomplete. A tenant opts out with `enableAutoDetection: false` (the **Automatic completion** setting), and the `pathfinder.passive-completion` flag is the fleet kill switch; either one turns passive observation off and returns sections to their previous rules, where steps and acknowledgement complete them and objectives only complete them early.
+
 ## Purpose
 
 This document exists because the completion code will get dense, and dense code

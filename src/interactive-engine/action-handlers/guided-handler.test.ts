@@ -173,7 +173,7 @@ describe('GuidedHandler', () => {
         { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'run B step 1' },
         1,
         2,
-        5
+        1000
       );
 
       expect(paintOf('run B', 1)).toEqual({ current: 1, total: 2, completedSteps: [0], progress: 'performed' });

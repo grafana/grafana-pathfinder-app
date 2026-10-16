@@ -13,6 +13,10 @@ import type { ConditionInput, StepStatus } from './requirements.types';
  * Unified hook for checking tutorial-specific requirements and objectives
  */
 export interface UseStepCheckerProps {
+  observedCompletion?: {
+    completed: boolean;
+    reason?: 'none' | 'manual' | 'skipped' | 'objectives' | 'observed' | null;
+  };
   requirements?: ConditionInput;
   objectives?: ConditionInput;
   hints?: string;
@@ -77,7 +81,7 @@ export interface UseStepCheckerReturn {
   isRetrying?: boolean; // Whether currently in a retry cycle
 
   // Diagnostics
-  completionReason: 'none' | 'objectives' | 'manual' | 'skipped';
+  completionReason: 'none' | 'objectives' | 'observed' | 'manual' | 'skipped';
   explanation?: string;
   error?: string;
   canFixRequirement?: boolean; // Whether the requirement can be automatically fixed

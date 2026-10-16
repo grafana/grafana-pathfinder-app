@@ -262,6 +262,46 @@ Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-ca
 
 ---
 
+### `pathfinder.passive-completion`
+
+**Type**: Boolean
+
+**Purpose**: Fleet kill switch for passive guide completion — the renderer-owned completion coordinator that observes objectives and the reader's own actions while a guide is open (`src/components/content-renderer/completion-observation-provider.tsx`).
+
+**Default**: `true`
+
+**Behavior**:
+
+- **`true`**: passive completion runs unless the tenant stored `enableAutoDetection: false` (the **Automatic completion** setting), which is the per-tenant opt-out.
+- **`false`**: no coordinator is provided. Steps complete only through their own objective checks, Show me, Do it, and Mark complete, as before passive completion; no passive polling, DOM observation or pop-out observation subscriptions run.
+
+The provider reads the flag when it renders, so a flip applies to guides opened after the new value arrives. The flag only becomes operable once it is registered in deployment_tools; until then every stack gets the default.
+
+**Tracking key**: `passive_completion`
+
+---
+
+### `pathfinder.recommend-completions`
+
+**Type**: Boolean
+
+**Purpose**: Gate for attaching the user's completion history to `POST /api/v1/recommend`. See [Completion history in recommend requests](engines/context-engine.md#completion-history-in-recommend-requests).
+
+**Default**: `false`. The flag ships off until privacy and product sign-off and the terms notice cover completion history (tracked separately from this feature).
+
+**Behavior**:
+
+- **`true`**: each recommend request carries a `completions` object built from `GET /completion-records/my`, when that route reports the feature available.
+- **`false`**: no `/completion-records/my` request is made for recommendations and the request body has no `completions` key.
+
+The flag is read each time a recommend request is built, so a flip takes effect on the next request. Turning it on, or off again during an incident, reaches browsers only once a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` exist in deployment_tools.
+
+Implementation: `src/context-engine/recommend-completions-attachment.ts`.
+
+**Tracking key**: `recommend_completions`
+
+---
+
 ### `pathfinder.highlighted-guide-experiment`
 
 **Type**: Object (`HighlightedGuideConfig`)

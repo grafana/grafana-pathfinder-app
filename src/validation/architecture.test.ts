@@ -138,12 +138,6 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1691',
   },
   {
-    violation: 'interactive-engine/auto-completion/useAutoDetection.ts -> hooks',
-    reason:
-      'Auto-detection consumes the shared resolved settings hook so tenant completion policy does not fall back to stale plugin metadata after App Platform saves.',
-    tracking: '#1691',
-  },
-  {
     violation: 'interactive-engine/interactive.hook.ts -> requirements-manager',
     reason:
       'Interactive execution delegates requirement checks to the requirements engine, forming the tracked cross-engine cycle.',

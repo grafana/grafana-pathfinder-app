@@ -1,7 +1,8 @@
-import React, { useCallback, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { CATALOG_BATCH_SIZE, type CatalogPackage, type CatalogViewState } from '../../types/package-catalog.types';
+import { catalogSearchTopic, reportCatalogInteraction } from '../../lib/catalog-analytics';
 import { filterCatalog, withoutPathMembers } from '../../lib/package-catalog';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { usePackageCatalog, useCatalogProgress } from '../../learning-paths';
@@ -13,6 +14,8 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { CatalogDetails } from './CatalogDetails';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
+
+const SEARCH_REPORT_COOLDOWN_MS = 5000;
 
 export interface PackageBrowserProps {
   onOpenGuide: (launch: PreparedGuideLaunch) => void;
@@ -47,8 +50,53 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
   const snapshot = useCallback(() => getCatalogView(catalog.scope), [catalog.scope]);
   const view = useSyncExternalStore(subscribeCatalogView, snapshot, snapshot);
   const container = useRef<HTMLDivElement>(null);
+  const editedSearchScope = useRef<string | null>(null);
+  const searchReportTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lastSearchTopic = useRef<string | null>(null);
+  const lastSearchReportedAt = useRef<number | undefined>(undefined);
+  const cancelPendingSearch = useCallback(() => {
+    clearTimeout(searchReportTimer.current);
+    searchReportTimer.current = undefined;
+  }, []);
+  const reportSearch = useCallback(() => {
+    if (editedSearchScope.current !== catalog.scope) {
+      return;
+    }
+    editedSearchScope.current = null;
+    cancelPendingSearch();
+    const topic = catalogSearchTopic(view.query);
+    if (!view.query.trim() || topic === lastSearchTopic.current) {
+      return;
+    }
+    const emit = () => {
+      searchReportTimer.current = undefined;
+      lastSearchTopic.current = topic;
+      lastSearchReportedAt.current = Date.now();
+      reportCatalogInteraction({ action: 'search', topic });
+    };
+    const remaining =
+      lastSearchReportedAt.current === undefined
+        ? 0
+        : lastSearchReportedAt.current + SEARCH_REPORT_COOLDOWN_MS - Date.now();
+    if (remaining > 0) {
+      searchReportTimer.current = setTimeout(emit, remaining);
+    } else {
+      emit();
+    }
+  }, [cancelPendingSearch, catalog.scope, view.query]);
+  useEffect(() => {
+    editedSearchScope.current = null;
+    lastSearchTopic.current = null;
+    lastSearchReportedAt.current = undefined;
+    return cancelPendingSearch;
+  }, [catalog.scope, cancelPendingSearch]);
   const update = useCallback(
     (patch: Partial<CatalogViewState>) => {
+      if ('query' in patch && !patch.query?.trim()) {
+        cancelPendingSearch();
+        editedSearchScope.current = null;
+        lastSearchTopic.current = null;
+      }
       const filtersChanged = 'query' in patch || 'format' in patch || 'source' in patch || 'category' in patch;
       const navigationChanged = filtersChanged || 'mode' in patch;
       updateCatalogView(catalog.scope, {
@@ -60,8 +108,26 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
         container.current.scrollTop = 0;
       }
     },
-    [catalog.scope]
+    [catalog.scope, cancelPendingSearch]
   );
+  const selectView = (mode: CatalogViewState['mode']) => {
+    if (mode !== view.mode) {
+      reportCatalogInteraction({ action: 'view', view: mode, previousView: view.mode });
+    }
+    update(
+      mode === 'explore'
+        ? { mode, query: '', format: 'all', source: 'all', category: 'all', scrollTop: 0 }
+        : { mode, scrollTop: 0 }
+    );
+  };
+  const selectTopic = (topic: string, control: 'shortcut' | 'filter') => {
+    reportCatalogInteraction({ action: 'topic', topic, control });
+    update(
+      control === 'shortcut'
+        ? { category: topic, query: '', format: 'all', source: 'all', scrollTop: 0 }
+        : { category: topic, scrollTop: 0 }
+    );
+  };
   const progress = useCatalogProgress(catalog.items, catalog.scope);
   const browsable = useMemo(() => withoutPathMembers(catalog.items), [catalog.items]);
   const normalizedItems = useMemo(
@@ -177,16 +243,25 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
           value={view.query}
           prefix={<Icon name="search" />}
           placeholder={t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')}
-          onChange={(event) => update({ query: event.currentTarget.value, scrollTop: 0 })}
+          onChange={(event) => {
+            const query = event.currentTarget.value;
+            cancelPendingSearch();
+            editedSearchScope.current = catalog.scope;
+            update({ query, scrollTop: 0 });
+          }}
+          onBlur={reportSearch}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+              reportSearch();
+            }
+          }}
         />
         <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>
           <button
             type="button"
             className={styles.viewTab}
             aria-pressed={view.mode === 'explore'}
-            onClick={() =>
-              update({ mode: 'explore', query: '', format: 'all', source: 'all', category: 'all', scrollTop: 0 })
-            }
+            onClick={() => selectView('explore')}
           >
             {t('packageBrowser.explore', 'Explore')}
           </button>
@@ -194,7 +269,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             type="button"
             className={styles.viewTab}
             aria-pressed={view.mode === 'all'}
-            onClick={() => update({ mode: 'all', scrollTop: 0 })}
+            onClick={() => selectView('all')}
           >
             {t('packageBrowser.allContent', 'All content')}
           </button>
@@ -225,7 +300,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                   { value: 'all', label: t('packageBrowser.allTopics', 'All topics') },
                   ...categories.map((category) => ({ value: category.id, label: topicLabel(category.id) })),
                 ]}
-                onChange={(option) => update({ category: option.value ?? 'all', scrollTop: 0 })}
+                onChange={(option) => selectTopic(option.value ?? 'all', 'filter')}
               />
             </label>
             <fieldset className={styles.sourceFilter}>
@@ -243,7 +318,16 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                     type="button"
                     className={styles.sourceSegment}
                     aria-pressed={view.source === source.value}
-                    onClick={() => update({ source: source.value, scrollTop: 0 })}
+                    onClick={() => {
+                      if (source.value !== view.source) {
+                        reportCatalogInteraction({
+                          action: 'source',
+                          source: source.value,
+                          previousSource: view.source,
+                        });
+                      }
+                      update({ source: source.value, scrollTop: 0 });
+                    }}
                   >
                     {source.label}
                   </button>
@@ -302,9 +386,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                       key={topic.id}
                       type="button"
                       className={styles.topicShortcut}
-                      onClick={() =>
-                        update({ category: topic.id, query: '', format: 'all', source: 'all', scrollTop: 0 })
-                      }
+                      onClick={() => selectTopic(topic.id, 'shortcut')}
                     >
                       <LearningTopicIcon topic={topic.id} size="sm" />
                       <span className={styles.topicContent}>
@@ -320,13 +402,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             )}
             <div className={styles.exploreFooter}>
               <span>{t('packageBrowser.specificTask', 'Have something specific in mind?')}</span>
-              <Button
-                variant="primary"
-                fill="text"
-                size="sm"
-                icon="arrow-right"
-                onClick={() => update({ mode: 'all', scrollTop: 0 })}
-              >
+              <Button variant="primary" fill="text" size="sm" icon="arrow-right" onClick={() => selectView('all')}>
                 {t('packageBrowser.browseAllContent', 'Browse all content')}
               </Button>
             </div>

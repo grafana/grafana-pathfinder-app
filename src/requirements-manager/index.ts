@@ -63,3 +63,4 @@ export { dispatchFix } from './fix-registry';
 export type { FixContext, FixResult } from './fix-handlers';
 
 export { createRecoveryAdapter } from './section-recovery-adapter';
+export { splitGuideScopedRequirements } from './controller-requirements';
