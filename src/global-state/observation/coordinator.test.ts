@@ -944,3 +944,17 @@ it("keeps an assisted request waiting when the step's action recipe changes", as
   expect(item.commit).toHaveBeenCalledWith('manual', 'change');
   coordinator.stop();
 });
+
+it('keeps observing while only an action-less section entry is executing, as during a Do section wait', () => {
+  const coordinator = new CompletionCoordinator(async () => false);
+  coordinator.register(step({ id: 'section', actions: [], objectives: ['has-datasources'], executing: true }));
+  const field = step({ id: 'field', actions: [{ targetAction: 'formfill', refTarget: '#name', targetValue: 'prod' }] });
+  coordinator.register(field);
+  coordinator.start();
+  expect(coordinator.executing()).toBe(false);
+  coordinator.observe((action) => action.refTarget === '#name');
+  expect(coordinator.cursor('field')).toBe(1);
+  coordinator.update('field', { ...field, executing: true });
+  expect(coordinator.executing()).toBe(true);
+  coordinator.stop();
+});

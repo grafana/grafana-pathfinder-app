@@ -419,7 +419,7 @@ export class CompletionCoordinator {
       }));
   }
 
-  executing = () => [...this.entries.values()].some((entry) => entry.step.executing);
+  executing = () => [...this.entries.values()].some(({ step }) => step.executing && step.actions.length > 0);
 
   observe(matches: (action: ObservedAction, since: number) => boolean) {
     if (this.executing()) {
