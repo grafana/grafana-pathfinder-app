@@ -192,6 +192,38 @@ it('reports how a pause ended without a restore', async () => {
   expect(hook.events()).toContainEqual({ kind: 'resolved', resolvedBy: 'step_completed' });
 });
 
+it.each([
+  ['requirements_failed', { enabled: false }],
+  ['controller_mode', { controllerMode: true }],
+])('reports a pause ended because recovery turned off as %s', async (resolvedBy, props) => {
+  const hook = render();
+  await settle();
+  await drift(hook);
+  hook.rerender(props);
+  await settle();
+  expect(hook.result.current.paused).toBe(false);
+  expect(hook.events().at(-1)).toEqual({ kind: 'resolved', resolvedBy });
+});
+
+it('reports a pause whose plan was dropped, such as by an alignment pause, as plan_changed', async () => {
+  const onEvent = jest.fn();
+  const hook = renderHook(
+    ({ current }) => useSectionRecovery(current, 'section', true, false, { onEvent, suspended: false }),
+    { initialProps: { current: plan() as SectionRecoveryPlan | undefined } }
+  );
+  await settle();
+  inspect.mockResolvedValue(DRIFT);
+  await act(async () => {
+    await hook.result.current.recheck();
+  });
+  await settle(750);
+  expect(hook.result.current.paused).toBe(true);
+  hook.rerender({ current: undefined });
+  await settle();
+  expect(hook.result.current.paused).toBe(false);
+  expect(onEvent.mock.calls.at(-1)![0]).toEqual({ kind: 'resolved', resolvedBy: 'plan_changed' });
+});
+
 it('reports a pause the learner closed the guide on', async () => {
   const hook = render();
   await settle();

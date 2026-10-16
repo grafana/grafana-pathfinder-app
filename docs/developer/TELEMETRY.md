@@ -105,9 +105,20 @@ Implicit section recovery reports when a section pauses, how a Restore ends, and
 | --------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `section_recovery_paused`   | Once per pause, after drift is confirmed | `trigger` (`page`, `target`), `recipe_length` (toggles to replay), `location_restore`                       |
 | `section_recovery_restore`  | When a Restore finishes or is cancelled  | `outcome` (`restored`, `failed`, `cancelled`), `duration_ms`, `failure_reason` (`repair_failed`, `drifted`) |
-| `section_recovery_resolved` | Once when each pause ends                | `resolved_by` (`restore`, `self`, `step_completed`, `unrestorable`, `inactive`, `unmount`)                  |
+| `section_recovery_resolved` | Once when each pause ends                | `resolved_by` (see below)                                                                                   |
 
-`resolved_by: self` (the drift cleared without Restore) and `step_completed` (the learner moved on while paused) are the false-pause signals to watch across the catalog. The kill switch is `pathfinder.section-recovery`.
+`resolved_by` values:
+
+- `restore`: a Restore put the state back.
+- `self`: the drift cleared without a Restore.
+- `step_completed`: the cursor moved to another step while paused.
+- `plan_changed`: the plan was dropped or replaced for the same step, for example by an alignment pause, the section becoming unreached or complete, or the kill switch.
+- `unrestorable`: Restore could no longer act, or a Restore gave up.
+- `requirements_failed`: the section's own requirements stopped passing.
+- `controller_mode`: the tab became the two-tab controller.
+- `unmount`: the guide or section closed.
+
+`self` and `step_completed` are the false-pause signals to watch across the catalog. The kill switch is `pathfinder.section-recovery`.
 
 ## Completion events
 

@@ -36,9 +36,11 @@ jest.mock('../../lib/user-storage', () => {
   return require('../../test-utils/interactive-section-harness').createUserStorageMock();
 });
 
-jest.mock('../../global-state/alignment-pending-context', () => {
-  return require('../../test-utils/interactive-section-harness').createAlignmentContextMock();
-});
+const mockAlignmentPaused = jest.fn(() => false);
+jest.mock('../../global-state/alignment-pending-context', () => ({
+  ...require('../../test-utils/interactive-section-harness').createAlignmentContextMock(),
+  useIsAlignmentPaused: () => mockAlignmentPaused(),
+}));
 
 jest.mock('../../interactive-engine', () => {
   return require('../../test-utils/interactive-section-harness').createInteractiveEngineMock();
@@ -177,6 +179,7 @@ afterEach(() => {
 beforeEach(() => {
   mockRecovery.plans.clear();
   mockRecovery.suspended.clear();
+  mockAlignmentPaused.mockReturnValue(false);
   mockRecovery.paused = false;
   mockRecovery.unrestorable = false;
   mockRecovery.recheck.mockResolvedValue(true);
@@ -342,4 +345,11 @@ it('does not run Do Section when the recovery check fails', async () => {
   await waitFor(() => expect(mockRecovery.recheck).toHaveBeenCalled());
   await waitFor(() => expect(mockRecovery.suspended.get('section-explore')).toBe(false));
   expect(executeInteractiveActionCalls).toHaveLength(0);
+});
+
+it('has no recovery plan while the guide waits for the learner to reach its starting page', async () => {
+  mockAlignmentPaused.mockReturnValue(true);
+  render(exploreSection());
+  await waitFor(() => expect(mockRecovery.plans.has('section-explore')).toBe(true));
+  expect(mockRecovery.plans.get('section-explore')).toBeUndefined();
 });

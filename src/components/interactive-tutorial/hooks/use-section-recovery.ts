@@ -12,7 +12,15 @@ import { createRecoveryAdapter, useGuideRequirements } from '../../../requiremen
 const NAVIGATION_SETTLE_MS = 750;
 const CONFIRM_MS = 700;
 
-export type RecoveryResolvedBy = 'restore' | 'self' | 'step_completed' | 'unrestorable' | 'inactive' | 'unmount';
+export type RecoveryResolvedBy =
+  | 'restore'
+  | 'self'
+  | 'step_completed'
+  | 'plan_changed'
+  | 'unrestorable'
+  | 'requirements_failed'
+  | 'controller_mode'
+  | 'unmount';
 
 export type SectionRecoveryEvent =
   | { kind: 'paused'; check: RecoveryCheck; locationRestore: boolean }
@@ -182,7 +190,7 @@ export function useSectionRecovery(
         operation.current = controller;
         if (!gate.current.enabled || gate.current.controllerMode) {
           setUnrestorableKey(undefined);
-          endPause('inactive');
+          endPause(gate.current.enabled ? 'controller_mode' : 'requirements_failed');
           return answer(true);
         }
         busy.current = true;
@@ -218,7 +226,7 @@ export function useSectionRecovery(
             return lastAnswer.current;
           }
           if (!gate.current.enabled || gate.current.controllerMode) {
-            endPause('inactive');
+            endPause(gate.current.enabled ? 'controller_mode' : 'requirements_failed');
             return answer(true);
           }
           const startedOnPath = locationService.getLocation().pathname;
@@ -278,7 +286,15 @@ export function useSectionRecovery(
     []
   );
 
-  useEffect(() => () => endPause(mounted.current ? 'step_completed' : 'unmount'), [planKey, endPause]);
+  useEffect(() => {
+    const cursorStepId = planRef.current?.cursorStepId;
+    return () => {
+      const next = planRef.current;
+      endPause(
+        !mounted.current ? 'unmount' : next && next.cursorStepId !== cursorStepId ? 'step_completed' : 'plan_changed'
+      );
+    };
+  }, [planKey, endPause]);
 
   useEffect(() => {
     if (planKey && !suspended) {
