@@ -245,6 +245,77 @@ describe('GuideReaderOverlay', () => {
     );
   });
 
+  it.each([false, true])(
+    'opens the requested third milestone without rendering the cover (track: %s)',
+    async (withTrack) => {
+      const milestones = [1, 2, 3].map((number) => ({
+        number,
+        id: `step-${number}`,
+        title: `Step ${number}`,
+        url: `backend-guide:step-${number}`,
+        isActive: false,
+      }));
+      const manifest = { id: 'path', type: 'path', repository: 'app-platform' };
+      const cover: RawContent = {
+        url: 'backend-guide:path',
+        type: 'learning-journey',
+        content: '',
+        lastFetched: '',
+        metadata: {
+          title: 'Path',
+          packageManifest: manifest,
+          repository: 'app-platform',
+          learningJourney: {
+            baseUrl: 'backend-guide:path',
+            currentMilestone: 0,
+            totalMilestones: 3,
+            milestones,
+            tracks: withTrack ? [{ trackId: 'advanced', label: 'Advanced', milestones }] : undefined,
+          },
+        },
+      };
+      mockFetchContent.mockResolvedValue({ content: cover });
+      const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+      packageFetch.mockImplementation(async (url) => ({
+        content: {
+          ...cover,
+          url,
+          metadata: {
+            ...cover.metadata,
+            learningJourney: {
+              ...cover.metadata.learningJourney!,
+              currentMilestone: url === cover.url ? 0 : Number(url.slice(-1)),
+            },
+          },
+        },
+      }));
+      render(
+        <GuideReaderOverlay
+          doc={cover.url}
+          mode="controller"
+          initialMilestoneUrl="backend-guide:step-3"
+          initialTrackId={withTrack ? 'advanced' : undefined}
+        />
+      );
+      await screen.findByTestId('mock-content');
+      expect(packageFetch).toHaveBeenLastCalledWith(
+        'backend-guide:step-3',
+        manifest,
+        milestones,
+        'app-platform',
+        undefined,
+        'step-3',
+        cover.url,
+        expect.any(Object)
+      );
+      expect(screen.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+      expect(window.__DocsPluginActiveTabUrl).toBe('backend-guide:step-3');
+      fireEvent.click(screen.getByRole('button', { name: 'Previous', exact: true }));
+      await screen.findByTestId('mock-content');
+      expect(window.__DocsPluginActiveTabUrl).toBe('backend-guide:step-2');
+    }
+  );
+
   it('uses the selected track for arrow navigation', async () => {
     const milestone = {
       id: 'alternate',

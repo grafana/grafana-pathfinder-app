@@ -197,6 +197,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
     const url = new URL(String(open.mock.calls[0]?.[0]));
     expect(url.searchParams.get('doc')).toBe('https://grafana.com/docs/learning-journeys/foo-canonical');
     expect(url.searchParams.get('controller')).toBe('1');
+    expect(url.searchParams.get('controllerMilestone')).toBe('https://grafana.com/docs/learning-journeys/foo/m1');
     expect(url.hash).toContain('pairing_id=');
     open.mockRestore();
   });
@@ -272,6 +273,24 @@ describe('LearningJourneyMilestoneToolbar', () => {
     it('renders Open when an external URL is resolvable', () => {
       renderToolbar();
       expect(screen.getByLabelText('Open')).toBeInTheDocument();
+    });
+
+    it.each(['cover', 'milestone'])('hides the public Open action for a private path %s', (surface) => {
+      const tab = makeJourneyTab();
+      tab.baseUrl = 'backend-guide:private-path';
+      tab.content!.url = surface === 'cover' ? tab.baseUrl : 'backend-guide:private-step';
+      tab.content!.metadata.learningJourney!.baseUrl = tab.baseUrl;
+      tab.content!.metadata.learningJourney!.currentMilestone = surface === 'cover' ? 0 : 1;
+      renderToolbar({ activeTab: tab });
+      expect(screen.queryByLabelText('Open')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Open in interactive window')).toBeInTheDocument();
+    });
+
+    it('hides Open for App Platform paths even when their metadata carries a public URL', () => {
+      const tab = makeJourneyTab();
+      tab.content!.metadata.repository = 'app-platform';
+      renderToolbar({ activeTab: tab });
+      expect(screen.queryByLabelText('Open')).not.toBeInTheDocument();
     });
 
     it('shows Reset guide when interactive progress exists', () => {

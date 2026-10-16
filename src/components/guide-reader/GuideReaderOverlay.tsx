@@ -33,6 +33,8 @@ import { diagnoseGuideError } from '../../lib/guide-diagnostics';
 
 interface GuideReaderOverlayProps {
   doc: string;
+  initialMilestoneUrl?: string;
+  initialTrackId?: string;
   mode?: InteractiveMode;
   controllerPairing?: ControllerPairingLaunch | null;
 }
@@ -85,6 +87,8 @@ function ControllerStatusBadge({ pairingCode }: { pairingCode?: string }) {
  */
 export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({
   doc,
+  initialMilestoneUrl,
+  initialTrackId,
   mode = 'interactive',
   controllerPairing,
 }) => {
@@ -92,7 +96,14 @@ export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({
   return (
     <ThemeContext.Provider value={theme}>
       <PathfinderFeatureProvider>
-        <GuideReaderInner key={doc} doc={doc} mode={mode} controllerPairing={controllerPairing ?? null} />
+        <GuideReaderInner
+          key={`${doc}:${initialMilestoneUrl ?? ''}:${initialTrackId ?? ''}`}
+          doc={doc}
+          mode={mode}
+          controllerPairing={controllerPairing ?? null}
+          initialMilestoneUrl={initialMilestoneUrl}
+          initialTrackId={initialTrackId}
+        />
       </PathfinderFeatureProvider>
     </ThemeContext.Provider>
   );
@@ -100,10 +111,14 @@ export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({
 
 function GuideReaderInner({
   doc,
+  initialMilestoneUrl,
+  initialTrackId,
   mode,
   controllerPairing,
 }: {
   doc: string;
+  initialMilestoneUrl?: string;
+  initialTrackId?: string;
   mode: InteractiveMode;
   controllerPairing: ControllerPairingLaunch | null;
 }) {
@@ -117,12 +132,13 @@ function GuideReaderInner({
   const [content, setContent] = useState<RawContent | null>(null);
   const [navigation, setNavigation] = useState<{
     url: string;
+    isInitial?: boolean;
     manifest?: Record<string, unknown>;
     milestones?: Milestone[];
     repository?: string;
     baseUrl?: string;
     guideId?: string;
-  }>({ url: doc });
+  }>({ url: doc, isInitial: true });
   const [track, setTrack] = useState<{ id: string | null; milestones: Milestone[] | null }>({
     id: null,
     milestones: null,
@@ -200,10 +216,10 @@ function GuideReaderInner({
           loadContext
         );
       }
-      const result = await fetchUnifiedContent(navigation.url, { loadContext });
+      let result = await fetchUnifiedContent(navigation.url, { loadContext });
       const manifest = result.content?.metadata?.packageManifest;
       if (manifest?.type === 'path' || manifest?.type === 'journey') {
-        return fetchPackageContent(
+        result = await fetchPackageContent(
           navigation.url,
           manifest,
           undefined,
@@ -211,6 +227,29 @@ function GuideReaderInner({
           result,
           undefined,
           undefined,
+          loadContext
+        );
+      }
+      if (!navigation.isInitial) {
+        return result;
+      }
+      const journey = result.content?.metadata?.learningJourney;
+      const selectedTrack = journey?.tracks?.find((item) => item.trackId === initialTrackId);
+      if (!cancelled && selectedTrack) {
+        setTrack({ id: selectedTrack.trackId, milestones: selectedTrack.milestones });
+      }
+      const milestone = (selectedTrack?.milestones ?? journey?.milestones)?.find(
+        (item) => item.url === initialMilestoneUrl && !item.isLocked
+      );
+      if (!cancelled && milestone) {
+        return fetchPackageContent(
+          milestone.url,
+          manifest,
+          journey?.milestones,
+          result.content?.metadata.repository,
+          undefined,
+          milestone.id,
+          journey?.baseUrl,
           loadContext
         );
       }
@@ -243,7 +282,7 @@ function GuideReaderInner({
       cancelled = true;
       finishGuideLoad(loadContext, 'cancelled');
     };
-  }, [navigation]);
+  }, [navigation, initialMilestoneUrl, initialTrackId]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

@@ -44,6 +44,7 @@ import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 import { cleanDocsUrl } from '../utils';
 import { usePathfinderPluginConfig } from '../../../hooks';
+import { parseUrlSafely } from '../../../security';
 import { pickControllerTabOpenAction } from '../utils/controller-tab-open-action';
 
 export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen' | 'floating';
@@ -157,7 +158,17 @@ export function LearningJourneyMilestoneToolbar({
   const currentMs = activeMilestoneContext.milestones.find((m) => m.number === activeMilestoneContext.currentMilestone);
   const websiteUrl = currentMs?.websiteUrl ?? activeMilestoneContext.websiteUrl;
   const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
-  const externalUrl = websiteUrl || fallbackUrl ? cleanDocsUrl(websiteUrl || fallbackUrl!) : undefined;
+  const isPrivatePath =
+    activeMilestoneContext.baseUrl.startsWith('backend-guide:') ||
+    activeTab.content?.metadata.repository === 'app-platform' ||
+    activeTab.content?.metadata.journeyManifest?.repository === 'app-platform' ||
+    activeTab.content?.metadata.packageManifest?.repository === 'app-platform';
+  const candidateUrl = !isPrivatePath && (websiteUrl || fallbackUrl);
+  const parsedUrl = candidateUrl ? parseUrlSafely(candidateUrl) : null;
+  const externalUrl =
+    parsedUrl && (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:')
+      ? cleanDocsUrl(parsedUrl.href)
+      : undefined;
   const showReset = hasInteractiveProgress || activeTab.type === 'interactive';
 
   // Distinguish surfaces in analytics for the external-link "Open" button.
@@ -196,7 +207,10 @@ export function LearningJourneyMilestoneToolbar({
     }
   };
 
-  const controllerAction = pickControllerTabOpenAction(activeMilestoneContext.baseUrl, activeTab.type);
+  const controllerAction = pickControllerTabOpenAction(activeMilestoneContext.baseUrl, activeTab.type, {
+    milestoneUrl: activeTab.content?.url || activeTab.currentUrl,
+    trackId: activeTab.activeTrackId,
+  });
   const kebabMenu = (
     <Menu>
       {pluginConfig.enableTwoTabController && controllerAction.createControllerUrl && (
