@@ -23,15 +23,27 @@ jest.mock('@grafana/i18n', () => ({
     def.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(vars?.[k] ?? '')),
 }));
 
-// Resolve the content key straight through to the URL so the test controls it.
+let mockAmbientKey: string | undefined;
 jest.mock('../../global-state/guide-content-key', () => ({
-  resolveGuideContentKey: (url: string | undefined) => url ?? 'default',
+  resolveGuideContentKey: (url: string | undefined) => mockAmbientKey ?? url ?? 'default',
 }));
+
+jest.mock('../../global-state/active-guide-index', () => ({
+  getGuideIndex: () => ({}),
+  subscribeGuideIndexPublications: () => () => undefined,
+  getGuideIndexPublicationRevision: () => 0,
+}));
+
+const mockPercentages = new Map<string, number>();
+const mockReadKeys: string[] = [];
 
 let mockPercentage = 0;
 let progressListener: (() => void) | undefined;
 jest.mock('../../global-state/completion-store', () => ({
-  peekGuidePercentage: () => mockPercentage,
+  peekGuidePercentage: (key: string) => {
+    mockReadKeys.push(key);
+    return mockPercentages.get(key) ?? mockPercentage;
+  },
   subscribeProgress: (_key: string, listener: () => void) => {
     progressListener = listener;
     return () => {
@@ -51,6 +63,28 @@ describe('GuideProgressBar', () => {
   beforeEach(() => {
     mockPercentage = 0;
     progressListener = undefined;
+    mockAmbientKey = undefined;
+    mockPercentages.clear();
+    mockReadKeys.length = 0;
+  });
+
+  it('never reads the previous milestone when its key publishes in a layout effect', async () => {
+    function Milestone({ url }: { url: string }) {
+      React.useLayoutEffect(() => {
+        mockAmbientKey = url;
+      }, [url]);
+      return <GuideProgressBar contentUrl={url} />;
+    }
+    mockAmbientKey = 'previous';
+    mockPercentages.set('previous', 100);
+    mockPercentages.set('next', 0);
+    const view = render(<Milestone url="previous" />);
+    expect(await screen.findByText('100% complete')).toBeInTheDocument();
+    mockReadKeys.length = 0;
+    view.rerender(<Milestone url="next" />);
+    expect(await screen.findByText('0% complete')).toBeInTheDocument();
+    expect(mockReadKeys).not.toContain('previous');
+    expect(mockReadKeys).toContain('next');
   });
 
   it('renders nothing when no contentUrl is provided', () => {

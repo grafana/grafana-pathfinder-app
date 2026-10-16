@@ -10,6 +10,9 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { testIds } from '../../../constants/testIds';
 import { DocsPanelContentArea, type DocsPanelContentAreaProps } from './DocsPanelContentArea';
+import { setActiveTabUrl } from '../../../global-state/content-key';
+import { publishGuideIndex, evictAllGuideIndexes } from '../../../global-state/active-guide-index';
+import { computeGuideBlockIndex } from '../../../lib/guide-stats';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -32,6 +35,8 @@ jest.mock('../../../lib/analytics', () => ({
 jest.mock('../../../docs-retrieval', () => ({
   recordGuideCompletionForSurface: jest.fn(),
   journeyProgressFromMilestones: jest.fn(() => 0),
+  isJourneyCoverPage: (content: any) =>
+    content.type === 'learning-journey' && content.metadata.learningJourney?.currentMilestone === 0,
 }));
 
 // Heavy leaf children are irrelevant to these tests — stub them out so the
@@ -97,6 +102,49 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
     ...overrides,
   };
 }
+
+describe('sidebar sticky progress eligibility', () => {
+  beforeEach(() => evictAllGuideIndexes());
+
+  it.each(['docs', 'cover'] as const)('hides sticky progress on %s content', async (kind) => {
+    const props = makeProps();
+    const url = `https://example.com/${kind}`;
+    setActiveTabUrl(url);
+    props.stableContent = {
+      ...props.stableContent!,
+      url,
+      type: kind === 'cover' ? 'learning-journey' : 'docs',
+      metadata: kind === 'cover' ? { learningJourney: { currentMilestone: 0 } } : {},
+    } as any;
+    if (kind === 'cover') {
+      publishGuideIndex({
+        contentKey: url,
+        index: computeGuideBlockIndex([{ type: 'markdown' }]),
+        denominatorSource: 'live-pre-inlining',
+      });
+    }
+    render(<DocsPanelContentArea {...props} />);
+    await act(async () => {});
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('shows sticky progress when the displayed guide index publishes', async () => {
+    const props = makeProps();
+    const url = props.stableContent!.url;
+    setActiveTabUrl(url);
+    render(<DocsPanelContentArea {...props} />);
+    await act(async () => {});
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    act(() =>
+      publishGuideIndex({
+        contentKey: url,
+        index: computeGuideBlockIndex([{ type: 'markdown' }]),
+        denominatorSource: 'live-pre-inlining',
+      })
+    );
+    expect(await screen.findByRole('progressbar')).toBeInTheDocument();
+  });
+});
 
 describe('DocsPanelContentArea', () => {
   beforeEach(() => {
