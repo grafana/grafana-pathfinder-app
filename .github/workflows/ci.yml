@@ -386,7 +386,19 @@ jobs:
   # Alerts #grafana-pathfinder-alerts on main-branch CI failures only.
   notify-ci-failure:
     name: Notify CI failure
-    needs: [lint, typecheck, prettier, test, validate-packages, build, lint-backend, test-backend, test-scripts, playwright-tests]
+    needs:
+      [
+        lint,
+        typecheck,
+        prettier,
+        test,
+        validate-packages,
+        build,
+        lint-backend,
+        test-backend,
+        test-scripts,
+        playwright-tests,
+      ]
     if: >-
       always() &&
       github.event_name == 'push' &&
@@ -449,7 +461,7 @@ jobs:
           if [[ "$PLAYWRIGHT_RESULT" == "failure" ]]; then
             while IFS=$'\t' read -r name url; do
               text="${text}${nl}• <${url}|${name}>"
-            done < <(echo "$jobs_json" | jq -r '.jobs[] | select(.name | startswith("e2e test ")) | select(.conclusion == "failure") | [.name, .html_url] | @tsv')
+            done < <(echo "$jobs_json" | jq -r '.jobs[] | select(.name | startswith("e2e test ")) | select(.conclusion == "failure" or .conclusion == "timed_out") | [.name, .html_url] | @tsv')
           fi
 
           payload=$(jq -n \
