@@ -11,18 +11,6 @@ type CatalogInteraction =
       previousSource: 'all' | 'grafana' | 'organization';
     };
 
-const TOPICS = new Set([
-  'all',
-  'dashboards',
-  'data-sources',
-  'alerting',
-  'metrics',
-  'logs',
-  'k6',
-  'getting-started',
-  'uncategorized',
-]);
-
 const SEARCH_TOPICS = {
   dashboards: ['dashboard', 'dashboards', 'visualization', 'visualizations'],
   'data-sources': [
@@ -75,6 +63,16 @@ const SEARCH_TOPICS = {
   'getting-started': ['getting started', 'onboarding'],
 } as const;
 
+const TOPICS = new Set<string>([
+  'all',
+  'uncategorized',
+  'authoring',
+  'querying',
+  'reference',
+  'testing',
+  ...Object.keys(SEARCH_TOPICS),
+]);
+
 const SEARCH_ALIASES = new Map<string, string>(
   Object.entries(SEARCH_TOPICS).flatMap(([topic, aliases]) => aliases.map((alias) => [alias, topic] as const))
 );
@@ -99,6 +97,9 @@ export function reportCatalogInteraction(interaction: CatalogInteraction): void 
       control: interaction.control,
     }),
     ...(interaction.action === 'view' && { view: interaction.view, previous_view: interaction.previousView }),
-    ...(interaction.action === 'source' && { source: interaction.source, previous_source: interaction.previousSource }),
+    ...(interaction.action === 'source' && {
+      content_source: interaction.source,
+      previous_content_source: interaction.previousSource,
+    }),
   });
 }

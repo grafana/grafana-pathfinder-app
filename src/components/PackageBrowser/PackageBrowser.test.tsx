@@ -397,7 +397,49 @@ describe('search analytics', () => {
     });
   });
 
-  it('does not report restored searches, clearing, or abandoned pending searches', () => {
+  it('waits for Enter or blur before reporting an unmatched query, so a pause mid-word is not counted', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    const search = screen.getByLabelText('Search guides and paths');
+    fireEvent.change(search, { target: { value: 'dash' } });
+    act(() => jest.advanceTimersByTime(500));
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    fireEvent.change(search, { target: { value: 'dashboard' } });
+    act(() => jest.advanceTimersByTime(500));
+    fireEvent.blur(search);
+    expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+    expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+      action: 'search',
+      interaction_location: 'package_browser',
+      search_topic: 'dashboards',
+    });
+    fireEvent.change(search, { target: { value: 'dashboard for Alice' } });
+    act(() => jest.advanceTimersByTime(500));
+    expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+    fireEvent.blur(search);
+    expect(reportAppInteraction).toHaveBeenCalledTimes(2);
+    expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+      action: 'search',
+      interaction_location: 'package_browser',
+      search_topic: 'other',
+    });
+  });
+
+  it('counts a search once when Clear filters is clicked, because the click blurs the search box first', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    const search = screen.getByLabelText('Search guides and paths');
+    fireEvent.change(search, { target: { value: 'Tempo' } });
+    fireEvent.blur(search);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    act(() => jest.advanceTimersByTime(500));
+    expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+    expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+      action: 'search',
+      interaction_location: 'package_browser',
+      search_topic: 'traces',
+    });
+  });
+
+  it('does not report restored searches, deleted queries, or abandoned pending searches', () => {
     updateCatalogView('test', { query: 'metrics' });
     const { unmount } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
     const search = screen.getByLabelText('Search guides and paths');
@@ -405,8 +447,9 @@ describe('search analytics', () => {
     fireEvent.blur(search);
     expect(reportAppInteraction).not.toHaveBeenCalled();
     fireEvent.change(search, { target: { value: 'Tempo' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    fireEvent.change(search, { target: { value: '' } });
     act(() => jest.advanceTimersByTime(500));
+    fireEvent.blur(search);
     expect(reportAppInteraction).not.toHaveBeenCalled();
     fireEvent.change(search, { target: { value: 'Loki' } });
     unmount();
@@ -431,9 +474,24 @@ it('reports explicit source and view changes and topic shortcuts', () => {
     fireEvent.click(screen.getByRole('button', { name: label }));
   }
   expect(jest.mocked(reportAppInteraction).mock.calls.map(([, properties]) => properties)).toEqual([
-    { action: 'source', source: 'grafana', previous_source: 'all', interaction_location: 'package_browser' },
-    { action: 'source', source: 'organization', previous_source: 'grafana', interaction_location: 'package_browser' },
-    { action: 'source', source: 'all', previous_source: 'organization', interaction_location: 'package_browser' },
+    {
+      action: 'source',
+      content_source: 'grafana',
+      previous_content_source: 'all',
+      interaction_location: 'package_browser',
+    },
+    {
+      action: 'source',
+      content_source: 'organization',
+      previous_content_source: 'grafana',
+      interaction_location: 'package_browser',
+    },
+    {
+      action: 'source',
+      content_source: 'all',
+      previous_content_source: 'organization',
+      interaction_location: 'package_browser',
+    },
   ]);
   fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
   expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
@@ -447,6 +505,34 @@ it('reports explicit source and view changes and topic shortcuts', () => {
     action: 'topic',
     topic: 'dashboards',
     control: 'shortcut',
+    interaction_location: 'package_browser',
+  });
+});
+
+it('reports no view change for reselecting the active view or for the switch a search makes', () => {
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'All content' }));
+  expect(reportAppInteraction).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
+  jest.mocked(reportAppInteraction).mockClear();
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'dashboard' } });
+  expect(screen.getByRole('button', { name: 'All content' })).toHaveAttribute('aria-pressed', 'true');
+  expect(jest.mocked(reportAppInteraction).mock.calls.some(([, properties]) => properties?.action === 'view')).toBe(
+    false
+  );
+});
+
+it('reports a topic chosen from the filter as a filter selection', async () => {
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  const topic = screen.getByRole('combobox', { name: 'Topic' });
+  fireEvent.change(topic, { target: { value: 'Dashboards' } });
+  await act(async () => {});
+  fireEvent.keyDown(topic, { key: 'ArrowDown' });
+  fireEvent.keyDown(topic, { key: 'Enter' });
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'topic',
+    topic: 'dashboards',
+    control: 'filter',
     interaction_location: 'package_browser',
   });
 });

@@ -407,19 +407,19 @@ Each reset reports once per action, never per member guide. An assignment reset 
 
 `pathfinder_catalog_interaction` groups Browse tab and Explore learning controls into one event, with `interaction_location=package_browser`:
 
-| `action`    | Trigger                                                               | Attributes                                                     |
-| ----------- | --------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `tab_click` | Click the Browse tab, including when already selected                 | None                                                           |
-| `search`    | Edited non-empty search after 500 ms idle, Enter, or blur             | `search_topic`                                                 |
-| `topic`     | Click a topic shortcut or select a topic filter                       | `topic`, `control` (`shortcut` or `filter`)                    |
-| `view`      | Explicitly switch Explore / All content, including Browse all content | `view`, `previous_view` (`explore` or `all`)                   |
-| `source`    | Switch All / Official / Your organization                             | `source`, `previous_source` (`all`, `grafana`, `organization`) |
+| `action`    | Trigger                                                               | Attributes                                                                     |
+| ----------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `tab_click` | Click the Browse tab, including when already selected                 | None                                                                           |
+| `search`    | Edited non-empty search: matched after 500 ms idle, any on Enter/blur | `search_topic`                                                                 |
+| `topic`     | Click a topic shortcut or select a topic filter                       | `topic`, `control` (`shortcut` or `filter`)                                    |
+| `view`      | Explicitly switch Explore / All content, including Browse all content | `view`, `previous_view` (`explore` or `all`)                                   |
+| `source`    | Switch All / Official / Your organization                             | `content_source`, `previous_content_source` (`all`, `grafana`, `organization`) |
 
-Search reports an edited non-empty query after 500 ms without typing, or immediately on Enter or blur. Enter and blur do not repeat an already reported edit. Further edits can report again; this measures settled search edits, not unique queries or users. Restoring a saved search and clearing it emit nothing. Pending events are cancelled on unmount or organization change. No raw search text, query length, or result metadata is sent.
+Search reports an edited non-empty query that matches a dictionary topic after 500 ms without typing, and any edited non-empty query immediately on Enter or blur. An unmatched query, including a word typed only partway, waits for Enter or blur, so a pause mid-word does not add an `other` row. Enter and blur do not repeat an already reported edit. Further edits can report again, so one search session can produce several rows; this measures settled search edits, not unique queries or users. Clicking another control, such as **Clear filters**, blurs the search box and reports the pending query first. Restoring a saved search and deleting the query before it settles emit nothing. An unmatched query left without Enter or blur, for example when the sidebar closes, is not reported. Pending events are cancelled on unmount or organization change. No raw search text, query length, or result metadata is sent.
 
 `search_topic` comes from exact matching against a fixed keyword/phrase dictionary in `src/lib/catalog-analytics.ts`, after case, whitespace, hyphen and underscore normalization. Examples: `Tempo` maps to `traces`, `k8s` to `kubernetes`, and `RUM` to `frontend-observability`. Coverage includes signals, application/frontend/database/cloud/infrastructure observability, synthetic monitoring, performance testing, IRM, SLOs, Alloy, OpenTelemetry, fleet management, adaptive telemetry, Assistant, investigations, knowledge graph, agent observability, costs, observability as code, administration, workflows, and onboarding. Arbitrary text and mixed phrases such as `dashboard for alice@example.com` report `other`; no keywords are extracted from longer text. This dictionary affects analytics only, not search results or visible topics.
 
-Topics use a fixed allowlist (`all`, `dashboards`, `data-sources`, `alerting`, `metrics`, `logs`, `k6`, `getting-started`, `uncategorized`); all other topics report `other`.
+Topics use a fixed allowlist: `all`, `uncategorized`, the bundled guide categories `authoring`, `querying`, `reference` and `testing`, and every `search_topic` value except `other`. All other topics report `other`. That bucket holds organization-authored topics and any Grafana-published topic outside the list, so it cannot be split between the two.
 
 Automatic view changes caused by searching or choosing a topic do not emit `view`; resetting filters does not emit `source` or `topic`. Clicking an already selected view or source emits nothing. These events use the shared RudderStack pipeline and Faro mirror.
 

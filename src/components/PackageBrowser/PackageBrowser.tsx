@@ -49,20 +49,28 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
   const view = useSyncExternalStore(subscribeCatalogView, snapshot, snapshot);
   const container = useRef<HTMLDivElement>(null);
   const editedSearchScope = useRef<string | null>(null);
-  const reportSearch = useCallback(() => {
-    if (editedSearchScope.current === catalog.scope) {
+  const reportSearch = useCallback(
+    (settled: boolean) => {
+      if (editedSearchScope.current !== catalog.scope) {
+        return;
+      }
+      const topic = catalogSearchTopic(view.query);
+      if (!settled && topic === 'other') {
+        return;
+      }
       editedSearchScope.current = null;
       if (view.query.trim()) {
-        reportCatalogInteraction({ action: 'search', topic: catalogSearchTopic(view.query) });
+        reportCatalogInteraction({ action: 'search', topic });
       }
-    }
-  }, [catalog.scope, view.query]);
+    },
+    [catalog.scope, view.query]
+  );
   useEffect(() => {
     if (editedSearchScope.current !== catalog.scope) {
       editedSearchScope.current = null;
       return;
     }
-    const timer = setTimeout(reportSearch, 500);
+    const timer = setTimeout(() => reportSearch(false), 500);
     return () => clearTimeout(timer);
   }, [catalog.scope, reportSearch]);
   const update = useCallback(
@@ -218,10 +226,10 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             editedSearchScope.current = catalog.scope;
             update({ query, scrollTop: 0 });
           }}
-          onBlur={reportSearch}
+          onBlur={() => reportSearch(true)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
-              reportSearch();
+              reportSearch(true);
             }
           }}
         />
