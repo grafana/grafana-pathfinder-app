@@ -9,6 +9,7 @@ jest.mock('../../lib/storage-keys', () => ({
   StorageKeys: {
     EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
     AUTO_OPEN_GUIDE_SHOWN_PREFIX: 'grafana-pathfinder-auto-open-guide-shown-',
+    AUTO_OPEN_GUIDE_VISIT_PREFIX: 'grafana-pathfinder-auto-open-guide-visit-',
   },
 }));
 
@@ -58,7 +59,12 @@ describe('experiment-debug', () => {
       const debugger_ = (window as any).__pathfinderExperiment;
 
       expect(debugger_.autoOpenGuide().shown).toEqual(['bundled:first-dashboard']);
+      sessionStorage.setItem(
+        `grafana-pathfinder-auto-open-guide-visit-${window.location.hostname}`,
+        'bundled:first-dashboard'
+      );
       expect(debugger_.clearAutoOpenGuideMarkers()).toEqual({ cleared: 1 });
+      expect(sessionStorage.getItem(`grafana-pathfinder-auto-open-guide-visit-${window.location.hostname}`)).toBeNull();
       expect(debugger_.autoOpenGuide().shown).toEqual([]);
       expect(localStorage.getItem(`${prefix}other.host.net:bundled:first-dashboard`)).toBe('true');
     });

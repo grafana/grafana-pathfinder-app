@@ -285,6 +285,17 @@ it('does not offer an overlapping experience on a reload of the same pages', asy
   expect(offers()[0]![1]).toEqual(expect.objectContaining({ experience_index: 1 }));
 });
 
+it('gives a reload its own attempt after an activation that offered nothing', async () => {
+  mockSessionId = undefined;
+  await start('/explore', { variant: 'treatment', experiences: EXPERIENCES });
+  expect(attemptAutoOpen).not.toHaveBeenCalled();
+  stop?.();
+
+  mockSessionId = 'test-session';
+  await start('/explore', { variant: 'treatment', experiences: EXPERIENCES });
+  expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+});
+
 it('retries a visit whose activation was cut short by the tab going hidden', async () => {
   const visibility = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   window.history.replaceState(null, '', '/explore');

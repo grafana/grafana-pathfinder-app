@@ -138,9 +138,13 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   let pending: AbortController | undefined;
   let recheck = false;
   let consumedVisit = readConsumedVisit(hostname);
+  // Held in memory from activation start; persisted only once an offer applies, so a reload
+  // mid-activation or after a failed one gets its own attempt.
   const consumeVisit = (visit: string | undefined) => {
     consumedVisit = visit;
-    writeConsumedVisit(hostname, visit);
+    if (visit === undefined) {
+      writeConsumedVisit(hostname, undefined);
+    }
   };
   const warnedUnavailable = new Set<string>();
 
@@ -148,6 +152,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     setAutoOpenGuideEnrollment({ variant, experiences: targeting.experiences, offeredGuide: offer.guide });
     notifyEnrollment();
     markAutoOpenGuideShown(hostname, offer.guide);
+    writeConsumedVisit(hostname, consumedVisit);
     const docPage = findDocPage(offer.guide);
     const stillOnOffer = matchesExperience(targeting.experiences[offer.index]!, getCurrentPath());
     const opened = variant === 'treatment' && docPage !== null && stillOnOffer && canPopOut();
