@@ -84,7 +84,7 @@ const objectivesDescription = (container: 'block' | 'section' | 'branch'): strin
     container === 'block'
       ? 'Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.'
       : `When a ${container}'s objectives hold, every step inside it is marked complete too.`;
-  return `Conditions that automatically complete this ${container}, in the same vocabulary as \`requirements\`. Checked first, before eligibility and requirements, so a ${container} whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a ${container} that creates one). ${closing}`;
+  return `Conditions that automatically complete this ${container}, in the same vocabulary as \`requirements\`. Every objective must be satisfied for completion, including after assistance. Checked first, before eligibility and requirements, so a ${container} whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a ${container} that creates one). ${closing}`;
 };
 
 /**
@@ -455,7 +455,7 @@ export const JsonGuidedBlockSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'Persist the guided block at its final completion signal. For a final button or highlight action, click activation causes completion to persist during capture, before the application click handler runs. A final action without click activation persists after its result. Cancellation, timeout, or error does not persist completion.'
+      'Persist the guided block at its final completion signal. For a final button or highlight action, click activation causes completion to persist during capture, before the application click handler runs. A final action without click activation persists after its result. Cancellation, timeout, or error does not persist completion. Authored objectives still gate completion.'
     ),
   ...AuthorAnnotatedSchema.shape,
 });

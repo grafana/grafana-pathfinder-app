@@ -4,7 +4,7 @@ import { installLiveTabExecutor, resetLiveTabExecutorForTests, DEFAULT_PACING } 
 import { GUIDED_ACTION_TYPES, GUIDED_DOM_ACTION_TYPES } from '../../types/interactive-actions.types';
 import { INTERACTIVE_ACTION_TYPES } from '../../types/interactive.types';
 import { FocusHandler, ButtonHandler, NavigateHandler, GuidedHandler } from '../../interactive-engine/action-handlers';
-import { checkRequirements, dispatchFix } from '../../requirements-manager';
+import { checkPostconditions, checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FakeCrossTabTransport } from '../../test-utils/fake-cross-tab-transport';
@@ -19,7 +19,7 @@ jest.mock('../../lib/interactive-action', () => {
 
 jest.mock('../../requirements-manager', () => {
   const actual = jest.requireActual('../../requirements-manager');
-  return { ...actual, checkRequirements: jest.fn(), dispatchFix: jest.fn() };
+  return { ...actual, checkRequirements: jest.fn(), checkPostconditions: jest.fn(), dispatchFix: jest.fn() };
 });
 jest.mock('../../lib/faro', () => ({
   withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
@@ -1156,5 +1156,76 @@ describe('installLiveTabExecutor', () => {
       expect(transport.postedMessages).toContainEqual({ kind: 'heartbeat', role: 'live' });
       uninstall();
     });
+  });
+});
+
+describe('passive observation messages', () => {
+  const subscription = (senderId: string): CrossTabMessage =>
+    ({
+      source: 'pathfinder',
+      senderId,
+      timestamp: 0,
+      kind: 'observation-subscribe',
+      generation: 1,
+      subscriptionId: `sub-${senderId}`,
+      guideKey: 'bundled:guide',
+      revision: 0,
+      steps: [{ id: 'save', cursor: 0, actions: [{ targetAction: 'button', refTarget: '#observed-save' }] }],
+    }) as CrossTabMessage;
+
+  afterEach(() => {
+    document.body.replaceChildren();
+    jest.mocked(checkPostconditions).mockReset();
+  });
+
+  it('installs no matcher for an unpaired subscription (closed gate)', async () => {
+    document.body.innerHTML = '<button id="observed-save">Save</button>';
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, closedAuthGate);
+    transport.emit(subscription('attacker'));
+    await Promise.resolve();
+    document.querySelector<HTMLButtonElement>('#observed-save')!.click();
+    expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'observation-evidence' }));
+    uninstall();
+  });
+
+  it('reports identifiers only for a verified subscription (open gate)', async () => {
+    document.body.innerHTML = '<button id="observed-save">Save</button>';
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    transport.emit(subscription('controller'));
+    await waitFor(async () => {
+      document.querySelector<HTMLButtonElement>('#observed-save')!.click();
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'observation-evidence', id: 'save', index: 0 })
+      );
+    });
+    const evidence = (transport.postedMessages as Array<Record<string, unknown>>).find(
+      (message) => message.kind === 'observation-evidence'
+    )!;
+    expect(Object.keys(evidence).sort()).toEqual(['guideKey', 'id', 'index', 'kind', 'subscriptionId']);
+    uninstall();
+  });
+
+  it('routes a passive check to postconditions without retries', async () => {
+    jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    jest.mocked(checkPostconditions).mockResolvedValue({ requirements: 'has-datasources', pass: true, error: [] });
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'check-requirements',
+      requestId: 'passive-1',
+      stepId: 's1',
+      requirements: 'has-datasources',
+      passive: true,
+    } as CrossTabMessage);
+    await waitFor(() =>
+      expect(checkPostconditions).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 0, lazyRender: false }))
+    );
+    expect(checkRequirements).not.toHaveBeenCalledWith(expect.objectContaining({ requirements: 'has-datasources' }));
+    uninstall();
   });
 });

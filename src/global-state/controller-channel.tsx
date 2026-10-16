@@ -1,3 +1,4 @@
+import { OBSERVATION_HANDOFF_EVENT } from './observation/handoff';
 import type { ConditionInput } from '../types/requirements.types';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
@@ -14,6 +15,8 @@ import {
   DEFAULT_STEP_WAIT_MS,
   SIGNED_MESSAGE_KINDS,
   type CheckRequirementsMessage,
+  type ObservationEvidenceMessage,
+  type ObservationChangeMessage,
   type CrossTabMessage,
   type CrossTabPayload,
   type FixRequirementMessage,
@@ -43,11 +46,15 @@ type RequestPayload =
 type RemoteStepResult = 'completed' | 'failed' | 'timeout' | 'cancelled' | 'disconnected';
 
 interface ControllerChannel {
+  onObservation: (
+    id: string,
+    callback: (evidence: ObservationEvidenceMessage | ObservationChangeMessage) => void
+  ) => () => void;
   post: (payload: CrossTabPayload) => void;
   requestRequirementCheck: (
     stepId: string,
     requirements: ConditionInput,
-    opts?: { targetAction?: string; refTarget?: string; targetValue?: string }
+    opts?: { targetAction?: string; refTarget?: string; targetValue?: string; passive?: boolean }
   ) => Promise<RemoteRequirementResult | null>;
   requestFix: (
     stepId: string,
@@ -97,6 +104,9 @@ export function ControllerChannelProvider({
   // The one live tab this controller is bound to (first to send a `live`
   // heartbeat); replies from any other tab are ignored.
   const pairedLiveIdRef = useRef<string | null>(null);
+  const observationsRef = useRef(
+    new Map<string, (evidence: ObservationEvidenceMessage | ObservationChangeMessage) => void>()
+  );
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
   const stepCompletionRef = useRef<Map<string, (result: RemoteStepResult) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
@@ -133,6 +143,7 @@ export function ControllerChannelProvider({
   }, [signForLive]);
 
   const postPreparedHandBack = useCallback((): boolean => {
+    document.dispatchEvent(new Event(OBSERVATION_HANDOFF_EVENT));
     const payload = preparedHandBackRef.current;
     if (!payload || payload.kind !== 'sidebar-handoff' || payload.sigTs === undefined) {
       return false;
@@ -245,7 +256,9 @@ export function ControllerChannelProvider({
         message.kind !== 'requirement-result' &&
         message.kind !== 'fix-result' &&
         message.kind !== 'step-complete' &&
-        message.kind !== 'step-progress'
+        message.kind !== 'step-progress' &&
+        message.kind !== 'observation-evidence' &&
+        message.kind !== 'observation-change'
       ) {
         return;
       }
@@ -256,6 +269,10 @@ export function ControllerChannelProvider({
       // drive the live tab — that requires the controller private key. See
       // docs/developer/CROSS_TAB_CONTROLLER.md "Known limitations".
       if (pairedLiveIdRef.current === null || message.senderId !== pairedLiveIdRef.current) {
+        return;
+      }
+      if (message.kind === 'observation-evidence' || message.kind === 'observation-change') {
+        observationsRef.current.get(message.subscriptionId)?.(message);
         return;
       }
       if (message.kind === 'requirement-result') {
@@ -344,6 +361,7 @@ export function ControllerChannelProvider({
           targetAction: opts?.targetAction,
           refTarget: opts?.refTarget,
           targetValue: opts?.targetValue,
+          passive: opts?.passive,
         },
         null
       ),
@@ -411,9 +429,20 @@ export function ControllerChannelProvider({
     };
   }, []);
 
+  const onObservation = useCallback(
+    (id: string, callback: (evidence: ObservationEvidenceMessage | ObservationChangeMessage) => void) => {
+      observationsRef.current.set(id, callback);
+      return () => {
+        observationsRef.current.delete(id);
+      };
+    },
+    []
+  );
+
   const channel = useMemo<ControllerChannel>(
     () => ({
       post,
+      onObservation,
       requestRequirementCheck,
       requestFix,
       awaitStepResult,
@@ -421,7 +450,16 @@ export function ControllerChannelProvider({
       cancelStepComplete,
       onStepProgress,
     }),
-    [post, requestRequirementCheck, requestFix, awaitStepResult, awaitStepComplete, cancelStepComplete, onStepProgress]
+    [
+      post,
+      onObservation,
+      requestRequirementCheck,
+      requestFix,
+      awaitStepResult,
+      awaitStepComplete,
+      cancelStepComplete,
+      onStepProgress,
+    ]
   );
 
   return (

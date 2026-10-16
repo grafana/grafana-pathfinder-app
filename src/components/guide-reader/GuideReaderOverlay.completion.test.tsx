@@ -11,7 +11,10 @@ jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
     fallback.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? '')),
 }));
-jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
+jest.mock('../../utils/openfeature', () => ({
+  useBooleanFlag: () => true,
+  getFeatureFlagValue: () => true,
+}));
 jest.mock('../OpenFeatureProvider', () => ({
   PathfinderFeatureProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
