@@ -46,11 +46,14 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-describe('interactive-learning banner enrollment boundary', () => {
-  const referencing = walk(SRC_ROOT)
-    .filter((abs) => fs.readFileSync(abs, 'utf8').includes(ENROLL_FN))
+const referencingFiles = (symbol: string) =>
+  walk(SRC_ROOT)
+    .filter((abs) => fs.readFileSync(abs, 'utf8').includes(symbol))
     .map((abs) => path.relative(SRC_ROOT, abs).split(path.sep).join('/'))
     .sort();
+
+describe('interactive-learning banner enrollment boundary', () => {
+  const referencing = referencingFiles(ENROLL_FN);
 
   it('is referenced only from its definition, its barrel, and the panel-mount seams', () => {
     const unexpected = referencing.filter((rel) => !ALLOWED_CALLERS.has(rel));
@@ -71,5 +74,24 @@ describe('interactive-learning banner enrollment boundary', () => {
   it('every allowed caller still exists', () => {
     const stale = [...ALLOWED_CALLERS].filter((rel) => !referencing.includes(rel));
     expect(stale).toEqual([]);
+  });
+});
+
+// The auto-open guide experiment enrolls inside startAutoOpenGuideExperiment, when a
+// user reaches a configured page with Pathfinder closed. Anything else that reads its
+// flag could activate it at the wrong moment, so both symbols are pinned.
+describe('auto-open guide enrollment boundary', () => {
+  const PINNED: Record<string, string[]> = {
+    startAutoOpenGuideExperiment: ['module.tsx', 'utils/experiments/auto-open-guide/index.ts'],
+    AUTO_OPEN_GUIDE_EXPERIMENT_FLAG: [
+      'constants/auto-open-guide-experiment.ts',
+      // Enrichment names the flag on cached arms; it never evaluates it.
+      'utils/experiments/active-experiments.ts',
+      'utils/experiments/auto-open-guide/index.ts',
+    ],
+  };
+
+  it.each(Object.entries(PINNED))('%s is referenced only from its pinned files', (symbol, allowed) => {
+    expect(referencingFiles(symbol)).toEqual([...allowed].sort());
   });
 });

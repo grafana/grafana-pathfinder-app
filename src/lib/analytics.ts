@@ -46,6 +46,7 @@ export enum UserInteraction {
   DocsPanelInteraction = 'docs_panel_interaction',
   HelpButtonClickedToolbar = 'help_button_clicked_toolbar',
   HelpButtonDismissedHint = 'help_button_dismissed_hint',
+  AutoOpenGuideEligible = 'auto_open_guide_eligible',
   PanelScroll = 'panel_scroll',
   CatalogInteraction = 'catalog_interaction',
 

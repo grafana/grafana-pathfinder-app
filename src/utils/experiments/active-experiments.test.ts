@@ -16,15 +16,12 @@ jest.mock('../../lib/analytics', () => ({
 
 import { createIsolatedReactSdkMock, createIsolatedWebSdkMock } from '../../test-utils/openfeature-mock';
 
-const HIGHLIGHTED_GUIDE_FLAG = 'pathfinder.highlighted-guide-experiment';
+const AUTO_OPEN_GUIDE_FLAG = 'pathfinder.auto-open-guide-experiment';
 const BANNER_FLAG = 'pathfinder.interactive-learning-banner-experiment';
 
-const HIGHLIGHTED_GUIDE_TREATMENT = {
+const AUTO_OPEN_GUIDE_ENROLLMENT = {
   variant: 'treatment',
-  pages: ['/a/grafana-irm-app*'],
-  guideId: 'https://interactive-learning.grafana.net/packages/grafana-irm-configuration-lj/content.json',
-  autoOpen: true,
-  docType: 'learning-journey',
+  experiences: [{ guide: 'bundled:first-dashboard', pages: ['/explore*'] }],
 };
 
 const setup = (values: Record<string, unknown>) => {
@@ -42,15 +39,26 @@ describe('getActiveExperiments', () => {
     localStorage.clear();
   });
 
-  it('returns only the enrolled experiment, dropping excluded arms', () => {
+  it('omits the auto-open guide arm until activation, and never evaluates it itself', () => {
     jest.isolateModules(() => {
-      setup({ [HIGHLIGHTED_GUIDE_FLAG]: HIGHLIGHTED_GUIDE_TREATMENT });
+      const mockOF = setup({ [AUTO_OPEN_GUIDE_FLAG]: AUTO_OPEN_GUIDE_ENROLLMENT });
 
       const { getActiveExperiments } = require('./active-experiments');
 
-      expect(getActiveExperiments()).toEqual([
-        { flag: HIGHLIGHTED_GUIDE_FLAG, ...HIGHLIGHTED_GUIDE_TREATMENT, resetCache: false },
-      ]);
+      expect(getActiveExperiments()).toEqual([]);
+      expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalledWith(AUTO_OPEN_GUIDE_FLAG, expect.anything());
+    });
+  });
+
+  it('includes the auto-open guide arm once activated', () => {
+    jest.isolateModules(() => {
+      setup({});
+
+      const { setAutoOpenGuideEnrollment } = require('./auto-open-guide/state');
+      const { getActiveExperiments } = require('./active-experiments');
+
+      setAutoOpenGuideEnrollment(AUTO_OPEN_GUIDE_ENROLLMENT);
+      expect(getActiveExperiments()).toEqual([{ flag: AUTO_OPEN_GUIDE_FLAG, variant: 'treatment' }]);
     });
   });
 
@@ -102,17 +110,16 @@ describe('getActiveExperiments', () => {
 
   it('reports both arms when the user is enrolled in each', () => {
     jest.isolateModules(() => {
-      setup({
-        [HIGHLIGHTED_GUIDE_FLAG]: HIGHLIGHTED_GUIDE_TREATMENT,
-        [BANNER_FLAG]: { variant: 'treatment' },
-      });
+      setup({ [BANNER_FLAG]: { variant: 'treatment' } });
 
+      const { setAutoOpenGuideEnrollment } = require('./auto-open-guide/state');
       const { enrollInteractiveLearningBannerExperiment } = require('./interactive-learning-banner');
       const { getActiveExperiments } = require('./active-experiments');
 
+      setAutoOpenGuideEnrollment(AUTO_OPEN_GUIDE_ENROLLMENT);
       enrollInteractiveLearningBannerExperiment();
       expect(getActiveExperiments().map((entry: { flag: string }) => entry.flag)).toEqual([
-        HIGHLIGHTED_GUIDE_FLAG,
+        AUTO_OPEN_GUIDE_FLAG,
         BANNER_FLAG,
       ]);
     });
