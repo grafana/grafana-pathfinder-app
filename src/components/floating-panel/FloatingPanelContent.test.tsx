@@ -350,12 +350,16 @@ describe('FloatingPanelContent completion navigation', () => {
     mockCompletionPanelEnabled = enabled;
     renderTrack();
     expect(mockRenderedCompletionFlags.at(-1)).toBe(enabled);
+    if (!enabled) {
+      expect(mockRenderedSequences.at(-1)).toBeUndefined();
+    }
   });
 
   it('returns the navigation promise so the completion panel can handle failure', () => {
     const { model, navigation } = renderTrack();
     expect(mockContinueToNextMilestone?.()).toBe(navigation);
     expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
+    expect(model.navigateToNextMilestone).toHaveBeenCalledWith({ rejectOnError: true });
   });
 
   it('does not offer continuation when the model cannot navigate', () => {
