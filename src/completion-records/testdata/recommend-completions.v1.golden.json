@@ -1,0 +1,45 @@
+{
+  "v": 1,
+  "as_of": "2026-10-13T12:00:00Z",
+  "truncated": false,
+  "items": [
+    {
+      "guide_source": "interactive-tutorials",
+      "guide_id": "prometheus-intro",
+      "percent": 30,
+      "count": 0,
+      "started_at": "2026-10-04T11:50:00Z",
+      "recorded_at": "2026-10-04T12:00:00Z"
+    },
+    {
+      "guide_source": "interactive-tutorials",
+      "guide_id": "alerting-101",
+      "percent": 100,
+      "method": "objectives",
+      "count": 2,
+      "completed_at": "2026-09-01T14:03:22Z",
+      "duration_seconds": 742,
+      "started_at": "2026-10-02T09:01:10Z",
+      "recorded_at": "2026-10-02T09:12:40Z"
+    },
+    {
+      "guide_source": "bundled",
+      "guide_id": "loki-basics",
+      "percent": 100,
+      "method": "manual",
+      "count": 1,
+      "completed_at": "2026-08-15T10:00:00Z",
+      "recorded_at": "2026-08-15T10:00:05Z"
+    },
+    {
+      "guide_source": "interactive-tutorials",
+      "guide_id": "dashboards-101",
+      "percent": 100,
+      "method": "manual",
+      "count": 2,
+      "completed_at": "2026-07-20T08:00:00Z",
+      "duration_seconds": 95,
+      "recorded_at": "2026-07-20T08:00:10Z"
+    }
+  ]
+}

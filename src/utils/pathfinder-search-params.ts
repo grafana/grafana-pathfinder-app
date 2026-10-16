@@ -31,6 +31,8 @@ export const PATHFINDER_PARAMS = [
   'kiosk_name',
   'panelMode',
   'controller',
+  'controllerMilestone',
+  'controllerTrack',
   'pathfinderKiosk',
   'kioskRulesUrl',
 ] as const;
@@ -71,6 +73,8 @@ export interface DeepLinkParams {
   /** Surface mode from `?panelMode=`. Strict whitelist; unknowns drop to undefined. */
   panelMode?: PathfinderDeepLinkPanelMode;
   controller?: boolean;
+  controllerMilestone?: string;
+  controllerTrack?: string;
   pathfinderKiosk?: boolean;
   kioskRulesUrl?: string;
 }
@@ -97,6 +101,8 @@ export function parsePathfinderDeepLink(search: string): DeepLinkParams {
     kioskName: parseKioskName(params.get('kiosk_name')),
     panelMode,
     controller: params.get('controller') === '1',
+    controllerMilestone: params.get('controllerMilestone') || undefined,
+    controllerTrack: params.get('controllerTrack') || undefined,
     pathfinderKiosk: params.get('pathfinderKiosk') === '1',
     kioskRulesUrl: params.get('kioskRulesUrl')?.trim() || undefined,
   };

@@ -953,6 +953,34 @@ describe('fetchPrManifest', () => {
     expect(result?.milestones).toEqual(['guide-one', 'guide-two']);
   });
 
+  it.each(['future', 42, { future: true }, 'markdown'])(
+    'retains PR path discovery metadata for format %p',
+    async (format) => {
+      const label = '  Literal <b> & **syntax**  ';
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'my-path',
+          type: 'path',
+          milestones: ['guide-one'],
+          prerequisites: [{ id: 'notice', label, format }],
+        }),
+      });
+
+      const result = await fetchPrManifest('https://raw.githubusercontent.com/org/repo/abc/my-path/manifest.json');
+
+      expect(result).toMatchObject({
+        id: 'my-path',
+        type: 'path',
+        milestones: ['guide-one'],
+        prerequisites: [{ id: 'notice', label, ...(format === 'markdown' ? { format } : {}) }],
+      });
+      expect(result?.prerequisites?.[0]?.format).toBe(format === 'markdown' ? 'markdown' : undefined);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it('should return undefined for non-OK responses', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,

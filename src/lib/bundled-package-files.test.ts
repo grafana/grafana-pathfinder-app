@@ -8,6 +8,9 @@
 
 import { loadBundledContent, loadBundledManifest } from './bundled-package-files';
 
+const mockRuntimeManifest: Record<string, unknown> = {};
+jest.mock('../bundled-interactives/runtime-manifest-test/manifest.json', () => mockRuntimeManifest, { virtual: true });
+
 // ============ loadBundledContent ============
 
 describe('loadBundledContent', () => {
@@ -71,6 +74,29 @@ describe('loadBundledManifest', () => {
     }
     expect(result.data.id).toBe('welcome-to-grafana');
     expect(result.data.type).toBe('guide');
+  });
+
+  it.each(['future', 42, { future: true }, 'markdown'])('retains bundled runtime metadata for format %p', (format) => {
+    const label = '  Literal <b> & **syntax**  ';
+    Object.assign(mockRuntimeManifest, {
+      id: 'runtime-manifest-test',
+      type: 'path',
+      milestones: ['member'],
+      prerequisites: [{ id: 'notice', label, format }],
+    });
+
+    const result = loadBundledManifest('runtime-manifest-test');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.data).toMatchObject({
+      type: 'path',
+      milestones: ['member'],
+      prerequisites: [{ id: 'notice', label, ...(format === 'markdown' ? { format } : {}) }],
+    });
+    expect(result.data.prerequisites?.[0]?.format).toBe(format === 'markdown' ? 'markdown' : undefined);
   });
 
   it('should handle path without trailing slash', () => {

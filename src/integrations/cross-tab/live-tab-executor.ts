@@ -1,3 +1,6 @@
+import { readerReturnChannel } from '../../global-state/auto-launch';
+import { OBSERVATION_HANDOFF_EVENT } from '../../global-state/observation/handoff';
+import { createPassiveObserver } from './passive-observer';
 import { conditionLabel } from '../../lib/condition-input';
 import { config, getAppEvents } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
@@ -18,7 +21,12 @@ import {
 } from '../../interactive-engine';
 import type { GuidedAction } from '../../types/interactive-actions.types';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
-import { checkRequirements, dispatchFix, type RequirementsCheckResult } from '../../requirements-manager';
+import {
+  checkRequirements,
+  checkPostconditions,
+  dispatchFix,
+  type RequirementsCheckResult,
+} from '../../requirements-manager';
 import {
   SIGNED_MESSAGE_KINDS,
   validateCrossTabMessage,
@@ -157,6 +165,10 @@ export function installLiveTabExecutor(
   // and race on shared highlight state (F-1069-1).
   let queue: Promise<void> = Promise.resolve();
   const runs = new Map<string, { controller: AbortController; finished: boolean }>();
+  const passiveObserver = createPassiveObserver(
+    (message) => transport.post(message),
+    () => [...runs.values()].some((run) => !run.finished)
+  );
   const runKey = (message: { senderId: string; sessionId?: string; stepId: string; runId: string }) =>
     JSON.stringify([message.senderId, message.sessionId, message.stepId, message.runId]);
   const pruneRuns = () => {
@@ -281,6 +293,7 @@ export function installLiveTabExecutor(
         { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
         i,
         actions.length,
+        // Default per-substep budget; the controller's guidedStepWaitMs assumes it.
         undefined,
         undefined,
         { signal }
@@ -348,12 +361,22 @@ export function installLiveTabExecutor(
   // Evaluate the controller's tab-local requirements against this tab's DOM.
   const evaluateRequirements = async (message: CheckRequirementsMessage): Promise<void> => {
     try {
-      const result = await checkRequirements({
+      if (message.passive && document.visibilityState === 'hidden') {
+        transport.post({
+          kind: 'requirement-result',
+          requestId: message.requestId,
+          stepId: message.stepId,
+          result: { requirements: '', pass: false, verdict: 'unavailable', error: [] },
+        });
+        return;
+      }
+      const result = await (message.passive ? checkPostconditions : checkRequirements)({
         requirements: message.requirements,
         targetAction: message.targetAction ?? 'button',
         refTarget: message.refTarget ?? '',
         targetValue: message.targetValue,
         stepId: message.stepId,
+        ...(message.passive && { maxRetries: 0, lazyRender: false }),
       });
       transport.post({ kind: 'requirement-result', requestId: message.requestId, stepId: message.stepId, result });
     } catch (error) {
@@ -425,7 +448,11 @@ export function installLiveTabExecutor(
         if (!authorized || cancelled) {
           return;
         }
-        if (validated.kind === 'step-command') {
+        if (validated.kind === 'observation-subscribe') {
+          passiveObserver.update(validated);
+        } else if (validated.kind === 'observation-cancel') {
+          passiveObserver.cancel(validated.subscriptionId);
+        } else if (validated.kind === 'step-command') {
           const key = runKey(validated);
           if (runs.has(key)) {
             return;
@@ -451,11 +478,15 @@ export function installLiveTabExecutor(
         } else if (validated.kind === 'sidebar-handoff') {
           if (validated.action === 'close') {
             if (sidebarState.getIsSidebarMounted()) {
+              document.dispatchEvent(new Event(OBSERVATION_HANDOFF_EVENT));
               getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
               handedOffSidebar = true;
             }
           } else if (validated.action === 'reopen') {
             if (handedOffSidebar && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
+              if (validated.position) {
+                readerReturnChannel.emit(validated.position);
+              }
               sidebarState.openSidebar('Interactive learning');
             }
             handedOffSidebar = false;
@@ -468,6 +499,7 @@ export function installLiveTabExecutor(
 
   return () => {
     cancelled = true;
+    passiveObserver.stop();
     runs.forEach((run) => run.controller.abort());
     guidedHandler.cancel();
     unsubscribe();

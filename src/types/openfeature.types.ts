@@ -8,15 +8,3 @@ export interface ExperimentConfig {
   pages: string[];
   resetCache?: boolean;
 }
-
-export type HighlightedGuideDocType = 'docs-page' | 'learning-journey' | 'interactive';
-
-/**
- * Highlighted-guide experiment configuration used for sidebar auto-open and
- * Featured-slot injection.
- */
-export interface HighlightedGuideConfig extends ExperimentConfig {
-  guideId: string;
-  autoOpen: boolean;
-  docType?: HighlightedGuideDocType;
-}

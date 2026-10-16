@@ -131,7 +131,8 @@ without the settings API. The fallback preserves unknown provisioning fields,
 `enabled`, and `pinned`; credentials are never submitted by a config form. The
 existing OBO bridge remains independent of this storage choice.
 
-GET 404/405/501 permits fallback and a first save tries POST. Existing resources
+A confirmed missing singleton reads as not configured (cached for ten minutes);
+any other tagged GET 404/405/501 permits fallback uncached. A first save tries POST. Existing resources
 are updated only with the read `resourceVersion`; a 409 is surfaced. Read errors,
 503 outages, malformed snapshots and any failed update of an existing resource
 stop the save. They never cause a write to the legacy store.

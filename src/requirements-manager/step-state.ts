@@ -21,7 +21,7 @@ export type { StepStatus };
 /**
  * Reason why a step was completed
  */
-export type CompletionReason = 'none' | 'objectives' | 'manual' | 'skipped';
+export type CompletionReason = 'none' | 'objectives' | 'observed' | 'manual' | 'skipped';
 
 /**
  * Unified step state

@@ -7,7 +7,9 @@
 
 import { collectKeysByPrefix } from '../../lib/storage/key-utils';
 import { StorageKeys } from '../../lib/storage-keys';
-import { pathfinderFeatureFlags, type HighlightedGuideConfig } from '../openfeature';
+import { pathfinderFeatureFlags } from '../openfeature';
+import { clearAutoOpenGuideMarkers, listAutoOpenGuidesShown } from './auto-open-guide/markers';
+import { getAutoOpenGuideEnrollment } from './auto-open-guide/state';
 import { getEnrolledInteractiveLearningBannerConfig } from './interactive-learning-banner';
 
 interface ExposureMarker {
@@ -32,19 +34,27 @@ function listExposureMarkers(hostname: string): ExposureMarker[] {
 /**
  * Creates the debug object exposed on window.__pathfinderExperiment
  */
-export function createExperimentDebugger(config: HighlightedGuideConfig): void {
+export function createExperimentDebugger(): void {
   const hostname = window.location.hostname;
 
   window.__pathfinderExperiment = {
-    // Highlighted-guide config captured at module load time
-    config,
-    variant: config.variant,
     loadedAt: new Date().toISOString(),
 
     // A getter, not a snapshot: the banner arm is resolved lazily when a Pathfinder
     // panel first opens, so a value captured here would always read 'not-enrolled'.
     // Reads the memo only — calling this never enrolls anyone.
     bannerVariant: () => getEnrolledInteractiveLearningBannerConfig()?.variant ?? 'not-enrolled',
+
+    // Same rule as bannerVariant: reads the activation cache and markers, never the flag.
+    autoOpenGuide: () => ({
+      variant: getAutoOpenGuideEnrollment()?.variant ?? 'not-enrolled',
+      shown: listAutoOpenGuidesShown(hostname),
+    }),
+    clearAutoOpenGuideMarkers: () => {
+      const cleared = clearAutoOpenGuideMarkers(hostname);
+      console.log(`[Pathfinder] Cleared ${cleared} auto-open guide marker(s). Reload to be offered them again.`);
+      return { cleared };
+    },
 
     flags: Object.keys(pathfinderFeatureFlags),
     // --- Analytics exposure dedup ---

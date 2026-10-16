@@ -71,9 +71,7 @@ export const DEFAULT_KIOSK_RULES_URL = '';
 // the toggle is an admin kill switch, not a rollout gate
 export const DEFAULT_ENABLE_AI_AUTO_HEAL = true;
 
-// Two-tab controller: default OFF — the live-tab executor drives the user's
-// authenticated Grafana DOM, so it requires explicit admin opt-in
-export const DEFAULT_ENABLE_TWO_TAB_CONTROLLER = false;
+export const DEFAULT_ENABLE_TWO_TAB_CONTROLLER = true;
 
 // PeerJS Server defaults (for live sessions)
 export const DEFAULT_PEERJS_HOST = 'localhost';
@@ -289,5 +287,6 @@ export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;
 export enum ROUTES {
   Home = '',
   Context = 'context',
+  Browse = 'browse',
   FullScreen = 'fullscreen',
 }

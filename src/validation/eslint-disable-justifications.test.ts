@@ -20,7 +20,6 @@ const ESLINT_DISABLE_DIRECTIVE = ['eslint', 'disable'].join('-');
 const UNDESCRIBED_ESLINT_DISABLE_BASELINE = new Set([
   'src/learning-paths/learning-paths.hook.ts::react-hooks/exhaustive-deps#1',
   'src/learning-paths/learning-paths.hook.ts::react-hooks/exhaustive-deps#2',
-  'src/learning-paths/useDiscoverMore.ts::react-hooks/exhaustive-deps#1',
   'src/components/docs-panel/hooks/useTabRestoration.ts::react-hooks/exhaustive-deps#1',
   'src/components/docs-panel/hooks/useSessionJoinUrlCheck.ts::react-hooks/exhaustive-deps#1',
   'src/components/content-renderer/content-renderer.tsx::react-hooks/exhaustive-deps#1',
@@ -42,7 +41,6 @@ const UNDESCRIBED_ESLINT_DISABLE_BASELINE = new Set([
   'src/global-state/completion-store.ts::react-hooks/exhaustive-deps#1',
   'src/components/floating-panel/FloatingPanelManager.tsx::react-hooks/exhaustive-deps#1',
   'src/integrations/assistant-integration/AssistantCustomizable.tsx::react-hooks/set-state-in-effect#1',
-  'src/integrations/assistant-integration/AssistantSelectionPopover.tsx::react-hooks/set-state-in-effect#1',
   'src/utils/usePublishedGuides.ts::react-hooks/exhaustive-deps#1',
   'src/utils/devtools/element-inspector.hook.ts::react-hooks/exhaustive-deps#1',
 ]);

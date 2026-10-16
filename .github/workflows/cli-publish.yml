@@ -21,6 +21,7 @@ on:
     branches:
       - main
     paths:
+      - 'src/lib/runtime-manifest.ts'
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
@@ -35,10 +36,12 @@ on:
       - 'Dockerfile.cli'
       - '.dockerignore'
       - '.github/workflows/cli-publish.yml'
+      - 'src/lib/choice-response.ts'
   pull_request:
     branches:
       - main
     paths:
+      - 'src/lib/runtime-manifest.ts'
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
@@ -53,6 +56,7 @@ on:
       - 'Dockerfile.cli'
       - '.dockerignore'
       - '.github/workflows/cli-publish.yml'
+      - 'src/lib/choice-response.ts'
 
 permissions: read-all
 

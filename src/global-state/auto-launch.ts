@@ -1,3 +1,4 @@
+import type { ReaderPosition } from '../types/cross-tab.types';
 import { createLatchedBroadcast } from '../lib/latched-broadcast';
 
 // Detail payload of an auto-launch-tutorial request, consumed by the panel
@@ -11,8 +12,10 @@ export interface AutoLaunchTutorialDetail {
 }
 
 // Shared channel carrying auto-launch-tutorial requests from producers (the
-// highlighted-guide orchestrator, the ?doc= deep-link handler, navigate
-// actions) to whichever panel surface is active. It latches so a request
+// auto-open guide experiment, the ?doc= deep-link handler, navigate actions)
+// to whichever panel surface is active. It latches so a request
 // emitted before the lazy-loaded panel has attached its listener is still
 // delivered once the listener mounts.
 export const autoLaunchChannel = createLatchedBroadcast<AutoLaunchTutorialDetail>({ ttlMs: 30_000 });
+
+export const readerReturnChannel = createLatchedBroadcast<ReaderPosition>();

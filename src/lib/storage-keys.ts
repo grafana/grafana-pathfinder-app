@@ -9,6 +9,8 @@
  */
 
 export const StorageKeys = {
+  SETTINGS_ABSENT_PREFIX: 'grafana-pathfinder-settings-absent-v1:',
+  SETTINGS_GENERATION_PREFIX: 'grafana-pathfinder-settings-generation-v1:',
   HELP_BUTTON_ATTENTION_DISMISSED_PREFIX: 'pathfinder-help-button-nudge-v1:dismissed:',
   JOURNEY_COMPLETION: 'grafana-pathfinder-app-journey-completion',
   INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
@@ -50,10 +52,12 @@ export const StorageKeys = {
   // reassignment (e.g. control → treatment) yields a new key and re-fires, which is what
   // downstream A/B tools expect.
   EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
-  // Highlighted-guide experiment markers (used with hostname + guideId suffix). LocalStorage,
-  // not session — auto-open fires once per browser, not once per session.
-  HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
-  HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
+  // Auto-open guide experiment markers (used with `{hostname}:{guide}` suffix). LocalStorage,
+  // not session — each guide is offered once per browser, in every arm.
+  AUTO_OPEN_GUIDE_SHOWN_PREFIX: 'grafana-pathfinder-auto-open-guide-shown-',
+  // The auto-open guide visit already offered in this tab (sessionStorage, hostname suffix), so a
+  // reload on the same matched pages does not offer an overlapping experience.
+  AUTO_OPEN_GUIDE_VISIT_PREFIX: 'grafana-pathfinder-auto-open-guide-visit-',
   // Interactive-learning banner dismissal (used with a hostname suffix). Hostname-scoped
   // to match the other experiment markers, so one reset sweep clears them together.
   INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',

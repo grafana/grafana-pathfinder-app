@@ -99,6 +99,67 @@ describe('fetchPackageInfoFromUrl — backend-guide: scheme', () => {
   });
 });
 
+it.each(['not-supported', 42, { type: 'markdown' }])(
+  'keeps malformed prerequisite format %p as literal metadata from CDN manifests',
+  async (format) => {
+    const url = 'https://interactive-learning.grafana.net/packages/example/content.json';
+    const prerequisites = [{ id: 'runtime-format', label: '[Read docs](https://example.com)', format }];
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ id: 'example', type: 'guide', prerequisites }),
+    });
+
+    try {
+      const info = await fetchPackageInfoFromUrl(url);
+
+      expect(info?.packageManifest?.prerequisites).toEqual([
+        { id: 'runtime-format', label: '[Read docs](https://example.com)' },
+      ]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  }
+);
+
+it('preserves direct-URL path navigation metadata, exact strings, order, and supported markdown', async () => {
+  const manifest = {
+    id: 'test-path',
+    type: 'path',
+    milestones: ['first', 'second'],
+    tracks: [{ trackId: 'extra', label: 'Extra', guides: ['track-guide'] }],
+    prerequisites: [
+      { id: ' literal ', label: ' <b>Literal</b> ', format: 42 },
+      { id: 'markdown', label: '**Markdown**', format: 'markdown' },
+      { id: 'plain', label: 'Plain' },
+    ],
+  };
+  const originalFetch = global.fetch;
+  const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(manifest) });
+  global.fetch = fetchMock;
+  try {
+    const info = await fetchPackageInfoFromUrl(
+      'https://interactive-learning.grafana.net/packages/test-path/content.json'
+    );
+
+    expect(info?.packageManifest).toMatchObject({
+      ...manifest,
+      prerequisites: [
+        { id: ' literal ', label: ' <b>Literal</b> ' },
+        { id: 'markdown', label: '**Markdown**', format: 'markdown' },
+        { id: 'plain', label: 'Plain' },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/test-path/manifest.json',
+      expect.objectContaining({ method: 'GET' })
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 it('keeps an optional manifest failure non-terminal so content can still render', async () => {
   const url = 'https://interactive-learning.grafana.net/packages/example/content.json';
   const context = beginGuideLoad(url);

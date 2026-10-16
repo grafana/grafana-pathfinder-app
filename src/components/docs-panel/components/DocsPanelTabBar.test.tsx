@@ -1,3 +1,5 @@
+jest.mock('../../../utils/openfeature', () => ({ useBooleanFlag: jest.fn(() => true) }));
+
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DocsPanelTabBar, type DocsPanelTabBarProps } from './DocsPanelTabBar';
@@ -28,6 +30,7 @@ jest.mock('../../../lib/analytics', () => ({
   getContentTypeForAnalytics: jest.fn(() => 'docs'),
   UserInteraction: {
     DocsPanelInteraction: 'docs_panel_interaction',
+    CatalogInteraction: 'catalog_interaction',
     GeneralPluginFeedbackButton: 'general_plugin_feedback_button',
     CloseTabClick: 'close_tab_click',
   },
@@ -82,8 +85,28 @@ function makeProps(overrides: Partial<DocsPanelTabBarProps> = {}): DocsPanelTabB
 describe('DocsPanelTabBar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.requireMock('../../../utils/openfeature').useBooleanFlag.mockReturnValue(true);
     localStorage.clear();
     resetEditorChromeStatus();
+  });
+
+  it('opens Browse from permanent navigation without using a guide tab slot', () => {
+    const props = makeProps();
+    render(<DocsPanelTabBar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    expect(props.onSetActiveTab).toHaveBeenCalledWith('browse');
+    expect(jest.requireMock('../../../lib/analytics').reportAppInteraction).toHaveBeenCalledWith(
+      'catalog_interaction',
+      { action: 'tab_click', interaction_location: 'package_browser' }
+    );
+    expect(props.onCloseTab).not.toHaveBeenCalled();
+  });
+
+  it('keeps Recommendations selected and hides Browse when disabled', () => {
+    jest.requireMock('../../../utils/openfeature').useBooleanFlag.mockReturnValue(false);
+    render(<DocsPanelTabBar {...makeProps()} />);
+    expect(screen.queryByRole('button', { name: 'Browse' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recommendations' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('navigates to the My Learning page when the "My learning" button is clicked', () => {

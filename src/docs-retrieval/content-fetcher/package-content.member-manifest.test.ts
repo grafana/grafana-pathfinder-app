@@ -8,7 +8,8 @@
  * the alignment prompt never appeared.
  */
 import { of } from 'rxjs';
-import { fetchPackageContent, setPackageResolver } from './package-content';
+import { fetchPackageContent, setPackageResolver, setPackageResolverFactory } from './package-content';
+import { resolveSurfaceCompletionIdentity } from '../learning-journey-helpers';
 import { resolveStartingLocation } from '../../recovery/starting-location';
 
 const mockFetch = jest.fn();
@@ -53,6 +54,34 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+function usePathResolver(repository: string) {
+  setPackageResolver({
+    resolve: jest.fn().mockResolvedValue({
+      ok: true,
+      id: 'path-id',
+      contentUrl: 'https://example.test/path/content.json',
+      manifestUrl: 'https://example.test/path/manifest.json',
+      repository,
+      manifest: { tracks: [] },
+    }),
+  });
+}
+
+const pathManifest = { id: 'path-id', type: 'path', milestones: ['member-id'], tracks: [] };
+const resolvedMember = {
+  id: 'member-id',
+  number: 1,
+  title: 'Member',
+  url: 'backend-guide:member-id',
+  isActive: false,
+  repository: 'member-source',
+  packageManifest: {
+    id: 'member-id',
+    repository: 'member-source',
+    prerequisites: [{ id: 'own', label: 'Member prerequisite' }],
+  },
+};
+
 describe('member launch keeps the loader manifest reachable', () => {
   it('does not let the slim path manifest bury the loader starting location', async () => {
     mockFetch.mockReturnValue(backendGuideResource({ startingLocation: '/alerting/routes' }));
@@ -94,6 +123,285 @@ describe('member launch keeps the loader manifest reachable', () => {
         result.content?.metadata.packageManifest,
       ])
     ).toBe('/alerting/notifications');
+  });
+
+  it('preserves prerequisites from catalogue and loaded manifest metadata', async () => {
+    const loadedPrerequisites = [{ id: 'loaded', label: 'Loaded requirement' }];
+    const cataloguePrerequisites = [{ id: 'catalogue', label: 'Catalogue requirement' }];
+    mockFetch.mockReturnValue(backendGuideResource({ prerequisites: loadedPrerequisites }));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', {
+      ...slimCatalogueManifest,
+      prerequisites: cataloguePrerequisites,
+    });
+
+    expect(result.content?.metadata.packageManifest?.prerequisites).toEqual(cataloguePrerequisites);
+
+    mockFetch.mockReturnValue(backendGuideResource({ prerequisites: loadedPrerequisites }));
+    const loadedOnly = await fetchPackageContent('backend-guide:fe-alerting-01');
+    expect(loadedOnly.content?.metadata.packageManifest?.prerequisites).toEqual(loadedPrerequisites);
+  });
+
+  it('recognizes a legacy URL-only milestone when the caller supplies its explicit guide id', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent(
+      'backend-guide:member-id',
+      pathManifest,
+      [{ ...resolvedMember, id: undefined }],
+      undefined,
+      undefined,
+      'member-id'
+    );
+
+    expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'member-id', type: 'guide' });
+    expect(result.content?.metadata.journeyManifest).toMatchObject({ id: 'path-id', type: 'path' });
+  });
+
+  it('does not let a conflicting milestone URL override an explicit member id', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+    const owner = { ...pathManifest, milestones: ['a', 'b'] };
+    const milestones = [
+      { ...resolvedMember, id: 'a', url: 'backend-guide:b', packageManifest: { id: 'a' } },
+      { ...resolvedMember, id: 'b', number: 2, url: 'backend-guide:c', packageManifest: { id: 'b' } },
+    ];
+
+    const result = await fetchPackageContent('backend-guide:c', owner, milestones, undefined, undefined, 'b');
+
+    expect(result.content?.metadata.packageManifest?.id).toBe('b');
+    expect(result.content?.metadata.journeyManifest).toEqual(owner);
+    expect(result.content?.metadata.learningJourney?.currentMilestone).toBe(2);
+  });
+
+  it('does not let a conflicting track URL override an explicit member id', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+    const owner = {
+      ...pathManifest,
+      tracks: [{ trackId: 'extra', label: 'Extra', guides: ['a', 'b'] }],
+    };
+    setPackageResolver({
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: id === 'a' ? 'backend-guide:b' : id === 'b' ? 'backend-guide:c' : `backend-guide:${id}`,
+          manifestUrl: `https://example.test/${id}/manifest.json`,
+          repository: 'member-source',
+          manifest: id === owner.id ? owner : { id, type: 'guide' },
+          content: { id, title: id, blocks: [] },
+        })
+      ),
+    });
+
+    const result = await fetchPackageContent('backend-guide:c', owner, [resolvedMember], undefined, undefined, 'b');
+
+    expect(result.content?.metadata.packageManifest?.id).toBe('b');
+    expect(result.content?.metadata.journeyManifest).toEqual(owner);
+    expect(result.content?.metadata.learningJourney).toBeUndefined();
+  });
+
+  it('keeps journey ownership separate from member metadata', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+    const owningJourney = { id: 'journey-id', type: 'journey', milestones: ['member-id'] };
+
+    const result = await fetchPackageContent(
+      'backend-guide:member-id',
+      owningJourney,
+      [resolvedMember],
+      undefined,
+      undefined,
+      'member-id'
+    );
+
+    expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'member-id', type: 'guide' });
+    expect(result.content?.metadata.journeyManifest).toEqual(owningJourney);
+  });
+
+  it('keeps the explicitly supplied path repository as the member completion source', async () => {
+    usePathResolver('base-source');
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent(
+      'backend-guide:member-id',
+      pathManifest,
+      [resolvedMember],
+      'explicit-source',
+      undefined,
+      'member-id'
+    );
+
+    expect(result.content?.metadata.repository).toBe('explicit-source');
+    expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'member-id', type: 'guide' });
+    expect(result.content?.metadata.journeyManifest).toMatchObject({ id: 'path-id', type: 'path' });
+    expect(result.content?.metadata.packageManifest?.prerequisites).toEqual([
+      { id: 'own', label: 'Member prerequisite' },
+    ]);
+  });
+
+  it('uses the owning path resolution before a member manifest repository fallback', async () => {
+    usePathResolver('base-source');
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent(
+      'backend-guide:member-id',
+      pathManifest,
+      [resolvedMember],
+      undefined,
+      undefined,
+      'member-id'
+    );
+
+    expect(result.content?.metadata.repository).toBe('base-source');
+    expect(result.content?.metadata.journeyManifest).toMatchObject({ id: 'path-id', type: 'path' });
+    expect(result.content?.metadata.packageManifest?.prerequisites).toEqual([
+      { id: 'own', label: 'Member prerequisite' },
+    ]);
+  });
+
+  describe('confirmed track membership without a member snapshot', () => {
+    it.each(['retry', 'declared'] as const)(
+      'preserves loaded member metadata and completion ownership for %s membership',
+      async (membership) => {
+        const owner = {
+          ...pathManifest,
+          repository: 'owner-source',
+          prerequisites: [{ id: 'parent', label: 'Parent prerequisite' }],
+          startingLocation: '/owner/start',
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: ['fe-alerting-01'] }],
+        };
+        const memberPrerequisites = [{ id: 'own', label: 'Member prerequisite' }];
+        mockFetch.mockReturnValue(
+          backendGuideResource({ prerequisites: memberPrerequisites, startingLocation: '/member/start' })
+        );
+        const resolve = jest.fn().mockImplementation((id: string, options: { bypassCache?: boolean }) => {
+          if (id === 'fe-alerting-01' && !options.bypassCache) {
+            return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'missing metadata' } });
+          }
+          return Promise.resolve({
+            ok: true,
+            id,
+            contentUrl: `backend-guide:${id}`,
+            manifestUrl: `https://example.test/${id}/manifest.json`,
+            repository: 'base-source',
+            ...(id === owner.id && { manifest: owner }),
+          });
+        });
+        if (membership === 'retry') {
+          setPackageResolver({ resolve });
+        } else {
+          setPackageResolverFactory(() => Promise.reject(new Error('resolver unavailable')));
+        }
+
+        const result = await fetchPackageContent(
+          'backend-guide:fe-alerting-01',
+          owner,
+          [resolvedMember],
+          undefined,
+          undefined,
+          membership === 'declared' ? 'fe-alerting-01' : undefined
+        );
+
+        expect(result.content?.metadata.packageManifest).toMatchObject({
+          id: 'fe-alerting-01',
+          type: 'guide',
+          prerequisites: memberPrerequisites,
+          startingLocation: '/member/start',
+        });
+        expect(result.content?.metadata.journeyManifest).toEqual(owner);
+        expect(result.content?.metadata.learningJourney).toBeUndefined();
+        expect(result.content?.metadata.trackMemberBaseUrl).toBe(
+          membership === 'retry' ? 'backend-guide:path-id' : 'backend-guide:fe-alerting-01'
+        );
+        expect(
+          resolveStartingLocation('backend-guide:fe-alerting-01', [
+            result.content?.metadata.packageManifest,
+            result.content?.metadata.journeyManifest,
+          ])
+        ).toBe('/member/start');
+        const source = membership === 'retry' ? 'base-source' : 'app-platform';
+        expect(
+          resolveSurfaceCompletionIdentity({
+            currentUrl: 'backend-guide:fe-alerting-01',
+            contentUrl: result.content?.url,
+            metadata: result.content?.metadata,
+          })
+        ).toMatchObject({
+          guideId: 'fe-alerting-01',
+          guideSource: source,
+          pathIdentity: { guideId: 'path-id', guideSource: source },
+        });
+        if (membership === 'retry') {
+          expect(resolve).toHaveBeenCalledTimes(4);
+          expect(resolve).toHaveBeenCalledWith('path-id', { loadContent: false });
+          expect(resolve).toHaveBeenCalledWith('path-id', { loadContent: 'metadata-only' });
+          expect(resolve).toHaveBeenCalledWith('fe-alerting-01', { loadContent: 'metadata-only' });
+          expect(resolve).toHaveBeenCalledWith('fe-alerting-01', { loadContent: false, bypassCache: true });
+        } else {
+          expect(resolve).not.toHaveBeenCalled();
+        }
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it.each(['member-id', 'fe-alerting-01'])(
+      'keeps declared member %s ownership when no member or Foundations snapshot is available',
+      async (guideId) => {
+        const owner = {
+          ...pathManifest,
+          prerequisites: [{ id: 'parent', label: 'Parent prerequisite' }],
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: ['fe-alerting-01'] }],
+        };
+        mockFetch.mockReturnValue(backendGuideResource({}));
+        setPackageResolverFactory(() => Promise.reject(new Error('resolver unavailable')));
+
+        const result = await fetchPackageContent(
+          `backend-guide:${guideId}`,
+          owner,
+          undefined,
+          'explicit-source',
+          undefined,
+          guideId
+        );
+
+        expect(result.content?.metadata.packageManifest?.type).toBe('guide');
+        expect(result.content?.metadata.packageManifest?.prerequisites).toBeUndefined();
+        expect(result.content?.metadata.journeyManifest).toEqual(owner);
+        expect(result.content?.metadata.repository).toBe('explicit-source');
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it('does not inherit owner prerequisites when the confirmed member declares none', async () => {
+      const owner = {
+        ...pathManifest,
+        prerequisites: [{ id: 'parent', label: 'Parent prerequisite' }],
+        startingLocation: '/owner/start',
+        tracks: [{ trackId: 'extra', label: 'Extra', guides: ['fe-alerting-01'] }],
+      };
+      mockFetch.mockReturnValue(backendGuideResource({}));
+      setPackageResolverFactory(() => Promise.reject(new Error('resolver unavailable')));
+
+      const result = await fetchPackageContent(
+        'backend-guide:fe-alerting-01',
+        owner,
+        [resolvedMember],
+        'explicit-source',
+        undefined,
+        'fe-alerting-01'
+      );
+
+      expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'fe-alerting-01', type: 'guide' });
+      expect(result.content?.metadata.packageManifest?.prerequisites).toBeUndefined();
+      expect(result.content?.metadata.journeyManifest).toEqual(owner);
+      expect(result.content?.metadata.repository).toBe('explicit-source');
+      expect(
+        resolveStartingLocation('backend-guide:fe-alerting-01', [
+          result.content?.metadata.packageManifest,
+          result.content?.metadata.journeyManifest,
+        ])
+      ).toBe('/owner/start');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('still resolves to null when no manifest declares one', async () => {
@@ -179,8 +487,8 @@ describe('a CDN milestone narrows its path starting location', () => {
     expect(await startingLocationFor(aUrl, 'a-guide')).toBe('/a-start');
   });
 
-  it("falls back to the path's starting location for a milestone that declares none", async () => {
-    expect(await startingLocationFor(bUrl, 'b-guide')).toBe('/x-start');
+  it('leaves a milestone that declares none without a starting location of its own', async () => {
+    expect(await startingLocationFor(bUrl, 'b-guide')).toBeUndefined();
   });
 
   it("keeps the path's starting location on its own landing page", async () => {

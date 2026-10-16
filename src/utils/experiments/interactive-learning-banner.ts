@@ -22,10 +22,7 @@ import { logger } from '../../lib/logging';
 
 export const INTERACTIVE_LEARNING_BANNER_FLAG: FeatureFlagName = 'pathfinder.interactive-learning-banner-experiment';
 
-/**
- * Variant-only by design: the banner explains Pathfinder itself, so unlike the
- * highlighted-guide experiment it has no per-page targeting.
- */
+// Variant-only: the banner explains Pathfinder itself, so it has no per-page targeting.
 export interface InteractiveLearningBannerConfig {
   variant: ExperimentConfig['variant'];
 }

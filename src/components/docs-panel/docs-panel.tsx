@@ -1,3 +1,5 @@
+import { isLearningJourneyUrl } from './utils/url-validation';
+import type { ReaderPosition } from '../../types/cross-tab.types';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import {
   beginGuideLoad,
@@ -30,6 +32,7 @@ const TerminalProviderLazy = lazy(() =>
 );
 // Lazy so @grafana/assistant stays out of the docs-panel init chain (see AiFixOrchestrator).
 const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
+import { useBooleanFlag } from '../../utils/openfeature';
 import { PathfinderPluginConfig } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
@@ -58,6 +61,7 @@ import {
 } from '../../hooks';
 import {
   fetchContent,
+  resolveActiveMilestoneSequence,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
   getNextMilestoneIdFromContent,
@@ -79,11 +83,12 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { getAppEvents, locationService } from '@grafana/runtime';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { coerceLaunchSource, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
+import { cancelCatalogActivation } from '../../global-state/package-browser';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
 
@@ -103,6 +108,8 @@ import {
   mergeRestoredTabsWithExisting,
   loadDocsTabContentResult,
   RECOMMENDATIONS_TAB_ID,
+  createBrowseTab,
+  BROWSE_TAB_ID,
   DEVTOOLS_TAB_ID,
   EDITOR_TAB_ID,
   isNonContentTab,
@@ -132,6 +139,7 @@ import {
   useScrollTracking,
   useGlobalActiveTabExposure,
   useAutoOpenListener,
+  useCatalogBrowserListener,
   usePopOutHandoff,
   useFullScreenHandoff,
   useTabRestoration,
@@ -157,14 +165,8 @@ let pendingTabStorageWrite: Promise<void> | null = null;
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
 
-  /**
-   * Instance-level guard: prevents restoreTabsAsync() from running more than
-   * once on the same instance (e.g. React StrictMode double-mount re-fires
-   * the effect on the same cached useMemo panel). Because the flag is
-   * per-instance, a genuinely new panel (created when the sidebar remounts
-   * after toggle off → on) starts with the guard unset and can restore tabs.
-   */
   private _hasRestoredTabs = false;
+  private _tabRestorePromise: Promise<void> | null = null;
 
   /**
    * Last tab gates this instance observed, or null before the first
@@ -220,22 +222,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       },
     ];
 
+    if (resolveTabGates(pluginConfig).allowBrowse) {
+      defaultTabs.push(createBrowseTab());
+    }
+
     const contextPanel = new ContextPanel(
-      (url: string, title: string) => {
-        // Recommender is aligned-by-construction (URL-filtered guide list).
-        // Tag the open so the implied-0th-step alignment evaluator skips
-        // it; without this the source would consume as null and an
-        // unrelated `home_page` source previously stashed could leak
-        // through, prompting on a recommender click.
-        return this.openLearningJourney(url, title, { source: 'recommender' });
-      },
-      (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-        // Sections other than the recommender declare their own source.
-        return this.openDocsPage(url, title, {
-          source: coerceLaunchSource(packageInfo?.launchSource) ?? 'recommender',
+      (url: string, title: string) => this.openRecommendation(url, title, 'recommender', undefined, true),
+      (url: string, title: string, packageInfo?: PackageOpenInfo) =>
+        this.openRecommendation(
+          url,
+          title,
+          coerceLaunchSource(packageInfo?.launchSource) ?? 'recommender',
           packageInfo,
-        });
-      },
+          Boolean(packageInfo?.packageManifest) ||
+            url.startsWith('bundled:') ||
+            url.startsWith('backend-guide:') ||
+            isPackageContentUrl(url)
+        ),
       () => this.openEditorTab()
     );
 
@@ -259,35 +262,35 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async restoreTabsAsync(options?: { force?: boolean }): Promise<void> {
-    // Guard: only restore once per model lifetime to prevent double-restore race condition
-    // where a second restore (triggered by component remount or React Strict Mode) replaces
-    // tabs that already had content loaded, leaving them in {content: null} blank state.
-    // `force` is reserved for a surface ownership handover: floating/fullscreen own
-    // separate models, so a returning sidebar must re-read the shared workspace.
+    if (this._tabRestorePromise) {
+      return this._tabRestorePromise;
+    }
     if (this._hasRestoredTabs && !options?.force) {
       return;
     }
     this._hasRestoredTabs = true;
+    this._tabRestorePromise = this.restoreTabWorkspace();
+    try {
+      await this._tabRestorePromise;
+    } catch (error) {
+      this._hasRestoredTabs = false;
+      throw error;
+    } finally {
+      this._tabRestorePromise = null;
+    }
+  }
 
-    // Newest write pending when this await starts (see pendingTabStorageWrite).
-    // Saves begun after that are not waited on.
+  private async restoreTabWorkspace(): Promise<void> {
     await pendingTabStorageWrite;
-
-    // `isDevMode` here only widens URL validation (localhost / GitHub raw).
-    // Tab-level gating is applied below, after the storage awaits.
     const { allowDevTools: isDevMode } = resolveTabGates(this.state.pluginConfig);
 
     let restoredTabs = await restoreTabsFromStorage(tabStorage, { isDevMode });
+    restoredTabs = [...restoredTabs.filter((tab) => tab.type !== 'browse'), createBrowseTab()];
     let activeTabId = await restoreActiveTabFromStorage(tabStorage, restoredTabs);
 
-    // Re-resolve: the renderer may have synced the live plugin config while
-    // storage I/O was in flight, and that config outranks the construction
-    // snapshot this model was built from.
     const pruned = this.pruneUnauthorizedGatedTabs(restoredTabs, activeTabId);
     restoredTabs = pruned.tabs;
     activeTabId = pruned.activeTabId;
-    // Keep loaded snapshots for tabs storage still lists at the same id +
-    // currentUrl so a force restore does not refetch every guide.
     restoredTabs = mergeRestoredTabsWithExisting(restoredTabs, this.state.tabs);
 
     this.setState({
@@ -295,7 +298,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       activeTabId,
     });
 
-    // Initialize the active tab if needed (no-op when merge kept content)
     this.initializeRestoredActiveTab();
   }
 
@@ -314,17 +316,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.pruneGatedTabs();
   }
 
-  /**
-   * Remove editor / devtools tabs when their gates are off, so stale tabs
-   * cannot linger in the strip after a role downgrade or a dev-mode flip.
-   *
-   * Gates are derived from this model's own `pluginConfig` — never from flags
-   * a caller computed against a second config source, which is how restore
-   * and the renderer used to disagree.
-   */
   public pruneGatedTabs(): void {
-    const pruned = this.pruneUnauthorizedGatedTabs(this.state.tabs, this.state.activeTabId);
-    if (!pruned.changed) {
+    const tabs =
+      resolveTabGates(this.state.pluginConfig).allowBrowse && !this.state.tabs.some((tab) => tab.type === 'browse')
+        ? [...this.state.tabs, createBrowseTab()]
+        : this.state.tabs;
+    const pruned = this.pruneUnauthorizedGatedTabs(tabs, this.state.activeTabId);
+    if (!pruned.changed && tabs === this.state.tabs) {
       return;
     }
     this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
@@ -333,11 +331,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  /**
-   * Apply the current gates and record them, so a later prune can tell an
-   * observed gate closure apart from a first read of an unresolved config.
-   * Storage is only rewritten for the former — see `didGateClose`.
-   */
   private pruneUnauthorizedGatedTabs(tabs: LearningJourneyTab[], activeTabId: string) {
     const gates = resolveTabGates(this.state.pluginConfig);
     const gateClosed = didGateClose(this._tabGates, gates);
@@ -394,6 +387,38 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     } catch (error) {
       logger.error('Failed to clear persisted tabs', { error });
     }
+  }
+
+  private async openRecommendation(
+    url: string,
+    title: string,
+    source: LaunchSource,
+    packageInfo: PackageOpenInfo | undefined,
+    prepare: boolean
+  ): Promise<void> {
+    const { openGuideInSidebar } = await import('./utils/open-prepared-guide');
+    if (!prepare) {
+      if (panelModeManager.getMode() !== 'sidebar') {
+        openGuideInSidebar({ url, title, source, packageInfo });
+      } else {
+        await this.openDocsPage(url, title, { source, packageInfo });
+      }
+      return;
+    }
+    const scope = `${config.namespace || ''}:${config.bootData?.user?.orgId ?? ''}:${config.bootData?.user?.id ?? ''}`;
+    const { prepareGuideLaunch } = await import('./utils/prepare-guide-launch');
+    const loadContext = beginGuideLoad(url);
+    const result = await prepareGuideLaunch(url, { title, source, packageInfo, loadContext });
+    if (
+      scope !== `${config.namespace || ''}:${config.bootData?.user?.orgId ?? ''}:${config.bootData?.user?.id ?? ''}`
+    ) {
+      finishGuideLoad(loadContext, 'cancelled');
+      return;
+    }
+    if (!result.ok) {
+      throw new Error('unavailable');
+    }
+    openGuideInSidebar(result.launch);
   }
 
   public async openLearningJourney(url: string, title?: string, options?: OpenLearningJourneyOptions): Promise<string> {
@@ -513,7 +538,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       this._pendingLaunchSource = options.source;
     }
     const tab = this.state.tabs.find((t) => t.id === tabId);
-    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+    const needsDocsLoader =
+      isPackageContentUrl(url) || options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
     if (needsDocsLoader) {
       await this.loadDocsTabContent(
         tabId,
@@ -704,13 +730,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public setActiveTab(tabId: string) {
+    if (tabId === BROWSE_TAB_ID) {
+      this.pruneGatedTabs();
+      if (!this.state.tabs.some((tab) => tab.id === BROWSE_TAB_ID)) {
+        return;
+      }
+    }
+    cancelCatalogActivation();
     pauseGuideLoad(this.guideLoads.get(this.state.activeTabId));
     if (!this.state.tabs.find((tab) => tab.id === tabId)?.pendingAlignment) {
       resumeGuideLoad(this.guideLoads.get(tabId));
     }
     this.setState({ activeTabId: tabId });
 
-    // Save active tab to storage
     this.saveTabsToStorage();
 
     // Tabs without a content URL skip the fetch path.
@@ -719,7 +751,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       return;
     }
 
-    // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find((t) => t.id === tabId);
     if (tab && !tab.isLoading && !tab.error && !tab.content) {
       this.loadTab(tabId, tab.currentUrl || tab.baseUrl);
@@ -775,6 +806,44 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         });
       }
     }
+  }
+
+  public async restoreReaderPosition(position: ReaderPosition): Promise<void> {
+    await this.restoreTabsAsync();
+    let tab = this.state.tabs.find((candidate) => candidate.baseUrl === position.doc);
+    if (!tab) {
+      tab = {
+        id: this.generateTabId(),
+        title: 'Learning path',
+        baseUrl: position.doc,
+        currentUrl: position.doc,
+        content: null,
+        isLoading: true,
+        error: null,
+        type: isLearningJourneyUrl(position.doc) ? 'learning-journey' : 'docs',
+      };
+      this.setState({ tabs: [...this.state.tabs, tab] });
+    }
+    const tabId = tab.id;
+    this.setState({ activeTabId: tabId });
+    await this.loadTab(tabId, position.doc);
+    const cover = this.state.tabs.find((candidate) => candidate.id === tabId)?.content;
+    if (!cover) {
+      return;
+    }
+    const selectedTrack = cover.metadata?.learningJourney?.tracks?.find((track) => track.trackId === position.trackId);
+    this.setActiveTrackId(
+      tabId,
+      selectedTrack?.trackId ?? null,
+      selectedTrack?.milestones ?? null,
+      typeof cover.metadata?.packageManifest?.id === 'string' ? cover.metadata.packageManifest.id : undefined
+    );
+    const sequence = resolveActiveMilestoneSequence(cover, selectedTrack?.trackId, selectedTrack?.milestones);
+    const milestone = sequence?.milestones.find((item) => item.url === position.milestoneUrl && !item.isLocked);
+    if (milestone) {
+      await this.loadTab(tabId, milestone.url, { explicitGuideId: milestone.id });
+    }
+    await this.saveTabsToStorage();
   }
 
   public getActiveTab(): LearningJourneyTab | null {
@@ -1064,9 +1133,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Get plugin configuration for dev mode check. `isResolved` distinguishes a
   // known config from "not known yet"; without it an all-defaults config would
   // read as an explicit "dev mode off" and prune authorized tabs.
-  const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig();
+  const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig({
+    refreshOnMount: true,
+  });
 
   const isDevMode = isDevModeEnabled(pluginConfig);
+  const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
 
   const isEditorUser = isCurrentUserEditor();
 
@@ -1185,6 +1257,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Restore tabs after storage is initialized (fixes race condition)
   useTabRestoration({ model, panelMode, tabs });
+  useCatalogBrowserListener(model, panelMode);
 
   // Hand the model the config React resolved and let it re-apply the tab
   // gates. The model owns the derivation, so restore and this pass cannot
@@ -1192,7 +1265,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // config in place rather than stripping tabs on a default-shaped read.
   React.useEffect(() => {
     model.syncPluginConfig(isPluginConfigResolved ? pluginConfig : null);
-  }, [isPluginConfigResolved, pluginConfig, model, tabs]);
+  }, [isPluginConfigResolved, pluginConfig, model, tabs, browseEnabled]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues

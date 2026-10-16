@@ -4,7 +4,7 @@ The Interactive Engine (`src/interactive-engine/`) is responsible for executing 
 
 ## Overview
 
-The Interactive Engine provides the core automation and interaction capabilities for interactive learning guides in Grafana. It powers "Show me" and "Do it" buttons, enabling guides to programmatically demonstrate actions (show mode) or automatically execute them (do mode). The engine handles action execution, element highlighting, navigation management, state coordination, user interaction blocking during automation, and optional auto-detection of user-performed actions.
+The Interactive Engine provides the core automation and interaction capabilities for interactive learning guides in Grafana. It powers "Show me" and "Do it" buttons, enabling guides to programmatically demonstrate actions (show mode) or automatically execute them (do mode). The engine handles action execution, element highlighting, navigation management, state coordination, user interaction blocking during automation, and automatic observation of user-performed actions while a guide is open.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ The Interactive Engine provides the core automation and interaction capabilities
 - **`sequence-manager.ts`** - Coordinates sequential multi-step execution with retry logic
 - **`interactive-state-manager.ts`** - Tracks execution state and dispatches completion events
 - **`global-interaction-blocker.ts`** - Singleton that blocks user interactions during section execution using overlays
-- **`auto-completion/`** - Optional system for detecting and auto-completing user-performed actions
+- **`auto-completion/`** - Passive matchers that let the completion coordinator observe the reader's own actions, plus form value matching and validation
 - **`use-sequential-step-state.hook.ts`** - `useSyncExternalStore`-based hook for subscribing to sequential step state changes
 
 ## Main Hook
@@ -182,47 +182,28 @@ The special `sequence` action type (handled directly in `interactive.hook.ts`) e
 - Automatic cleanup of all resources (observers, listeners, timers) on unblock
 - Uses TimeoutManager singleton to prevent interval stacking and memory leaks
 
-## Auto-Completion System
+## Passive Completion
 
-Located in `src/interactive-engine/auto-completion/`, this optional subsystem automatically detects and completes steps when users manually perform actions. **Disabled by default** - must be enabled in Plugin Configuration.
+Opening a guide observes user actions without any assistance. The renderer-owned `CompletionCoordinator` (`src/global-state/observation/coordinator.ts`) decides completion; this engine supplies the DOM matching it uses. `docs/developer/STEP_MODEL.md` describes the coordinator.
 
 ### Components
 
-- **`action-monitor.ts`** - Singleton that registers global DOM event listeners (click, input, change, mouseenter, keydown)
-- **`action-detector.ts`** (in `src/lib/dom/`) - Analyzes DOM elements and events to determine action type (highlight, button, formfill, navigate, hover). Shared with devtools and selector generator.
-- **`action-matcher.ts`** - Matches detected user actions against step configurations using CSS selectors, button text, or regex patterns
-- **`useAutoDetection.ts`** - React hook that subscribes to `user-action-detected` events and auto-completes matching steps
-- **`useFormValidation.ts`** - Debounced form validation hook with regex pattern matching support
-
-### Action Detection Logic
-
-The action detector (`src/lib/dom/action-detector.ts`) determines action type based on element characteristics and available selectors:
-
-- **formfill**: Input fields, textareas, selects. Radio and checkbox inputs are driven by a real click (React wires `onChange` for them to the click event), and only when the current state differs from the requested one.
-- **button**: Buttons identified by text content (text matching heuristic when no unique selector is available)
-- **highlight**: Clickable elements and buttons with `data-testid` or other unique selectors (uses CSS selector matching)
-- **navigate**: External links (href starts with `http`)
-- **hover**: Elements triggered by mouseenter events
-
-The detector also extracts selectors (`data-testid`, `id`, `aria-label`), finds interactive parent elements, and checks focusability to build a complete action descriptor.
+- **`auto-completion/passive-action.ts`** - Capture-phase `click`, `input`, `change`, and `mouseover` listeners plus navigation listeners. `matchesPassiveAction` rejects an event whose type the action cannot use before it resolves any element, ignores events inside the guide itself, and compares formfill values with `matchFormValue`. Shortly after each click, key, input or change, `matchesFormfillState` also reads what the formfill target currently shows — the typed value, a native select's option text, or, for a combobox, the selection a picker renders as its placeholder or beside its cleared input — so choosing the value from a dropdown counts the same as typing it.
+- **`action-detector.ts`** (in `src/lib/dom/`) - Analyzes DOM elements and events to determine action type. Shared with devtools and the selector generator.
+- **`auto-completion/action-matcher.ts`** - Regex and exact form value matching (`matchFormValue`).
+- **`auto-completion/resolve-target-element.ts`** - Resolves a step's target element for form validation.
+- **`auto-completion/useFormValidation.ts`** - Debounced form validation hook with regex pattern matching support.
 
 ### How It Works
 
-1. User performs action in Grafana UI (e.g., clicks button, fills form)
-2. ActionMonitor detects event and extracts element/action information
-3. ActionMonitor dispatches `user-action-detected` custom event
-4. Components using `useAutoDetection` receive event and check if it matches their step config
-5. If match found, step is automatically marked complete
-6. Includes debouncing to prevent duplicate completions from rapid interactions
+1. The coordinator registers every guided, multistep, and interactive block in the active branch, including children of collapsed sections.
+2. A user action reaches `matchesPassiveAction` for each eligible block without objectives, against the next required action only.
+3. A match advances that block's ordered action cursor; a later action never implies an earlier one. One action advances one block. When several blocks wait on the same action, it goes to the earliest in guide order, unless the reader has started a later section this session (an observed action, partial progress, assistance or a skip there), in which case it goes to the earliest started block. A section reset clears that section's started state.
+4. When the cursor reaches the end, the coordinator applies `verify` (or the objectives, when authored) and records completion with reason `observed`.
+5. No evidence is recorded while any block is executing, so assistance clicks are never mistaken for manual actions.
+6. Objective checks use the configured `requirementsCheckTimeout`. A timeout or abort preserves the last known waiting reason and releases the in-flight entry so a later recheck can retry.
 
-### Features
-
-- Reference-counted enable/disable for multi-section coordination
-- Force-disable mode during section execution to prevent auto-completion interference
-- Intelligent element filtering (excludes debug panels, wysiwyg editor)
-- Regex pattern matching for flexible form value validation
-- Action queue with max size limit to prevent memory issues
-- CSS selector detection vs text matching heuristics
+In a paired pop-out, `src/integrations/cross-tab/passive-observer.ts` runs the same matchers in the live Grafana tab and reports identifiers only.
 
 ## Integration Points
 
@@ -287,19 +268,6 @@ Custom DOM event `interactive-action-completed` dispatched with:
 {
   data: InteractiveElementData, // Step configuration
   state: 'completed' | 'error'  // Final state
-}
-```
-
-### User Action Events (Auto-completion)
-
-Custom DOM event `user-action-detected` dispatched with:
-
-```typescript
-{
-  element: HTMLElement,        // Target element
-  action: DetectedAction,      // Action type
-  value?: string,              // Form value if applicable
-  timestamp: number            // Event timestamp
 }
 ```
 
@@ -400,8 +368,8 @@ Located in `src/constants/interactive-config.ts`:
 
 **Constraints**:
 
-- Auto-completion must be disabled by default and opt-in via Plugin Configuration — it is an experimental feature that intercepts user events globally (from [Auto-Completion System](#auto-completion-system) above; `NOTE` in `action-monitor.ts`)
-- Auto-completion must be force-disabled during automated section execution to prevent interference between the automation and the detection system (from [Auto-Completion System](#auto-completion-system) above)
+- Passive completion is on by default but must stay switchable: per tenant with `enableAutoDetection: false`, fleet-wide with the `pathfinder.passive-completion` flag. Off, the renderer provides no coordinator (from [Passive Completion](#passive-completion) above)
+- Passive completion must record no evidence while any block is executing, so automation is never mistaken for the reader's own actions (from [Passive Completion](#passive-completion) above)
 - Hover state is intentionally persisted until explicit cleanup — subsequent actions may need to interact with hover-revealed elements (from code comment in `hover-handler.ts`)
 - An emergency unblock method must always be available — if the interaction blocker enters an invalid state, users must have an escape hatch (from [Interactive State Manager](#interactive-state-manager) and [Global Interaction Blocker](#global-interaction-blocker) above)
 - External URLs in the navigate handler must be validated via `parseUrlSafely` to block `javascript:` and `data:` scheme injection (from [Handler Types](#handler-types) above)
@@ -414,7 +382,7 @@ Located in `src/constants/interactive-config.ts`:
 **Key tradeoffs**:
 
 - Three separate overlay types (content, header, full-screen) over a single full-screen overlay, because Grafana's layout has distinct regions requiring targeted blocking while keeping modal detection responsive (from [Global Interaction Blocker](#global-interaction-blocker) above)
-- Custom DOM events (`interactive-action-completed`, `user-action-detected`) over React state propagation, because completion events need to cross component boundaries without prop drilling (from [Data Collected and Events](#data-collected-and-events) above)
+- Custom DOM events (`interactive-action-completed`) over React state propagation, because completion events need to cross component boundaries without prop drilling (from [Data Collected and Events](#data-collected-and-events) above)
 - CSS selector matching over text matching as the primary element targeting strategy, because selectors are more stable across UI changes — text matching is used as a fallback for buttons (from [Handler Types](#handler-types) above)
 
 **Stability**: evolving

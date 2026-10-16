@@ -263,6 +263,27 @@
       "type": "int64",
       "wire": "integer",
       "omitempty": false
+    },
+    {
+      "field": "LatestDurationSeconds",
+      "json": "latestDurationSeconds",
+      "type": "int64",
+      "wire": "integer",
+      "omitempty": true
+    },
+    {
+      "field": "LastRecordedAt",
+      "json": "lastRecordedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "LatestAttemptStartedAt",
+      "json": "latestAttemptStartedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
     }
   ],
   "completionCapability": [
@@ -642,6 +663,13 @@
       "type": "string",
       "wire": "string",
       "omitempty": false
+    },
+    {
+      "field": "AttemptStartedAt",
+      "json": "attemptStartedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
     }
   ],
   "myAssignmentsResponse": [

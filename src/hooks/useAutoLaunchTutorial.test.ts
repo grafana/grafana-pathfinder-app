@@ -10,7 +10,7 @@
 
 import { renderHook } from '@testing-library/react';
 import { useAutoLaunchTutorial, type AutoLaunchPanel } from './useAutoLaunchTutorial';
-import { autoLaunchChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
+import { autoLaunchChannel, readerReturnChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
 
 function makePanel() {
   return {
@@ -32,6 +32,15 @@ describe('useAutoLaunchTutorial', () => {
     // Drain any value latched by a test that emitted while unsubscribed so it
     // cannot leak into the next test's mount.
     autoLaunchChannel.subscribe(() => {})();
+  });
+
+  it('restores a reader position queued before the sidebar mounts', () => {
+    const position = { doc: 'backend-guide:path', milestoneUrl: 'backend-guide:three', trackId: 'builder' };
+    readerReturnChannel.emit(position);
+    const panel = { ...makePanel(), restoreReaderPosition: jest.fn() };
+    renderHook(() => useAutoLaunchTutorial(panel));
+    expect(panel.restoreReaderPosition).toHaveBeenCalledWith(position);
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
   });
 
   it('delivers a launch emitted before the hook mounts (latched replay, race fix)', () => {
@@ -93,11 +102,8 @@ describe('useAutoLaunchTutorial', () => {
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
   });
 
-  it('passes the highlighted_guide_experiment source through as a typed LaunchSource', () => {
-    // Regression for the highlighted-guide auto-launch wiring: the orchestrator
-    // dispatches `auto-launch-tutorial` with `source: 'highlighted_guide_experiment'`,
-    // which must round-trip through `coerceLaunchSource` (not get dropped to
-    // undefined like an unknown literal would).
+  it('passes the auto_open_guide_experiment source through as a typed LaunchSource', () => {
+    // An unknown literal would be coerced to undefined and lose the experiment's attribution.
     const panel = makePanel();
     renderHook(() => useAutoLaunchTutorial(asPanel(panel)));
 
@@ -105,13 +111,13 @@ describe('useAutoLaunchTutorial', () => {
       url: 'bundled:onboarding',
       title: 'Onboarding',
       type: 'docs-page',
-      source: 'highlighted_guide_experiment',
+      source: 'auto_open_guide_experiment',
     });
 
     expect(panel.openDocsPage).toHaveBeenCalledWith(
       'bundled:onboarding',
       'Onboarding',
-      expect.objectContaining({ source: 'highlighted_guide_experiment' })
+      expect.objectContaining({ source: 'auto_open_guide_experiment' })
     );
   });
 

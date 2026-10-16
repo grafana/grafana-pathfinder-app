@@ -521,7 +521,7 @@ export const JsonInteractiveBlockSchema = z
 The excerpt stops at the object literal; the `.refine()` chain that follows supplies the `Constraints:` block in `--help`, not option descriptions. `objectivesDescription` is a generator so the block, section and conditional-branch surfaces cannot drift apart — for a block it resolves to:
 
 ```text
-Conditions that automatically complete this block, in the same vocabulary as `requirements`. Checked first, before eligibility and requirements, so a block whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a block that creates one). Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.
+Conditions that automatically complete this block, in the same vocabulary as `requirements`. Every objective must be satisfied for completion, including after assistance. Checked first, before eligibility and requirements, so a block whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a block that creates one). Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.
 ```
 
 Fields without `.describe()` fall back to a generic description derived from the field name and type (e.g., `"scrollContainer (string, optional)"`). Descriptions should be added incrementally — start with the most commonly used block types and expand over time.

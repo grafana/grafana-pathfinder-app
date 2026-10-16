@@ -131,6 +131,16 @@ export async function waitForCompletion(
     await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
   }
 
+  const finalState = await stepLocator.getAttribute('data-test-step-state', { timeout: 2000 }).catch(() => null);
+  if (finalState === 'waiting') {
+    const reason = await page
+      .getByTestId(testIds.interactive.completionWaiting(stepId))
+      .textContent({ timeout: 1000 })
+      .catch(() => null);
+    throw new Error(
+      `Step ${stepId} is waiting for completion after ${timeout}ms: ${reason?.trim() || 'objectives remain unmet'}`
+    );
+  }
   await expect(stepLocator).toHaveAttribute('data-test-step-state', 'completed', { timeout: 1000 });
   return { completedViaObjectives: false };
 }

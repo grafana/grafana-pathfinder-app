@@ -202,6 +202,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.provides = manifest.provides?.length ? manifest.provides : undefined;
     entry.conflicts = manifest.conflicts?.length ? manifest.conflicts : undefined;
     entry.replaces = manifest.replaces?.length ? manifest.replaces : undefined;
+    entry.prerequisites = manifest.prerequisites?.length ? manifest.prerequisites : undefined;
     entry.targeting = manifest.targeting;
     entry.testEnvironment = manifest.testEnvironment;
     // Named, so extension forwarding skips it — same trap the stats line below

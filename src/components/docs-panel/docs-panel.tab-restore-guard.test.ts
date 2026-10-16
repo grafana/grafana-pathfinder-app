@@ -1,3 +1,4 @@
+jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => true), useBooleanFlag: () => true }));
 /**
  * Tests for CombinedLearningJourneyPanel tab restoration guard.
  *
@@ -61,6 +62,8 @@ jest.mock('./context-panel', () => ({
 
 jest.mock('../../docs-retrieval', () => ({
   fetchContent: jest.fn(),
+  resolveActiveMilestoneSequence: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneSequence,
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
@@ -233,6 +236,8 @@ jest.mock('../../hooks', () => ({}));
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { tabStorage } from '../../lib/user-storage';
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
+import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -273,6 +278,7 @@ function setupRestoreMocks() {
 describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(true);
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
@@ -284,7 +290,7 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
     expect((panel as any).state.activeTabId).toBe('tab-guide-1');
-    expect((panel as any).state.tabs).toHaveLength(2);
+    expect((panel as any).state.tabs).toHaveLength(3);
     expect((panel as any).state.tabs[1].id).toBe('tab-guide-1');
   });
 
@@ -295,6 +301,37 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     await panel.restoreTabsAsync();
 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps concurrent callers waiting until the shared workspace has finished restoring', async () => {
+    let finish!: (tabs: typeof RESTORED_TABS) => void;
+    mockRestoreTabsFromStorage.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const panel = new CombinedLearningJourneyPanel();
+    const first = panel.restoreTabsAsync();
+    let secondFinished = false;
+    const second = panel.restoreTabsAsync().then(() => {
+      secondFinished = true;
+    });
+    await Promise.resolve();
+    expect(secondFinished).toBe(false);
+    finish(RESTORED_TABS);
+    await Promise.all([first, second]);
+    expect(secondFinished).toBe(true);
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
+    expect(panel.state.activeTabId).toBe('tab-guide-1');
+  });
+
+  it('allows restoration to retry after storage rejects', async () => {
+    mockRestoreTabsFromStorage.mockRejectedValueOnce(new Error('storage unavailable'));
+    const panel = new CombinedLearningJourneyPanel();
+    await expect(panel.restoreTabsAsync()).rejects.toThrow('storage unavailable');
+    await panel.restoreTabsAsync();
+    expect(panel.state.activeTabId).toBe('tab-guide-1');
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
   });
 
   it('force-refreshes an existing model after another surface updates storage', async () => {
@@ -347,6 +384,60 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect(guide.title).toBe('Renamed in full screen');
     expect(guide.content).toBe(loadedContent);
     expect(guide.pathContext).toEqual({ learningJourney: { milestones: [] } });
+  });
+
+  it('keeps the resolved interactive type when a guide finishes loading during restoration', async () => {
+    const url = 'bundled:welcome-to-grafana';
+    const tab: LearningJourneyTab = {
+      id: 'startup-guide',
+      title: 'Welcome to Grafana',
+      baseUrl: url,
+      currentUrl: url,
+      type: 'docs',
+      content: null,
+      isLoading: true,
+      error: null,
+    };
+    let finishActiveTabRead!: (id: string) => void;
+    let signalSnapshotRead!: () => void;
+    const snapshotRead = new Promise<void>((resolve) => {
+      signalSnapshotRead = resolve;
+    });
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([RESTORED_TABS[0], { ...tab }]);
+    mockRestoreActiveTabFromStorage.mockImplementationOnce(() => {
+      signalSnapshotRead();
+      return new Promise<string>((resolve) => {
+        finishActiveTabRead = resolve;
+      });
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [panel.state.tabs[0]!, tab], activeTabId: tab.id });
+    const restore = panel.restoreTabsAsync();
+    await snapshotRead;
+
+    (shouldUseDocsLoader as jest.Mock).mockReturnValueOnce(true);
+    (loadDocsTabContentResult as jest.Mock).mockResolvedValueOnce({
+      content: {
+        content: '# Welcome to Grafana',
+        metadata: { title: tab.title },
+        type: 'interactive',
+        url,
+        lastFetched: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    await panel.loadTab(tab.id, url, { source: 'url_param' });
+    const loaded = panel.state.tabs.find((candidate) => candidate.id === tab.id)!;
+    expect(loaded.type).toBe('interactive');
+
+    finishActiveTabRead(tab.id);
+    await restore;
+
+    const restored = panel.state.tabs.find((candidate) => candidate.id === tab.id)!;
+    expect(restored.type).toBe('interactive');
+    expect(restored.content).toBe(loaded.content);
+    expect(restored.isLoading).toBe(false);
+    expect(panel.state.activeTabId).toBe(tab.id);
+    expect(loadDocsTabContentResult).toHaveBeenCalledTimes(1);
   });
 
   it('drops in-memory content on force restore when currentUrl changed in storage', async () => {
@@ -426,7 +517,7 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     // The fix (instance-level guard) lets panelB restore independently.
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
     expect((panelB as any).state.activeTabId).toBe('tab-guide-1');
-    expect((panelB as any).state.tabs).toHaveLength(2);
+    expect((panelB as any).state.tabs).toHaveLength(3);
     expect((panelB as any).state.tabs[1].id).toBe('tab-guide-1');
   });
 
@@ -533,6 +624,7 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(true);
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
@@ -614,4 +706,96 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
     expect((panel as any).state.activeTabId).toBe('recommendations');
     expect(tabStorage.setTabs).toHaveBeenCalled();
   });
+});
+
+describe('Browse feature gate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    setupRestoreMocks();
+  });
+
+  it('restores Recommendations instead of a saved Browse tab when disabled', async () => {
+    jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(false);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('browse');
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    expect(panel.state.activeTabId).toBe('recommendations');
+    expect(panel.state.tabs.some((tab) => tab.type === 'browse')).toBe(false);
+  });
+
+  it('ignores a pending Browse activation after the feature has been disabled', () => {
+    jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(false);
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setActiveTab('browse');
+    expect(panel.state.activeTabId).toBe('recommendations');
+    expect(panel.state.tabs.some((tab) => tab.type === 'browse')).toBe(false);
+  });
+
+  it('persists the fallback when Browse closes and recreates navigation when enabled', async () => {
+    const { getFeatureFlagValue } = jest.requireMock('../../utils/openfeature');
+    getFeatureFlagValue.mockReturnValue(true);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('browse');
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    expect(panel.state.activeTabId).toBe('browse');
+    getFeatureFlagValue.mockReturnValue(false);
+    panel.pruneGatedTabs();
+    expect(panel.state.activeTabId).toBe('recommendations');
+    expect(panel.state.tabs.some((tab) => tab.type === 'browse')).toBe(false);
+    await panel.saveTabsToStorage();
+    expect(jest.requireMock('../../lib/user-storage').tabStorage.setActiveTab).toHaveBeenCalledWith('recommendations');
+    getFeatureFlagValue.mockReturnValue(true);
+    panel.pruneGatedTabs();
+    expect(panel.state.tabs.filter((tab) => tab.type === 'browse')).toHaveLength(1);
+    expect(panel.state.activeTabId).toBe('recommendations');
+  });
+});
+
+describe('reader return position', () => {
+  it.each(['backend-guide:three', 'backend-guide:unknown', 'backend-guide:locked', 'backend-guide:path'])(
+    'restores only a valid unlocked milestone from the selected track (%s)',
+    async (milestoneUrl) => {
+      const panel = new CombinedLearningJourneyPanel();
+      const doc = 'backend-guide:path';
+      const milestones = [
+        { id: 'three', url: 'backend-guide:three', title: 'Third' },
+        { id: 'locked', url: 'backend-guide:locked', title: 'Locked', isLocked: true },
+      ];
+      jest.spyOn(panel, 'restoreTabsAsync').mockResolvedValue();
+      panel.setState({ tabs: [{ ...RESTORED_TABS[1]!, id: 'path-tab', baseUrl: doc, type: 'learning-journey' }] });
+      const load = jest.spyOn(panel, 'loadTab').mockImplementation(async () => {
+        panel.setState({
+          tabs: panel.state.tabs.map((tab) => ({
+            ...tab,
+            content: {
+              url: doc,
+              type: 'learning-journey',
+              content: '',
+              title: 'Path',
+              metadata: {
+                packageManifest: { id: 'path', type: 'path' },
+                learningJourney: {
+                  baseUrl: doc,
+                  currentMilestone: 0,
+                  milestones: [],
+                  tracks: [{ trackId: 'builder', milestones }],
+                },
+              },
+            } as any,
+          })),
+        });
+      });
+      await panel.restoreReaderPosition({ doc, milestoneUrl, trackId: 'builder' });
+      expect(panel.state.tabs).toHaveLength(1);
+      expect(panel.state.activeTabId).toBe('path-tab');
+      expect(panel.state.tabs[0]?.activeTrackId).toBe('builder');
+      expect(load).toHaveBeenNthCalledWith(1, 'path-tab', doc);
+      if (milestoneUrl === 'backend-guide:three') {
+        expect(load).toHaveBeenNthCalledWith(2, 'path-tab', milestoneUrl, { explicitGuideId: 'three' });
+      } else {
+        expect(load).toHaveBeenCalledTimes(1);
+      }
+    }
+  );
 });
