@@ -22,6 +22,12 @@ import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
+jest.mock('@grafana/runtime', () => ({ config: { appSubUrl: '' } }));
+
+jest.mock('../../../hooks', () => ({
+  usePathfinderPluginConfig: () => ({ config: { enableTwoTabController: true } }),
+}));
+
 const reportAppInteractionMock = jest.fn();
 const markMilestoneDoneMock = jest.fn();
 const journeyMilestonePercentagesMock = jest.fn();
@@ -184,6 +190,17 @@ beforeEach(() => {
 });
 
 describe('LearningJourneyMilestoneToolbar', () => {
+  it('opens the owning path in a paired interactive window', () => {
+    const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+    renderToolbar();
+    fireEvent.click(screen.getByTestId(testIds.docsPanel.openControllerTabButton));
+    const url = new URL(String(open.mock.calls[0]?.[0]));
+    expect(url.searchParams.get('doc')).toBe('https://grafana.com/docs/learning-journeys/foo-canonical');
+    expect(url.searchParams.get('controller')).toBe('1');
+    expect(url.hash).toContain('pairing_id=');
+    open.mockRestore();
+  });
+
   it('returns null when the active tab is not a learning-journey (consumer renders unconditionally)', () => {
     const docsTab = makeJourneyTab({ type: 'docs', content: null });
     const { container } = renderToolbar({ activeTab: docsTab });

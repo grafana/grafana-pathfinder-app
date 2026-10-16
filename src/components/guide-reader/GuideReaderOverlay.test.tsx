@@ -2,12 +2,12 @@ import React from 'react';
 import { render, renderHook, screen, fireEvent, act } from '@testing-library/react';
 import { GuideReaderOverlay } from './GuideReaderOverlay';
 import { testIds } from '../../constants/testIds';
-import { fetchUnifiedContent } from '../../docs-retrieval';
+import { fetchUnifiedContent, fetchPackageContent } from '../../docs-retrieval';
 import { recordGuideRender } from '../../lib/telemetry/facade';
 import { getActiveTabUrl } from '../../global-state/content-key';
 import { findDocPage } from '../../utils/find-doc-page';
 import { useGlobalActiveTabExposure } from '../docs-panel/hooks/useGlobalActiveTabExposure';
-import type { ContentFetchResult, RawContent } from '../../types/content.types';
+import type { ContentFetchResult, Milestone, RawContent } from '../../types/content.types';
 
 jest.mock('../../lib/telemetry/facade', () => ({
   ...jest.requireActual('../../lib/telemetry/facade'),
@@ -20,7 +20,9 @@ jest.mock('../../lib/faro', () => ({
 }));
 
 jest.mock('../../docs-retrieval', () => ({
+  ...jest.requireActual('../../docs-retrieval'),
   fetchUnifiedContent: jest.fn(),
+  fetchPackageContent: jest.fn(),
 }));
 
 // Feature provider needs no real OpenFeature client for this test.
@@ -33,12 +35,32 @@ jest.mock('../OpenFeatureProvider', () => ({
 // internals (covered by its own suite).
 const mockRenderedCompletions: unknown[] = [];
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: ({ content, completion }: { content: RawContent; completion: unknown }) => {
+  ContentRenderer: ({
+    content,
+    completion,
+    onActiveTrackChange,
+  }: {
+    content: RawContent;
+    completion: unknown;
+    onActiveTrackChange?: (id: string | null, milestones: Milestone[] | null) => void;
+  }) => {
     const { useInteractiveMode } = require('../../global-state/interactive-mode-context');
     mockRenderedCompletions.push(completion);
     return (
       <div data-testid="mock-content" data-load-id={content.loadContext?.loadId}>
         mode:{useInteractiveMode()}
+        <button
+          onClick={() =>
+            onActiveTrackChange?.('alternate', [
+              { id: 'alternate', number: 1, title: 'Alternate', url: 'backend-guide:alternate', isActive: false },
+            ])
+          }
+        >
+          Choose track
+        </button>
+        <button data-journey-start="true" data-milestone-url="backend-guide:step-1">
+          Get started
+        </button>
       </div>
     );
   },
@@ -160,6 +182,114 @@ describe('GuideReaderOverlay', () => {
 
     const content = await screen.findByTestId('mock-content');
     expect(content).toHaveTextContent('mode:interactive');
+  });
+
+  it('loads backend path metadata and navigates from its cover through milestones and back', async () => {
+    const manifest = { id: 'path', type: 'path', repository: 'app-platform', milestones: ['step-1', 'step-2'] };
+    const milestones = [1, 2].map((number) => ({
+      number,
+      id: `step-${number}`,
+      title: `Step ${number}`,
+      url: `backend-guide:step-${number}`,
+      isActive: false,
+    }));
+    const page = (currentMilestone: number): RawContent => ({
+      url: currentMilestone ? `backend-guide:step-${currentMilestone}` : 'backend-guide:path',
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        title: 'Path',
+        packageManifest: manifest,
+        repository: 'app-platform',
+        learningJourney: { baseUrl: 'backend-guide:path', currentMilestone, totalMilestones: 2, milestones },
+      },
+    });
+    mockFetchContent.mockResolvedValue({ content: page(0) });
+    const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+    packageFetch.mockImplementation(async (url) => ({
+      content: page(url === 'backend-guide:path' ? 0 : Number(url.slice(-1))),
+    }));
+    render(<GuideReaderOverlay doc="backend-guide:path" mode="controller" />);
+    await screen.findByTestId('mock-content');
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Get started' }));
+    await screen.findByTestId('mock-content');
+    expect(packageFetch).toHaveBeenLastCalledWith(
+      'backend-guide:step-1',
+      manifest,
+      milestones,
+      'app-platform',
+      undefined,
+      'step-1',
+      'backend-guide:path',
+      expect.any(Object)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByTestId('mock-content');
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(screen.getByTestId('mock-content')).toHaveTextContent('mode:controller');
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    await screen.findByTestId('mock-content');
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    await screen.findByTestId('mock-content');
+    expect(packageFetch).toHaveBeenLastCalledWith(
+      'backend-guide:path',
+      manifest,
+      milestones,
+      'app-platform',
+      undefined,
+      undefined,
+      'backend-guide:path',
+      expect.any(Object)
+    );
+  });
+
+  it('uses the selected track for arrow navigation', async () => {
+    const milestone = {
+      id: 'alternate',
+      number: 1,
+      title: 'Alternate',
+      url: 'backend-guide:alternate',
+      isActive: false,
+    };
+    const manifest = { id: 'path', type: 'path' };
+    const content: RawContent = {
+      url: 'backend-guide:path',
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        title: 'Path',
+        packageManifest: manifest,
+        repository: 'app-platform',
+        learningJourney: {
+          baseUrl: 'backend-guide:path',
+          currentMilestone: 0,
+          totalMilestones: 0,
+          milestones: [],
+          tracks: [{ trackId: 'alternate', label: 'Alternate', milestones: [milestone] }],
+        },
+      },
+    };
+    mockFetchContent.mockResolvedValue({ content });
+    const packageFetch = fetchPackageContent as jest.MockedFunction<typeof fetchPackageContent>;
+    packageFetch.mockResolvedValue({ content });
+    render(<GuideReaderOverlay doc="backend-guide:path" mode="controller" />);
+    await screen.findByTestId('mock-content');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose track' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByTestId('mock-content');
+    expect(packageFetch).toHaveBeenLastCalledWith(
+      'backend-guide:alternate',
+      manifest,
+      [],
+      'app-platform',
+      undefined,
+      'alternate',
+      'backend-guide:path',
+      expect.any(Object)
+    );
   });
 
   it('closes the tab when the close button is clicked', async () => {

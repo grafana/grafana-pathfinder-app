@@ -21,7 +21,7 @@ export function pickControllerTabOpenAction(
   url: string | undefined,
   tabType: LearningJourneyTab['type']
 ): ControllerTabOpenAction {
-  if (!url || tabType !== 'interactive') {
+  if (!url || (tabType !== 'interactive' && tabType !== 'learning-journey')) {
     return { shouldShow: false };
   }
   return { shouldShow: true, createControllerUrl: () => buildControllerTabUrl(url, createControllerPairingLaunch()) };

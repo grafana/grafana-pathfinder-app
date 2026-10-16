@@ -3,10 +3,18 @@ import { createPortal } from 'react-dom';
 import { cx } from '@emotion/css';
 import { ThemeContext } from '@grafana/data';
 import { config } from '@grafana/runtime';
-import { Icon, useStyles2 } from '@grafana/ui';
+import { Button, Icon, useStyles2 } from '@grafana/ui';
 
 import { ContentRenderer } from '../content-renderer/content-renderer';
-import { fetchUnifiedContent } from '../../docs-retrieval';
+import {
+  fetchUnifiedContent,
+  resolveActiveMilestoneSequence,
+  fetchPackageContent,
+  getNextMilestoneUrlFromContent,
+  getPreviousMilestoneUrlFromContent,
+  getNextMilestoneIdFromContent,
+  getPreviousMilestoneIdFromContent,
+} from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -16,7 +24,7 @@ import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { testIds } from '../../constants/testIds';
 import { useDocumentOutline, useActiveOutlineItem, usePublishSurfaceContentKey } from '../../hooks';
 import { findDocPage } from '../../utils/find-doc-page';
-import type { RawContent } from '../../types/content.types';
+import type { Milestone, RawContent } from '../../types/content.types';
 import type { ControllerPairingLaunch } from '../../lib/pairing-manager';
 import { getGuideReaderStyles } from './guide-reader.styles';
 import { OutlineRail } from './OutlineRail';
@@ -84,7 +92,7 @@ export const GuideReaderOverlay: React.FC<GuideReaderOverlayProps> = ({
   return (
     <ThemeContext.Provider value={theme}>
       <PathfinderFeatureProvider>
-        <GuideReaderInner doc={doc} mode={mode} controllerPairing={controllerPairing ?? null} />
+        <GuideReaderInner key={doc} doc={doc} mode={mode} controllerPairing={controllerPairing ?? null} />
       </PathfinderFeatureProvider>
     </ThemeContext.Provider>
   );
@@ -107,6 +115,18 @@ function GuideReaderInner({
   const backdropRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [content, setContent] = useState<RawContent | null>(null);
+  const [navigation, setNavigation] = useState<{
+    url: string;
+    manifest?: Record<string, unknown>;
+    milestones?: Milestone[];
+    repository?: string;
+    baseUrl?: string;
+    guideId?: string;
+  }>({ url: doc });
+  const [track, setTrack] = useState<{ id: string | null; milestones: Milestone[] | null }>({
+    id: null,
+    milestones: null,
+  });
   const [error, setError] = useState<string | null>(null);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [contentReady, setContentReady] = useState(false);
@@ -114,14 +134,38 @@ function GuideReaderInner({
   const outlineItems = useDocumentOutline(contentRef, content?.url ?? null, contentReady);
   const { activeId, notifyJump } = useActiveOutlineItem(outlineItems, contentRef, backdropRef);
 
-  // Reset during render (not in an effect) when `doc` changes, so a new guide never
-  // briefly shows the outline extracted from the previous one.
-  const [trackedDoc, setTrackedDoc] = useState(doc);
-  if (doc !== trackedDoc) {
-    setTrackedDoc(doc);
+  const handleTrackChange = useCallback((id: string | null, milestones: Milestone[] | null) => {
+    setTrack({ id, milestones });
+  }, []);
+  const navigate = (url: string, guideId?: string) => {
+    if (!content) {
+      return;
+    }
+    setNavigation({
+      url,
+      guideId,
+      manifest: content.metadata?.journeyManifest ?? content.metadata?.packageManifest,
+      milestones: content.metadata?.learningJourney?.milestones ?? navigation.milestones,
+      repository: content.metadata?.repository ?? navigation.repository,
+      baseUrl: content.metadata?.learningJourney?.baseUrl ?? navigation.baseUrl,
+    });
+    setContent(null);
+    setError(null);
     setContentReady(false);
-  }
-
+    backdropRef.current?.scrollTo?.(0, 0);
+  };
+  const nextUrl = content ? getNextMilestoneUrlFromContent(content, track.id, track.milestones) : null;
+  const previousUrl = content ? getPreviousMilestoneUrlFromContent(content, track.id, track.milestones) : null;
+  const navigateNext = () => {
+    if (content && nextUrl) {
+      navigate(nextUrl, getNextMilestoneIdFromContent(content, track.id, track.milestones));
+    }
+  };
+  const navigatePrevious = () => {
+    if (content && previousUrl) {
+      navigate(previousUrl, getPreviousMilestoneIdFromContent(content, track.id, track.milestones));
+    }
+  };
   const handleClose = useCallback(() => {
     window.close();
     // window.close() only closes tabs the script itself opened; for a bookmarked
@@ -142,8 +186,37 @@ function GuideReaderInner({
 
   useEffect(() => {
     let cancelled = false;
-    const loadContext = beginGuideLoad(doc);
-    fetchUnifiedContent(doc, { loadContext })
+    const loadContext = beginGuideLoad(navigation.url);
+    const load = async () => {
+      if (navigation.manifest) {
+        return fetchPackageContent(
+          navigation.url,
+          navigation.manifest,
+          navigation.milestones,
+          navigation.repository,
+          undefined,
+          navigation.guideId,
+          navigation.baseUrl,
+          loadContext
+        );
+      }
+      const result = await fetchUnifiedContent(navigation.url, { loadContext });
+      const manifest = result.content?.metadata?.packageManifest;
+      if (manifest?.type === 'path' || manifest?.type === 'journey') {
+        return fetchPackageContent(
+          navigation.url,
+          manifest,
+          undefined,
+          result.content?.metadata.repository,
+          result,
+          undefined,
+          undefined,
+          loadContext
+        );
+      }
+      return result;
+    };
+    load()
       .then((result) => {
         if (cancelled) {
           return;
@@ -170,7 +243,7 @@ function GuideReaderInner({
       cancelled = true;
       finishGuideLoad(loadContext, 'cancelled');
     };
-  }, [doc]);
+  }, [navigation]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -204,12 +277,41 @@ function GuideReaderInner({
 
   const body =
     surfaceCompletionInput && content ? (
-      <div ref={contentRef}>
+      <div
+        ref={contentRef}
+        onClick={(event) => {
+          const target = (event.target as Element).closest('[data-journey-start="true"]');
+          if (!target) {
+            return;
+          }
+          event.preventDefault();
+          const sequence = resolveActiveMilestoneSequence(content, track.id, track.milestones);
+          const milestone = sequence?.milestones.find(
+            (item) => item.url === target.getAttribute('data-milestone-url') && !item.isLocked
+          );
+          if (milestone) {
+            navigate(milestone.url, milestone.id);
+          }
+        }}
+      >
+        {(nextUrl || previousUrl) && (
+          <nav className={styles.milestoneNavigation} aria-label="Learning path navigation">
+            <Button icon="arrow-left" variant="secondary" disabled={!previousUrl} onClick={navigatePrevious}>
+              Previous
+            </Button>
+            <Button icon="arrow-right" variant="secondary" disabled={!nextUrl} onClick={navigateNext}>
+              Next
+            </Button>
+          </nav>
+        )}
         <ContentRenderer
           content={content}
           containerRef={contentRef}
           className={contentClassName}
           onContentReady={handleContentReady}
+          onActiveTrackChange={handleTrackChange}
+          initialActiveTrackId={track.id}
+          onContinueToNextMilestone={nextUrl ? navigateNext : undefined}
           completion={{ kind: 'tracked', input: surfaceCompletionInput }}
         />
       </div>
@@ -249,18 +351,16 @@ function GuideReaderInner({
               Loading guide...
             </div>
           )}
-          {body && (
-            <InteractiveModeContext.Provider value={mode}>
-              {mode === 'controller' ? (
-                <ControllerChannelProvider pairing={controllerPairing}>
-                  <ControllerStatusBadge pairingCode={controllerPairing?.pairingCode} />
-                  {body}
-                </ControllerChannelProvider>
-              ) : (
-                body
-              )}
-            </InteractiveModeContext.Provider>
-          )}
+          <InteractiveModeContext.Provider value={mode}>
+            {mode === 'controller' ? (
+              <ControllerChannelProvider pairing={controllerPairing}>
+                <ControllerStatusBadge pairingCode={controllerPairing?.pairingCode} />
+                {body}
+              </ControllerChannelProvider>
+            ) : (
+              body
+            )}
+          </InteractiveModeContext.Provider>
         </div>
         <OutlineRail items={outlineItems} containerRef={contentRef} activeId={activeId} onJump={notifyJump} />
       </div>
