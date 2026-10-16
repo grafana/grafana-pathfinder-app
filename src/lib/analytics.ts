@@ -47,6 +47,7 @@ export enum UserInteraction {
   HelpButtonClickedToolbar = 'help_button_clicked_toolbar',
   HelpButtonDismissedHint = 'help_button_dismissed_hint',
   PanelScroll = 'panel_scroll',
+  CatalogInteraction = 'catalog_interaction',
 
   // Navigation & Tab Management
   CloseTabClick = 'close_tab_click',
