@@ -186,7 +186,7 @@ it('omits path milestones from the list and search while keeping them in path de
   fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Build a dashboard' } });
   expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Dashboard path' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Show modules' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show milestones' }));
   const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
   expect(within(details).getByText('Build a dashboard')).toBeInTheDocument();
 });
