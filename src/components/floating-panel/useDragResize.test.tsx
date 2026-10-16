@@ -3,6 +3,26 @@ import { act, renderHook } from '@testing-library/react';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { useDragResize } from './useDragResize';
 
+it('keeps the resize corner inside the usable viewport when browser scrollbars reduce it', () => {
+  jest.spyOn(panelModeManager, 'getPanelGeometry').mockReturnValue({ x: 50, y: 50, width: 800, height: 800 });
+  jest.spyOn(panelModeManager, 'setPanelGeometry').mockImplementation(() => {});
+  const clientWidth = jest.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(485);
+  const clientHeight = jest.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(685);
+  try {
+    const { result } = renderHook(() => useDragResize());
+    expect(result.current.geometry.x + result.current.geometry.width).toBeLessThanOrEqual(485);
+    expect(result.current.geometry.y + result.current.geometry.height).toBeLessThanOrEqual(685);
+    clientWidth.mockReturnValue(385);
+    clientHeight.mockReturnValue(485);
+    act(() => window.dispatchEvent(new Event('resize')));
+    expect(result.current.geometry.x + result.current.geometry.width).toBeLessThanOrEqual(385);
+    expect(result.current.geometry.y + result.current.geometry.height).toBeLessThanOrEqual(485);
+    expect(panelModeManager.setPanelGeometry).not.toHaveBeenCalled();
+  } finally {
+    jest.restoreAllMocks();
+  }
+});
+
 it('keeps a bottom-right resize inside the remaining viewport and persists the bounded size', () => {
   const width = window.innerWidth;
   const height = window.innerHeight;
