@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cx } from '@emotion/css';
 import { ThemeContext } from '@grafana/data';
@@ -144,6 +144,10 @@ function GuideReaderInner({
     milestones: null,
   });
   const [error, setError] = useState<string | null>(null);
+  const returnPosition = useMemo(
+    () => ({ doc, milestoneUrl: content?.url ?? navigation.url, trackId: track.id ?? undefined }),
+    [doc, content?.url, navigation.url, track.id]
+  );
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const closeTimerRef = useRef<number | undefined>(undefined);
@@ -392,7 +396,7 @@ function GuideReaderInner({
           )}
           <InteractiveModeContext.Provider value={mode}>
             {mode === 'controller' ? (
-              <ControllerChannelProvider pairing={controllerPairing}>
+              <ControllerChannelProvider pairing={controllerPairing} position={returnPosition}>
                 <ControllerStatusBadge pairingCode={controllerPairing?.pairingCode} />
                 {body}
               </ControllerChannelProvider>

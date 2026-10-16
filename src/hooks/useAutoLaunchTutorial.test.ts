@@ -10,7 +10,7 @@
 
 import { renderHook } from '@testing-library/react';
 import { useAutoLaunchTutorial, type AutoLaunchPanel } from './useAutoLaunchTutorial';
-import { autoLaunchChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
+import { autoLaunchChannel, readerReturnChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
 
 function makePanel() {
   return {
@@ -32,6 +32,15 @@ describe('useAutoLaunchTutorial', () => {
     // Drain any value latched by a test that emitted while unsubscribed so it
     // cannot leak into the next test's mount.
     autoLaunchChannel.subscribe(() => {})();
+  });
+
+  it('restores a reader position queued before the sidebar mounts', () => {
+    const position = { doc: 'backend-guide:path', milestoneUrl: 'backend-guide:three', trackId: 'builder' };
+    readerReturnChannel.emit(position);
+    const panel = { ...makePanel(), restoreReaderPosition: jest.fn() };
+    renderHook(() => useAutoLaunchTutorial(panel));
+    expect(panel.restoreReaderPosition).toHaveBeenCalledWith(position);
+    expect(panel.openDocsPage).not.toHaveBeenCalled();
   });
 
   it('delivers a launch emitted before the hook mounts (latched replay, race fix)', () => {

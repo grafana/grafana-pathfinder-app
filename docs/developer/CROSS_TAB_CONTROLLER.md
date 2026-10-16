@@ -85,7 +85,7 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 - `heartbeat` — `{ role: 'controller' | 'live' }`
 - `pairing-challenge` / `pairing-accept` — the authenticated launch handshake
   that binds the controller session to one live tab.
-- `sidebar-handoff` — `{ action: 'close' | 'reopen' }`, transfers ownership of
+- `sidebar-handoff` — `{ action: 'close' | 'reopen', position?: { doc, milestoneUrl, trackId? } }`, transfers ownership of
   the sidebar while the controller is active.
 - `check-requirements` / `requirement-result` — the requirement round-trip
   (controller → live → controller), correlated by `requestId`. `passive: true`

@@ -1,3 +1,4 @@
+import type { ReaderPosition } from '../types/cross-tab.types';
 import { createLatchedBroadcast } from '../lib/latched-broadcast';
 
 // Detail payload of an auto-launch-tutorial request, consumed by the panel
@@ -16,3 +17,5 @@ export interface AutoLaunchTutorialDetail {
 // emitted before the lazy-loaded panel has attached its listener is still
 // delivered once the listener mounts.
 export const autoLaunchChannel = createLatchedBroadcast<AutoLaunchTutorialDetail>({ ttlMs: 30_000 });
+
+export const readerReturnChannel = createLatchedBroadcast<ReaderPosition>();

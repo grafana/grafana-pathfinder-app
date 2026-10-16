@@ -781,6 +781,40 @@ describe('ControllerChannelProvider', () => {
     );
   });
 
+  it('hands back the latest milestone on pagehide without pairing again', async () => {
+    const transport = new FakeCrossTabTransport();
+    const first = { doc: 'backend-guide:path', milestoneUrl: 'backend-guide:one' };
+    const latest = { ...first, milestoneUrl: 'backend-guide:three', trackId: 'builder' };
+    const { rerender } = render(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING} position={first}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+    await pairWithLive(transport);
+    rerender(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING} position={latest}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+    await waitFor(() => {
+      act(() => window.dispatchEvent(new Event('pagehide')));
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({
+          kind: 'sidebar-handoff',
+          action: 'reopen',
+          position: latest,
+          ...signedFieldsFor('live'),
+        })
+      );
+    });
+    expect(
+      transport.postedMessages.filter((message) => {
+        const payload = message as { kind: string; action?: string };
+        return payload.kind === 'sidebar-handoff' && payload.action === 'close';
+      })
+    ).toHaveLength(1);
+  });
+
   it('returns null outside a provider', () => {
     function Peek() {
       const channel = useControllerChannel();
