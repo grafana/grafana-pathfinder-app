@@ -62,6 +62,8 @@ jest.mock('./context-panel', () => ({
 
 jest.mock('../../docs-retrieval', () => ({
   fetchContent: jest.fn(),
+  resolveActiveMilestoneSequence: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneSequence,
   ContentRenderer: jest.fn(),
   getNextMilestoneUrlFromContent: jest.fn(),
   getPreviousMilestoneUrlFromContent: jest.fn(),
@@ -692,4 +694,52 @@ describe('Browse feature gate', () => {
     expect(panel.state.tabs.filter((tab) => tab.type === 'browse')).toHaveLength(1);
     expect(panel.state.activeTabId).toBe('recommendations');
   });
+});
+
+describe('reader return position', () => {
+  it.each(['backend-guide:three', 'backend-guide:unknown', 'backend-guide:locked', 'backend-guide:path'])(
+    'restores only a valid unlocked milestone from the selected track (%s)',
+    async (milestoneUrl) => {
+      const panel = new CombinedLearningJourneyPanel();
+      const doc = 'backend-guide:path';
+      const milestones = [
+        { id: 'three', url: 'backend-guide:three', title: 'Third' },
+        { id: 'locked', url: 'backend-guide:locked', title: 'Locked', isLocked: true },
+      ];
+      jest.spyOn(panel, 'restoreTabsAsync').mockResolvedValue();
+      panel.setState({ tabs: [{ ...RESTORED_TABS[1]!, id: 'path-tab', baseUrl: doc, type: 'learning-journey' }] });
+      const load = jest.spyOn(panel, 'loadTab').mockImplementation(async () => {
+        panel.setState({
+          tabs: panel.state.tabs.map((tab) => ({
+            ...tab,
+            content: {
+              url: doc,
+              type: 'learning-journey',
+              content: '',
+              title: 'Path',
+              metadata: {
+                packageManifest: { id: 'path', type: 'path' },
+                learningJourney: {
+                  baseUrl: doc,
+                  currentMilestone: 0,
+                  milestones: [],
+                  tracks: [{ trackId: 'builder', milestones }],
+                },
+              },
+            } as any,
+          })),
+        });
+      });
+      await panel.restoreReaderPosition({ doc, milestoneUrl, trackId: 'builder' });
+      expect(panel.state.tabs).toHaveLength(1);
+      expect(panel.state.activeTabId).toBe('path-tab');
+      expect(panel.state.tabs[0]?.activeTrackId).toBe('builder');
+      expect(load).toHaveBeenNthCalledWith(1, 'path-tab', doc);
+      if (milestoneUrl === 'backend-guide:three') {
+        expect(load).toHaveBeenNthCalledWith(2, 'path-tab', milestoneUrl, { explicitGuideId: 'three' });
+      } else {
+        expect(load).toHaveBeenCalledTimes(1);
+      }
+    }
+  );
 });

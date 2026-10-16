@@ -43,6 +43,9 @@ import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 import { cleanDocsUrl } from '../utils';
+import { usePathfinderPluginConfig } from '../../../hooks';
+import { parseUrlSafely } from '../../../security';
+import { pickControllerTabOpenAction } from '../utils/controller-tab-open-action';
 
 export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen' | 'floating';
 
@@ -87,6 +90,7 @@ export function LearningJourneyMilestoneToolbar({
   compact = false,
 }: LearningJourneyMilestoneToolbarProps) {
   const styles = useStyles2(getMilestoneStyles);
+  const { config: pluginConfig } = usePathfinderPluginConfig();
   const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
   // The segments below read each milestone's percentage out of storage, so the
   // store's announcement is what keeps them from painting a stale fill.
@@ -154,7 +158,17 @@ export function LearningJourneyMilestoneToolbar({
   const currentMs = activeMilestoneContext.milestones.find((m) => m.number === activeMilestoneContext.currentMilestone);
   const websiteUrl = currentMs?.websiteUrl ?? activeMilestoneContext.websiteUrl;
   const fallbackUrl = activeTab.content?.url || activeTab.baseUrl;
-  const externalUrl = websiteUrl || fallbackUrl ? cleanDocsUrl(websiteUrl || fallbackUrl!) : undefined;
+  const isPrivatePath =
+    activeMilestoneContext.baseUrl.startsWith('backend-guide:') ||
+    activeTab.content?.metadata.repository === 'app-platform' ||
+    activeTab.content?.metadata.journeyManifest?.repository === 'app-platform' ||
+    activeTab.content?.metadata.packageManifest?.repository === 'app-platform';
+  const candidateUrl = !isPrivatePath && (websiteUrl || fallbackUrl);
+  const parsedUrl = candidateUrl ? parseUrlSafely(candidateUrl) : null;
+  const externalUrl =
+    parsedUrl && (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:')
+      ? cleanDocsUrl(parsedUrl.href)
+      : undefined;
   const showReset = hasInteractiveProgress || activeTab.type === 'interactive';
 
   // Distinguish surfaces in analytics for the external-link "Open" button.
@@ -193,8 +207,20 @@ export function LearningJourneyMilestoneToolbar({
     }
   };
 
+  const controllerAction = pickControllerTabOpenAction(activeMilestoneContext.baseUrl, activeTab.type, {
+    milestoneUrl: currentMs?.url,
+    trackId: activeTab.activeTrackId,
+  });
   const kebabMenu = (
     <Menu>
+      {pluginConfig.enableTwoTabController && controllerAction.createControllerUrl && (
+        <Menu.Item
+          label={t('docsPanel.openControllerInNewTab', 'Open in interactive window')}
+          icon="external-link-alt"
+          testId={testIds.docsPanel.openControllerTabButton}
+          onClick={() => window.open(controllerAction.createControllerUrl!(), '_blank', 'noopener,noreferrer')}
+        />
+      )}
       {externalUrl && <Menu.Item label={t('docsPanel.open', 'Open')} icon="external-link-alt" onClick={handleOpen} />}
       {showReset && (
         <Menu.Item
