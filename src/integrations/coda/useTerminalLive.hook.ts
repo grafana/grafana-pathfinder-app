@@ -1,26 +1,8 @@
-/**
- * Grafana Live terminal connection hook
- *
- * Bidirectional terminal I/O over a single Grafana Live WebSocket, driven by
- * `@grafana/coda-client`'s `CodaSession`: it owns the channel address, frame
- * validation, the mandatory `{ useSocket: true }` publish and its own idle
- * timer. This hook keeps only what's Pathfinder-specific — the progress bar,
- * banner text and xterm wiring — hung off `CodaSession`'s handlers.
- *
- * Two things the hand-rolled version had that the class doesn't expose:
- * - the transient "Waiting for SSH handshake..." line, printed on the raw
- *   Live channel's own connect event before any backend frame arrives;
- * - immediate detection of the underlying WebSocket dropping. `CodaSession`
- *   only reports a dead connection via its own idle timer (silence beyond
- *   ~12 heartbeats, floored at 35s), not the instant a socket-level
- *   disconnect event fires.
- * Both are covered, with a delay, by the connecting banner and the idle
- * timer's `terminal_disconnected` respectively.
- */
+/** Terminal UI and VM lifetime state for the SDK-managed recovering connection. */
 
 import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
 import type { Terminal } from '@xterm/xterm';
-import type { CodaSession } from '@grafana/coda-client';
+import { CodaTerminalLink } from '@grafana/coda-client';
 import { logger } from '../../lib/logging';
 import {
   codaErrorCodeMessage,
@@ -55,13 +37,12 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 
 export type { TerminalVMOptions };
 
+const RECOVERY_EXHAUSTED_MESSAGE = 'Automatic reconnection stopped. Select Retry to try again.';
+
 function codaSessionErrorMessage(err: unknown): string {
   const codaErr = toCodaError(err);
-  if (codaErr.code === 'instance_disposing') {
-    return 'The sandbox connection was interrupted when the Coda plugin reloaded. Select Retry to reconnect.';
-  }
   if (codaErr.code === 'recovery_exhausted') {
-    return 'Automatic reconnection stopped. Select Retry to try again.';
+    return RECOVERY_EXHAUSTED_MESSAGE;
   }
   return codaErrorCodeMessage(codaErr.code, codaErr.message);
 }
@@ -128,13 +109,18 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
   const connectionLogRef = useRef<ConnectionLog>(createConnectionLog());
 
-  // The one live session object; owns the channel, frame validation and the
-  // idle timer. Replaces the subscription/address/liveSrv refs the hand-rolled
-  // version needed.
-  const sessionRef = useRef<CodaSession | null>(null);
+  const sessionRef = useRef<CodaTerminalLink | null>(null);
   // Tracks the current session's VM for logging and identity changes.
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
+  // SDK 1.11 checks its outage budget only between attempts, so a slow reattach can outlive it.
+  const recoveryDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRecoveryDeadline = useCallback(() => {
+    if (recoveryDeadlineRef.current) {
+      clearTimeout(recoveryDeadlineRef.current);
+      recoveryDeadlineRef.current = null;
+    }
+  }, []);
 
   // Provision progress bar state (animated bar during pending/provisioning)
   const provisionProgressRef = useRef<{
@@ -144,17 +130,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   } | null>(null);
   // Dedup guard for non-progress-bar status lines
   const lastStatusLineRef = useRef('');
-  // Set right before onClosed would otherwise print its own "session ended"
-  // banner — user-initiated disconnect prints its own message instead.
-  const suppressClosedBannerRef = useRef(false);
-  // onClosed always fires after onError (CodaSession.finish() calls both), so
-  // this stops it from printing a second, contradictory banner.
-  const hadErrorRef = useRef(false);
-  // Bumped by every teardown. connect() reads it before awaiting createSession
-  // and compares after, so a Cancel or unmount during that window abandons the
-  // session it lost the race to instead of installing it anyway.
-  const connectGenerationRef = useRef(0);
-
   const rememberVmId = useCallback((nextVmId?: string) => {
     const normalized = nextVmId || null;
     if (normalized === currentVmIdRef.current) {
@@ -166,11 +141,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     setLifetimeVM(undefined);
   }, []);
 
-  // Tearing the session down invalidates its id: exec is session-scoped, so a
-  // retained id would be spent on a session the backend has forgotten. Every
-  // terminating path must either call this or clear the id itself.
+  // Exec must never reuse a closed session id.
   const cleanup = useCallback(() => {
-    connectGenerationRef.current += 1;
+    clearRecoveryDeadline();
     setSessionId(null);
     currentVmIdRef.current = null;
     setVmId(null);
@@ -179,9 +152,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     const session = sessionRef.current;
     sessionRef.current = null;
     if (session) {
-      // finish()'s side effects (unsubscribe, onError/onClosed) run
-      // synchronously; close() itself is fire-and-forget and never rejects. It
-      // releases the terminal only — the VM keeps its quota slot until expiry.
       void session.close();
     }
     if (inputDisposerRef.current) {
@@ -193,9 +163,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       provisionProgressRef.current = null;
     }
     lastStatusLineRef.current = '';
-  }, []);
+  }, [clearRecoveryDeadline]);
 
-  // REACT: cleanup on unmount (R1)
   useEffect(() => {
     return cleanup;
   }, [cleanup]);
@@ -232,15 +201,41 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     };
   }, [status, vmId]);
 
-  /**
-   * Subscribe a fresh session to its Live channel, wiring Pathfinder's
-   * terminal UI onto CodaSession's handlers.
-   */
   const connectLiveStream = useCallback(
-    (session: CodaSession, terminal: Terminal) => {
-      rememberVmId(session.vmID);
-
-      session.subscribe({
+    (session: CodaTerminalLink, terminal: Terminal) => {
+      session.start({
+        onState: (next) => {
+          if (sessionRef.current !== session) {
+            return;
+          }
+          if (next === 'reconnecting' || next === 'connecting' || next === 'provisioning') {
+            setSessionId(null);
+            setStatus('connecting');
+          }
+        },
+        onReconnect: ({ outageMs, budgetMs }) => {
+          setError(null);
+          terminal.writeln('\r\nReconnecting to sandbox...');
+          if (recoveryDeadlineRef.current) {
+            return;
+          }
+          recoveryDeadlineRef.current = setTimeout(
+            () => {
+              recoveryDeadlineRef.current = null;
+              if (sessionRef.current !== session) {
+                return;
+              }
+              cleanup();
+              connectionLogRef.current.error('Sandbox recovery deadline passed during a reattach', undefined, {
+                backendErrorCode: 'recovery_exhausted',
+                category: 'backend_error',
+              });
+              setError(RECOVERY_EXHAUSTED_MESSAGE);
+              setStatus('error');
+            },
+            Math.max(0, budgetMs - outageMs)
+          );
+        },
         onOutput: (data) => {
           terminal.write(data);
         },
@@ -314,11 +309,20 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           }
         },
 
-        onConnected: (vmId) => {
+        onConnected: ({ vmId, sessionId: nextSessionId, expiresAt, reattached }) => {
+          clearRecoveryDeadline();
+          setSessionId(nextSessionId);
+          setError(null);
           if (vmId) {
             rememberVmId(vmId);
           }
 
+          if (expiresAt) {
+            setVmExpiresAt(expiresAt);
+          }
+          if (reattached) {
+            terminal.writeln('\r\nReconnected to sandbox. A new shell is ready.');
+          }
           setStatus('connected');
           if (inputDisposerRef.current) {
             inputDisposerRef.current.dispose();
@@ -328,49 +332,27 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           });
 
           session.resize(terminal.rows, terminal.cols);
-
-          // Send a blank newline after a short delay to force the shell
-          // to print a fresh prompt. Without this, broadcast messages
-          // (e.g. shutdown warnings) or SSH reconnections can leave the
-          // terminal on a blank line with no visible prompt.
-          setTimeout(() => sessionRef.current?.write('\n'), 300);
         },
 
-        onError: (err) => {
-          hadErrorRef.current = true;
-          const codaErr = toCodaError(err);
-          connectionLogRef.current.error('Backend error received', err, {
-            sessionId: session.sessionId,
-            backendErrorCode: codaErr.code,
-            category: 'backend_error',
-          });
-
+        onEnded: ({ error: err }) => {
+          if (sessionRef.current !== session) {
+            return;
+          }
           const failedVmId = currentVmIdRef.current;
           cleanup();
-          setUnreachableVmId(codaErr.code === 'vm_unreachable' ? failedVmId : null);
-
-          const message = codaSessionErrorMessage(err);
-
-          setError(message);
-          setStatus('error');
-        },
-
-        onClosed: () => {
-          if (hadErrorRef.current) {
-            hadErrorRef.current = false;
-            return;
+          if (err) {
+            const codaErr = toCodaError(err);
+            connectionLogRef.current.error('Sandbox connection ended', err, {
+              backendErrorCode: codaErr.code,
+              category: 'backend_error',
+            });
+            setUnreachableVmId(codaErr.code === 'vm_unreachable' ? failedVmId : null);
+            setError(codaSessionErrorMessage(err));
+            setStatus('error');
+          } else {
+            setStatus('disconnected');
+            terminal.writeln('\r\nSession ended - VM disconnected');
           }
-          if (suppressClosedBannerRef.current) {
-            suppressClosedBannerRef.current = false;
-            return;
-          }
-
-          cleanup();
-          setStatus('disconnected');
-          terminal.writeln('\r\n');
-          terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-          terminal.writeln('\x1b[33m  Session ended - VM disconnected\x1b[0m');
-          terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
         },
 
         onProtocolError: ({ detail, sessionId: sid, vmId }) => {
@@ -390,7 +372,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
       });
     },
-    [cleanup, rememberVmId]
+    [cleanup, clearRecoveryDeadline, rememberVmId]
   );
 
   const connect = useCallback(
@@ -410,42 +392,43 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       setError(null);
       setUnreachableVmId(null);
       cleanup();
-      const generation = connectGenerationRef.current;
 
       terminal.clear();
       terminal.writeln('Connecting to sandbox...');
 
-      let session: CodaSession;
-      try {
-        session = await createSession(vmOpts);
-      } catch (err) {
-        if (generation !== connectGenerationRef.current) {
-          return;
-        }
-        const message = codaSessionErrorMessage(err);
-        connectionLogRef.current.error('Could not create Coda session', err, { category: 'session_create' });
-        setError(message);
-        setStatus('error');
-        return;
-      }
-
-      if (generation !== connectGenerationRef.current) {
-        void session.close();
-        return;
-      }
-
+      const session = new CodaTerminalLink({
+        client: {
+          createSession: async (options) => {
+            const transport = await createSession(options);
+            const subscribe = transport.subscribe.bind(transport);
+            // Preserve replacement until https://github.com/grafana/grafana-coda-app/blob/main/packages/coda-client/src/recovery.ts ends vm_unreachable.
+            transport.subscribe = (handlers) =>
+              subscribe({
+                ...handlers,
+                onError: (err) => {
+                  if (toCodaError(err).code === 'vm_unreachable' && sessionRef.current === session) {
+                    const failedVmId = currentVmIdRef.current;
+                    cleanup();
+                    setUnreachableVmId(failedVmId);
+                    setError(codaSessionErrorMessage(err));
+                    setStatus('error');
+                    return;
+                  }
+                  handlers.onError?.(err);
+                },
+              });
+            return transport;
+          },
+        },
+        intent: vmOpts,
+      });
       sessionRef.current = session;
-      setSessionId(session.sessionId);
       connectLiveStream(session, terminal);
     },
     [terminalRef, cleanup, connectLiveStream]
   );
 
   const disconnect = useCallback(() => {
-    // Only latch when a session is actually open to emit the banner we are
-    // suppressing; onClosed never fires otherwise and the flag would survive
-    // into the next session and swallow its first genuine close.
-    suppressClosedBannerRef.current = sessionRef.current !== null;
     cleanup();
     setStatus('disconnected');
     setError(null);
@@ -484,6 +467,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     vmExpiresAt,
     lifetimeVM,
     onExpiryChange: setVmExpiresAt,
-    vmId: status === 'connected' ? vmId : null,
+    vmId,
   };
 }

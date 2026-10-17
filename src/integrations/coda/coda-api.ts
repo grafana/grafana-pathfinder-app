@@ -1,17 +1,4 @@
-/**
- * Thin adapter over the published `@grafana/coda-client` SDK.
- *
- * Consumers in this repo keep importing from here rather than from the
- * package directly, so the free-function call shapes this codebase already
- * uses (`getCapabilities()`, `createSession(vmOpts)`, `execInSession(id, req)`,
- * ...) stay unchanged even though the package itself is a `CodaClient` class
- * with instance methods. `client` below is the one shared instance.
- *
- * `createSession()` below resolves to the package's own `CodaSession` — the
- * *live terminal session* class (`subscribe`/`write`/`resize`/`exec`/`close`),
- * not a plain response object. `useTerminalLive.hook.ts` imports that type
- * directly from `@grafana/coda-client` rather than through this adapter.
- */
+/** Shared Coda client and consumer-specific API helpers. */
 
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';

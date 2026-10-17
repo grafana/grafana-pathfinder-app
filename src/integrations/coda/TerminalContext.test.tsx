@@ -1,14 +1,19 @@
 import React, { useEffect } from 'react';
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 
 import {
   TerminalProvider,
   getTerminalConnectionStatus,
   getTerminalSessionId,
   useTerminalContext,
+  type TerminalContextValue,
 } from './TerminalContext';
+import * as codaApi from './coda-api';
+import { getGcxCredentialSnapshot, resetGcxCredentialStore, runGcxCredential } from './gcx-credential-store';
 import type { ConnectionStatus } from './useTerminalLive.hook';
 import { TERMINAL_STATUS_CHANGED_EVENT } from '../../lib/event-names';
+
+jest.mock('./coda-api', () => ({ ...jest.requireActual('./coda-api'), provisionGcx: jest.fn() }));
 
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
@@ -17,18 +22,28 @@ jest.mock('../../lib/logging', () => ({
 const SESSION_ID = 's_0123456789abcdef0123456789abcdef';
 
 /** Stands in for TerminalPanel, which is the only caller of `_register`. */
-function FakePanel({ status, sessionId }: { status: ConnectionStatus; sessionId: string | null }) {
+const mockConnect = jest.fn();
+function FakePanel({
+  status,
+  sessionId,
+  vmId = 'vm-1',
+}: {
+  status: ConnectionStatus;
+  sessionId: string | null;
+  vmId?: string | null;
+}) {
   const ctx = useTerminalContext();
   useEffect(() => {
     ctx?._register({
       status,
       sessionId,
+      vmId,
       error: null,
-      connect: jest.fn(),
+      connect: mockConnect,
       disconnect: jest.fn(),
       sendCommand: jest.fn(),
     });
-  }, [ctx, status, sessionId]);
+  }, [ctx, status, sessionId, vmId]);
   return null;
 }
 
@@ -132,5 +147,90 @@ describe('TERMINAL_STATUS_CHANGED_EVENT', () => {
 
     window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, listener);
     expect(seen).toContain('disconnected');
+  });
+});
+
+describe('connection recovery consumers', () => {
+  let context: TerminalContextValue;
+  function Capture() {
+    const value = useTerminalContext()!;
+    useEffect(() => {
+      context = value;
+    }, [value]);
+    return null;
+  }
+  function tree(status: ConnectionStatus, sessionId: string | null, vmId: string | null = 'vm-1') {
+    return (
+      <TerminalProvider>
+        <FakePanel status={status} sessionId={sessionId} vmId={vmId} />
+        <Capture />
+      </TerminalProvider>
+    );
+  }
+  beforeEach(() => {
+    mockConnect.mockClear();
+    jest.mocked(codaApi.provisionGcx).mockReset();
+    resetGcxCredentialStore();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each(['initial provision', 'recovery'])(
+    'waits for a usable session during %s without starting another connection',
+    async (phase) => {
+      const view = render(
+        tree(phase === 'recovery' ? 'connected' : 'connecting', phase === 'recovery' ? SESSION_ID : null)
+      );
+      view.rerender(tree('connecting', null));
+      const settled = jest.fn();
+      let waiting!: Promise<string | null>;
+      await act(async () => {
+        waiting = context.openTerminal();
+        void waiting.then(settled);
+      });
+      expect(settled).not.toHaveBeenCalled();
+      expect(mockConnect).not.toHaveBeenCalled();
+      view.rerender(tree('connected', 'new-session'));
+      await expect(waiting).resolves.toBe('new-session');
+    }
+  );
+
+  it.each(['error', 'disconnected', 'cancel', 'unmount'])('settles recovery waiters on %s', async (end) => {
+    const view = render(tree('connecting', null));
+    let waiting!: Promise<string | null>;
+    act(() => {
+      waiting = context.openTerminal();
+    });
+    if (end === 'unmount') {
+      view.unmount();
+    } else if (end === 'cancel') {
+      act(() => context.disconnect());
+    } else {
+      view.rerender(tree(end as ConnectionStatus, null));
+    }
+    await expect(waiting).resolves.toBeNull();
+  });
+
+  it('passes VM identity through registration so completed GCX setup survives recovery', async () => {
+    const credential = { path: '/config/gcx', contextName: 'coda', server: 'https://example.com' };
+    const provision = jest.mocked(codaApi.provisionGcx).mockResolvedValue(credential);
+    const view = render(tree('connecting', null));
+    let install!: Promise<void>;
+    act(() => {
+      install = context.openTerminal().then((id) => runGcxCredential(id, 'test-token', 'step-a'));
+    });
+    expect(provision).not.toHaveBeenCalled();
+    view.rerender(tree('connected', SESSION_ID));
+    await act(async () => install);
+    view.rerender(tree('connecting', null));
+    view.rerender(tree('connected', 'new-session'));
+    expect(getGcxCredentialSnapshot()).toMatchObject({
+      state: 'ready',
+      sessionId: 'new-session',
+      credential,
+      requesterId: 'step-a',
+    });
+    expect(provision).toHaveBeenCalledTimes(1);
+    view.rerender(tree('connected', 'different-session', 'vm-2'));
+    expect(getGcxCredentialSnapshot().state).toBe('idle');
   });
 });

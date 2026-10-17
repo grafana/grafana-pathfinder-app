@@ -1,16 +1,4 @@
-/**
- * Exec is session-scoped in the extracted Coda plugin: `POST
- * /v1/sessions/{id}/exec` reuses the stream's SSH client and refuses a session
- * whose terminal is gone. Knowing when a session has died is therefore the
- * consumer's job, and a retained id can only buy a doomed request. These tests
- * pin that every session-terminating path drops the id.
- *
- * `CodaSession` (from `@grafana/coda-client`) owns the Live channel, frame
- * validation and its own idle timer now — this hook only reacts to its
- * handlers, so tests drive those handlers directly rather than a raw Live
- * channel. Channel-level plumbing and the idle timer are the package's own
- * test suite's job, not this hook's.
- */
+/** Exercise the real SDK recovery coordinator with controlled transport sessions. */
 
 import { act, renderHook } from '@testing-library/react';
 import type { Terminal } from '@xterm/xterm';
@@ -68,14 +56,25 @@ interface FakeSession {
  */
 function fakeSession(sessionId = SESSION_ID, vmID?: string): FakeSession {
   const handlers: { current: SessionHandlers } = { current: {} };
-  const close = jest.fn(async () => {
-    handlers.current.onClosed?.();
-  });
+  let closed = false;
+  const finish = () => {
+    if (!closed) {
+      closed = true;
+      handlers.current.onClosed?.();
+    }
+  };
+  const close = jest.fn(async () => finish());
   const session = {
     sessionId,
     vmID,
     subscribe: jest.fn((h: SessionHandlers) => {
-      handlers.current = h;
+      handlers.current = {
+        ...h,
+        onError: (error) => {
+          h.onError?.(error);
+          finish();
+        },
+      };
     }),
     write: jest.fn(),
     resize: jest.fn(),
@@ -95,7 +94,7 @@ async function connectedHook(fake: FakeSession = fakeSession()) {
   await act(async () => {
     hook.result.current.connect();
   });
-  expect(hook.result.current.sessionId).toBe(fake.session.sessionId);
+  expect(hook.result.current.sessionId).toBeNull();
 
   return { hook, terminalRef, ...fake };
 }
@@ -205,7 +204,7 @@ describe('useTerminalLive session lifetime', () => {
     const { hook, handlers } = await connectedHook();
 
     act(() => {
-      handlers.current.onError?.(new CodaError('vm gone', 'internal', 0));
+      handlers.current.onError?.(new CodaError('vm gone', 'vm_expired', 0));
     });
 
     expect(hook.result.current.status).toBe('error');
@@ -226,19 +225,6 @@ describe('useTerminalLive session lifetime', () => {
     expect(hook.result.current.vmExpiresAt).toBeNull();
   });
 
-  it.each([
-    [
-      'instance_disposing',
-      'The sandbox connection was interrupted when the Coda plugin reloaded. Select Retry to reconnect.',
-    ],
-    ['recovery_exhausted', 'Automatic reconnection stopped. Select Retry to try again.'],
-  ])('shows an actionable final message for %s', async (code, message) => {
-    const { hook, handlers } = await connectedHook();
-    act(() => handlers.current.onError?.(new CodaError('Reconnecting…', code, 0)));
-    expect(hook.result.current.status).toBe('error');
-    expect(hook.result.current.error).toBe(message);
-  });
-
   it('names an exhausted quota from the error code instead of the generic message', async () => {
     const { hook, handlers } = await connectedHook();
 
@@ -247,22 +233,6 @@ describe('useTerminalLive session lifetime', () => {
     });
 
     expect(hook.result.current.error).toMatch(/maximum number of sandbox VMs/i);
-  });
-
-  // New codes are an additive change within v1, and a backend older than the
-  // field sends none at all: both must fall back to the sentence, not be fatal.
-  it.each([
-    ['an unrecognised code', 'quantum_flux'],
-    ['no code at all (CodaSession defaults to "internal")', 'internal'],
-  ])('falls back to the backend sentence for %s', async (_name, code) => {
-    const { hook, handlers } = await connectedHook();
-
-    act(() => {
-      handlers.current.onError?.(new CodaError('something new went wrong', code, 0));
-    });
-
-    expect(hook.result.current.status).toBe('error');
-    expect(hook.result.current.error).toBe('something new went wrong');
   });
 
   it('drops the session id on an explicit disconnect', async () => {
@@ -357,7 +327,7 @@ describe('useTerminalLive teardown races', () => {
       resolveCreate(fake.session);
     });
 
-    expect(fake.session.subscribe).not.toHaveBeenCalled();
+    expect(fake.handlers.current).toEqual({});
     expect(fake.close).toHaveBeenCalled();
     expect(hook.result.current.status).toBe('disconnected');
     expect(hook.result.current.sessionId).toBeNull();
@@ -389,9 +359,6 @@ describe('useTerminalLive teardown races', () => {
     expect(hook.result.current.error).toBeNull();
   });
 
-  // The banner latch is consumed by onClosed, which never fires when there is
-  // no open session — so setting it unconditionally leaked it into the next
-  // session and swallowed that one's first genuine close.
   it('does not swallow the next session close after a no-op disconnect', async () => {
     const terminalRef = { current: fakeTerminal() };
     const hook = renderHook(() => useTerminalLive({ terminalRef }));
@@ -473,4 +440,153 @@ it('leaves the welcome to the guest and passes terminal output through unchanged
   const output = 'Welcome to Coda, your ephemeral sandbox.\r\nARM64 · Docker\r\n';
   act(() => handlers.current.onOutput?.(output));
   expect(terminalRef.current.write).toHaveBeenLastCalledWith(output);
+});
+
+describe('automatic recovery', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('reattaches a reloaded plugin to the same VM and replaces the dead session id', async () => {
+    const first = fakeSession();
+    const next = fakeSession('replacement-session');
+    const { hook, terminalRef } = await connectedHook(first);
+    await act(async () => first.handlers.current.onConnected?.('vm-existing'));
+    mockedCreateSession.mockResolvedValue(next.session);
+
+    act(() => first.handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
+    expect(hook.result.current.status).toBe('connecting');
+    expect(hook.result.current.error).toBeNull();
+    expect(hook.result.current.sessionId).toBeNull();
+    expect(hook.result.current.vmId).toBe('vm-existing');
+    act(() => {
+      void hook.result.current.sendCommand('do-not-replay');
+    });
+    expect(first.session.write).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(mockedCreateSession).toHaveBeenLastCalledWith({ vmId: 'vm-existing' });
+    await act(async () => next.handlers.current.onConnected?.('vm-existing'));
+    expect(hook.result.current.status).toBe('connected');
+    expect(hook.result.current.sessionId).toBe('replacement-session');
+    expect(hook.result.current.vmId).toBe('vm-existing');
+    expect(next.session.write).not.toHaveBeenCalled();
+    expect(terminalRef.current.clear).toHaveBeenCalledTimes(1);
+    expect(next.session.resize).toHaveBeenCalledWith(24, 80);
+    act(() => first.handlers.current.onClosed?.());
+    expect(hook.result.current.status).toBe('connected');
+  });
+
+  it.each(['disconnect', 'unmount'])('cancels pending recovery on %s', async (action) => {
+    const { hook, handlers } = await connectedHook();
+    await act(async () => handlers.current.onConnected?.('vm-existing'));
+    act(() => handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
+    act(() => {
+      if (action === 'unmount') {
+        hook.unmount();
+      } else {
+        hook.result.current.disconnect();
+      }
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(300000);
+    });
+    expect(mockedCreateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes a late reattach after cancellation without subscribing it', async () => {
+    const { hook, handlers } = await connectedHook();
+    await act(async () => handlers.current.onConnected?.('vm-existing'));
+    let resolveCreate!: (session: CodaSession) => void;
+    mockedCreateSession.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      })
+    );
+    act(() => handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    act(() => hook.result.current.disconnect());
+    const late = fakeSession('late-session');
+    await act(async () => resolveCreate(late.session));
+    expect(late.handlers.current).toEqual({});
+    expect(late.close).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.status).toBe('disconnected');
+    expect(hook.result.current.sessionId).toBeNull();
+  });
+
+  it.each(['vm_expired', 'vm_failed', 'role_forbidden'])('does not recover %s', async (code) => {
+    const { hook, handlers } = await connectedHook();
+    await act(async () => handlers.current.onConnected?.('vm-existing'));
+    act(() => handlers.current.onError?.(new CodaError('terminal failure', code, 0)));
+    await act(async () => {
+      jest.advanceTimersByTime(300000);
+    });
+    expect(mockedCreateSession).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.sessionId).toBeNull();
+  });
+
+  it('offers Retry only after the recovery budget is exhausted', async () => {
+    const { hook, handlers } = await connectedHook();
+    await act(async () => handlers.current.onConnected?.('vm-existing'));
+    mockedCreateSession.mockRejectedValue(new CodaError('still restarting', 'coda_unavailable', 503));
+    act(() => handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
+    for (let i = 0; i < 32; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(20000);
+      });
+    }
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe('Automatic reconnection stopped. Select Retry to try again.');
+    expect(hook.result.current.sessionId).toBeNull();
+  });
+
+  it('offers Retry at the recovery deadline even while a slow reattach is still provisioning', async () => {
+    const { hook, handlers } = await connectedHook();
+    await act(async () => handlers.current.onConnected?.('vm-existing'));
+    const outageStart = Date.now();
+    const slow = fakeSession('slow-session');
+    mockedCreateSession.mockImplementation(async () => {
+      if (Date.now() - outageStart < 250_000) {
+        throw new CodaError('still restarting', 'coda_unavailable', 503);
+      }
+      return slow.session;
+    });
+    act(() => handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
+    for (let elapsed = 0; elapsed < 299_000; elapsed += 1000) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+    }
+    expect(slow.handlers.current.onConnected).toBeDefined();
+    expect(hook.result.current.status).toBe('connecting');
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe('Automatic reconnection stopped. Select Retry to try again.');
+    expect(slow.close).toHaveBeenCalled();
+  });
+
+  it('clears the recovery deadline once a reattach connects', async () => {
+    const first = fakeSession();
+    const next = fakeSession('replacement-session');
+    const { hook } = await connectedHook(first);
+    await act(async () => first.handlers.current.onConnected?.('vm-existing'));
+    mockedCreateSession.mockResolvedValue(next.session);
+    act(() => first.handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    await act(async () => next.handlers.current.onConnected?.('vm-existing'));
+    await act(async () => {
+      jest.advanceTimersByTime(600_000);
+    });
+    expect(hook.result.current.status).toBe('connected');
+    expect(hook.result.current.sessionId).toBe('replacement-session');
+  });
 });
