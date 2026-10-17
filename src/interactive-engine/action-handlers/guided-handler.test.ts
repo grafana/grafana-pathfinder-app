@@ -43,6 +43,7 @@ describe('GuidedHandler', () => {
     mockNavigationManager.ensureElementVisible = jest.fn().mockResolvedValue(undefined);
     mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
     mockNavigationManager.clearOwnedHighlights = jest.fn();
+    mockNavigationManager.getOwnedCommentBox = jest.fn(() => document.querySelector('.interactive-comment-box'));
 
     mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
@@ -82,6 +83,137 @@ describe('GuidedHandler', () => {
 
       expect(mockWaitForReactUpdates).toHaveBeenCalled();
     });
+  });
+
+  describe('terminal presentation', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      document.body.replaceChildren();
+      const target = document.createElement('button');
+      target.id = 'terminal-target';
+      document.body.appendChild(target);
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [target], usedFallback: false });
+      mockNavigationManager.highlightWithComment.mockImplementation(async () => {
+        const box = document.createElement('div');
+        box.className = 'interactive-comment-box';
+        const bar = document.createElement('div');
+        bar.className = 'interactive-comment-progress-bar';
+        bar.style.width = '0%';
+        box.appendChild(bar);
+        for (const label of ['Skip', 'Cancel']) {
+          const button = document.createElement('button');
+          button.textContent = label;
+          box.appendChild(button);
+        }
+        document.body.appendChild(box);
+        return target;
+      });
+      mockNavigationManager.clearOwnedHighlights.mockImplementation(() => {
+        document.querySelectorAll('.interactive-comment-box').forEach((box) => box.remove());
+      });
+    });
+
+    afterEach(() => {
+      guidedHandler.cancel();
+      jest.useRealTimers();
+      document.body.replaceChildren();
+    });
+
+    it('retains and cancels only its own final box when another overlay exists', async () => {
+      const foreignBox = document.createElement('div');
+      foreignBox.className = 'interactive-comment-box';
+      foreignBox.dataset.foreign = 'true';
+      const foreignBar = document.createElement('div');
+      foreignBar.className = 'interactive-comment-progress-bar';
+      foreignBar.style.width = '37%';
+      foreignBox.appendChild(foreignBar);
+      document.body.prepend(foreignBox);
+      mockNavigationManager.getOwnedCommentBox.mockImplementation(() =>
+        document.querySelector('.interactive-comment-box:not([data-foreign])')
+      );
+      mockNavigationManager.clearOwnedHighlights.mockImplementation(() => {
+        mockNavigationManager.getOwnedCommentBox()?.remove();
+      });
+      const pending = guidedHandler.executeGuidedStep(
+        { targetAction: 'button', refTarget: '#terminal-target' },
+        0,
+        1,
+        5000
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      document.querySelector<HTMLButtonElement>('#terminal-target')!.click();
+      expect(await pending).toBe('completed');
+      const doneBox = document.querySelector('[data-guided-state="completed"]')!;
+      expect(doneBox).toBeInTheDocument();
+      expect(doneBox.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+      expect(foreignBar).toHaveStyle({ width: '37%' });
+      guidedHandler.cancel();
+      expect(doneBox).not.toBeInTheDocument();
+      expect(foreignBox).toBeInTheDocument();
+      expect(mockNavigationManager.clearAllHighlights).not.toHaveBeenCalled();
+    });
+
+    it('retains the final informational step with a done bar instead of Continue, Skip or Cancel', async () => {
+      const pending = guidedHandler.executeGuidedStep(
+        { targetAction: 'noop', targetComment: 'You are done', isSkippable: true },
+        0,
+        1,
+        5000
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      document.dispatchEvent(new CustomEvent('guided-noop-continue', { detail: { stepIndex: 0 } }));
+      expect(await pending).toBe('completed');
+      const box = document.querySelector<HTMLElement>('.interactive-comment-box')!;
+      expect(box).toHaveTextContent('You are done');
+      expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+      expect(Array.from(box.querySelectorAll('button'), (button) => button.textContent)).toEqual(['Close']);
+      await jest.advanceTimersByTimeAsync(10000);
+      expect(box).toBeInTheDocument();
+      box.querySelector('button')!.click();
+      expect(box).not.toBeInTheDocument();
+    });
+
+    it.each(['completed', 'skipped'] as const)(
+      'keeps a close-only done box after %s without delaying the result',
+      async (outcome) => {
+        const target = document.querySelector<HTMLButtonElement>('#terminal-target')!;
+        const activated = jest.fn();
+        target.addEventListener('click', activated);
+        const pending = guidedHandler.executeGuidedStep(
+          { targetAction: 'button', refTarget: '#terminal-target', isSkippable: true },
+          0,
+          1,
+          5000
+        );
+        await jest.advanceTimersByTimeAsync(0);
+        if (outcome === 'skipped') {
+          document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
+        } else {
+          target.click();
+        }
+        const activationsAtSettlement = activated.mock.calls.length;
+        document.dispatchEvent(new MouseEvent('click', { clientX: 10, clientY: 5, bubbles: true }));
+        expect(activated).toHaveBeenCalledTimes(activationsAtSettlement);
+        let result: unknown;
+        void pending.then((value) => {
+          result = value;
+        });
+        await jest.advanceTimersByTimeAsync(0);
+        expect(result).toBe(outcome);
+        const box = document.querySelector<HTMLElement>('.interactive-comment-box')!;
+        expect(box).not.toBeNull();
+        expect(box.querySelector<HTMLElement>('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+        expect(Array.from(box.querySelectorAll('button'), (button) => button.textContent)).toEqual(['Close']);
+        target.remove();
+        await jest.advanceTimersByTimeAsync(10000);
+        expect(box).toBeInTheDocument();
+        expect(jest.getTimerCount()).toBe(0);
+        box.querySelector('button')!.click();
+        expect(box).not.toBeInTheDocument();
+        expect(await pending).toBe(outcome);
+        expect(activated).toHaveBeenCalledTimes(activationsAtSettlement);
+      }
+    );
   });
 
   describe('sequence progress', () => {
@@ -632,6 +764,270 @@ describe('GuidedHandler', () => {
       const handler = new GuidedHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
       handler.cancel();
       expect(handler).toBeDefined();
+    });
+  });
+
+  describe('Final progress painting', () => {
+    let progressBar: HTMLElement;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      document.body.innerHTML = '<button id="target">Click me</button>';
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        const box = document.createElement('div');
+        box.className = 'interactive-comment-box';
+        progressBar = document.createElement('div');
+        progressBar.className = 'interactive-comment-progress-bar';
+        progressBar.style.width = '0%';
+        box.appendChild(progressBar);
+        document.body.appendChild(box);
+      });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+      guidedHandler.cancel();
+    });
+
+    it.each(['cancelled', 'timeout'] as const)('clears the final box without a done paint on %s', async (outcome) => {
+      const pending = guidedHandler.executeGuidedStep({ targetAction: 'button', refTarget: '#target' }, 0, 1, 5000);
+      await jest.advanceTimersByTimeAsync(0);
+      if (outcome === 'cancelled') {
+        document.dispatchEvent(new CustomEvent('guided-step-cancelled', { detail: { stepIndex: 0 } }));
+      } else {
+        await jest.advanceTimersByTimeAsync(5000);
+      }
+      expect(await pending).toBe(outcome);
+      expect(progressBar.style.width).toBe('0%');
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+      expect(document.querySelector('[data-guided-state="completed"]')).toBeNull();
+    });
+
+    it('prevents click re-entry after completion', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      // Track how many times element.click() is called
+      const originalClick = button.click.bind(button);
+      let clickCount = 0;
+      button.click = jest.fn(() => {
+        clickCount++;
+        originalClick();
+      });
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step
+        2, // Total steps
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // First click: user clicks the target directly - this completes the step
+      button.click();
+
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Progress bar should be at 100%
+      expect(progressBar.style.width).toBe('100%');
+
+      // Reset click count to track only the second click
+      clickCount = 0;
+
+      // Second click: user clicks outside the target but within the 16px padding ring
+      // Simulate a click at a position that satisfies isWithinBounds but not on the element
+      const buttonRect = button.getBoundingClientRect();
+      const outsideButNearClick = new MouseEvent('click', {
+        clientX: buttonRect.right + 10, // 10px to the right (inside 16px padding)
+        clientY: buttonRect.top + 5, // On the vertical center line
+        bubbles: true,
+      });
+
+      document.dispatchEvent(outsideButNearClick);
+
+      // Wait for any async handlers
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(clickCount).toBe(0);
+
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+    });
+    it('shows 100% on single-step tour completion', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Only step',
+        },
+        0, // stepIndex = 0
+        1, // totalSteps = 1 (single-step tour)
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click
+      button.click();
+
+      // Wait for click handler async operations
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(progressBar.style.width).toBe('100%');
+
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+    });
+
+    it('does NOT delay cleanup for non-final steps', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'First step',
+        },
+        0, // stepIndex = 0 (NOT final)
+        3, // totalSteps = 3
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click
+      button.click();
+
+      // Wait for click handler async operations
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Non-final step should NOT set progress to 100%
+      // Progress bar stays at initial value
+      expect(progressBar.style.width).toBe('0%');
+
+      // Wait for completion (should be immediate after click, no delay)
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+    });
+
+    it('skipped final step also paints 100%', async () => {
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        const box = document.createElement('div');
+        box.className = 'interactive-comment-box';
+        progressBar = document.createElement('div');
+        progressBar.className = 'interactive-comment-progress-bar';
+        progressBar.style.width = '50%';
+        box.appendChild(progressBar);
+        document.body.appendChild(box);
+      });
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+          isSkippable: true,
+        },
+        2, // Final step
+        3, // Total steps
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the skip event
+      document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 2 } }));
+
+      // Wait for skip handler async operations
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(progressBar.style.width).toBe('100%');
+
+      const result = await completionPromise;
+      expect(result).toBe('skipped');
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+    });
+
+    it('does NOT show 100% or delay for error results', async () => {
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        // Create progress bar
+        progressBar = document.createElement('div');
+        progressBar.className = 'interactive-comment-progress-bar';
+        progressBar.style.width = '66%';
+        document.body.appendChild(progressBar);
+        // Throw an error
+        throw new Error('Test error');
+      });
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step
+        2, // Total steps
+        5000
+      );
+
+      // Wait for async operations to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Complete
+      const result = await completionPromise;
+      expect(result).toBe('error');
+
+      // Verify progress bar was NOT set to 100% (error case)
+      expect(progressBar.style.width).toBe('66%');
+
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+    });
+
+    it('handles missing progress bar gracefully without crashing', async () => {
+      const button = document.querySelector<HTMLButtonElement>('#target')!;
+
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        // Do NOT create a progress bar - simulate DOM missing the element
+      });
+
+      const completionPromise = guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetComment: 'Final step',
+        },
+        1, // Final step
+        2, // Total steps
+        5000
+      );
+
+      // Wait for async setup to complete
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Trigger the click
+      button.click();
+
+      await jest.advanceTimersByTimeAsync(0);
+
+      const result = await completionPromise;
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
   });
 });

@@ -875,10 +875,24 @@ describe('E2E Contract: Comment Box Attributes', () => {
       });
 
       it('reaches 100% only once every step in the block is done', async () => {
-        // Guard on the formula, NOT a state a live guided tour can paint: the box for
-        // step N is created before N is performed and destroyed when it settles, so the
-        // overlay bar tops out at (total-1)/total. See the interactive-engine anchor.
+        // Guards the formula path: progressBarPercent reaches 100% when completedSteps.length === total.
+        // This test verifies the arithmetic, not the live DOM paint—the live 100% paint comes from
+        // GuidedHandler's updateProgressBarTo100 direct write and is covered in guided-handler.test.ts.
         const bar = await renderBar({ current: 3, total: 4, completedSteps: [0, 1, 2, 3], progress: 'performed' });
+        expect(bar.style.width).toBe('100%');
+      });
+
+      it('reaches 100% on final step before cleanup', async () => {
+        // Guards the formula: verifies progressBarPercent computes 100% when completedSteps.length === total.
+        // The live DOM paint is handled by GuidedHandler.updateProgressBarTo100 (tested in guided-handler.test.ts).
+        const bar = await renderBar({ current: 2, total: 3, completedSteps: [0, 1, 2], progress: 'performed' });
+        expect(bar.style.width).toBe('100%');
+      });
+
+      it('single-step tour shows 100% on completion', async () => {
+        // Guards the formula for single-step tours: completedSteps=[0] with total=1 yields 100%.
+        // The live DOM paint is handled by GuidedHandler.updateProgressBarTo100 (tested in guided-handler.test.ts).
+        const bar = await renderBar({ current: 0, total: 1, completedSteps: [0], progress: 'performed' });
         expect(bar.style.width).toBe('100%');
       });
 
