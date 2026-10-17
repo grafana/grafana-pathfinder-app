@@ -14,6 +14,9 @@ import { config } from '@grafana/runtime';
 import { resetGuideVersionImpressions } from './GuideVersionNotice';
 import { testIds } from '../../../constants/testIds';
 import { DocsPanelContentArea, type DocsPanelContentAreaProps } from './DocsPanelContentArea';
+import { setActiveTabUrl } from '../../../global-state/content-key';
+import { publishGuideIndex, evictAllGuideIndexes } from '../../../global-state/active-guide-index';
+import { computeGuideBlockIndex } from '../../../lib/guide-stats';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, vars?: Record<string, unknown>) =>
@@ -37,8 +40,8 @@ jest.mock('../../../lib/analytics', () => ({
 
 jest.mock('../../../docs-retrieval', () => ({
   journeyProgressFromMilestones: jest.fn(() => 0),
-  // Pure logic, no `@grafana/runtime`/storage imports — see
-  // `active-milestone-sequence.ts`'s own doc comment.
+  isJourneyCoverPage: (content: any) =>
+    content.type === 'learning-journey' && content.metadata.learningJourney?.currentMilestone === 0,
   resolveActiveMilestoneToolbarContext: jest.requireActual('../../../docs-retrieval/active-milestone-sequence')
     .resolveActiveMilestoneToolbarContext,
 }));
@@ -140,6 +143,49 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
     ...overrides,
   };
 }
+
+describe('sidebar sticky progress eligibility', () => {
+  beforeEach(() => evictAllGuideIndexes());
+
+  it.each(['docs', 'cover'] as const)('hides sticky progress on %s content', async (kind) => {
+    const props = makeProps();
+    const url = `https://example.com/${kind}`;
+    setActiveTabUrl(url);
+    props.stableContent = {
+      ...props.stableContent!,
+      url,
+      type: kind === 'cover' ? 'learning-journey' : 'docs',
+      metadata: kind === 'cover' ? { learningJourney: { currentMilestone: 0 } } : {},
+    } as any;
+    if (kind === 'cover') {
+      publishGuideIndex({
+        contentKey: url,
+        index: computeGuideBlockIndex([{ type: 'markdown' }]),
+        denominatorSource: 'live-pre-inlining',
+      });
+    }
+    render(<DocsPanelContentArea {...props} />);
+    await act(async () => {});
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('shows sticky progress when the displayed guide index publishes', async () => {
+    const props = makeProps();
+    const url = props.stableContent!.url;
+    setActiveTabUrl(url);
+    render(<DocsPanelContentArea {...props} />);
+    await act(async () => {});
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    act(() =>
+      publishGuideIndex({
+        contentKey: url,
+        index: computeGuideBlockIndex([{ type: 'markdown' }]),
+        denominatorSource: 'live-pre-inlining',
+      })
+    );
+    expect(await screen.findByRole('progressbar')).toBeInTheDocument();
+  });
+});
 
 describe('DocsPanelContentArea', () => {
   beforeEach(() => {

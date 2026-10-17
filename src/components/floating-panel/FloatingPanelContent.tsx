@@ -1,8 +1,10 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { GuideProgressBar } from '../guide-progress';
 import { usePublishSurfaceContentKey } from '../../hooks';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
+import { isJourneyCoverPage } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -141,7 +143,7 @@ export function FloatingPanelContent({
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
       <div ref={contentRef}>
-        {showEmbeddedToolbar && activeTab && (
+        {showEmbeddedToolbar && activeTab ? (
           <div className={floatingStyles.stickyToolbar}>
             <LearningJourneyMilestoneToolbar
               panel={model}
@@ -152,6 +154,11 @@ export function FloatingPanelContent({
               onResetGuide={onResetGuide!}
               compact
             />
+            <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
+          </div>
+        ) : (
+          <div className={floatingStyles.stickyToolbar}>
+            <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
           </div>
         )}
         <GuideVersionNotice

@@ -446,6 +446,11 @@ export const testIds = {
     completed: 'mark-complete-completed',
   },
 
+  guideProgress: {
+    bar: 'guide-progress-bar',
+    percentage: 'guide-progress-percentage',
+  },
+
   guideReader: {
     overlay: 'guide-reader-overlay',
     closeButton: 'guide-reader-close',
