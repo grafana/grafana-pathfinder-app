@@ -423,6 +423,8 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 | `requirements` | string[]    | ❌       | Section-level requirements                |
 | `objectives`   | string[]    | ❌       | Conditions that auto-complete the section |
 
+**Recovery.** If a learner drifts out of the state a section's earlier steps set up, for example by leaving the page or collapsing a control a step opened, the section pauses and offers **Restore**, without resetting progress. Nothing needs authoring: recovery is derived from the steps. To let it reopen controls, give toggle steps a `targetstate` (for example `"targetstate": "aria-expanded:true"` on the step that expands a row), and give steps the `on-page:` requirements they rely on. Recovery checks for each step's own `reftarget` itself, so it needs no `exists-reftarget`. Form fills and one-way clicks such as Save are never replayed. See [the design](../../design/AUTORECOVERY_DESIGN.md#implicit-section-recovery-implemented).
+
 #### Collapsible Block
 
 Hides its nested blocks behind a toggle. Use it to gate solutions or example outputs so learners attempt an exercise before revealing the answer. Unlike a section, it is purely presentational and tracks no completion state.

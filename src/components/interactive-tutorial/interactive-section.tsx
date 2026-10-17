@@ -46,7 +46,7 @@ import {
   TERMINAL_CONNECT_STEP_SCHEMA,
   TERMINAL_STEP_SCHEMA,
 } from './step-type-registry';
-import { wrapSectionChildrenForNumbering } from './section-numbering';
+import { shouldNumberSectionChild, wrapSectionChildrenForNumbering } from './section-numbering';
 // Re-exports preserved for back-compat with `section-numbering.test.tsx`,
 // which imports both helpers from this module. New code should import
 // directly from `./section-numbering`.
@@ -74,6 +74,14 @@ export const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSch
 
 /** Resolve the schema for a child element, or `undefined` if the child
  *  is not a tracked step type (markdown / media / wrapper). */
+function isInlineConditional(child: React.ReactNode): boolean {
+  return (
+    React.isValidElement(child) &&
+    typeof child.type !== 'string' &&
+    (child.type as { displayName?: string }).displayName === 'InteractiveConditional'
+  );
+}
+
 function lookupStepSchema(child: React.ReactNode): StepTypeSchema | undefined {
   if (!React.isValidElement(child)) {
     return undefined;
@@ -93,12 +101,14 @@ import {
 import { StorageEvents } from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
+import type { InteractiveSectionProps, RecoveryHint, StepInfo } from '../../types/component-props.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 import { GuideContentKeyContext } from './guide-content-key-context';
+import { GuideAnalyticsIdentityContext } from './guide-analytics-identity-context';
+import { reportSectionRecoveryEvent } from './hooks/section-recovery-analytics';
 import {
   analyzeAcknowledgement,
   getResumeInfo as computeResumeInfo,
@@ -111,6 +121,9 @@ import { useSectionAutoCollapse } from './hooks/use-section-auto-collapse';
 import { useSectionPersistence } from './hooks/use-section-persistence';
 import { useStoredSectionCompletion } from './hooks/use-stored-section-completion';
 import { useSectionRequirements } from './hooks/use-section-requirements';
+import { useSectionRecovery, type SectionRecoveryEvent } from './hooks/use-section-recovery';
+import { deriveSectionRecoveryPlan, type SectionRecoveryPlan } from '../../recovery/section-recovery-plan';
+import { isSectionRecoveryEnabled } from '../../utils/section-recovery-enablement';
 import { useSectionScroll } from './hooks/use-section-scroll';
 import {
   evictSectionCache,
@@ -120,6 +133,7 @@ import {
   refreshAndNotifyGuideProgress,
   refreshGuidePercentageOnLoad,
   resetSection as resetSectionStore,
+  getSectionSkippedSteps,
   resetSteps,
   useSectionCompletion,
 } from '../../global-state/completion-store';
@@ -127,10 +141,14 @@ import { dispatchProgress, type ProgressOrigin } from '../../global-state/progre
 import { computeCursor, deriveSectionState, initialSectionState, sectionReducer } from './section-state';
 import { DEFAULT_INTERACTIVE_SECTION_TITLE, PASSIVE_SECTION_TITLE } from './section-titles';
 import {
+  arePreviousSectionsDone,
+  clearSectionDone,
   getDocumentStepPosition,
   nextSectionCounter,
   registerSectionSteps,
   resetRegistry,
+  setSectionDone,
+  subscribeSectionDone,
 } from '../../global-state/section-registry';
 // Re-exports preserved for back-compat with `content-renderer.tsx`. New code
 // should import directly from `./section-registry`.
@@ -210,6 +228,21 @@ export function InteractiveSection({
   );
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [executingSteps, setExecutingSteps] = useState<ReadonlySet<string>>(() => new Set());
+  const setStepExecuting = useCallback((stepId: string, executing: boolean) => {
+    setExecutingSteps((current) => {
+      if (current.has(stepId) === executing) {
+        return current;
+      }
+      const next = new Set(current);
+      if (executing) {
+        next.add(stepId);
+      } else {
+        next.delete(stepId);
+      }
+      return next;
+    });
+  }, []);
   const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
 
@@ -306,10 +339,19 @@ export function InteractiveSection({
     const steps: StepInfo[] = [];
     let stepIndex = 0;
 
+    let opaqueBefore = false;
+    let displayNumber = 0;
+    let numberingKnown = true;
     React.Children.forEach(children, (wrappedChild) => {
       const child = unwrapSectionChild(wrappedChild);
       const schema = lookupStepSchema(child);
+      if (shouldNumberSectionChild(wrappedChild)) {
+        displayNumber++;
+      }
       if (!schema) {
+        // An inline conditional that resolves empty gives up its number.
+        numberingKnown &&= !isInlineConditional(child);
+        opaqueBefore ||= isInlineConditional(child);
         return;
       }
       const childProps = (child as React.ReactElement<any>).props;
@@ -323,7 +365,11 @@ export function InteractiveSection({
         element: child as React.ReactElement<any>,
         index: stepIndex,
         ...extension,
+        stepKind: schema.kind,
+        ...(opaqueBefore ? { opaqueBefore } : {}),
+        ...(numberingKnown ? { displayNumber } : {}),
       });
+      opaqueBefore = false;
       stepIndex++;
     });
 
@@ -531,6 +577,11 @@ export function InteractiveSection({
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
   const doneVia = derived.doneVia;
+  useLayoutEffect(() => {
+    setSectionDone(sectionId, isCompleted);
+  }, [sectionId, isCompleted]);
+  useLayoutEffect(() => () => clearSectionDone(sectionId), [sectionId]);
+  const previousSectionsDone = useSyncExternalStore(subscribeSectionDone, () => arePreviousSectionsDone(sectionId));
   // `stepsCompleted` preserves the historical meaning ("all interactive
   // steps are done") so existing call sites that care about that
   // specific question keep working. Note that this no longer implies
@@ -542,6 +593,50 @@ export function InteractiveSection({
   // understands why steps appear inactive — useful when they've scrolled past
   // the top alignment banner.
   const isAlignmentPaused = useIsAlignmentPaused();
+  const skippedSteps = useMemo(() => getSectionSkippedSteps(sectionId, completedSteps), [sectionId, completedSteps]);
+  const reached = previousSectionsDone || isRunning || [...completedSteps].some((stepId) => !skippedSteps.has(stepId));
+  const recoveryPlan = useMemo(
+    () =>
+      isSectionRecoveryEnabled() && !isCompleted && reached && !isAlignmentPaused
+        ? deriveSectionRecoveryPlan(
+            stepComponents.map((step) => ({
+              stepId: step.stepId,
+              kind: step.stepKind ?? 'opaque',
+              targetAction: step.targetAction,
+              refTarget: step.refTarget,
+              targetState: step.targetState,
+              requirements: step.requirements,
+              lazyRender: step.lazyRender,
+              opaqueBefore: step.opaqueBefore,
+            })),
+            currentStepIndex,
+            skippedSteps
+          )
+        : undefined,
+    [isCompleted, reached, isAlignmentPaused, stepComponents, currentStepIndex, skippedSteps]
+  );
+  const analyticsIdentity = useContext(GuideAnalyticsIdentityContext);
+  const onRecoveryEvent = useCallback(
+    (event: SectionRecoveryEvent, plan: SectionRecoveryPlan | undefined) =>
+      reportSectionRecoveryEvent(event, plan, sectionId, analyticsIdentity),
+    [sectionId, analyticsIdentity]
+  );
+  const recovery = useSectionRecovery(
+    recoveryPlan,
+    sectionId,
+    sectionRequirementsStatus.passed,
+    mode === 'controller',
+    { onEvent: onRecoveryEvent, suspended: isRunning || executingSteps.size > 0 }
+  );
+  const hasRecoveryPlan = !!recoveryPlan;
+  const sectionReady = sectionRequirementsStatus.passed && !recovery.paused;
+  const checkRecovery = recovery.recheck;
+  const setupStepId = recovery.unrestorable ? recoveryPlan?.setupStepId : undefined;
+  const recoveryHint = useMemo((): RecoveryHint | undefined => {
+    const setupStep = stepComponents.find((step) => step.stepId === setupStepId);
+    return setupStep && { stepId: setupStep.stepId, stepNumber: setupStep.displayNumber };
+  }, [stepComponents, setupStepId]);
+  const recoveryHintStepId = recoveryHint && recoveryPlan?.cursorStepId;
   const alignmentStartingLocation = useAlignmentStartingLocation();
 
   // Section completion status tracking (debug logging removed)
@@ -906,6 +1001,11 @@ export function InteractiveSection({
         }
       }
 
+      if (hasRecoveryPlan && !(await checkRecovery())) {
+        setIsRunning(false);
+        return;
+      }
+
       // Start section-level blocking (persists for entire section)
       const dummyData: InteractiveElementData = {
         refTarget: `section-${sectionId}`,
@@ -1266,6 +1366,8 @@ export function InteractiveSection({
     handleSectionCancel,
     currentStepIndex,
     controllerRequirements,
+    hasRecoveryPlan,
+    checkRecovery,
     checkRequirementsFromData,
     scrollToStep,
     beginProgrammaticScroll,
@@ -1413,7 +1515,7 @@ export function InteractiveSection({
           return child;
         }
 
-        const isEligibleForChecking = stepEligibility[stepIndex] ?? false;
+        const isEligibleForChecking = (stepEligibility[stepIndex] ?? false) && !recovery.paused;
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
         const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
           sectionId,
@@ -1430,10 +1532,11 @@ export function InteractiveSection({
           sectionTitle: title,
           baseDisabled: disabled,
           isRunning,
-          sectionRequirementsPassed: sectionRequirementsStatus.passed,
+          sectionRequirementsPassed: sectionReady,
           resetTrigger,
           onStepComplete: handleStepComplete,
           onStepReset: handleStepReset,
+          ...(stepInfo.stepId === recoveryHintStepId ? { recoveryHint } : {}),
         };
 
         const enhancedProps = schema.toEnhancedProps(enhanceCtx);
@@ -1446,6 +1549,9 @@ export function InteractiveSection({
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child as React.ReactElement<any>).props,
           ...enhancedProps,
+          ...(schema.kind === 'plain' || schema.kind === 'multistep' || schema.kind === 'guided'
+            ? { onExecutingChange: (executing: boolean) => setStepExecuting(stepInfo.stepId, executing) }
+            : {}),
           key: stepInfo.stepId,
           ...(refCallback ? { ref: refCallback } : {}),
         });
@@ -1463,7 +1569,11 @@ export function InteractiveSection({
     resetTrigger,
     sectionId,
     title,
-    sectionRequirementsStatus.passed,
+    sectionReady,
+    recovery.paused,
+    setStepExecuting,
+    recoveryHint,
+    recoveryHintStepId,
   ]);
 
   // Computed once per render so the catch-all action button's `title`
@@ -1492,7 +1602,7 @@ export function InteractiveSection({
       id={sectionId}
       className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${
         isCollapsed ? ' collapsed' : ''
-      }`}
+      }${recovery.paused ? ' recovery-paused' : ''}`}
       data-testid={testIds.interactive.section(sectionId)}
       data-interactive-section="true"
       onFocusCapture={(event) => {
@@ -1557,6 +1667,23 @@ export function InteractiveSection({
                     Fix this
                   </button>
                 </div>
+              )}
+            </div>
+          )}
+
+          {!isCollapsed && recovery.paused && (
+            <div className="interactive-section-recovery">
+              <span role="status" className="interactive-section-recovery-label">
+                {recovery.restoring ? 'Restoring…' : 'Let’s get you back on track'}
+              </span>
+              {recovery.restoring ? (
+                <Button size="sm" variant="secondary" onClick={recovery.cancel}>
+                  Cancel
+                </Button>
+              ) : (
+                <Button size="sm" variant="secondary" icon="history" onClick={recovery.restore}>
+                  Restore
+                </Button>
               )}
             </div>
           )}
@@ -1671,7 +1798,7 @@ export function InteractiveSection({
                 onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
                 disabled={
                   disabled ||
-                  !sectionRequirementsStatus.passed ||
+                  !sectionReady ||
                   isCompletedByObjectives ||
                   (!(stepsCompleted && !isCompletedByObjectives) && stepComponents.length === 0)
                 }

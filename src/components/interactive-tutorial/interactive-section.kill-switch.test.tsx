@@ -146,6 +146,6 @@ describe('a section with an unmet objective after its steps are done', () => {
     expect(screen.queryByTestId(testIds.interactive.completionWaiting(SECTION))).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /check completion/i })).not.toBeInTheDocument();
     await waitFor(() => expect(memoryStore.get(`section-done::${CONTENT_KEY}::${SECTION}`)).toBe(true));
-    expect(mockCheckPostconditions).not.toHaveBeenCalled();
+    expect(JSON.stringify(mockCheckPostconditions.mock.calls)).not.toContain('has-datasource:testdata');
   });
 });

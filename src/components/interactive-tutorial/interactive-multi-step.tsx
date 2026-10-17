@@ -31,6 +31,7 @@ import { useInteractiveMode } from '../../global-state/interactive-mode-context'
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
+import { useReportExecuting } from './hooks/use-report-executing';
 
 let anonymousMultiStepCounter = 0;
 
@@ -48,6 +49,7 @@ interface InteractiveMultiStepProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
+  onExecutingChange?: (executing: boolean) => void;
 
   // Content and styling
   title?: string; // Add title prop like InteractiveStep
@@ -177,6 +179,7 @@ export const InteractiveMultiStep = forwardRef<
       isCurrentlyExecuting = false,
       onStepComplete: notifyStepComplete,
       onStepReset, // New callback for individual step reset
+      onExecutingChange,
       title, // Add title prop
       children,
       className,
@@ -218,6 +221,7 @@ export const InteractiveMultiStep = forwardRef<
     const mode = useInteractiveMode();
     const controllerChannel = useControllerChannel();
     const [isExecuting, setIsExecuting] = useState(false);
+    useReportExecuting(isExecuting, onExecutingChange);
 
     // Completion lives in the store.
     const { completed: storedCompleted, reason: storedReason } = useStepCompletion(renderedStepId, sectionId);

@@ -16,7 +16,7 @@ import React from 'react';
 import { render, waitFor } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
-import { getTotalDocumentSteps } from '../../global-state/section-registry';
+import { arePreviousSectionsDone, getTotalDocumentSteps } from '../../global-state/section-registry';
 import { ContentRenderer } from './content-renderer';
 import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
@@ -33,10 +33,10 @@ function interactiveStep(reftarget: string) {
   };
 }
 
-function jsonGuide(sections: Array<{ id?: string; steps: number }>): string {
+function jsonGuide(sections: Array<{ id?: string; steps: number }>, title = 'Section registry guide'): string {
   return JSON.stringify({
     id: 'section-registry-guide',
-    title: 'Section registry guide',
+    title,
     blocks: sections.map((section, sectionIndex) => ({
       type: 'section',
       ...(section.id ? { id: section.id } : {}),
@@ -86,5 +86,29 @@ describe('ContentRenderer — section registry stays single-entry per section', 
 
     await waitFor(() => expect(getTotalDocumentSteps()).toBeGreaterThan(0));
     expect(getTotalDocumentSteps()).toBe(6);
+  });
+
+  it('keeps a later section unreached when the guide text changes in place', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const sections = [
+      { id: 'first', steps: 2 },
+      { id: 'second', steps: 1 },
+    ];
+    const url = 'https://ex/edited-in-place-guide';
+    const { rerender } = render(
+      <ContentRenderer completion={UNTRACKED_COMPLETION} content={makeContent(jsonGuide(sections), url)} />
+    );
+    await waitFor(() => expect(arePreviousSectionsDone('section-second')).toBe(false));
+
+    rerender(
+      <ContentRenderer
+        completion={UNTRACKED_COMPLETION}
+        content={makeContent(jsonGuide(sections, 'Section registry guide, edited'), url)}
+      />
+    );
+    await waitFor(() => expect(getTotalDocumentSteps()).toBe(3));
+    expect(arePreviousSectionsDone('section-second')).toBe(false);
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/while rendering a different component/);
+    errors.mockRestore();
   });
 });
