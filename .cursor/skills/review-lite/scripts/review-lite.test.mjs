@@ -663,6 +663,26 @@ describe('test review', () => {
   });
 });
 
+describe('test file classification', () => {
+  test('treats an e2e directory under src as production code, and a tests directory as tests', () => {
+    const { repo, base } = makeRepo({
+      'src/cli/e2e/a.ts': 'export const a = 1;\n',
+      'tests/e2e-runner/b.ts': 'export const b = 1;\n',
+    });
+    const head = commit(
+      repo,
+      { 'src/cli/e2e/a.ts': 'export const a = 2;\n', 'tests/e2e-runner/b.ts': 'export const b = 2;\n' },
+      'head'
+    );
+    const runDir = prepared({ repo, base, head });
+    addContext({ run: runDir, concerns: 'cli-and-e2e-runner' });
+    assert.throws(
+      () => finishWith(runDir, result(runDir)),
+      (error) => /tests\/e2e-runner\/b\.ts/.test(error.message) && !/src\/cli\/e2e\/a\.ts/.test(error.message)
+    );
+  });
+});
+
 describe('sync scan and delta triggers', () => {
   function syncRun(baseFiles, headFiles) {
     const { repo, base } = makeRepo(baseFiles);

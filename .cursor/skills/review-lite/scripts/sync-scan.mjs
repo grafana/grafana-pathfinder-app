@@ -1,7 +1,7 @@
 const DOC_PATH = /\.(md|mdx)$|^docs\//;
 const SKIP_PATH =
   /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|go\.sum)$|\.snap$|^src\/locales\/|(^|\/)node_modules\//;
-const TEST_PATH = /\.(test|spec)\.[cm]?[jt]sx?$|_test\.go$|(^|\/)(__tests__|tests?|e2e)\//;
+const TEST_PATH = /\.(test|spec)\.[cm]?[jt]sx?$|_test\.go$|(^|\/)(__tests__|tests?)\//;
 const MAX_TERMS = 60;
 const MAX_PER_TERM = 6;
 const GENERIC_DOC_HITS = 8;
