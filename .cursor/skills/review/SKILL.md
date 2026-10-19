@@ -153,7 +153,7 @@ A clearance contradiction must quote the exact prior claim and reason in `cleara
 
 ## 4. Reconcile
 
-When every observation is final or dropped, call `review-policy.mjs` with the reconcile operation (shape in `.cursor/skills/review/EXAMPLES.md`). List a prior deferred ID in `verified_fixed_ids` only after checking it at the current head. Add `current_cleared` only for a specific prior blocker or invariant reverified at the current head; generic clean or `no_findings` output never creates clearance.
+When every observation is final or dropped, call `review-policy.mjs` with the reconcile operation (shape in `.cursor/skills/review/EXAMPLES.md`). Pass every final follow-up as `{ id, concern_id }` in `current_follow_ups`; an omitted one silently drops out of `next_deferred`. List a prior deferred ID in `verified_fixed_ids` only after checking it at the current head. Add `current_cleared` only for a specific prior blocker or invariant reverified at the current head; generic clean or `no_findings` output never creates clearance.
 
 The returned `next_deferred` and `next_cleared` are final state; publishing must not derive or alter them. Order clearances by importance first, because the 12-entry cap prunes.
 
