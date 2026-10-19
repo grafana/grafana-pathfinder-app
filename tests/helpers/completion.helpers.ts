@@ -18,6 +18,7 @@ import pluginJson from '../../src/plugin.json';
 import { StorageKeys } from '../../src/lib/storage-keys';
 import { LEASE_TTL_MS } from '../../src/completion-records/completion-write-timing';
 import { testIds } from '../../src/constants/testIds';
+import { waitForGrafanaReady } from './grafana.helpers';
 import {
   ALL_FIXTURES,
   CDN_BASE_URL,
@@ -307,7 +308,7 @@ export async function seedRestoredTab(
  * never clicks a panel that is already open, which would toggle it shut.
  */
 export async function openDocsPanel(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle').catch(() => undefined);
+  await waitForGrafanaReady(page);
   const help = page.locator('button[aria-label="Help"]');
   await help.waitFor({ state: 'visible', timeout: 30_000 });
   const container = page.getByTestId(testIds.docsPanel.container);
