@@ -76,7 +76,7 @@ Adjacent means `pre_existing` or `latent_unreachable`: a real condition this PR 
 
 Optional observations use the same facade. A scope-widening suggestion or nit is `dropped`, for the same scope reason as rule 2. At round three or later, a new suggestion or nit drops. A prior unresolved optional observation may carry by stable ID without new prose only when its finding ID and concern exactly match an entry in the facade's `prior_deferred` input. Before round three, optional work within the changed surface preserves its `suggestion` or `nit` kind.
 
-Every policy request, verification-batch request, and `ReviewReport` supplies an explicit integer round from 1 through 100. Missing or out-of-range values fail closed. Only the orchestrator derives a fallback when a version 1 marker supplies no reliable round.
+Every policy request, verification-batch request, and `ReviewReport` supplies an explicit integer round from 1 through 100. Missing or out-of-range values fail closed. Only `review-state.mjs` derives a fallback, from the prior review count, when a version 1 marker supplies no reliable round.
 
 The facade returns only `needs_verification`, `final`, or `dropped`. A final result has one disposition and one stable reason. No downstream phase changes it.
 
@@ -243,7 +243,7 @@ When that complete value exceeds `MAX_MARKER`, it writes only:
 }
 ```
 
-A truncated marker always forces a full next review. The parser keeps version 1 and legacy `Purpose` recap read compatibility, recap adjacency, strict shape checks, and fail-closed behavior for malformed, duplicated, forged, oversized, or misplaced state. Provenance and ancestor validation remain caller preconditions: suppressive state is honored only from the same reviewer's prior review and only when `reviewed_head` is an ancestor.
+A truncated marker always forces a full next review. The parser keeps version 1 and legacy `Purpose` recap read compatibility, recap adjacency, strict shape checks, and fail-closed behavior for malformed, duplicated, forged, oversized, or misplaced state. Provenance and ancestor validation remain caller preconditions, with `review-state.mjs` owning the ancestor check: suppressive state is honored only from the same reviewer's prior review and only when `reviewed_head` is an ancestor.
 
 ### Operator recap
 
