@@ -308,7 +308,7 @@ it('counts a partially rejected catalog without marking it degraded and logs onc
   });
 });
 
-it('caps the reported rejection count', async () => {
+it('caps the reported rejection count but logs the full count', async () => {
   mockFetch.mockResolvedValue({
     ok: true,
     json: async () => ({
@@ -319,9 +319,33 @@ it('caps the reported rejection count', async () => {
   expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('configured', false, 100);
   expect(logger.warn).toHaveBeenCalledWith('Kiosk catalog rules rejected', {
     tier: 'configured',
-    rejected: 100,
+    rejected: 150,
     fields: 'url',
   });
+});
+
+it('fails a page catalog closed when any rule is rejected', async () => {
+  mockFetch
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...demo,
+        rules: [...demo.rules, { ...demo.rules[0], id: 'rejected', url: 'javascript:alert(1)' }],
+      }),
+    })
+    .mockResolvedValueOnce(response('Default kiosk'));
+  await loadKioskData(defaultUrl, overrideUrl);
+  expect(logger.warn).toHaveBeenNthCalledWith(1, 'Kiosk catalog rules rejected', {
+    tier: 'override',
+    rejected: 1,
+    fields: 'url',
+  });
+  expect(logger.warn).toHaveBeenNthCalledWith(2, 'Kiosk catalog load failed', {
+    tier: 'override',
+    reason: 'invalid_rules',
+  });
+  expect(logger.warn).toHaveBeenCalledTimes(2);
+  expect(recordKioskCatalogLoaded).toHaveBeenCalledWith('configured', true, 0);
 });
 
 it('logs rejected rules once for a tier that then fails and reports only the served tier count', async () => {

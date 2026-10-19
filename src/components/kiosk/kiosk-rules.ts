@@ -142,7 +142,7 @@ export async function fetchKioskData(
       return !field;
     })
     .map((rule) => ({ ...rule, type: rule.type || 'guide' }));
-  const rejectedRules = Math.min(rules.length - valid.length, REJECTED_RULES_REPORT_CAP);
+  const rejectedRules = rules.length - valid.length;
   if (rejectedRules > 0) {
     logger.warn('Kiosk catalog rules rejected', {
       tier,
@@ -160,7 +160,7 @@ export async function fetchKioskData(
       ...(exitButtonLabel.data !== undefined && { exitButtonLabel: exitButtonLabel.data }),
       ...(data?.page && { page: data.page }),
     },
-    rejectedRules,
+    rejectedRules: Math.min(rejectedRules, REJECTED_RULES_REPORT_CAP),
   };
 }
 
