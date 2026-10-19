@@ -22,7 +22,7 @@
 | `findings[].merge_reason` | string | Required for a blocker: why delaying the merge beats a follow-up. |
 | `findings[].next_action` | string | Required for a follow-up: a concrete proposed issue, test, or doc change, never a merge condition. Required for a nit: the suggested change. |
 | `findings[].why_not_blocker` | string | Required for a follow-up: which blocker trigger you checked (SKILL.md, Challenge) and why it does not apply. |
-| `findings[].attribution` | `introduced` \| `newly_exposed` \| `pre_existing` | Required for a follow-up: how the PR relates to the defect. |
+| `findings[].attribution` | `introduced` \| `newly_exposed` \| `pre_existing` | Required for a follow-up: how the PR relates to the defect. For `pre_existing`, `base_comparison` must cite the base code as `path:line` and say whether the PR changed what that path does to stored state; a bare "same as base" is rejected. |
 | `tests` | object[] | One entry per changed, non-deleted test file in `inventory.json`. Required for a complete assessment when any test file changed. |
 | `tests[].path` | string | A changed test file. |
 | `tests[].read` | boolean | `true` only when you read the file at head, not just the patch. |

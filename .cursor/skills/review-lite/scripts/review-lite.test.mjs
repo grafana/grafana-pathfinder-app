@@ -118,7 +118,7 @@ const followUp = {
   location: 'src/interactive-engine/runner.ts',
   evidence: 'Only the helper has a unit test.',
   consequence: 'A future base change could regress silently.',
-  base_comparison: 'Base had the same gap.',
+  base_comparison: 'Base had the same gap at src/interactive-engine/runner.ts:40; the PR does not touch stored state.',
   next_action: 'Add a runner test that executes the first step.',
 };
 const clearance = {
@@ -618,6 +618,21 @@ describe('follow-up calibration and test scope', () => {
     const outcome = finishWith(runDir, result(runDir, { findings: [followUp] }));
     assert.match(outcome.report, /Why not a blocker: No documented invariant is violated/);
     assert.equal(outcome.state.findings[0].why_not_blocker, followUp.why_not_blocker);
+  });
+
+  test('a pre_existing follow-up must cite the base code as path:line, not just say same as base', () => {
+    const { repo, base } = makeRepo({ 'src/interactive-engine/step-index.ts': 'export const i = 0;\n' });
+    const head = commit(repo, { 'src/interactive-engine/step-index.ts': 'export const i = 1;\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    for (const bare of ['Same as base.', 'Base had the same gap.', 'See file.ts for details.']) {
+      assert.throws(
+        () => finishWith(runDir, result(runDir, { findings: [{ ...followUp, base_comparison: bare }] })),
+        /base_comparison must cite the base code as path:line/
+      );
+    }
+    finishWith(runDir, result(runDir, { findings: [followUp] }));
+    const introduced = { ...followUp, attribution: 'introduced', base_comparison: 'Base had no such helper.' };
+    finishWith(runDir, result(runDir, { findings: [introduced] }));
   });
 
   test('changed_hunks scope is only allowed for a test file over 400 changed lines', () => {

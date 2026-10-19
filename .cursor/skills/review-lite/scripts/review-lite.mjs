@@ -32,6 +32,7 @@ const TEST_SCOPES = ['full', 'changed_hunks'];
 const UNREAD_KINDS = ['binary', 'generated', 'not_in_head', 'tooling_blocked'];
 const EFFORT_REASON = /\b(effort|save time|to save|too (large|big|long|many)|large file|big file|budget|cost)\b/i;
 const ATTRIBUTIONS = ['introduced', 'newly_exposed', 'pre_existing'];
+const BASE_PATH_LINE = /[\w@./-]+\.[A-Za-z0-9]+:\d+/;
 const NIT_TEXT_FIELDS = ['title', 'location', 'evidence'];
 const PLACEHOLDER_REASONS = new Set(['', 'n/a', 'na', 'none', 'not applicable', '-', 'no', 'nothing']);
 
@@ -501,6 +502,15 @@ function validateFindingRecord(errors, finding, label, knownConcerns, { strict =
     requireString(errors, finding.next_action, `${label}.next_action (required for a follow-up)`);
     if (strict && !ATTRIBUTIONS.includes(finding.attribution)) {
       errors.push(`${label}.attribution must be one of ${ATTRIBUTIONS.join(', ')} (required for a follow-up)`);
+    }
+    if (
+      strict &&
+      finding.attribution === 'pre_existing' &&
+      !BASE_PATH_LINE.test(String(finding.base_comparison ?? ''))
+    ) {
+      errors.push(
+        `${label}.base_comparison must cite the base code as path:line for a pre_existing follow-up and say whether the PR changed what that path does to stored state; a bare "same as base" is rejected`
+      );
     }
     if (strict) {
       requireString(
