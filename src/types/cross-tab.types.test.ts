@@ -419,6 +419,13 @@ describe('observation message validation', () => {
     expect(validateCrossTabMessage(envelope({ ...evidence, index: 1.5 }))).toBeNull();
   });
 
+  it('accepts only a boolean command execution opt-in', () => {
+    const check = { kind: 'check-requirements', requestId: 'r1', stepId: 's1', requirements: ['coda-exit-zero:true'] };
+    expect(validateCrossTabMessage(envelope({ ...check, allowCodaExecution: true }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...check, allowCodaExecution: false }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...check, allowCodaExecution: 'true' }))).toBeNull();
+  });
+
   it('accepts only a boolean passive flag on check-requirements', () => {
     const check = { kind: 'check-requirements', requestId: 'r1', stepId: 's1', requirements: ['exists-reftarget'] };
     expect(validateCrossTabMessage(envelope({ ...check, passive: true }))).not.toBeNull();

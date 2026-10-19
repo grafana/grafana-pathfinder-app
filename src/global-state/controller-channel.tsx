@@ -55,7 +55,13 @@ interface ControllerChannel {
   requestRequirementCheck: (
     stepId: string,
     requirements: ConditionInput,
-    opts?: { targetAction?: string; refTarget?: string; targetValue?: string; passive?: boolean }
+    opts?: {
+      targetAction?: string;
+      refTarget?: string;
+      targetValue?: string;
+      passive?: boolean;
+      allowCodaExecution?: boolean;
+    }
   ) => Promise<RemoteRequirementResult | null>;
   requestFix: (
     stepId: string,
@@ -372,6 +378,7 @@ export function ControllerChannelProvider({
           refTarget: opts?.refTarget,
           targetValue: opts?.targetValue,
           passive: opts?.passive,
+          allowCodaExecution: opts?.allowCodaExecution,
         },
         null
       ),
