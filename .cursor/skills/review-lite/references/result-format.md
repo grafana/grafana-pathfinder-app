@@ -21,10 +21,12 @@
 | `findings[].required_invariant` | string | Required for a blocker. State the property, not a patch. |
 | `findings[].merge_reason` | string | Required for a blocker: why delaying the merge beats a follow-up. |
 | `findings[].next_action` | string | Required for a follow-up: a concrete proposed issue, test, or doc change, never a merge condition. Required for a nit: the suggested change. |
+| `findings[].why_not_blocker` | string | Required for a follow-up: which blocker trigger you checked (SKILL.md, Challenge) and why it does not apply. |
 | `findings[].attribution` | `introduced` \| `newly_exposed` \| `pre_existing` | Required for a follow-up: how the PR relates to the defect. |
 | `tests` | object[] | One entry per changed, non-deleted test file in `inventory.json`. Required for a complete assessment when any test file changed. |
 | `tests[].path` | string | A changed test file. |
-| `tests[].read` | boolean | `true` only when you read the whole file at head, not the patch. |
+| `tests[].read` | boolean | `true` only when you read the file at head, not just the patch. |
+| `tests[].scope` | `full` \| `changed_hunks` | Required when `read` is true. `changed_hunks` is allowed only for a test file with more than 400 changed lines: then read every changed hunk plus the surrounding test names. |
 | `tests[].assertions_checked` | string | Required when `read` is true: which new assertions would fail on a regression and which would not. |
 | `tests[].reason` | string | Required when `read` is false: why you did not read it. |
 | `prior_decisions` | object[] | One per item in `prior.json` `items` for a complete assessment. |
@@ -100,6 +102,7 @@ Nits render under `## Nits`, never change the headline, and are not written to `
       "concern_id": "testing-and-verification",
       "disposition": "follow_up",
       "attribution": "introduced",
+      "why_not_blocker": "No documented invariant is violated and nothing persisted is corrupted; expiry is only untested.",
       "title": "No test pins cache expiry",
       "location": "src/context-engine/cache-key.test.ts",
       "evidence": "No test advances time past the TTL.",

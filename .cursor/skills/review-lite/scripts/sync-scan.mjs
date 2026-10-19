@@ -218,12 +218,19 @@ const ORDERING_LINE = /^\s*(needs|if|concurrency|timeout-minutes|strategy)\s*:|\
 const FLAG_LINE = /useBooleanFlag|getFeatureFlagValue|FEATURE_FLAGS|isFeatureEnabled/;
 const VIEW_PATH = /\.(tsx|jsx)$/;
 const NEW_VIEW_LINES = 40;
+const DEFAULT_LINE = /\bDEFAULT_[A-Z0-9_]+\b|\bdefault[A-Z]\w*\b|\?\?\s*['"`]/;
+const OWNERSHIP_TOKEN = /\b(lease|acquire\w*|release\w*|AbortController|handoff|mutex|lock|dispose\w*|teardown)\b/gi;
+const OWNERSHIP_MIN_TOKENS = 2;
 
 const ASKS = {
   'ordering-and-timing':
     'A workflow dependency, condition, timeout, or strategy changed. What waits on what now, compared with base, and how long can the slowest path take?',
   'flag-parity':
     'A feature-flag read changed or was added. With the flag off, does behavior match base? With it on, what does each existing consumer of the replaced path lose?',
+  'default-behavior':
+    'A default, fallback, or unconfigured path changed. What does an install with nothing configured do now compared with base: which requests, which ordering, which warnings, which stored values?',
+  'lifecycle-ownership':
+    'New code acquires, holds, or hands off a lease, lock, controller, or listener. For each, trace the release on every exit: unmount, moving between hosts or panels, navigation, cancel, error, and timeout. What happens if the owner is replaced while the run is still active?',
   'render-states':
     'Substantial new view code. What does the user see when the data is empty, loading, errored, or partly present, and does base show something the new path drops?',
 };
@@ -233,7 +240,13 @@ const ASKS = {
  * flag-gated branches, or rendered states without ever being a "failure".
  */
 export function deltaTriggers({ files, diffs }) {
-  const paths = { 'ordering-and-timing': [], 'flag-parity': [], 'render-states': [] };
+  const paths = {
+    'ordering-and-timing': [],
+    'flag-parity': [],
+    'default-behavior': [],
+    'lifecycle-ownership': [],
+    'render-states': [],
+  };
   for (const file of files) {
     const added = (diffs.get(file.path) ?? []).filter(({ sign }) => sign === '+').map(({ text }) => text);
     const test = isTestPath(file.path);
@@ -242,6 +255,17 @@ export function deltaTriggers({ files, diffs }) {
     }
     if (!test && added.some((text) => FLAG_LINE.test(text))) {
       paths['flag-parity'].push(file.path);
+    }
+    if (!test && !isDocPath(file.path) && added.some((text) => DEFAULT_LINE.test(text))) {
+      paths['default-behavior'].push(file.path);
+    }
+    if (!test && !isDocPath(file.path)) {
+      const tokens = new Set(
+        added.flatMap((text) => [...text.matchAll(OWNERSHIP_TOKEN)].map(([token]) => token.toLowerCase()))
+      );
+      if (tokens.size >= OWNERSHIP_MIN_TOKENS) {
+        paths['lifecycle-ownership'].push(file.path);
+      }
     }
     if (!test && VIEW_PATH.test(file.path) && added.length >= NEW_VIEW_LINES) {
       paths['render-states'].push(file.path);

@@ -113,6 +113,7 @@ const followUp = {
   concern_id: 'testing-and-verification',
   disposition: 'follow_up',
   attribution: 'pre_existing',
+  why_not_blocker: 'No documented invariant is violated and no state is corrupted; only coverage is missing.',
   title: 'No test pins the runner and index helper together',
   location: 'src/interactive-engine/runner.ts',
   evidence: 'Only the helper has a unit test.',
@@ -605,6 +606,60 @@ describe('nits and follow-up attribution', () => {
   });
 });
 
+describe('follow-up calibration and test scope', () => {
+  test('a follow-up must say which blocker trigger it checked', () => {
+    const { repo, base } = makeRepo({ 'src/interactive-engine/step-index.ts': 'export const i = 0;\n' });
+    const head = commit(repo, { 'src/interactive-engine/step-index.ts': 'export const i = 1;\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { findings: [{ ...followUp, why_not_blocker: undefined }] })),
+      /why_not_blocker/
+    );
+    const outcome = finishWith(runDir, result(runDir, { findings: [followUp] }));
+    assert.match(outcome.report, /Why not a blocker: No documented invariant is violated/);
+    assert.equal(outcome.state.findings[0].why_not_blocker, followUp.why_not_blocker);
+  });
+
+  test('changed_hunks scope is only allowed for a test file over 400 changed lines', () => {
+    const big = `${Array.from({ length: 450 }, (_, index) => `test('t${index}', () => {});`).join('\n')}\n`;
+    const { repo, base } = makeRepo({
+      'src/interactive-engine/small.test.ts': "test('a', () => {});\n",
+      'src/interactive-engine/big.test.ts': "test('a', () => {});\n",
+    });
+    const head = commit(
+      repo,
+      { 'src/interactive-engine/small.test.ts': "test('b', () => {});\n", 'src/interactive-engine/big.test.ts': big },
+      'head'
+    );
+    const runDir = prepared({ repo, base, head });
+    const smallPath = 'src/interactive-engine/small.test.ts';
+    const bigPath = 'src/interactive-engine/big.test.ts';
+    const entry = (path, scope) => ({
+      path,
+      read: true,
+      scope,
+      assertions_checked: 'Every new test asserts something.',
+    });
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { tests: [entry(smallPath, 'changed_hunks'), entry(bigPath, 'full')] })),
+      /changed_hunks is only allowed for a test file with more than 400 changed lines/
+    );
+    assert.throws(
+      () =>
+        finishWith(
+          runDir,
+          result(runDir, { tests: [{ ...entry(smallPath, 'full'), scope: undefined }, entry(bigPath, 'full')] })
+        ),
+      /scope must be one of full, changed_hunks/
+    );
+    const outcome = finishWith(
+      runDir,
+      result(runDir, { tests: [entry(smallPath, 'full'), entry(bigPath, 'changed_hunks')] })
+    );
+    assert.match(outcome.report, /Test files read: 2 of 2 \(1 by changed hunks, large files\)/);
+  });
+});
+
 describe('test review', () => {
   function testedRun() {
     const { repo, base } = makeRepo({
@@ -629,7 +684,10 @@ describe('test review', () => {
       /needs a tests entry for every changed test file.*step-index\.test\.ts/
     );
     const path = 'src/interactive-engine/step-index.test.ts';
-    assert.throws(() => finishWith(runDir, result(runDir, { tests: [{ path, read: true }] })), /assertions_checked/);
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { tests: [{ path, read: true, scope: 'full' }] })),
+      /assertions_checked/
+    );
     assert.throws(
       () => finishWith(runDir, result(runDir, { tests: [{ path, read: false }] })),
       /reason \(why this test file was not read in full\)/
@@ -638,7 +696,7 @@ describe('test review', () => {
       () =>
         finishWith(
           runDir,
-          result(runDir, { tests: [{ path: 'src/other.test.ts', read: true, assertions_checked: 'x' }] })
+          result(runDir, { tests: [{ path: 'src/other.test.ts', read: true, scope: 'full', assertions_checked: 'x' }] })
         ),
       /not a changed test file in this run/
     );
@@ -650,12 +708,14 @@ describe('test review', () => {
     const read = finishWith(
       runDir,
       result(runDir, {
-        tests: [{ path, read: true, assertions_checked: 'expect(1).toBe(1) cannot fail, so it pins nothing.' }],
+        tests: [
+          { path, read: true, scope: 'full', assertions_checked: 'expect(1).toBe(1) cannot fail, so it pins nothing.' },
+        ],
       })
     );
-    assert.match(read.report, /Test files read in full: 1 of 1/);
+    assert.match(read.report, /Test files read: 1 of 1/);
     const unread = finishWith(runDir, result(runDir, { tests: [{ path, read: false, reason: 'Generated fixture.' }] }));
-    assert.match(unread.report, /Test files read in full: 0 of 1/);
+    assert.match(unread.report, /Test files read: 0 of 1/);
     assert.match(
       unread.report,
       /Limitation: test file .*step-index\.test\.ts was not read in full: Generated fixture\./
@@ -782,6 +842,38 @@ describe('sync scan and delta triggers', () => {
       ['ordering-and-timing', ['.github/workflows/ci.yml']],
       ['render-states', ['src/panel.tsx']],
     ]);
+  });
+});
+
+describe('default and lifecycle triggers', () => {
+  function triggersFor(baseFiles, headFiles) {
+    const { repo, base } = makeRepo(baseFiles);
+    const head = commit(repo, headFiles, 'head');
+    const runDir = prepared({ repo, base, head });
+    return readJson(join(runDir, 'delta-triggers.json')).triggers.map(({ id, paths }) => [id, paths]);
+  }
+
+  test('flags a changed default and a new lease with release paths, and ignores tests and docs', () => {
+    const triggers = triggersFor(
+      { 'src/a.ts': 'export const a = 1;\n', 'src/a.test.ts': 'test("x", () => {});\n', 'docs/a.md': 'a\n' },
+      {
+        'src/a.ts':
+          "export const DEFAULT_KIOSK_URL = 'x';\nexport function run() { const lease = acquireLease(); return () => releaseLease(lease); }\n",
+        'src/a.test.ts': "const DEFAULT_URL = 'x'; acquireLease(); releaseLease();\n",
+        'docs/a.md': 'DEFAULT_KIOSK_URL acquireLease releaseLease\n',
+      }
+    );
+    assert.deepEqual(triggers.sort(), [
+      ['default-behavior', ['src/a.ts']],
+      ['lifecycle-ownership', ['src/a.ts']],
+    ]);
+  });
+
+  test('one ownership word alone does not raise a lifecycle trigger', () => {
+    assert.deepEqual(
+      triggersFor({ 'src/a.ts': 'export const a = 1;\n' }, { 'src/a.ts': 'export const lock = 1;\n' }),
+      []
+    );
   });
 });
 

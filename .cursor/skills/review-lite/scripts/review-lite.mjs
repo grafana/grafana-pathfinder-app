@@ -28,6 +28,7 @@ const GENERATED_PATTERNS = [
 const FINDING_ID = /^[A-Za-z][A-Za-z0-9-]{0,31}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const MAX_NITS = 5;
+const TEST_SCOPES = ['full', 'changed_hunks'];
 const ATTRIBUTIONS = ['introduced', 'newly_exposed', 'pre_existing'];
 const NIT_TEXT_FIELDS = ['title', 'location', 'evidence'];
 const PLACEHOLDER_REASONS = new Set(['', 'n/a', 'na', 'none', 'not applicable', '-', 'no', 'nothing']);
@@ -499,12 +500,19 @@ function validateFindingRecord(errors, finding, label, knownConcerns, { strict =
     if (strict && !ATTRIBUTIONS.includes(finding.attribution)) {
       errors.push(`${label}.attribution must be one of ${ATTRIBUTIONS.join(', ')} (required for a follow-up)`);
     }
+    if (strict) {
+      requireString(
+        errors,
+        finding.why_not_blocker,
+        `${label}.why_not_blocker (required for a follow-up: say which blocker trigger you checked and why it does not apply)`
+      );
+    }
   } else if (nit) {
     requireString(errors, finding.next_action, `${label}.next_action (the suggested change, required for a nit)`);
   } else {
     errors.push(`${label}.disposition must be ${strict ? 'blocker, follow_up, or nit' : 'blocker or follow_up'}`);
   }
-  for (const field of ['required_invariant', 'merge_reason', 'next_action']) {
+  for (const field of ['required_invariant', 'merge_reason', 'next_action', 'why_not_blocker']) {
     if (finding[field] !== undefined && typeof finding[field] !== 'string') {
       errors.push(`${label}.${field} must be a string when present`);
     }
@@ -788,6 +796,15 @@ function validateTestReview(errors, result, inventory) {
     }
     seen.add(entry.path);
     if (entry.read === true) {
+      const file = (inventory?.files ?? []).find(({ path }) => path === entry.path);
+      const large = file !== undefined && file.added + file.deleted > LARGE_FILE_LINES;
+      if (!TEST_SCOPES.includes(entry.scope)) {
+        errors.push(`${label}.scope must be one of ${TEST_SCOPES.join(', ')} when read is true`);
+      } else if (entry.scope === 'changed_hunks' && !large) {
+        errors.push(
+          `${label}.scope changed_hunks is only allowed for a test file with more than ${LARGE_FILE_LINES} changed lines; read ${entry.path} in full`
+        );
+      }
       requireString(
         errors,
         entry.assertions_checked,
@@ -956,6 +973,7 @@ const STATE_FINDING_FIELDS = [
   'merge_reason',
   'next_action',
   'attribution',
+  'why_not_blocker',
   'recorded_at_head',
 ];
 const STATE_CLEARANCE_FIELDS = ['id', 'concern_id', 'claim', 'evidence', 'recorded_at_head'];
@@ -1003,6 +1021,9 @@ function findingBlock(finding, { carried = false } = {}) {
     lines.push(`- Required invariant: ${finding.required_invariant}`, `- Why it blocks: ${finding.merge_reason}`);
   } else {
     lines.push(`- Proposed next action: ${finding.next_action}`);
+    if (finding.why_not_blocker) {
+      lines.push(`- Why not a blocker: ${finding.why_not_blocker}`);
+    }
   }
   return lines.join('\n');
 }
@@ -1049,7 +1070,10 @@ export function renderReport(result, { manifest, prior }) {
   const tests = result.tests ?? [];
   if (tests.length > 0) {
     const readTests = tests.filter(({ read }) => read);
-    scope.push(`- Test files read in full: ${readTests.length} of ${tests.length}`);
+    const hunks = readTests.filter(({ scope: readScope }) => readScope === 'changed_hunks').length;
+    scope.push(
+      `- Test files read: ${readTests.length} of ${tests.length}${hunks > 0 ? ` (${hunks} by changed hunks, large files)` : ''}`
+    );
     for (const entry of tests.filter(({ read }) => !read)) {
       scope.push(`- Limitation: test file ${entry.path} was not read in full: ${entry.reason}`);
     }
