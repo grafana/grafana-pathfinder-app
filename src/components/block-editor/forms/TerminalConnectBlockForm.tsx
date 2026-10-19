@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Alert, Button, Checkbox, Field, Input, Combobox, TextArea, useStyles2 } from '@grafana/ui';
+import { Button, Checkbox, Field, Input, Combobox, TextArea, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { useCodaOptions, useCodaTemplateOptions } from './useCodaOptions';
@@ -35,7 +35,7 @@ export function TerminalConnectBlockForm({
   const [vmTemplate, setVmTemplate] = useState(initial?.vmTemplate ?? '');
   const [vmApp, setVmApp] = useState(initial?.vmApp ?? '');
   const [vmScenario, setVmScenario] = useState(initial?.vmScenario ?? '');
-  const [gcx, setGcx] = useState(initial?.gcx ?? false);
+  const [gcx, setGcx] = useState(initial?.credentials?.some(({ tool }) => tool === 'gcx') ?? false);
 
   const isSampleApp = vmTemplate === 'vm-aws-sample-app';
   const isAlloyScenario = vmTemplate === 'vm-aws-alloy-scenario';
@@ -62,7 +62,7 @@ export function TerminalConnectBlockForm({
         ...(vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
         ...(vmApp.trim() && { vmApp: vmApp.trim() }),
         ...(vmScenario.trim() && { vmScenario: vmScenario.trim() }),
-        ...(gcx && { gcx: true }),
+        ...(gcx && { credentials: [{ tool: 'gcx' as const }] }),
       };
 
       onSubmit(block as JsonBlock);
@@ -142,14 +142,6 @@ export function TerminalConnectBlockForm({
         value={gcx}
         onChange={(e) => setGcx(e.currentTarget.checked)}
       />
-
-      {gcx && (
-        <Alert title="gcx is not stored on the backend yet" severity="warning">
-          The <code>InteractiveGuide</code> resource does not declare this field, so saving or publishing this guide
-          drops it without an error and the step reloads without it. Serve the guide from a bundled package or a local
-          file until the backend declares <code>gcx</code>.
-        </Alert>
-      )}
 
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (
