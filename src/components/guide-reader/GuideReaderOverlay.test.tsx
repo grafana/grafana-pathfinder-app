@@ -5,6 +5,9 @@ import { testIds } from '../../constants/testIds';
 import { fetchUnifiedContent, fetchPackageContent } from '../../docs-retrieval';
 import { recordGuideRender } from '../../lib/telemetry/facade';
 import { getActiveTabUrl } from '../../global-state/content-key';
+import { publishGuideIndex } from '../../global-state/active-guide-index';
+import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { interactiveStepStorage } from '../../lib/user-storage';
 import { findDocPage } from '../../utils/find-doc-page';
 import { useGlobalActiveTabExposure } from '../docs-panel/hooks/useGlobalActiveTabExposure';
 import type { ReaderPosition } from '../../types/cross-tab.types';
@@ -107,6 +110,64 @@ describe('GuideReaderOverlay', () => {
       mockFetchContent.mock.calls[0]?.[1]?.loadContext?.loadId
     );
     expect(recordGuideRender).not.toHaveBeenCalled();
+  });
+
+  it.each(['interactive', 'controller'] as const)(
+    'shows completion progress above the rendered guide in %s mode',
+    async (mode) => {
+      const url = `backend-guide:reader-progress-${mode}`;
+      publishGuideIndex({
+        contentKey: url,
+        index: computeGuideBlockIndex([
+          { type: 'markdown', id: 'first' },
+          { type: 'markdown', id: 'second' },
+        ]),
+        denominatorSource: 'live-pre-inlining',
+      });
+      await interactiveStepStorage.setCompleted(url, 'standalone', new Set(['first']));
+      mockFetchContent.mockResolvedValue({
+        content: { url, type: 'interactive', content: '', lastFetched: '', metadata: { title: 'Guide' } },
+      });
+
+      render(<GuideReaderOverlay doc={url} mode={mode} />);
+
+      const content = await screen.findByTestId('mock-content');
+      const bar = await screen.findByRole('progressbar');
+      expect(bar).toHaveAttribute('aria-valuenow', '50');
+      expect(screen.getByTestId(testIds.guideProgress.percentage)).toHaveTextContent('50% complete');
+      expect(bar.parentElement).toBe(content.parentElement);
+      expect(bar.compareDocumentPosition(content) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  );
+
+  it.each([0, 1])('gates journey progress on the cover but not milestone %s', async (currentMilestone) => {
+    const url = `backend-guide:reader-journey-${currentMilestone}`;
+    publishGuideIndex({
+      contentKey: url,
+      index: computeGuideBlockIndex([{ type: 'markdown', id: 'first' }]),
+      denominatorSource: 'live-pre-inlining',
+    });
+    mockFetchContent.mockResolvedValue({
+      content: {
+        url,
+        type: 'learning-journey',
+        content: '',
+        lastFetched: '',
+        metadata: {
+          title: 'Journey',
+          learningJourney: { baseUrl: url, currentMilestone, totalMilestones: 1, milestones: [] },
+        },
+      },
+    });
+
+    render(<GuideReaderOverlay doc={url} mode="controller" />);
+    await screen.findByTestId('mock-content');
+
+    if (currentMilestone === 0) {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    } else {
+      expect(await screen.findByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    }
   });
 
   it('publishes the rendered guide key (the sidebar tab spelling) and releases it on unmount', async () => {

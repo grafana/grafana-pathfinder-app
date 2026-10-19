@@ -173,7 +173,7 @@ describe('json-parser terminal-connect gcx field', () => {
   }
 
   it('carries gcx through to the step props', () => {
-    expect(parseConnectBlock({ gcx: true }).props.gcx).toBe(true);
+    expect(parseConnectBlock({ credentials: [{ tool: 'gcx' }] }).props.gcx).toBe(true);
   });
 
   it('leaves gcx undefined when the author did not ask for it', () => {
@@ -183,20 +183,23 @@ describe('json-parser terminal-connect gcx field', () => {
   });
 
   it('keeps gcx alongside the VM options rather than replacing them', () => {
-    const el = parseConnectBlock({ gcx: true, vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
+    const el = parseConnectBlock({ credentials: [{ tool: 'gcx' }], vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
     expect(el.props).toMatchObject({ gcx: true, vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
   });
 
-  it('rejects a non-boolean gcx rather than coercing it', () => {
-    const result = parseJsonGuide(
-      JSON.stringify({
-        id: 'test-gcx-bad',
-        title: 'gcx test',
-        blocks: [{ type: 'terminal-connect', content: 'Connect', gcx: 'yes' }],
-      })
-    );
-    expect(result.isValid).toBe(false);
-  });
+  it.each([[{ tool: 'unknown' }], [{ tool: 'gcx', token: 'secret' }], [{}], true])(
+    'rejects invalid credential requests: %j',
+    (credentials) => {
+      const result = parseJsonGuide(
+        JSON.stringify({
+          id: 'test-gcx-bad',
+          title: 'gcx test',
+          blocks: [{ type: 'terminal-connect', content: 'Connect', credentials }],
+        })
+      );
+      expect(result.isValid).toBe(false);
+    }
+  );
 });
 
 it('preserves comma-containing objective and prerequisite tokens', () => {

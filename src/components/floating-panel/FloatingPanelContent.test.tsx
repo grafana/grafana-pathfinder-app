@@ -5,8 +5,15 @@
  * Completing a guide in either surface must route through the shared, surface-neutral
  * emitter — see `surface-emission-owner`.
  */
+
+// Mock @grafana/runtime before imports that trigger user-storage.ts module loading
+jest.mock('@grafana/runtime', () => ({
+  usePluginUserStorage: jest.fn(),
+  getAppEvents: jest.fn(() => ({ publish: jest.fn() })),
+}));
+
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { FloatingPanelContent } from './FloatingPanelContent';
 
@@ -31,7 +38,9 @@ jest.mock('../content-renderer/content-renderer', () => ({
   },
 }));
 
-// The hooks barrel pulls @grafana/runtime in through user-storage.
+jest.mock('../../docs-retrieval', () => ({
+  isJourneyCoverPage: () => false,
+}));
 jest.mock('../../hooks', () => ({
   usePublishSurfaceContentKey: jest.fn(),
 }));
@@ -48,6 +57,31 @@ jest.mock('../docs-panel/components', () => ({
 
 jest.mock('../InteractiveLearningBanner', () => ({
   InteractiveLearningBanner: () => null,
+}));
+
+jest.mock('../../global-state/completion-store', () => ({
+  peekGuidePercentage: () => 0,
+  subscribeProgress: () => () => undefined,
+}));
+
+let mockGuideIndex: Record<string, any> | null = null;
+let publicationListener: (() => void) | undefined;
+let publicationRevision = 0;
+jest.mock('../../global-state/active-guide-index', () => ({
+  getGuideIndex: (_key: string) => mockGuideIndex,
+  subscribeGuideIndexPublications: (listener: () => void) => {
+    publicationListener = listener;
+    return () => {
+      publicationListener = undefined;
+    };
+  },
+  getGuideIndexPublicationRevision: () => publicationRevision,
+  subscribeGuideIndexEvictions: () => () => undefined,
+  getGuideIndexEvictionRevision: () => 0,
+}));
+
+jest.mock('../../global-state/guide-content-key', () => ({
+  resolveGuideContentKey: (url: string | undefined) => url ?? 'default',
 }));
 
 jest.mock('@grafana/ui', () => ({
@@ -107,6 +141,9 @@ beforeEach(() => {
   mockRenderedCompletions.length = 0;
   useLinkClickHandler.mockClear();
   LearningJourneyMilestoneToolbar.mockClear();
+  mockGuideIndex = null;
+  publicationListener = undefined;
+  publicationRevision = 0;
   usePublishSurfaceContentKey.mockClear();
 });
 
@@ -256,5 +293,52 @@ describe('FloatingPanelContent model forwarding', () => {
 
     expect(linkHandlerInput).toEqual(expect.objectContaining({ model, activeTab: tab }));
     expect(toolbarProps).toEqual(expect.objectContaining({ panel: model, activeTab: tab, surface: 'fullscreen' }));
+  });
+});
+
+/**
+ * Regression test for PR #1973, Bug 2: floating and full-screen bars can stay absent.
+ *
+ * Before the fix, FloatingPanelContent decided whether to mount the bar by
+ * synchronously reading getGuideIndex(getContentKey()), but the index is only
+ * published by a later passive effect in ContentRenderer. On a cold floating
+ * or full-screen open, the first render saw no index and omitted the bar, and
+ * nothing re-rendered when the index published — so the bar stayed missing
+ * until an unrelated render.
+ *
+ * The fix makes visibility reactive to index publication via useSyncExternalStore.
+ */
+describe('FloatingPanelContent progress bar visibility (cold open)', () => {
+  it('shows the progress bar after index is published, even on first mount', async () => {
+    // Initial render: no index published yet (cold open)
+    mockGuideIndex = null;
+
+    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
+
+    await act(async () => {});
+    expect(screen.queryByTestId('guide-progress-bar')).not.toBeInTheDocument();
+
+    // Simulate ContentRenderer publishing the index in its passive effect
+    mockGuideIndex = { contentKey: 'guide-key', index: {}, denominatorSource: 'live-pre-inlining' };
+
+    // Notify publication subscribers (triggers re-render)
+    act(() => {
+      publicationRevision += 1; // Increment first (mimic real notifyPublished)
+      publicationListener?.();
+    });
+
+    // Bar should now appear because the index is published
+    expect(screen.getByTestId('guide-progress-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('guide-progress-bar')).toHaveAttribute('aria-valuenow', '0');
+  });
+
+  it('hides the progress bar when index is absent (no guide)', () => {
+    // No index published
+    mockGuideIndex = null;
+
+    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
+
+    // Bar should be absent
+    expect(screen.queryByTestId('guide-progress-bar')).not.toBeInTheDocument();
   });
 });

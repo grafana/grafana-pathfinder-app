@@ -32,7 +32,7 @@ function Probe() {
   );
 }
 
-function RequestProbe() {
+function RequestProbe({ allowCodaExecution }: { allowCodaExecution?: boolean }) {
   const channel = useControllerChannel();
   const [check, setCheck] = React.useState('pending');
   const [fix, setFix] = React.useState('pending');
@@ -40,7 +40,9 @@ function RequestProbe() {
     <div>
       <button
         onClick={() =>
-          channel?.requestRequirementCheck('s1', 'navmenu-open').then((r) => setCheck(r ? `pass:${r.pass}` : 'null'))
+          channel
+            ?.requestRequirementCheck('s1', 'navmenu-open', { allowCodaExecution })
+            .then((r) => setCheck(r ? `pass:${r.pass}` : 'null'))
         }
       >
         check
@@ -323,6 +325,23 @@ describe('ControllerChannelProvider', () => {
 
     expect(postedOfKind(transport, 'step-command')).toBeUndefined();
   });
+
+  it.each([undefined, false, true])(
+    'carries the command execution opt-in in the signed check (%s)',
+    async (allowCodaExecution) => {
+      const transport = new FakeCrossTabTransport();
+      render(
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          <RequestProbe allowCodaExecution={allowCodaExecution} />
+        </ControllerChannelProvider>
+      );
+      await pairWithLive(transport);
+      fireEvent.click(screen.getByText('check'));
+      const request = await waitForPostedOfKind(transport, 'check-requirements');
+      expect(request.allowCodaExecution).toBe(allowCodaExecution);
+      expect(request).toEqual(expect.objectContaining(signedFieldsFor('live')));
+    }
+  );
 
   it('resolves requestRequirementCheck with the live tab reply', async () => {
     const transport = new FakeCrossTabTransport();

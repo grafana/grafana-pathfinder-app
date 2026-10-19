@@ -85,7 +85,7 @@ message. Several distinct failures share a status.
 
 ## gcx credentials
 
-`terminal-connect` with `gcx: true` installs a Grafana credential into the VM after the terminal
+`terminal-connect` with `credentials: [{ "tool": "gcx" }]` installs a Grafana credential into the VM after the terminal
 connects, so the `gcx` CLI in every sandbox image can talk to this Grafana as the learner.
 `provisionGcx(sessionId, { token? })` in `coda-api.ts` wraps the SDK call, because this module owns the
 only `CodaClient` instance.
@@ -241,6 +241,8 @@ on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 | `src/components/AppConfig/CodaBackendStatus.tsx` | Reports backend availability; links to the Coda plugin's own config page |
 | `src/components/interactive-tutorial/challenge-block.tsx` | CTF-style block: setup script, sentinel write, check-my-work |
 
+`coda-exit-zero` executes only when the caller passes `allowCodaExecution: true` for an explicit user check; passive evaluations leave it false. The command also remains gated on `PATHFINDER_READY_FILE`.
+
 ## Configuration
 
 Pathfinder keeps exactly one Coda setting:
@@ -272,7 +274,7 @@ migrated across plugins**, so operators must re-enter their enrollment key there
 | `vmTemplate` | `""` (→ `vm-aws`) | VM template to provision |
 | `vmApp` | `""` | App name for `vm-aws-sample-app` |
 | `vmScenario` | `""` | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
-| `gcx` | `false` | Also install a gcx credential — see above |
+| `credentials` | omitted | Also install a gcx credential — see above |
 
 ## Constraints
 

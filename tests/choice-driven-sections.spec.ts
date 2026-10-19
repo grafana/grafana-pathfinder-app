@@ -97,9 +97,9 @@ test('shows all eight selection combinations and preserves section completion wh
     .getByTestId(testIds.interactive.section('section-logs'))
     .getByRole('button', { name: 'Mark section as complete', exact: true })
     .click();
-  await expect(page.getByTestId(testIds.markComplete.percentage)).toContainText('100%');
+  await expect(page.getByTestId(testIds.guideProgress.percentage)).toContainText('100%');
   await group.getByText('Traces', { exact: true }).click();
-  await expect(page.getByTestId(testIds.markComplete.percentage)).not.toContainText('100%');
+  await expect(page.getByTestId(testIds.guideProgress.percentage)).not.toContainText('100%');
   await group.getByText('Logs', { exact: true }).click();
   await group.getByText('Logs', { exact: true }).click();
   await expect(page.getByTestId(testIds.interactive.section('section-logs'))).toHaveClass(/completed/);

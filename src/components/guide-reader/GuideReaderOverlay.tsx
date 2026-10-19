@@ -6,8 +6,10 @@ import { config } from '@grafana/runtime';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { GuideProgressBar } from '../guide-progress';
 import {
   fetchUnifiedContent,
+  isJourneyCoverPage,
   resolveActiveMilestoneSequence,
   fetchPackageContent,
   getNextMilestoneUrlFromContent,
@@ -356,6 +358,7 @@ function GuideReaderInner({
             </Button>
           </nav>
         )}
+        <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
         <ContentRenderer
           content={content}
           containerRef={contentRef}

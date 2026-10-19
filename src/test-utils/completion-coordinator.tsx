@@ -17,10 +17,11 @@ import {
 function checkAsTheSidebarDoes(
   checkPostconditions: ReturnType<typeof useGuideRequirements>['checkPostconditions']
 ): ObservationCheck {
-  return async (conditions, step) => {
+  return async (conditions, step, _signal, checkCommand) => {
     const action = step.actions[0];
     const result = await checkPostconditions({
       requirements: conditions,
+      allowCodaExecution: checkCommand,
       stepId: step.stepId,
       targetAction: action?.targetAction,
       refTarget: action?.refTarget,
