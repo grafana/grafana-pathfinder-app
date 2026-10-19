@@ -82,7 +82,7 @@ Column key — **cat**: `AO`=always-on · `sub`=subsystem · `xcut`=cross-cuttin
 Detailed reviewer guidance and contract history live in `docs/design/CONCERN_DETAILS.md`. Do not load that registry wholesale during a review. For each activated concern, run:
 
 ```bash
-node .cursor/skills/review/scripts/concern-context.mjs <concern-id>
+node .cursor/review-shared/concern-context.mjs <concern-id>
 ```
 
 The extractor joins this routing row with the concern purpose, bounded context, review questions, one-way doors, verification, related concerns, contract anchor, named invariants, and any pre-contract candidate. `npm run test:review-contract` validates that the two registries stay aligned.

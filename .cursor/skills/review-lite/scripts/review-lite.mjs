@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { isAbsolute, join, matchesGlob, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { extractConcernContext, validateConcernRegistry } from '../../review/scripts/concern-context.mjs';
-import { findTable, unquote } from '../../review/scripts/registry-table.mjs';
+import { extractConcernContext, validateConcernRegistry } from '../../../review-shared/concern-context.mjs';
+import { findTable, unquote } from '../../../review-shared/registry-table.mjs';
 import { deltaTriggers, isTestPath, scanSync } from './sync-scan.mjs';
 
 export const STATE_VERSION = 'review-lite-v1';

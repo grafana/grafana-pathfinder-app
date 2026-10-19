@@ -3,7 +3,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseArgs as parseCliArgs } from 'node:util';
-import { findTable, unquote } from './registry-table.mjs';
+import { findTable, unquote } from '../../../review-shared/registry-table.mjs';
 
 const DEFAULT_WINDOW_DAYS = 30;
 const SEMANTIC_TYPES = new Set([

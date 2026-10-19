@@ -10,11 +10,12 @@ import {
   validateConcernRegistry,
 } from './concern-context.mjs';
 
-const concernsPath = fileURLToPath(new URL('../../../../docs/design/CONCERNS.md', import.meta.url));
-const concernDetailsPath = fileURLToPath(new URL('../../../../docs/design/CONCERN_DETAILS.md', import.meta.url));
-const skillPath = fileURLToPath(new URL('../SKILL.md', import.meta.url));
+const concernsPath = fileURLToPath(new URL('../../docs/design/CONCERNS.md', import.meta.url));
+const concernDetailsPath = fileURLToPath(new URL('../../docs/design/CONCERN_DETAILS.md', import.meta.url));
+const skillPath = fileURLToPath(new URL('../skills/review/SKILL.md', import.meta.url));
 const scriptPath = fileURLToPath(new URL('./concern-context.mjs', import.meta.url));
 const scriptsPath = fileURLToPath(new URL('.', import.meta.url));
+const reviewScriptsPath = fileURLToPath(new URL('../skills/review/scripts/', import.meta.url));
 const concerns = readFileSync(concernsPath, 'utf8');
 const concernDetails = readFileSync(concernDetailsPath, 'utf8');
 const skill = readFileSync(skillPath, 'utf8');
@@ -230,12 +231,14 @@ test('requires fresh user approval after rendering and before publication', () =
 });
 
 test('keeps only the five agent-facing review executables', () => {
-  const executables = readdirSync(scriptsPath)
-    .filter(
-      (name) =>
-        name.endsWith('.mjs') &&
-        !name.endsWith('.test.mjs') &&
-        readFileSync(`${scriptsPath}/${name}`, 'utf8').includes('process.argv[1] === fileURLToPath(import.meta.url)')
+  const executables = [scriptsPath, reviewScriptsPath]
+    .flatMap((dir) =>
+      readdirSync(dir).filter(
+        (name) =>
+          name.endsWith('.mjs') &&
+          !name.endsWith('.test.mjs') &&
+          readFileSync(`${dir}/${name}`, 'utf8').includes('process.argv[1] === fileURLToPath(import.meta.url)')
+      )
     )
     .sort();
   assert.deepEqual(executables, [
@@ -263,7 +266,7 @@ test('emits every completion-records doc as one loadable path', () => {
   ]);
   for (const doc of context.load_docs) {
     assert.doesNotMatch(doc, /`/);
-    assert.ok(existsSync(fileURLToPath(new URL(`../../../../${doc.split(' ')[0]}`, import.meta.url))), doc);
+    assert.ok(existsSync(fileURLToPath(new URL(`../../${doc.split(' ')[0]}`, import.meta.url))), doc);
   }
 });
 
