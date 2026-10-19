@@ -1,8 +1,8 @@
 import React from 'react';
-import { Card, useStyles2 } from '@grafana/ui';
+import { Card, Icon, useStyles2 } from '@grafana/ui';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
 import { testIds } from '../../constants/testIds';
-import { HubActionButton } from './HubActionButton';
+import { getHubActionLabel } from './hub-action-label';
 import { getSidebarHubStyles } from './sidebar-hub.styles';
 
 export interface HubGuide {
@@ -16,36 +16,39 @@ export interface HubGuide {
   onLaunch: () => void | Promise<void>;
 }
 
-export function GuideRow({
-  guide,
-  index,
-  disabled,
-  onLaunch,
-}: {
-  guide: HubGuide;
-  index: number;
-  disabled: boolean;
-  onLaunch: () => void;
-}) {
+function PlayGlyph() {
+  const styles = useStyles2(getSidebarHubStyles);
+  return (
+    <span className={styles.play} aria-hidden="true">
+      <Icon name="play" size="sm" />
+    </span>
+  );
+}
+
+export function GuideRow({ guide, index, onLaunch }: { guide: HubGuide; index: number; onLaunch: () => void }) {
   const styles = useStyles2(getSidebarHubStyles);
 
   return (
     <li>
-      <Card isCompact noMargin className={styles.denseCard}>
+      <Card
+        isCompact
+        noMargin
+        className={styles.denseCard}
+        onClick={onLaunch}
+        data-testid={testIds.sidebarHub.row(index)}
+      >
         <Card.Figure align="center">
           <LearningTopicIcon topic={guide.topic} kind={guide.kind} />
         </Card.Figure>
-        <Card.Heading>{guide.title}</Card.Heading>
+        <Card.Heading
+          className={styles.denseHeading}
+          aria-label={getHubActionLabel(guide.kind, guide.progress, guide.title)}
+        >
+          {guide.title}
+        </Card.Heading>
         {guide.effort && <Card.Meta>{[guide.effort]}</Card.Meta>}
         <Card.SecondaryActions className={styles.denseAction}>
-          <HubActionButton
-            title={guide.title}
-            kind={guide.kind}
-            progress={guide.progress}
-            testId={testIds.sidebarHub.row(index)}
-            disabled={disabled}
-            onLaunch={onLaunch}
-          />
+          <PlayGlyph />
         </Card.SecondaryActions>
       </Card>
     </li>

@@ -105,13 +105,7 @@ export function SidebarHub({
           </Text>
           <ul className={styles.list} data-testid={testIds.sidebarHub.moreList}>
             {more.map((guide, index) => (
-              <GuideRow
-                key={guide.key}
-                guide={guide}
-                index={index}
-                disabled={pending}
-                onLaunch={() => run(guide.onLaunch)}
-              />
+              <GuideRow key={guide.key} guide={guide} index={index} onLaunch={() => run(guide.onLaunch)} />
             ))}
           </ul>
         </>

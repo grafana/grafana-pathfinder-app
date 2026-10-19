@@ -148,6 +148,7 @@
   "sidebarHub": {
     "actionLabel": "{{action}}: {{- title}}",
     "assignments": "Assignments",
+    "continueLabel": "Continue learning",
     "dueInDays_one": "Due in {{count}} day",
     "dueInDays_other": "Due in {{count}} days",
     "dueOn": "Due {{- date}}",

@@ -152,6 +152,7 @@
   "sidebarHub": {
     "actionLabel": "",
     "assignments": "",
+    "continueLabel": "",
     "dueInDays_one": "",
     "dueInDays_other": "",
     "dueOn": "",

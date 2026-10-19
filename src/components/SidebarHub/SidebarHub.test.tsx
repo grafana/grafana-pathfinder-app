@@ -140,7 +140,7 @@ describe('SidebarHub', () => {
     const second = guide('Second');
     renderHub({ guides: [guide('Featured guide'), second] });
 
-    fireEvent.click(screen.getByTestId(testIds.sidebarHub.row(0)));
+    fireEvent.click(within(screen.getByTestId(testIds.sidebarHub.row(0))).getByRole('button'));
 
     expect(second.onLaunch).toHaveBeenCalledTimes(1);
   });
@@ -148,10 +148,9 @@ describe('SidebarHub', () => {
   it('describes the resume card and resumes from its button', () => {
     const { onResume } = renderHub({ resume: { ...resume, trackLabel: 'Operations' } });
 
-    const resumeCard = screen.getByTestId(testIds.sidebarHub.resume);
-    expect(within(resumeCard).getByText('Getting started')).toBeInTheDocument();
-    expect(within(resumeCard).getByText('Module 2 of 5')).toBeInTheDocument();
-    expect(within(resumeCard).getByText('Operations')).toBeInTheDocument();
+    const resumeCard = screen.getByRole('region', { name: 'Continue learning' });
+    expect(resumeCard).toBe(screen.getByTestId(testIds.sidebarHub.resume));
+    expect(resumeCard).toHaveTextContent('Getting started · Module 2 of 5 · Operations');
     fireEvent.click(screen.getByRole('button', { name: 'Resume: Build a dashboard' }));
 
     expect(onResume).toHaveBeenCalledWith(expect.objectContaining({ pathId: 'getting-started' }));
@@ -174,6 +173,17 @@ describe('SidebarHub', () => {
     renderHub({ stats: { ...stats, nextDue: { tone: 'later', days: 3, dueAt: '2026-10-19T00:00:00Z' } } });
 
     expect(screen.getByText('Due in 3 days')).toBeInTheDocument();
+  });
+
+  it.each([
+    [{ tone: 'today', days: 0, dueAt: '2026-10-19T00:00:00Z' }, 'Due today'],
+    [{ tone: 'later', days: 1, dueAt: '2026-10-20T00:00:00Z' }, 'Due tomorrow'],
+    [{ tone: 'later', days: 5, dueAt: '2026-10-24T00:00:00Z' }, 'Due in 5 days'],
+    [{ tone: 'overdue', days: -2, dueAt: '2026-10-17T00:00:00Z' }, /^Due .*2026/],
+  ] as const)('captions the assignments tile for %j', (nextDue, caption) => {
+    renderHub({ stats: { ...stats, nextDue } });
+
+    expect(within(screen.getByTestId(testIds.sidebarHub.tile('assignments'))).getByText(caption)).toBeInTheDocument();
   });
 
   it('shows skeletons while loading instead of cards', () => {

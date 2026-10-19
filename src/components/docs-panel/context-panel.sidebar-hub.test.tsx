@@ -267,7 +267,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       recommendations: [{ title: 'Docs', url: 'https://grafana.com/docs/x/', type: 'docs-page' }],
     });
 
-    await click(screen.getByTestId(testIds.sidebarHub.row(0)));
+    await click(within(screen.getByTestId(testIds.sidebarHub.row(0))).getByRole('button'));
 
     expect(openDocsPage).toHaveBeenCalledWith('https://grafana.com/docs/x/', 'Docs', undefined);
     expect(openLearningJourney).not.toHaveBeenCalled();
@@ -282,7 +282,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
   it('resumes a started path at its current guide', async () => {
     setup({ recommendations: [pkg('one')], startedPath: true });
 
-    expect(screen.getByText('Module 2 of 2')).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.sidebarHub.resume)).toHaveTextContent('Getting started · Module 2 of 2');
     await click(screen.getByTestId(testIds.sidebarHub.resumeAction));
 
     expect(openLearningJourney).toHaveBeenCalledWith('bundled:b', 'Guide B');
@@ -303,8 +303,9 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       assignments: [assignment('getting-started', { trackId: 'ops', trackLabel: 'Operations', progress: 50 })],
     });
 
-    expect(screen.getByText('Module 2 of 2')).toBeInTheDocument();
-    expect(screen.getByText('Operations')).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.sidebarHub.resume)).toHaveTextContent(
+      'Getting started · Module 2 of 2 · Operations'
+    );
     await click(screen.getByTestId(testIds.sidebarHub.resumeAction));
 
     await waitFor(() => expect(openDocsPage).toHaveBeenCalledTimes(1));
@@ -401,14 +402,18 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
   it('ignores a second launch while the first is still opening', async () => {
     let finish: () => void = () => undefined;
     openDocsPage.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
-    setup({ featured: [pkg('top')], recommendations: [pkg('two')] });
+    setup({ featured: [pkg('top')], recommendations: [pkg('two')], startedPath: true });
 
     await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
-    await click(screen.getByTestId(testIds.sidebarHub.row(0)));
+    await click(within(screen.getByTestId(testIds.sidebarHub.row(0))).getByRole('button'));
+    await click(screen.getByTestId(testIds.sidebarHub.resumeAction));
 
     expect(openDocsPage).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId(testIds.sidebarHub.row(0))).toBeDisabled();
+    expect(openLearningJourney).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.sidebarHub.featuredAction)).toBeDisabled();
+    expect(screen.getByTestId(testIds.sidebarHub.resumeAction)).toBeDisabled();
     finish();
-    await waitFor(() => expect(screen.getByTestId(testIds.sidebarHub.row(0))).toBeEnabled());
+    await waitFor(() => expect(screen.getByTestId(testIds.sidebarHub.featuredAction)).toBeEnabled());
+    expect(screen.getByTestId(testIds.sidebarHub.resumeAction)).toBeEnabled();
   });
 });
