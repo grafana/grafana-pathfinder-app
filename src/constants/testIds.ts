@@ -442,7 +442,6 @@ export const testIds = {
   markComplete: {
     footer: 'mark-complete-footer',
     button: 'mark-complete-button',
-    percentage: 'mark-complete-percentage',
     completed: 'mark-complete-completed',
   },
 

@@ -142,12 +142,7 @@ export function getGuideIndexEvictionRevision(): number {
   return evictionRevision;
 }
 
-/**
- * Publication notifications: surfaces that gate visibility on index presence
- * (FloatingPanelContent, DocsPanelContentArea) subscribe to this to re-render
- * when an index is published, so the progress bar appears once the content
- * renderer's passive effect publishes the frozen index.
- */
+/** Publication subscribers are notified on first insert for a content key. */
 const publicationListeners = new Set<() => void>();
 let publicationRevision = 0;
 
@@ -180,7 +175,6 @@ export function publishGuideIndex(entry: ActiveGuideIndex): void {
     return;
   }
   activeIndexes.set(entry.contentKey, entry);
-  // Notify ONLY when a new index is actually inserted (after the early return)
   notifyPublished();
 }
 

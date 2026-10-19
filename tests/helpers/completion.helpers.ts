@@ -380,16 +380,7 @@ export async function pathPercentage(page: Page): Promise<number> {
   return Number(raw);
 }
 
-/**
- * The guide completion percentage, as an integer.
- *
- * The percentage is now shown by the sticky {@link testIds.guideProgress.bar}
- * at the top of the panel rather than by the Mark complete footer, but it reads
- * from the same source. We still gate on the footer reporting `ready` first:
- * until the stored mark has been read the guide resolves no content key, so the
- * percentage is a hard-coded 0 rather than the guide's — and an assertion made
- * inside that window cannot fail.
- */
+/** Retains the footer readiness gate for callers that interact with Mark complete next. */
 export async function footerPercentage(page: Page): Promise<number> {
   await waitForFooterHydrated(page);
   const text = await page.getByTestId(testIds.guideProgress.percentage).first().innerText();
@@ -400,7 +391,7 @@ export async function footerPercentage(page: Page): Promise<number> {
   return Number(match[1]);
 }
 
-/** Wait for the footer to have read the stored mark, so its percentage means something. */
+/** Wait until Mark complete can act on the stored mark. */
 export async function waitForFooterHydrated(page: Page): Promise<void> {
   await page
     .locator(`[data-testid="${testIds.markComplete.footer}"][data-test-progress-state="ready"]`)
