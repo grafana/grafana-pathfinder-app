@@ -18,7 +18,7 @@ Run a specialist only when the gate triggers on fix-heavy history, or a changed 
 
 ## Choosing one specialist
 
-Only one specialist runs. When several gates fire, the planner picks one and routes the rest to `root`.
+Only one contract-evolution specialist runs, alongside any dedicated security worker. When several gates fire, the planner picks one and routes the rest to `root`.
 
 Set `touches_anchor_with_consumers` yourself from the diff, because the planner never infers anchor reach. Pass every fired gate as an array of `{ concern_id, context, touches_anchor_with_consumers, prior_semantic_pr_count }` in the plan input. See `.cursor/skills/review/EXAMPLES.md` for the shape.
 
