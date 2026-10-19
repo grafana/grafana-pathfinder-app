@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
+import { Alert, useStyles2 } from '@grafana/ui';
 
 import { useControllerChannel, useControllerConnected } from '../../global-state/controller-channel';
 import { parseUrlSafely } from '../../security';
+import { getGuideReaderStyles } from './guide-reader.styles';
 
 export function ControllerProductLinks({ children }: { children: React.ReactNode }) {
+  const styles = useStyles2(getGuideReaderStyles);
   const channel = useControllerChannel();
   const connected = useControllerConnected();
   const [connectionRequired, setConnectionRequired] = useState(false);
@@ -44,7 +47,15 @@ export function ControllerProductLinks({ children }: { children: React.ReactNode
 
   return (
     <div onClickCapture={handleClick}>
-      {connectionRequired && !connected && <div role="alert">Connect to your Grafana tab to open this link.</div>}
+      {connectionRequired && !connected && (
+        <div className={styles.controllerLinkAlert}>
+          <Alert
+            severity="warning"
+            title="Connect to your Grafana tab to open this link."
+            onRemove={() => setConnectionRequired(false)}
+          />
+        </div>
+      )}
       {children}
     </div>
   );

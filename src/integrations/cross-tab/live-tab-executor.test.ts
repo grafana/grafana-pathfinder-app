@@ -1,6 +1,6 @@
 import { readerReturnChannel } from '../../global-state/auto-launch';
 import { waitFor } from '@testing-library/react';
-import { getAppEvents, locationService } from '@grafana/runtime';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { installLiveTabExecutor, resetLiveTabExecutorForTests, DEFAULT_PACING } from './live-tab-executor';
 import { GUIDED_ACTION_TYPES, GUIDED_DOM_ACTION_TYPES } from '../../types/interactive-actions.types';
 import { INTERACTIVE_ACTION_TYPES } from '../../types/interactive.types';
@@ -146,6 +146,26 @@ describe('installLiveTabExecutor', () => {
       expect.arrayContaining([expect.objectContaining({ kind: 'step-complete' })])
     );
     uninstall();
+  });
+
+  it.each([
+    [`${window.location.origin}/grafana/explore?left=1`, '/explore?left=1'],
+    [`${window.location.origin}/grafana`, '/'],
+    [`${window.location.origin}/dashboards`, '/dashboards'],
+    [`${window.location.origin}/grafanax/explore`, '/grafanax/explore'],
+  ])('strips the Grafana subpath from %s before navigating', async (url, expected) => {
+    const previous = config.appSubUrl;
+    config.appSubUrl = '/grafana';
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    try {
+      transport.emit({ source: 'pathfinder', senderId: 'controller', timestamp: 0, kind: 'navigate-link', url });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(locationService.push).toHaveBeenCalledWith(expected);
+    } finally {
+      uninstall();
+      config.appSubUrl = previous;
+    }
   });
 
   it('cancels an active guided run without waiting behind the execution queue', async () => {

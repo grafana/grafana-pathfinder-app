@@ -486,7 +486,12 @@ export function installLiveTabExecutor(
             !url.username &&
             !url.password
           ) {
-            const path = validateInternalNavigationPath(url.pathname + url.search + url.hash, currentUserIsAdmin());
+            const appSubUrl = config.appSubUrl ?? '';
+            const pathname =
+              appSubUrl && (url.pathname === appSubUrl || url.pathname.startsWith(`${appSubUrl}/`))
+                ? url.pathname.slice(appSubUrl.length) || '/'
+                : url.pathname;
+            const path = validateInternalNavigationPath(pathname + url.search + url.hash, currentUserIsAdmin());
             if (path) {
               locationService.push(path);
             }

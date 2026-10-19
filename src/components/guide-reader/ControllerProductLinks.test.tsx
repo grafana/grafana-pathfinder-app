@@ -77,4 +77,6 @@ it('keeps the reader open and explains when the main tab is disconnected', () =>
   expect(fireEvent.click(screen.getByText('Open page'))).toBe(false);
   expect(post).not.toHaveBeenCalled();
   expect(screen.getByRole('alert')).toHaveTextContent('Connect to your Grafana tab');
+  fireEvent.click(screen.getByRole('button', { name: 'Close alert' }));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
