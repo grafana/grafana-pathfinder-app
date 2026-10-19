@@ -87,7 +87,7 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   that binds the controller session to one live tab.
 - `navigate-link` — `{ url }`, a signed controller → live request for an ordinary guide hyperlink.
   Only same-origin HTTP(S) destinations passing the internal navigation policy are opened in the main tab.
-  This does not complete a step. External links, fragment links, downloads, and modified clicks retain their normal behavior.
+  The link sends no explicit step-completion message. With passive completion enabled, its resulting navigation can complete an eligible pending navigate step whose destination matches. External links, fragment links, downloads, and modified clicks retain their normal behavior.
 - `sidebar-handoff` — `{ action: 'close' | 'reopen', position?: { doc, milestoneUrl, trackId? } }`, transfers ownership of
   the sidebar while the controller is active.
 - `check-requirements` / `requirement-result` — the requirement round-trip

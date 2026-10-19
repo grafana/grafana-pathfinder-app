@@ -148,6 +148,48 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
+  it('reports passive completion evidence when an ordinary link matches a pending navigate step', async () => {
+    const previousUrl = window.location.href;
+    window.history.replaceState({}, '', '/dashboards');
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    try {
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'observation-subscribe',
+        generation: 1,
+        subscriptionId: 'link-nav',
+        guideKey: 'bundled:guide',
+        revision: 0,
+        steps: [{ id: 'open-explore', cursor: 0, actions: [{ targetAction: 'navigate', refTarget: '/explore' }] }],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'observation-evidence' }));
+      jest.mocked(locationService.push).mockImplementationOnce((url) => {
+        window.history.pushState({}, '', String(url));
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'navigate-link',
+        url: `${window.location.origin}/explore`,
+      });
+      await waitFor(() =>
+        expect(transport.postedMessages).toContainEqual(
+          expect.objectContaining({ kind: 'observation-evidence', id: 'open-explore', index: 0 })
+        )
+      );
+      expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'step-complete' }));
+    } finally {
+      uninstall();
+      window.history.replaceState({}, '', previousUrl);
+    }
+  });
+
   it.each([
     [`${window.location.origin}/grafana/explore?left=1`, '/explore?left=1'],
     [`${window.location.origin}/grafana`, '/'],

@@ -83,7 +83,10 @@ async function routeGuide(page: Page): Promise<void> {
         id: 'two-tab-adversarial-test',
         title: 'Two-tab adversarial',
         blocks: [
-          { type: 'markdown', content: '[Browse dashboards](/dashboards?query=two-tab-link)' },
+          {
+            type: 'markdown',
+            content: '[Browse dashboards](/dashboards?query=two-tab-link) [Browse Explore](/explore)',
+          },
           {
             type: 'interactive',
             id: NAVIGATE_STEP,
@@ -167,6 +170,21 @@ test.describe('two-tab controller — real-browser adversarial', () => {
     expect(controller.url()).toBe(readerUrl);
     await expect(reader(controller)).toBeVisible();
     await expect(doIt(controller)).toBeEnabled();
+  });
+
+  test('an ordinary matching link completes the pending navigate step through passive observation', async ({
+    page,
+  }) => {
+    await gotoLiveTab(page);
+    const controller = await openController(page);
+    await acceptPairing(page, controller);
+    const step = reader(controller).getByTestId(testIds.interactive.step(NAVIGATE_STEP));
+    await expect(step).not.toHaveAttribute('data-test-step-state', 'completed');
+    const readerUrl = controller.url();
+    await reader(controller).getByRole('link', { name: 'Browse Explore', exact: true }).click();
+    await expect(page).toHaveURL(/\/explore/);
+    await expect(step).toHaveAttribute('data-test-step-state', 'completed', { timeout: 15_000 });
+    expect(controller.url()).toBe(readerUrl);
   });
 
   test('a forged, unsigned step-command does not drive the paired live tab', async ({ page }) => {
