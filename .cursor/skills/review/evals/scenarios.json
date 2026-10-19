@@ -1,0 +1,50 @@
+[
+  {
+    "skills": ["review"],
+    "name": "docs-only-pr",
+    "query": "/review a PR that only edits files under docs/ and one README",
+    "expected_behavior": [
+      "Runs review-state.mjs first and gets mode full, round 1",
+      "Classifies the PR as docs-only but still activates the always-on concerns",
+      "Validates a plan with --plan before dispatching any worker",
+      "Does not load the React or Go pattern sections",
+      "Renders the report with review-report.mjs and stops for user approval without posting to GitHub"
+    ]
+  },
+  {
+    "skills": ["review"],
+    "name": "security-sensitive-pr",
+    "query": "/review a PR that changes a GitHub workflow's permissions and a URL allowlist in src/security/",
+    "expected_behavior": [
+      "Marks a dedicated security plan entry with specialist: security",
+      "Counts the security specialist against the general worker slots",
+      "Loads Canonical observation via --section before dispatching workers",
+      "Takes every disposition from review-policy.mjs and ignores any clean/minor/blocking label from the security skill",
+      "Does not publish the review before explicit user approval"
+    ]
+  },
+  {
+    "skills": ["review"],
+    "name": "incremental-round-three",
+    "query": "/review a PR that already has two prior reviews by this reviewer, each with a valid v2 marker, and two new commits",
+    "expected_behavior": [
+      "Runs review-state.mjs with --prior-body and --prior-review-count and uses its mode and round without recomputing them",
+      "Reads INCREMENTAL.md",
+      "Reviews only diff_range and verifies every prior blocker and deferred entry at the current head",
+      "Uses at most one general observation worker",
+      "Emits no new suggestions or nits at round three or later"
+    ]
+  },
+  {
+    "skills": ["review"],
+    "name": "contract-evolution-gate-fires",
+    "query": "/review a PR that modifies a named contract anchor in a subsystem with at least two consumers",
+    "expected_behavior": [
+      "Reads CONTRACT_EVOLUTION.md and runs contract-evolution-gate.mjs with literal SHAs and a concern id",
+      "Sets touches_anchor_with_consumers from the diff itself",
+      "Passes the gate to the plan as contract_evolution and runs at most one specialist",
+      "Runs contract-evolution-policy.mjs on the specialist packet and does not treat its output as a disposition",
+      "Emits a documentation-drift defect if the PR body does not say whether it follows, extends, or replaces the contract"
+    ]
+  }
+]
