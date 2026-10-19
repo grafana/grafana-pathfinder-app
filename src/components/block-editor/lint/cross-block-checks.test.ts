@@ -1,3 +1,5 @@
+import { clickToTargetState } from '../../../interactive-engine/action-handlers/toggle-click';
+import { parseTargetState } from '../../../lib/dom/toggle-state';
 /**
  * Tests for the editor-only cross-block checks.
  *
@@ -420,11 +422,17 @@ describe('toggleWithoutTargetState', () => {
     expect(issues[0]!.message).toContain('"targetstate": "aria-selected:true"');
   });
 
-  it('suggests aria-expanded when the selector names no state attribute', () => {
+  it('suggests inferred state without clicking an already-open label-only toggle', async () => {
     const issues = toggleWithoutTargetState(
-      guideWith([{ type: 'interactive', action: 'button', reftarget: 'button[aria-label="Expand row"]', content: 'x' }])
+      guideWith([{ type: 'interactive', action: 'button', reftarget: 'button[aria-label="Collapse row"]', content: 'x' }])
     );
-    expect(issues[0]!.message).toContain('"targetstate": "aria-expanded:true"');
+    expect(issues[0]!.message).toContain('"targetstate": "true"');
+    const suggested = issues[0]!.message.match(/"targetstate": "([^"]+)"/)![1]!;
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', 'Collapse row');
+    const click = jest.spyOn(button, 'click');
+    await clickToTargetState(button, parseTargetState(suggested)!, jest.fn());
+    expect(click).not.toHaveBeenCalled();
   });
 
   it('does not flag a toggle that declares a target state, including the camelCase alias', () => {

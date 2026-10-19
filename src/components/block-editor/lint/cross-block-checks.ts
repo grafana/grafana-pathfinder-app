@@ -58,8 +58,8 @@ export function looksLikeToggleTarget(reftarget: string): boolean {
 }
 
 function suggestedTargetState(reftarget: string): string {
-  const attribute = TOGGLE_STATE_ATTRIBUTE_PATTERN.exec(reftarget)?.[1]?.toLowerCase() ?? 'expanded';
-  return `aria-${attribute}:true`;
+  const attribute = TOGGLE_STATE_ATTRIBUTE_PATTERN.exec(reftarget)?.[1]?.toLowerCase();
+  return attribute ? `aria-${attribute}:true` : 'true';
 }
 
 type GuidedOrMultistep = JsonMultistepBlock | JsonGuidedBlock;
