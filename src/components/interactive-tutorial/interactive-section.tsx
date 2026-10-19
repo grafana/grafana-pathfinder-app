@@ -577,9 +577,14 @@ export function InteractiveSection({
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
   const doneVia = derived.doneVia;
+  const settledHidden = whenRequirementsUnmet !== 'disable' && progressVisibility === false;
   useLayoutEffect(() => {
-    setSectionDone(sectionId, isCompleted);
-  }, [sectionId, isCompleted]);
+    if (settledHidden) {
+      clearSectionDone(sectionId);
+    } else {
+      setSectionDone(sectionId, isCompleted);
+    }
+  }, [sectionId, isCompleted, settledHidden]);
   useLayoutEffect(() => () => clearSectionDone(sectionId), [sectionId]);
   const previousSectionsDone = useSyncExternalStore(subscribeSectionDone, () => arePreviousSectionsDone(sectionId));
   // `stepsCompleted` preserves the historical meaning ("all interactive

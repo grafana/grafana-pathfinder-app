@@ -155,6 +155,7 @@ import { InteractiveSection, resetInteractiveCounters } from './interactive-sect
 import {
   executeInteractiveActionCalls,
   resetSectionHarness,
+  setCheckRequirementsResult,
   setStepCheckerCompletionReason,
   silenceSectionWarnings,
 } from '../../test-utils/interactive-section-harness';
@@ -245,6 +246,30 @@ it('has no recovery plan when the kill switch is off', async () => {
   await waitFor(() => expect(mockRecovery.plans.has('section-explore')).toBe(true));
   expect(mockRecovery.plans.get('section-explore')).toBeUndefined();
 });
+
+it.each(['hide', 'heading-only'] as const)(
+  'does not wait on an earlier branch the learner did not choose (%s)',
+  async (whenRequirementsUnmet) => {
+    setCheckRequirementsResult({ pass: false, error: [] });
+    render(
+      <>
+        <InteractiveSection
+          id="unchosen"
+          title="Unchosen branch"
+          requirements={['var-signals:includes:logs']}
+          whenRequirementsUnmet={whenRequirementsUnmet}
+          autoCollapse={false}
+        >
+          <InteractiveStep targetAction="highlight" refTarget=".logs">
+            Logs step.
+          </InteractiveStep>
+        </InteractiveSection>
+        {exploreSection('after-branch')}
+      </>
+    );
+    await waitFor(() => expect(mockRecovery.plans.get('section-after-branch')).toBeDefined());
+  }
+);
 
 it('keeps a later section quiet until the learner reaches it', async () => {
   render(
