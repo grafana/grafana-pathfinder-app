@@ -50,9 +50,11 @@ jest.mock('../../requirements-manager', () => {
   return require('../../test-utils/interactive-section-harness').createRequirementsManagerMock();
 });
 
-jest.mock('../../docs-retrieval', () => {
-  return require('../../test-utils/interactive-section-harness').createDocsRetrievalMock();
-});
+let mockResponses: Record<string, string> = {};
+jest.mock('../../docs-retrieval', () => ({
+  ...require('../../test-utils/interactive-section-harness').createDocsRetrievalMock(),
+  useGuideResponsesOptional: () => ({ responses: mockResponses }),
+}));
 
 function mockRunnableStep(label: string) {
   return function MockRunnableStep(props: {
@@ -177,6 +179,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  mockResponses = {};
   mockRecovery.plans.clear();
   mockRecovery.suspended.clear();
   mockAlignmentPaused.mockReturnValue(false);
@@ -260,6 +263,25 @@ it('keeps a later section quiet until the learner reaches it', async () => {
   await waitFor(() => expect(mockRecovery.plans.has('section-later')).toBe(true));
   expect(mockRecovery.plans.get('section-first')).toBeDefined();
   expect(mockRecovery.plans.get('section-later')).toBeUndefined();
+});
+
+it.each(['hide', 'heading-only'] as const)('ignores a %s branch until it participates again', async (mode) => {
+  const content = () => (
+    <>
+      {exploreSection('branch', { requirements: ['var-signals:includes:logs'], whenRequirementsUnmet: mode })}
+      {exploreSection('visible')}
+    </>
+  );
+  const view = render(content());
+  await waitFor(() => expect(mockRecovery.plans.get('section-visible')).toBeDefined());
+  expect(mockRecovery.plans.get('section-branch')).toBeUndefined();
+  mockResponses = { signals: 'logs' };
+  view.rerender(content());
+  await waitFor(() => expect(mockRecovery.plans.get('section-visible')).toBeUndefined());
+  expect(mockRecovery.plans.get('section-branch')).toBeDefined();
+  mockResponses = {};
+  view.rerender(content());
+  await waitFor(() => expect(mockRecovery.plans.get('section-visible')).toBeDefined());
 });
 
 function setupSection(intro: React.ReactNode = <p>Open the editor.</p>) {

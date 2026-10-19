@@ -1,4 +1,5 @@
 import { locationService } from '@grafana/runtime';
+import { restoreRecovery } from '../recovery/section-recovery';
 import { createRecoveryAdapter } from './section-recovery-adapter';
 import type { RecoveryAction } from '../recovery/section-recovery-plan';
 
@@ -144,3 +145,70 @@ it('does nothing once cancelled', async () => {
   expect(await adapter(controller.signal).replay({ kind: 'resume-location', objectives: [] })).toBe(false);
   expect(navigate).not.toHaveBeenCalled();
 });
+
+it.each([true, false])(
+  'does not click after navigation during a mount retry (explicit page requirement: %s)',
+  async (explicitPage) => {
+    jest.useFakeTimers();
+    try {
+      document.body.innerHTML = '<button id="row" aria-expanded="false">Row</button>';
+      const row = document.getElementById('row')!;
+      const click = jest.fn(() => row.setAttribute('aria-expanded', 'true'));
+      row.addEventListener('click', click);
+      requirements.mockImplementation(async (options) => {
+        const passed =
+          options.requirements[0] === 'on-page:/explore' && locationService.getLocation().pathname === '/explore';
+        return { pass: passed, verdict: passed ? 'satisfied' : 'unsatisfied', error: [] };
+      });
+      lastReadyUrl = '/explore';
+      const liveAdapter = adapter();
+      const canReplay = liveAdapter.canReplay;
+      liveAdapter.canReplay = async (action) => {
+        const available = await canReplay(action);
+        if (action.kind !== 'toggle') {
+          return available;
+        }
+        row.remove();
+        setTimeout(() => {
+          at('/dashboards');
+          document.body.append(row);
+        }, 25);
+        return available;
+      };
+      const result = restoreRecovery(
+        [
+          ...(explicitPage ? [{ kind: 'requirement' as const, requirement: 'on-page:/explore' }] : []),
+          {
+            kind: 'target-present',
+            refTarget: '#dialog',
+            targetAction: 'button',
+            recover: [
+              { kind: 'resume-location', objectives: [{ kind: 'resume-location' }] },
+              {
+                kind: 'toggle',
+                refTarget: '#row',
+                targetAction: 'highlight',
+                targetState: 'aria-expanded:true',
+                objectives: [
+                  {
+                    kind: 'target-state',
+                    refTarget: '#row',
+                    targetAction: 'highlight',
+                    targetState: 'aria-expanded:true',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        liveAdapter,
+        new AbortController().signal
+      );
+      await jest.runAllTimersAsync();
+      expect(await result).toMatchObject({ passed: false, gaveUp: true });
+      expect(click).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  }
+);

@@ -299,6 +299,7 @@ export function InteractiveSection({
   const guideResponses = useGuideResponsesOptional();
   const choiceVisibility = evaluateChoiceConditions(requirements, guideResponses?.responses ?? {});
   const visibilityPassed = choiceVisibility ?? sectionRequirementsStatus.passed;
+  const requirementsHideContent = whenRequirementsUnmet !== 'disable' && !visibilityPassed;
   const progressVisibility =
     guideResponses?.isLoading || (choiceVisibility === undefined && sectionRequirementsStatus.checking)
       ? undefined
@@ -578,8 +579,12 @@ export function InteractiveSection({
   const isCompleted = derived.isCompleted;
   const doneVia = derived.doneVia;
   useLayoutEffect(() => {
-    setSectionDone(sectionId, isCompleted);
-  }, [sectionId, isCompleted]);
+    if (requirementsHideContent) {
+      clearSectionDone(sectionId);
+    } else {
+      setSectionDone(sectionId, isCompleted);
+    }
+  }, [sectionId, isCompleted, requirementsHideContent]);
   useLayoutEffect(() => () => clearSectionDone(sectionId), [sectionId]);
   const previousSectionsDone = useSyncExternalStore(subscribeSectionDone, () => arePreviousSectionsDone(sectionId));
   // `stepsCompleted` preserves the historical meaning ("all interactive
@@ -597,7 +602,7 @@ export function InteractiveSection({
   const reached = previousSectionsDone || isRunning || [...completedSteps].some((stepId) => !skippedSteps.has(stepId));
   const recoveryPlan = useMemo(
     () =>
-      isSectionRecoveryEnabled() && !isCompleted && reached && !isAlignmentPaused
+      isSectionRecoveryEnabled() && !requirementsHideContent && !isCompleted && reached && !isAlignmentPaused
         ? deriveSectionRecoveryPlan(
             stepComponents.map((step) => ({
               stepId: step.stepId,
@@ -613,7 +618,7 @@ export function InteractiveSection({
             skippedSteps
           )
         : undefined,
-    [isCompleted, reached, isAlignmentPaused, stepComponents, currentStepIndex, skippedSteps]
+    [isCompleted, reached, isAlignmentPaused, stepComponents, currentStepIndex, skippedSteps, requirementsHideContent]
   );
   const analyticsIdentity = useContext(GuideAnalyticsIdentityContext);
   const onRecoveryEvent = useCallback(
@@ -1580,7 +1585,6 @@ export function InteractiveSection({
   // and label IIFEs share a single result instead of recomputing.
   const resumeInfo = getResumeInfo();
 
-  const requirementsHideContent = whenRequirementsUnmet !== 'disable' && !visibilityPassed;
   useEffect(() => {
     if (!requirementsHideContent) {
       return;

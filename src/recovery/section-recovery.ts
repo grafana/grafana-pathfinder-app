@@ -92,7 +92,12 @@ async function replayRecipe(
   signal: AbortSignal
 ): Promise<boolean> {
   const check = checks[checkIndex]!;
-  for (const action of check.recover ?? []) {
+  const recipe = check.recover ?? [];
+  for (const [actionIndex, action] of recipe.entries()) {
+    const prerequisites = [
+      ...checks.slice(0, checkIndex),
+      ...recipe.slice(0, actionIndex).flatMap((prior) => (prior.kind === 'resume-location' ? prior.objectives : [])),
+    ];
     if (signal.aborted) {
       return false;
     }
@@ -100,7 +105,7 @@ async function replayRecipe(
     if ((await adapter.check(check)).passed) {
       return true;
     }
-    if (!(await conditionsHold(checks.slice(0, checkIndex), adapter, signal))) {
+    if (!(await conditionsHold(prerequisites, adapter, signal))) {
       return false;
     }
     if (await conditionsHold(action.objectives, adapter, signal)) {
@@ -108,11 +113,18 @@ async function replayRecipe(
     }
     const mountDeadline = Date.now() + 5000;
     let replayed = false;
-    while (!signal.aborted && !(replayed = await adapter.replay(action)) && Date.now() < mountDeadline) {
-      await waitForRender(signal);
+    while (!signal.aborted) {
+      if (!(await conditionsHold(prerequisites, adapter, signal))) {
+        return false;
+      }
       if (await conditionsHold(action.objectives, adapter, signal)) {
         break;
       }
+      replayed = await adapter.replay(action);
+      if (replayed || Date.now() >= mountDeadline) {
+        break;
+      }
+      await waitForRender(signal);
     }
     if (signal.aborted) {
       return false;
