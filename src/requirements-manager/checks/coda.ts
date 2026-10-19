@@ -22,13 +22,24 @@ import type { CheckResultError } from '../../types/requirements.types';
 
 const NOT_READY_MESSAGE = 'Challenge environment is not ready. Start the challenge to provision a VM.';
 
-export async function codaExitZeroCheck(check: string): Promise<CheckResultError> {
+export async function codaExitZeroCheck(check: string, allowExecution = false): Promise<CheckResultError> {
   const command = check.slice('coda-exit-zero:'.length);
   if (!command) {
     return {
       requirement: check,
       pass: false,
       error: 'coda-exit-zero requires a command (e.g. coda-exit-zero:test -f /etc/foo)',
+      context: null,
+    };
+  }
+
+  // Requirements and objectives are also evaluated on mount and in the background.
+  // Only an explicit check action may opt into executing guide-authored commands.
+  if (!allowExecution) {
+    return {
+      requirement: check,
+      pass: false,
+      error: 'Run this command using Check completion or Check my work.',
       context: null,
     };
   }

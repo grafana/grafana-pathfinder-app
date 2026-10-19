@@ -12,6 +12,7 @@
 
 import { getBackendSrv } from '@grafana/runtime';
 import { ContextService } from './context.service';
+import { resetDataSourcesCacheForTests } from '../lib/grafana-api';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { fetchContent, getJourneyCompletionPercentageAsync } from '../lib/learning-journey-content-bridge';
@@ -398,6 +399,10 @@ describe('ContextService: Completion Percentage Storage Selection', () => {
 });
 
 describe('context data-source reads', () => {
+  beforeEach(() => {
+    resetDataSourcesCacheForTests();
+  });
+
   it('includes data sources returned by the shared API', async () => {
     const settings = { id: 1, uid: 'prometheus', type: 'prometheus', name: 'Prometheus' };
     mockListDataSources.mockResolvedValueOnce([{ uid: 'prometheus' }]);

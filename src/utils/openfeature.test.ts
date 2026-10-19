@@ -128,9 +128,8 @@ describe('openfeature', () => {
 
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.auto-open-sidebar'].trackingKey).toBe('auto_open_sidebar');
-        expect(pathfinderFeatureFlags['pathfinder.highlighted-guide-experiment'].trackingKey).toBe(
-          'highlighted_guide_experiment'
-        );
+        // The experiments SDK owns this exposure; a trackingKey would double-count it.
+        expect(pathfinderFeatureFlags['pathfinder.auto-open-guide-experiment']).not.toHaveProperty('trackingKey');
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].trackingKey).toBe('frontend_telemetry');
         expect(pathfinderFeatureFlags['pathfinder.session-replay'].trackingKey).toBe('session_replay');
         expect(pathfinderFeatureFlags['pathfinder.session-replay-sampling-rate'].trackingKey).toBe(
@@ -582,12 +581,12 @@ describe('openfeature', () => {
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { evaluateFeatureFlag, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG } = require('./openfeature');
-        const result = await evaluateFeatureFlag('pathfinder.highlighted-guide-experiment');
+        const { evaluateFeatureFlag } = require('./openfeature');
+        const result = await evaluateFeatureFlag('pathfinder.interactive-learning-banner-experiment');
 
         expect(mockOF.mockClient.getObjectValue).toHaveBeenCalledWith(
-          'pathfinder.highlighted-guide-experiment',
-          DEFAULT_HIGHLIGHTED_GUIDE_CONFIG
+          'pathfinder.interactive-learning-banner-experiment',
+          { variant: 'excluded' }
         );
         expect(result).toEqual(expectedConfig);
       });
@@ -616,133 +615,54 @@ describe('openfeature', () => {
     });
   });
 
-  describe('highlighted-guide variant validation', () => {
-    beforeEach(() => {
-      localStorage.clear();
-    });
+  describe('experiment variant validation', () => {
+    const load = () => {
+      const mockOF = createMockOpenFeature();
+      const mockReact = createMockReactSdk();
+      jest.doMock('@openfeature/web-sdk', () => mockOF);
+      jest.doMock('@openfeature/react-sdk', () => mockReact);
+      return require('./openfeature');
+    };
 
-    it.each(['treament', 'TREATMENT', 'holdback', ''])(
-      'falls back to the default config when the remote variant is %p',
-      (variant) => {
-        jest.isolateModules(() => {
-          const mockOF = createMockOpenFeature();
-          const mockReact = createMockReactSdk();
-          mockOF.mockClient.getObjectValue.mockReturnValue({
-            variant,
-            pages: ['/a/grafana-irm-app*'],
-            guideId: 'bundled:my-guide',
-            autoOpen: true,
-          });
-          jest.doMock('@openfeature/web-sdk', () => mockOF);
-          jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-          const { getHighlightedGuideConfig, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG } = require('./openfeature');
-          const { getActiveExperiments } = require('./experiments/active-experiments');
-
-          expect(getHighlightedGuideConfig()).toEqual(DEFAULT_HIGHLIGHTED_GUIDE_CONFIG);
-          expect(getActiveExperiments()).toEqual([]);
-        });
-      }
-    );
-
-    it('discards resetCache along with the rest of a rejected payload', () => {
+    it.each(['treament', 'TREATMENT', 'holdback', '', 'toString'])('rejects the unknown variant %p', (variant) => {
       jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'treament',
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:my-guide',
-          resetCache: true,
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getHighlightedGuideConfig } = require('./openfeature');
-
-        // Rejection is whole-payload: handleHighlightedGuideResetCache reads
-        // resetCache before any variant check, so it must not survive.
-        expect(getHighlightedGuideConfig().resetCache).toBe(false);
+        expect(load().parseExperimentVariant({ variant })).toBeNull();
       });
     });
 
-    it.each([
-      [{ variant: 'treament', pages: [], guideId: '' }, 'unknown_variant'],
-      [{ variant: 'treatment', pages: [] }, 'invalid_shape'],
-    ])('warns once per page load for a rejected remote payload (%#)', (remoteValue, reason) => {
+    it.each([null, [], 'treatment', {}])('rejects the non-payload %p', (value) => {
       jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue(remoteValue);
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { getHighlightedGuideConfig } = require('./openfeature');
-
-        getHighlightedGuideConfig();
-        getHighlightedGuideConfig();
-        getHighlightedGuideConfig();
-
-        const rejectionWarns = consoleSpy.mock.calls.filter((call) =>
-          String(call[0]).includes("Rejected the remote payload for 'pathfinder.highlighted-guide-experiment'")
-        );
-        expect(rejectionWarns).toHaveLength(1);
-        expect(rejectionWarns[0]?.[1]).toEqual({ reason });
-
-        consoleSpy.mockRestore();
-      });
-    });
-
-    it('does not warn for a valid remote payload', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'treatment',
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:my-guide',
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { getHighlightedGuideConfig } = require('./openfeature');
-        getHighlightedGuideConfig();
-
-        expect(consoleSpy.mock.calls.filter((call) => String(call[0]).includes('Rejected the'))).toHaveLength(0);
-
-        consoleSpy.mockRestore();
+        expect(load().parseExperimentVariant(value)).toBeNull();
       });
     });
 
     it('passes every registered experiment variant through unchanged', () => {
       jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { EXPERIMENT_VARIANTS, getHighlightedGuideConfig } = require('./openfeature');
-
+        const { EXPERIMENT_VARIANTS, parseExperimentVariant } = load();
         for (const variant of EXPERIMENT_VARIANTS) {
-          mockOF.mockClient.getObjectValue.mockReturnValue({
-            variant,
-            pages: ['/a/grafana-irm-app*'],
-            guideId: 'bundled:my-guide',
-            autoOpen: true,
-          });
-
-          expect(getHighlightedGuideConfig()).toEqual({
-            variant,
-            pages: ['/a/grafana-irm-app*'],
-            guideId: 'bundled:my-guide',
-            autoOpen: true,
-            resetCache: false,
-          });
+          expect(parseExperimentVariant({ variant })).toBe(variant);
         }
+      });
+    });
+
+    it.each([
+      [{ variant: 'treament' }, 'unknown_variant'],
+      [{ pages: [] }, 'invalid_shape'],
+    ])('warns once per page load with a classification, never the payload (%#)', (remoteValue, reason) => {
+      jest.isolateModules(() => {
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+        const { warnExperimentRejection } = load();
+        const flag = 'pathfinder.interactive-learning-banner-experiment';
+
+        warnExperimentRejection('remote', flag, remoteValue);
+        warnExperimentRejection('remote', flag, remoteValue);
+
+        const rejectionWarns = consoleSpy.mock.calls.filter((call) =>
+          String(call[0]).includes(`Rejected the remote payload for '${flag}'`)
+        );
+        expect(rejectionWarns).toHaveLength(1);
+        expect(rejectionWarns[0]?.[1]).toEqual({ reason });
+        consoleSpy.mockRestore();
       });
     });
   });

@@ -11,6 +11,7 @@ import { getBlockPreviewStyles } from './block-editor.styles';
 import { parseJsonGuide } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
 import { ContentRenderer, type ContentRendererCompletion } from '../content-renderer/content-renderer';
+import { GuideProgressBar } from '../guide-progress';
 import { journeyContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -36,17 +37,12 @@ export interface BlockPreviewProps {
 
 const PREVIEW_COMPLETION: ContentRendererCompletion = { kind: 'untracked', reason: 'preview' };
 
-/**
- * Block preview component
- */
 export function BlockPreview({ guide, showTitle = true, hideResetButton = false }: BlockPreviewProps) {
   const styles = useStyles2(getBlockPreviewStyles);
-  // Apply the same styles as the main docs panel for consistent appearance
   const journeyStyles = useStyles2(journeyContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
 
-  // Progress key matches the URL used in content rendering
   const progressKey = `block-editor://preview/${guide.id}`;
   usePublishSurfaceContentKey(progressKey);
   const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
@@ -105,7 +101,6 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
       return { content: null, isEmpty: true };
     }
 
-    // ContentRenderer expects the raw JSON string as content.
     const rawContent: RawContent = {
       content: JSON.stringify(guide),
       metadata: {
@@ -120,7 +115,6 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
     return { content: rawContent, isEmpty: false };
   }, [guide, showTitle]);
 
-  // Show error state if parsing failed
   if (errors.length > 0) {
     return (
       <div className={styles.container}>
@@ -135,7 +129,6 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
     );
   }
 
-  // Show empty state if no blocks
   if (isEmpty || !content) {
     return (
       <div className={styles.container}>
@@ -146,15 +139,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
     );
   }
 
-  // Explicit keys on every sibling (#842, Phase 6): the conditional
-  // warnings alert + the conditional reset-actions div appear and
-  // disappear independently as state changes. React's child-array
-  // reconciliation treats unkeyed siblings positionally; without
-  // stable keys, an appearance / disappearance of one sibling can
-  // cause React to reconcile ContentRenderer into a different slot,
-  // which in turn may trigger an unwanted remount and silently reset
-  // the section's reducer state. Keeping every sibling keyed pins
-  // ContentRenderer's identity across hasInteractiveProgress flips.
+  // Stable sibling keys preserve renderer state when warnings or reset controls appear.
   return (
     <div className={styles.container}>
       {warnings.length > 0 && (
@@ -182,11 +167,8 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
         </div>
       )}
 
-      {/* `key={resetKey}` forces remount when a Reset guide click bumps
-         the counter, intentionally clearing all interactive component
-         state. The composite key prefix keeps ContentRenderer's slot
-         distinct from the conditional siblings above so the keyed
-         remount path is the ONLY remount path. */}
+      <GuideProgressBar key="preview-progress" contentUrl={content.url} />
+      {/* Reset remounts the renderer to clear interactive component state. */}
       <ContentRenderer
         key={`preview-content-${resetKey}`}
         content={content}

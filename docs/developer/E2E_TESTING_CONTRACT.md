@@ -285,11 +285,15 @@ The attribute exists because the progress ring beside it is hidden at 0%, and 0%
 
 It used to be absent until the cover page's own `progressLoaded` state — tracking an async read of stored milestone progress — resolved. That async read is gone: `journeyProgressFromMilestones` and `journeyMilestonePercentages` now read the consolidated store synchronously, so the rendered value is correct at first paint and the attribute is emitted unconditionally. A test still waits for the table-of-contents root to attach before reading the attribute; there is no separate "not loaded yet" window to wait out.
 
-The guide-level equivalent is on the Mark complete footer, and there the gate **is** the necessary one:
+The guide-level percentage is exposed by the sticky progress bar:
+
+- **`guide-progress-percentage`** (`testIds.guideProgress.percentage`): the guide's integer percentage, including a stored completion mark. It appears after the bar resolves the current content key following layout effects and a guide index is available. Journey cover pages and content without a guide index have no bar. Wait for this locator to be visible before reading it; the footer's readiness does not control the bar.
+
+The Mark complete footer has a separate interaction-readiness gate:
 
 - **`data-test-progress-state`** on `mark-complete-footer` (`testIds.markComplete.footer`): `pending` until the footer has read the guide's stored completion mark, `ready` afterwards.
 
-Until that read resolves the footer has no content key, so `mark-complete-percentage` reads a hard-coded `0% complete` for every guide, and a click on `mark-complete-button` is silently dropped by the handler. Both the percentage and the click are only meaningful at `ready`, and an assertion made before it cannot fail.
+Until that read resolves the footer has no content key, so a click on `mark-complete-button` is silently dropped by the handler. Wait for `ready` before interacting with Mark complete. The footer no longer renders a percentage.
 
 Read the footer's readiness from this attribute rather than inferring it from the control beside it. The control is not always there to read: once the guide is marked, the button is replaced by the completed indicator, so "has the footer hydrated" has no single element to ask. A declarative state attribute holds in both shapes.
 
@@ -377,7 +381,10 @@ Applied to `InteractiveStep`, `InteractiveMultiStep`, and `InteractiveGuided` el
 - `completed` - Step successfully completed
 - `error` - Execution failed
 - `cancelled` - User cancelled execution
+- `waiting` - The run finished, or the reader's actions were observed, and completion waits for authored objectives or `verify`. Keep polling: it is not a failure. The status row is `interactive-completion-waiting-{stepId}` and its button is `interactive-check-completion-{stepId}`
 - `requirements-unmet` - Prerequisites not satisfied
+
+Steps inside a collapsed section stay mounted with the `hidden` attribute so completion observation keeps running. Their roots, including `data-test-step-state`, are attached but not visible; count visible roots when a check depends on what the reader sees.
 
 **Example**:
 
@@ -658,7 +665,7 @@ React components derive attributes from existing UI state:
 />
 ```
 
-For multi-step components, `executing` takes precedence over `completed`. A multi-step `completeEarly` write can occur before its automated actions settle.
+For multi-step components, `executing` takes precedence over `completed`. A multi-step `completeEarly` write can occur before its automated actions settle; authored objectives still gate it, and the step reports `waiting` until they hold.
 
 For guided components, `executing` also takes precedence during a narrower final-action window. Final click activation can persist while the application handler and guided cleanup settle.
 

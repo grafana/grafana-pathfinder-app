@@ -1,4 +1,11 @@
-import { fetchDashboardSummary, fetchDataSources, fetchPluginPresence, fetchDashboardsByName } from './grafana-api';
+import {
+  DATA_SOURCES_FRESH_MS,
+  resetDataSourcesCacheForTests,
+  fetchDashboardSummary,
+  fetchDataSources,
+  fetchPluginPresence,
+  fetchDashboardsByName,
+} from './grafana-api';
 
 const mockGet = jest.fn();
 const mockSearchCoreDashboards = jest.fn();
@@ -23,6 +30,8 @@ jest.mock('./datasource/datasource-registry', () => ({
   listDataSources: (...args: unknown[]) => mockListDataSources(...args),
   getDataSourceSettings: (uid: string) => mockGetDataSourceSettings(uid),
 }));
+
+beforeEach(() => resetDataSourcesCacheForTests());
 
 describe('fetchDataSources', () => {
   const settings = (uid: string, overrides: Record<string, unknown> = {}) => ({
@@ -239,5 +248,44 @@ describe('legacy fallbacks on Grafana Cloud', () => {
   it('resolves no dashboard summary instead of calling the legacy endpoint', async () => {
     await expect(fetchDashboardSummary('d1')).resolves.toBeNull();
     expect(mockGet).not.toHaveBeenCalled();
+  });
+});
+
+describe('data source reads shared across callers', () => {
+  beforeEach(() => {
+    mockListDataSources.mockReset();
+    mockGetDataSourceSettings.mockReset();
+    mockGetDataSourceSettings.mockImplementation(async (uid: string) => ({ uid, name: uid, type: 'prometheus' }));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('shares one registry request between concurrent callers', async () => {
+    let resolve!: (value: unknown) => void;
+    mockListDataSources.mockReturnValue(new Promise((r) => (resolve = r)));
+    const reads = Promise.all([fetchDataSources(), fetchDataSources({ throwOnError: true }), fetchDataSources()]);
+    resolve([{ uid: 'A' }]);
+    const results = await reads;
+    expect(results).toEqual(Array(3).fill([expect.objectContaining({ uid: 'A' })]));
+    expect(mockListDataSources).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses a settled read for the freshness window, then fetches again', async () => {
+    jest.useFakeTimers();
+    mockListDataSources.mockResolvedValueOnce([{ uid: 'A' }]).mockResolvedValueOnce([{ uid: 'B' }]);
+    await fetchDataSources();
+    jest.advanceTimersByTime(DATA_SOURCES_FRESH_MS - 1);
+    await expect(fetchDataSources()).resolves.toEqual([expect.objectContaining({ uid: 'A' })]);
+    jest.advanceTimersByTime(2);
+    await expect(fetchDataSources()).resolves.toEqual([expect.objectContaining({ uid: 'B' })]);
+    expect(mockListDataSources).toHaveBeenCalledTimes(2);
+  });
+
+  it('holds failed reads without hiding errors from requirement callers', async () => {
+    jest.useFakeTimers();
+    mockListDataSources.mockRejectedValue(new Error('down'));
+    await expect(fetchDataSources({ throwOnError: true })).rejects.toThrow('down');
+    await expect(fetchDataSources()).resolves.toEqual([]);
+    await expect(fetchDataSources({ throwOnError: true })).rejects.toThrow('down');
+    expect(mockListDataSources).toHaveBeenCalledTimes(1);
   });
 });

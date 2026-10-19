@@ -20,11 +20,34 @@ function toDataSource(settings: DataSourceInstanceSettings): DataSource {
   };
 }
 
+export const DATA_SOURCES_FRESH_MS = 2000;
+let dataSourcesRequest: { promise: Promise<DataSource[]>; settledAt?: number } | undefined;
+
+export function resetDataSourcesCacheForTests(): void {
+  dataSourcesRequest = undefined;
+}
+
+function requestDataSources(): Promise<DataSource[]> {
+  const current = dataSourcesRequest;
+  if (current && (current.settledAt === undefined || Date.now() - current.settledAt < DATA_SOURCES_FRESH_MS)) {
+    return current.promise;
+  }
+  const request: { promise: Promise<DataSource[]>; settledAt?: number } = {
+    promise: listDataSources({ all: true, filter: (item) => !item.meta?.builtIn })
+      .then((items) => Promise.all(items.map((item) => getDataSourceSettings(item.uid))))
+      .then((settings) => settings.flatMap((ds) => (ds ? [toDataSource(ds)] : []))),
+  };
+  const settle = () => {
+    request.settledAt = Date.now();
+  };
+  request.promise.then(settle, settle);
+  dataSourcesRequest = request;
+  return request.promise;
+}
+
 export async function fetchDataSources(options: { throwOnError?: boolean } = {}): Promise<DataSource[]> {
   try {
-    const items = await listDataSources({ all: true, filter: (item) => !item.meta?.builtIn });
-    const settings = await Promise.all(items.map((item) => getDataSourceSettings(item.uid)));
-    return settings.flatMap((ds) => (ds ? [toDataSource(ds)] : []));
+    return await requestDataSources();
   } catch (error) {
     if (options.throwOnError) {
       throw error;

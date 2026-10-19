@@ -14,6 +14,7 @@ import { config } from '@grafana/runtime';
 
 import { fetchCoreUser, type CoreUser } from '../lib/grafana-core-client';
 import { currentPlatform } from '../lib/platform';
+import { currentUserIdentity } from '../lib/current-user-identity';
 
 export interface CurrentUser {
   available: boolean;
@@ -31,10 +32,6 @@ let inflight: Promise<CoreUser | undefined> | undefined;
 let lastAttemptAt = 0;
 const listeners = new Set<() => void>();
 
-function positiveInteger(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
-}
-
 function bootRoleTrusted(): boolean {
   return currentPlatform() !== 'cloud';
 }
@@ -44,9 +41,7 @@ export function currentUser(): CurrentUser {
   const trustBoot = bootRoleTrusted();
   return {
     available: Boolean(user || liveUser),
-    id: positiveInteger(user?.id),
-    orgId: positiveInteger(user?.orgId),
-    isSignedIn: user?.isSignedIn === true,
+    ...currentUserIdentity(),
     role: liveUser?.role ?? (trustBoot ? user?.orgRole || undefined : undefined),
     isGrafanaAdmin: liveUser ? liveUser.grafanaAdmin === true : trustBoot && user?.isGrafanaAdmin === true,
   };

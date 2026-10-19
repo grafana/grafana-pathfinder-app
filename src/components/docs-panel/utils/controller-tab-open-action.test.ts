@@ -1,3 +1,4 @@
+import { config } from '@grafana/runtime';
 import { buildControllerTabUrl, pickControllerTabOpenAction } from './controller-tab-open-action';
 
 describe('pickControllerTabOpenAction', () => {
@@ -7,7 +8,10 @@ describe('pickControllerTabOpenAction', () => {
 
   it('returns shouldShow=false for non-interactive tab types', () => {
     expect(pickControllerTabOpenAction('backend-guide:x', 'docs')).toEqual({ shouldShow: false });
-    expect(pickControllerTabOpenAction('backend-guide:x', 'learning-journey')).toEqual({ shouldShow: false });
+  });
+
+  it('supports backend learning paths', () => {
+    expect(pickControllerTabOpenAction('backend-guide:path', 'learning-journey').shouldShow).toBe(true);
   });
 
   it('builds a same-origin controller URL for an interactive tab', () => {
@@ -23,11 +27,31 @@ describe('pickControllerTabOpenAction', () => {
       pairingCode: '123456',
     });
     const url = new URL(controllerUrl, 'http://localhost');
-    expect(url.pathname).toBe('/');
+    expect(url.pathname).toBe('/dashboards');
+    expect(url.origin).toBe(window.location.origin);
     expect(url.searchParams.get('doc')).toBe('backend-guide:my-guide');
     expect(url.searchParams.get('controller')).toBe('1');
     expect(url.searchParams.get('readonly')).toBeNull();
     expect(url.hash).toBe('#pairing_id=pairing-1&pairing_secret=secret-1&pairing_code=123456');
+  });
+
+  it('keeps the controller inside the Grafana subpath', () => {
+    const previousSubUrl = config.appSubUrl;
+    config.appSubUrl = '/grafana';
+    try {
+      const url = new URL(
+        buildControllerTabUrl('bundled:test', {
+          pairingId: 'pairing-1',
+          pairingSecret: 'secret-1',
+          pairingCode: '123456',
+        })
+      );
+      expect(url.pathname).toBe('/grafana/dashboards');
+      expect(url.origin).toBe(window.location.origin);
+      expect(url.searchParams.get('controller')).toBe('1');
+    } finally {
+      config.appSubUrl = previousSubUrl;
+    }
   });
 
   it('shows for an interactive guide regardless of url scheme (e.g. bundled)', () => {

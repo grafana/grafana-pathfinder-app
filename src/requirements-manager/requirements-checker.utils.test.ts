@@ -170,7 +170,7 @@ describe('requirements-checker.utils', () => {
   describe('hasDataSourceCHECK', () => {
     it('should check for specific data source', async () => {
       const mockDataSources = [{ name: 'Prometheus', uid: 'prom1', type: 'prometheus' }];
-      (dsRegistry.listDataSources as jest.Mock).mockResolvedValue(mockDataSources);
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:prometheus',
@@ -182,7 +182,7 @@ describe('requirements-checker.utils', () => {
 
     it('should match by normalized type (strip grafana- prefix and -datasource suffix)', async () => {
       const mockDataSources = [{ name: 'My Custom DS', uid: 'td1', type: 'grafana-testdata-datasource' }];
-      (dsRegistry.listDataSources as jest.Mock).mockResolvedValue(mockDataSources);
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:testdata',
@@ -194,7 +194,7 @@ describe('requirements-checker.utils', () => {
 
     it('should fail when no matching data source exists', async () => {
       const mockDataSources = [{ name: 'Prometheus', uid: 'prom1', type: 'prometheus' }];
-      (dsRegistry.listDataSources as jest.Mock).mockResolvedValue(mockDataSources);
+      (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue(mockDataSources);
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-datasource:testdata',

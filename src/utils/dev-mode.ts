@@ -32,7 +32,7 @@
 import { PathfinderPluginConfig } from '../constants';
 import { logger } from '../lib/logging';
 import { adoptLegacyDevModeOptIn, readDevModeOptIn, writeDevModeOptIn } from '../lib/dev-mode-opt-in';
-import { currentUser } from './current-user-role';
+import { currentUserIdentity } from '../lib/current-user-identity';
 
 /**
  * Check if dev mode is enabled for the current user (synchronous)
@@ -187,7 +187,7 @@ export { adoptLegacyDevModeOptIn };
  * publish.
  */
 export const hasLegacyDevModeOptIn = (pluginConfig: PathfinderPluginConfig): boolean => {
-  const userId = currentUser().id;
+  const userId = currentUserIdentity().id;
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- the one intentional reader of the deprecated allow-list: this is the upgrade path that retires it, and nothing writes it
   const legacyIds = pluginConfig.devModeUserIds;
 

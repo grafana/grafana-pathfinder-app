@@ -18,6 +18,7 @@ import pluginJson from '../../src/plugin.json';
 import { StorageKeys } from '../../src/lib/storage-keys';
 import { LEASE_TTL_MS } from '../../src/completion-records/completion-write-timing';
 import { testIds } from '../../src/constants/testIds';
+import { waitForGrafanaReady } from './grafana.helpers';
 import {
   ALL_FIXTURES,
   CDN_BASE_URL,
@@ -307,7 +308,7 @@ export async function seedRestoredTab(
  * never clicks a panel that is already open, which would toggle it shut.
  */
 export async function openDocsPanel(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle').catch(() => undefined);
+  await waitForGrafanaReady(page);
   const help = page.locator('button[aria-label="Help"]');
   await help.waitFor({ state: 'visible', timeout: 30_000 });
   const container = page.getByTestId(testIds.docsPanel.container);
@@ -379,25 +380,18 @@ export async function pathPercentage(page: Page): Promise<number> {
   return Number(raw);
 }
 
-/**
- * The percentage the Mark complete footer reports, as an integer.
- *
- * Waits for the footer to report its progress as `ready` first. Until the
- * stored mark has been read the footer resolves no content key, so its
- * percentage is a hard-coded 0 rather than the guide's — and an assertion made
- * inside that window cannot fail.
- */
+/** Retains the footer readiness gate for callers that interact with Mark complete next. */
 export async function footerPercentage(page: Page): Promise<number> {
   await waitForFooterHydrated(page);
-  const text = await page.getByTestId(testIds.markComplete.percentage).first().innerText();
+  const text = await page.getByTestId(testIds.guideProgress.percentage).first().innerText();
   const match = /(\d+)%/.exec(text);
   if (!match) {
-    throw new Error(`Mark complete footer reported no percentage: ${JSON.stringify(text)}`);
+    throw new Error(`Guide progress bar reported no percentage: ${JSON.stringify(text)}`);
   }
   return Number(match[1]);
 }
 
-/** Wait for the footer to have read the stored mark, so its percentage means something. */
+/** Wait until Mark complete can act on the stored mark. */
 export async function waitForFooterHydrated(page: Page): Promise<void> {
   await page
     .locator(`[data-testid="${testIds.markComplete.footer}"][data-test-progress-state="ready"]`)

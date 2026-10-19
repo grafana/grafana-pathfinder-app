@@ -46,7 +46,9 @@ export enum UserInteraction {
   DocsPanelInteraction = 'docs_panel_interaction',
   HelpButtonClickedToolbar = 'help_button_clicked_toolbar',
   HelpButtonDismissedHint = 'help_button_dismissed_hint',
+  AutoOpenGuideEligible = 'auto_open_guide_eligible',
   PanelScroll = 'panel_scroll',
+  CatalogInteraction = 'catalog_interaction',
 
   // Navigation & Tab Management
   CloseTabClick = 'close_tab_click',
@@ -72,7 +74,6 @@ export enum UserInteraction {
   DoItButtonClick = 'do_it_button_click',
   DoSectionButtonClick = 'do_section_button_click',
   StepAutoCompleted = 'step_auto_completed',
-  StepAutoCompleteFailed = 'step_auto_complete_failed',
   StepSkipped = 'step_skipped',
   ResetProgressClick = 'reset_progress_click',
   MarkCompleteClicked = 'mark_complete_clicked',
@@ -175,6 +176,7 @@ export enum AnalyticsLinkType {
 
 export const STEP_PERCENTAGE_RULE_VERSION = 'step-position-v1';
 export const BLOCK_PROGRESS_RULE_VERSION = 'block-position-v1';
+export const AUTO_COMPLETION_RULE_VERSION = 'observed-block-v1';
 
 export type ResetScope = 'guide' | 'path' | 'assignment' | 'all';
 

@@ -1,10 +1,10 @@
 import { config } from '@grafana/runtime';
 
-import { currentUser } from '../utils/current-user-role';
+import { currentUserIdentity } from './current-user-identity';
 import { StorageKeys } from './storage-keys';
 
 function storageKey(): string | undefined {
-  const user = currentUser();
+  const user = currentUserIdentity();
   if (!user.id || !user.orgId) {
     return undefined;
   }

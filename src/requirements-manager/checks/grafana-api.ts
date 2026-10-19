@@ -6,7 +6,7 @@
  */
 
 import { hasPermission } from '@grafana/runtime';
-import { getDataSourceApi, listDataSources } from '../../lib/datasource/datasource-registry';
+import { getDataSourceApi } from '../../lib/datasource/datasource-registry';
 import { fetchDataSources, fetchPluginPresence, fetchDashboardsByName } from '../../lib/grafana-api';
 import type { CheckResultError } from '../../types/requirements.types';
 import {
@@ -116,7 +116,7 @@ export async function hasDataSourceCheck(check: string): Promise<CheckResultErro
   try {
     const dsRequirement = check.replace('has-datasource:', '').toLowerCase();
 
-    const dataSources = await listDataSources();
+    const dataSources = await fetchDataSources({ throwOnError: true });
     let found = false;
     let matchType = '';
 

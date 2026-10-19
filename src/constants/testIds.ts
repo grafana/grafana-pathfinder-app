@@ -137,6 +137,8 @@ export const testIds = {
     requirementRetryButton: (stepId: string) => `interactive-requirement-retry-${stepId}`,
     requirementSkipButton: (stepId: string) => `interactive-requirement-skip-${stepId}`,
     stepCompleted: (stepId: string) => `interactive-step-completed-${stepId}`,
+    completionWaiting: (stepId: string) => `interactive-completion-waiting-${stepId}`,
+    checkCompletionButton: (stepId: string) => `interactive-check-completion-${stepId}`,
     errorMessage: (stepId: string) => `interactive-error-${stepId}`,
     formChecking: (stepId: string) => `interactive-form-checking-${stepId}`,
     formHintWarning: (stepId: string) => `interactive-form-hint-${stepId}`,
@@ -440,8 +442,12 @@ export const testIds = {
   markComplete: {
     footer: 'mark-complete-footer',
     button: 'mark-complete-button',
-    percentage: 'mark-complete-percentage',
     completed: 'mark-complete-completed',
+  },
+
+  guideProgress: {
+    bar: 'guide-progress-bar',
+    percentage: 'guide-progress-percentage',
   },
 
   guideReader: {
