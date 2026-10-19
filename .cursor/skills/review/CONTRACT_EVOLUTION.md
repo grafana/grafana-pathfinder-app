@@ -2,15 +2,6 @@
 
 Read this only when a routed subsystem or cross-cutting concern has concrete routing paths. Skip always-on concerns.
 
-## Contents
-
-- Run the gate
-- When a specialist runs
-- Choosing one specialist
-- Specialist packet
-- Policy adapter
-- Documentation drift
-
 ## Run the gate
 
 For each activated subsystem or cross-cutting concern, run with literal base SHA, head SHA, and concern arguments. Never build the command from contributor-controlled filenames or prose.
@@ -19,7 +10,7 @@ For each activated subsystem or cross-cutting concern, run with literal base SHA
 node .cursor/skills/review/scripts/contract-evolution-gate.mjs --base <base-sha> --head <head-sha> --concern <concern-id>
 ```
 
-If it exits non-zero, print stderr and fix the argument it names. If it still fails, list `contract-evolution:<concern-id>` under `root` in `coverage` and record the coverage gap.
+If it still fails after fixing its arguments, list `contract-evolution:<concern-id>` under `root` in `coverage` and record the coverage gap.
 
 ## When a specialist runs
 
@@ -27,25 +18,13 @@ Run a specialist only when the gate triggers on fix-heavy history, or a changed 
 
 ## Choosing one specialist
 
-Only one specialist runs, alongside any dedicated security worker. When several gates fire, the planner selects in this order:
-
-1. A gate whose changed hunks modify a named contract anchor reaching at least two current consumers.
-2. The higher `prior_semantic_pr_count` from that gate's output.
-3. The lowest `concern_id`.
+Only one specialist runs. When several gates fire, the planner picks one and routes the rest to `root`.
 
 Set `touches_anchor_with_consumers` yourself from the diff, because the planner never infers anchor reach. Pass every fired gate as an array of `{ concern_id, context, touches_anchor_with_consumers, prior_semantic_pr_count }` in the plan input. See `.cursor/skills/review/EXAMPLES.md` for the shape.
 
-The planner rejects a gate that omits either ranking field, states a `concern_id` outside lowercase letters, digits, and hyphens, uses a non-boolean anchor flag, or gives a non-finite count. A single gate may be passed as one object; it ignores both ranking fields. Two fired gates must not share a `concern_id`.
-
-A selected gate above the packet envelope, or a gate with an empty packet, yields the slot to the next gate. Every unselected gate becomes `contract-evolution:<concern_id>` under `root` in `coverage`.
-
 ## Specialist packet
 
-Load the section first:
-
-```bash
-node .cursor/skills/review/scripts/concern-context.mjs --section "Contract evolution packet"
-```
+Load `Contract evolution packet` first (command in `.cursor/skills/review/SKILL.md`).
 
 Within the 30,000-character worker limit, give the specialist:
 
@@ -63,7 +42,7 @@ Before finding `contract_branching` or `contract_missing`, inspect every claimed
 node .cursor/skills/review/scripts/contract-evolution-policy.mjs <packet-file>
 ```
 
-The adapter emits factual contract state and a canonical observation. It never disposes the finding.
+The adapter emits a canonical observation.
 
 ## Documentation drift
 

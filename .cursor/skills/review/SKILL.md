@@ -25,7 +25,7 @@ Review progress:
 - **Worker**: a subagent that observes one bundle of concerns. A **specialist** is a worker for security or contract evolution.
 - **Skeptic**: a subagent that answers only whether one observation is true. Skeptics are outside every worker cap.
 - **Observation**: the canonical record a worker emits for one issue. A **finding** is an observation after policy; a **follow-up**, **suggestion**, or **nit** is a finding's final disposition.
-- **Policy**: `review-policy.mjs`, the only authority on disposition.
+- **Policy**: `review-policy.mjs`.
 - **Root**: you, the orchestrator. You synthesize and own overflow.
 
 ## Rules
@@ -38,9 +38,8 @@ Review progress:
 
 ## Setup and dependencies
 
-- Node 24 or later; run scripts from the repository root.
-- `gh` access to read the PR, its prior reviews, and its diff.
-- A harness that can run subagents in parallel. Without it, run observation workers one at a time and then the skeptics.
+- Run scripts from the repository root.
+- Without parallel subagents, run observation workers one at a time, then the skeptics.
 - Standalone security review is the `secure` skill; the `comment-hygiene` skill is used only for borderline QC8 calls.
 
 ## Scripts
@@ -68,8 +67,6 @@ Never read `docs/design/PR_REVIEW.md` or `docs/design/CONCERN_DETAILS.md` whole.
 - Verify: `node .cursor/skills/review/scripts/concern-context.mjs --section "Verification"`, before the first skeptic.
 - Render: `node .cursor/skills/review/scripts/concern-context.mjs --section "Final review report"`, before building the report.
 
-Concrete inputs, outputs, and a worker prompt skeleton are in `.cursor/skills/review/EXAMPLES.md`.
-
 ## 0. Resolve mode and round
 
 Save the latest prior review body by this same reviewer to a file, count every prior review submission by this reviewer (marker or not), then run:
@@ -78,7 +75,7 @@ Save the latest prior review body by this same reviewer to a file, count every p
 node .cursor/skills/review/scripts/review-state.mjs --head <full-head-sha> --prior-body <review-body-file> --prior-review-count <n>
 ```
 
-Omit `--prior-body` when there is no prior review. Read `.cursor/skills/review/INCREMENTAL.md` in full when the result is `incremental` or any prior review exists; otherwise skip it. Pass the returned `round` (1 to 100) to every later policy, batch, and report request.
+Omit `--prior-body` when there is no prior review. Read `.cursor/skills/review/INCREMENTAL.md` in full when the result is `incremental` or any prior review exists; otherwise skip it. Pass the returned `round` to every later policy, batch, and report request.
 
 ## 1. Route
 
@@ -102,45 +99,30 @@ Build a plan input of `mode`, routed concerns, and each packet's actual `{ path,
 node .cursor/skills/review/scripts/concern-context.mjs --plan <plan-file>
 ```
 
-Each routed entry is `{ id, category, context }`. Mark a dedicated security entry `specialist: "security"`. Pass contract-evolution gates separately as `contract_evolution` (see `.cursor/skills/review/CONTRACT_EVOLUTION.md`; read it only when a routed subsystem or cross-cutting concern has concrete routing paths). If `--plan` rejects the input, fix the field it names and re-run. Do not dispatch until the plan validates.
+Mark a dedicated security entry `specialist: "security"`. Pass contract-evolution gates separately as `contract_evolution` (see `.cursor/skills/review/CONTRACT_EVOLUTION.md`; read it only when a routed subsystem or cross-cutting concern has concrete routing paths). Do not dispatch until the plan validates.
 
 ### Worker allocation
 
-- The planner sets the general worker count from routed breadth: two for up to six concerns, then one per three, capped at six.
-- Every concern has a worker or `root` as owner. Each worker packet is limited to eight files and 30,000 characters. Skeptics are excluded from these caps.
 - Bundle concerns that inspect the same files or hunks, and attach the always-on questions to relevant bundles instead of assigning one worker per concern.
-- Root owns synthesis and whatever overflows. Overflow is the expensive failure, because root reviews it serially. Prefer delegating a concern over keeping it.
-- Use the `secure` skill for auth, tokens, secrets, URL or redirect trust boundaries, workflow permissions, publishing, cross-origin transport, or dependency manifest changes. Mark that plan entry `specialist: "security"`; it consumes one general slot. Its adapter returns only canonical observations or `no_findings`. Ignore any `clean|minor|blocking` disposition or custom report from it.
+- Root owns synthesis and whatever overflows the planner's caps. Prefer delegating a concern over keeping it, because root reviews overflow serially.
+- Use the `secure` skill for auth, tokens, secrets, URL or redirect trust boundaries, workflow permissions, publishing, cross-origin transport, or dependency manifest changes. Mark that plan entry `specialist: "security"`; ignore any `clean|minor|blocking` disposition or custom report from it.
 
 ## 2. Observe
 
-Load `Canonical observation` first. Build each worker prompt from the skeleton in `.cursor/skills/review/EXAMPLES.md`. Workers inspect changed functions, nearby contracts, directly related tests, base behavior, and rollback behavior. Each worker:
+Load `Canonical observation` first. Build each worker prompt from the skeleton in `.cursor/skills/review/EXAMPLES.md`. Workers inspect changed functions, nearby contracts, directly related tests, base behavior, and rollback behavior, and check the base commit before claiming a regression. Prefer one precise observation over speculative variants.
 
-1. Restates the concern invariant.
-2. Identifies changed endpoints, schemas, persisted state, public DOM/API contracts, validation, gating, fallbacks, rollback, or cleanup behavior.
-3. Compares the implementation with the PR intent, tests, and nearby design contract.
-4. Checks the base commit before claiming a regression.
-5. Classifies origin, reachability, impact, timing, scope effect, reversibility, and induced scope from evidence.
-6. Reports invariant mismatches, rollback hazards, contract drift, or missing verification tied to changed semantics.
-
-Prefer one precise observation over speculative variants. Return `reviewed_clean` or `not_applicable` when nothing crosses the bar.
-
-Do not emit an adjacent observation (`pre_existing` or `latent_unreachable`, a condition this PR did not cause) below `high` severity, and do not emit optional advice that widens the changed surface. The policy drops both. A high or critical adjacent finding is in bounds; state filing a separate issue as its `suggested_action`.
+A high or critical adjacent finding (a condition this PR did not cause) is in bounds; state filing a separate issue as its `suggested_action`.
 
 No producer decides merge impact. Root assigns the stable finding ID from the invariant and evidence surface, reuses the exact prior ID for the same invariant, and adds a narrow qualifier only to resolve a collision. Normalize and deduplicate by that ID and evidence surface before verification; assign one primary concern.
 
 ### Pattern checks by file type
 
-Load only the applicable sections (see the section table):
-
 - Frontend changes: `React reliability, security, and quality checks`, then follow `.cursor/rules/react-antipatterns.mdc` and `.cursor/rules/frontend-security.mdc` only for detected rules.
 - `pkg/**/*.go`: `Go backend checks`, and verify `npm run lint:go`, `npm run test:go`, and `go build ./...`.
 
-Pattern severity feeds the canonical observation. It never decides disposition.
-
 ### Supplemental checks
 
-Fold these into an existing worker or root; do not add workers. None supplies a disposition.
+Fold these into an existing worker or root; do not add workers.
 
 - Tech debt: changed hunks only, under the existing tech-debt confidence gates. Emit a defect or suggestion with checked origin and scope effect.
 - Documentation drift: only when changed subsystems, scripts, skills, routes, flags, or architecture can stale agent guidance. Emit a no-impact defect when guidance belongs in this PR.
@@ -156,31 +138,28 @@ Plan related packets through the policy:
 { "operation": "plan_verification_batches", "requests": [{ "observation": {}, "verdicts": [], "round": 1 }] }
 ```
 
-A packet holds at most four findings sharing a concern and evidence surface. Run independent skeptic roles concurrently on different agents, reuse one agent per role across related batches, and add a tiebreaker only when initial verdicts require it. In a constrained harness, finish observation workers before skeptic fan-out.
+Run independent skeptic roles concurrently on different agents, reuse one agent per role across related batches, and add a tiebreaker only when initial verdicts require it.
 
 For each observation call `review-policy.mjs` with `{ observation, verdicts, round, prior_deferred, prior_cleared }`, then act on `status`:
 
 - `needs_verification`: run exactly the returned role and count, append the verdicts, and call again.
-- `final`: accept the returned disposition and reason unchanged.
-- `dropped`: omit it and keep the refutation in the debug trace.
+- `final`: accept the disposition and reason unchanged. `dropped`: omit it.
 
-For `timing: "prior_unresolved"`, pass the prior reconciled deferred state. Optional work carries only when both its stable finding ID and concern match an exact prior deferred entry.
+For `timing: "prior_unresolved"`, pass the prior reconciled deferred state.
 
 ### Disposition
-
-`review-policy.mjs` is the only disposition authority. No phase may override, reinterpret, elevate, or demote its result.
 
 A clearance contradiction must quote the exact prior claim and reason in `clearance_contradiction` and add checked `new_evidence`. If the policy rejects it, correct the evidence or mark the review incomplete. Never silently replace prior clearance.
 
 ## 4. Reconcile
 
-When every observation is final or dropped, call `review-policy.mjs` with the reconcile operation (shape in `.cursor/skills/review/EXAMPLES.md`). Pass every final follow-up as `{ id, concern_id }`. List a prior deferred ID in `verified_fixed_ids` only after checking it at the current head. Add `current_cleared` only for a specific prior blocker or invariant reverified at the current head; generic clean or `no_findings` output never creates clearance.
+When every observation is final or dropped, call `review-policy.mjs` with the reconcile operation (shape in `.cursor/skills/review/EXAMPLES.md`). List a prior deferred ID in `verified_fixed_ids` only after checking it at the current head. Add `current_cleared` only for a specific prior blocker or invariant reverified at the current head; generic clean or `no_findings` output never creates clearance.
 
-The returned `next_deferred` and `next_cleared` are final state; publishing must not derive or alter them. Order clearances by importance first, because the 12-entry cap prunes. Clearance claims are at most 200 characters and reasons at most 300.
+The returned `next_deferred` and `next_cleared` are final state; publishing must not derive or alter them. Order clearances by importance first, because the 12-entry cap prunes.
 
 ## 5. Render
 
-Load `Final review report`. Convert each final policy result to: stable `id`, owning `concern_id`, `disposition`, `severity`, `title`, a concise `problem` grounded in evidence and consequence, `suggested_action`, and optional `reversibility`. Set report `deferred` and `cleared` to the reconciliation outputs. Do not add ownership metadata, skeptic reasoning, confidence, or parallel issue prose.
+Load `Final review report`. Convert each final policy result to: stable `id`, owning `concern_id`, `disposition`, `severity`, `title`, a concise `problem` grounded in evidence and consequence, `suggested_action`, and optional `reversibility`. Set report `deferred` and `cleared` to the reconciliation outputs.
 
 If required review work could not run, set an incomplete assessment with one concise reason. An incomplete report publishes no state.
 
@@ -188,18 +167,16 @@ If required review work could not run, set an incomplete assessment with one con
 node .cursor/skills/review/scripts/review-report.mjs <report-file>
 ```
 
-Use the output verbatim. It renders and orders all findings, derives verdict and counts, emits one marker, and ends with the four-line operator recap. If it rejects the report, fix the field it names and re-run.
+Use the output verbatim.
 
 ## 6. Present, then publish
 
 Present the complete rendered review to the user and stop. A request to review does not authorize publication. Once the user approves, publish the rendered output verbatim; without approval, leave GitHub unchanged.
 
-## Stop condition and debug trace
+## Debug trace
 
-The review is complete when every activated concern has a worker or root owner, all verification has resolved, reconciliation has run, and `review-report.mjs` has produced the report. Publication is a separate step after approval. Observation workers stay inside the planner's budget; incremental rounds use at most two.
-
-Keep this trace internal unless the user asks: mode, concern ownership, worker count, each worker's files and context characters, skeptic batch count, dropped evidence, policy reason codes, coverage gaps, and timings.
+Keep this internal unless the user asks: mode, concern ownership, worker and skeptic counts, dropped evidence, policy reason codes, coverage gaps, and timings.
 
 ## Testing this skill
 
-`npm run test:review-contract` runs the script suites. `.cursor/skills/review/evals/scenarios.json` holds behavioral scenarios; run each in a fresh session on a PR or fixture of that shape and compare against `expected_behavior`. After a real review deviates from the skill (a skipped section load, a hand-applied threshold, a missed incremental round), add a scenario or tighten the step that failed.
+`npm run test:review-contract` runs the script suites; `.cursor/skills/review/evals/scenarios.json` holds manual behavioral scenarios. After a real review deviates from the skill, add a scenario or tighten the step that failed.

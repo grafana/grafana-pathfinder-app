@@ -2,17 +2,9 @@
 
 Concrete inputs and outputs for the scripts SKILL.md calls. Values are illustrative; the shapes are real and are checked by the script test suites.
 
-## Contents
-
-- Plan input
-- Plan input with contract-evolution gates
-- Policy input and first response
-- Reconcile input
-- Worker prompt skeleton
-
 ## Plan input
 
-Validate with `node .cursor/skills/review/scripts/concern-context.mjs --plan <plan-file>`. `category` is the packet's own `always-on`, `subsystem`, or `cross-cutting` value; a missing one is treated as `always-on`.
+Validate with `node .cursor/skills/review/scripts/concern-context.mjs --plan <plan-file>`. `category` is the packet's own `always-on`, `subsystem`, or `cross-cutting` value.
 
 ```json
 {
@@ -33,8 +25,6 @@ Validate with `node .cursor/skills/review/scripts/concern-context.mjs --plan <pl
   ]
 }
 ```
-
-The output lists `workers` (each with `files` and `context_characters`), `root` overflow, and a `coverage` map from every concern to its owner.
 
 ## Plan input with contract-evolution gates
 
@@ -83,7 +73,7 @@ Input to `node .cursor/skills/review/scripts/review-policy.mjs <policy-input-fil
 }
 ```
 
-With no verdicts the response is `{ "status": "needs_verification", "lane": "high_risk", "dispatch": { "role": "skeptic", "count": 2 }, ... }`. Run exactly that role and count, append each `{ "verdict": "confirmed|refuted|uncertain", "reason": "<checked evidence>" }` to `verdicts`, and call again until `status` is `final` or `dropped`.
+With no verdicts the response is `{ "status": "needs_verification", "lane": "high_risk", "dispatch": { "role": "skeptic", "count": 2 }, ... }`. Append each skeptic's `{ "verdict": "confirmed|refuted|uncertain", "reason": "<checked evidence>" }` to `verdicts` and call again.
 
 ## Reconcile input
 
