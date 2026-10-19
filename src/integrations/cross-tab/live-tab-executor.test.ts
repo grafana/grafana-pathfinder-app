@@ -1243,3 +1243,33 @@ describe('passive observation messages', () => {
     uninstall();
   });
 });
+
+it.each([undefined, false, true])(
+  'forwards command opt-in only when explicitly true (%s)',
+  async (allowCodaExecution) => {
+    jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    jest.mocked(checkPostconditions).mockResolvedValue({ requirements: 'coda-exit-zero:true', pass: true, error: [] });
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'check-requirements',
+      requestId: 'explicit-command',
+      stepId: 's1',
+      requirements: 'coda-exit-zero:true',
+      passive: true,
+      allowCodaExecution,
+    } as CrossTabMessage);
+    await waitFor(() =>
+      expect(checkPostconditions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requirements: 'coda-exit-zero:true',
+          allowCodaExecution: allowCodaExecution === true,
+        })
+      )
+    );
+    uninstall();
+  }
+);

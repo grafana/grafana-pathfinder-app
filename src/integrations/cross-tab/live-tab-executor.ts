@@ -372,6 +372,7 @@ export function installLiveTabExecutor(
       }
       const result = await (message.passive ? checkPostconditions : checkRequirements)({
         requirements: message.requirements,
+        allowCodaExecution: message.allowCodaExecution === true,
         targetAction: message.targetAction ?? 'button',
         refTarget: message.refTarget ?? '',
         targetValue: message.targetValue,

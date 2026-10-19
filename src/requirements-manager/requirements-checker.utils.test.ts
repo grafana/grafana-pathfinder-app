@@ -1176,7 +1176,7 @@ describe('passive command checks', () => {
     async (check) => {
       const result = await check({ requirements: ['coda-exit-zero:echo unexpected'], maxRetries: 0 });
       expect(result.pass).toBe(false);
-      expect(result.error[0]?.error).toContain('Check my work');
+      expect(result.error[0]?.error).toContain('Check completion');
     }
   );
 });

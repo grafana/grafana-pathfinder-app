@@ -39,7 +39,7 @@ export async function codaExitZeroCheck(check: string, allowExecution = false): 
     return {
       requirement: check,
       pass: false,
-      error: 'Run this command check using Check my work in the challenge.',
+      error: 'Run this command using Check completion or Check my work.',
       context: null,
     };
   }
