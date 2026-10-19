@@ -13,14 +13,20 @@
 | `coverage[].concern_id` | string | A selected concern ID. |
 | `coverage[].status` | `checked` \| `not_applicable` \| `unresolved` | A complete assessment allows no `unresolved`. |
 | `coverage[].evidence` | string | What you inspected. For `not_applicable`, the concrete reason. |
-| `findings` | object[] | Only `blocker` and `follow_up`. No nits. |
+| `findings` | object[] | `blocker`, `follow_up`, or `nit`. At most five nits. |
 | `findings[].id` | string | Short, stable, `^[A-Za-z][A-Za-z0-9-]{0,31}$`. Reuse the same ID for the same invariant across rounds. |
 | `findings[].concern_id` | string | A selected concern ID. |
 | `findings[].disposition` | `blocker` \| `follow_up` |  |
-| `findings[].title`, `location`, `evidence`, `consequence`, `base_comparison` | string | Required. `location` is `path:line` or a symbol. `base_comparison` says what base did. |
+| `findings[].title`, `location`, `evidence`, `consequence`, `base_comparison` | string | Required for a blocker or follow-up. A nit needs only `title`, `location`, and `evidence`. `location` is `path:line` or a symbol. `base_comparison` says what base did. |
 | `findings[].required_invariant` | string | Required for a blocker. State the property, not a patch. |
 | `findings[].merge_reason` | string | Required for a blocker: why delaying the merge beats a follow-up. |
-| `findings[].next_action` | string | Required for a follow-up: a concrete proposed next step. |
+| `findings[].next_action` | string | Required for a follow-up: a concrete proposed issue, test, or doc change, never a merge condition. Required for a nit: the suggested change. |
+| `findings[].attribution` | `introduced` \| `newly_exposed` \| `pre_existing` | Required for a follow-up: how the PR relates to the defect. |
+| `tests` | object[] | One entry per changed, non-deleted test file in `inventory.json`. Required for a complete assessment when any test file changed. |
+| `tests[].path` | string | A changed test file. |
+| `tests[].read` | boolean | `true` only when you read the whole file at head, not the patch. |
+| `tests[].assertions_checked` | string | Required when `read` is true: which new assertions would fail on a regression and which would not. |
+| `tests[].reason` | string | Required when `read` is false: why you did not read it. |
 | `prior_decisions` | object[] | One per item in `prior.json` `items` for a complete assessment. |
 | `prior_decisions[].action` | `carry` \| `resolved` \| `reopen` | `carry` keeps the prior record. `resolved` drops it from state. `reopen` requires a current finding with the same ID. |
 | `prior_decisions[].evidence` | string | Evidence from the current head. |
@@ -29,6 +35,10 @@
 | `escalations` | object[] | Every deeper look and why. |
 | `escalations[].trigger`, `action`, `outcome` | string |  |
 | `escalations[].independent` | boolean | `true` only for a separate reviewer that did not see your conclusions. |
+
+## Nits and state
+
+Nits render under `## Nits`, never change the headline, and are not written to `state.json`. Follow-ups keep their `attribution` in state.
 
 ## Headline
 
@@ -89,6 +99,7 @@
       "id": "cache-ttl-test",
       "concern_id": "testing-and-verification",
       "disposition": "follow_up",
+      "attribution": "introduced",
       "title": "No test pins cache expiry",
       "location": "src/context-engine/cache-key.test.ts",
       "evidence": "No test advances time past the TTL.",

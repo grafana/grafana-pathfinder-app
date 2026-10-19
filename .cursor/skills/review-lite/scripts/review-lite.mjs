@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { extractConcernContext, validateConcernRegistry } from '../../review/scripts/concern-context.mjs';
 import { findTable, unquote } from '../../review/scripts/registry-table.mjs';
+import { deltaTriggers, isTestPath, scanSync } from './sync-scan.mjs';
 
 export const STATE_VERSION = 'review-lite-v1';
 export const INITIAL_CONTEXT_BUDGET = 12_000;
@@ -26,6 +27,9 @@ const GENERATED_PATTERNS = [
 ];
 const FINDING_ID = /^[A-Za-z][A-Za-z0-9-]{0,31}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+const MAX_NITS = 5;
+const ATTRIBUTIONS = ['introduced', 'newly_exposed', 'pre_existing'];
+const NIT_TEXT_FIELDS = ['title', 'location', 'evidence'];
 const PLACEHOLDER_REASONS = new Set(['', 'n/a', 'na', 'none', 'not applicable', '-', 'no', 'nothing']);
 
 export class UsageError extends Error {}
@@ -206,7 +210,7 @@ function parseNumstat(output) {
   return stats;
 }
 
-function changedLines(repo, from, to, file) {
+function diffLines(repo, from, to, file) {
   const paths = file.old_path ? [file.old_path, file.path] : [file.path];
   const patch = git(repo, [
     'diff',
@@ -228,7 +232,7 @@ function changedLines(repo, from, to, file) {
     } else if (line.startsWith('@@')) {
       inHunk = true;
     } else if (inHunk && (line.startsWith('+') || line.startsWith('-'))) {
-      lines.push(line.slice(1));
+      lines.push({ sign: line[0], text: line.slice(1) });
     }
   }
   return lines;
@@ -472,7 +476,7 @@ function requireArray(errors, value, label) {
 
 const FINDING_TEXT_FIELDS = ['title', 'location', 'evidence', 'consequence', 'base_comparison'];
 
-function validateFindingRecord(errors, finding, label, knownConcerns) {
+function validateFindingRecord(errors, finding, label, knownConcerns, { strict = false } = {}) {
   if (!finding || typeof finding !== 'object') {
     errors.push(`${label} must be an object`);
     return;
@@ -483,7 +487,8 @@ function validateFindingRecord(errors, finding, label, knownConcerns) {
   if (!knownConcerns.has(finding.concern_id)) {
     errors.push(`${label}.concern_id ${JSON.stringify(finding.concern_id)} is not a known concern`);
   }
-  for (const field of FINDING_TEXT_FIELDS) {
+  const nit = strict && finding.disposition === 'nit';
+  for (const field of nit ? NIT_TEXT_FIELDS : FINDING_TEXT_FIELDS) {
     requireString(errors, finding[field], `${label}.${field}`);
   }
   if (finding.disposition === 'blocker') {
@@ -491,8 +496,13 @@ function validateFindingRecord(errors, finding, label, knownConcerns) {
     requireString(errors, finding.merge_reason, `${label}.merge_reason (required for a blocker)`);
   } else if (finding.disposition === 'follow_up') {
     requireString(errors, finding.next_action, `${label}.next_action (required for a follow-up)`);
+    if (strict && !ATTRIBUTIONS.includes(finding.attribution)) {
+      errors.push(`${label}.attribution must be one of ${ATTRIBUTIONS.join(', ')} (required for a follow-up)`);
+    }
+  } else if (nit) {
+    requireString(errors, finding.next_action, `${label}.next_action (the suggested change, required for a nit)`);
   } else {
-    errors.push(`${label}.disposition must be blocker or follow_up`);
+    errors.push(`${label}.disposition must be ${strict ? 'blocker, follow_up, or nit' : 'blocker or follow_up'}`);
   }
   for (const field of ['required_invariant', 'merge_reason', 'next_action']) {
     if (finding[field] !== undefined && typeof finding[field] !== 'string') {
@@ -639,6 +649,8 @@ export function prepare(options) {
     inventory: 'inventory.json',
     patch: 'changes.patch',
     candidates: 'candidates.json',
+    sync_hits: 'sync-hits.json',
+    delta_triggers: 'delta-triggers.json',
     prior: 'prior.json',
   };
   let incrementalFiles = null;
@@ -647,14 +659,19 @@ export function prepare(options) {
     incrementalFiles = inventoryDiff(repo, prior.reviewed_head, head).map((file) => file.path);
     artifacts.incremental_patch = 'incremental.patch';
   }
-  const linesByPath = new Map(
-    files.filter((file) => !file.binary).map((file) => [file.path, changedLines(repo, mergeBase, head, file)])
+  const diffs = new Map(
+    files.filter((file) => !file.binary).map((file) => [file.path, diffLines(repo, mergeBase, head, file)])
   );
+  const linesByPath = new Map([...diffs].map(([path, entries]) => [path, entries.map(({ text }) => text)]));
   const routing = routeCandidates(registry, files, linesByPath);
   const checklist = renderAlwaysOnChecklist(registry);
 
   writeJson(join(out, 'inventory.json'), { files, incremental_files: incrementalFiles });
   writeJson(join(out, 'candidates.json'), routing);
+  const sync = scanSync({ git, repo, head, files, diffs });
+  const delta = deltaTriggers({ files, diffs });
+  writeJson(join(out, 'sync-hits.json'), sync);
+  writeJson(join(out, 'delta-triggers.json'), delta);
   writeJson(join(out, 'prior.json'), prior);
   writeFileSync(join(out, 'context', 'always-on.md'), checklist.text);
   writeJson(join(out, 'selected.json'), {
@@ -677,7 +694,7 @@ export function prepare(options) {
     artifacts,
   };
   writeJson(join(out, 'manifest.json'), manifest);
-  return { manifest, routing, files, checklistCharacters: checklist.text.length };
+  return { manifest, routing, files, sync, delta, checklistCharacters: checklist.text.length };
 }
 
 function readRun(run) {
@@ -688,6 +705,7 @@ function readRun(run) {
     manifest: readJson(join(run, 'manifest.json'), 'run manifest'),
     selected: readJson(join(run, 'selected.json'), 'run selection'),
     prior: readJson(join(run, 'prior.json'), 'run prior state'),
+    inventory: existsSync(join(run, 'inventory.json')) ? readJson(join(run, 'inventory.json'), 'run inventory') : null,
     registry: readRegistry(run),
   };
 }
@@ -746,7 +764,52 @@ function priorItemsById(prior) {
   return new Map(prior.items.map((item) => [item.id, item]));
 }
 
-export function validateResult(result, { selected, prior, registry }) {
+function changedTestPaths(inventory) {
+  return (inventory?.files ?? [])
+    .filter((file) => file.status !== 'D' && !file.binary && isTestPath(file.path))
+    .map(({ path }) => path);
+}
+
+function validateTestReview(errors, result, inventory) {
+  const required = changedTestPaths(inventory);
+  if (required.length === 0 && result.tests === undefined) {
+    return;
+  }
+  const entries = requireArray(errors, result.tests ?? [], 'tests');
+  const seen = new Set();
+  entries.forEach((entry, index) => {
+    const label = `tests[${index}]`;
+    if (!required.includes(entry?.path)) {
+      errors.push(`${label}.path ${JSON.stringify(entry?.path)} is not a changed test file in this run`);
+      return;
+    }
+    if (seen.has(entry.path)) {
+      errors.push(`tests lists ${entry.path} more than once`);
+    }
+    seen.add(entry.path);
+    if (entry.read === true) {
+      requireString(
+        errors,
+        entry.assertions_checked,
+        `${label}.assertions_checked (which new assertions would fail if the behavior regressed, and which would not)`
+      );
+    } else if (entry.read === false) {
+      requireString(errors, entry.reason, `${label}.reason (why this test file was not read in full)`);
+    } else {
+      errors.push(`${label}.read must be a boolean`);
+    }
+  });
+  if (result.assessment === 'complete') {
+    const missing = required.filter((path) => !seen.has(path));
+    if (missing.length > 0) {
+      errors.push(
+        `a complete assessment needs a tests entry for every changed test file; read each in full or record why not: ${missing.join(', ')}`
+      );
+    }
+  }
+}
+
+export function validateResult(result, { selected, prior, registry, inventory }) {
   const errors = [];
   if (!result || typeof result !== 'object' || Array.isArray(result)) {
     return ['result must be an object'];
@@ -810,7 +873,7 @@ export function validateResult(result, { selected, prior, registry }) {
   const findings = requireArray(errors, result.findings, 'findings');
   findings.forEach((finding, index) => {
     const label = `findings[${index}]`;
-    validateFindingRecord(errors, finding, label, knownConcerns);
+    validateFindingRecord(errors, finding, label, knownConcerns, { strict: true });
     if (knownConcerns.has(finding?.concern_id) && !selectedConcerns.has(finding.concern_id)) {
       errors.push(
         `${label}.concern_id ${finding.concern_id} was never selected; load it with the context command first`
@@ -824,6 +887,10 @@ export function validateResult(result, { selected, prior, registry }) {
       errors.push(`${label}.id ${finding.id} belongs to a prior item; reuse it only with a reopen decision`);
     }
   });
+  const nitCount = findings.filter((finding) => finding?.disposition === 'nit').length;
+  if (nitCount > MAX_NITS) {
+    errors.push(`at most ${MAX_NITS} nits are allowed; got ${nitCount}. Keep the ones a maintainer would act on.`);
+  }
   requireArray(errors, result.clearances, 'clearances').forEach((clearance, index) => {
     const label = `clearances[${index}]`;
     validateClearanceRecord(errors, clearance, label, knownConcerns);
@@ -850,6 +917,8 @@ export function validateResult(result, { selected, prior, registry }) {
       errors.push(`escalations[${index}].independent must be a boolean`);
     }
   });
+
+  validateTestReview(errors, result, inventory);
 
   if (result.assessment === 'complete') {
     const uncovered = selected.concerns.filter((id) => !covered.has(id));
@@ -886,6 +955,7 @@ const STATE_FINDING_FIELDS = [
   'required_invariant',
   'merge_reason',
   'next_action',
+  'attribution',
   'recorded_at_head',
 ];
 const STATE_CLEARANCE_FIELDS = ['id', 'concern_id', 'claim', 'evidence', 'recorded_at_head'];
@@ -895,7 +965,9 @@ export function deriveState(result, { manifest, prior }) {
   const carried = prior.items.filter((item) => decisions.get(item.id) === 'carry');
   const findings = [
     ...carried.filter(({ kind }) => kind === 'finding').map((item) => pick(item, STATE_FINDING_FIELDS)),
-    ...result.findings.map((finding) => pick({ ...finding, recorded_at_head: manifest.head }, STATE_FINDING_FIELDS)),
+    ...result.findings
+      .filter(({ disposition }) => disposition !== 'nit')
+      .map((finding) => pick({ ...finding, recorded_at_head: manifest.head }, STATE_FINDING_FIELDS)),
   ];
   const clearances = [
     ...carried.filter(({ kind }) => kind === 'clearance').map((item) => pick(item, STATE_CLEARANCE_FIELDS)),
@@ -935,6 +1007,10 @@ function findingBlock(finding, { carried = false } = {}) {
   return lines.join('\n');
 }
 
+function nitLine(nit) {
+  return `${nit.id} (\`${nit.concern_id}\`, ${nit.location}): ${nit.title}. Evidence: ${nit.evidence} Suggested: ${nit.next_action}`;
+}
+
 export function renderReport(result, { manifest, prior }) {
   const decisions = new Map(result.prior_decisions.map((decision) => [decision.id, decision]));
   const carried = prior.items.filter((item) => item.kind === 'finding' && decisions.get(item.id)?.action === 'carry');
@@ -970,6 +1046,14 @@ export function renderReport(result, { manifest, prior }) {
   for (const entry of byStatus('unresolved')) {
     scope.push(`- Unresolved: \`${entry.concern_id}\`: ${entry.evidence}`);
   }
+  const tests = result.tests ?? [];
+  if (tests.length > 0) {
+    const readTests = tests.filter(({ read }) => read);
+    scope.push(`- Test files read in full: ${readTests.length} of ${tests.length}`);
+    for (const entry of tests.filter(({ read }) => !read)) {
+      scope.push(`- Limitation: test file ${entry.path} was not read in full: ${entry.reason}`);
+    }
+  }
   for (const limitation of result.limitations) {
     scope.push(`- Limitation: ${limitation}`);
   }
@@ -988,6 +1072,14 @@ export function renderReport(result, { manifest, prior }) {
       '## Proposed follow-ups',
       'These are outside the merge requirements. A proposed follow-up is not a filed issue.',
       ...followUps.map((entry) => findingBlock(entry.finding, entry))
+    );
+  }
+  const nits = result.findings.filter(({ disposition }) => disposition === 'nit');
+  if (nits.length > 0) {
+    sections.push(
+      '## Nits',
+      'Nits never block a merge and are not follow-ups. Take them or leave them.',
+      bulletList(nits.map(nitLine))
     );
   }
   const resolved = result.prior_decisions.filter(({ action }) => action === 'resolved');
@@ -1078,7 +1170,7 @@ export function main(argv) {
   }
   const options = parseArgs(command, rest);
   if (command === 'prepare') {
-    const { manifest, routing, files, checklistCharacters } = prepare(options);
+    const { manifest, routing, files, sync, delta, checklistCharacters } = prepare(options);
     const lines = [
       `Prepared ${manifest.mode} review of ${short(manifest.merge_base)}..${short(manifest.head)} (${files.length} files) in ${options.out}`,
     ];
@@ -1088,6 +1180,7 @@ export function main(argv) {
     lines.push(
       `Always-on checklist: ${join(options.out, 'context', 'always-on.md')} (${formatCharacters(checklistCharacters)} chars)`,
       `Candidates (${routing.candidates.length}): ${routing.candidates.map(({ id, lexical_evidence }) => `${id} [${lexical_evidence}]`).join(', ') || 'none'}`,
+      `Sync nominations: ${sync.hits.length} hits, ${sync.doc_gaps.length} doc gaps (${join(options.out, 'sync-hits.json')}); delta triggers: ${delta.triggers.length} (${join(options.out, 'delta-triggers.json')})`,
       `Unrouted files: ${routing.unrouted_files.length}; targeted inspection: ${files.filter((file) => file.targeted_inspection.length > 0).length}`,
       `Inventory: ${join(options.out, 'inventory.json')}; patch: ${join(options.out, 'changes.patch')}${manifest.artifacts.incremental_patch ? `; increment: ${join(options.out, 'incremental.patch')}` : ''}`
     );

@@ -112,6 +112,7 @@ const followUp = {
   id: 'step-index-test',
   concern_id: 'testing-and-verification',
   disposition: 'follow_up',
+  attribution: 'pre_existing',
   title: 'No test pins the runner and index helper together',
   location: 'src/interactive-engine/runner.ts',
   evidence: 'Only the helper has a unit test.',
@@ -299,7 +300,7 @@ describe('finish', () => {
         /merge_reason \(required for a blocker\)/,
       ],
       [result(runDir, { findings: [{ ...followUp, next_action: '' }] }), /next_action \(required for a follow-up\)/],
-      [result(runDir, { findings: [{ ...blocker, disposition: 'nit' }] }), /blocker or follow_up/],
+      [result(runDir, { findings: [{ ...blocker, disposition: 'cosmetic' }] }), /blocker, follow_up, or nit/],
       [
         result(runDir, {
           coverage: coverageFor(runDir).map((entry) =>
@@ -553,6 +554,214 @@ describe('continuity', () => {
     writeFileSync(legacy, JSON.stringify({ ...readJson(round.statePath), version: 'pathfinder-review-state-v2' }));
     const legacyRun = prepared({ repo: round.repo, base: round.base, head, prior: legacy });
     assert.match(readJson(join(legacyRun, 'manifest.json')).fallback_reason, /state.version must be review-lite-v1/);
+  });
+});
+
+const nit = {
+  id: 'step-index-name',
+  concern_id: 'testing-and-verification',
+  disposition: 'nit',
+  title: 'Test name overstates what it asserts',
+  location: 'src/interactive-engine/step-index.test.ts:4',
+  evidence: 'The name says Resume and Read but only Read is asserted.',
+  next_action: 'Rename the test to say Read only.',
+};
+
+describe('nits and follow-up attribution', () => {
+  function interactiveRun() {
+    const { repo, base } = makeRepo({ 'src/interactive-engine/step-index.ts': 'export const i = 0;\n' });
+    const head = commit(repo, { 'src/interactive-engine/step-index.ts': 'export const i = 1;\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    return { runDir };
+  }
+
+  test('nits render in their own section, never change the headline, and are not carried in state', () => {
+    const { runDir } = interactiveRun();
+    const outcome = finishWith(runDir, result(runDir, { findings: [nit] }));
+    assert.equal(outcome.headline, 'No blocking findings');
+    assert.match(outcome.report, /## Nits\n\nNits never block a merge/);
+    assert.match(outcome.report, /step-index-name/);
+    assert.deepEqual(outcome.state.findings, []);
+  });
+
+  test('a nit needs only a title, location, evidence, and suggested change, and at most five are allowed', () => {
+    const { runDir } = interactiveRun();
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { findings: [{ ...nit, next_action: '' }] })),
+      /next_action \(the suggested change, required for a nit\)/
+    );
+    const many = Array.from({ length: 6 }, (_, index) => ({ ...nit, id: `nit-${index}` }));
+    assert.throws(() => finishWith(runDir, result(runDir, { findings: many })), /at most 5 nits/);
+  });
+
+  test('a follow-up must say whether the PR introduced, newly exposed, or inherited the gap', () => {
+    const { runDir } = interactiveRun();
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { findings: [{ ...followUp, attribution: undefined }] })),
+      /attribution must be one of introduced, newly_exposed, pre_existing/
+    );
+    const outcome = finishWith(runDir, result(runDir, { findings: [{ ...followUp, attribution: 'introduced' }] }));
+    assert.equal(outcome.state.findings[0].attribution, 'introduced');
+  });
+});
+
+describe('test review', () => {
+  function testedRun() {
+    const { repo, base } = makeRepo({
+      'src/interactive-engine/step-index.ts': 'export const i = 0;\n',
+      'src/interactive-engine/step-index.test.ts': "test('a', () => {});\n",
+    });
+    const head = commit(
+      repo,
+      {
+        'src/interactive-engine/step-index.ts': 'export const i = 1;\n',
+        'src/interactive-engine/step-index.test.ts': "test('a', () => { expect(1).toBe(1); });\n",
+      },
+      'head'
+    );
+    return { runDir: prepared({ repo, base, head }) };
+  }
+
+  test('a complete assessment must account for every changed test file', () => {
+    const { runDir } = testedRun();
+    assert.throws(
+      () => finishWith(runDir, result(runDir)),
+      /needs a tests entry for every changed test file.*step-index\.test\.ts/
+    );
+    const path = 'src/interactive-engine/step-index.test.ts';
+    assert.throws(() => finishWith(runDir, result(runDir, { tests: [{ path, read: true }] })), /assertions_checked/);
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { tests: [{ path, read: false }] })),
+      /reason \(why this test file was not read in full\)/
+    );
+    assert.throws(
+      () =>
+        finishWith(
+          runDir,
+          result(runDir, { tests: [{ path: 'src/other.test.ts', read: true, assertions_checked: 'x' }] })
+        ),
+      /not a changed test file in this run/
+    );
+  });
+
+  test('the report states how many test files were read and lists the unread ones as limitations', () => {
+    const { runDir } = testedRun();
+    const path = 'src/interactive-engine/step-index.test.ts';
+    const read = finishWith(
+      runDir,
+      result(runDir, {
+        tests: [{ path, read: true, assertions_checked: 'expect(1).toBe(1) cannot fail, so it pins nothing.' }],
+      })
+    );
+    assert.match(read.report, /Test files read in full: 1 of 1/);
+    const unread = finishWith(runDir, result(runDir, { tests: [{ path, read: false, reason: 'Generated fixture.' }] }));
+    assert.match(unread.report, /Test files read in full: 0 of 1/);
+    assert.match(
+      unread.report,
+      /Limitation: test file .*step-index\.test\.ts was not read in full: Generated fixture\./
+    );
+  });
+});
+
+describe('sync scan and delta triggers', () => {
+  function syncRun(baseFiles, headFiles) {
+    const { repo, base } = makeRepo(baseFiles);
+    const head = commit(repo, headFiles, 'head');
+    const runDir = prepared({ repo, base, head });
+    return {
+      sync: readJson(join(runDir, 'sync-hits.json')),
+      delta: readJson(join(runDir, 'delta-triggers.json')),
+      manifest: readJson(join(runDir, 'manifest.json')),
+    };
+  }
+
+  test('nominates a doc line in a changed doc that contradicts the change', () => {
+    const { sync, manifest } = syncRun(
+      {
+        'docs/telemetry.md': 'path_id is sent for public paths.\nOther text.\n',
+        'src/analytics.ts': 'export const props = { path_id: 1 };\n',
+      },
+      {
+        'docs/telemetry.md': 'path_id is sent for public paths.\nMore text.\nMilestones send path_id for every path.\n',
+        'src/analytics.ts': 'export const props = { path_id: 1, other_thing: 2 };\n',
+      }
+    );
+    const hit = sync.hits.find(
+      (entry) => entry.term === 'path_id' && entry.classification === 'doc-line-in-changed-file'
+    );
+    assert.ok(hit, JSON.stringify(sync.hits));
+    assert.equal(hit.path, 'docs/telemetry.md');
+    assert.equal(hit.line, 1);
+    assert.equal(manifest.artifacts.sync_hits, 'sync-hits.json');
+  });
+
+  test('nominates a removed term that head still references', () => {
+    const { sync } = syncRun(
+      { 'src/flags.ts': "export const OLD_FLAG_NAME = 'a';\n", 'docs/flags.md': 'Set OLD_FLAG_NAME to enable.\n' },
+      { 'src/flags.ts': "export const NEW_FLAG_NAME = 'a';\n", 'docs/flags.md': 'Set OLD_FLAG_NAME to enable.\n' }
+    );
+    assert.ok(
+      sync.hits.some((entry) => entry.classification === 'stale-reference' && entry.path === 'docs/flags.md'),
+      JSON.stringify(sync.hits)
+    );
+  });
+
+  test('nominates an unchanged line that shares a new literal in another place of the same changed file', () => {
+    const { sync } = syncRun(
+      { '.github/workflows/ci.yml': 'name: ci\njobs:\n  e2e:\n    name: e2e test x\n' },
+      {
+        '.github/workflows/ci.yml':
+          'name: ci\njobs:\n  e2e:\n    name: e2e test x\n  notify:\n    run: jq \'startswith("e2e test ")\'\n',
+      }
+    );
+    assert.ok(
+      sync.hits.some(
+        (entry) => entry.classification === 'config-line-in-changed-file' && entry.text.includes('name: e2e test x')
+      ),
+      JSON.stringify(sync.hits)
+    );
+  });
+
+  test('flags a doc that lists a key but not the value the change newly emits', () => {
+    const { sync } = syncRun(
+      {
+        'docs/telemetry.md': 'interaction_location is one of `card` or `header`.\n',
+        'src/panel.ts': "report({ interaction_location: 'card' });\n",
+      },
+      {
+        'docs/telemetry.md': 'interaction_location is one of `card` or `header`.\n',
+        'src/panel.ts':
+          "report({ interaction_location: 'card' });\nreport({ interaction_location: 'hub_resume_card' });\n",
+      }
+    );
+    assert.deepEqual(sync.doc_gaps, [
+      { key: 'interaction_location', missing_value: 'hub_resume_card', docs: ['docs/telemetry.md'] },
+    ]);
+  });
+
+  test('stays quiet when nothing else mentions the change', () => {
+    const { sync } = syncRun({ 'src/a.ts': 'export const a = 1;\n' }, { 'src/a.ts': 'export const a = 2;\n' });
+    assert.deepEqual(sync.hits, []);
+    assert.deepEqual(sync.doc_gaps, []);
+  });
+
+  test('raises behavior-delta triggers for workflow ordering, flag reads, and substantial new views', () => {
+    const view = `${Array.from({ length: 45 }, (_, index) => `const a${index} = ${index};`).join('\n')}\n`;
+    const { delta } = syncRun(
+      {
+        '.github/workflows/ci.yml': 'jobs:\n  notify:\n    needs: [a]\n',
+        'src/panel.tsx': 'export const A = 1;\n',
+      },
+      {
+        '.github/workflows/ci.yml': 'jobs:\n  notify:\n    needs: [a, b]\n',
+        'src/panel.tsx': `import { useBooleanFlag } from './flags';\n${view}`,
+      }
+    );
+    assert.deepEqual(delta.triggers.map(({ id, paths }) => [id, paths]).sort(), [
+      ['flag-parity', ['src/panel.tsx']],
+      ['ordering-and-timing', ['.github/workflows/ci.yml']],
+      ['render-states', ['src/panel.tsx']],
+    ]);
   });
 });
 
