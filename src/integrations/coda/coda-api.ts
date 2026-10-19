@@ -94,19 +94,7 @@ export function codaRoleForbiddenMessage(minimumSessionRole?: CodaSessionRole): 
   return `Your Grafana role does not allow starting a sandbox — ${floor}. Ask an administrator for that role, or to lower minimumSessionRole on the Coda plugin.`;
 }
 
-/**
- * The canonical sentence for a backend error code, shared by every consumer.
- *
- * The sandbox backend is a separate plugin, so "not installed", "not
- * registered" and "your role is too low" are all normal states needing distinct
- * guidance, and they are only distinguishable by the code — the plugin returns
- * several different failures per status. Kept here rather than per-consumer so
- * the same failure does not reach a learner worded three ways.
- *
- * `fallback` is the backend's own sentence: an unrecognised code (new ones are
- * an additive change within v1) and an absent one (an older backend) both land
- * there rather than being fatal.
- */
+/** Shared learner-facing messages; unknown codes retain the backend sentence. */
 export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: string): string {
   switch (code) {
     case 'plugin_not_installed':
@@ -140,6 +128,9 @@ export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: 
     case 'file_unsupported':
     case 'file_metadata_unsupported':
     case 'file_operation_failed':
+    case 'extension_unavailable':
+    case 'vm_attached':
+    case 'vm_unreachable':
     case 'workspace_unavailable':
     case 'file_timeout':
     case 'too_many_sessions':
