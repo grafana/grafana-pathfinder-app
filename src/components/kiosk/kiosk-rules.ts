@@ -47,6 +47,8 @@ export const DEFAULT_KIOSK_URL = 'https://interactive-learning.grafana.net/guide
 
 export const BUNDLED_KIOSK_RULES: KioskRule[] = defaultKiosk.rules;
 
+const REJECTED_RULES_REPORT_CAP = 100;
+
 type CatalogFailureReason = 'invalid_url' | 'http' | 'invalid_rules' | 'invalid_json' | 'timeout' | 'network';
 
 class CatalogError extends Error {
@@ -103,9 +105,9 @@ export async function fetchKioskData(
   url: string,
   signal?: AbortSignal,
   tier: KioskCatalogTier = 'configured'
-): Promise<KioskData> {
+): Promise<{ data: KioskData; rejectedRules: number }> {
   if (!url) {
-    return { banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES };
+    return { data: { banner: DEFAULT_BANNER, rules: BUNDLED_KIOSK_RULES }, rejectedRules: 0 };
   }
   const parsed = parseKioskWebUrl(url, window.location.origin);
   if (!parsed) {
@@ -130,24 +132,35 @@ export async function fetchKioskData(
     throw new CatalogError('invalid_rules');
   }
   const rules = Array.isArray(data?.rules) ? data.rules : Array.isArray(data) ? data : [];
+  const rejectedFields = new Set<string>();
   const valid = rules
     .filter((rule: unknown): rule is KioskRule => {
       const field = invalidRuleField(rule);
       if (field) {
-        logger.warn('Kiosk catalog rule rejected', { tier, field });
-        return false;
+        rejectedFields.add(field);
       }
-      return true;
+      return !field;
     })
     .map((rule) => ({ ...rule, type: rule.type || 'guide' }));
-  if (valid.length === 0 || (data?.page && valid.length !== rules.length)) {
+  const rejectedRules = Math.min(rules.length - valid.length, REJECTED_RULES_REPORT_CAP);
+  if (rejectedRules > 0) {
+    logger.warn('Kiosk catalog rules rejected', {
+      tier,
+      rejected: rejectedRules,
+      fields: [...rejectedFields].sort().join(','),
+    });
+  }
+  if (valid.length === 0 || (data?.page && rejectedRules > 0)) {
     throw new CatalogError('invalid_rules');
   }
   return {
-    banner: typeof data?.banner === 'string' && data.banner.trim() ? data.banner : DEFAULT_BANNER,
-    rules: valid,
-    ...(exitButtonLabel.data !== undefined && { exitButtonLabel: exitButtonLabel.data }),
-    ...(data?.page && { page: data.page }),
+    data: {
+      banner: typeof data?.banner === 'string' && data.banner.trim() ? data.banner : DEFAULT_BANNER,
+      rules: valid,
+      ...(exitButtonLabel.data !== undefined && { exitButtonLabel: exitButtonLabel.data }),
+      ...(data?.page && { page: data.page }),
+    },
+    rejectedRules,
   };
 }
 
@@ -164,10 +177,10 @@ export async function prepareKioskData(
     failed.add(tier);
     logger.warn('Kiosk catalog load failed', { tier, reason });
   };
-  const finish = (data: KioskData, tier: KioskCatalogTier, catalogUrl?: string) => {
+  const finish = (data: KioskData, tier: KioskCatalogTier, catalogUrl?: string, rejectedRules = 0) => {
     signal?.throwIfAborted();
     const kioskName = getKioskNameFromCatalogUrl(catalogUrl);
-    const metadata = { tier, kioskName, degraded: failed.size > 0 };
+    const metadata = { tier, kioskName, degraded: failed.size > 0, rejectedRules };
     if (failed.size === 0) {
       return { data, ...metadata };
     }
@@ -204,7 +217,8 @@ export async function prepareKioskData(
     attempted.add(url);
     signal?.throwIfAborted();
     try {
-      return finish(await fetchKioskData(url, signal, tier), tier, url);
+      const { data, rejectedRules } = await fetchKioskData(url, signal, tier);
+      return finish(data, tier, url, rejectedRules);
     } catch (error) {
       signal?.throwIfAborted();
       reject(tier, catalogFailureReason(error));
@@ -218,6 +232,7 @@ export interface PreparedKioskData {
   tier: KioskCatalogTier;
   kioskName: string;
   degraded: boolean;
+  rejectedRules: number;
 }
 
 export async function loadKioskData(
@@ -228,16 +243,18 @@ export async function loadKioskData(
   prepared?: Promise<PreparedKioskData>
 ): Promise<KioskData & { warning?: string }> {
   signal?.throwIfAborted();
-  const { data, tier, kioskName, degraded } = await (prepared ?? prepareKioskData(defaultUrl, overrideUrl, signal));
+  const { data, tier, kioskName, degraded, rejectedRules } = await (prepared ??
+    prepareKioskData(defaultUrl, overrideUrl, signal));
   signal?.throwIfAborted();
   if (session) {
     setKioskSessionName(session.sessionId, kioskName);
   }
-  recordKioskCatalogLoaded(tier, degraded);
+  recordKioskCatalogLoaded(tier, degraded, rejectedRules);
   reportAppInteraction(UserInteraction.KioskCatalogLoaded, {
     tier,
     kiosk_name: kioskName,
     degraded,
+    rejected_rules: rejectedRules,
     ...(session && { kiosk_session_id: session.sessionId, launch_mode: session.mode }),
   });
   return data;
