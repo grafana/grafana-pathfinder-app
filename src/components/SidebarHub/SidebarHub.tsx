@@ -5,6 +5,7 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { testIds } from '../../constants/testIds';
 import type { HubResume, HubStats } from '../../learning-paths';
 import { FeaturedGuide } from './FeaturedGuide';
+import { CustomGuides } from './CustomGuides';
 import { GuideRow, type HubGuide } from './GuideRow';
 import { ResumeCard } from './ResumeCard';
 import { StatTiles, type HubTile } from './StatTiles';
@@ -21,6 +22,9 @@ interface SidebarHubProps {
   guides: HubGuide[];
   resume: HubResume | null;
   stats: HubStats;
+  /** Temporary: org custom guides, until the hub replaces the old Recommended tab. */
+  customGuides: HubGuide[];
+  isLoadingCustomGuides: boolean;
   isLoadingGuides: boolean;
   isLoadingLearning: boolean;
   recommendationsError: string | null;
@@ -33,6 +37,8 @@ export function SidebarHub({
   guides,
   resume,
   stats,
+  customGuides,
+  isLoadingCustomGuides,
   isLoadingGuides,
   isLoadingLearning,
   recommendationsError,
@@ -105,11 +111,17 @@ export function SidebarHub({
           </Text>
           <ul className={styles.list} data-testid={testIds.sidebarHub.moreList}>
             {more.map((guide, index) => (
-              <GuideRow key={guide.key} guide={guide} index={index} onLaunch={() => run(guide.onLaunch)} />
+              <GuideRow
+                key={guide.key}
+                guide={guide}
+                testId={testIds.sidebarHub.row(index)}
+                onLaunch={() => run(guide.onLaunch)}
+              />
             ))}
           </ul>
         </>
       )}
+      <CustomGuides guides={customGuides} isLoading={isLoadingCustomGuides} onLaunch={(guide) => run(guide.onLaunch)} />
     </Stack>
   );
 }

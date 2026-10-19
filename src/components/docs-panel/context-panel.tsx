@@ -9,7 +9,7 @@ import { Prerequisites } from '../Prerequisites';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
-import { SidebarHub, getFirstName, type HubGuide, type HubSource } from '../SidebarHub';
+import { SidebarHub, getFirstName, toHubCustomGuides, type HubGuide, type HubSource } from '../SidebarHub';
 import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
 import { config, locationService, getAppEvents } from '@grafana/runtime';
 
@@ -857,6 +857,19 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
       openDocsPage,
     ]
   );
+  const hubCustomGuides = useMemo(
+    () =>
+      hubEnabled
+        ? toHubCustomGuides({
+            guides: customGuides,
+            paths: customGuidePaths,
+            orphanGuides: customGuideOrphans,
+            assignments: assignedNotDone,
+            openDocsPage,
+          })
+        : [],
+    [hubEnabled, customGuides, customGuidePaths, customGuideOrphans, assignedNotDone, openDocsPage]
+  );
   const openMyLearning = useCallback((source: HubSource) => {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'navigate_to_my_learning',
@@ -923,6 +936,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
               <SidebarHub
                 userName={getFirstName(config.bootData?.user)}
                 guides={hubGuides}
+                customGuides={hubCustomGuides}
+                isLoadingCustomGuides={isLoadingCustomGuides}
                 resume={hubLearning.resume}
                 stats={hubLearning.stats}
                 isLoadingGuides={isLoadingRecommendations || contextData.isLoading}

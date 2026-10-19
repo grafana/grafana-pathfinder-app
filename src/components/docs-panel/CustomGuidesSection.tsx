@@ -32,7 +32,11 @@ interface CustomGuidesSectionProps {
   assignments?: ResolvedAssignment[];
 }
 
-function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone[], trackId?: string): PackageOpenInfo {
+export function packageInfoForPath(
+  path: PublishedGuide,
+  resolvedMilestones?: Milestone[],
+  trackId?: string
+): PackageOpenInfo {
   return {
     packageId: path.id,
     // The cover loader needs the entry ID on its slim manifest.
@@ -43,7 +47,7 @@ function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone
   };
 }
 
-function pathTitle(path: PublishedGuide): string {
+export function pathTitle(path: PublishedGuide): string {
   return path.title || path.manifest?.description || path.id;
 }
 

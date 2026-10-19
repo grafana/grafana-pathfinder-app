@@ -47,14 +47,9 @@ jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: jest.fn() }));
 jest.mock('../../hooks', () => ({
   usePathfinderPluginConfig: () => ({ config: { acceptedTermsAndConditions: true } }),
 }));
+const mockUsePublishedGuides = jest.fn();
 jest.mock('../../utils/usePublishedGuides', () => ({
-  usePublishedGuides: () => ({
-    guides: [],
-    paths: [],
-    orphanGuides: [],
-    isLoading: false,
-    hasLoaded: true,
-  }),
+  usePublishedGuides: () => mockUsePublishedGuides(),
 }));
 jest.mock('./hooks', () => ({ useRecommendationsScrollPosition: () => jest.fn() }));
 jest.mock('../UserProfileBar/UserProfileBar', () => ({
@@ -173,6 +168,13 @@ function setup({
 describe('ContextPanelRenderer sidebar hub flag', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUsePublishedGuides.mockReturnValue({
+      guides: [],
+      paths: [],
+      orphanGuides: [],
+      isLoading: false,
+      hasLoaded: true,
+    });
     openDocsPage.mockResolvedValue(undefined);
     mockResolvePackageNavLinks.mockResolvedValue([]);
   });
@@ -415,5 +417,89 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     finish();
     await waitFor(() => expect(screen.getByTestId(testIds.sidebarHub.featuredAction)).toBeEnabled());
     expect(screen.getByTestId(testIds.sidebarHub.resumeAction)).toBeEnabled();
+  });
+
+  describe('custom guides', () => {
+    const published = (id: string, extra: Record<string, unknown> = {}) => ({
+      id,
+      title: `Custom ${id}`,
+      status: 'published',
+      manifest: { type: 'guide' },
+      ...extra,
+    });
+
+    it('lists published custom guides next to More recommended and opens one by its backend id', async () => {
+      const guides = ['a', 'b', 'c', 'd'].map((id) => published(id));
+      mockUsePublishedGuides.mockReturnValue({
+        guides,
+        paths: [],
+        orphanGuides: guides,
+        isLoading: false,
+        hasLoaded: true,
+      });
+      setup({ featured: [pkg('top')], recommendations: [pkg('two')] });
+
+      const section = screen.getByRole('region', { name: 'Custom guides' });
+      expect(within(section).getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(3);
+
+      await click(within(screen.getByTestId(testIds.sidebarHub.customRow(0))).getByRole('button'));
+
+      expect(openDocsPage).toHaveBeenCalledWith('backend-guide:a', 'Custom a', undefined);
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.OpenResourceClick,
+        expect.objectContaining({ interaction_location: 'hub_custom_guides', content_url: 'backend-guide:a' })
+      );
+
+      await click(screen.getByTestId(testIds.sidebarHub.customGuidesToggle));
+      expect(within(section).getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(4);
+    });
+
+    it('opens an assigned custom path with its manifest and track', async () => {
+      const path = published('p1', { manifest: { type: 'path', milestones: ['x'] } });
+      mockUsePublishedGuides.mockReturnValue({
+        guides: [path],
+        paths: [path],
+        orphanGuides: [],
+        isLoading: false,
+        hasLoaded: true,
+      });
+      setup({ recommendations: [pkg('one')], assignments: [assignment('p1', { trackId: 'ops' })] });
+
+      await click(within(screen.getByTestId(testIds.sidebarHub.customRow(0))).getByRole('button'));
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'backend-guide:p1',
+        'Custom p1',
+        expect.objectContaining({ packageId: 'p1', launchSource: 'custom_guide', trackId: 'ops' })
+      );
+    });
+
+    it('shows nothing while empty and a skeleton while loading', () => {
+      mockUsePublishedGuides.mockReturnValue({
+        guides: [],
+        paths: [],
+        orphanGuides: [],
+        isLoading: true,
+        hasLoaded: false,
+      });
+      setup({ recommendations: [pkg('one')] });
+
+      expect(screen.queryByTestId(testIds.sidebarHub.customGuides)).not.toBeInTheDocument();
+      expect(screen.getByTestId(testIds.sidebarHub.loading)).toBeInTheDocument();
+    });
+
+    it('does not fetch-render custom guides on the old tab when the flag is off', () => {
+      mockUsePublishedGuides.mockReturnValue({
+        guides: [published('a')],
+        paths: [],
+        orphanGuides: [published('a')],
+        isLoading: false,
+        hasLoaded: true,
+      });
+      setup({ hub: false, recommendations: [pkg('one')] });
+
+      expect(screen.queryByTestId(testIds.sidebarHub.customGuides)).not.toBeInTheDocument();
+      expect(screen.getByTestId(testIds.contextPanel.customGuidesSection)).toBeInTheDocument();
+    });
   });
 });

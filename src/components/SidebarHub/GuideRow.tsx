@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, Icon, useStyles2 } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
-import { testIds } from '../../constants/testIds';
 import { getHubActionLabel } from './hub-action-label';
 import { getSidebarHubStyles } from './sidebar-hub.styles';
 
@@ -13,6 +13,8 @@ export interface HubGuide {
   kind: 'guide' | 'path' | 'docs';
   effort: string;
   progress?: number;
+  organization?: boolean;
+  badges?: React.ReactNode;
   onLaunch: () => void | Promise<void>;
 }
 
@@ -25,18 +27,17 @@ function PlayGlyph() {
   );
 }
 
-export function GuideRow({ guide, index, onLaunch }: { guide: HubGuide; index: number; onLaunch: () => void }) {
+export function GuideRow({ guide, testId, onLaunch }: { guide: HubGuide; testId: string; onLaunch: () => void }) {
   const styles = useStyles2(getSidebarHubStyles);
+  const meta = [
+    guide.organization && <span key="org">{t('learningCard.organization', 'Your organization')}</span>,
+    guide.effort && <span key="effort">{guide.effort}</span>,
+    guide.badges && <span key="badges">{guide.badges}</span>,
+  ].filter(Boolean);
 
   return (
     <li>
-      <Card
-        isCompact
-        noMargin
-        className={styles.denseCard}
-        onClick={onLaunch}
-        data-testid={testIds.sidebarHub.row(index)}
-      >
+      <Card isCompact noMargin className={styles.denseCard} onClick={onLaunch} data-testid={testId}>
         <Card.Figure align="center">
           <LearningTopicIcon topic={guide.topic} kind={guide.kind} />
         </Card.Figure>
@@ -46,7 +47,7 @@ export function GuideRow({ guide, index, onLaunch }: { guide: HubGuide; index: n
         >
           {guide.title}
         </Card.Heading>
-        {guide.effort && <Card.Meta>{[guide.effort]}</Card.Meta>}
+        {meta.length > 0 && <Card.Meta>{meta}</Card.Meta>}
         <Card.SecondaryActions className={styles.denseAction}>
           <PlayGlyph />
         </Card.SecondaryActions>

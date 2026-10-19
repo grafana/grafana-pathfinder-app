@@ -43,6 +43,8 @@ function renderHub(props: Partial<React.ComponentProps<typeof SidebarHub>> = {})
       guides={[guide('Featured guide'), guide('Second'), guide('Third'), guide('Fourth'), guide('Fifth')]}
       resume={resume}
       stats={stats}
+      customGuides={[]}
+      isLoadingCustomGuides={false}
       isLoadingGuides={false}
       isLoadingLearning={false}
       recommendationsError={null}
@@ -62,6 +64,8 @@ describe('SidebarHub', () => {
         guides={[]}
         resume={null}
         stats={stats}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
         isLoadingGuides={false}
         isLoadingLearning={false}
         recommendationsError={null}
@@ -200,5 +204,66 @@ describe('SidebarHub', () => {
 
     expect(screen.getByTestId(testIds.contextPanel.errorAlert)).toHaveTextContent('Service down');
     expect(screen.getByTestId(testIds.sidebarHub.tiles)).toBeInTheDocument();
+  });
+
+  describe('custom guides', () => {
+    const customGuides = ['One', 'Two', 'Three', 'Four', 'Five'].map((name) =>
+      guide(`Custom ${name}`, { organization: true, summary: undefined })
+    );
+
+    it('shows a short list that expands to the full list and collapses again', () => {
+      renderHub({ customGuides });
+
+      const section = screen.getByRole('region', { name: 'Custom guides' });
+      expect(within(section).getByText('5 items')).toBeInTheDocument();
+      expect(within(section).getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(3);
+      expect(within(section).getAllByText('Your organization')).toHaveLength(3);
+
+      fireEvent.click(within(section).getByRole('button', { name: 'Show all 5' }));
+      expect(within(section).getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(5);
+      expect(within(section).getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
+
+      fireEvent.click(within(section).getByRole('button', { name: 'Show less' }));
+      expect(within(section).getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(3);
+    });
+
+    it('has no expand control when the list already fits', () => {
+      renderHub({ customGuides: customGuides.slice(0, 3) });
+
+      expect(screen.queryByTestId(testIds.sidebarHub.customGuidesToggle)).not.toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(3);
+    });
+
+    it('launches a custom guide from its row', () => {
+      renderHub({ customGuides });
+
+      fireEvent.click(within(screen.getByTestId(testIds.sidebarHub.customRow(1))).getByRole('button'));
+
+      expect(customGuides[1]!.onLaunch).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders nothing when there are none and a skeleton while loading', () => {
+      const { unmount } = render(
+        <SidebarHub
+          userName="Ada"
+          guides={[]}
+          resume={null}
+          stats={stats}
+          customGuides={[]}
+          isLoadingCustomGuides={false}
+          isLoadingGuides={false}
+          isLoadingLearning={false}
+          recommendationsError={null}
+          onOpenMyLearning={jest.fn()}
+          onResume={jest.fn()}
+        />
+      );
+      expect(screen.queryByTestId(testIds.sidebarHub.customGuides)).not.toBeInTheDocument();
+      unmount();
+
+      renderHub({ customGuides, isLoadingCustomGuides: true });
+      expect(screen.queryByTestId(testIds.sidebarHub.customGuides)).not.toBeInTheDocument();
+      expect(screen.getByTestId(testIds.sidebarHub.loading)).toBeInTheDocument();
+    });
   });
 });

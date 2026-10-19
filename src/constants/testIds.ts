@@ -423,6 +423,9 @@ export const testIds = {
     tile: (name: string) => `sidebar-hub-tile-${name}`,
     moreList: 'sidebar-hub-more-list',
     row: (index: number) => `sidebar-hub-row-${index}`,
+    customGuides: 'sidebar-hub-custom-guides',
+    customGuidesToggle: 'sidebar-hub-custom-guides-toggle',
+    customRow: (index: number) => `sidebar-hub-custom-row-${index}`,
   },
 
   // Help Footer

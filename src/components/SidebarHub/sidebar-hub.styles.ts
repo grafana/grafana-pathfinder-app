@@ -74,6 +74,13 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       overflowWrap: 'anywhere',
     }),
     tileCaption: css({ color: accent.text, fontSize: 11, fontWeight: theme.typography.fontWeightMedium }),
+    sectionHeader: css({
+      display: 'flex',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: theme.spacing(1),
+      marginBottom: theme.spacing(0.75),
+    }),
     list: css({
       listStyle: 'none',
       margin: 0,

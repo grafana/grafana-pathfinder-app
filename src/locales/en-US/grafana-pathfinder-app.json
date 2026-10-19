@@ -158,6 +158,7 @@
     "moduleOf": "Module {{current}} of {{total}}",
     "moreRecommended": "More recommended",
     "recommendedForYou": "Recommended for you",
+    "showAll": "Show all {{total}}",
     "start": "Start",
     "subtitle": "Learn Grafana at your own pace",
     "welcomeBack": "Welcome back",
