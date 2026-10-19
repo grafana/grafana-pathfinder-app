@@ -80,6 +80,10 @@
     "beta": "Beta",
     "classicHelpMenuSettings": "Classic Help menu settings"
   },
+  "guideProgress": {
+    "label": "Guide progress: {{percent}}% complete",
+    "percentComplete": "{{percent}}% complete"
+  },
   "guideVersionNotice": {
     "body": "This guide is written for Grafana {{required}} or later, and this instance runs {{current}}. Some steps might not match what you see.",
     "title": "This guide needs a newer Grafana"
@@ -91,8 +95,7 @@
   "markComplete": {
     "completed": "Completed",
     "guideButton": "Mark complete",
-    "milestoneButton": "Mark complete and continue",
-    "percentComplete": "{{percent}}% complete"
+    "milestoneButton": "Mark complete and continue"
   },
   "myLearning": {
     "assignedBadge": "Assigned",
