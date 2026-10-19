@@ -75,6 +75,8 @@ github.com/grafana/authlib/types v0.0.0-20260930204439-665ccbf27cbe h1:rZ4YTid1I
 github.com/grafana/authlib/types v0.0.0-20260930204439-665ccbf27cbe/go.mod h1:/nf5Y9wbsrPAOGKScnfFYO9Bdb7eLsP/VPEuJUsDzzM=
 github.com/grafana/dskit v0.0.0-20261006162119-a8b892e14f88 h1:tRG9W6Fj/aALumMiTiejmFW3f6qZXT5l84bnGHriNgU=
 github.com/grafana/dskit v0.0.0-20261006162119-a8b892e14f88/go.mod h1:JRfSXoPMy/K8sJ08PdQ9qStOIM18gr8Ayh7Wyi/3YQA=
+github.com/grafana/dskit v0.0.0-20261014094829-7a896efbf053 h1:OTSIU1Wjz31kOs1it5F/2x54ciPIzpRb/LoryoSbsF4=
+github.com/grafana/dskit v0.0.0-20261014094829-7a896efbf053/go.mod h1:nQfsT41DI2m4MbDhgwm7aGK/krVLCZnra3LKnS0tzrs=
 github.com/grafana/grafana-plugin-sdk-go v0.297.0 h1:uZlnm720OGH0VaaF3NuuOaJDrxTYx4qu3UHkzKZ+VPM=
 github.com/grafana/grafana-plugin-sdk-go v0.297.0/go.mod h1:OpS1VRORuEz7nFM+bZY+G/pKR1SO8rLARecM+7QaXGE=
 github.com/grafana/otel-profiling-go v0.7.0 h1:Q6CBLSgAnYmNQNNrj4ipG0S/K/K8iazA9E4kYRzZf0I=
