@@ -24,6 +24,8 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 - `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
 - `tests/e2e-runner/guide-runner.spec.ts` — isolated, single-guide wrapper for the reusable guide lifecycle.
 - `tests/e2e-runner/shared-guide-runner.spec.ts` — one-test shared browser session for explicit path and journey selections.
+- `tests/e2e-runner/fixtures.ts` — the runner-only Playwright fixture. It extends the shared `tests/fixtures.ts` and adds an init script on the browser context. This file is not the adjacent `tests/e2e-runner/fixtures/` directory, which holds test packages (for example `always-passes` and `always-fails`).
+- `tests/e2e-runner/utils/disable-rudderstack.ts` — the init script the runner fixture installs. It blanks the RudderStack write key and data plane URL in `grafanaBootData` before Grafana starts its analytics backend, so runner sessions do not send analytics events.
 - `tests/e2e-runner/utils/guide-runner/discovery.ts` — current and legacy DOM discovery, driver-based inspection, and supported/unsupported coverage collection.
 - `tests/e2e-runner/utils/guide-runner/drivers/types.ts` — the `StepDriver` contract for inspection, timeout calculation, completion checks, skipping, and execution.
 - `tests/e2e-runner/utils/guide-runner/drivers/registry.ts` — the exhaustive registry of tracked step kinds, their supported status, and their concrete drivers.
@@ -33,6 +35,8 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 - `tests/e2e-runner/utils/console-reporter.ts`, `src/cli/e2e/e2e-reporter.ts`, `src/cli/e2e/e2e-results.ts`, and `src/cli/e2e/schemas/e2e-report.schema.ts` — console output, external report construction, CLI outcome mapping, and the report contract.
 - `tests/e2e-runner/utils/guide-runner/milestone-replacement.ts` — runner-only progress reset and legacy E2E tab replacement.
 - `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
+
+CLI guide runner specs in `tests/e2e-runner/` must import `test` from `./fixtures` (the runner fixture file), not from `../fixtures` or `@playwright/test`. Importing from either of those skips the RudderStack suppression. Other Playwright tests keep using their existing fixture.
 
 ## Quick start
 
@@ -213,7 +217,7 @@ Connection steps allow 240 seconds for provisioning. Command steps allow 270 sec
 
 Missing Coda or insufficient permissions produce unmet prerequisites. Mandatory steps fail and stop the guide under the existing result contract. Optional command steps can skip only through an available product Skip control, with explicit completion afterward.
 
-Connection steps with `gcx: true` fail as unmet prerequisites in this first implementation. The runner does not mint credentials, paste tokens, or click Continue without gcx. Challenge blocks remain unsupported.
+Connection steps with `credentials: [{ "tool": "gcx" }]` fail as unmet prerequisites in this first implementation. The runner does not mint credentials, paste tokens, or click Continue without gcx. Challenge blocks remain unsupported.
 
 Run the browser fixtures without Coda or Grafana authentication:
 
