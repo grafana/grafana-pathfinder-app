@@ -425,6 +425,7 @@ export const testIds = {
     row: (index: number) => `sidebar-hub-row-${index}`,
     customGuides: 'sidebar-hub-custom-guides',
     customGuidesToggle: 'sidebar-hub-custom-guides-toggle',
+    customGuidesLoading: 'sidebar-hub-custom-guides-loading',
     customRow: (index: number) => `sidebar-hub-custom-row-${index}`,
   },
 

@@ -474,6 +474,28 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       );
     });
 
+    it('shows the error toast when a custom guide fails to open', async () => {
+      const guide = published('a');
+      mockUsePublishedGuides.mockReturnValue({
+        guides: [guide],
+        paths: [],
+        orphanGuides: [guide],
+        isLoading: false,
+        hasLoaded: true,
+      });
+      openDocsPage.mockRejectedValue(new Error('unavailable'));
+      setup({ recommendations: [pkg('one')] });
+
+      await click(within(screen.getByTestId(testIds.sidebarHub.customRow(0))).getByRole('button'));
+
+      await waitFor(() =>
+        expect(mockPublish).toHaveBeenCalledWith({
+          type: 'alert-error',
+          payload: ['Could not open the guide', 'Something went wrong while loading the guide. Please try again.'],
+        })
+      );
+    });
+
     it('shows nothing while empty and a skeleton while loading', () => {
       mockUsePublishedGuides.mockReturnValue({
         guides: [],
@@ -485,10 +507,10 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       setup({ recommendations: [pkg('one')] });
 
       expect(screen.queryByTestId(testIds.sidebarHub.customGuides)).not.toBeInTheDocument();
-      expect(screen.getByTestId(testIds.sidebarHub.loading)).toBeInTheDocument();
+      expect(screen.getByTestId(testIds.sidebarHub.customGuidesLoading)).toBeInTheDocument();
     });
 
-    it('does not fetch-render custom guides on the old tab when the flag is off', () => {
+    it('keeps the old custom guides section and omits the hub one when the flag is off', () => {
       mockUsePublishedGuides.mockReturnValue({
         guides: [published('a')],
         paths: [],

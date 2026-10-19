@@ -15,6 +15,7 @@ import type { Milestone } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import type { ResolvedAssignment } from '../../types/learning-paths.types';
 import type { PublishedGuide } from '../../utils/usePublishedGuides';
+import { packageInfoForPath, pathTitle } from '../../utils/custom-guide-launch';
 import { AssignmentBadges } from '../LearningPaths/AssignmentBadges';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { LearningModuleList } from '../LearningContentCard/LearningModuleList';
@@ -30,25 +31,6 @@ interface CustomGuidesSectionProps {
   onToggleExpanded: () => void;
   openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void | Promise<void>;
   assignments?: ResolvedAssignment[];
-}
-
-export function packageInfoForPath(
-  path: PublishedGuide,
-  resolvedMilestones?: Milestone[],
-  trackId?: string
-): PackageOpenInfo {
-  return {
-    packageId: path.id,
-    // The cover loader needs the entry ID on its slim manifest.
-    packageManifest: { ...(path.manifest as unknown as Record<string, unknown>), id: path.id },
-    resolvedMilestones,
-    launchSource: 'custom_guide',
-    ...(trackId && { trackId }),
-  };
-}
-
-export function pathTitle(path: PublishedGuide): string {
-  return path.title || path.manifest?.description || path.id;
 }
 
 function CustomGuideCard({

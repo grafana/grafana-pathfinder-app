@@ -20,10 +20,6 @@ A worktree whose `node_modules` predates the SDK dependency reports a handful of
 
 `src/locales/en-US/grafana-pathfinder-app.json` does not hold every `t()` key; many ship only as defaults in code. Running the extractor re-sorts and rewrites all 21 locale files, so do not run it for an ordinary change. Add a key to `en-US` by hand only when a reviewer or test asks for it.
 
-## `npm run test:coverage` reports one suite as "failed to run"
-
-A single suite can fail with `Test suite failed to run` or `A jest worker process ... signal=SIGSEGV` while every test passes, most often during a full `npm run check`. Rerun the step; if the same suite fails twice, run it alone with `npx jest <path> --coverage=false`.
-
 ## A local check fails on files you did not touch
 
 A local tool that is newer or older than the CI pin can report findings CI does not. Compare your version to the pin:

@@ -263,7 +263,7 @@ describe('SidebarHub', () => {
 
       renderHub({ customGuides, isLoadingCustomGuides: true });
       expect(screen.queryByTestId(testIds.sidebarHub.customGuides)).not.toBeInTheDocument();
-      expect(screen.getByTestId(testIds.sidebarHub.loading)).toBeInTheDocument();
+      expect(screen.getByTestId(testIds.sidebarHub.customGuidesLoading)).toBeInTheDocument();
     });
   });
 });

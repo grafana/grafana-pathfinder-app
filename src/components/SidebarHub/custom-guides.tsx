@@ -9,7 +9,7 @@ import { catalogTopic } from '../../lib/catalog-discovery';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import type { ResolvedAssignment } from '../../types/learning-paths.types';
 import type { PublishedGuide } from '../../utils/usePublishedGuides';
-import { packageInfoForPath, pathTitle } from '../docs-panel/CustomGuidesSection';
+import { packageInfoForPath, pathTitle } from '../../utils/custom-guide-launch';
 import { learningEffort } from '../LearningContentCard/learning-effort';
 import { AssignmentBadges } from '../LearningPaths/AssignmentBadges';
 import type { HubGuide } from './GuideRow';
@@ -22,6 +22,7 @@ interface CustomGuidesOptions {
   openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void | Promise<void>;
 }
 
+// TEMPORARY: remove with CustomGuides.tsx once the hub replaces the old Recommended tab.
 /** Same list the Recommended tab shows: paths then loose guides, or every published guide when there are no paths. */
 export function toHubCustomGuides({
   guides,
@@ -30,10 +31,7 @@ export function toHubCustomGuides({
   assignments,
   openDocsPage,
 }: CustomGuidesOptions): HubGuide[] {
-  const entries = paths.length > 0 ? [...paths, ...orphanGuides] : guides.filter((guide) => guide.id && guide.title);
-
-  return entries.map((guide) => {
-    const isPath = paths.includes(guide);
+  const toRow = (guide: PublishedGuide, isPath: boolean): HubGuide => {
     const kind = isPath ? 'path' : 'guide';
     const title = pathTitle(guide);
     const assignment = isPath ? assignments.find((candidate) => candidate.targetId === guide.id) : undefined;
@@ -60,5 +58,9 @@ export function toHubCustomGuides({
         );
       },
     };
-  });
+  };
+
+  return paths.length > 0
+    ? [...paths.map((guide) => toRow(guide, true)), ...orphanGuides.map((guide) => toRow(guide, false))]
+    : guides.filter((guide) => guide.id && guide.title).map((guide) => toRow(guide, false));
 }

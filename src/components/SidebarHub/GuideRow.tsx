@@ -47,7 +47,7 @@ export function GuideRow({ guide, testId, onLaunch }: { guide: HubGuide; testId:
         >
           {guide.title}
         </Card.Heading>
-        {meta.length > 0 && <Card.Meta>{meta}</Card.Meta>}
+        {meta.length > 0 && <Card.Meta separator="·">{meta}</Card.Meta>}
         <Card.SecondaryActions className={styles.denseAction}>
           <PlayGlyph />
         </Card.SecondaryActions>

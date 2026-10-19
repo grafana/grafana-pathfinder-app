@@ -6,6 +6,7 @@ import { testIds } from '../../constants/testIds';
 import { GuideRow, type HubGuide } from './GuideRow';
 import { getSidebarHubStyles } from './sidebar-hub.styles';
 
+// TEMPORARY: org custom guides for parity with the old Recommended tab; delete with custom-guides.tsx.
 const COLLAPSED_COUNT = 3;
 
 interface CustomGuidesProps {
@@ -20,7 +21,7 @@ export function CustomGuides({ guides, isLoading, onLaunch }: CustomGuidesProps)
 
   if (isLoading) {
     return (
-      <div data-testid={testIds.sidebarHub.loading}>
+      <div data-testid={testIds.sidebarHub.customGuidesLoading}>
         <SkeletonLoader type="recommendations" />
       </div>
     );
