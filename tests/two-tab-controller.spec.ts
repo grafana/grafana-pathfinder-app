@@ -83,6 +83,7 @@ async function routeGuide(page: Page): Promise<void> {
         id: 'two-tab-adversarial-test',
         title: 'Two-tab adversarial',
         blocks: [
+          { type: 'markdown', content: '[Browse dashboards](/dashboards?query=two-tab-link)' },
           {
             type: 'interactive',
             id: NAVIGATE_STEP,
@@ -144,6 +145,30 @@ function doIt(controller: Page) {
 }
 
 test.describe('two-tab controller — real-browser adversarial', () => {
+  test('ordinary product links navigate only the paired main tab and keep the reader open', async ({ page }) => {
+    await gotoLiveTab(page);
+    const controller = await openController(page);
+    await acceptPairing(page, controller);
+    const readerUrl = controller.url();
+    const liveUrl = page.url();
+
+    await postRawCrossTabMessage(page, {
+      source: 'pathfinder',
+      senderId: 'attacker-tab',
+      timestamp: Date.now(),
+      kind: 'navigate-link',
+      url: new URL('/dashboards?query=forged', liveUrl).href,
+    });
+    await page.waitForTimeout(500);
+    expect(page.url()).toBe(liveUrl);
+
+    await reader(controller).getByRole('link', { name: 'Browse dashboards' }).click();
+    await expect(page).toHaveURL(/\/dashboards\?query=two-tab-link/);
+    expect(controller.url()).toBe(readerUrl);
+    await expect(reader(controller)).toBeVisible();
+    await expect(doIt(controller)).toBeEnabled();
+  });
+
   test('a forged, unsigned step-command does not drive the paired live tab', async ({ page }) => {
     const liveA = page;
     await gotoLiveTab(liveA);

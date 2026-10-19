@@ -138,6 +138,11 @@ export interface ReaderPosition {
   trackId?: string;
 }
 
+export interface NavigateLinkMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'navigate-link';
+  url: string;
+}
+
 export interface SidebarHandoffMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'sidebar-handoff';
   action: 'close' | 'reopen';
@@ -240,6 +245,7 @@ export type CrossTabMessage =
   | StepCancelMessage
   | HeartbeatMessage
   | SidebarHandoffMessage
+  | NavigateLinkMessage
   | CheckRequirementsMessage
   | RequirementResultMessage
   | FixRequirementMessage
@@ -270,6 +276,7 @@ export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Se
   'check-requirements',
   'fix-requirement',
   'sidebar-handoff',
+  'navigate-link',
 ]);
 
 // Same-build assumption: the controller and live tabs are the same plugin
@@ -591,6 +598,7 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
     (m.index as number) < 256,
   heartbeat: isValidHeartbeat,
   'sidebar-handoff': isValidSidebarHandoff,
+  'navigate-link': (message) => isBoundedString(message.url, 8192) && (message.url as string).length > 0,
   'check-requirements': isValidCheckRequirements,
   'requirement-result': isValidRequirementResult,
   'fix-requirement': isValidFixRequirement,

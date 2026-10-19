@@ -85,6 +85,9 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 - `heartbeat` — `{ role: 'controller' | 'live' }`
 - `pairing-challenge` / `pairing-accept` — the authenticated launch handshake
   that binds the controller session to one live tab.
+- `navigate-link` — `{ url }`, a signed controller → live request for an ordinary guide hyperlink.
+  Only same-origin HTTP(S) destinations passing the internal navigation policy are opened in the main tab.
+  This does not complete a step. External links, fragment links, downloads, and modified clicks retain their normal behavior.
 - `sidebar-handoff` — `{ action: 'close' | 'reopen', position?: { doc, milestoneUrl, trackId? } }`, transfers ownership of
   the sidebar while the controller is active.
 - `check-requirements` / `requirement-result` — the requirement round-trip
@@ -173,7 +176,7 @@ drive that Grafana. The controller→live command path is therefore
   cleared and both launches revoked); a rejected session stays suppressed; an
   expired pending challenge can be retried.
 - **Signed commands.** Every side-effecting message — `step-command`, `step-cancel`,
-  `check-requirements`, `fix-requirement`, `sidebar-handoff`, `observation-subscribe`,
+  `check-requirements`, `fix-requirement`, `sidebar-handoff`, `navigate-link`, `observation-subscribe`,
   `observation-cancel` — is ECDSA-signed
   and bound to `sessionId`, `liveTabId`, the command body, a fresh `sigNonce`,
   and a `sigTs`. The executor's auth gate (`verifySignedMessage`) checks the
