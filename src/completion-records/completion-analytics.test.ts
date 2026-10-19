@@ -56,18 +56,25 @@ describe('completion analytics — guide identity', () => {
     });
   });
 
-  it.each(['guide', 'journey'] as const)('reports only the source and visibility of a private %s', (kind) => {
+  it.each(['guide', 'journey'] as const)('reports the identity of a private %s', (kind) => {
     expect(
       identity({ kind, guideSource: 'app-platform', guideId: 'acme-onboarding', guideTitle: 'Acme onboarding' })
-    ).toEqual({ guide_source: 'app-platform', guide_visibility: 'private' });
+    ).toEqual({
+      guide_source: 'app-platform',
+      guide_visibility: 'private',
+      [kind === 'guide' ? 'guide_id' : 'journey_id']: 'acme-onboarding',
+      [kind === 'guide' ? 'guide_title' : 'journey_title']: 'Acme onboarding',
+    });
   });
 
   it.each(['remote-repo:acme-internal', 'backend-guide:acme-guide', 'Bundled', ''])(
-    'reports %p as an unnamed private source',
+    'reports %p as other with private guide identity',
     (guideSource) => {
       expect(identity({ guideSource, guideId: 'acme-guide', guideTitle: 'Acme guide' })).toEqual({
         guide_source: 'other',
         guide_visibility: 'private',
+        guide_id: 'acme-guide',
+        guide_title: 'Acme guide',
       });
     }
   );
@@ -100,12 +107,11 @@ describe('completion analytics — guide identity', () => {
 
 describe('completion analytics — unconfirmed sources', () => {
   it.each(['bundled', 'interactive-tutorials', 'online-cdn'])(
-    'sends no id or title when %s was only a default',
+    'keeps identity when %s was only a default',
     (guideSource) => {
       const properties = completionAnalyticsProperties(fact({ guideSource, sourceConfirmed: false }));
       expect(properties).toMatchObject({ guide_source: 'unresolved', guide_visibility: 'private' });
-      expect(properties).not.toHaveProperty('guide_id');
-      expect(properties).not.toHaveProperty('guide_title');
+      expect(properties).toMatchObject({ guide_id: 'prometheus-101', guide_title: 'Prometheus 101' });
     }
   );
 
@@ -130,8 +136,8 @@ describe('completion analytics — containing path', () => {
   it.each([
     ['a private path', { guideSource: 'app-platform', guideId: 'acme-path', sourceConfirmed: true }],
     ['an unconfirmed path', { guideSource: 'interactive-tutorials', guideId: 'acme-path', sourceConfirmed: false }],
-  ])('sends no path id for %s', (_label, pathIdentity) => {
-    expect(milestone(pathIdentity)).not.toHaveProperty('path_id');
+  ])('sends the path id for %s', (_label, pathIdentity) => {
+    expect(milestone(pathIdentity)).toMatchObject({ path_id: 'acme-path' });
   });
 
   it('sends no path id outside a path', () => {
@@ -161,7 +167,7 @@ describe('completion analytics — event properties', () => {
     });
   });
 
-  it('keeps a private guide identifier and title on the stack', () => {
+  it('reports a private guide identifier and title', () => {
     const properties = completionAnalyticsProperties(
       fact({ guideSource: 'app-platform', guideId: 'acme-onboarding', guideTitle: 'Acme onboarding' })
     );
@@ -172,8 +178,9 @@ describe('completion analytics — event properties', () => {
       guide_category: 'interactive',
       completion_source: 'objectives',
       completion_percentage: 100,
+      guide_id: 'acme-onboarding',
+      guide_title: 'Acme onboarding',
     });
-    expect(JSON.stringify(properties)).not.toMatch(/acme/i);
   });
 
   it('does not report the name of an unrecognized source', () => {
@@ -181,8 +188,13 @@ describe('completion analytics — event properties', () => {
       fact({ guideSource: 'remote-repo:acme-internal', guideId: 'acme-guide', guideTitle: 'Acme guide' })
     );
 
-    expect(properties).toMatchObject({ guide_source: 'other', guide_visibility: 'private' });
-    expect(JSON.stringify(properties)).not.toMatch(/acme/i);
+    expect(properties).toMatchObject({
+      guide_source: 'other',
+      guide_visibility: 'private',
+      guide_id: 'acme-guide',
+      guide_title: 'Acme guide',
+    });
+    expect(JSON.stringify(properties)).not.toContain('remote-repo:acme-internal');
   });
 
   it('does not report the title of an e2e run', () => {
@@ -192,12 +204,12 @@ describe('completion analytics — event properties', () => {
     expect(JSON.stringify(properties)).not.toMatch(/acme/i);
   });
 
-  it('never reports a learning path identifier, even for a public guide', () => {
+  it('does not infer path identity from the legacy pathId field', () => {
     expect(completionAnalyticsProperties(fact({ pathId: 'acme-private-path' }))).not.toHaveProperty('path_id');
     expect(JSON.stringify(completionAnalyticsProperties(fact({ pathId: 'acme-private-path' })))).not.toMatch(/acme/i);
   });
 
-  it('segments a private prose-only guide without identifying it', () => {
+  it('identifies a private prose-only guide alongside its counts', () => {
     const properties = completionAnalyticsProperties(
       fact({
         guideSource: 'app-platform',
@@ -221,8 +233,7 @@ describe('completion analytics — event properties', () => {
       guide_stats_version: 1,
       block_progress_rule_version: 'block-position-v1',
     });
-    expect(properties).not.toHaveProperty('guide_id');
-    expect(properties).not.toHaveProperty('guide_title');
+    expect(properties).toMatchObject({ guide_id: 'private-name', guide_title: 'Private title' });
   });
 
   it('does not invent counts when the rendered index is unavailable', () => {
@@ -255,8 +266,26 @@ describe('completion analytics — reporting', () => {
 
     expect(reportAppInteraction).toHaveBeenCalledWith(
       UserInteraction.GuideCompleted,
-      expect.objectContaining({ guide_id: 'prometheus-101' })
+      expect.objectContaining({ guide_id: 'prometheus-101' }),
+      { privatePath: false }
     );
+  });
+
+  it('marks a private containing path for Faro redaction on a public guide', () => {
+    reportCompletionAnalytics(
+      fact({ pathIdentity: { guideSource: 'app-platform', guideId: 'customer-path', sourceConfirmed: true } })
+    );
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.GuideCompleted,
+      expect.objectContaining({ guide_visibility: 'public', path_id: 'customer-path' }),
+      { privatePath: true }
+    );
+  });
+
+  it('omits unavailable private titles', () => {
+    expect(
+      completionAnalyticsProperties(fact({ guideSource: 'app-platform', guideTitle: undefined }))
+    ).not.toHaveProperty('guide_title');
   });
 
   it('reports a journey completion as journey_completed', () => {
@@ -264,7 +293,8 @@ describe('completion analytics — reporting', () => {
 
     expect(reportAppInteraction).toHaveBeenCalledWith(
       UserInteraction.JourneyCompleted,
-      expect.objectContaining({ journey_id: 'prometheus-101' })
+      expect.objectContaining({ journey_id: 'prometheus-101' }),
+      { privatePath: false }
     );
   });
 });

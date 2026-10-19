@@ -66,6 +66,42 @@ describe('reportAppInteraction', () => {
     expect(JSON.stringify(payload)).not.toContain('private-resource');
     expect(JSON.stringify(payload)).not.toContain('Private');
   });
+  it.each(['app-platform', 'other', 'unresolved'])('keeps %s identity in RudderStack only', (source) => {
+    reportAppInteraction(UserInteraction.GuideCompleted, {
+      guide_source: source,
+      guide_visibility: 'private',
+      guide_id: 'customer-guide',
+      guide_title: 'Customer guide',
+    });
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_guide_completed',
+      expect.objectContaining({
+        guide_id: 'customer-guide',
+        guide_title: 'Customer guide',
+      })
+    );
+    expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_guide_completed', { plugin_version: '1.0.0-test' });
+  });
+
+  it('redacts a private path from Faro when its guide is public', () => {
+    reportAppInteraction(
+      UserInteraction.GuideCompleted,
+      {
+        guide_source: 'bundled',
+        guide_visibility: 'public',
+        guide_id: 'public-guide',
+        path_id: 'customer-path',
+      },
+      { privatePath: true }
+    );
+    expect(mockReportInteraction.mock.calls[0][1]).toMatchObject({
+      guide_id: 'public-guide',
+      path_id: 'customer-path',
+    });
+    expect(mockPushFaroUserAction.mock.calls[0][1]).toMatchObject({ guide_id: 'public-guide' });
+    expect(mockPushFaroUserAction.mock.calls[0][1]).not.toHaveProperty('path_id');
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     delete (window as any).__pathfinderKioskSessionId;

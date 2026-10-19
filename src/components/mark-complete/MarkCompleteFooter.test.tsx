@@ -172,12 +172,16 @@ describe('MarkCompleteFooter', () => {
 
     expect(onMarkComplete).toHaveBeenCalledTimes(1);
     expect(reportAppInteraction).toHaveBeenCalledTimes(1);
-    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
-      interaction_location: 'content_footer',
-      completion_context: 'guide',
-      completion_percentage_before: 25,
-      block_progress_rule_version: 'block-position-v1',
-    });
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.MarkCompleteClicked,
+      {
+        interaction_location: 'content_footer',
+        completion_context: 'guide',
+        completion_percentage_before: 25,
+        block_progress_rule_version: 'block-position-v1',
+      },
+      { privatePath: false }
+    );
     await waitFor(() => expect(markStorage.set).toHaveBeenCalledWith('guide-key', true));
   });
 
@@ -190,7 +194,35 @@ describe('MarkCompleteFooter', () => {
 
     expect(reportAppInteraction).toHaveBeenCalledWith(
       UserInteraction.MarkCompleteClicked,
-      expect.objectContaining({ current_milestone: 2, total_milestones: 5 })
+      expect.objectContaining({ current_milestone: 2, total_milestones: 5 }),
+      { privatePath: false }
+    );
+  });
+
+  it('reports a private milestone title and containing path', async () => {
+    render(
+      <MarkCompleteFooter
+        context="milestone"
+        guideTitle="Customer workshop"
+        completionIdentity={{
+          guideSource: 'app-platform',
+          guideId: 'workshop-step',
+          sourceConfirmed: true,
+          pathIdentity: { guideSource: 'app-platform', guideId: 'workshop', sourceConfirmed: true },
+        }}
+      />
+    );
+    await clickWhenReady();
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.MarkCompleteClicked,
+      expect.objectContaining({
+        guide_source: 'app-platform',
+        guide_visibility: 'private',
+        guide_id: 'workshop-step',
+        guide_title: 'Customer workshop',
+        path_id: 'workshop',
+      }),
+      { privatePath: true }
     );
   });
 
@@ -220,16 +252,20 @@ describe('MarkCompleteFooter', () => {
 
       await clickWhenReady();
 
-      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
-        interaction_location: 'content_footer',
-        completion_context: 'guide',
-        completion_percentage_before: 25,
-        block_progress_rule_version: 'block-position-v1',
-        guide_stats_version: 2,
-        total_block_count: 3,
-        completable_block_count: 1,
-        section_count: 1,
-      });
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.MarkCompleteClicked,
+        {
+          interaction_location: 'content_footer',
+          completion_context: 'guide',
+          completion_percentage_before: 25,
+          block_progress_rule_version: 'block-position-v1',
+          guide_stats_version: 2,
+          total_block_count: 3,
+          completable_block_count: 1,
+          section_count: 1,
+        },
+        { privatePath: false }
+      );
     });
 
     it('omits the counts when only another guide has an index', async () => {
@@ -238,12 +274,16 @@ describe('MarkCompleteFooter', () => {
 
       await clickWhenReady();
 
-      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
-        interaction_location: 'content_footer',
-        completion_context: 'guide',
-        completion_percentage_before: 25,
-        block_progress_rule_version: 'block-position-v1',
-      });
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.MarkCompleteClicked,
+        {
+          interaction_location: 'content_footer',
+          completion_context: 'guide',
+          completion_percentage_before: 25,
+          block_progress_rule_version: 'block-position-v1',
+        },
+        { privatePath: false }
+      );
     });
   });
 

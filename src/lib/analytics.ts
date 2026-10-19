@@ -280,7 +280,7 @@ export function tabTypeToContentType(tabType: string | undefined): AnalyticsCont
 export function reportAppInteraction(
   type: UserInteraction,
   properties: Record<string, string | number | boolean> = {},
-  options: { mirrorToFaro?: boolean } = {}
+  options: { mirrorToFaro?: boolean; privatePath?: boolean } = {}
 ): void {
   try {
     const interactionName = createInteractionName(type);
@@ -314,11 +314,16 @@ export function reportAppInteraction(
       const faroProperties = { ...enrichedProperties };
       // Faro carries experiments once per session.
       delete faroProperties.experiments;
-      const privateGuide = Object.values(faroProperties).some(
-        (value) =>
-          typeof value === 'string' &&
-          (value.startsWith('backend-guide:') || value === 'app-platform' || value.includes('/interactiveguides/'))
-      );
+      if (options.privatePath) {
+        delete faroProperties.path_id;
+      }
+      const privateGuide =
+        faroProperties.guide_visibility === 'private' ||
+        Object.values(faroProperties).some(
+          (value) =>
+            typeof value === 'string' &&
+            (value.startsWith('backend-guide:') || value === 'app-platform' || value.includes('/interactiveguides/'))
+        );
       if (privateGuide) {
         for (const key of Object.keys(faroProperties)) {
           if (

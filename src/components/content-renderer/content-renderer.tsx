@@ -604,6 +604,9 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
       context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
       contentUrl={content.url}
       completionIdentity={completionIdentity}
+      guideTitle={
+        completion.kind === 'tracked' ? (completion.input.guideTitle ?? content.metadata.title) : content.metadata.title
+      }
       currentMilestone={journey?.currentMilestone}
       totalMilestones={journey?.totalMilestones}
       onMarkComplete={triggerGuideCompleteFromMark}

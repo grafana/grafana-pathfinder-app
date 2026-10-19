@@ -2,7 +2,11 @@ import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 import type { CompletionFact } from './types';
 import { completionAttemptAnalyticsProperties } from './progress-analytics';
-import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from './completion-identity';
+import {
+  completionAnalyticsOptions,
+  guideIdentityAnalyticsProperties,
+  pathAnalyticsProperties,
+} from './completion-identity';
 export { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from './completion-identity';
 
 export function completionAnalyticsProperties(fact: CompletionFact): Record<string, string | number> {
@@ -27,6 +31,7 @@ export function completionAnalyticsProperties(fact: CompletionFact): Record<stri
 export function reportCompletionAnalytics(fact: CompletionFact): void {
   reportAppInteraction(
     fact.kind === 'journey' ? UserInteraction.JourneyCompleted : UserInteraction.GuideCompleted,
-    completionAnalyticsProperties(fact)
+    completionAnalyticsProperties(fact),
+    completionAnalyticsOptions(fact)
   );
 }

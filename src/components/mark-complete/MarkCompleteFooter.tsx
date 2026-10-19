@@ -27,7 +27,11 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
-import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from '../../completion-records';
+import {
+  completionAnalyticsOptions,
+  guideIdentityAnalyticsProperties,
+  pathAnalyticsProperties,
+} from '../../completion-records';
 import { useGuideResponsesOptional, type AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import {
   getGuideIndex,
@@ -64,6 +68,7 @@ export type MarkCompleteContext = 'guide' | 'milestone';
 export interface MarkCompleteFooterProps {
   context: MarkCompleteContext;
   completionIdentity?: AnalyticsCompletionIdentity;
+  guideTitle?: string;
   /**
    * The rendered content's URL. Not itself the storage key — a journey's
    * `content.url` carries a `/content.json` suffix the rest of the progress
@@ -96,6 +101,7 @@ export function MarkCompleteFooter({
   context,
   contentUrl,
   completionIdentity,
+  guideTitle,
   currentMilestone,
   totalMilestones,
   onMarkComplete,
@@ -225,9 +231,7 @@ export function MarkCompleteFooter({
     ) {
       return;
     }
-    // The button the reader just activated is about to unmount, and React
-    // would drop focus to `document.body`. A return visit that hydrates an
-    // existing mark must not steal focus, so only a click claims it.
+    // Only a click transfers focus when the button unmounts; hydration must not steal it.
     const active = getGuideIndex(contentKey);
     const choiceCompletionKeys =
       active?.choiceModel && responses
@@ -247,29 +251,28 @@ export function MarkCompleteFooter({
       refreshAndNotifyGuideProgress(contentKey);
     }
 
-    // A block-editor preview is an author iterating, not a reader: it records
-    // nothing, persists nothing and stays out of the click stream, because that
-    // stream exists to measure whether real readers use the control. The narrow
-    // URL predicate, not `isPreviewContentKey`: that one's `devtools` arm is a
-    // substring test, and this key is a URL.
+    // Editor previews must not persist completions or report learner activity.
     if (!isBlockEditorPreviewUrl(contentKey)) {
-      // The completion write must not wait on the celebration: a reader who
-      // navigates away mid-animation still completed the guide.
+      // Record before the celebration in case the reader navigates away.
       onMarkComplete?.();
 
-      reportAppInteraction(UserInteraction.MarkCompleteClicked, {
-        ...(completionIdentity && {
-          ...guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity }),
-          ...pathAnalyticsProperties(completionIdentity.pathIdentity),
-        }),
-        interaction_location: 'content_footer',
-        completion_context: context,
-        completion_percentage_before: percentage,
-        block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
-        ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
-        ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
-        ...getGuideBlockCountProperties(contentKey),
-      });
+      reportAppInteraction(
+        UserInteraction.MarkCompleteClicked,
+        {
+          ...(completionIdentity && {
+            ...guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity, guideTitle }),
+            ...pathAnalyticsProperties(completionIdentity.pathIdentity),
+          }),
+          interaction_location: 'content_footer',
+          completion_context: context,
+          completion_percentage_before: percentage,
+          block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
+          ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
+          ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
+          ...getGuideBlockCountProperties(contentKey),
+        },
+        completionAnalyticsOptions(completionIdentity ?? {})
+      );
       void (
         choiceCompletionKeys === undefined
           ? guideCompletionMarkStorage.set(contentKey, true)
@@ -301,6 +304,7 @@ export function MarkCompleteFooter({
   }, [
     contentKey,
     completionIdentity,
+    guideTitle,
     marked,
     unansweredChoices,
     responses,
