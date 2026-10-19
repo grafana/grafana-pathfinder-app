@@ -194,6 +194,32 @@ describe('connection recovery consumers', () => {
     }
   );
 
+  it('keeps a VM-option reconnect waiter pending until the replacement session connects', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = render(tree('connected', SESSION_ID));
+      const settled = jest.fn();
+      let waiting!: Promise<string | null>;
+      await act(async () => {
+        waiting = context.openTerminal({ template: 'different-template' });
+        void waiting.then(settled);
+      });
+      view.rerender(tree('disconnected', null));
+      await act(async () => {});
+      expect(settled).not.toHaveBeenCalled();
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+      expect(mockConnect).toHaveBeenCalledWith({ template: 'different-template' });
+      expect(settled).not.toHaveBeenCalled();
+      view.rerender(tree('connecting', null));
+      view.rerender(tree('connected', 'replacement-session', 'vm-2'));
+      await expect(waiting).resolves.toBe('replacement-session');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it.each(['error', 'disconnected', 'cancel', 'unmount'])('settles recovery waiters on %s', async (end) => {
     const view = render(tree('connecting', null));
     let waiting!: Promise<string | null>;
