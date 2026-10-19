@@ -126,7 +126,7 @@ describe('GuideReaderOverlay', () => {
       });
       await interactiveStepStorage.setCompleted(url, 'standalone', new Set(['first']));
       mockFetchContent.mockResolvedValue({
-        content: { url, type: 'interactive', content: '', lastFetched: '', metadata: {} },
+        content: { url, type: 'interactive', content: '', lastFetched: '', metadata: { title: 'Guide' } },
       });
 
       render(<GuideReaderOverlay doc={url} mode={mode} />);
@@ -154,6 +154,7 @@ describe('GuideReaderOverlay', () => {
         content: '',
         lastFetched: '',
         metadata: {
+          title: 'Journey',
           learningJourney: { baseUrl: url, currentMilestone, totalMilestones: 1, milestones: [] },
         },
       },
