@@ -158,3 +158,37 @@ it('stops without repairing anything once cancelled', async () => {
   expect(await restoreRecovery(checks, adapter, controller.signal)).toEqual({ passed: false, canRestore: false });
   expect(adapter.restore).not.toHaveBeenCalled();
 });
+
+it('never replays on a page the learner moved to while it waited for a control to mount', async () => {
+  let page = '/explore';
+  const destinationClicks: string[] = [];
+  const onPage: RecoveryAction = { kind: 'resume-location', objectives: [{ kind: 'resume-location' }] };
+  const row = toggle('#row', '#row-open');
+  const target: RecoveryCheck = {
+    kind: 'target-present',
+    refTarget: '#run',
+    targetAction: 'button',
+    recover: [onPage, row],
+  };
+  const adapter: RecoveryAdapter = {
+    check: jest.fn(async (condition) => ({
+      passed: condition.kind === 'resume-location' ? page === '/explore' : false,
+      canRestore: false,
+    })),
+    restore: jest.fn(async () => false),
+    canReplay: jest.fn(async () => true),
+    replay: jest.fn(async () => {
+      if (page === '/explore') {
+        page = '/dashboards';
+        return false;
+      }
+      destinationClicks.push(page);
+      return true;
+    }),
+  };
+  expect(await restoreRecovery([target], adapter, new AbortController().signal)).toMatchObject({
+    passed: false,
+    gaveUp: true,
+  });
+  expect(destinationClicks).toEqual([]);
+});

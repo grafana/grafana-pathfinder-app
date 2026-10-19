@@ -92,7 +92,8 @@ async function replayRecipe(
   signal: AbortSignal
 ): Promise<boolean> {
   const check = checks[checkIndex]!;
-  for (const action of check.recover ?? []) {
+  const recipe = check.recover ?? [];
+  for (const [actionIndex, action] of recipe.entries()) {
     if (signal.aborted) {
       return false;
     }
@@ -100,7 +101,11 @@ async function replayRecipe(
     if ((await adapter.check(check)).passed) {
       return true;
     }
-    if (!(await conditionsHold(checks.slice(0, checkIndex), adapter, signal))) {
+    const prerequisites = [
+      ...checks.slice(0, checkIndex),
+      ...recipe.slice(0, actionIndex).flatMap((a) => a.objectives),
+    ];
+    if (!(await conditionsHold(prerequisites, adapter, signal))) {
       return false;
     }
     if (await conditionsHold(action.objectives, adapter, signal)) {
@@ -112,6 +117,9 @@ async function replayRecipe(
       await waitForRender(signal);
       if (await conditionsHold(action.objectives, adapter, signal)) {
         break;
+      }
+      if (!(await conditionsHold(prerequisites, adapter, signal))) {
+        return false;
       }
     }
     if (signal.aborted) {
