@@ -199,7 +199,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
   it('opens the first recommendation with its package info and reports the hub location', async () => {
     setup({ featured: [pkg('top')], recommendations: [pkg('two'), pkg('three')] });
 
-    await click(screen.getByRole('button', { name: 'Start: Title top' }));
+    await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
 
     expect(openDocsPage).toHaveBeenCalledWith('https://cdn.example.com/top/content.json', 'Title top', {
       packageId: 'top',
@@ -222,7 +222,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       assignments: [assignment('ops-path', { trackId: 'ops' })],
     });
 
-    await click(screen.getByRole('button', { name: 'Start: Title ops-path' }));
+    await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
 
     expect(openDocsPage).toHaveBeenCalledWith(
       'https://cdn.example.com/ops-path/content.json',
@@ -243,10 +243,10 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     });
 
     const rows = within(screen.getByTestId(testIds.sidebarHub.moreList)).getAllByRole('button');
-    expect(rows.map((row) => row.textContent)).toEqual([
-      expect.stringContaining('Title two'),
-      expect.stringContaining('Docs'),
-      expect.stringContaining('Title three'),
+    expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual([
+      'Start: Title two',
+      'Read: Docs',
+      'Start: Title three',
     ]);
 
     await click(rows[0]!);
@@ -303,7 +303,8 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       assignments: [assignment('getting-started', { trackId: 'ops', trackLabel: 'Operations', progress: 50 })],
     });
 
-    expect(screen.getByText('Module 2 of 2 · Operations')).toBeInTheDocument();
+    expect(screen.getByText('Module 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Operations')).toBeInTheDocument();
     await click(screen.getByTestId(testIds.sidebarHub.resumeAction));
 
     await waitFor(() => expect(openDocsPage).toHaveBeenCalledTimes(1));
@@ -338,7 +339,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     });
 
     expect(screen.queryByText('Getting started path')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Start: Title other' })).toBeInTheDocument();
+    expect(screen.getByText('Title other')).toBeInTheDocument();
   });
 
   it('leaves out a recommendation that opens the guide the resume card offers', async () => {
@@ -348,7 +349,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     });
 
     expect(screen.queryByText('Guide B again')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Start: Title other' })).toBeInTheDocument();
+    expect(screen.getByText('Title other')).toBeInTheDocument();
   });
 
   it('counts assignments from the assignments hook', async () => {
@@ -386,7 +387,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     openDocsPage.mockRejectedValue(new Error('unavailable'));
     setup({ featured: [pkg('top')], recommendations: [pkg('two')] });
 
-    await click(screen.getByRole('button', { name: 'Start: Title top' }));
+    await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
 
     await waitFor(() =>
       expect(mockPublish).toHaveBeenCalledWith({
@@ -394,7 +395,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
         payload: ['Could not open the guide', 'Something went wrong while loading the guide. Please try again.'],
       })
     );
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Start: Title top' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByTestId(testIds.sidebarHub.featuredAction)).toBeEnabled());
   });
 
   it('ignores a second launch while the first is still opening', async () => {
@@ -402,7 +403,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     openDocsPage.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
     setup({ featured: [pkg('top')], recommendations: [pkg('two')] });
 
-    await click(screen.getByRole('button', { name: 'Start: Title top' }));
+    await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
     await click(screen.getByTestId(testIds.sidebarHub.row(0)));
 
     expect(openDocsPage).toHaveBeenCalledTimes(1);

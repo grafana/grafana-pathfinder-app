@@ -101,6 +101,23 @@
     "milestoneButton": "",
     "percentComplete": ""
   },
+  "sidebarHub": {
+    "actionLabel": "",
+    "assignments": "",
+    "dueInDays_one": "",
+    "dueInDays_other": "",
+    "dueOn": "",
+    "dueToday": "",
+    "dueTomorrow": "",
+    "inProgress": "",
+    "moduleOf": "",
+    "moreRecommended": "",
+    "recommendedForYou": "",
+    "start": "",
+    "subtitle": "",
+    "welcomeBack": "",
+    "welcomeBackName": ""
+  },
   "userProfileBar": {
     "allComplete": "Todos os percursos concluídos!",
     "allCompleteTooltip": "Concluiu todos os percursos de aprendizagem — excelente trabalho!",

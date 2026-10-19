@@ -105,6 +105,23 @@
     "milestoneButton": "",
     "percentComplete": ""
   },
+  "sidebarHub": {
+    "actionLabel": "",
+    "assignments": "",
+    "dueInDays_one": "",
+    "dueInDays_other": "",
+    "dueOn": "",
+    "dueToday": "",
+    "dueTomorrow": "",
+    "inProgress": "",
+    "moduleOf": "",
+    "moreRecommended": "",
+    "recommendedForYou": "",
+    "start": "",
+    "subtitle": "",
+    "welcomeBack": "",
+    "welcomeBackName": ""
+  },
   "userProfileBar": {
     "allComplete": "Všechny cesty dokončeny!",
     "allCompleteTooltip": "Dokončili jste každou vzdělávací cestu – skvělá práce!",

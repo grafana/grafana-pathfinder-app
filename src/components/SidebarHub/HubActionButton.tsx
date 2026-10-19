@@ -1,11 +1,10 @@
 import React from 'react';
-import { Icon } from '@grafana/ui';
+import { Button } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { getLearningAction } from '../LearningContentCard/learning-action';
-import type { HubGuide } from './GuideRow';
 
-function actionText(guide: HubGuide): string {
-  switch (getLearningAction(guide.kind, guide.progress ?? 0)) {
+function actionText(kind: 'guide' | 'path' | 'docs', progress: number | undefined): string {
+  switch (getLearningAction(kind, progress ?? 0)) {
     case 'read':
       return t('learningCard.read', 'Read');
     case 'review':
@@ -18,30 +17,32 @@ function actionText(guide: HubGuide): string {
 }
 
 export function HubActionButton({
-  guide,
-  className,
+  title,
+  kind,
+  progress,
   testId,
   disabled,
   onLaunch,
 }: {
-  guide: HubGuide;
-  className: string;
+  title: string;
+  kind: 'guide' | 'path' | 'docs';
+  progress?: number;
   testId: string;
   disabled: boolean;
   onLaunch: () => void;
 }) {
-  const text = actionText(guide);
   return (
-    <button
-      type="button"
-      className={className}
-      onClick={onLaunch}
+    <Button
+      size="sm"
+      variant="secondary"
+      icon="play"
+      aria-label={t('sidebarHub.actionLabel', '{{action}}: {{- title}}', {
+        action: actionText(kind, progress),
+        title,
+      })}
       disabled={disabled}
-      aria-label={t('sidebarHub.actionLabel', '{{action}}: {{- title}}', { action: text, title: guide.title })}
+      onClick={onLaunch}
       data-testid={testId}
-    >
-      <Icon name="play" size="sm" />
-      {text}
-    </button>
+    />
   );
 }

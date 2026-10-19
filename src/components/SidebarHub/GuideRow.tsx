@@ -1,7 +1,8 @@
 import React from 'react';
-import { Icon, useStyles2 } from '@grafana/ui';
+import { Card, useStyles2 } from '@grafana/ui';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
 import { testIds } from '../../constants/testIds';
+import { HubActionButton } from './HubActionButton';
 import { getSidebarHubStyles } from './sidebar-hub.styles';
 
 export interface HubGuide {
@@ -30,22 +31,23 @@ export function GuideRow({
 
   return (
     <li>
-      <button
-        type="button"
-        className={styles.row}
-        onClick={onLaunch}
-        disabled={disabled}
-        data-testid={testIds.sidebarHub.row(index)}
-      >
-        <LearningTopicIcon topic={guide.topic} kind={guide.kind} />
-        <span className={styles.rowBody}>
-          <span className={styles.rowTitle}>{guide.title}</span>
-          {guide.effort && <span className={styles.effort}>{guide.effort}</span>}
-        </span>
-        <span className={styles.play} aria-hidden="true">
-          <Icon name="play" size="sm" />
-        </span>
-      </button>
+      <Card isCompact noMargin className={styles.denseCard}>
+        <Card.Figure align="center">
+          <LearningTopicIcon topic={guide.topic} kind={guide.kind} />
+        </Card.Figure>
+        <Card.Heading>{guide.title}</Card.Heading>
+        {guide.effort && <Card.Meta>{[guide.effort]}</Card.Meta>}
+        <Card.SecondaryActions className={styles.denseAction}>
+          <HubActionButton
+            title={guide.title}
+            kind={guide.kind}
+            progress={guide.progress}
+            testId={testIds.sidebarHub.row(index)}
+            disabled={disabled}
+            onLaunch={onLaunch}
+          />
+        </Card.SecondaryActions>
+      </Card>
     </li>
   );
 }

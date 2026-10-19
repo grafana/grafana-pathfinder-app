@@ -149,6 +149,23 @@
     "resetPathErrorTitle": "Sıfırlama tamamlanamadı",
     "subtitle": "İlerlemenizi takip edin, rozet kazanın ve Grafana'da uzmanlaşın"
   },
+  "sidebarHub": {
+    "actionLabel": "",
+    "assignments": "",
+    "dueInDays_one": "",
+    "dueInDays_other": "",
+    "dueOn": "",
+    "dueToday": "",
+    "dueTomorrow": "",
+    "inProgress": "",
+    "moduleOf": "",
+    "moreRecommended": "",
+    "recommendedForYou": "",
+    "start": "",
+    "subtitle": "",
+    "welcomeBack": "",
+    "welcomeBackName": ""
+  },
   "userProfileBar": {
     "allComplete": "Tüm öğrenme yolları tamamlandı!",
     "allCompleteTooltip": "Tüm öğrenme yollarını tamamladınız — harika!",

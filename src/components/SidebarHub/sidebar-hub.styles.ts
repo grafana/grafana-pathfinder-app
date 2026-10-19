@@ -1,53 +1,13 @@
-import { css, keyframes } from '@emotion/css';
-import { colorManipulator, type GrafanaTheme2 } from '@grafana/data';
-import { getLearningTopicVisual } from '../LearningContentCard/learning-topic-visual';
-
-const pulse = keyframes({ '0%, 100%': { opacity: 0.45 }, '50%': { opacity: 0.9 } });
+import { css } from '@emotion/css';
+import type { GrafanaTheme2 } from '@grafana/data';
 
 export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
   const accent = theme.colors.warning;
-  const surface = {
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-  };
   const focusRing = {
     '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
   };
-  const cta = css({
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing(0.75),
-    flexShrink: 0,
-    padding: theme.spacing(0.75, 1.75),
-    border: 0,
-    borderRadius: 999,
-    background: accent.main,
-    color: accent.contrastText,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightBold,
-    cursor: 'pointer',
-    '&:hover': { background: accent.shade },
-    ...focusRing,
-  });
-  const eyebrow = css({
-    color: accent.text,
-    fontSize: 10.5,
-    fontWeight: theme.typography.fontWeightBold,
-    letterSpacing: '0.12em',
-    textTransform: 'uppercase',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  });
 
   return {
-    root: css({
-      display: 'flex',
-      flexDirection: 'column',
-      gap: theme.spacing(1.5),
-    }),
     header: css({
       display: 'flex',
       alignItems: 'flex-start',
@@ -55,112 +15,24 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(1),
       flexWrap: 'wrap',
     }),
-    greeting: css({ minWidth: 0, flex: '1 1 160px' }),
-    greetingTitle: css({
-      margin: 0,
-      fontSize: theme.typography.h3.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      lineHeight: 1.2,
-      overflowWrap: 'anywhere',
-    }),
-    subtitle: css({
-      margin: theme.spacing(0.25, 0, 0),
-      color: theme.colors.text.secondary,
-      fontSize: theme.typography.bodySmall.fontSize,
-    }),
+    greeting: css({ minWidth: 0, flex: '1 1 160px', overflowWrap: 'anywhere' }),
     myLearning: css({
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.75),
-      padding: theme.spacing(0.75, 1.5),
-      border: `1px solid ${theme.colors.border.medium}`,
-      borderRadius: 999,
-      background: theme.colors.background.secondary,
-      color: theme.colors.text.primary,
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      whiteSpace: 'nowrap',
-      cursor: 'pointer',
+      borderRadius: theme.shape.radius.pill,
       '& svg': { color: accent.text },
       '&:hover': { borderColor: accent.border, background: accent.transparent },
-      ...focusRing,
     }),
-    eyebrow,
-    cta,
-    ctaSmall: css({ padding: theme.spacing(0.5, 1.5) }),
-    featured: (topic: string, kind: 'guide' | 'path' | 'docs') => {
-      const topicColor = getLearningTopicVisual(topic, theme, kind).color;
-      const tint = colorManipulator.alpha(topicColor, theme.isDark ? 0.32 : 0.2);
-      return css({
-        ...surface,
-        borderRadius: `calc(${theme.shape.radius.default} * 2)`,
-        padding: theme.spacing(2),
-        display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing(1),
-        minWidth: 0,
-        background: `radial-gradient(circle at 90% -10%, ${tint}, transparent 58%), ${theme.colors.background.secondary}`,
-      });
-    },
-    featuredTop: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(1.5), minWidth: 0 }),
-    featuredHeading: css({ minWidth: 0, display: 'flex', flexDirection: 'column', gap: theme.spacing(0.5) }),
-    chip: css({
-      alignSelf: 'flex-start',
-      padding: theme.spacing(0, 0.75),
-      border: `1px solid ${theme.colors.border.medium}`,
-      borderRadius: 999,
-      color: theme.colors.text.secondary,
-      fontSize: 11,
-      lineHeight: '18px',
-    }),
-    featuredTitle: css({
-      margin: 0,
-      fontSize: theme.typography.h4.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      lineHeight: 1.25,
-      overflowWrap: 'anywhere',
-    }),
-    featuredSummary: css({
-      margin: 0,
-      color: theme.colors.text.secondary,
-      fontSize: theme.typography.bodySmall.fontSize,
-      lineHeight: 1.5,
-      display: '-webkit-box',
-      WebkitLineClamp: 3,
-      WebkitBoxOrient: 'vertical',
-      overflow: 'hidden',
-    }),
-    footer: css({
-      display: 'flex',
+    denseCard: css({
+      gridTemplate: '"Figure Heading Secondary" "Figure Meta Secondary" / auto 1fr auto',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: theme.spacing(1),
-      flexWrap: 'wrap',
-      marginTop: theme.spacing(0.5),
     }),
-    effort: css({ color: theme.colors.text.secondary, fontSize: 11, overflowWrap: 'anywhere' }),
+    denseAction: css({ marginTop: 0, gridRow: '1 / span 2' }),
+    ringFigure: css({ width: 'auto' }),
+    denseMeta: css({ flexWrap: 'wrap' }),
+    noWrap: css({ whiteSpace: 'nowrap' }),
     resume: css({
-      ...surface,
-      borderRadius: `calc(${theme.shape.radius.default} * 2)`,
-      padding: theme.spacing(1.5),
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(1.5),
-      minWidth: 0,
       background: `radial-gradient(circle at 100% -20%, ${accent.transparent}, transparent 60%), ${theme.colors.background.secondary}`,
     }),
-    resumeBody: css({ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: theme.spacing(0.25) }),
-    resumeTitle: css({
-      margin: 0,
-      fontSize: theme.typography.body.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      lineHeight: 1.3,
-      overflowWrap: 'anywhere',
-    }),
-    resumeMeta: css({ color: theme.colors.text.secondary, fontSize: 11, overflowWrap: 'anywhere' }),
-    tiles: css({ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: theme.spacing(1) }),
     tile: css({
-      ...surface,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'flex-start',
@@ -168,6 +40,9 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       minWidth: 0,
       minHeight: 72,
       padding: theme.spacing(1, 1.25),
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      background: theme.colors.background.secondary,
       color: theme.colors.text.primary,
       textAlign: 'left',
       cursor: 'pointer',
@@ -190,11 +65,6 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       overflowWrap: 'anywhere',
     }),
     tileCaption: css({ color: accent.text, fontSize: 11, fontWeight: theme.typography.fontWeightMedium }),
-    sectionTitle: css({
-      margin: theme.spacing(0.5, 0, 0),
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-    }),
     list: css({
       listStyle: 'none',
       margin: 0,
@@ -202,42 +72,6 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(0.75),
-    }),
-    row: css({
-      ...surface,
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(1.25),
-      width: '100%',
-      minWidth: 0,
-      padding: theme.spacing(1),
-      color: theme.colors.text.primary,
-      textAlign: 'left',
-      cursor: 'pointer',
-      '&:hover': { borderColor: accent.border, background: theme.colors.action.hover },
-      ...focusRing,
-    }),
-    rowBody: css({ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }),
-    rowTitle: css({
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      overflowWrap: 'anywhere',
-    }),
-    play: css({
-      display: 'grid',
-      placeItems: 'center',
-      flexShrink: 0,
-      width: 26,
-      height: 26,
-      borderRadius: '50%',
-      background: accent.transparent,
-      color: accent.text,
-    }),
-    skeleton: css({
-      ...surface,
-      height: 96,
-      animation: `${pulse} 1.5s ease-in-out infinite`,
-      '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
     }),
   };
 };

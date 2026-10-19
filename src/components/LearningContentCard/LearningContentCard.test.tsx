@@ -155,3 +155,20 @@ it('labels known topics and keeps the leading icon decorative without inventing 
   expect(screen.queryByText('Other topics')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Start guide' })).toBeInTheDocument();
 });
+
+it('lets a featured card carry its own eyebrow and badges', () => {
+  render(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      eyebrow="Recommended for you"
+      badges={<span>Alerting</span>}
+      onLaunch={jest.fn()}
+    />
+  );
+
+  expect(screen.getByText('Recommended for you')).toBeInTheDocument();
+  expect(screen.queryByText('A good place to start')).not.toBeInTheDocument();
+  expect(screen.getByText('Alerting')).toBeInTheDocument();
+});

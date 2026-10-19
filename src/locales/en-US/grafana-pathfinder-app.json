@@ -145,6 +145,23 @@
     "resetPathErrorTitle": "Reset incomplete",
     "subtitle": "Track your progress, earn badges, and master Grafana"
   },
+  "sidebarHub": {
+    "actionLabel": "{{action}}: {{- title}}",
+    "assignments": "Assignments",
+    "dueInDays_one": "Due in {{count}} day",
+    "dueInDays_other": "Due in {{count}} days",
+    "dueOn": "Due {{- date}}",
+    "dueToday": "Due today",
+    "dueTomorrow": "Due tomorrow",
+    "inProgress": "In progress",
+    "moduleOf": "Module {{current}} of {{total}}",
+    "moreRecommended": "More recommended",
+    "recommendedForYou": "Recommended for you",
+    "start": "Start",
+    "subtitle": "Learn Grafana at your own pace",
+    "welcomeBack": "Welcome back",
+    "welcomeBackName": "Welcome back, {{- name}}"
+  },
   "userProfileBar": {
     "allComplete": "All paths complete!",
     "allCompleteTooltip": "You've completed every learning path — nice work!",

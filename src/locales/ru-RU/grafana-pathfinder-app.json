@@ -105,6 +105,23 @@
     "milestoneButton": "",
     "percentComplete": ""
   },
+  "sidebarHub": {
+    "actionLabel": "",
+    "assignments": "",
+    "dueInDays_one": "",
+    "dueInDays_other": "",
+    "dueOn": "",
+    "dueToday": "",
+    "dueTomorrow": "",
+    "inProgress": "",
+    "moduleOf": "",
+    "moreRecommended": "",
+    "recommendedForYou": "",
+    "start": "",
+    "subtitle": "",
+    "welcomeBack": "",
+    "welcomeBackName": ""
+  },
   "userProfileBar": {
     "allComplete": "Все пути пройдены!",
     "allCompleteTooltip": "Вы прошли все пути обучения — отличная работа!",

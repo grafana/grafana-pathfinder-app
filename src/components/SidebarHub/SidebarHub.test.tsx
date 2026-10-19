@@ -121,19 +121,19 @@ describe('SidebarHub', () => {
     renderHub({ guides: [featured] });
 
     expect(screen.getByText('Dashboards')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Start: Featured guide' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start guide' }));
 
     expect(featured.onLaunch).toHaveBeenCalledTimes(1);
   });
 
   it('offers Read for docs and Resume for a started guide', () => {
     renderHub({ guides: [guide('Docs page', { kind: 'docs' })], resume: null });
-    expect(screen.getByRole('button', { name: 'Read: Docs page' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Read' })).toBeInTheDocument();
   });
 
   it('offers Resume on a featured guide that is already started', () => {
     renderHub({ guides: [guide('Started', { progress: 30 })], resume: null });
-    expect(screen.getByRole('button', { name: 'Resume: Started' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
   });
 
   it('launches a more recommended row', () => {
@@ -148,8 +148,10 @@ describe('SidebarHub', () => {
   it('describes the resume card and resumes from its button', () => {
     const { onResume } = renderHub({ resume: { ...resume, trackLabel: 'Operations' } });
 
-    expect(screen.getByText('Continue · Getting started')).toBeInTheDocument();
-    expect(screen.getByText('Module 2 of 5 · Operations')).toBeInTheDocument();
+    const resumeCard = screen.getByTestId(testIds.sidebarHub.resume);
+    expect(within(resumeCard).getByText('Getting started')).toBeInTheDocument();
+    expect(within(resumeCard).getByText('Module 2 of 5')).toBeInTheDocument();
+    expect(within(resumeCard).getByText('Operations')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Resume: Build a dashboard' }));
 
     expect(onResume).toHaveBeenCalledWith(expect.objectContaining({ pathId: 'getting-started' }));

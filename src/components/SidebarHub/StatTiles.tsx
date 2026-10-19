@@ -1,6 +1,6 @@
 import React from 'react';
 import { cx } from '@emotion/css';
-import { useStyles2 } from '@grafana/ui';
+import { Grid, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { formatDueDate, type HubDue, type HubStats } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
@@ -25,7 +25,7 @@ export function StatTiles({ stats, onOpen }: { stats: HubStats; onOpen: (tile: H
   const styles = useStyles2(getSidebarHubStyles);
 
   return (
-    <div className={styles.tiles} data-testid={testIds.sidebarHub.tiles}>
+    <Grid columns={3} gap={1} data-testid={testIds.sidebarHub.tiles}>
       <button
         type="button"
         className={cx(styles.tile, stats.assignments > 0 && styles.tileAccent)}
@@ -52,8 +52,8 @@ export function StatTiles({ stats, onOpen }: { stats: HubStats; onOpen: (tile: H
         data-testid={testIds.sidebarHub.tile('completed')}
       >
         <span className={styles.tileCount}>{stats.completed}</span>
-        <span className={styles.tileLabel}>{t('sidebarHub.completed', 'Completed')}</span>
+        <span className={styles.tileLabel}>{t('myLearning.completed', 'Completed')}</span>
       </button>
-    </div>
+    </Grid>
   );
 }

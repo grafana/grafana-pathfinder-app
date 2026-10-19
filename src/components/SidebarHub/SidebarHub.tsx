@@ -1,6 +1,7 @@
 import React from 'react';
-import { Alert, Icon, useStyles2 } from '@grafana/ui';
+import { Alert, Button, Stack, Text, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
+import { SkeletonLoader } from '../SkeletonLoader';
 import { testIds } from '../../constants/testIds';
 import type { HubResume, HubStats } from '../../learning-paths';
 import { FeaturedGuide } from './FeaturedGuide';
@@ -44,25 +45,28 @@ export function SidebarHub({
   const more = rest.slice(0, MORE_RECOMMENDED_COUNT);
 
   return (
-    <div className={styles.root} data-testid={testIds.sidebarHub.container}>
+    <Stack direction="column" gap={1.5} data-testid={testIds.sidebarHub.container}>
       <header className={styles.header}>
         <div className={styles.greeting}>
-          <h2 className={styles.greetingTitle}>
+          <Text element="h2" variant="h3">
             {userName
               ? t('sidebarHub.welcomeBackName', 'Welcome back, {{- name}}', { name: userName })
               : t('sidebarHub.welcomeBack', 'Welcome back')}
-          </h2>
-          <p className={styles.subtitle}>{t('sidebarHub.subtitle', 'Learn Grafana at your own pace')}</p>
+          </Text>
+          <Text element="p" variant="bodySmall" color="secondary">
+            {t('sidebarHub.subtitle', 'Learn Grafana at your own pace')}
+          </Text>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="book-open"
           className={styles.myLearning}
           onClick={() => onOpenMyLearning('header')}
           data-testid={testIds.sidebarHub.myLearning}
         >
-          <Icon name="book-open" size="sm" />
           {t('docsPanel.myLearning', 'My learning')}
-        </button>
+        </Button>
       </header>
 
       {recommendationsError && (
@@ -76,13 +80,17 @@ export function SidebarHub({
       )}
 
       {isLoadingGuides ? (
-        <div className={styles.skeleton} data-testid={testIds.sidebarHub.loading} />
+        <div data-testid={testIds.sidebarHub.loading}>
+          <SkeletonLoader type="recommendations" />
+        </div>
       ) : (
         featured && <FeaturedGuide guide={featured} disabled={pending} onLaunch={() => run(featured.onLaunch)} />
       )}
 
       {isLoadingLearning ? (
-        <div className={styles.skeleton} data-testid={testIds.sidebarHub.loading} />
+        <div data-testid={testIds.sidebarHub.loading}>
+          <SkeletonLoader type="recommendations" />
+        </div>
       ) : (
         <>
           {resume && <ResumeCard resume={resume} disabled={pending} onResume={() => run(() => onResume(resume))} />}
@@ -92,7 +100,9 @@ export function SidebarHub({
 
       {more.length > 0 && (
         <>
-          <h3 className={styles.sectionTitle}>{t('sidebarHub.moreRecommended', 'More recommended')}</h3>
+          <Text element="h3" variant="h5">
+            {t('sidebarHub.moreRecommended', 'More recommended')}
+          </Text>
           <ul className={styles.list} data-testid={testIds.sidebarHub.moreList}>
             {more.map((guide, index) => (
               <GuideRow
@@ -106,6 +116,6 @@ export function SidebarHub({
           </ul>
         </>
       )}
-    </div>
+    </Stack>
   );
 }
