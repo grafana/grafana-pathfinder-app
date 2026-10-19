@@ -1,12 +1,12 @@
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
+import { waitForGrafanaReady } from './helpers/grafana.helpers';
 
 test('should open and close docs panel', async ({ page }) => {
   // Navigate to Grafana home page
   await page.goto('/');
 
-  // Wait for the page to load
-  await page.waitForLoadState('networkidle');
+  await waitForGrafanaReady(page);
 
   // Find the Help button that opens the docs panel (Grafana's extension sidebar trigger)
   // Note: This is part of Grafana's UI, not our plugin, so we use aria-label selector
@@ -48,8 +48,7 @@ test('should interact with docs panel tabs', async ({ page }) => {
   // Navigate to Grafana home page
   await page.goto('/');
 
-  // Wait for the page to load
-  await page.waitForLoadState('networkidle');
+  await waitForGrafanaReady(page);
 
   // Open the docs panel
   const helpButton = page.locator('button[aria-label="Help"]');

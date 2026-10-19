@@ -158,6 +158,29 @@ describe('refreshPathfinderPluginConfig', () => {
 });
 
 describe('settings resolution across stores', () => {
+  it.each([null, tenantSnapshot({})])(
+    'enables two-tab mode when neither store has a preference (%j)',
+    async (tenant) => {
+      mockFetchTenant.mockResolvedValue(tenant);
+
+      expect((await refreshPathfinderPluginConfig())?.enableTwoTabController).toBe(true);
+    }
+  );
+
+  it('preserves a tenant two-tab opt-out over a legacy opt-in', async () => {
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ enableTwoTabController: true }));
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({ enableTwoTabController: false }));
+
+    expect((await refreshPathfinderPluginConfig())?.enableTwoTabController).toBe(false);
+  });
+
+  it('preserves a legacy two-tab opt-out when the tenant preference is unset', async () => {
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ enableTwoTabController: false }));
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({}));
+
+    expect((await refreshPathfinderPluginConfig())?.enableTwoTabController).toBe(false);
+  });
+
   it('lets the App Platform resource win over jsonData field by field', async () => {
     mockFetchPluginSettings.mockResolvedValue(pluginSettings({ enableLiveSessions: false, guidedStepTimeout: 1000 }));
     mockFetchTenant.mockResolvedValue(tenantSnapshot({ enableLiveSessions: true, guidedStepTimeout: 2000 }));

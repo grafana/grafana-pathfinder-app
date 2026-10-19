@@ -36,10 +36,10 @@ Controls the sidebar Browse entry and Browse all links. Set it to `false` to hid
 
 **Behavior**:
 
-- **`true`**: Pathfinder loads normally — sidebar is available, the highlighted-guide experiment runs as configured
+- **`true`**: Pathfinder loads normally — sidebar is available, experiments run as configured
 - **`false`**: Plugin is dismounted, the native Grafana help menu takes over
 
-**Important**: This is the only flag that gates whether Pathfinder mounts. It is evaluated independently of the highlighted-guide experiment: setting `pathfinder.enabled` to `false` dismounts the plugin regardless; when `true`, the experiment applies as normal. A headless image-renderer session (the page's user has `authenticatedBy: 'render'`) is treated the same as `false` and never reads tenant settings. Detection uses the render key, not the `render=1` query parameter, so a person who opens a render URL in a normal browser still gets Pathfinder.
+**Important**: This is the only flag that gates whether Pathfinder mounts. It is evaluated independently of the experiments: setting `pathfinder.enabled` to `false` dismounts the plugin and starts none of them; when `true`, they apply as normal. A headless image-renderer session (the page's user has `authenticatedBy: 'render'`) is treated the same as `false` and never reads tenant settings. Detection uses the render key, not the `render=1` query parameter, so a person who opens a render URL in a normal browser still gets Pathfinder.
 
 **Tracking key**: `pathfinder_enabled`
 
@@ -243,57 +243,103 @@ Implementation: `src/completion-records/guide-attempts.ts`, `progress-records-ca
 
 ---
 
-### `pathfinder.highlighted-guide-experiment`
+### `pathfinder.passive-completion`
 
-**Type**: Object (`HighlightedGuideConfig`)
+**Type**: Boolean
 
-**Purpose**: A/B test which guide performs better when surfaced as the featured guide on a specific Grafana page. Both arms keep Pathfinder visible — they differ only in which guide id is highlighted. When a matched page is visited, the Pathfinder sidebar auto-opens (once per browser per `guideId`) **and the configured guide is auto-launched as a sidebar tab** — the same seam used by the `?doc=` deep link. The user stays on the page they were on; no `locationService.replace` is called. The Featured-slot injection still runs in parallel so the card remains a re-entry point if the user closes the auto-launched tab.
+**Purpose**: Fleet kill switch for passive guide completion — the renderer-owned completion coordinator that observes objectives and the reader's own actions while a guide is open (`src/components/content-renderer/completion-observation-provider.tsx`).
 
-This flag is independent of `pathfinder.experiment-variant`: it does not hide Pathfinder, and its auto-open will simply no-op when the user's existing experiment dismounts the plugin.
+**Default**: `true`
 
-**Default**: `{ variant: 'excluded', pages: [], guideId: '', autoOpen: true, resetCache: false }`
+**Behavior**:
 
-**Returned object shape**:
+- **`true`**: passive completion runs unless the tenant stored `enableAutoDetection: false` (the **Automatic completion** setting), which is the per-tenant opt-out.
+- **`false`**: no coordinator is provided. Steps complete only through their own objective checks, Show me, Do it, and Mark complete, as before passive completion; no passive polling, DOM observation or pop-out observation subscriptions run.
+
+The provider reads the flag when it renders, so a flip applies to guides opened after the new value arrives. The flag only becomes operable once it is registered in deployment_tools; until then every stack gets the default.
+
+**Tracking key**: `passive_completion`
+
+---
+
+### `pathfinder.recommend-completions`
+
+**Type**: Boolean
+
+**Purpose**: Gate for attaching the user's completion history to `POST /api/v1/recommend`. See [Completion history in recommend requests](engines/context-engine.md#completion-history-in-recommend-requests).
+
+**Default**: `false`. The flag ships off until privacy and product sign-off and the terms notice cover completion history (tracked separately from this feature).
+
+**Behavior**:
+
+- **`true`**: each recommend request carries a `completions` object built from `GET /completion-records/my`, when that route reports the feature available.
+- **`false`**: no `/completion-records/my` request is made for recommendations and the request body has no `completions` key.
+
+The flag is read each time a recommend request is built, so a flip takes effect on the next request. Turning it on, or off again during an incident, reaches browsers only once a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` exist in deployment_tools.
+
+Implementation: `src/context-engine/recommend-completions-attachment.ts`.
+
+**Tracking key**: `recommend_completions`
+
+---
+
+### `pathfinder.auto-open-guide-experiment`
+
+**Type**: Object (`AutoOpenGuideConfig`), run on `@grafana-experiments/sdk@0.3.0`
+
+**Purpose**: A/B test whether opening Pathfinder with a relevant guide, on a page the operator chose, gets more people to start and finish that guide. Treatment pops the guide open; control keeps today's behaviour. It replaces the retired `pathfinder.highlighted-guide-experiment`, whose two arms both auto-opened and differed only by guide.
+
+**Default**: `{ "variant": "excluded" }`
+
+**Payload**:
 
 ```typescript
-interface HighlightedGuideConfig {
+interface AutoOpenGuideConfig {
   variant: 'excluded' | 'control' | 'treatment';
-  pages: string[]; // URL path patterns where the sidebar should auto-open (empty ⇒ no match)
-  guideId: string; // Doc id or shorthand: 'bundled:<id>' | 'api:<id>' | 'backend-guide:<id>' | full URL
-  autoOpen: boolean; // false ⇒ only Featured-slot injection, no auto-open of the sidebar
-  resetCache: boolean; // When toggled true, clears the once-per-browser markers
-  docType?: 'docs-page' | 'learning-journey' | 'interactive';
-  // Optional override for the Featured-card type and click-through flow. When omitted,
-  // `findDocPage` infers the type from the URL pattern. Set explicitly when the inference
-  // is wrong — e.g. a `/docs/learning-paths/...` URL that should open as a learning journey.
+  experiences: Array<{
+    guide: string; // Anything `findDocPage` resolves: 'bundled:<id>', 'api:<id>', or an allowlisted docs / interactive-learning URL
+    pages: string[]; // Path patterns for this guide, `matchPathPattern` syntax (trailing `*` matches on a segment boundary)
+  }>; // 1 to 3 experiences
 }
 ```
 
-**Variant behavior**:
+```json
+{
+  "variant": "treatment",
+  "experiences": [
+    { "guide": "https://grafana.com/docs/learning-journeys/drilldown-logs/", "pages": ["/explore*"] },
+    { "guide": "bundled:first-dashboard", "pages": ["/dashboards", "/dashboard/new*"] }
+  ]
+}
+```
 
-| Variant     | Auto-launch + injection | Notes                                                                              |
-| ----------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| `excluded`  | No                      | Normal Pathfinder behavior — flag is a no-op                                       |
-| `control`   | Yes (variant A)         | Open sidebar + auto-launch the arm's `guideId` as a tab + inject Featured (slot A) |
-| `treatment` | Yes (variant B)         | Open sidebar + auto-launch the arm's `guideId` as a tab + inject Featured (slot B) |
+| Variant     | On a matched page                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------ |
+| `excluded`  | Nothing. Not enrolled, no exposure.                                                        |
+| `control`   | Enrolled and counted; Pathfinder stays closed and the context panel is unchanged.          |
+| `treatment` | Enrolled; Pathfinder opens with the guide as a tab, and the guide leads the Featured slot. |
 
-A typical A/B setup serves the **same** `pages[]` to both arms with **different** `guideId` values, so the only thing varying between cohorts is the guide content. Analytics distinguishes which arm via the existing `TrackingHook` exposure event (`pathfinder_feature_flag_evaluated` with `tracking_key: highlighted_guide_experiment`).
+**Validation is whole-payload.** An unknown variant, zero or more than three experiences, an experience with no pages, or a guide `findDocPage` cannot resolve rejects everything: nobody is enrolled, behaviour stays as today, and the plugin logs one `warn` per page load with a low-cardinality reason (`unknown_variant` or `invalid_shape`), never the payload. Because guides are resolved against the running build, a guide only newer builds ship is rejected by older ones — check for that `warn` after a rollout. An `unavailable` SDK result (for example no Faro session yet) also logs one `warn` per reason. The first unoffered experience in array order whose pages match wins.
 
-**Those three values are the whole set.** The variant arrives from MTFF, so it can be anything; a value outside the table — a typo'd `treament`, a stale arm name, an empty string — rejects the **entire** payload. Rejection is whole-payload, not field-level: `pages`, `guideId`, `docType` and `resetCache` are all discarded along with the bad variant, so "rename an arm and set `resetCache: true`" clears nothing. Nobody is enrolled — no auto-open, no once-per-browser marker, and no arm attached to analytics or session telemetry. Renaming an arm therefore turns it off rather than half-enrolling its cohort under a bogus label.
+**Enrollment seam.** The SDK's `activate()` is the exposure, and it runs only when every condition holds — the same conditions in both arms, so control is counted exactly when treatment would have popped out:
 
-Rejected payloads use the default `excluded` config above. The plugin logs a `warn` with a low-cardinality reason (`unknown_variant` or `invalid_shape`), once per flag per page load. An unrecognized variant never produces a `pathfinder_feature_flag_evaluated` exposure event — `reportFeatureFlagExposure` only tracks `control` and `treatment` — so exposure counts are not a signal that a payload is broken. The `warn` is.
+1. The path matches an experience whose guide this browser has not been offered yet.
+2. Pathfinder is closed (`isPathfinderOpen()`), and no plugin has the extension sidebar docked.
+3. There is no `?doc=`, `?controller=1`, or kiosk mode on the URL.
+4. The tab is visible.
+5. Frontend telemetry is on, the user is signed in, and analytics is enabled. Without Pathfinder's Faro instance the SDK cannot start, so a stack with `pathfinder.frontend-telemetry` off enrolls nobody.
 
-**Page-pattern semantics — note the difference**: Empty `pages` is treated as **no match**, NOT "all pages" (unlike `pathfinder.experiment-variant`). This makes the safe default of `{ variant: 'excluded', pages: [] }` a true no-op even if the variant is accidentally flipped without configuring pages. Patterns support the same `*` suffix wildcards as `matchPathPattern`.
+It is checked at boot, on every SPA navigation, and when a hidden tab becomes visible. **One activation per visit**: a visit lasts while the set of experiences matching the path stays the same, so moving between sub-paths of one pattern (`/explore` → `/explore/metrics`) never offers an overlapping experience; leaving the matched pages starts a new visit, and the visit survives a reload of the tab (sessionStorage), so a refresh never offers a second overlapping guide. The activation counts toward the visit whatever it resolves to — except one cancelled because the tab went hidden, which retries when the tab is visible again — so a result that offers nothing cannot re-trigger itself. The payload is pre-read with a plain `getObjectValue` to test those conditions; that read is not an exposure because the flag has **no `trackingKey`** — the SDK owns the single `experiment_viewed` denominator, as with the Help button nudge. A call-site tripwire in `src/utils/experiments/enrollment-boundary.test.ts` pins where the experiment can be started and where its flag is read.
 
-**Once-per-browser semantics**: The auto-open marker is keyed `{hostname}:{guideId}` in localStorage (not sessionStorage). A new `guideId` from MTFF — including the arm-specific value at variant assignment time — produces a new key, so changing the experiment's guide naturally re-fires auto-open without operator intervention. Use `resetCache: true` to force-clear all markers for the current hostname (sentinel-guarded so true→true reloads don't repeatedly clear).
+**Once per browser per guide.** On activation, both arms write a localStorage marker keyed `{hostname}:{guide}` (`StorageKeys.AUTO_OPEN_GUIDE_SHOWN_PREFIX`). Changing a guide in the flag re-arms that experience. A browser that already holds a marker for a configured guide restores its arm at boot from the flag, without activating — so its guide events keep carrying the arm after a reload, and **`experiment_viewed` fires only at an offer**. Exposure counts are per SDK session, so key per-offer analysis on `pathfinder_auto_open_guide_eligible`.
 
-**Injection-only mode**: When `autoOpen` is `false`, both the sidebar auto-open _and_ the auto-launch of the guide tab are suppressed, but the Featured-slot injection still runs on matched pages. Useful for a subtler treatment variant where the operator wants the card visible without forcibly opening the sidebar.
+**Measurement.** Experiment ID `pathfinder-auto-open-guide-v1`, group `matched-page-closed-panel`. Each offer emits `pathfinder_auto_open_guide_eligible` in both arms, with `experiment_auto_open_guide`, `exposure_id`, `event_id`, `experience_index` (0–2), and `opened` (false for control, and for treatment when the panel could no longer pop out by the time activation resolved). The SDK owns that event's Faro mirror. Once activated, the arm also rides `getActiveExperiments` enrichment and the Faro session cohorts, so `docs_panel_interaction`, `guide_progress`, and `guide_completed` carry it — those are the outcome. Guide tabs opened by treatment use the `auto_open_guide_experiment` `LaunchSource` (aligned by construction, no alignment prompt). The closed-surface Faro gate admits this experiment's exposure and eligible event, because control users never open Pathfinder.
 
-**Auto-launch dispatch mechanics** (for QA / debugging): on a matched page, the orchestrator resolves the `guideId` through `findDocPage`, publishes `open-extension-sidebar`, waits for either `pathfinder-sidebar-mounted` or `pathfinder-panel-mounted`, then dispatches `auto-launch-tutorial` (the same event `?doc=` uses) tagged with `source: 'highlighted_guide_experiment'`. The `useAutoLaunchTutorial` hook routes that to `openDocsPage` / `openLearningJourney` depending on the resolved `type` (with the flag's `docType` winning over `findDocPage`'s URL-based inference). If `findDocPage` returns `null` for the configured `guideId` (typo, unsupported URL), the sidebar still opens and the Featured-slot card is the user's only entry point.
+**Interaction with the Help button nudge.** Treatment opens Pathfinder, which makes that page load ineligible for `pathfinder.help-button-nudge-experiment`. Don't target the same stacks with both.
 
-**Tracking key**: `highlighted_guide_experiment`
+**Code**: [`src/utils/experiments/auto-open-guide/`](../../src/utils/experiments/auto-open-guide/), with constants in `src/constants/auto-open-guide-experiment.ts`.
 
-**Launch source**: Guide tabs opened by this flag are tagged with the `highlighted_guide_experiment` `LaunchSource` (aligned-by-construction — no alignment prompt is shown, since the operator already targeted the page).
+**Retirement** removes the registry entry, `auto-open-guide/` and its bootstrap call in `module.tsx`, the constants file, the `AUTO_OPEN_GUIDE_SHOWN_PREFIX` storage key, the `auto_open_guide_experiment` launch source, `UserInteraction.AutoOpenGuideEligible`, the Featured-slot injection in `context.service.ts`, the `active-experiments.ts` entry, the debug getters, the Faro gate entries, the tripwire block, these docs, and the remote flag.
 
 ### `pathfinder.interactive-learning-banner-experiment`
 
@@ -303,7 +349,7 @@ Rejected payloads use the default `excluded` config above. The plugin logs a `wa
 
 **Default**: `{ variant: 'excluded' }`
 
-**Shape**: variant-only. Unlike the highlighted-guide flag there is no `pages` targeting — the banner explains Pathfinder itself, not the underlying Grafana page.
+**Shape**: variant-only. There is no page targeting — the banner explains Pathfinder itself, not the underlying Grafana page.
 
 ```typescript
 interface InteractiveLearningBannerConfig {
@@ -319,9 +365,9 @@ interface InteractiveLearningBannerConfig {
 | `control`   | No     | In the experiment, no banner. Identical rendering to `excluded`.            |
 | `treatment` | Yes    | Dismissible explanatory banner on the context page and above opened guides. |
 
-A rejected payload (not an object, missing `variant`, or an unknown arm) falls back to `excluded`, so a fat-fingered MTFF value enrolls nobody. Rejection sources behave the same way as the highlighted-guide flag (see the table above).
+A rejected payload (not an object, missing `variant`, or an unknown arm) falls back to `excluded`, so a fat-fingered MTFF value enrolls nobody.
 
-**Exposure timing — this flag differs from the others.** Every other flag is read at boot in `src/module.tsx`, so its exposure fires on page load. This one is read lazily by `enrollInteractiveLearningBannerExperiment` when a Pathfinder surface first opens, because "entered the experiment" should mean "had the chance to see the banner". Evaluating the flag is what emits the exposure, so the call site is the timing contract — `src/utils/experiments/enrollment-boundary.test.ts` pins the allowed call sites for that reason. `getActiveExperiments` reads the memoised arm rather than evaluating, so analytics enrichment can never enroll a user who has not opened Pathfinder.
+**Exposure timing.** This flag is read lazily by `enrollInteractiveLearningBannerExperiment` when a Pathfinder surface first opens, because "entered the experiment" should mean "had the chance to see the banner". Evaluating the flag is what emits the exposure, so the call site is the timing contract — `src/utils/experiments/enrollment-boundary.test.ts` pins the allowed call sites for that reason. `getActiveExperiments` reads the memoised arm rather than evaluating, so analytics enrichment can never enroll a user who has not opened Pathfinder.
 
 **Two placements, three surfaces.** The banner renders in two places, and `surface-coverage.test.ts` pins both against the enrollment seams:
 
@@ -330,7 +376,7 @@ A rejected payload (not an object, missing `variant`, or an unknown arm) falls b
 | `context-page` | Above the profile bar on the recommendations list (`context-panel.tsx`)               | Sidebar only — floating and full-screen have no context page |
 | `guide`        | Above rendered guide content (`DocsPanelContentArea.tsx`, `FloatingPanelContent.tsx`) | Sidebar, floating, and full-screen                           |
 
-The `guide` placement is the one that matters for reach: a guide opened by `?doc=`, a deep link, or the highlighted-guide auto-open never passes through the context page, so without it the users least likely to know what "Show me" does are exactly the ones who never see the explanation. Copy is identical in both placements; only `interaction_location` differs (`interactive_learning_banner` vs `interactive_learning_banner_guide`), so the readout can tell where it was first seen.
+The `guide` placement is the one that matters for reach: a guide opened by `?doc=`, a deep link, or the auto-open guide experiment never passes through the context page, so without it the users least likely to know what "Show me" does are exactly the ones who never see the explanation. Copy is identical in both placements; only `interaction_location` differs (`interactive_learning_banner` vs `interactive_learning_banner_guide`), so the readout can tell where it was first seen.
 
 The two placements are never mounted simultaneously — the sidebar's content area is an if/else on the recommendations tab, and the other surfaces have no context page — so the dismissal needs no cross-instance plumbing. It is one hostname-scoped localStorage key, re-read on every mount, which is what makes "dismissed above a guide" also mean "dismissed on the context page".
 
@@ -485,19 +531,12 @@ These hooks must be used within an `OpenFeatureProvider` component tree.
 
 #### In non-React code (synchronous)
 
-Use `getFeatureFlagValue()` for boolean flags or `getHighlightedGuideConfig()` for the highlighted-guide experiment object flag:
+Use `getFeatureFlagValue()` for boolean flags. Experiment flags are read through their own module under `src/utils/experiments/`, never directly, because the read is what enrolls a user.
 
 ```typescript
-import { getFeatureFlagValue, getHighlightedGuideConfig } from '../../utils/openfeature';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 
-// Boolean flag
 const shouldAutoOpen = getFeatureFlagValue('pathfinder.auto-open-sidebar', false);
-
-// Highlighted-guide experiment config (object flag)
-const config = getHighlightedGuideConfig();
-if (config.variant !== 'excluded') {
-  // Auto-open + feature config.guideId on config.pages
-}
 ```
 
 #### Async evaluation with guaranteed readiness

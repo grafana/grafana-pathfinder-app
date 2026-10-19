@@ -8,6 +8,8 @@ import {
   getGuideBlockCountProperties,
   reportStepSkipped,
 } from './analytics';
+import type { JsonBlock } from '../types/json-guide.types';
+import { createChoiceProgressModel } from './guide-stats/choice-progress';
 import { reportInteraction } from '@grafana/runtime';
 import { pushFaroUserAction } from './telemetry/bridge';
 import { computeGuideBlockIndex, guideProgress, type CountableBlock } from './guide-stats';
@@ -212,7 +214,7 @@ describe('reportAppInteraction Faro mirroring', () => {
 });
 
 describe('reportAppInteraction experiment enrichment', () => {
-  const HIGHLIGHTED = 'pathfinder.highlighted-guide-experiment';
+  const EXPERIMENT = 'pathfinder.interactive-learning-banner-experiment';
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -232,7 +234,7 @@ describe('reportAppInteraction experiment enrichment', () => {
 
   it('passes the enrolled experiment through and rolls variant up to treatment', () => {
     bindExperimentsProvider(() => [
-      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+      { flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
     ]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
@@ -240,12 +242,12 @@ describe('reportAppInteraction experiment enrichment', () => {
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props.variant).toBe('treatment');
     expect(props.experiments).toEqual([
-      expect.objectContaining({ flag: HIGHLIGHTED, variant: 'treatment', guideId: 'g', docType: 'learning-journey' }),
+      expect.objectContaining({ flag: EXPERIMENT, variant: 'treatment', guideId: 'g', docType: 'learning-journey' }),
     ]);
   });
 
   it('rolls variant up to control when no enrolled experiment is treatment', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'control', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'control', pages: [], guideId: 'g' }]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -256,7 +258,7 @@ describe('reportAppInteraction experiment enrichment', () => {
     ['control before treatment', ['control', 'treatment']],
     ['treatment before control', ['treatment', 'control']],
   ] as const)('rolls multiple experiments up to treatment with %s', (_order, variants) => {
-    bindExperimentsProvider(() => variants.map((variant) => ({ flag: HIGHLIGHTED, variant, pages: [], guideId: 'g' })));
+    bindExperimentsProvider(() => variants.map((variant) => ({ flag: EXPERIMENT, variant, pages: [], guideId: 'g' })));
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -264,7 +266,7 @@ describe('reportAppInteraction experiment enrichment', () => {
   });
 
   it('rolls variant up to excluded when every experiment is excluded', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'excluded', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'excluded', pages: [], guideId: 'g' }]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
@@ -283,7 +285,7 @@ describe('reportAppInteraction experiment enrichment', () => {
 
   it('strips experiments from the Faro mirror but keeps it in the RudderStack payload', () => {
     bindExperimentsProvider(() => [
-      { flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
+      { flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g', docType: 'learning-journey' },
     ]);
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
@@ -297,18 +299,18 @@ describe('reportAppInteraction experiment enrichment', () => {
   });
 
   it('does not enrich FeatureFlagEvaluated events (recursion guard)', () => {
-    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'treatment', pages: [], guideId: 'g' }]);
+    bindExperimentsProvider(() => [{ flag: EXPERIMENT, variant: 'treatment', pages: [], guideId: 'g' }]);
 
-    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: EXPERIMENT });
 
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props).not.toHaveProperty('experiments');
     expect(props).not.toHaveProperty('variant');
-    expect(props.flag_key).toBe(HIGHLIGHTED);
+    expect(props.flag_key).toBe(EXPERIMENT);
   });
 
   it('still mirrors flag exposures to Faro (beforeSend gates delivery, not the mirror)', () => {
-    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: HIGHLIGHTED });
+    reportAppInteraction(UserInteraction.FeatureFlagEvaluated, { flag_key: EXPERIMENT });
     expect(mockPushFaroUserAction).toHaveBeenCalledTimes(1);
   });
 });
@@ -469,6 +471,41 @@ describe('step events: block progress properties', () => {
     publish();
 
     expect(buildInteractiveStepProperties({}, { stepId: 'rt:__standalone__:1' }).block_position).toBe(2);
+  });
+
+  it('identifies selected-path progress without sending authored option values', () => {
+    const blocks: JsonBlock[] = [
+      {
+        type: 'input',
+        inputType: 'checkbox-group',
+        prompt: 'Private question',
+        variableName: 'signals',
+        choices: [{ id: 'private-id', text: 'Private label' }],
+      },
+      {
+        type: 'section',
+        id: 'selected',
+        whenRequirementsUnmet: 'hide',
+        requirements: ['var-signals:includes:private-id'],
+        blocks: [{ type: 'markdown', content: 'Private content' }],
+      },
+    ];
+    const choiceIndex = computeGuideBlockIndex(blocks);
+    publishGuideIndex({
+      contentKey: GUIDE_KEY,
+      index: choiceIndex,
+      denominatorSource: 'live-pre-inlining',
+      choiceModel: createChoiceProgressModel(blocks, choiceIndex),
+      responses: {},
+    });
+    const properties = getGuideBlockCountProperties(GUIDE_KEY);
+    expect(properties).toMatchObject({
+      block_progress_rule_version: 'choice-path-v1',
+      total_block_count: 2,
+      active_block_count: 1,
+    });
+    expect(JSON.stringify(properties)).not.toContain('Private');
+    expect(JSON.stringify(properties)).not.toContain('private-id');
   });
 
   it('exposes the guide counts for a content key, and nothing without an index', () => {

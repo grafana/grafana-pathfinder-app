@@ -28,7 +28,8 @@
 
 import type { z } from 'zod';
 
-import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryEntrySchema } from '../../types/package.schema';
+import { ContentJsonSchema, RepositoryEntrySchema } from '../../types/package.schema';
+import { RuntimeManifestJsonObjectSchema } from '../../lib/runtime-manifest';
 import type { RepositoryEntry } from '../../types/package.types';
 
 const DEFAULT_REPOSITORY_URL = 'https://interactive-learning.grafana.net/packages/';
@@ -230,7 +231,7 @@ export async function fetchPackageContent(id: string): Promise<PackageJsonResult
 
 /**
  * Fetch a package's `manifest.json`. Validation is non-fatal — uses
- * `ManifestJsonObjectSchema.loose()` so unknown fields surface as raw
+ * `RuntimeManifestJsonObjectSchema` so unknown fields surface as raw
  * properties without failing.
  */
 export async function fetchPackageManifest(id: string): Promise<PackageJsonResult<Record<string, unknown>>> {
@@ -246,7 +247,7 @@ export async function fetchPackageManifest(id: string): Promise<PackageJsonResul
       message: `Cannot construct manifest.json URL for "${id}" — baseUrl or path is empty after trimming`,
     };
   }
-  return parseFetched(url, ManifestJsonObjectSchema.loose());
+  return parseFetched(url, RuntimeManifestJsonObjectSchema);
 }
 
 /**

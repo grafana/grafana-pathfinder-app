@@ -164,6 +164,7 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
       emitManifestMessages(manifestRead.parsed as Record<string, unknown>, manifest, messages);
       validateManifestSemantics(manifest, errors);
+      validateManifestCategory(manifestRead.parsed as Record<string, unknown>, errors);
 
       if (manifest.testEnvironment) {
         validateTestEnvironment(manifest.testEnvironment, messages);
@@ -280,6 +281,21 @@ function validateManifestSemantics(manifest: ManifestJson, errors: ValidationErr
   }
 }
 
+// CLI-only: ManifestJsonSchema stays lenient because the runtime also parses it,
+// and a guide without a category must still load there.
+function validateManifestCategory(raw: Record<string, unknown>, errors: ValidationError[]): void {
+  const category = raw['category'];
+  if (typeof category === 'string' && category.trim() !== '') {
+    return;
+  }
+
+  errors.push({
+    message: `manifest.json: "category" is required and must not be blank — ${remediationFor('category')}`,
+    path: ['manifest.json', 'category'],
+    code: 'schema_validation',
+  });
+}
+
 function emitManifestMessages(
   raw: Record<string, unknown>,
   parsed: { id: string; type: string; [key: string]: unknown },
@@ -317,7 +333,7 @@ function emitManifestMessages(
   }
 
   // Defaults with WARN
-  const warnFields = ['description', 'category', 'targeting', 'startingLocation'];
+  const warnFields = ['description', 'targeting', 'startingLocation'];
   for (const field of warnFields) {
     if (raw[field] === undefined) {
       messages.push({

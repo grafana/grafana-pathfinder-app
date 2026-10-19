@@ -86,11 +86,11 @@ describe('getConfigWithDefaults feature flags', () => {
     expect(getConfigWithDefaults({ enableAiAutoHeal: false }).enableAiAutoHeal).toBe(false);
   });
 
-  it('defaults enableTwoTabController to false when jsonData is absent', () => {
-    expect(getConfigWithDefaults({}).enableTwoTabController).toBe(false);
+  it('defaults enableTwoTabController to true when jsonData is absent', () => {
+    expect(getConfigWithDefaults({}).enableTwoTabController).toBe(true);
   });
 
-  it('honors an explicit enableTwoTabController override', () => {
-    expect(getConfigWithDefaults({ enableTwoTabController: true }).enableTwoTabController).toBe(true);
+  it.each([true, false])('honors an explicit enableTwoTabController override of %s', (enabled) => {
+    expect(getConfigWithDefaults({ enableTwoTabController: enabled }).enableTwoTabController).toBe(enabled);
   });
 });

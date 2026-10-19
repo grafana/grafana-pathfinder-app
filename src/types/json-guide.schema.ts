@@ -84,7 +84,7 @@ const objectivesDescription = (container: 'block' | 'section' | 'branch'): strin
     container === 'block'
       ? 'Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.'
       : `When a ${container}'s objectives hold, every step inside it is marked complete too.`;
-  return `Conditions that automatically complete this ${container}, in the same vocabulary as \`requirements\`. Checked first, before eligibility and requirements, so a ${container} whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a ${container} that creates one). ${closing}`;
+  return `Conditions that automatically complete this ${container}, in the same vocabulary as \`requirements\`. Every objective must be satisfied for completion, including after assistance. Checked first, before eligibility and requirements, so a ${container} whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a ${container} that creates one). ${closing}`;
 };
 
 /**
@@ -455,7 +455,7 @@ export const JsonGuidedBlockSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'Persist the guided block at its final completion signal. For a final button or highlight action, click activation causes completion to persist during capture, before the application click handler runs. A final action without click activation persists after its result. Cancellation, timeout, or error does not persist completion.'
+      'Persist the guided block at its final completion signal. For a final button or highlight action, click activation causes completion to persist during capture, before the application click handler runs. A final action without click activation persists after its result. Cancellation, timeout, or error does not persist completion. Authored objectives still gate completion.'
     ),
   ...AuthorAnnotatedSchema.shape,
 });
@@ -542,7 +542,18 @@ export const JsonInputBlockSchema = z
     type: z.literal('input'),
     id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
     prompt: z.string().min(1, 'Input prompt is required').describe('Prompt shown above the input'),
-    inputType: z.enum(['text', 'boolean', 'datasource']).describe('Kind of input to render'),
+    inputType: z.enum(['text', 'boolean', 'datasource', 'checkbox-group']).describe('Kind of input to render'),
+    choices: z
+      .array(
+        z.object({
+          id: z
+            .string()
+            .regex(/^[A-Za-z0-9_-]{1,64}$/, 'Use a stable option ID with letters, numbers, underscores, or hyphens'),
+          text: z.string().trim().min(1),
+        })
+      )
+      .max(20)
+      .optional(),
     format: z.enum(['http-origin', 'http-url']).optional(),
     variableName: z
       .string()
@@ -587,6 +598,28 @@ export const JsonInputBlockSchema = z
       'dataCheckBlocking',
     ] as const;
 
+    if (block.variableName === '__choice_completed_blocks') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['variableName'],
+        message: 'This variable name is reserved for guide completion',
+      });
+    }
+    if (block.inputType === 'checkbox-group') {
+      if (!block.choices?.length) {
+        ctx.addIssue({ code: 'custom', path: ['choices'], message: 'A checkbox group needs at least one option' });
+      }
+      if (new Set(block.choices?.map((choice) => choice.id)).size !== block.choices?.length) {
+        ctx.addIssue({ code: 'custom', path: ['choices'], message: 'Option IDs must be unique within a group' });
+      }
+      for (const field of ['placeholder', 'checkboxLabel', 'defaultValue', 'pattern', 'format'] as const) {
+        if (block[field] !== undefined) {
+          ctx.addIssue({ code: 'custom', path: [field], message: `${field} does not apply to checkbox groups` });
+        }
+      }
+    } else if (block.choices !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['choices'], message: 'choices requires a checkbox group' });
+    }
     if (block.format && block.inputType !== 'text') {
       ctx.addIssue({ code: 'custom', path: ['format'], message: 'format requires a text input' });
     }
@@ -970,7 +1003,13 @@ const SectionProps = {
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(ObjectiveTokenSchema).optional().describe(objectivesDescription('section')),
   autoCollapse: z.boolean().optional().describe('Collapse the section after the user completes its contents'),
+  whenRequirementsUnmet: z.enum(['disable', 'heading-only', 'hide']).optional(),
 };
+
+function hasStableVisibilityId(section: { id?: string; whenRequirementsUnmet?: string }): boolean {
+  return !section.whenRequirementsUnmet || section.whenRequirementsUnmet === 'disable' || Boolean(section.id?.trim());
+}
+const visibilityIdIssue = { path: ['id'], message: 'A section with hidden content needs a stable section ID' };
 
 const CollapsibleProps = {
   type: z.literal('collapsible'),
@@ -1048,11 +1087,13 @@ function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
   // block schemas already include it, so containers must too).
   return z.union([
     NonRecursiveBlockSchema,
-    z.object({
-      ...SectionProps,
-      blocks: z.array(nestedBlockSchema),
-      ...AuthorAnnotatedSchema.shape,
-    }),
+    z
+      .object({
+        ...SectionProps,
+        blocks: z.array(nestedBlockSchema),
+        ...AuthorAnnotatedSchema.shape,
+      })
+      .refine(hasStableVisibilityId, visibilityIdIssue),
     // Collapsible is presentational: it holds only content blocks (no
     // interactive/step types, no containers). See PresentationalBlockSchema.
     z.object({
@@ -1094,11 +1135,13 @@ function createBlockSchemaWithDepthNoRef(currentDepth: number): z.ZodType {
   // AuthorAnnotatedSchema.shape so `authorNote` is preserved, not stripped.
   return z.union([
     NonRecursiveBlockSchemaNoRef,
-    z.object({
-      ...SectionProps,
-      blocks: z.array(nestedBlockSchema),
-      ...AuthorAnnotatedSchema.shape,
-    }),
+    z
+      .object({
+        ...SectionProps,
+        blocks: z.array(nestedBlockSchema),
+        ...AuthorAnnotatedSchema.shape,
+      })
+      .refine(hasStableVisibilityId, visibilityIdIssue),
     // Collapsible holds only content blocks (PresentationalBlockSchema has no
     // snippet-ref, so the NoRef variant needs no separate union here).
     z.object({
@@ -1131,11 +1174,13 @@ export const JsonBlockSchemaNoRef = createBlockSchemaWithDepthNoRef(0);
  * Uses JsonBlockSchema which enforces depth limit globally.
  * @coupling Type: JsonSectionBlock
  */
-export const JsonSectionBlockSchema = z.object({
-  ...SectionProps,
-  blocks: z.lazy(() => z.array(JsonBlockSchema)),
-  ...AuthorAnnotatedSchema.shape,
-});
+export const JsonSectionBlockSchema = z
+  .object({
+    ...SectionProps,
+    blocks: z.lazy(() => z.array(JsonBlockSchema)),
+    ...AuthorAnnotatedSchema.shape,
+  })
+  .refine(hasStableVisibilityId, visibilityIdIssue);
 
 /**
  * Schema for collapsible block. Presentational container — holds only content
@@ -1293,7 +1338,17 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'completeEarly',
     'authorNote',
   ]),
-  section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives', 'autoCollapse', 'authorNote']),
+  section: new Set([
+    'type',
+    'id',
+    'title',
+    'blocks',
+    'requirements',
+    'objectives',
+    'autoCollapse',
+    'whenRequirementsUnmet',
+    'authorNote',
+  ]),
   collapsible: new Set(['type', 'id', 'title', 'collapsed', 'blocks', 'authorNote']),
   conditional: new Set([
     'type',
@@ -1331,6 +1386,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'variableName',
     'placeholder',
     'checkboxLabel',
+    'choices',
     'defaultValue',
     'required',
     'pattern',

@@ -2,6 +2,7 @@ import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { CROSS_TAB_CHANNEL } from '../src/types/cross-tab.types';
 import type { Page } from '@playwright/test';
+import { waitForGrafanaReady } from './helpers/grafana.helpers';
 
 /**
  * Real-browser adversarial coverage for the two-tab controller (#1142).
@@ -10,19 +11,13 @@ import type { Page } from '@playwright/test';
  * BroadcastChannel is mocked and message delivery is synchronous. These specs
  * exercise the same trust boundary across real, separate JS contexts where the
  * channel delivers asynchronously — the conditions the mock can't reproduce.
- *
- * SKIPPED (`test.describe.fixme`): this branch is standalone on `main`, where the
- * controller overlay, the live-tab executor, and the "open in interactive window"
- * affordance are gated behind the compile-time `TWOTAB_CONTROLLER_ENABLED` const
- * (`src/constants/interactive-config.ts`), currently `false` with no runtime
- * override — so none of this is reachable on any instance this build can produce.
- * Enabling it needs #1174's `enableTwoTabController` admin toggle, which is not in
- * this branch. Per the re-enable gate these specs stay registered-but-skipped until
- * the flag flips; at that point, seed `jsonData.enableTwoTabController = true` (via
- * `gotoAppConfigPage`, already wired in `tests/fixtures.ts`) and remove the `.fixme`.
+ * They run against the default-on `enableTwoTabController` setting.
  */
 
 const SENTINEL_PATH = '/a/grafana-pathfinder-app/__forged_nav__';
+const GUIDE_URL = 'https://interactive-learning.grafana.net/packages/two-tab-adversarial-test/content.json';
+const NAVIGATE_STEP = 'open-explore';
+const WAITING_SECTION = 'waiting';
 
 async function postRawCrossTabMessage(page: Page, message: Record<string, unknown>): Promise<void> {
   await page.evaluate(
@@ -77,35 +72,83 @@ async function readCapturedStepCommand(page: Page): Promise<Record<string, unkno
   });
 }
 
+async function routeGuide(page: Page): Promise<void> {
+  const context = page.context();
+  await context.route(GUIDE_URL.replace('content.json', 'manifest.json'), (route) =>
+    route.fulfill({ json: { id: 'two-tab-adversarial-test', type: 'guide', repository: 'interactive-tutorials' } })
+  );
+  await context.route(GUIDE_URL, (route) =>
+    route.fulfill({
+      json: {
+        id: 'two-tab-adversarial-test',
+        title: 'Two-tab adversarial',
+        blocks: [
+          {
+            type: 'interactive',
+            id: NAVIGATE_STEP,
+            action: 'navigate',
+            reftarget: '/explore',
+            content: 'Open Explore.',
+          },
+          {
+            type: 'section',
+            id: WAITING_SECTION,
+            title: 'Create a dashboard',
+            autoCollapse: false,
+            blocks: [
+              {
+                type: 'interactive',
+                id: 'open-dashboard',
+                action: 'button',
+                reftarget: 'New',
+                content: 'Open a new dashboard.',
+                objectives: ['on-page:/dashboard/new'],
+              },
+            ],
+          },
+        ],
+      },
+    })
+  );
+}
+
 async function gotoLiveTab(page: Page): Promise<void> {
-  await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  await routeGuide(page);
+  await page.goto(`/dashboards?doc=${encodeURIComponent(GUIDE_URL)}`);
+  await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId(testIds.interactive.step(NAVIGATE_STEP))).toBeVisible();
 }
 
 async function openController(liveTab: Page): Promise<Page> {
-  await liveTab.locator('button[aria-label="Help"]').click();
-  await expect(liveTab.getByTestId(testIds.docsPanel.container)).toBeVisible();
-
   const openButton = liveTab.getByTestId(testIds.docsPanel.openControllerTabButton);
   await expect(openButton).toBeVisible();
 
   const controllerPromise = liveTab.context().waitForEvent('page');
   await openButton.click();
   const controller = await controllerPromise;
-  await controller.waitForLoadState('networkidle');
+  await expect(controller.getByTestId(testIds.guideReader.overlay)).toBeVisible({ timeout: 30_000 });
   return controller;
 }
 
-async function acceptPairing(liveTab: Page): Promise<void> {
-  await liveTab.getByRole('button', { name: 'Accept' }).click();
+async function acceptPairing(liveTab: Page, controller: Page): Promise<void> {
+  await liveTab.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect(controller.getByTestId(testIds.guideReader.controllerStatus)).toContainText(/connected/i);
 }
 
-test.describe.fixme('two-tab controller — real-browser adversarial (pending TWOTAB_CONTROLLER_ENABLED)', () => {
+function reader(controller: Page) {
+  return controller.getByTestId(testIds.guideReader.overlay);
+}
+
+function doIt(controller: Page) {
+  return reader(controller).getByTestId(testIds.interactive.doItButton(NAVIGATE_STEP));
+}
+
+test.describe('two-tab controller — real-browser adversarial', () => {
   test('a forged, unsigned step-command does not drive the paired live tab', async ({ page }) => {
     const liveA = page;
     await gotoLiveTab(liveA);
-    await openController(liveA);
-    await acceptPairing(liveA);
+    const controller = await openController(liveA);
+    await acceptPairing(liveA, controller);
     const urlBefore = liveA.url();
 
     await postRawCrossTabMessage(liveA, {
@@ -130,32 +173,33 @@ test.describe.fixme('two-tab controller — real-browser adversarial (pending TW
     const liveA = page;
     await gotoLiveTab(liveA);
     const controller = await openController(liveA);
-    await acceptPairing(liveA);
+    await acceptPairing(liveA, controller);
 
     const liveB = await context.newPage();
     await liveB.goto('/');
-    await liveB.waitForLoadState('networkidle');
+    await waitForGrafanaReady(liveB);
 
     const liveAUrlBefore = liveA.url();
-    const liveBUrlBefore = liveB.url();
+    const liveBUrlBefore = new URL(liveB.url());
 
-    await controller.getByRole('button', { name: /do it/i }).first().click();
+    await doIt(controller).click();
 
-    // The command drives the paired tab (A) away from its own baseline; the
-    // unpaired tab (B) never moves from its own baseline.
     await expect.poll(() => liveA.url()).not.toBe(liveAUrlBefore);
-    expect(liveB.url()).toBe(liveBUrlBefore);
+    // Grafana's home page can update time-range parameters without executing the navigation command.
+    const liveBUrlAfter = new URL(liveB.url());
+    expect(liveBUrlAfter.origin).toBe(liveBUrlBefore.origin);
+    expect(liveBUrlAfter.pathname).toBe(liveBUrlBefore.pathname);
   });
 
   test('a stale step-complete from a cancelled run does not settle the retried run', async ({ page }) => {
     const liveA = page;
     await gotoLiveTab(liveA);
     const controller = await openController(liveA);
-    await acceptPairing(liveA);
+    await acceptPairing(liveA, controller);
 
-    const composite = controller.getByRole('button', { name: /do section|do it/i }).first();
+    const composite = reader(controller).getByTestId(testIds.interactive.doSectionButton(`section-${WAITING_SECTION}`));
     await composite.click();
-    await controller
+    await reader(controller)
       .getByRole('button', { name: /cancel/i })
       .first()
       .click();
@@ -165,13 +209,17 @@ test.describe.fixme('two-tab controller — real-browser adversarial (pending TW
       senderId: 'attacker-tab',
       timestamp: Date.now(),
       kind: 'step-complete',
-      stepId: 'composite-step',
+      stepId: 'open-dashboard',
       runId: 'stale-run',
       ok: true,
     });
 
     await composite.click();
-    await expect(controller.getByRole('button', { name: /cancel/i }).first()).toBeVisible();
+    await expect(
+      reader(controller)
+        .getByRole('button', { name: /cancel/i })
+        .first()
+    ).toBeVisible();
   });
 
   test('a forged pairing-accept cannot claim the controller pairing slot', async ({ page, context }) => {
@@ -210,8 +258,7 @@ test.describe.fixme('two-tab controller — real-browser adversarial (pending TW
     await expect(status).not.toContainText(/connected/i);
 
     // The genuine gesture-accept still pairs.
-    await acceptPairing(liveA);
-    await expect(status).toContainText(/connected/i);
+    await acceptPairing(liveA, controller);
   });
 
   test('a replayed genuine step-command is ignored by the live tab', async ({ page }) => {
@@ -222,7 +269,7 @@ test.describe.fixme('two-tab controller — real-browser adversarial (pending TW
     // (seenSignedMessages in pairing-manager) keys on.
     await startCapturingSignedStepCommand(liveA);
     const controller = await openController(liveA);
-    await acceptPairing(liveA);
+    await acceptPairing(liveA, controller);
 
     let navigations = 0;
     liveA.on('framenavigated', (frame) => {
@@ -231,9 +278,11 @@ test.describe.fixme('two-tab controller — real-browser adversarial (pending TW
       }
     });
 
-    await controller.getByRole('button', { name: /do it/i }).first().click();
+    await doIt(controller).click();
     await expect.poll(() => readCapturedStepCommand(liveA)).not.toBeNull();
     const genuine = await readCapturedStepCommand(liveA);
+    await expect(liveA).toHaveURL(/\/explore/);
+    await liveA.waitForTimeout(1000);
     const navigationsAfterGenuine = navigations;
 
     // Re-deliver the once-accepted command. The nonce ledger rejects the second

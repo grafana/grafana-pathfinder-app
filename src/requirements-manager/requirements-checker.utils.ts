@@ -60,6 +60,8 @@ export interface RequirementsCheckOptions {
   requirements: ConditionInput;
   /** Guide scope for var-* checks; omit only for compatibility callers outside a renderer tree. */
   guideId?: string;
+  /** Set only by an explicit user action, never from guide content or passive checks. */
+  allowCodaExecution?: boolean;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
@@ -76,6 +78,8 @@ type CheckMode = 'pre' | 'post';
 
 interface CheckContext {
   guideId?: string;
+  /** Set only by an explicit user action, never from guide content or passive checks. */
+  allowCodaExecution?: boolean;
   targetAction?: string;
   refTarget?: string;
   /** Enable progressive scroll discovery for virtualized containers */
@@ -131,7 +135,11 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
   { id: 'section-completed:', match: (c) => c.startsWith('section-completed:'), run: (c) => sectionCompletedCheck(c) },
   { id: 'form-valid', match: (c) => c === 'form-valid', run: (c) => formValidCheck(c) },
   { id: 'is-terminal-active', match: (c) => c === 'is-terminal-active', run: (c) => terminalActiveCheck(c) },
-  { id: 'coda-exit-zero:', match: (c) => c.startsWith('coda-exit-zero:'), run: (c) => codaExitZeroCheck(c) },
+  {
+    id: 'coda-exit-zero:',
+    match: (c) => c.startsWith('coda-exit-zero:'),
+    run: (c, ctx) => codaExitZeroCheck(c, ctx.allowCodaExecution),
+  },
   { id: 'var-', match: (c) => c.startsWith('var-'), run: (c, ctx) => guideVariableCheck(c, ctx.guideId) },
   { id: 'renderer:', match: (c) => c.startsWith('renderer:'), run: (c) => rendererCheck(c) },
 ];
@@ -206,6 +214,7 @@ async function executeChecksWithRetry(
   const {
     requirements,
     guideId,
+    allowCodaExecution = false,
     targetAction = 'button',
     refTarget = '',
     retryCount = 0,
@@ -229,6 +238,7 @@ async function executeChecksWithRetry(
   try {
     const result = await runUnifiedChecks(requirements, mode, {
       guideId,
+      allowCodaExecution,
       targetAction,
       refTarget,
       lazyRender,

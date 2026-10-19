@@ -16,6 +16,8 @@ import {
   AuthorSchema,
   GuideTargetingSchema,
   TestEnvironmentSchema,
+  PrerequisiteSchema,
+  PrerequisitesSchema,
   PackageTypeSchema,
   GraphNodeSchema,
   GraphEdgeSchema,
@@ -127,9 +129,73 @@ describe('ManifestJsonSchema', () => {
     type: 'guide',
   };
 
-  it('should accept a minimal guide manifest', () => {
+  it('should accept a minimal guide manifest without prerequisites', () => {
     const result = ManifestJsonSchema.safeParse(minimalGuideManifest);
     expect(result.success).toBe(true);
+  });
+
+  it('should accept absent and empty prerequisite declarations', () => {
+    expect(ManifestJsonObjectSchema.safeParse(minimalGuideManifest).success).toBe(true);
+    expect(ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, prerequisites: [] }).success).toBe(true);
+  });
+
+  it('preserves valid prerequisite strings and order', () => {
+    const prerequisites = [
+      { id: ' mysql-server ', label: '<strong>text</strong>' },
+      { id: 'second', label: '**text** and [text](url)', format: 'markdown' as const },
+    ];
+    const result = ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, prerequisites });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.prerequisites).toEqual(prerequisites);
+    }
+  });
+
+  it.each([
+    [[{ id: '', label: 'Label' }]],
+    [[{ id: ' \t ', label: 'Label' }]],
+    [[{ id: 'id', label: '' }]],
+    [[{ id: 'id', label: ' \t ' }]],
+    [
+      [
+        { id: 'duplicate', label: 'First' },
+        { id: 'duplicate', label: 'Second' },
+      ],
+    ],
+  ])('rejects invalid prerequisite declarations %j', (prerequisites) => {
+    expect(PrerequisitesSchema.safeParse(prerequisites).success).toBe(false);
+    expect(ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, prerequisites }).success).toBe(false);
+  });
+
+  it('validates omitted and supported prerequisite formats and rejects unsupported values', () => {
+    expect(PrerequisiteSchema.safeParse({ id: 'mysql-server', label: 'A running MySQL server.' }).success).toBe(true);
+    expect(
+      PrerequisiteSchema.safeParse({ id: 'mysql-server', label: '**A running MySQL server**', format: 'markdown' })
+        .success
+    ).toBe(true);
+    expect(
+      PrerequisiteSchema.safeParse({ id: 'mysql-server', label: 'A running MySQL server.', format: 'html' }).success
+    ).toBe(false);
+    expect(
+      ManifestJsonObjectSchema.safeParse({
+        ...minimalGuideManifest,
+        prerequisites: [{ id: 'mysql-server', label: 'Label', format: 'plain' }],
+      }).success
+    ).toBe(false);
+  });
+
+  it.each(['html', 42, { type: 'markdown' }])('keeps publisher validation strict for format %p', (format) => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'test-path',
+      type: 'path',
+      milestones: ['first', 'second'],
+      prerequisites: [{ id: 'format', label: 'Literal label', format }],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path.join('.') === 'prerequisites.0.format')).toBe(true);
+    }
   });
 
   it('should apply defaults during parsing', () => {

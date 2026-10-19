@@ -10,6 +10,12 @@
 > named invariant in `docs/design/CONCERN_DETAILS.md` for what the denominator
 > module is allowed to own.
 
+## Completion evidence
+
+Opening a guide starts observing its active branch, including collapsed sections. For interactive, guided, and multistep blocks, every authored objective must return a satisfied verdict before completion, whether the reader acts independently or uses assistance. Existing outcomes count. With no objectives, ordered action evidence and authored verification determine completion. Section objectives retain their child-completion authority; quizzes, challenges, acknowledgement, and **Mark complete** keep their existing rules.
+
+This extends the completion evidence contract without changing the denominator or storage schema. The `observed` reason identifies manual action detection; `objectives` identifies verified outcomes, and `manual` identifies successful assistance. Tokens that are not condition types, such as legacy prose objectives, are dropped at parse time with an authoring warning and never gate completion; a recognised condition that is unsatisfied or unavailable keeps the block incomplete. A tenant opts out with `enableAutoDetection: false` (the **Automatic completion** setting), and the `pathfinder.passive-completion` flag is the fleet kill switch; either one turns passive observation off and returns sections to their previous rules, where steps and acknowledgement complete them and objectives only complete them early.
+
 ## Purpose
 
 This document exists because the completion code will get dense, and dense code
@@ -73,6 +79,16 @@ quarter of the way through the second:
 
 Equal weight per milestone, by construction. A 27-block milestone and a 7-block
 milestone each contribute up to 25 points.
+
+### Choice-driven guides
+
+Guides with checkbox groups or section visibility controls use a selected-path exception to the legacy position rule. The authored index stays frozen. A projection excludes hidden content from the runtime denominator.
+
+Within each section, completion evidence credits preceding blocks in that section. It does not credit an independent, unfinished section. Section acknowledgements credit that section's content. Saved choices credit their input block, but an unanswered required group prevents completion.
+
+The universal completion button remains visible. It is disabled for unanswered required groups. A guide mark records the active path, so a later selection cannot complete new content automatically. Completed-step evidence and marked-block snapshots survive deselection and reselection.
+
+Guides without these features retain the legacy model. Conditional blocks retain their one-block counting rule. Analytics distinguish the selected-path rule with `choice-path-v1` and report `active_block_count` alongside authored counts.
 
 ## What the library actually looks like
 

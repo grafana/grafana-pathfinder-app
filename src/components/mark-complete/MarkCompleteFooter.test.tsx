@@ -4,6 +4,8 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
+import type { JsonBlock } from '../../types/json-guide.types';
+import { createChoiceProgressModel } from '../../lib/guide-stats/choice-progress';
 import { computeGuideBlockIndex } from '../../lib/guide-stats';
 import { evictAllGuideIndexes, publishGuideIndex } from '../../global-state/active-guide-index';
 import { MarkCompleteFooter } from './MarkCompleteFooter';
@@ -13,19 +15,28 @@ jest.mock('@grafana/i18n', () => ({
     vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_m, name) => String(vars[name])) : fallback,
 }));
 
+let mockChoiceResponses: {
+  responses: Record<string, string>;
+  getResponse: (name: string) => string | undefined;
+  setResponse: jest.Mock;
+  isLoading: boolean;
+} | null = null;
+jest.mock('../../docs-retrieval', () => ({ useGuideResponsesOptional: () => mockChoiceResponses }));
+
 const reportAppInteraction = jest.fn();
 jest.mock('../../lib/analytics', () => ({
   ...jest.requireActual('../../lib/analytics'),
   reportAppInteraction: (...args: unknown[]) => reportAppInteraction(...args),
 }));
 
-const markStorage = { get: jest.fn(), set: jest.fn(), clear: jest.fn() };
+const markStorage = { get: jest.fn(), set: jest.fn(), clear: jest.fn(), getChoiceCompletionKeys: jest.fn(() => []) };
 const setCompletionPercentage = jest.fn();
 jest.mock('../../lib/user-storage', () => ({
   guideCompletionMarkStorage: {
     get: (...a: unknown[]) => markStorage.get(...a),
     set: (...a: unknown[]) => markStorage.set(...a),
     clear: (...a: unknown[]) => markStorage.clear(...a),
+    getChoiceCompletionKeys: () => markStorage.getChoiceCompletionKeys(),
   },
   interactiveCompletionStorage: { set: (...a: unknown[]) => setCompletionPercentage(...a) },
 }));
@@ -80,6 +91,7 @@ function liveRegions(): Element[] {
 beforeEach(() => {
   jest.clearAllMocks();
   percentage = 25;
+  mockChoiceResponses = null;
   notifyProgress = undefined;
   ambientKey = 'guide-key';
   progressKeys.length = 0;
@@ -96,6 +108,62 @@ async function clickWhenReady(): Promise<void> {
 }
 
 describe('MarkCompleteFooter', () => {
+  describe('choice paths', () => {
+    const blocks: JsonBlock[] = [
+      {
+        type: 'input',
+        inputType: 'checkbox-group',
+        prompt: 'Which signals?',
+        variableName: 'signals',
+        required: true,
+        choices: [{ id: 'logs', text: 'Logs' }],
+      },
+      {
+        type: 'section',
+        id: 'logs',
+        requirements: ['var-signals:includes:logs'],
+        whenRequirementsUnmet: 'hide',
+        blocks: [{ type: 'markdown', id: 'logs-step', content: 'Logs' }],
+      },
+    ];
+    beforeEach(() => {
+      const index = computeGuideBlockIndex(blocks);
+      publishGuideIndex({
+        contentKey: 'guide-key',
+        index,
+        denominatorSource: 'live-pre-inlining',
+        choiceModel: createChoiceProgressModel(blocks, index),
+        responses: {},
+      });
+      mockChoiceResponses = { responses: {}, getResponse: () => undefined, setResponse: jest.fn(), isLoading: false };
+    });
+    afterEach(() => evictAllGuideIndexes());
+
+    it('disables guide completion until a required choice is answered', async () => {
+      render(<MarkCompleteFooter context="guide" />);
+      const button = await screen.findByTestId(testIds.markComplete.button);
+      await waitFor(() => expect(markStorage.get).toHaveBeenCalled());
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+      expect(markStorage.set).not.toHaveBeenCalled();
+    });
+
+    it('stores a path-specific completion snapshot and re-arms after the path expands', async () => {
+      mockChoiceResponses!.responses = { signals: 'logs' };
+      render(<MarkCompleteFooter context="guide" />);
+      await clickWhenReady();
+      expect(markStorage.set).toHaveBeenCalledWith('guide-key', true, expect.arrayContaining(['logs-step']));
+      expect(mockChoiceResponses!.setResponse).not.toHaveBeenCalled();
+      markStorage.get.mockResolvedValue(true);
+      percentage = 100;
+      await act(async () => notifyProgress?.());
+      await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
+      percentage = 50;
+      await act(async () => notifyProgress?.());
+      await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
+    });
+  });
+
   it('records exactly one completion and one analytics event per click', async () => {
     const onMarkComplete = jest.fn();
     render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
@@ -219,7 +287,6 @@ describe('MarkCompleteFooter', () => {
     render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
 
     await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
     expect(onMarkComplete).not.toHaveBeenCalled();
     expect(reportAppInteraction).not.toHaveBeenCalled();
   });
@@ -236,7 +303,6 @@ describe('MarkCompleteFooter', () => {
       percentage: 100,
       hasProgress: true,
     });
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
   });
 
   it('announces reaching complete exactly once, and keeps focus rather than dropping it to the body', async () => {
@@ -248,7 +314,6 @@ describe('MarkCompleteFooter', () => {
     expect(liveRegions()).toEqual([completed]);
     expect(completed).toHaveTextContent('Completed');
     expect(completed).toHaveFocus();
-    expect(screen.getAllByText(/100% complete/)).toHaveLength(1);
   });
 
   it('announces nothing while unmarked, however often the percentage moves', async () => {
@@ -261,7 +326,6 @@ describe('MarkCompleteFooter', () => {
       notifyProgress?.();
     });
 
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('50% complete');
     expect(liveRegions()).toEqual([]);
   });
 
@@ -290,7 +354,6 @@ describe('MarkCompleteFooter', () => {
     });
 
     await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('25% complete');
   });
 
   it('ignores a reset that clears some other guide', async () => {

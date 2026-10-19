@@ -10,28 +10,15 @@ import { expect } from '../fixtures';
 import { testIds } from '../../src/constants/testIds';
 import { TIMEOUTS, STORAGE_KEYS } from '../constants';
 
-/**
- * Wait for Grafana UI to be ready by checking for the navbar Help button.
- * Uses element visibility as the primary signal with networkidle as secondary
- * to ensure extension sidebar component is fully registered.
- */
-export async function waitForGrafanaReady(page: Page): Promise<void> {
-  // Primary signal: Help button visible means UI is interactive
-  await page.locator('button[aria-label="Help"]').waitFor({
-    state: 'visible',
-    timeout: TIMEOUTS.UI_READY,
-  });
-  // Secondary: networkidle ensures extension sidebar is fully registered
-  // This is important because domcontentloaded fires before JS fully loads
-  await page.waitForLoadState('networkidle');
-}
+import { waitForGrafanaReady } from './grafana.helpers';
+
+export { waitForGrafanaReady } from './grafana.helpers';
 
 /**
  * Open the block editor via the overflow menu ("Create guide").
  * Available to admin and editor users (not gated by dev mode).
  */
 export async function openBlockEditor(page: Page): Promise<void> {
-  // Wait for Grafana UI to be ready
   await waitForGrafanaReady(page);
 
   // Open the docs panel via Help button

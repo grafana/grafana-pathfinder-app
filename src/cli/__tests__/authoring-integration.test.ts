@@ -142,6 +142,7 @@ describe('agent authoring round-trip (full multi-block guide)', () => {
     const m = await runSetManifest({
       dir,
       description: 'Learn to send logs to Loki and query them in Grafana',
+      category: 'onboarding',
       provides: ['loki-basics'],
       recommends: ['first-dashboard'],
     });

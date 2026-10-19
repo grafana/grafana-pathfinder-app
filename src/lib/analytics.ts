@@ -17,9 +17,10 @@ import { pushFaroUserAction } from './telemetry/bridge';
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
 import { furthestEvidencedPosition } from './guide-stats/progress';
-import { GUIDE_STATS_VERSION } from './guide-stats/summary';
+import { GUIDE_STATS_VERSION } from './guide-stats/version';
 import type { GuideBlockIndex } from './guide-stats/block-index';
-import { getGuideIndex } from '../global-state/active-guide-index';
+import { getGuideIndex, getHiddenGuideSections } from '../global-state/active-guide-index';
+import { choicePathCompletionKeys } from './guide-stats/choice-progress';
 import { getContentKey } from '../global-state/content-key';
 import type { ExperimentConfig, ExperimentAnalyticsEntry } from '../utils/openfeature';
 import type { LearningJourneyTabType } from '../types/content-panel.types';
@@ -45,7 +46,9 @@ export enum UserInteraction {
   DocsPanelInteraction = 'docs_panel_interaction',
   HelpButtonClickedToolbar = 'help_button_clicked_toolbar',
   HelpButtonDismissedHint = 'help_button_dismissed_hint',
+  AutoOpenGuideEligible = 'auto_open_guide_eligible',
   PanelScroll = 'panel_scroll',
+  CatalogInteraction = 'catalog_interaction',
 
   // Navigation & Tab Management
   CloseTabClick = 'close_tab_click',
@@ -71,7 +74,6 @@ export enum UserInteraction {
   DoItButtonClick = 'do_it_button_click',
   DoSectionButtonClick = 'do_section_button_click',
   StepAutoCompleted = 'step_auto_completed',
-  StepAutoCompleteFailed = 'step_auto_complete_failed',
   StepSkipped = 'step_skipped',
   ResetProgressClick = 'reset_progress_click',
   MarkCompleteClicked = 'mark_complete_clicked',
@@ -174,6 +176,7 @@ export enum AnalyticsLinkType {
 
 export const STEP_PERCENTAGE_RULE_VERSION = 'step-position-v1';
 export const BLOCK_PROGRESS_RULE_VERSION = 'block-position-v1';
+export const AUTO_COMPLETION_RULE_VERSION = 'observed-block-v1';
 
 export type ResetScope = 'guide' | 'path' | 'assignment' | 'all';
 
@@ -714,7 +717,20 @@ function blockCountProperties(index: GuideBlockIndex): Record<string, string | n
 
 export function getGuideBlockCountProperties(contentKey: string): Record<string, string | number> {
   const active = getGuideIndex(contentKey);
-  return active ? blockCountProperties(active.index) : {};
+  if (!active) {
+    return {};
+  }
+  return {
+    ...blockCountProperties(active.index),
+    ...(active.choiceModel && {
+      block_progress_rule_version: 'choice-path-v1',
+      active_block_count: choicePathCompletionKeys(
+        active.choiceModel,
+        active.responses ?? {},
+        getHiddenGuideSections(contentKey)
+      ).length,
+    }),
+  };
 }
 
 function getStepBlockProperties(stepId: string | undefined): Record<string, string | number> {
@@ -729,7 +745,7 @@ function getStepBlockProperties(stepId: string | undefined): Record<string, stri
   if (blockPosition === 0) {
     return {};
   }
-  return { block_position: blockPosition, ...blockCountProperties(active.index) };
+  return { block_position: blockPosition, ...getGuideBlockCountProperties(active.contentKey) };
 }
 
 export type StepSkipReason = 'user' | 'requirements_unmet' | 'section_run_auto' | 'after_failure';

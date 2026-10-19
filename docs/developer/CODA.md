@@ -462,6 +462,8 @@ Grafana restart.
 | `src/components/interactive-tutorial/challenge-block.tsx`       | CTF-style block                                                                              |
 | `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button, and the gcx mint/paste flow behind `gcx: true`                     |
 
+`coda-exit-zero` executes only when the caller passes `allowCodaExecution: true` for an explicit user check; passive evaluations leave it false. The command also remains gated on `PATHFINDER_READY_FILE`.
+
 ### Terminal persistence
 
 | Key                                      | Storage        | Purpose                                  |

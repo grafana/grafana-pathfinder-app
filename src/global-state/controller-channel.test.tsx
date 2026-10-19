@@ -32,7 +32,7 @@ function Probe() {
   );
 }
 
-function RequestProbe() {
+function RequestProbe({ allowCodaExecution }: { allowCodaExecution?: boolean }) {
   const channel = useControllerChannel();
   const [check, setCheck] = React.useState('pending');
   const [fix, setFix] = React.useState('pending');
@@ -40,7 +40,9 @@ function RequestProbe() {
     <div>
       <button
         onClick={() =>
-          channel?.requestRequirementCheck('s1', 'navmenu-open').then((r) => setCheck(r ? `pass:${r.pass}` : 'null'))
+          channel
+            ?.requestRequirementCheck('s1', 'navmenu-open', { allowCodaExecution })
+            .then((r) => setCheck(r ? `pass:${r.pass}` : 'null'))
         }
       >
         check
@@ -323,6 +325,23 @@ describe('ControllerChannelProvider', () => {
 
     expect(postedOfKind(transport, 'step-command')).toBeUndefined();
   });
+
+  it.each([undefined, false, true])(
+    'carries the command execution opt-in in the signed check (%s)',
+    async (allowCodaExecution) => {
+      const transport = new FakeCrossTabTransport();
+      render(
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          <RequestProbe allowCodaExecution={allowCodaExecution} />
+        </ControllerChannelProvider>
+      );
+      await pairWithLive(transport);
+      fireEvent.click(screen.getByText('check'));
+      const request = await waitForPostedOfKind(transport, 'check-requirements');
+      expect(request.allowCodaExecution).toBe(allowCodaExecution);
+      expect(request).toEqual(expect.objectContaining(signedFieldsFor('live')));
+    }
+  );
 
   it('resolves requestRequirementCheck with the live tab reply', async () => {
     const transport = new FakeCrossTabTransport();
@@ -623,6 +642,74 @@ describe('ControllerChannelProvider', () => {
     await waitFor(() => expect(screen.getByTestId('done2')).toHaveTextContent('ok:true'));
   });
 
+  describe('awaitStepComplete bound', () => {
+    async function renderPaired() {
+      const transport = new FakeCrossTabTransport();
+      let channel!: NonNullable<ReturnType<typeof useControllerChannel>>;
+      function Capture() {
+        const value = useControllerChannel();
+        React.useEffect(() => {
+          channel = value!;
+        }, [value]);
+        return null;
+      }
+      render(
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          <Capture />
+        </ControllerChannelProvider>
+      );
+      await pairWithLive(transport, 'live-A');
+      return { transport, channel };
+    }
+
+    afterEach(() => {
+      jest.useRealTimers();
+      jest.restoreAllMocks();
+    });
+
+    it('resolves false when no step-complete arrives and drops the pending run', async () => {
+      const { channel } = await renderPaired();
+      const deleted = jest.spyOn(Map.prototype, 'delete');
+      jest.useFakeTimers();
+      let result: boolean | undefined;
+      void channel.awaitStepComplete('s11', 'run-11', 100).then((ok) => (result = ok));
+
+      await act(async () => jest.advanceTimersByTimeAsync(99));
+      expect(result).toBeUndefined();
+      await act(async () => jest.advanceTimersByTimeAsync(1));
+
+      expect(result).toBe(false);
+      expect(deleted).toHaveBeenCalledWith('s11:run-11');
+    });
+
+    it.each(['completion', 'cancel'])('clears the timer on %s', async (end) => {
+      const { transport, channel } = await renderPaired();
+      jest.useFakeTimers();
+      const idle = jest.getTimerCount();
+      const pending = channel.awaitStepComplete('s12', 'run-12', 100);
+      expect(jest.getTimerCount()).toBe(idle + 1);
+
+      if (end === 'cancel') {
+        channel.cancelStepComplete('s12', 'run-12');
+      } else {
+        act(() =>
+          transport.emit({
+            source: 'pathfinder',
+            senderId: 'live-A',
+            timestamp: 0,
+            kind: 'step-complete',
+            stepId: 's12',
+            runId: 'run-12',
+            ok: true,
+          })
+        );
+      }
+
+      expect(await pending).toBe(end === 'completion');
+      expect(jest.getTimerCount()).toBe(idle);
+    });
+  });
+
   it('forwards step-progress to an onStepProgress subscriber', async () => {
     function ProgressProbe() {
       const channel = useControllerChannel();
@@ -713,6 +800,40 @@ describe('ControllerChannelProvider', () => {
     );
   });
 
+  it('hands back the latest milestone on pagehide without pairing again', async () => {
+    const transport = new FakeCrossTabTransport();
+    const first = { doc: 'backend-guide:path', milestoneUrl: 'backend-guide:one' };
+    const latest = { ...first, milestoneUrl: 'backend-guide:three', trackId: 'builder' };
+    const { rerender } = render(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING} position={first}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+    await pairWithLive(transport);
+    rerender(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING} position={latest}>
+        <Probe />
+      </ControllerChannelProvider>
+    );
+    await waitFor(() => {
+      act(() => window.dispatchEvent(new Event('pagehide')));
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({
+          kind: 'sidebar-handoff',
+          action: 'reopen',
+          position: latest,
+          ...signedFieldsFor('live'),
+        })
+      );
+    });
+    expect(
+      transport.postedMessages.filter((message) => {
+        const payload = message as { kind: string; action?: string };
+        return payload.kind === 'sidebar-handoff' && payload.action === 'close';
+      })
+    ).toHaveLength(1);
+  });
+
   it('returns null outside a provider', () => {
     function Peek() {
       const channel = useControllerChannel();
@@ -720,5 +841,39 @@ describe('ControllerChannelProvider', () => {
     }
     render(<Peek />);
     expect(screen.getByTestId('outside')).toHaveTextContent('null');
+  });
+});
+
+describe('observation evidence', () => {
+  it('delivers evidence only from the paired live tab', async () => {
+    const transport = new FakeCrossTabTransport();
+    const received = jest.fn();
+    function ObservationProbe() {
+      const channel = useControllerChannel();
+      React.useEffect(() => channel?.onObservation('sub-1', received), [channel]);
+      return null;
+    }
+    render(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+        <ObservationProbe />
+      </ControllerChannelProvider>
+    );
+    await pairWithLive(transport, 'live-A');
+    const evidence = (senderId: string): CrossTabMessage => ({
+      source: 'pathfinder',
+      senderId,
+      timestamp: 0,
+      kind: 'observation-evidence',
+      subscriptionId: 'sub-1',
+      guideKey: 'bundled:guide',
+      id: 'step',
+      index: 0,
+    });
+
+    act(() => transport.emit(evidence('live-B')));
+    expect(received).not.toHaveBeenCalled();
+
+    act(() => transport.emit(evidence('live-A')));
+    expect(received).toHaveBeenCalledWith(expect.objectContaining({ senderId: 'live-A', id: 'step' }));
   });
 });

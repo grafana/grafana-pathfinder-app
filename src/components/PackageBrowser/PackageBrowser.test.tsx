@@ -1,3 +1,4 @@
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { CatalogPackage } from '../../types/package-catalog.types';
@@ -49,6 +50,11 @@ afterAll(() => {
   global.IntersectionObserver = originalObserver;
   canvasSpy.mockRestore();
 });
+
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportAppInteraction: jest.fn(),
+}));
 
 jest.mock('../../learning-paths', () => ({
   useCatalogProgress: () => new Map(),
@@ -171,6 +177,26 @@ it('expands path details in the card without preparing content or moving scroll 
   expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
 });
 
+it('omits path milestones from the list and search while keeping them in path details', async () => {
+  mockItems.push({
+    key: 'curated:path',
+    id: 'path',
+    title: 'Dashboard path',
+    format: 'path',
+    source: 'grafana',
+    url: '',
+    memberIds: ['dashboard'],
+  });
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Build a dashboard' } });
+  expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Dashboard path' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Show modules' }));
+  const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
+  expect(within(details).getByText('Build a dashboard')).toBeInTheDocument();
+});
+
 it('refuses stale unpublished private content before preparing or launching it', async () => {
   mockResolve.mockResolvedValue({ ok: false, error: { code: 'not-found' } });
   const onOpen = jest.fn();
@@ -241,7 +267,15 @@ it('starts with curated introductions and topic shortcuts rather than the full c
       badgeId: 'basics',
     },
   };
-  mockItems.push(starter);
+  mockItems.push(starter, {
+    key: 'bundled:alerts',
+    id: 'alerts',
+    title: 'Create an alert',
+    format: 'guide',
+    source: 'grafana',
+    category: 'alerting',
+    url: 'bundled:alerts',
+  });
   updateCatalogView('test', { mode: 'explore' });
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
   expect(screen.getByRole('heading', { name: 'Start with the essentials', level: 3 })).toBeInTheDocument();
@@ -322,4 +356,241 @@ it('hides launch failures from the previous identity and ignores late scope laun
     finish({ ok: true, launch: { url: 'bundled:dashboard' } });
   });
   expect(onOpen).not.toHaveBeenCalled();
+});
+
+describe('search analytics', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  const searchEvents = () =>
+    jest.mocked(reportAppInteraction).mock.calls.filter(([, properties]) => properties?.action === 'search');
+  const edit = (value: string) =>
+    fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value } });
+  const commit = () => fireEvent.keyDown(screen.getByLabelText('Search guides and paths'), { key: 'Enter' });
+
+  it('waits for Enter or blur even during slow typing, then reports once without raw text', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    for (const value of ['l', 'lo', 'log', 'logs', 'logs ']) {
+      edit(value);
+      act(() => jest.advanceTimersByTime(6000));
+    }
+    expect(searchEvents()).toHaveLength(0);
+    commit();
+    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    act(() => jest.advanceTimersByTime(10000));
+    expect(searchEvents()).toEqual([
+      [
+        UserInteraction.CatalogInteraction,
+        {
+          action: 'search',
+          interaction_location: 'package_browser',
+          search_topic: 'logs',
+        },
+      ],
+    ]);
+  });
+
+  it('reports an unmatched committed query only as other', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    edit('dashboard for alice@example.com');
+    act(() => jest.advanceTimersByTime(10000));
+    expect(searchEvents()).toHaveLength(0);
+    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    expect(searchEvents()).toEqual([
+      [
+        UserInteraction.CatalogInteraction,
+        {
+          action: 'search',
+          interaction_location: 'package_browser',
+          search_topic: 'other',
+        },
+      ],
+    ]);
+  });
+
+  it('suppresses consecutive same-topic commits, including aliases and whitespace edits', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    for (const value of ['log', 'logs', ' LOGS ', 'loki']) {
+      edit(value);
+      commit();
+      act(() => jest.advanceTimersByTime(6000));
+    }
+    expect(searchEvents()).toHaveLength(1);
+  });
+
+  it('coalesces rapid commits into the latest topic after a five-second cooldown', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    edit('logs');
+    commit();
+    act(() => jest.advanceTimersByTime(1000));
+    edit('metrics');
+    commit();
+    act(() => jest.advanceTimersByTime(1000));
+    edit('tempo');
+    commit();
+    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    act(() => jest.advanceTimersByTime(2999));
+    expect(searchEvents()).toHaveLength(1);
+    act(() => jest.advanceTimersByTime(1));
+    expect(searchEvents().map(([, properties]) => properties?.search_topic)).toEqual(['logs', 'traces']);
+    act(() => jest.advanceTimersByTime(10000));
+    expect(searchEvents()).toHaveLength(2);
+  });
+
+  it('cancels a queued commit when typing resumes until the new edit is committed', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    edit('logs');
+    commit();
+    edit('metrics');
+    commit();
+    edit('tempo');
+    act(() => jest.advanceTimersByTime(10000));
+    expect(searchEvents()).toHaveLength(1);
+    commit();
+    expect(searchEvents().map(([, properties]) => properties?.search_topic)).toEqual(['logs', 'traces']);
+  });
+
+  it('clearing cancels queued reporting and resets topic deduplication without bypassing cooldown', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    edit('logs');
+    commit();
+    edit('metrics');
+    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    edit('logs');
+    commit();
+    act(() => jest.advanceTimersByTime(4999));
+    expect(searchEvents()).toHaveLength(1);
+    act(() => jest.advanceTimersByTime(1));
+    expect(searchEvents().map(([, properties]) => properties?.search_topic)).toEqual(['logs', 'logs']);
+  });
+
+  it.each(['delete', 'clear filters', 'explore'])('cancels a queued search on %s', (action) => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    edit('logs');
+    commit();
+    edit('metrics');
+    commit();
+    if (action === 'delete') {
+      edit('');
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: action === 'explore' ? 'Explore' : 'Clear filters' }));
+    }
+    act(() => jest.advanceTimersByTime(10000));
+    expect(searchEvents()).toHaveLength(1);
+  });
+
+  it('does not commit Enter used for input composition', () => {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    edit('logs');
+    fireEvent.keyDown(screen.getByLabelText('Search guides and paths'), { key: 'Enter', isComposing: true });
+    expect(searchEvents()).toHaveLength(0);
+    commit();
+    expect(searchEvents()).toHaveLength(1);
+  });
+
+  it('does not report restored searches or queries deleted before committing', () => {
+    updateCatalogView('test', { query: 'metrics' });
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    edit('tempo');
+    edit('');
+    commit();
+    act(() => jest.advanceTimersByTime(10000));
+    expect(searchEvents()).toHaveLength(0);
+  });
+
+  it('cancels queued committed searches on unmount', () => {
+    const { unmount } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    edit('logs');
+    commit();
+    edit('metrics');
+    commit();
+    unmount();
+    act(() => jest.advanceTimersByTime(10000));
+    expect(searchEvents()).toHaveLength(1);
+  });
+
+  it('cancels queued committed searches when organization scope changes', () => {
+    const { rerender } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    edit('logs');
+    commit();
+    edit('metrics');
+    commit();
+    mockScope = 'test:search-other-org';
+    updateCatalogView(mockScope, { mode: 'all', query: 'tempo' });
+    rerender(<PackageBrowser onOpenGuide={jest.fn()} />);
+    act(() => jest.advanceTimersByTime(10000));
+    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    expect(searchEvents()).toHaveLength(1);
+  });
+});
+
+it('reports explicit source and view changes and topic shortcuts', () => {
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  for (const label of ['Official', 'Official', 'Your organization', 'All']) {
+    fireEvent.click(screen.getByRole('button', { name: label }));
+  }
+  expect(jest.mocked(reportAppInteraction).mock.calls.map(([, properties]) => properties)).toEqual([
+    {
+      action: 'source',
+      content_source: 'grafana',
+      previous_content_source: 'all',
+      interaction_location: 'package_browser',
+    },
+    {
+      action: 'source',
+      content_source: 'organization',
+      previous_content_source: 'grafana',
+      interaction_location: 'package_browser',
+    },
+    {
+      action: 'source',
+      content_source: 'all',
+      previous_content_source: 'organization',
+      interaction_location: 'package_browser',
+    },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'view',
+    view: 'explore',
+    previous_view: 'all',
+    interaction_location: 'package_browser',
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Dashboards.*guides and paths/ }));
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'topic',
+    topic: 'dashboards',
+    control: 'shortcut',
+    interaction_location: 'package_browser',
+  });
+});
+
+it('reports no view change for reselecting the active view or for the switch a search makes', () => {
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'All content' }));
+  expect(reportAppInteraction).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
+  jest.mocked(reportAppInteraction).mockClear();
+  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'dashboard' } });
+  expect(screen.getByRole('button', { name: 'All content' })).toHaveAttribute('aria-pressed', 'true');
+  expect(jest.mocked(reportAppInteraction).mock.calls.some(([, properties]) => properties?.action === 'view')).toBe(
+    false
+  );
+});
+
+it('reports a topic chosen from the filter as a filter selection', async () => {
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  const topic = screen.getByRole('combobox', { name: 'Topic' });
+  fireEvent.change(topic, { target: { value: 'Dashboards' } });
+  await act(async () => {});
+  fireEvent.keyDown(topic, { key: 'ArrowDown' });
+  fireEvent.keyDown(topic, { key: 'Enter' });
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'topic',
+    topic: 'dashboards',
+    control: 'filter',
+    interaction_location: 'package_browser',
+  });
 });

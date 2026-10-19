@@ -62,6 +62,9 @@ export const CollatedCompletionWireSchema = z.strictObject({
   latestCompletedAt: z.string(),
   latestSource: z.string(),
   maxCompletionPercent: z.number().int(),
+  latestDurationSeconds: z.number().int().optional(),
+  lastRecordedAt: z.string().optional(),
+  latestAttemptStartedAt: z.string().optional(),
 });
 
 /**
@@ -76,6 +79,7 @@ export const InProgressCompletionWireSchema = z.strictObject({
   pathId: z.string(),
   completionPercent: z.number().int(),
   lastUpdatedAt: z.string(),
+  attemptStartedAt: z.string().optional(),
 });
 
 /**

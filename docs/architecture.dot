@@ -108,16 +108,14 @@ digraph GrafanaPathfinder {
     
     // Auto-Detection Layer
     subgraph cluster_autodetect {
-        label="Auto-Detection Layer (Optional)";
+        label="Passive Observation Layer";
         style=filled;
         color=wheat;
         
-        ActionMonitor [label="action-monitor\n(Singleton)\n- Global listeners\n- Event emission\n- Enable/disable"];
-        ActionMatcher [label="action-matcher\n- Step matching\n- Coordinate-based\n- Selector-based"];
-        ActionDetector [label="action-detector\n- Type detection\n- Element filtering"];
+        CompletionCoordinator [label="completion coordinator\n(one per renderer)\n- Objectives gate\n- Ordered action cursor"];
+        PassiveAction [label="passive-action\n- Capture listeners\n- Event-type gate\n- Selector match"];
         
-        ActionMonitor -> ActionDetector;
-        ActionDetector -> ActionMatcher;
+        PassiveAction -> CompletionCoordinator;
     }
     
     // Main Flow Connections
@@ -131,7 +129,7 @@ digraph GrafanaPathfinder {
     InteractiveHook -> NavigationManager;
     InteractiveHook -> InteractiveStateManager;
     InteractiveStateManager -> SequentialRequirementsManager;
-    ActionMonitor -> InteractiveStep;
+    CompletionCoordinator -> InteractiveStep;
     
     // Data Flow 1: User Opens Pathfinder
     subgraph cluster_flow1 {
@@ -200,19 +198,17 @@ digraph GrafanaPathfinder {
     
     // Data Flow 5: Auto-Detection
     subgraph cluster_flow5 {
-        label="5. AUTO-DETECTION (Optional)";
+        label="5. PASSIVE COMPLETION";
         style=dashed;
         color=blue;
         
-        Flow5_Monitor [label="ActionMonitor (Singleton)\n- Global DOM listeners"];
-        Flow5_UserAction [label="User performs action\n(click, input, hover)"];
-        Flow5_Detector [label="action-detector.ts\n- Detect action type\n- Filter non-interactive"];
-        Flow5_Emit [label="Emit 'user-action-detected'\ncustom event"];
-        Flow5_Components [label="InteractiveStep/MultiStep/Guided\n- Listen for events\n- Match against config\n(action-matcher)"];
-        Flow5_Match [label="Coordinate-based +\nselector-based matching"];
-        Flow5_Complete [label="Auto-complete step\n- Mark as completed\n- Track analytics\n- Unlock next step"];
+        Flow5_Open [label="Guide opens\n- Blocks register with\nthe completion coordinator"];
+        Flow5_UserAction [label="User performs action\n(click, input, hover, navigate)"];
+        Flow5_Match [label="passive-action.ts\n- Next required action only\n- No evidence while executing"];
+        Flow5_Gate [label="Objectives or verify\ngate the commit"];
+        Flow5_Complete [label="Record completion\n- Mark as completed\n- Unlock next step"];
         
-        Flow5_Monitor -> Flow5_UserAction -> Flow5_Detector -> Flow5_Emit -> Flow5_Components -> Flow5_Match -> Flow5_Complete;
+        Flow5_Open -> Flow5_UserAction -> Flow5_Match -> Flow5_Gate -> Flow5_Complete;
     }
     
     // Data Flow 6: Section Execution
@@ -224,10 +220,10 @@ digraph GrafanaPathfinder {
         Flow6_Click [label="User clicks\n'Do Section' button"];
         Flow6_Section [label="InteractiveSection.tsx\n(handleDoSection)"];
         Flow6_Blocking [label="Start Section Blocking\n(global-interaction-blocker)\n- Prevents user interference"];
-        Flow6_Disable [label="Disable ActionMonitor\n(prevent auto-detection)"];
+        Flow6_Disable [label="Steps report executing\n(no passive evidence)"];
         Flow6_Loop [label="For each step in sequence:\n1. Check requirements\n2. Show phase (1.5s)\n3. Do phase (execute)\n4. Mark completed\n5. Delay (1.8s)\n6. Handle failures"];
         Flow6_Pause [label="PAUSE for Guided steps\n- user must click 'Do it'"];
-        Flow6_Stop [label="Stop Section Blocking\nRe-enable ActionMonitor\nPersist to localStorage"];
+        Flow6_Stop [label="Stop Section Blocking\nPersist to localStorage"];
         
         Flow6_Click -> Flow6_Section -> Flow6_Blocking -> Flow6_Disable -> Flow6_Loop -> Flow6_Pause -> Flow6_Stop;
     }

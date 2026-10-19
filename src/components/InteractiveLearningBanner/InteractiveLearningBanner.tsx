@@ -4,7 +4,7 @@
  *
  * Explains what interactive learning is, at the top of the context page and again
  * above opened guide content — a guide reached by `?doc=`, a deep link, or the
- * highlighted-guide auto-open never passes through the context page at all. Renders
+ * auto-open guide experiment never passes through the context page at all. Renders
  * nothing for the control and excluded arms, so control is byte-identical to
  * pre-experiment behaviour.
  *

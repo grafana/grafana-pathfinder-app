@@ -15,6 +15,7 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
   /** Outer container — fixed-positioned, draggable, resizable */
   panel: css({
     position: 'fixed',
+    boxSizing: 'border-box',
     zIndex: INTERACTIVE_Z_INDEX.FLOATING_PANEL,
     display: 'flex',
     flexDirection: 'column',
@@ -93,12 +94,13 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
   /** Resize handle in bottom-right corner */
   resizeHandle: css({
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
+    bottom: 6,
+    right: 6,
+    width: 20,
+    height: 20,
+    touchAction: 'none',
+    zIndex: 3,
     cursor: 'nwse-resize',
-    // Triangular resize grip
     '&::after': {
       content: '""',
       position: 'absolute',
@@ -154,6 +156,16 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
 
   pillWrapper: css({
     position: 'relative',
+  }),
+
+  stickyProgressBar: css({
+    position: 'sticky',
+    top: 0,
+    marginLeft: -theme.spacing.gridSize,
+    marginRight: -theme.spacing.gridSize,
+    marginTop: -theme.spacing.gridSize,
+    marginBottom: theme.spacing(1),
+    zIndex: 2,
   }),
 
   stickyToolbar: css({

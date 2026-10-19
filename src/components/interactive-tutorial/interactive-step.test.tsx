@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { clearHeldCompletionRequests, renderWithCoordinator as render } from '../../test-utils/completion-coordinator';
 import { InteractiveStep, executeWithLazyScroll } from './interactive-step';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
@@ -927,6 +928,79 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     expect(transport.post).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'step-command' }));
     warn.mockRestore();
   });
+});
+
+it('gates successful assistance and completeEarly through the observed objective', async () => {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  let satisfied = false;
+  const coordinator = new CompletionCoordinator(async () => satisfied);
+  const saved = jest.fn();
+  const completed = jest.fn();
+  render(
+    <>
+      <button id="observed-save" onClick={saved}>
+        Save example
+      </button>
+      <CompletionObservationContext.Provider value={coordinator}>
+        <InteractiveStep
+          stepId="assisted-objective-gate"
+          targetAction="button"
+          refTarget="#observed-save"
+          objectives={['has-dashboard-named:Example']}
+          completeEarly
+          onComplete={completed}
+        >
+          Save the example
+        </InteractiveStep>
+      </CompletionObservationContext.Provider>
+    </>
+  );
+  document.querySelector<HTMLButtonElement>('#observed-save')!.scrollIntoView = jest.fn();
+  await act(async () => {
+    coordinator.start();
+  });
+  const assist = await screen.findByRole('button', { name: /do it/i });
+  await waitFor(() => expect(assist).toBeEnabled());
+  fireEvent.click(assist);
+  await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+  expect(await screen.findByTestId('interactive-completion-waiting-assisted-objective-gate')).toHaveTextContent(
+    'Waiting for completion'
+  );
+  expect(completed).not.toHaveBeenCalled();
+  await act(async () => {
+    satisfied = true;
+    coordinator.recheck();
+  });
+  await waitFor(() => expect(completed).toHaveBeenCalledTimes(1));
+  expect(saved).toHaveBeenCalledTimes(1);
+  coordinator.stop();
+});
+
+it('completes a section noop step under the coordinator once it is eligible', async () => {
+  const { CompletionCoordinator } = await import('../../global-state/observation/coordinator');
+  const { CompletionObservationContext } = await import('../../global-state/observation/context');
+  const coordinator = new CompletionCoordinator(async () => false);
+  const onStepComplete = jest.fn();
+  render(
+    <CompletionObservationContext.Provider value={coordinator}>
+      <InteractiveStep
+        stepId="section-info-step-1"
+        sectionId="section-info"
+        targetAction="noop"
+        refTarget=""
+        isEligibleForChecking
+        onStepComplete={onStepComplete}
+      >
+        Read this first
+      </InteractiveStep>
+    </CompletionObservationContext.Provider>
+  );
+  await waitFor(() => expect(onStepComplete).toHaveBeenCalledWith('section-info-step-1'));
+});
+
+afterEach(() => {
+  clearHeldCompletionRequests();
 });
 
 describe('InteractiveStep: step_skipped', () => {

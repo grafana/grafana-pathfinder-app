@@ -21,7 +21,7 @@ export interface RequirementsState {
   hint?: string;
   explanation?: string; // User-friendly explanation for why requirements aren't met
   isSkipped?: boolean; // Whether this step was skipped
-  completionReason?: 'none' | 'objectives' | 'manual' | 'skipped';
+  completionReason?: 'none' | 'objectives' | 'observed' | 'manual' | 'skipped';
   retryCount?: number; // Current retry attempt
   maxRetries?: number; // Maximum retry attempts
   isRetrying?: boolean; // Whether currently in a retry cycle
