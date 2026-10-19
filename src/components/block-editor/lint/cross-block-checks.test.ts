@@ -424,7 +424,9 @@ describe('toggleWithoutTargetState', () => {
 
   it('suggests inferred state without clicking an already-open label-only toggle', async () => {
     const issues = toggleWithoutTargetState(
-      guideWith([{ type: 'interactive', action: 'button', reftarget: 'button[aria-label="Collapse row"]', content: 'x' }])
+      guideWith([
+        { type: 'interactive', action: 'button', reftarget: 'button[aria-label="Collapse row"]', content: 'x' },
+      ])
     );
     expect(issues[0]!.message).toContain('"targetstate": "true"');
     const suggested = issues[0]!.message.match(/"targetstate": "([^"]+)"/)![1]!;
