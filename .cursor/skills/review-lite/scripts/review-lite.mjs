@@ -14,6 +14,8 @@ export const INITIAL_CONTEXT_BUDGET = 12_000;
 const TOOLING_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const ALL_FILES_SENTINEL = 'all changed files';
 const LARGE_FILE_LINES = 400;
+// Between the heaviest in-full test load of the passing lite-v3 runs (882, #1971) and #2018's 1648 across 26 files.
+export const TEST_LINE_BUDGET = 1200;
 const GENERATED_PATTERNS = [
   '**/package-lock.json',
   '**/yarn.lock',
@@ -790,8 +792,20 @@ function changedTestPaths(inventory) {
     .map(({ path }) => path);
 }
 
+// Lines the reviewer would otherwise read in full: files above LARGE_FILE_LINES already allow changed_hunks.
+export function fullReadLines(inventory) {
+  const files = inventory?.files ?? [];
+  const wanted = new Set(changedTestPaths(inventory));
+  return files
+    .filter(({ path }) => wanted.has(path))
+    .map(({ added, deleted }) => added + deleted)
+    .filter((lines) => lines <= LARGE_FILE_LINES)
+    .reduce((sum, lines) => sum + lines, 0);
+}
+
 function validateTestReview(errors, result, inventory) {
   const required = changedTestPaths(inventory);
+  const overBudget = fullReadLines(inventory) > TEST_LINE_BUDGET;
   if (required.length === 0 && result.tests === undefined) {
     return;
   }
@@ -809,12 +823,12 @@ function validateTestReview(errors, result, inventory) {
     seen.add(entry.path);
     if (entry.read === true) {
       const file = (inventory?.files ?? []).find(({ path }) => path === entry.path);
-      const large = file !== undefined && file.added + file.deleted > LARGE_FILE_LINES;
+      const large = (file !== undefined && file.added + file.deleted > LARGE_FILE_LINES) || overBudget;
       if (!TEST_SCOPES.includes(entry.scope)) {
         errors.push(`${label}.scope must be one of ${TEST_SCOPES.join(', ')} when read is true`);
       } else if (entry.scope === 'changed_hunks' && !large) {
         errors.push(
-          `${label}.scope changed_hunks is only allowed for a test file with more than ${LARGE_FILE_LINES} changed lines; read ${entry.path} in full`
+          `${label}.scope changed_hunks is only allowed for a test file with more than ${LARGE_FILE_LINES} changed lines, or when the test files you would read in full total more than ${TEST_LINE_BUDGET} changed lines; read ${entry.path} in full`
         );
       }
       requireString(

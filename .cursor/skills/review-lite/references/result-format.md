@@ -26,7 +26,7 @@
 | `tests` | object[] | One entry per changed, non-deleted test file in `inventory.json`. Required for a complete assessment when any test file changed. |
 | `tests[].path` | string | A changed test file. |
 | `tests[].read` | boolean | `true` only when you read the file at head, not just the patch. |
-| `tests[].scope` | `full` \| `changed_hunks` | Required when `read` is true. `changed_hunks` is allowed only for a test file with more than 400 changed lines: then read every changed hunk plus the surrounding test names. |
+| `tests[].scope` | `full` \| `changed_hunks` | Required when `read` is true. `changed_hunks` is allowed only for a test file with more than 400 changed lines, or for any test file when the changed test files of 400 lines or fewer total more than 1200 changed lines: then read every changed hunk plus the surrounding test names. |
 | `tests[].assertions_checked` | string | Required when `read` is true: which new assertions would fail on a regression and which would not. |
 | `tests[].reason_kind` | `binary` \| `generated` \| `not_in_head` \| `tooling_blocked` | Required when `read` is false. Effort, time, and size are never a reason: read a large file with `scope: changed_hunks` instead. |
 | `tests[].reason` | string | Required when `read` is false: the specifics behind `reason_kind`. Text that cites effort, time, or size is rejected. |

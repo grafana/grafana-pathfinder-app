@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { addContext, finish, prepare } from './review-lite.mjs';
+import { addContext, finish, fullReadLines, prepare, TEST_LINE_BUDGET } from './review-lite.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./review-lite.mjs', import.meta.url));
 const TOOLING_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -672,6 +672,40 @@ describe('follow-up calibration and test scope', () => {
       result(runDir, { tests: [entry(smallPath, 'full'), entry(bigPath, 'changed_hunks')] })
     );
     assert.match(outcome.report, /Test files read: 2 of 2 \(1 by changed hunks, large files\)/);
+  });
+});
+
+describe('run-level test budget', () => {
+  const body = (lines, tag) =>
+    `${Array.from({ length: lines }, (_, i) => `test('${tag}${i}', () => {});`).join('\n')}\n`;
+  const entry = (path) => ({ path, read: true, scope: 'changed_hunks', assertions_checked: 'Every new test asserts.' });
+
+  function suite(fileCount, linesEach) {
+    const names = Array.from({ length: fileCount }, (_, i) => `src/interactive-engine/t${i}.test.ts`);
+    const { repo, base } = makeRepo(Object.fromEntries(names.map((name) => [name, "test('a', () => {});\n"])));
+    const head = commit(repo, Object.fromEntries(names.map((name, i) => [name, body(linesEach, `t${i}-`)])), 'head');
+    return { names, runDir: prepared({ repo, base, head }) };
+  }
+
+  test('allows changed_hunks on any test file once the files read in full pass the budget', () => {
+    const { names, runDir } = suite(4, Math.ceil(TEST_LINE_BUDGET / 4) + 20);
+    assert.ok(fullReadLines(readJson(join(runDir, 'inventory.json'))) > TEST_LINE_BUDGET);
+    const outcome = finishWith(runDir, result(runDir, { tests: names.map(entry) }));
+    assert.match(outcome.report, /Test files read: 4 of 4 \(4 by changed hunks/);
+  });
+
+  test('keeps the per-file rule below the budget', () => {
+    const { names, runDir } = suite(3, 100);
+    assert.ok(fullReadLines(readJson(join(runDir, 'inventory.json'))) <= TEST_LINE_BUDGET);
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { tests: names.map(entry) })),
+      /changed_hunks is only allowed for a test file with more than 400 changed lines/
+    );
+  });
+
+  test('files already over 400 lines do not count toward the budget', () => {
+    const { runDir } = suite(2, 900);
+    assert.equal(fullReadLines(readJson(join(runDir, 'inventory.json'))), 0);
   });
 });
 
