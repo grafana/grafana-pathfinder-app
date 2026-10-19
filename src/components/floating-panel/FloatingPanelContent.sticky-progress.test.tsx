@@ -78,6 +78,25 @@ beforeEach(async () => {
 });
 
 it.each(['floating', 'fullscreen'] as const)(
+  'keeps standalone %s progress inside the scrollport when sticky',
+  async (mode) => {
+    setActiveTabUrl(guideUrl);
+    publish(guideUrl);
+    render(surface(guideUrl, mode));
+    const progress = await screen.findByRole('progressbar');
+    expect(progress.parentElement).toHaveStyle({ position: 'sticky', top: '0px' });
+  }
+);
+
+it.each(['floating', 'fullscreen'] as const)('preserves the embedded %s milestone toolbar offset', async (mode) => {
+  setActiveTabUrl(guideUrl);
+  publish(guideUrl);
+  render(React.cloneElement(surface(guideUrl, mode), { progressKey: guideUrl, onResetGuide: jest.fn() }));
+  const progress = await screen.findByRole('progressbar');
+  expect(progress.parentElement).toHaveStyle({ position: 'sticky', top: '-8px' });
+});
+
+it.each(['floating', 'fullscreen'] as const)(
   'updates %s progress after marking a partly completed guide',
   async (mode) => {
     setActiveTabUrl(guideUrl);

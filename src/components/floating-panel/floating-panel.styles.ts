@@ -158,6 +158,16 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
     position: 'relative',
   }),
 
+  stickyProgressBar: css({
+    position: 'sticky',
+    top: 0,
+    marginLeft: -theme.spacing.gridSize,
+    marginRight: -theme.spacing.gridSize,
+    marginTop: -theme.spacing.gridSize,
+    marginBottom: theme.spacing(1),
+    zIndex: 2,
+  }),
+
   stickyToolbar: css({
     position: 'sticky',
     top: -theme.spacing.gridSize,
