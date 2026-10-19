@@ -1169,3 +1169,14 @@ describe('has-datasource sources and error policy', () => {
     expect(result.verdict).toBe('unavailable');
   });
 });
+
+describe('passive command checks', () => {
+  it.each([checkRequirements, checkPostconditions])(
+    'does not run shell checks without an explicit action',
+    async (check) => {
+      const result = await check({ requirements: ['coda-exit-zero:echo unexpected'], maxRetries: 0 });
+      expect(result.pass).toBe(false);
+      expect(result.error[0]?.error).toContain('Check my work');
+    }
+  );
+});
