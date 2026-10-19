@@ -608,3 +608,12 @@ rewriting the URL.
 ### VM stuck provisioning, SSH failures, quota problems
 
 These are backend concerns. See the `grafana-coda-app` repo's `docs/API.md` and `docs/SECURITY.md`.
+
+### Terminal recovery
+
+The terminal hook uses `CodaTerminalLink` from SDK 1.13.2. After an established
+connection is lost, the SDK reattaches to the same VM within an absolute five-minute
+budget, including time spent reserving or provisioning a replacement session.
+The hook shows initial connection errors immediately and ignores cancelled or
+superseded callbacks. It intercepts `vm_unreachable` so replacing a VM remains an
+explicit user action. Reattachment opens a new shell and never replays input.

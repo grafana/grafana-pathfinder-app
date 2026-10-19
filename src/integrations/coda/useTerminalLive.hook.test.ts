@@ -443,6 +443,37 @@ it('leaves the welcome to the guest and passes terminal output through unchanged
 });
 
 describe('automatic recovery', () => {
+  it.each(['internal', 'rate_limited', 'coda_unavailable', 'future_error'])(
+    'shows an initial reservation failure immediately: %s',
+    async (code) => {
+      mockedCreateSession.mockRejectedValue(new CodaError('initial failure', code, 503));
+      const terminalRef = { current: fakeTerminal() };
+      const hook = renderHook(() => useTerminalLive({ terminalRef }));
+      await act(async () => hook.result.current.connect());
+      expect(hook.result.current.status).toBe('error');
+      expect(hook.result.current.error).toBeTruthy();
+      const originalError = hook.result.current.error;
+      await act(async () => {
+        jest.advanceTimersByTime(310000);
+      });
+      expect(mockedCreateSession).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.error).toBe(originalError);
+      expect(terminalRef.current.writeln).not.toHaveBeenCalledWith(expect.stringContaining('Reconnecting'));
+    }
+  );
+
+  it('stops a failed first subscription without masking its error', async () => {
+    const { hook, handlers, terminalRef } = await connectedHook();
+    act(() => handlers.current.onError?.(new CodaError('initial failure', 'future_error', 503)));
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe('initial failure');
+    await act(async () => {
+      jest.advanceTimersByTime(310000);
+    });
+    expect(mockedCreateSession).toHaveBeenCalledTimes(1);
+    expect(terminalRef.current.writeln).not.toHaveBeenCalledWith(expect.stringContaining('Reconnecting'));
+  });
+
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
@@ -570,6 +601,12 @@ describe('automatic recovery', () => {
     expect(hook.result.current.status).toBe('error');
     expect(hook.result.current.error).toBe('Automatic reconnection stopped. Select Retry to try again.');
     expect(slow.close).toHaveBeenCalled();
+    act(() => {
+      slow.handlers.current.onConnected?.('vm-existing');
+      slow.handlers.current.onError?.(new CodaError('late failure', 'coda_unavailable', 503));
+    });
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.sessionId).toBeNull();
   });
 
   it('clears the recovery deadline once a reattach connects', async () => {

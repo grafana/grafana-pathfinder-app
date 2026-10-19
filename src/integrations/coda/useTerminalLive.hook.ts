@@ -113,14 +113,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   // Tracks the current session's VM for logging and identity changes.
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
-  // SDK 1.11 checks its outage budget only between attempts, so a slow reattach can outlive it.
-  const recoveryDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearRecoveryDeadline = useCallback(() => {
-    if (recoveryDeadlineRef.current) {
-      clearTimeout(recoveryDeadlineRef.current);
-      recoveryDeadlineRef.current = null;
-    }
-  }, []);
+  const hasConnectedRef = useRef(false);
 
   // Provision progress bar state (animated bar during pending/provisioning)
   const provisionProgressRef = useRef<{
@@ -143,7 +136,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
   // Exec must never reuse a closed session id.
   const cleanup = useCallback(() => {
-    clearRecoveryDeadline();
+    hasConnectedRef.current = false;
     setSessionId(null);
     currentVmIdRef.current = null;
     setVmId(null);
@@ -163,7 +156,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       provisionProgressRef.current = null;
     }
     lastStatusLineRef.current = '';
-  }, [clearRecoveryDeadline]);
+  }, []);
 
   useEffect(() => {
     return cleanup;
@@ -213,30 +206,17 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             setStatus('connecting');
           }
         },
-        onReconnect: ({ outageMs, budgetMs }) => {
-          setError(null);
-          terminal.writeln('\r\nReconnecting to sandbox...');
-          if (recoveryDeadlineRef.current) {
+        onReconnect: () => {
+          if (sessionRef.current !== session) {
             return;
           }
-          recoveryDeadlineRef.current = setTimeout(
-            () => {
-              recoveryDeadlineRef.current = null;
-              if (sessionRef.current !== session) {
-                return;
-              }
-              cleanup();
-              connectionLogRef.current.error('Sandbox recovery deadline passed during a reattach', undefined, {
-                backendErrorCode: 'recovery_exhausted',
-                category: 'backend_error',
-              });
-              setError(RECOVERY_EXHAUSTED_MESSAGE);
-              setStatus('error');
-            },
-            Math.max(0, budgetMs - outageMs)
-          );
+          setError(null);
+          terminal.writeln('\r\nReconnecting to sandbox...');
         },
         onOutput: (data) => {
+          if (sessionRef.current !== session) {
+            return;
+          }
           terminal.write(data);
         },
 
@@ -310,7 +290,10 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
 
         onConnected: ({ vmId, sessionId: nextSessionId, expiresAt, reattached }) => {
-          clearRecoveryDeadline();
+          if (sessionRef.current !== session) {
+            return;
+          }
+          hasConnectedRef.current = true;
           setSessionId(nextSessionId);
           setError(null);
           if (vmId) {
@@ -372,7 +355,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
       });
     },
-    [cleanup, clearRecoveryDeadline, rememberVmId]
+    [cleanup, rememberVmId]
   );
 
   const connect = useCallback(
@@ -399,17 +382,30 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       const session = new CodaTerminalLink({
         client: {
           createSession: async (options) => {
-            const transport = await createSession(options);
+            let transport;
+            try {
+              transport = await createSession(options);
+            } catch (err) {
+              if (sessionRef.current === session && !hasConnectedRef.current) {
+                cleanup();
+                setError(codaSessionErrorMessage(err));
+                setStatus('error');
+              }
+              throw err;
+            }
             const subscribe = transport.subscribe.bind(transport);
             // Preserve replacement until https://github.com/grafana/grafana-coda-app/blob/main/packages/coda-client/src/recovery.ts ends vm_unreachable.
             transport.subscribe = (handlers) =>
               subscribe({
                 ...handlers,
                 onError: (err) => {
-                  if (toCodaError(err).code === 'vm_unreachable' && sessionRef.current === session) {
+                  if (
+                    sessionRef.current === session &&
+                    (!hasConnectedRef.current || toCodaError(err).code === 'vm_unreachable')
+                  ) {
                     const failedVmId = currentVmIdRef.current;
                     cleanup();
-                    setUnreachableVmId(failedVmId);
+                    setUnreachableVmId(toCodaError(err).code === 'vm_unreachable' ? failedVmId : null);
                     setError(codaSessionErrorMessage(err));
                     setStatus('error');
                     return;
