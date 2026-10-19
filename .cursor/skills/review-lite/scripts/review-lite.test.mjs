@@ -689,7 +689,7 @@ describe('test review', () => {
       /assertions_checked/
     );
     assert.throws(
-      () => finishWith(runDir, result(runDir, { tests: [{ path, read: false }] })),
+      () => finishWith(runDir, result(runDir, { tests: [{ path, read: false, reason_kind: 'generated' }] })),
       /reason \(why this test file was not read in full\)/
     );
     assert.throws(
@@ -700,6 +700,36 @@ describe('test review', () => {
         ),
       /not a changed test file in this run/
     );
+  });
+
+  test('an unread test file needs a closed reason_kind and may not cite effort, time, or size', () => {
+    const { runDir } = testedRun();
+    const path = 'src/interactive-engine/step-index.test.ts';
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { tests: [{ path, read: false, reason: 'Generated fixture.' }] })),
+      /reason_kind must be one of binary, generated, not_in_head, tooling_blocked/
+    );
+    assert.throws(
+      () =>
+        finishWith(
+          runDir,
+          result(runDir, { tests: [{ path, read: false, reason_kind: 'effort', reason: 'Skipped to save effort.' }] })
+        ),
+      /reason_kind must be one of/
+    );
+    assert.throws(
+      () =>
+        finishWith(
+          runDir,
+          result(runDir, {
+            tests: [{ path, read: false, reason_kind: 'generated', reason: 'Skipped to save time, file is large.' }],
+          })
+        ),
+      /cites effort, time, or size/
+    );
+    for (const reason_kind of ['binary', 'generated', 'not_in_head', 'tooling_blocked']) {
+      finishWith(runDir, result(runDir, { tests: [{ path, read: false, reason_kind, reason: 'Not readable here.' }] }));
+    }
   });
 
   test('the report states how many test files were read and lists the unread ones as limitations', () => {
@@ -714,7 +744,10 @@ describe('test review', () => {
       })
     );
     assert.match(read.report, /Test files read: 1 of 1/);
-    const unread = finishWith(runDir, result(runDir, { tests: [{ path, read: false, reason: 'Generated fixture.' }] }));
+    const unread = finishWith(
+      runDir,
+      result(runDir, { tests: [{ path, read: false, reason_kind: 'generated', reason: 'Generated fixture.' }] })
+    );
     assert.match(unread.report, /Test files read: 0 of 1/);
     assert.match(
       unread.report,

@@ -29,6 +29,8 @@ const FINDING_ID = /^[A-Za-z][A-Za-z0-9-]{0,31}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const MAX_NITS = 5;
 const TEST_SCOPES = ['full', 'changed_hunks'];
+const UNREAD_KINDS = ['binary', 'generated', 'not_in_head', 'tooling_blocked'];
+const EFFORT_REASON = /\b(effort|save time|to save|too (large|big|long|many)|large file|big file|budget|cost)\b/i;
 const ATTRIBUTIONS = ['introduced', 'newly_exposed', 'pre_existing'];
 const NIT_TEXT_FIELDS = ['title', 'location', 'evidence'];
 const PLACEHOLDER_REASONS = new Set(['', 'n/a', 'na', 'none', 'not applicable', '-', 'no', 'nothing']);
@@ -811,7 +813,17 @@ function validateTestReview(errors, result, inventory) {
         `${label}.assertions_checked (which new assertions would fail if the behavior regressed, and which would not)`
       );
     } else if (entry.read === false) {
+      if (!UNREAD_KINDS.includes(entry.reason_kind)) {
+        errors.push(
+          `${label}.reason_kind must be one of ${UNREAD_KINDS.join(', ')} when read is false; effort, time, and size are not reasons, use scope changed_hunks for a large file`
+        );
+      }
       requireString(errors, entry.reason, `${label}.reason (why this test file was not read in full)`);
+      if (typeof entry.reason === 'string' && EFFORT_REASON.test(entry.reason)) {
+        errors.push(
+          `${label}.reason cites effort, time, or size; read the file, or use scope changed_hunks when it is large`
+        );
+      }
     } else {
       errors.push(`${label}.read must be a boolean`);
     }

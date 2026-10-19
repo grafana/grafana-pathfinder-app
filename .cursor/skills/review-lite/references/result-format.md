@@ -28,7 +28,8 @@
 | `tests[].read` | boolean | `true` only when you read the file at head, not just the patch. |
 | `tests[].scope` | `full` \| `changed_hunks` | Required when `read` is true. `changed_hunks` is allowed only for a test file with more than 400 changed lines: then read every changed hunk plus the surrounding test names. |
 | `tests[].assertions_checked` | string | Required when `read` is true: which new assertions would fail on a regression and which would not. |
-| `tests[].reason` | string | Required when `read` is false: why you did not read it. |
+| `tests[].reason_kind` | `binary` \| `generated` \| `not_in_head` \| `tooling_blocked` | Required when `read` is false. Effort, time, and size are never a reason: read a large file with `scope: changed_hunks` instead. |
+| `tests[].reason` | string | Required when `read` is false: the specifics behind `reason_kind`. Text that cites effort, time, or size is rejected. |
 | `prior_decisions` | object[] | One per item in `prior.json` `items` for a complete assessment. |
 | `prior_decisions[].action` | `carry` \| `resolved` \| `reopen` | `carry` keeps the prior record. `resolved` drops it from state. `reopen` requires a current finding with the same ID. |
 | `prior_decisions[].evidence` | string | Evidence from the current head. |

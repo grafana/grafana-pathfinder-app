@@ -64,7 +64,7 @@ An answer of "no change" needs the line you read. A delta that is real but harml
 
 ### Tests
 
-Read every changed test file at head, not from the patch. Read it in full unless it has more than 400 changed lines. For such a file read every changed hunk plus the surrounding test names, and record `scope: changed_hunks`. For each new or changed assertion ask whether it would fail if the behavior it names regressed, and whether its test name claims more than it asserts. Record each file in the result's `tests` array: `read: true` with `scope` and `assertions_checked`, or `read: false` with the reason. `finish` rejects a complete assessment that leaves a changed test file out. Do not use a limitation line to skip a file you can read.
+Read every changed test file at head, not from the patch. Read it in full unless it has more than 400 changed lines. For such a file read every changed hunk plus the surrounding test names, and record `scope: changed_hunks`. For each new or changed assertion ask whether it would fail if the behavior it names regressed, and whether its test name claims more than it asserts. Record each file in the result's `tests` array: `read: true` with `scope` and `assertions_checked`, or `read: false` with a `reason_kind` (`binary`, `generated`, `not_in_head`, or `tooling_blocked`) and the specifics in `reason`. Effort, time, and size are not reasons: a large file uses `scope: changed_hunks`. `finish` rejects a complete assessment that leaves a changed test file out. Do not use a limitation line to skip a file you can read.
 
 ## 3. Challenge
 
