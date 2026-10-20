@@ -67,31 +67,42 @@ describe('hasFeatureCheck', () => {
     });
   });
 
-  it('fails when the flag is not exposed to OpenFeature', async () => {
-    const result = await hasFeatureCheck('has-feature:newFeature');
+  it('fails when the boot toggles are populated and the flag is absent', async () => {
+    mockToggles = { otherFeature: true };
 
-    expect(result.pass).toBe(false);
-    expect(result.error).toBe("Feature toggle 'newFeature' is not enabled");
+    await expect(hasFeatureCheck('has-feature:newFeature')).resolves.toEqual({
+      requirement: 'has-feature:newFeature',
+      pass: false,
+      error: "Feature toggle 'newFeature' is not enabled",
+    });
   });
 
-  it('falls back to the boot toggles when no provider is bound', async () => {
+  it('reports unavailable when the flag is not exposed to OpenFeature', async () => {
+    await expect(hasFeatureCheck('has-feature:newFeature')).resolves.toEqual({
+      verdict: 'unavailable',
+      requirement: 'has-feature:newFeature',
+      pass: false,
+      error: "Feature toggle 'newFeature' could not be read",
+    });
+  });
+
+  it('reports unavailable when no provider is bound and the boot toggles are empty', async () => {
     mockGetProvider.mockReturnValue(NOOP_PROVIDER);
     const getBooleanDetails = evaluateAs({ value: true });
 
     const result = await hasFeatureCheck('has-feature:newFeature');
 
-    expect(result.pass).toBe(false);
+    expect(result).toMatchObject({ verdict: 'unavailable', pass: false });
     expect(getBooleanDetails).not.toHaveBeenCalled();
   });
 
-  it('falls back to the boot toggles when the client throws', async () => {
+  it('reports unavailable when the client throws and the boot toggles are empty', async () => {
     mockGetClient.mockImplementation(() => {
       throw new Error('not initialised');
     });
 
     const result = await hasFeatureCheck('has-feature:newFeature');
 
-    expect(result.pass).toBe(false);
-    expect(result.error).toBe("Feature toggle 'newFeature' is not enabled");
+    expect(result).toMatchObject({ verdict: 'unavailable', pass: false });
   });
 });

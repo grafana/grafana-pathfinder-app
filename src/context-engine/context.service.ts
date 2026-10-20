@@ -24,7 +24,7 @@ import { interactiveCompletionStorage } from '../lib/user-storage';
 import { logger } from '../lib/logging';
 import { fetchDashboardSummary, fetchDataSources } from '../lib/grafana-api';
 import { withTimeout } from '../lib/async-utils';
-import { currentPlatform } from '../lib/platform';
+import { currentPlatform } from '../constants/platform';
 import {
   buildTelemetryIdentity,
   recordRecommenderFallback,

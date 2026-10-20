@@ -6,7 +6,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TabBarActions } from './TabBarActions';
-import { currentPlatform } from '../../../lib/platform';
+import { currentPlatform } from '../../../constants/platform';
 import { testIds } from '../../../constants/testIds';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
@@ -14,7 +14,7 @@ import { useIsAssistantAvailable } from '../../../integrations/assistant-integra
 jest.mock('../../../integrations/assistant-integration', () => ({ useIsAssistantAvailable: jest.fn(() => false) }));
 
 // Mock @grafana/runtime - all mock values defined inline for hoisting compatibility
-jest.mock('../../../lib/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
+jest.mock('../../../constants/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
 jest.mock('../../../utils/current-user-role', () => {
   const isAdmin = () => {
     const user = jest.requireMock('@grafana/runtime').config.bootData.user;

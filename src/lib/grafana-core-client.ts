@@ -74,15 +74,8 @@ function stringArray(value: unknown): string[] {
 
 export async function fetchCoreUser(): Promise<CoreUser | undefined> {
   const body = await proxyGet<Record<string, unknown>>('user');
-  if (!body || typeof body !== 'object') {
-    return undefined;
-  }
-  const spec = (body.spec && typeof body.spec === 'object' ? body.spec : body) as Record<string, unknown>;
-  const role = stringOrUndefined(spec.role);
-  if (!role) {
-    return undefined;
-  }
-  return { role, grafanaAdmin: spec.grafanaAdmin === true };
+  const role = stringOrUndefined(body?.role);
+  return role ? { role, grafanaAdmin: body?.grafanaAdmin === true } : undefined;
 }
 
 export async function fetchCoreDashboard(uid: string): Promise<CoreDashboardSummary | undefined> {

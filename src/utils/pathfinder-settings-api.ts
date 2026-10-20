@@ -11,7 +11,7 @@ import {
 } from '../constants';
 import { logger } from '../lib/logging';
 import type { SettingsStoreOutcome } from '../lib/telemetry/facade';
-import { APP_PLATFORM_API_VERSION, isBackendApiAvailable } from './interactive-guides-api';
+import { APP_PLATFORM_API_VERSION, isBackendApiAvailable, isBackendApiRuledOut } from './interactive-guides-api';
 import {
   readSettingsAbsenceCache,
   rememberSettingsAbsence,
@@ -71,6 +71,10 @@ export function isSettingsApiAvailable(): boolean {
   return isBackendApiAvailable() && Boolean(config.namespace);
 }
 
+function isSettingsReadAvailable(): boolean {
+  return !isBackendApiRuledOut() && Boolean(config.namespace);
+}
+
 export function specToConfig(spec: Partial<PathfinderSettingsSpec>): PathfinderPluginConfig {
   const result: Record<string, unknown> = {};
   for (const key of TENANT_SETTING_KEYS) {
@@ -113,13 +117,13 @@ export function configToSpec(cfg: PathfinderPluginConfig): Partial<PathfinderSet
 }
 
 export function hasCachedSettingsAbsence(): boolean {
-  return isSettingsApiAvailable() && readSettingsAbsenceCache()?.absent === true;
+  return isSettingsReadAvailable() && readSettingsAbsenceCache()?.absent === true;
 }
 
 export async function fetchPathfinderSettingsSnapshot({
   useCachedAbsence = false,
 }: { useCachedAbsence?: boolean } = {}): Promise<PathfinderSettingsSnapshot | null> {
-  if (!isSettingsApiAvailable()) {
+  if (!isSettingsReadAvailable()) {
     recordSettingsStoreResolved('api-unavailable');
     return null;
   }

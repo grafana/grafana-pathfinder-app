@@ -16,7 +16,7 @@ import {
   tabTypeToContentType,
 } from '../../../lib/analytics';
 import { PLUGIN_BASE_URL } from '../../../constants';
-import { currentPlatform } from '../../../lib/platform';
+import { currentPlatform } from '../../../constants/platform';
 import { copyTextToClipboard } from '../../../lib/clipboard';
 import { testIds } from '../../../constants/testIds';
 import { clearExtensionSidebarDocked } from '../../../lib/storage/extension-sidebar';

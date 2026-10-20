@@ -13,7 +13,7 @@ import { useSyncExternalStore } from 'react';
 import { config } from '@grafana/runtime';
 
 import { fetchCoreUser, type CoreUser } from '../lib/grafana-core-client';
-import { currentPlatform } from '../lib/platform';
+import { currentPlatform } from '../constants/platform';
 import { currentUserIdentity } from '../lib/current-user-identity';
 
 export interface CurrentUser {

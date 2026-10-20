@@ -129,6 +129,7 @@
     "@grafana/faro-instrumentation-replay": "~2.12.1",
     "@grafana/faro-web-sdk": "^2.12.1",
     "@grafana/i18n": "13.2.3",
+    "@grafana/plugin-compat": "0.5.0",
     "@grafana/runtime": "13.2.3",
     "@grafana/scenes": "^8.20.1",
     "@grafana/schema": "13.2.3",

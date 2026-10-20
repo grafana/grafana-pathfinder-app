@@ -25,8 +25,8 @@ describe('grafana core client', () => {
     resetCoreProxyAvailabilityForTests();
   });
 
-  it('reads the IAM user spec through the plugin backend', async () => {
-    respond({ metadata: { name: 'u1' }, spec: { role: 'Editor', grafanaAdmin: true } });
+  it('reads the caller role through the plugin backend', async () => {
+    respond({ role: 'Editor', grafanaAdmin: true });
     await expect(fetchCoreUser()).resolves.toEqual({ role: 'Editor', grafanaAdmin: true });
     expect(mockFetch).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -37,10 +37,10 @@ describe('grafana core client', () => {
     );
   });
 
-  it('accepts a flat user shape and treats a missing role as no answer', async () => {
+  it('treats a missing role as no answer', async () => {
     respond({ role: 'Viewer' });
     await expect(fetchCoreUser()).resolves.toEqual({ role: 'Viewer', grafanaAdmin: false });
-    respond({ spec: {} });
+    respond({ role: '' });
     await expect(fetchCoreUser()).resolves.toBeUndefined();
   });
 
@@ -66,7 +66,7 @@ describe('grafana core client', () => {
   it('answers undefined on a caller-scoped failure and keeps asking', async () => {
     fail(403, 'identity-unavailable');
     await expect(fetchCoreUser()).resolves.toBeUndefined();
-    respond({ spec: { role: 'Admin' } });
+    respond({ role: 'Admin' });
     await expect(fetchCoreUser()).resolves.toEqual({ role: 'Admin', grafanaAdmin: false });
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });

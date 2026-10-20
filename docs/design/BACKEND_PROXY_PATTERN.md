@@ -768,6 +768,7 @@ unchanged. Editor writes continue to use App Platform directly.
 `GET /grafana/user`, `GET /grafana/dashboard?uid=<uid>` and `GET /grafana/dashboard-search?query=<q>`
 (`pkg/plugin/grafana_core_reads.go`) use the same gate for Grafana core groups (`iam`, `dashboard`,
 `folder`) in place of legacy `/api/*` reads. Each read is per request and uncached: it is the caller's RBAC view.
+Each returns a slim projection (`{role, grafanaAdmin}`, a dashboard summary, search hits), never the raw object.
 
 ## Operational diagnostics
 

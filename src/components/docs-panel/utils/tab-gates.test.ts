@@ -8,7 +8,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 let mockPlatform = 'oss';
-jest.mock('../../../lib/platform', () => ({ currentPlatform: () => mockPlatform }));
+jest.mock('../../../constants/platform', () => ({ currentPlatform: () => mockPlatform }));
 
 import { getFeatureFlagValue } from '../../../utils/openfeature';
 import { config } from '@grafana/runtime';

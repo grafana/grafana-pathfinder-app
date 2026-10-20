@@ -6,8 +6,7 @@
  * of OSS, containing all OSS paths plus cloud-only paths.
  */
 
-import { config } from '@grafana/runtime';
-
+import { currentPlatform } from '../constants/platform';
 import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
 
 import ossPathsData from './paths.json';
@@ -31,8 +30,7 @@ export interface PathsDataSet {
  * Cloud gets the full superset (OSS + cloud paths); OSS gets only OSS paths.
  */
 export function getPathsData(): PathsDataSet {
-  const isCloud = config.cloudMigrationIsTarget ?? false;
-  const raw = isCloud ? cloudPathsData : ossPathsData;
+  const raw = currentPlatform() === 'cloud' ? cloudPathsData : ossPathsData;
   return {
     paths: raw.paths as LearningPath[],
     guideMetadata: raw.guideMetadata as Record<string, GuideMetadataEntry>,

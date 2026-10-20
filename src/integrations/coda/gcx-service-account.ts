@@ -16,7 +16,7 @@ import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 import { logger } from '../../lib/logging';
-import { currentPlatform } from '../../lib/platform';
+import { currentPlatform } from '../../constants/platform';
 import { currentUser, refreshCurrentUser } from '../../utils/current-user-role';
 import { CodaError } from './coda-api';
 

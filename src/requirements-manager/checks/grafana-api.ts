@@ -42,29 +42,32 @@ export async function hasPermissionCheck(check: string): Promise<CheckResultErro
   }
 }
 
-/**
- * User role checking with case-insensitive support and admin/editor/viewer hierarchy.
- */
-export async function hasRoleCheck(check: string): Promise<CheckResultError> {
-  try {
-    await ensureCurrentUser();
-    const user = currentUser();
-    if (!user.available) {
-      return {
-        requirement: check,
-        pass: false,
-        error: 'User information not available',
-        context: null,
-      };
-    }
-    if (!isCurrentUserRoleKnown()) {
-      return {
+async function resolveUserRole() {
+  await ensureCurrentUser();
+  const user = currentUser();
+  return { ...user, known: user.available && isCurrentUserRoleKnown() };
+}
+
+function unresolvedRoleResult(check: string, userAvailable: boolean): CheckResultError {
+  return userAvailable
+    ? {
         verdict: 'unavailable',
         requirement: check,
         pass: false,
         error: 'Your Grafana role could not be read',
         context: null,
-      };
+      }
+    : { requirement: check, pass: false, error: 'User information not available', context: null };
+}
+
+/**
+ * User role checking with case-insensitive support and admin/editor/viewer hierarchy.
+ */
+export async function hasRoleCheck(check: string): Promise<CheckResultError> {
+  try {
+    const user = await resolveUserRole();
+    if (!user.known) {
+      return unresolvedRoleResult(check, user.available);
     }
 
     const requiredRole = check.replace('has-role:', '').toLowerCase();
@@ -109,6 +112,26 @@ export async function hasRoleCheck(check: string): Promise<CheckResultError> {
   }
 }
 
+// Normalization strips common affixes, e.g. grafana-testdata-datasource matches testdata.
+function matchDataSource(
+  dataSources: Array<{ name: string; type: string }>,
+  requirement: string
+): 'name' | 'type' | 'type-normalized' | null {
+  for (const ds of dataSources) {
+    const type = ds.type.toLowerCase();
+    if (ds.name.toLowerCase() === requirement) {
+      return 'name';
+    }
+    if (type === requirement) {
+      return 'type';
+    }
+    if (type.replace(/^grafana-/, '').replace(/-datasource$/, '') === requirement) {
+      return 'type-normalized';
+    }
+  }
+  return null;
+}
+
 /**
  * Data source existence by name or type.
  */
@@ -117,40 +140,15 @@ export async function hasDataSourceCheck(check: string): Promise<CheckResultErro
     const dsRequirement = check.replace('has-datasource:', '').toLowerCase();
 
     const dataSources = await fetchDataSources({ throwOnError: true });
-    let found = false;
-    let matchType = '';
-
-    // Check for exact matches in name or type, then normalized type
-    // Type normalization strips common prefixes/suffixes (e.g. grafana-testdata-datasource → testdata)
-    for (const ds of dataSources) {
-      if (ds.name.toLowerCase() === dsRequirement) {
-        found = true;
-        matchType = 'name';
-        break;
-      }
-      if (ds.type.toLowerCase() === dsRequirement) {
-        found = true;
-        matchType = 'type';
-        break;
-      }
-      const normalizedType = ds.type
-        .toLowerCase()
-        .replace(/^grafana-/, '')
-        .replace(/-datasource$/, '');
-      if (normalizedType === dsRequirement) {
-        found = true;
-        matchType = 'type-normalized';
-        break;
-      }
-    }
+    const matchType = matchDataSource(dataSources, dsRequirement);
 
     return {
       requirement: check,
-      pass: found,
-      error: found ? undefined : `No data source found with name/type: ${dsRequirement}`,
+      pass: matchType !== null,
+      error: matchType ? undefined : `No data source found with name/type: ${dsRequirement}`,
       context: {
         searched: dsRequirement,
-        matchType: found ? matchType : null,
+        matchType,
         available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, uid: ds.uid })),
       },
     };
@@ -279,24 +277,9 @@ export async function isLoggedInCheck(check: string): Promise<CheckResultError> 
  */
 export async function isEditorCheck(check: string): Promise<CheckResultError> {
   try {
-    await ensureCurrentUser();
-    const user = currentUser();
-    if (!user.available) {
-      return {
-        requirement: check,
-        pass: false,
-        error: 'User information not available',
-        context: null,
-      };
-    }
-    if (!isCurrentUserRoleKnown()) {
-      return {
-        verdict: 'unavailable',
-        requirement: check,
-        pass: false,
-        error: 'Your Grafana role could not be read',
-        context: null,
-      };
+    const user = await resolveUserRole();
+    if (!user.known) {
+      return unresolvedRoleResult(check, user.available);
     }
     const isEditor = currentUserIsEditor();
 

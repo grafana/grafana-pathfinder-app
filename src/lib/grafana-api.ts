@@ -5,7 +5,7 @@ import type { DataSource, DashboardInfo, DashboardSearchResult } from '../types/
 import { getDataSourceSettings, listDataSources } from './datasource/datasource-registry';
 import { fetchCoreDashboard, searchCoreDashboards } from './grafana-core-client';
 import { logger } from './logging';
-import { currentPlatform } from './platform';
+import { currentPlatform } from '../constants/platform';
 
 function toDataSource(settings: DataSourceInstanceSettings): DataSource {
   return {

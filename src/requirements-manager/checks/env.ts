@@ -13,7 +13,15 @@ import { readGrafanaFeatureToggle } from '../../utils/openfeature';
 export async function hasFeatureCheck(check: string): Promise<CheckResultError> {
   try {
     const featureName = check.replace('has-feature:', '');
-    const isEnabled = readGrafanaFeatureToggle(featureName) === true;
+    const isEnabled = readGrafanaFeatureToggle(featureName);
+    if (isEnabled === undefined) {
+      return {
+        verdict: 'unavailable',
+        requirement: check,
+        pass: false,
+        error: `Feature toggle '${featureName}' could not be read`,
+      };
+    }
 
     return {
       requirement: check,

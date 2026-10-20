@@ -9,7 +9,7 @@ import {
   ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES,
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
-import { currentPlatform } from '../platform';
+import { currentPlatform } from '../../constants/platform';
 import { hasReportedPathfinderSurface, isPathfinderOpen } from './surface';
 import { normalizeTelemetryUrl, stripUrlSecrets } from './url';
 import {

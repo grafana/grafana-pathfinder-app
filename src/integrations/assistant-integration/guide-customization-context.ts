@@ -5,7 +5,7 @@ import {
   createOpenFeatureLocalStorageProvider,
 } from '@grafana/runtime';
 import type { InlineToolRunnable } from '@grafana/assistant';
-import { currentPlatform } from '../../lib/platform';
+import { currentPlatform } from '../../constants/platform';
 import { createDatasourceMetadataTool } from './tools/datasource-metadata.tool';
 
 function readUiFeatures() {

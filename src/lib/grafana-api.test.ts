@@ -23,7 +23,7 @@ jest.mock('./grafana-core-client', () => ({
 }));
 jest.mock('./logging', () => ({ logger: { warn: jest.fn() } }));
 let mockPlatform = 'oss';
-jest.mock('./platform', () => ({ currentPlatform: () => mockPlatform }));
+jest.mock('../constants/platform', () => ({ currentPlatform: () => mockPlatform }));
 const mockListDataSources = jest.fn();
 const mockGetDataSourceSettings = jest.fn();
 jest.mock('./datasource/datasource-registry', () => ({

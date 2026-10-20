@@ -210,8 +210,8 @@ func TestGrafanaCoreReads_MintFailureIsBadGateway(t *testing.T) {
 	}
 }
 
-func TestGrafanaUser_PassesCallerObjectThrough(t *testing.T) {
-	const body = `{"kind":"User","metadata":{"name":"u-1"},"spec":{"login":"alice","role":"Editor"}}`
+func TestGrafanaUser_ShapesCallerRole(t *testing.T) {
+	const body = `{"kind":"User","metadata":{"name":"u-1"},"spec":{"login":"alice","email":"alice@example.com","role":"Editor","grafanaAdmin":true}}`
 	route := coreReadRoutes[0]
 	app, cfg := newCoreReadStack(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != route.upstream || r.URL.RawQuery != "" {
@@ -220,7 +220,8 @@ func TestGrafanaUser_PassesCallerObjectThrough(t *testing.T) {
 		_, _ = w.Write([]byte(body))
 	})
 	rec := serveCoreRead(t, app, route, route.target, cfg)
-	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != body {
+	const want = `{"role":"Editor","grafanaAdmin":true}`
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
 	if rec.Header().Get("Cache-Control") != "no-store" {

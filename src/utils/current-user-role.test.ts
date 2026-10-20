@@ -5,7 +5,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 let mockPlatform = 'oss';
-jest.mock('../lib/platform', () => ({ currentPlatform: () => mockPlatform }));
+jest.mock('../constants/platform', () => ({ currentPlatform: () => mockPlatform }));
 
 jest.mock('../lib/grafana-core-client', () => ({
   fetchCoreUser: () => mockFetchCoreUser(),

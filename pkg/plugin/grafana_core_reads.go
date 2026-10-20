@@ -30,6 +30,11 @@ const (
 
 var grafanaDashboardUIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
+type grafanaUserResponse struct {
+	Role         string `json:"role"`
+	GrafanaAdmin bool   `json:"grafanaAdmin"`
+}
+
 type grafanaDashboardResponse struct {
 	UID         string   `json:"uid"`
 	Title       string   `json:"title"`
@@ -61,7 +66,14 @@ func (a *App) handleGrafanaUser(w http.ResponseWriter, r *http.Request) {
 		a.writeCoreReadError(w, err, "users")
 		return
 	}
-	a.writeJSON(w, body, http.StatusOK)
+	var user struct {
+		Spec grafanaUserResponse `json:"spec"`
+	}
+	if err := json.Unmarshal(body, &user); err != nil {
+		a.writeCoreReadError(w, invalidCoreReadJSON(err), "users")
+		return
+	}
+	a.writeJSON(w, user.Spec, http.StatusOK)
 }
 
 func (a *App) handleGrafanaDashboard(w http.ResponseWriter, r *http.Request) {

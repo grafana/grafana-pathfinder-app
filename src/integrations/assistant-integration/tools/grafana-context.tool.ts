@@ -12,7 +12,7 @@ import type { GrafanaContextArtifact, DatasourceInfo } from './types';
 import { getDetectedDatasourceType, getDetectedVisualizationType } from '../../../context-engine';
 import { listDataSources } from '../../../lib/datasource/datasource-registry';
 import { logger } from '../../../lib/logging';
-import { currentPlatform } from '../../../lib/platform';
+import { currentPlatform } from '../../../constants/platform';
 import { fetchDashboardSummary } from '../../../lib/grafana-api';
 import { currentUser } from '../../../utils/current-user-role';
 

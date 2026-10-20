@@ -1,49 +1,13 @@
-import type { DataSourceApi, DataSourceInstanceListItem, DataSourceInstanceSettings } from '@grafana/data';
-import type { DataSourceRef } from '@grafana/schema';
-import { getDataSourceSrv, type BackendSrvRequest } from '@grafana/runtime';
-import * as runtimeUnstable from '@grafana/runtime/unstable';
+import type { DataSourceApi, DataSourceInstanceListItem } from '@grafana/data';
+import type { BackendSrvRequest } from '@grafana/runtime';
+
+export {
+  getDataSourceInstance as getDataSourceApi,
+  getDataSourceInstanceList as listDataSources,
+  getDataSourceInstanceSettings as getDataSourceSettings,
+} from '@grafana/plugin-compat/datasources';
 
 export type DataSourceListItem = DataSourceInstanceListItem;
-export type DataSourceListFilters = runtimeUnstable.GetDataSourceInstanceListFilters;
-export type DataSourceLookup = DataSourceRef | string;
-
-function toListItem(settings: DataSourceInstanceSettings): DataSourceListItem {
-  return {
-    uid: settings.uid,
-    type: settings.type,
-    apiVersion: settings.apiVersion,
-    name: settings.name,
-    meta: settings.meta,
-    readOnly: settings.readOnly,
-    isDefault: settings.isDefault ?? false,
-  };
-}
-
-// The async datasource APIs only exist from Grafana 13.2; older hosts resolve these named exports to undefined.
-export async function listDataSources(filters?: DataSourceListFilters): Promise<DataSourceListItem[]> {
-  if (typeof runtimeUnstable.getDataSourceInstanceList === 'function') {
-    return runtimeUnstable.getDataSourceInstanceList(filters);
-  }
-  const { filter, ...rest } = filters ?? {};
-  const legacyFilter = filter ? (settings: DataSourceInstanceSettings) => filter(toListItem(settings)) : undefined;
-  return getDataSourceSrv()
-    .getList({ ...rest, filter: legacyFilter })
-    .map(toListItem);
-}
-
-export async function getDataSourceSettings(ref: DataSourceLookup): Promise<DataSourceInstanceSettings | undefined> {
-  if (typeof runtimeUnstable.getDataSourceInstanceSettings === 'function') {
-    return runtimeUnstable.getDataSourceInstanceSettings(ref);
-  }
-  return getDataSourceSrv().getInstanceSettings(ref);
-}
-
-export async function getDataSourceApi(ref: DataSourceLookup): Promise<DataSourceApi> {
-  if (typeof runtimeUnstable.getDataSourceInstance === 'function') {
-    return runtimeUnstable.getDataSourceInstance(ref);
-  }
-  return getDataSourceSrv().get(ref);
-}
 
 interface ResourceCapable {
   getResource<T>(path: string, params?: BackendSrvRequest['params']): Promise<T>;

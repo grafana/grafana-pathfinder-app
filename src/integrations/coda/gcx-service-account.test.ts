@@ -29,7 +29,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 let mockPlatform = 'oss';
-jest.mock('../../lib/platform', () => ({ currentPlatform: () => mockPlatform }));
+jest.mock('../../constants/platform', () => ({ currentPlatform: () => mockPlatform }));
 
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
@@ -156,7 +156,7 @@ describe('assertServiceAccountIsMintable', () => {
   it('prefers the live IAM role over the legacy org list', async () => {
     answers({
       [SEARCH]: { data: { serviceAccounts: [{ name: 'coda-gcx-u42', role: 'Admin' }] } },
-      [LIVE_USER]: { data: { spec: { role: 'Editor' } } },
+      [LIVE_USER]: { data: { role: 'Editor' } },
       [ORGS]: { data: [{ orgId: 1, role: 'Admin' }] },
     });
 

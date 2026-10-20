@@ -24,7 +24,7 @@ import { canMergeSelection } from './hooks/useBlockEditor.bulk-delete';
 import { useBackendGuides, hasManageableBackendGuides } from './hooks/useBackendGuides';
 import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
-import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
+import { isBackendApiAvailable } from '../../utils/interactive-guides-api';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { publishEditorChromeStatus, readStoredEditorGuide, resetEditorChromeStatus } from './editor-chrome-status';
 import { BlockFormModal } from './BlockFormModal';
