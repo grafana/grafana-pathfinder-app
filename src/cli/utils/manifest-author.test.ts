@@ -77,4 +77,12 @@ describe('withManifestAuthor', () => {
       author: { name: MCP_FALLBACK_AUTHOR },
     });
   });
+
+  it.each(['path', 'journey'])('keeps the content type %s when the artifact carried no manifest', (type) => {
+    expect(withManifestAuthor(undefined, { id: 'p', type }).type).toBe(type);
+  });
+
+  it('falls back to the guide type when the content type is not a package type', () => {
+    expect(withManifestAuthor(undefined, { id: 'g', type: 'docs-page' }).type).toBe('guide');
+  });
 });

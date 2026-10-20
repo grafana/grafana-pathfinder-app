@@ -13,6 +13,7 @@
 
 import type { Author } from '../../types/package.types';
 import { CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
+import { PackageTypeSchema } from '../../types/package.schema';
 import { isFallbackAuthorName, MCP_FALLBACK_AUTHOR } from '../../types/author-defaults';
 
 export interface AuthorSources {
@@ -50,17 +51,17 @@ export function resolveAuthor(existing: Author | undefined, sources: AuthorSourc
 /**
  * The manifest with its author filled. An artifact that never carried a manifest
  * gets the smallest one that is still a valid `manifest.json`, so the author has a
- * place to live; nothing else about it is invented beyond the guide type `create` defaults to.
+ * place to live; its type is the content's own when valid, else the guide type `create` defaults to.
  */
 export function withManifestAuthor(
   manifest: Record<string, unknown> | undefined,
-  content: { id?: unknown },
+  content: { id?: unknown; type?: unknown },
   sources: AuthorSources = {}
 ): Record<string, unknown> {
   const base: Record<string, unknown> = manifest ?? {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     id: String(content.id),
-    type: 'guide',
+    type: PackageTypeSchema.catch('guide').parse(content.type),
   };
   return { ...base, author: resolveAuthor(base.author as Author | undefined, sources) };
 }
