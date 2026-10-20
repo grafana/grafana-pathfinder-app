@@ -26,6 +26,7 @@ export function FeaturedGuide({
     <LearningContentCard
       variant="featured"
       eyebrow={t('sidebarHub.recommendedForYou', 'Recommended for you')}
+      expandableDescription
       title={guide.title}
       kind={guide.kind}
       topic={guide.topic}

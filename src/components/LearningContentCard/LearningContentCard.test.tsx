@@ -113,6 +113,7 @@ it('lets a featured description that exceeds four lines expand and collapse', ()
         title="A starter path"
         kind="path"
         variant="featured"
+        expandableDescription
         onLaunch={jest.fn()}
         description="A very long overview that runs well past the four lines the featured card shows."
       />
@@ -122,6 +123,38 @@ it('lets a featured description that exceeds four lines expand and collapse', ()
     expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
     expect(screen.getByRole('button', { name: 'Read more' })).toHaveAttribute('aria-expanded', 'false');
+  } finally {
+    measurement.mockRestore();
+    typography.mockRestore();
+  }
+});
+
+it('offers no summary toggle on a featured card unless it opts in to expanding', () => {
+  const measurement = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => 120);
+  const getStyle = window.getComputedStyle.bind(window);
+  const typography = jest.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = getStyle(element, pseudo);
+    if (element.tagName === 'P') {
+      style.lineHeight = '18px';
+      style.fontSize = '13px';
+    }
+    return style;
+  });
+  try {
+    render(
+      <LearningContentCard
+        title="A starter path"
+        kind="path"
+        variant="featured"
+        onLaunch={jest.fn()}
+        details={<p>Module link</p>}
+        description="A very long overview that runs well past the four lines the featured card shows."
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'Read more' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('Module link')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show less' })).not.toBeInTheDocument();
   } finally {
     measurement.mockRestore();
     typography.mockRestore();

@@ -27,7 +27,7 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
     }),
     denseAction: css({ marginTop: 0 }),
-    denseToggle: css({ position: 'relative', marginTop: 0 }),
+    denseToggle: css({ position: 'relative', marginTop: 0, justifySelf: 'start' }),
     denseDetails: css({ position: 'relative', cursor: 'default', marginTop: theme.spacing(0.5) }),
     noWrap: css({ whiteSpace: 'nowrap' }),
     denseHeading: css({ minWidth: 0, overflowWrap: 'anywhere' }),

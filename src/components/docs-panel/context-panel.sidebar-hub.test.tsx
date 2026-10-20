@@ -683,6 +683,73 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       expect(openDocsPage).not.toHaveBeenCalled();
     });
 
+    it('tags the third More recommended row as more recommended, not other documentation', async () => {
+      setup({ featured: [pkg('top')], recommendations: [pkg('two'), pkg('three'), pkg('four'), pkg('five')] });
+
+      await click(within(screen.getByTestId(testIds.sidebarHub.row(2))).getByRole('button', { name: /^Start: / }));
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.OpenResourceClick,
+        expect.objectContaining({ content_title: 'Title four', interaction_location: 'hub_more_recommended' })
+      );
+    });
+
+    it('offers a toggle for prerequisites alone and shows them without a modules list', async () => {
+      const prerequisitesOnly = pkg('two', {
+        summary: '',
+        manifest: { id: 'two', type: 'guide', prerequisites: [{ id: 'p1', label: 'Have a data source' }] },
+      });
+      setup({ featured: [pkg('top')], recommendations: [{ ...prerequisitesOnly, summaryExpanded: true }] });
+
+      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide details');
+      expect(
+        within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).getByText('Have a data source')
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
+    });
+
+    it('never lists modules for a docs page or shows a skeleton once modules are in', async () => {
+      setup({
+        featured: [pkg('top')],
+        recommendations: [
+          {
+            title: 'Docs',
+            url: 'https://grafana.com/docs/x/',
+            type: 'docs-page',
+            summary: 'Read this first',
+            milestones: [milestone(1)],
+            summaryExpanded: true,
+          },
+          detailed('three', { summaryExpanded: true, isResolvingDeferred: true }),
+        ],
+      });
+
+      expect(
+        within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).queryByText('Modules')
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId(testIds.sidebarHub.rowModule(0, 0))).not.toBeInTheDocument();
+      expect(screen.getByTestId(testIds.sidebarHub.rowModule(1, 0))).toBeInTheDocument();
+      expect(screen.queryByTestId(testIds.sidebarHub.rowDetailsLoading(1))).not.toBeInTheDocument();
+    });
+
+    it('ignores a module click while another launch is still opening', async () => {
+      let finish: () => void = () => undefined;
+      openDocsPage.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+      setup({ featured: [pkg('top')], recommendations: [detailed('two', { summaryExpanded: true })] });
+
+      await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
+      await click(screen.getByTestId(testIds.sidebarHub.rowModule(0, 0)));
+
+      expect(openDocsPage).toHaveBeenCalledTimes(1);
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'https://cdn.example.com/top/content.json',
+        'Title top',
+        expect.anything()
+      );
+      finish();
+      await waitFor(() => expect(screen.getByTestId(testIds.sidebarHub.featuredAction)).toBeEnabled());
+    });
+
     it('shows a loading skeleton while the modules of an expanded card resolve', async () => {
       setup({
         featured: [pkg('top')],

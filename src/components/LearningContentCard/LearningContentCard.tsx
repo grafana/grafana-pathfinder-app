@@ -12,6 +12,7 @@ export interface LearningContentCardProps {
   title: string;
   variant?: 'compact' | 'featured';
   eyebrow?: string;
+  expandableDescription?: boolean;
   topic?: string;
   kind: 'guide' | 'path' | 'docs';
   description?: string;
@@ -42,6 +43,7 @@ export function LearningContentCard({
   title,
   variant = 'compact',
   eyebrow,
+  expandableDescription = false,
   topic,
   kind,
   description,
@@ -85,7 +87,8 @@ export function LearningContentCard({
       const style = getComputedStyle(element);
       const lineHeight =
         parseFloat(style.lineHeight) * (style.lineHeight.endsWith('px') ? 1 : parseFloat(style.fontSize));
-      setTruncated(element.scrollHeight > lineHeight * (featured ? FEATURED_DESCRIPTION_LINES : 2) + 1);
+      const lines = featured ? FEATURED_DESCRIPTION_LINES : 2;
+      setTruncated((!featured || expandableDescription) && element.scrollHeight > lineHeight * lines + 1);
     };
     measure();
     if (typeof ResizeObserver === 'undefined') {
@@ -95,7 +98,7 @@ export function LearningContentCard({
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [description, featured]);
+  }, [description, featured, expandableDescription]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -225,7 +228,8 @@ export function LearningContentCard({
             className={cx(
               styles.description,
               featured && styles.featuredDescription,
-              !isExpanded && (featured ? styles.featuredClamp : styles.excerpt)
+              !(isExpanded && (!featured || expandableDescription)) &&
+                (featured ? styles.featuredClamp : styles.excerpt)
             )}
           >
             {description}
