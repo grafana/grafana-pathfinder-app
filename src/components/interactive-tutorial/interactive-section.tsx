@@ -578,14 +578,24 @@ export function InteractiveSection({
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
   const doneVia = derived.doneVia;
-  const settledHidden = whenRequirementsUnmet !== 'disable' && progressVisibility === false;
+  // Unknown initial visibility must gate progress, but a recheck must preserve
+  // the last settled participation until it has a new answer.
+  const participation = useRef({ sectionId, included: true });
   useLayoutEffect(() => {
-    if (settledHidden) {
-      clearSectionDone(sectionId);
-    } else {
-      setSectionDone(sectionId, isCompleted);
+    if (participation.current.sectionId !== sectionId) {
+      participation.current = { sectionId, included: true };
     }
-  }, [sectionId, isCompleted, settledHidden]);
+    if (whenRequirementsUnmet === 'disable') {
+      participation.current.included = true;
+    } else if (progressVisibility !== undefined) {
+      participation.current.included = progressVisibility;
+    }
+    if (participation.current.included) {
+      setSectionDone(sectionId, isCompleted);
+    } else {
+      clearSectionDone(sectionId);
+    }
+  }, [sectionId, isCompleted, whenRequirementsUnmet, progressVisibility]);
   useLayoutEffect(() => () => clearSectionDone(sectionId), [sectionId]);
   const previousSectionsDone = useSyncExternalStore(subscribeSectionDone, () => arePreviousSectionsDone(sectionId));
   // `stepsCompleted` preserves the historical meaning ("all interactive

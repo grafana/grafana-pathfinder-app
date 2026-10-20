@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 // ─── Mocks (shared harness) ─────────────────────────────────────────────────
 
@@ -43,13 +43,28 @@ jest.mock('../../global-state/alignment-pending-context', () => ({
 }));
 
 jest.mock('../../interactive-engine', () => {
-  return require('../../test-utils/interactive-section-harness').createInteractiveEngineMock();
+  const engine = require('../../test-utils/interactive-section-harness').createInteractiveEngineMock();
+  return {
+    ...engine,
+    useInteractiveElements: () => ({
+      ...engine.useInteractiveElements(),
+      ...(mockRequirementCheck ? { checkRequirementsFromData: mockRequirementCheck } : {}),
+    }),
+  };
 });
 
 jest.mock('../../requirements-manager', () => {
   return require('../../test-utils/interactive-section-harness').createRequirementsManagerMock();
 });
 
+let mockRequirementCheck: jest.Mock | undefined;
+let mockRealRecovery = false;
+const mockRealResults = new Map<string, ReturnType<typeof import('./hooks/use-section-recovery').useSectionRecovery>>();
+jest.mock('../../recovery/section-recovery', () => ({
+  ...jest.requireActual('../../recovery/section-recovery'),
+  inspectRecovery: jest.fn(async () => ({ passed: true })),
+  restoreRecovery: jest.fn(),
+}));
 let mockResponses: Record<string, string> = {};
 jest.mock('../../docs-retrieval', () => ({
   ...require('../../test-utils/interactive-section-harness').createDocsRetrievalMock(),
@@ -103,6 +118,13 @@ jest.mock('./hooks/use-section-recovery', () => ({
   ) => {
     mockRecovery.plans.set(sectionId, plan);
     mockRecovery.suspended.set(sectionId, options.suspended);
+    if (mockRealRecovery) {
+      const result = jest
+        .requireActual('./hooks/use-section-recovery')
+        .useSectionRecovery(plan, sectionId, _enabled, _controllerMode, options);
+      mockRealResults.set(sectionId, result);
+      return result;
+    }
     return {
       paused: mockRecovery.paused,
       unrestorable: mockRecovery.unrestorable,
@@ -181,6 +203,9 @@ afterEach(() => {
 
 beforeEach(() => {
   mockResponses = {};
+  mockRequirementCheck = undefined;
+  mockRealRecovery = false;
+  mockRealResults.clear();
   mockRecovery.plans.clear();
   mockRecovery.suspended.clear();
   mockAlignmentPaused.mockReturnValue(false);
@@ -400,3 +425,61 @@ it('has no recovery plan while the guide waits for the learner to reach its star
   await waitFor(() => expect(mockRecovery.plans.has('section-explore')).toBe(true));
   expect(mockRecovery.plans.get('section-explore')).toBeUndefined();
 });
+
+it.each(['hide', 'heading-only'] as const)(
+  'preserves a later Restore during a deferred %s requirement recheck',
+  async (mode) => {
+    mockRealRecovery = true;
+    let finishCheck!: (result: { pass: boolean; error: never[] }) => void;
+    mockRequirementCheck = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          finishCheck = resolve;
+        })
+    );
+    const { restoreRecovery } = jest.requireMock('../../recovery/section-recovery');
+    let restoreSignal!: AbortSignal;
+    let finishRestore!: (result: { passed: boolean }) => void;
+    restoreRecovery.mockImplementation((_checks: unknown, _adapter: unknown, signal: AbortSignal) => {
+      restoreSignal = signal;
+      return new Promise((resolve) => {
+        finishRestore = resolve;
+      });
+    });
+    render(
+      <>
+        {exploreSection('branch', { requirements: ['exists-reftarget:#conditional'], whenRequirementsUnmet: mode })}
+        {exploreSection('visible')}
+      </>
+    );
+    expect(mockRecovery.plans.get('section-visible')).toBeUndefined();
+    await act(async () => {
+      finishCheck({ pass: false, error: [] });
+    });
+    await waitFor(() => expect(mockRecovery.plans.get('section-visible')).toBeDefined());
+    const plan = mockRecovery.plans.get('section-visible');
+    let restoring!: Promise<boolean>;
+    act(() => {
+      restoring = mockRealResults.get('section-visible')!.restore();
+    });
+    await waitFor(() => expect(restoreSignal).toBeDefined());
+    fireEvent(window, new Event('datasources-changed'));
+    expect(mockRequirementCheck).toHaveBeenCalledTimes(2);
+    expect(mockRecovery.plans.get('section-visible')).toBe(plan);
+    expect(restoreSignal.aborted).toBe(false);
+    expect(mockRealResults.get('section-visible')!.restoring).toBe(true);
+    await act(async () => {
+      finishCheck({ pass: false, error: [] });
+    });
+    expect(restoreSignal.aborted).toBe(false);
+    await act(async () => {
+      finishRestore({ passed: true });
+      await restoring;
+    });
+    fireEvent(window, new Event('datasources-changed'));
+    await act(async () => {
+      finishCheck({ pass: true, error: [] });
+    });
+    expect(mockRecovery.plans.get('section-visible')).toBeUndefined();
+  }
+);
