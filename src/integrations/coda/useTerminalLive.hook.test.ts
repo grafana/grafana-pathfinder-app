@@ -2,7 +2,7 @@
 
 import { act, renderHook } from '@testing-library/react';
 import type { Terminal } from '@xterm/xterm';
-import { CodaError, type CodaSession, type SessionHandlers } from '@grafana/coda-client';
+import { CodaError, CodaTerminalLink, type CodaSession, type SessionHandlers } from '@grafana/coda-client';
 
 import { useTerminalLive } from './useTerminalLive.hook';
 import { createSession, listVMs } from './coda-api';
@@ -629,9 +629,12 @@ describe('automatic recovery', () => {
 });
 
 it('ignores status and protocol callbacks after the stream is superseded', async () => {
+  const start = jest.spyOn(CodaTerminalLink.prototype, 'start');
   const first = fakeSession();
   const { hook, terminalRef } = await connectedHook(first);
   const terminal = terminalRef.current;
+  const callbacks = start.mock.calls[0]![0]!;
+  start.mockRestore();
   await act(async () => {
     hook.result.current.disconnect();
   });
@@ -646,8 +649,8 @@ it('ignores status and protocol callbacks after the stream is superseded', async
   jest.mocked(terminal.write).mockClear();
   jest.mocked(terminal.writeln).mockClear();
   act(() => {
-    first.handlers.current.onStatus?.({ state: 'provisioning', vmId: 'stale-vm', expiresAt: 'old' });
-    first.handlers.current.onProtocolError?.({ detail: 'stale', sessionId: SESSION_ID, vmId: 'stale-vm' });
+    callbacks.onStatus?.({ state: 'provisioning', vmId: 'stale-vm', expiresAt: 'old' });
+    callbacks.onProtocolError?.({ detail: 'stale', sessionId: SESSION_ID, vmId: 'stale-vm' });
   });
   expect(hook.result.current.vmId).toBe('current-vm');
   expect(hook.result.current.error).toBeNull();
