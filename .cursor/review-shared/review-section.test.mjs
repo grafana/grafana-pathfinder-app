@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { extractSection, extractSections } from './review-section.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./concern-context.mjs', import.meta.url));
-const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
 const FIXTURE = [
   '# Title',
@@ -71,8 +71,8 @@ test('the CLI exits 2 with the reason on stderr for an unknown section', () => {
 // resolves against the real PR_REVIEW.md, so a renamed heading fails here
 // instead of leaving reviewers to fall back to reading the whole file.
 test('every section command in the review skill runs against PR_REVIEW.md', () => {
-  const skill = readFileSync(new URL('../SKILL.md', import.meta.url), 'utf8');
-  const commandRe = /`node \.cursor\/skills\/review\/scripts\/concern-context\.mjs --section "([^"]+)"`/g;
+  const skill = readFileSync(new URL('../skills/review/SKILL.md', import.meta.url), 'utf8');
+  const commandRe = /`node \.cursor\/review-shared\/concern-context\.mjs --section "([^"]+)"`/g;
   const headings = [...skill.matchAll(commandRe)].map((match) => match[1]);
   assert.ok(headings.length > 0, 'expected the review skill to cite concern-context.mjs --section commands');
 

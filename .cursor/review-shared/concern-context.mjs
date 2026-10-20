@@ -409,10 +409,7 @@ function main() {
     return;
   }
   if (process.argv[2] === '--section') {
-    const standards = readFileSync(
-      fileURLToPath(new URL('../../../../docs/design/PR_REVIEW.md', import.meta.url)),
-      'utf8'
-    );
+    const standards = readFileSync(fileURLToPath(new URL('../../docs/design/PR_REVIEW.md', import.meta.url)), 'utf8');
     process.stdout.write(`${extractSections(standards, process.argv.slice(3))}\n`);
     return;
   }
@@ -422,11 +419,11 @@ function main() {
     throw new Error('Expected one concern id');
   }
   const routingMarkdown = readFileSync(
-    fileURLToPath(new URL('../../../../docs/design/CONCERNS.md', import.meta.url)),
+    fileURLToPath(new URL('../../docs/design/CONCERNS.md', import.meta.url)),
     'utf8'
   );
   const detailMarkdown = readFileSync(
-    fileURLToPath(new URL('../../../../docs/design/CONCERN_DETAILS.md', import.meta.url)),
+    fileURLToPath(new URL('../../docs/design/CONCERN_DETAILS.md', import.meta.url)),
     'utf8'
   );
   const context = extractConcernContext({ routingMarkdown, detailMarkdown, concern });

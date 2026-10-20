@@ -2,7 +2,7 @@
 
 Detailed reviewer guidance, contract anchors, and named invariants for the compact routing registry in `docs/design/CONCERNS.md`.
 
-Do not load this file wholesale during a review. Extract only activated concerns with `.cursor/skills/review/scripts/concern-context.mjs <concern-id>`.
+Do not load this file wholesale during a review. Extract only activated concerns with `.cursor/review-shared/concern-context.mjs <concern-id>`.
 
 ## Concern review table
 

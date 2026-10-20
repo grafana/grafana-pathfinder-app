@@ -115,6 +115,7 @@ jobs:
       - if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
       - run: npm run test:review-contract
+      - run: npm run test:review-lite
       - run: npm run test:ci
       - name: Upload coverage reports
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
