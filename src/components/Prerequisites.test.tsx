@@ -33,6 +33,7 @@ describe('Prerequisites', () => {
     ).toEqual(['A running Grafana instance', 'Admin access']);
     expect(within(note).getByText('Admin').tagName).toBe('STRONG');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('data-testid Alert info')).not.toBeInTheDocument();
   });
 
   it('renders nothing in compact mode without valid items', () => {

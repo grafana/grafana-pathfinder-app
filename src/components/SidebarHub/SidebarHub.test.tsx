@@ -159,6 +159,57 @@ describe('SidebarHub', () => {
       expect(screen.getByTestId(testIds.sidebarHub.row(1))).not.toHaveTextContent('Read more');
     });
 
+    it('keeps the featured action after the expanded details and the lists compact', () => {
+      const open = expansion({
+        expanded: true,
+        prerequisites: [{ id: 'p1', label: 'A data source' }],
+        modules: [
+          {
+            id: 'm1',
+            number: 1,
+            title: 'First module',
+            description: 'A long module description',
+            url: 'bundled:m1',
+            isActive: false,
+          },
+        ],
+      });
+      renderHub({ guides: [guide('Featured guide', { expansion: open })] });
+
+      const details = screen.getByTestId(testIds.sidebarHub.featuredDetails);
+      expect(
+        details.compareDocumentPosition(screen.getByTestId(testIds.sidebarHub.featuredAction)) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(within(details).getByText('A data source')).toBeInTheDocument();
+      expect(screen.queryByTestId('data-testid Alert info')).not.toBeInTheDocument();
+      expect(screen.queryByText('A long module description')).not.toBeInTheDocument();
+    });
+
+    it('keeps module descriptions and the alert out of an expanded row too', () => {
+      const open = expansion({
+        expanded: true,
+        prerequisites: [{ id: 'p1', label: 'A data source' }],
+        modules: [
+          {
+            id: 'm1',
+            number: 1,
+            title: 'First module',
+            description: 'A long module description',
+            url: 'bundled:m1',
+            isActive: false,
+          },
+        ],
+      });
+      renderHub({ guides: [guide('Featured guide'), guide('Second', { expansion: open })] });
+
+      expect(
+        within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).getByText('A data source')
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('data-testid Alert info')).not.toBeInTheDocument();
+      expect(screen.queryByText('A long module description')).not.toBeInTheDocument();
+    });
+
     it('shows a loading skeleton while the modules resolve', () => {
       renderHub({
         guides: [

@@ -186,7 +186,13 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       textAlign: 'left',
       font: 'inherit',
     }),
-    modulesCompact: css({ gap: theme.spacing(0.5), maxHeight: 156, overflowY: 'auto' }),
+    modulesCompact: css({
+      gap: theme.spacing(0.5),
+      maxHeight: 156,
+      overflowY: 'auto',
+      padding: theme.spacing(0.5),
+      margin: theme.spacing(-0.5),
+    }),
     moduleRowCompact: css({ gap: theme.spacing(1), padding: theme.spacing(0.5, 1), alignItems: 'center' }),
     moduleNumberCompact: css({ width: 20, height: 20, fontSize: 11 }),
     moduleTitleCompact: css({
