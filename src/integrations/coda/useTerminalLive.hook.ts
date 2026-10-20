@@ -211,7 +211,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             return;
           }
           setError(null);
-          terminal.writeln('\r\nReconnecting to sandbox...');
         },
         onOutput: (data) => {
           if (sessionRef.current !== session) {
@@ -239,6 +238,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           }
           if (expiresAt) {
             setVmExpiresAt(expiresAt);
+          }
+
+          // Recovery status belongs in the panel, not in the user's shell output.
+          if (hasConnectedRef.current) {
+            return;
           }
 
           if (state === 'pending' || state === 'provisioning') {
@@ -292,7 +296,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           }
         },
 
-        onConnected: ({ vmId, sessionId: nextSessionId, expiresAt, reattached }) => {
+        onConnected: ({ vmId, sessionId: nextSessionId, expiresAt }) => {
           if (sessionRef.current !== session) {
             return;
           }
@@ -305,9 +309,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
           if (expiresAt) {
             setVmExpiresAt(expiresAt);
-          }
-          if (reattached) {
-            terminal.writeln('\r\nReconnected to sandbox. A new shell is ready.');
           }
           setStatus('connected');
           if (inputDisposerRef.current) {

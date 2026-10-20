@@ -483,6 +483,7 @@ describe('automatic recovery', () => {
     const { hook, terminalRef } = await connectedHook(first);
     await act(async () => first.handlers.current.onConnected?.('vm-existing'));
     mockedCreateSession.mockResolvedValue(next.session);
+    jest.mocked(terminalRef.current.writeln).mockClear();
 
     act(() => first.handlers.current.onError?.(new CodaError('reloading', 'instance_disposing', 503)));
     expect(hook.result.current.status).toBe('connecting');
@@ -505,6 +506,7 @@ describe('automatic recovery', () => {
     expect(next.session.write).not.toHaveBeenCalled();
     expect(terminalRef.current.clear).toHaveBeenCalledTimes(1);
     expect(next.session.resize).toHaveBeenCalledWith(24, 80);
+    expect(terminalRef.current.writeln).not.toHaveBeenCalled();
     act(() => first.handlers.current.onClosed?.());
     expect(hook.result.current.status).toBe('connected');
   });
