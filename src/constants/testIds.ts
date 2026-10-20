@@ -427,6 +427,7 @@ export const testIds = {
     tile: (name: string) => `sidebar-hub-tile-${name}`,
     moreList: 'sidebar-hub-more-list',
     row: (index: number) => `sidebar-hub-row-${index}`,
+    rowPlay: (rowTestId: string) => `${rowTestId}-play`,
     rowToggle: (index: number) => `sidebar-hub-row-toggle-${index}`,
     rowDetails: (index: number) => `sidebar-hub-row-details-${index}`,
     rowDetailsLoading: (index: number) => `sidebar-hub-row-details-loading-${index}`,

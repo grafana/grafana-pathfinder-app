@@ -35,24 +35,26 @@ const resume: HubResume = {
 
 const stats: HubStats = { assignments: 2, inProgress: 1, completed: 7 };
 
-function renderHub(props: Partial<React.ComponentProps<typeof SidebarHub>> = {}) {
+function renderHub(props: Partial<React.ComponentProps<typeof SidebarHub>> = {}, onClickAbove?: () => void) {
   const onOpenMyLearning = jest.fn();
   const onResume = jest.fn();
   render(
-    <SidebarHub
-      userName="Ada"
-      guides={[guide('Featured guide'), guide('Second'), guide('Third'), guide('Fourth'), guide('Fifth')]}
-      resume={resume}
-      stats={stats}
-      customGuides={[]}
-      isLoadingCustomGuides={false}
-      isLoadingGuides={false}
-      isLoadingLearning={false}
-      recommendationsError={null}
-      onOpenMyLearning={onOpenMyLearning}
-      onResume={onResume}
-      {...props}
-    />
+    <div onClick={onClickAbove}>
+      <SidebarHub
+        userName="Ada"
+        guides={[guide('Featured guide'), guide('Second'), guide('Third'), guide('Fourth'), guide('Fifth')]}
+        resume={resume}
+        stats={stats}
+        customGuides={[]}
+        isLoadingCustomGuides={false}
+        isLoadingGuides={false}
+        isLoadingLearning={false}
+        recommendationsError={null}
+        onOpenMyLearning={onOpenMyLearning}
+        onResume={onResume}
+        {...props}
+      />
+    </div>
   );
   return { onOpenMyLearning, onResume };
 }
@@ -221,6 +223,29 @@ describe('SidebarHub', () => {
       expect(screen.getByTestId(testIds.sidebarHub.rowDetailsLoading(0))).toBeInTheDocument();
     });
 
+    it('keeps clicks inside the details of an expanded row from reaching anything above them', () => {
+      const clickedAbove = jest.fn();
+      renderHub(
+        {
+          guides: [
+            guide('Featured guide'),
+            guide('Second', {
+              expansion: expansion({ expanded: true, prerequisites: [{ id: 'p1', label: 'A data source' }] }),
+            }),
+          ],
+        },
+        clickedAbove
+      );
+
+      const details = screen.getByTestId(testIds.sidebarHub.rowDetails(0));
+      fireEvent.click(within(details).getByText('About Second'));
+      fireEvent.click(within(details).getByText('A data source'));
+      expect(clickedAbove).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId(testIds.sidebarHub.rowToggle(0)));
+      expect(clickedAbove).toHaveBeenCalledTimes(1);
+    });
+
     it('expands the featured card with its modules and opens one through the hub', async () => {
       const open = expansion({ expanded: true });
       renderHub({ guides: [guide('Featured guide', { expansion: open })] });
@@ -343,6 +368,26 @@ describe('SidebarHub', () => {
     expect(second.onLaunch).toHaveBeenCalledTimes(1);
   });
 
+  it('launches a more recommended row once from its play control', () => {
+    const second = guide('Second');
+    const clickedAbove = jest.fn();
+    renderHub({ guides: [guide('Featured guide'), second] }, clickedAbove);
+
+    fireEvent.click(screen.getByTestId(testIds.sidebarHub.rowPlay(testIds.sidebarHub.row(0))));
+
+    expect(second.onLaunch).toHaveBeenCalledTimes(1);
+    expect(clickedAbove).not.toHaveBeenCalled();
+  });
+
+  it('keeps the play control out of the accessibility tree and the tab order', () => {
+    renderHub({ guides: [guide('Featured guide'), guide('Second')] });
+
+    const play = screen.getByTestId(testIds.sidebarHub.rowPlay(testIds.sidebarHub.row(0)));
+    expect(play).toHaveAttribute('aria-hidden', 'true');
+    expect(play).toHaveAttribute('tabindex', '-1');
+    expect(within(screen.getByTestId(testIds.sidebarHub.row(0))).getAllByRole('button')).toHaveLength(1);
+  });
+
   it('describes the resume card and resumes from its button', () => {
     const { onResume } = renderHub({ resume: { ...resume, trackLabel: 'Operations' } });
 
@@ -442,6 +487,15 @@ describe('SidebarHub', () => {
       fireEvent.click(within(screen.getByTestId(testIds.sidebarHub.customRow(1))).getByRole('button'));
 
       expect(customGuides[1]!.onLaunch).toHaveBeenCalledTimes(1);
+    });
+
+    it('launches a custom guide once from its play control', () => {
+      const custom = guide('Custom play', { organization: true, summary: undefined });
+      renderHub({ customGuides: [custom] });
+
+      fireEvent.click(screen.getByTestId(testIds.sidebarHub.rowPlay(testIds.sidebarHub.customRow(0))));
+
+      expect(custom.onLaunch).toHaveBeenCalledTimes(1);
     });
 
     it('renders nothing when there are none and a skeleton while loading', () => {

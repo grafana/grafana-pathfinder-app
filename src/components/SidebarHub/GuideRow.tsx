@@ -2,6 +2,7 @@ import React, { useId } from 'react';
 import { cx } from '@emotion/css';
 import { Card, Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
+import { testIds } from '../../constants/testIds';
 import type { Milestone } from '../../types/content.types';
 import { LearningDetailsToggle } from '../LearningContentCard/LearningDetailsToggle';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
@@ -24,12 +25,22 @@ export interface HubGuide {
   onLaunch: () => void | Promise<void>;
 }
 
-function PlayGlyph() {
+function PlayButton({ testId, onLaunch }: { testId: string; onLaunch: () => void }) {
   const styles = useStyles2(getSidebarHubStyles);
   return (
-    <span className={styles.play} aria-hidden="true">
+    <button
+      type="button"
+      className={styles.play}
+      tabIndex={-1}
+      aria-hidden="true"
+      data-testid={testId}
+      onClick={(event) => {
+        event.stopPropagation();
+        onLaunch();
+      }}
+    >
       <Icon name="play" size="sm" />
-    </span>
+    </button>
   );
 }
 
@@ -82,7 +93,7 @@ export function GuideRow({ guide, testId, expansionTestIds, onLaunch, onOpenModu
           </Card.Actions>
         )}
         <Card.SecondaryActions className={styles.denseAction}>
-          <PlayGlyph />
+          <PlayButton testId={testIds.sidebarHub.rowPlay(testId)} onLaunch={onLaunch} />
         </Card.SecondaryActions>
         {expansion && expanded && (
           <Card.Description className={styles.denseDetails}>
@@ -90,6 +101,7 @@ export function GuideRow({ guide, testId, expansionTestIds, onLaunch, onOpenModu
               id={detailsId}
               className={cx(cardStyles.details, styles.detailsBody)}
               data-testid={expansionTestIds?.details}
+              onClick={(event) => event.stopPropagation()}
             >
               {guide.summary && <p className={cardStyles.description}>{guide.summary}</p>}
               <GuideDetails

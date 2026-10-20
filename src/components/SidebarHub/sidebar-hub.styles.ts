@@ -26,7 +26,7 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
         '"Figure Heading Heading Secondary" "Figure Meta Actions Secondary" "Description Description Description Description" / auto 1fr auto auto',
       alignItems: 'center',
     }),
-    denseAction: css({ marginTop: 0 }),
+    denseAction: css({ position: 'relative', marginTop: 0 }),
     denseToggle: css({ position: 'relative', marginTop: 0, alignSelf: 'center', justifySelf: 'end' }),
     denseDetails: css({ position: 'relative', cursor: 'default', marginTop: theme.spacing(0.5) }),
     detailsBody: css({
@@ -49,9 +49,12 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       placeItems: 'center',
       width: 26,
       height: 26,
+      padding: 0,
+      border: 'none',
       borderRadius: theme.shape.radius.circle,
       background: accent.transparent,
       color: accent.text,
+      cursor: 'pointer',
     }),
     ringFigure: css({ width: 'auto' }),
     resume: css({
