@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { testIds } from '../../constants/testIds';
 import type { HubResume, HubStats } from '../../learning-paths';
 import { SidebarHub } from './SidebarHub';
+import type { HubExpansion } from './GuideDetails';
 import type { HubGuide } from './GuideRow';
 
 jest.mock('@grafana/i18n', () => ({
@@ -109,6 +110,76 @@ describe('SidebarHub', () => {
     expect(screen.queryByText('Fifth')).not.toBeInTheDocument();
   });
 
+  describe('card expansion', () => {
+    const expansion = (extra: Partial<HubExpansion> = {}): HubExpansion => ({
+      expanded: false,
+      hasDetails: true,
+      hasModules: true,
+      modules: [{ id: 'm1', number: 1, title: 'First module', url: 'bundled:m1', isActive: false }],
+      isResolving: false,
+      onToggle: jest.fn(),
+      onOpenModule: jest.fn(),
+      ...extra,
+    });
+
+    it('toggles a More recommended row without launching it', () => {
+      const withDetails = expansion();
+      const second = guide('Second', { expansion: withDetails });
+      renderHub({ guides: [guide('Featured guide'), second] });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Show modules' }));
+
+      expect(withDetails.onToggle).toHaveBeenCalledTimes(1);
+      expect(second.onLaunch).not.toHaveBeenCalled();
+    });
+
+    it('shows the summary, then the modules, of an expanded row and opens a module through the hub', async () => {
+      const open = expansion({ expanded: true });
+      renderHub({ guides: [guide('Featured guide'), guide('Second', { summary: 'About Second', expansion: open })] });
+
+      const details = screen.getByTestId(testIds.sidebarHub.rowDetails(0));
+      expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
+      expect(within(details).getByText('About Second')).toBeInTheDocument();
+      expect(within(details).getByRole('heading', { name: 'Modules' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId(testIds.sidebarHub.rowModule(0, 0)));
+      await waitFor(() => expect(open.onOpenModule).toHaveBeenCalledWith(open.modules[0]));
+    });
+
+    it('offers Read more on a row that only has a summary and nothing on one with neither', () => {
+      renderHub({
+        guides: [
+          guide('Featured guide'),
+          guide('Summary only', { expansion: expansion({ hasDetails: false, hasModules: false, modules: [] }) }),
+          guide('Bare', { summary: undefined, expansion: expansion({ hasDetails: false, hasModules: false }) }),
+        ],
+      });
+
+      expect(screen.getAllByRole('button', { name: 'Read more' })).toHaveLength(1);
+      expect(screen.getByTestId(testIds.sidebarHub.row(1))).not.toHaveTextContent('Read more');
+    });
+
+    it('shows a loading skeleton while the modules resolve', () => {
+      renderHub({
+        guides: [
+          guide('Featured guide'),
+          guide('Second', { expansion: expansion({ expanded: true, modules: [], isResolving: true }) }),
+        ],
+      });
+
+      expect(screen.getByTestId(testIds.sidebarHub.rowDetailsLoading(0))).toBeInTheDocument();
+    });
+
+    it('expands the featured card with its modules and opens one through the hub', async () => {
+      const open = expansion({ expanded: true });
+      renderHub({ guides: [guide('Featured guide', { expansion: open })] });
+
+      expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveAttribute('aria-expanded', 'true');
+      fireEvent.click(screen.getByTestId(testIds.sidebarHub.featuredModule(0)));
+      await waitFor(() => expect(open.onOpenModule).toHaveBeenCalledWith(open.modules[0]));
+    });
+  });
+
   describe('other documentation', () => {
     const many = ['Featured guide', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh'].map((title) =>
       guide(title)
@@ -141,11 +212,11 @@ describe('SidebarHub', () => {
       fireEvent.click(screen.getByTestId(testIds.sidebarHub.otherDocsToggle));
       const list = screen.getByTestId(testIds.sidebarHub.otherDocsList);
       expect(screen.getByTestId(testIds.sidebarHub.otherDocsToggle)).toHaveAttribute('aria-expanded', 'true');
-      expect(within(list).getAllByRole('button').map((button) => button.textContent)).toEqual([
-        'Fifth',
-        'Sixth',
-        'Seventh',
-      ]);
+      expect(
+        within(list)
+          .getAllByRole('button')
+          .map((button) => button.textContent)
+      ).toEqual(['Fifth', 'Sixth', 'Seventh']);
 
       fireEvent.click(screen.getByTestId(testIds.sidebarHub.otherDoc(1)));
       await waitFor(() => expect(many[5]!.onLaunch).toHaveBeenCalledTimes(1));

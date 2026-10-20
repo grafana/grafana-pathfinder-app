@@ -14,6 +14,7 @@ import {
   MORE_RECOMMENDED_COUNT,
   getFirstName,
   toHubCustomGuides,
+  type HubExpansion,
   type HubGuide,
   type HubSource,
 } from '../SidebarHub';
@@ -270,10 +271,79 @@ interface HubGuidesOptions {
   assignments: ResolvedAssignment[];
   openLearningJourney: (url: string, title: string) => void;
   openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
+  toggleSummaryExpansion: (recommendationUrl: string) => void;
+}
+
+interface HubExpansionOptions {
+  recommendation: Recommendation;
+  contentUrl: string;
+  displayType: Recommendation['type'];
+  packageInfo: PackageOpenInfo | undefined;
+  featured: boolean;
+  openLearningJourney: (url: string, title: string) => void;
+  openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
+  toggleSummaryExpansion: (recommendationUrl: string) => void;
+}
+
+function toHubExpansion({
+  recommendation,
+  contentUrl,
+  displayType,
+  packageInfo,
+  featured,
+  openLearningJourney,
+  openDocsPage,
+  toggleSummaryExpansion,
+}: HubExpansionOptions): HubExpansion {
+  const expanded = Boolean(recommendation.summaryExpanded);
+  const prerequisites = recommendation.manifest?.prerequisites;
+  const docsOnly = isDocsOnlyRecommendation(displayType);
+  const modules = docsOnly ? [] : (recommendation.milestones ?? []);
+  const hasModules = !docsOnly && (modules.length > 0 || Boolean(recommendation.pendingMilestoneIds?.length));
+  return {
+    expanded,
+    hasModules,
+    hasDetails: hasModules || (Array.isArray(prerequisites) && prerequisites.length > 0),
+    prerequisites,
+    modules,
+    isResolving: Boolean(recommendation.isResolvingDeferred && !recommendation.milestones),
+    totalSteps: recommendation.totalSteps,
+    onToggle: () => {
+      reportAppInteraction(UserInteraction.SummaryClick, {
+        content_title: recommendation.title,
+        content_url: contentUrl,
+        content_type: getContentTypeForAnalytics(contentUrl, getContentTypeForDisplayType(displayType)),
+        action: expanded ? 'collapse' : 'expand',
+        match_accuracy: recommendation.matchAccuracy || 0,
+        ...(!docsOnly && { total_milestones: recommendation.totalSteps || 0 }),
+        interaction_location: featured ? 'hub_featured_card' : 'hub_more_recommended',
+      });
+      toggleSummaryExpansion(contentUrl);
+    },
+    onOpenModule: (milestone) => {
+      reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
+        content_title: recommendation.title,
+        milestone_title: milestone.title,
+        milestone_number: milestone.number,
+        milestone_url: milestone.url,
+        content_url: contentUrl,
+        interaction_location: featured ? 'hub_featured_milestone_list' : 'hub_milestone_list',
+      });
+      return packageInfo
+        ? openDocsPage(milestone.url, recommendation.title, packageInfo)
+        : openLearningJourney(milestone.url, `${recommendation.title} - ${milestone.title}`);
+    },
+  };
 }
 
 /** Keeps the engine's order; what the resume card already offers is left out. */
-function toHubGuides({ recommendations, resume, assignments, ...openers }: HubGuidesOptions): HubGuide[] {
+function toHubGuides({
+  recommendations,
+  resume,
+  assignments,
+  toggleSummaryExpansion,
+  ...openers
+}: HubGuidesOptions): HubGuide[] {
   const launchable = recommendations.filter((recommendation) => {
     const contentUrl = getRecommendationContentUrl(recommendation);
     return (
@@ -299,6 +369,15 @@ function toHubGuides({ recommendations, resume, assignments, ...openers }: HubGu
       kind,
       effort: learningEffort(recommendation.manifest, kind),
       progress: displayType === 'docs-page' ? undefined : recommendation.completionPercentage,
+      expansion: toHubExpansion({
+        recommendation,
+        contentUrl,
+        displayType,
+        packageInfo,
+        featured: index === 0,
+        toggleSummaryExpansion,
+        ...openers,
+      }),
       onLaunch: () =>
         launchRecommendation(recommendation, {
           interactionLocation: hubInteractionLocation(index),
@@ -859,6 +938,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             assignments: assignedNotDone,
             openLearningJourney,
             openDocsPage,
+            toggleSummaryExpansion,
           })
         : [],
     [
@@ -869,6 +949,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
       assignedNotDone,
       openLearningJourney,
       openDocsPage,
+      toggleSummaryExpansion,
     ]
   );
   const hubCustomGuides = useMemo(

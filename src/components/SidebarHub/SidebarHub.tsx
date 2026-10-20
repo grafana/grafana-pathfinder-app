@@ -92,7 +92,14 @@ export function SidebarHub({
           <SkeletonLoader type="recommendations" />
         </div>
       ) : (
-        featured && <FeaturedGuide guide={featured} disabled={pending} onLaunch={() => run(featured.onLaunch)} />
+        featured && (
+          <FeaturedGuide
+            guide={featured}
+            disabled={pending}
+            onLaunch={() => run(featured.onLaunch)}
+            onOpenModule={(module) => run(() => featured.expansion?.onOpenModule(module))}
+          />
+        )
       )}
 
       {isLoadingLearning ? (
@@ -117,7 +124,14 @@ export function SidebarHub({
                 key={guide.key}
                 guide={guide}
                 testId={testIds.sidebarHub.row(index)}
+                expansionTestIds={{
+                  toggle: testIds.sidebarHub.rowToggle(index),
+                  details: testIds.sidebarHub.rowDetails(index),
+                  loading: testIds.sidebarHub.rowDetailsLoading(index),
+                  module: (moduleIndex) => testIds.sidebarHub.rowModule(index, moduleIndex),
+                }}
                 onLaunch={() => run(guide.onLaunch)}
+                onOpenModule={(module) => run(() => guide.expansion?.onOpenModule(module))}
               />
             ))}
           </ul>

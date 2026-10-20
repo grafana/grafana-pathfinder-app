@@ -22,10 +22,13 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       '&:hover': { borderColor: accent.border, background: accent.transparent },
     }),
     denseCard: css({
-      gridTemplate: '"Figure Heading Secondary" "Figure Meta Secondary" / auto 1fr auto',
+      gridTemplate:
+        '"Figure Heading Secondary" "Figure Meta Secondary" ". Actions Actions" "Description Description Description" / auto 1fr auto',
       alignItems: 'center',
     }),
-    denseAction: css({ marginTop: 0, gridRow: '1 / span 2' }),
+    denseAction: css({ marginTop: 0 }),
+    denseToggle: css({ position: 'relative', marginTop: 0 }),
+    denseDetails: css({ position: 'relative', cursor: 'default', marginTop: theme.spacing(0.5) }),
     noWrap: css({ whiteSpace: 'nowrap' }),
     denseHeading: css({ minWidth: 0, overflowWrap: 'anywhere' }),
     play: css({

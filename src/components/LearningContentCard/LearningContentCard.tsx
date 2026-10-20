@@ -1,7 +1,8 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { Button, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
+import { LearningDetailsToggle } from './LearningDetailsToggle';
 import { LearningTopicIcon } from './LearningTopicIcon';
 import { getLearningAction } from './learning-action';
 import { getLearningTopicMetadata } from './learning-topic-visual';
@@ -34,6 +35,8 @@ export interface LearningContentCardProps {
   detailsTestId?: string;
   actionRef?: React.Ref<HTMLButtonElement>;
 }
+
+const FEATURED_DESCRIPTION_LINES = 4;
 
 export function LearningContentCard({
   title,
@@ -82,7 +85,7 @@ export function LearningContentCard({
       const style = getComputedStyle(element);
       const lineHeight =
         parseFloat(style.lineHeight) * (style.lineHeight.endsWith('px') ? 1 : parseFloat(style.fontSize));
-      setTruncated(!featured && element.scrollHeight > lineHeight * 2 + 1);
+      setTruncated(element.scrollHeight > lineHeight * (featured ? FEATURED_DESCRIPTION_LINES : 2) + 1);
     };
     measure();
     if (typeof ResizeObserver === 'undefined') {
@@ -222,7 +225,7 @@ export function LearningContentCard({
             className={cx(
               styles.description,
               featured && styles.featuredDescription,
-              !isExpanded && !featured && styles.excerpt
+              !isExpanded && (featured ? styles.featuredClamp : styles.excerpt)
             )}
           >
             {description}
@@ -239,20 +242,15 @@ export function LearningContentCard({
         {(canExpand || percent > 0) && (
           <div className={styles.footer}>
             {canExpand && (
-              <button
-                className={styles.disclosure}
-                aria-expanded={isExpanded}
-                aria-controls={detailsId}
-                data-testid={disclosureTestId}
-                onClick={() => (onToggleDetails ? onToggleDetails() : setLocalExpanded((value) => !value))}
-              >
-                {isExpanded
-                  ? collapseLabel ||
-                    (details ? t('learningCard.hideDetails', 'Hide details') : t('learningCard.showLess', 'Show less'))
-                  : disclosureLabel ||
-                    (details ? t('learningCard.details', 'Details') : t('learningCard.readMore', 'Read more'))}
-                <Icon name={isExpanded ? 'angle-up' : 'angle-down'} size="sm" />
-              </button>
+              <LearningDetailsToggle
+                expanded={isExpanded}
+                hasDetails={Boolean(details)}
+                label={disclosureLabel}
+                collapseLabel={collapseLabel}
+                controls={detailsId}
+                testId={disclosureTestId}
+                onToggle={() => (onToggleDetails ? onToggleDetails() : setLocalExpanded((value) => !value))}
+              />
             )}
             {percent > 0 && (
               <span className={cx(styles.progress, percent === 100 && styles.completed)}>

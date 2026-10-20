@@ -72,6 +72,7 @@ const mockResolvePackageNavLinks = resolvePackageNavLinks as jest.Mock;
 
 const openDocsPage = jest.fn();
 const openLearningJourney = jest.fn();
+const toggleSummaryExpansion = jest.fn();
 
 const pkg = (id: string, extra: Partial<Recommendation> = {}): Recommendation => ({
   title: `Title ${id}`,
@@ -134,7 +135,7 @@ function setup({
     otherDocsExpanded: false,
     openLearningJourney,
     openDocsPage,
-    toggleSummaryExpansion: jest.fn(),
+    toggleSummaryExpansion,
     toggleOtherDocsExpansion: jest.fn(),
   });
   const path = {
@@ -247,7 +248,9 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       ],
     });
 
-    const rows = within(screen.getByTestId(testIds.sidebarHub.moreList)).getAllByRole('button');
+    const rows = within(screen.getByTestId(testIds.sidebarHub.moreList)).getAllByRole('button', {
+      name: /^(Start|Read|Resume|Review): /,
+    });
     expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual([
       'Start: Title two',
       'Read: Docs',
@@ -343,7 +346,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       recommendations: [{ title: 'Docs', url: 'https://grafana.com/docs/x/', type: 'docs-page' }],
     });
 
-    await click(within(screen.getByTestId(testIds.sidebarHub.row(0))).getByRole('button'));
+    await click(within(screen.getByTestId(testIds.sidebarHub.row(0))).getByRole('button', { name: /^Read: / }));
 
     expect(openDocsPage).toHaveBeenCalledWith('https://grafana.com/docs/x/', 'Docs', undefined);
     expect(openLearningJourney).not.toHaveBeenCalled();
@@ -540,7 +543,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     setup({ featured: [pkg('top')], recommendations: [pkg('two')], startedPath: true });
 
     await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
-    await click(within(screen.getByTestId(testIds.sidebarHub.row(0))).getByRole('button'));
+    await click(within(screen.getByTestId(testIds.sidebarHub.row(0))).getByRole('button', { name: /^Start: / }));
     await click(screen.getByTestId(testIds.sidebarHub.resumeAction));
 
     expect(openDocsPage).toHaveBeenCalledTimes(1);
@@ -550,6 +553,176 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     finish();
     await waitFor(() => expect(screen.getByTestId(testIds.sidebarHub.featuredAction)).toBeEnabled());
     expect(screen.getByTestId(testIds.sidebarHub.resumeAction)).toBeEnabled();
+  });
+
+  describe('card expansion', () => {
+    const milestone = (n: number) => ({
+      id: `m${n}`,
+      number: n,
+      title: `Module ${n}`,
+      url: `https://cdn.example.com/m${n}/content.json`,
+      isActive: false,
+    });
+    const detailed = (id: string, extra: Partial<Recommendation> = {}) =>
+      pkg(id, {
+        manifest: { id, type: 'path', prerequisites: [{ id: 'p1', label: 'Have a data source' }] },
+        milestones: [milestone(1), milestone(2)],
+        totalSteps: 2,
+        ...extra,
+      });
+
+    it('offers no toggle when there is nothing to expand', async () => {
+      setup({ featured: [pkg('top', { summary: '' })], recommendations: [pkg('two', { summary: '' })] });
+
+      expect(screen.queryByTestId(testIds.sidebarHub.featuredToggle)).not.toBeInTheDocument();
+      expect(screen.queryByTestId(testIds.sidebarHub.rowToggle(0))).not.toBeInTheDocument();
+    });
+
+    it('toggles the featured card and reports the old summary event at the hub location', async () => {
+      setup({ featured: [detailed('top')], recommendations: [pkg('two')] });
+
+      const toggle = screen.getByTestId(testIds.sidebarHub.featuredToggle);
+      expect(toggle).toHaveTextContent('Show modules');
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByTestId(testIds.sidebarHub.featuredDetails)).not.toBeInTheDocument();
+      await click(toggle);
+
+      expect(toggleSummaryExpansion).toHaveBeenCalledWith('https://cdn.example.com/top/content.json');
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.SummaryClick, {
+        content_title: 'Title top',
+        content_url: 'https://cdn.example.com/top/content.json',
+        content_type: 'learning-journey',
+        action: 'expand',
+        match_accuracy: 0,
+        total_milestones: 2,
+        interaction_location: 'hub_featured_card',
+      });
+      expect(openDocsPage).not.toHaveBeenCalled();
+    });
+
+    it('shows prerequisites and modules in an expanded featured card and jumps into a module', async () => {
+      setup({ featured: [detailed('top', { summaryExpanded: true })], recommendations: [pkg('two')] });
+
+      const details = screen.getByTestId(testIds.sidebarHub.featuredDetails);
+      expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveTextContent('Hide modules');
+      expect(within(details).getByText('Have a data source')).toBeInTheDocument();
+      expect(within(details).getByRole('heading', { name: 'Modules' })).toBeInTheDocument();
+
+      await click(screen.getByTestId(testIds.sidebarHub.featuredModule(1)));
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'https://cdn.example.com/m2/content.json',
+        'Title top',
+        expect.objectContaining({ packageId: 'top' })
+      );
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.JumpIntoMilestoneClick, {
+        content_title: 'Title top',
+        milestone_title: 'Module 2',
+        milestone_number: 2,
+        milestone_url: 'https://cdn.example.com/m2/content.json',
+        content_url: 'https://cdn.example.com/top/content.json',
+        interaction_location: 'hub_featured_milestone_list',
+      });
+    });
+
+    it('expands a More recommended row without launching it and reports the collapse', async () => {
+      setup({
+        featured: [pkg('top')],
+        recommendations: [detailed('two', { summaryExpanded: true, summary: 'Learn the basics' })],
+      });
+
+      const row = screen.getByTestId(testIds.sidebarHub.row(0));
+      const details = screen.getByTestId(testIds.sidebarHub.rowDetails(0));
+      expect(within(row).getByText('Learn the basics')).toBeInTheDocument();
+      expect(within(details).getByText('Have a data source')).toBeInTheDocument();
+      expect(within(details).getAllByRole('button')).toHaveLength(2);
+      expect(screen.getByTestId(testIds.sidebarHub.rowModule(0, 0))).toHaveTextContent('Module 1');
+      expect(screen.getByTestId(testIds.sidebarHub.rowModule(0, 1))).toHaveTextContent('Module 2');
+
+      await click(screen.getByTestId(testIds.sidebarHub.rowToggle(0)));
+
+      expect(toggleSummaryExpansion).toHaveBeenCalledWith('https://cdn.example.com/two/content.json');
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.SummaryClick,
+        expect.objectContaining({ action: 'collapse', interaction_location: 'hub_more_recommended' })
+      );
+      expect(openDocsPage).not.toHaveBeenCalled();
+      expect(openLearningJourney).not.toHaveBeenCalled();
+    });
+
+    it('jumps into a module from a row at the row location', async () => {
+      setup({ featured: [pkg('top')], recommendations: [detailed('two', { summaryExpanded: true })] });
+
+      await click(screen.getByTestId(testIds.sidebarHub.rowModule(0, 0)));
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'https://cdn.example.com/m1/content.json',
+        'Title two',
+        expect.objectContaining({ packageId: 'two' })
+      );
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.JumpIntoMilestoneClick,
+        expect.objectContaining({ milestone_number: 1, interaction_location: 'hub_milestone_list' })
+      );
+    });
+
+    it('opens a module of a non-package recommendation as a learning journey step', async () => {
+      const journey: Recommendation = {
+        title: 'Journey',
+        url: 'https://grafana.com/docs/learning-journeys/j/',
+        type: 'learning-journey',
+        summary: 'A journey',
+        milestones: [milestone(1)],
+        summaryExpanded: true,
+      };
+      setup({ featured: [pkg('top')], recommendations: [journey] });
+
+      await click(screen.getByTestId(testIds.sidebarHub.rowModule(0, 0)));
+
+      expect(openLearningJourney).toHaveBeenCalledWith('https://cdn.example.com/m1/content.json', 'Journey - Module 1');
+      expect(openDocsPage).not.toHaveBeenCalled();
+    });
+
+    it('shows a loading skeleton while the modules of an expanded card resolve', async () => {
+      setup({
+        featured: [pkg('top')],
+        recommendations: [
+          pkg('two', {
+            milestones: undefined,
+            pendingMilestoneIds: ['a', 'b'],
+            isResolvingDeferred: true,
+            summaryExpanded: true,
+          }),
+        ],
+      });
+
+      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide modules');
+      expect(screen.getByTestId(testIds.sidebarHub.rowDetailsLoading(0))).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
+    });
+
+    it('lets a docs row expand to its summary without a modules list', async () => {
+      setup({
+        featured: [pkg('top')],
+        recommendations: [
+          { title: 'Docs', url: 'https://grafana.com/docs/x/', type: 'docs-page', summary: 'Read this first' },
+        ],
+      });
+
+      const toggle = screen.getByTestId(testIds.sidebarHub.rowToggle(0));
+      expect(toggle).toHaveTextContent('Read more');
+      expect(screen.queryByText('Read this first')).not.toBeInTheDocument();
+      await click(toggle);
+      expect(toggleSummaryExpansion).toHaveBeenCalledWith('https://grafana.com/docs/x/');
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.SummaryClick, {
+        content_title: 'Docs',
+        content_url: 'https://grafana.com/docs/x/',
+        content_type: 'docs',
+        action: 'expand',
+        match_accuracy: 0,
+        interaction_location: 'hub_more_recommended',
+      });
+    });
   });
 
   describe('custom guides', () => {

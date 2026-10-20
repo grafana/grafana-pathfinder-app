@@ -62,14 +62,8 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       fontWeight: theme.typography.fontWeightMedium,
       marginBottom: theme.spacing(0.5),
     }),
-    featuredDescription: css({
-      fontSize: 13,
-      lineHeight: 1.6,
-      display: '-webkit-box',
-      WebkitLineClamp: 4,
-      WebkitBoxOrient: 'vertical',
-      overflow: 'hidden',
-    }),
+    featuredDescription: css({ fontSize: 13, lineHeight: 1.6 }),
+    featuredClamp: css({ display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }),
     featuredFooter: css({
       display: 'flex',
       justifyContent: 'space-between',

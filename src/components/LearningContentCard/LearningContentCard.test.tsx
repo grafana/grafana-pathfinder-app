@@ -96,6 +96,38 @@ it('offers Read more only when the rendered description is truncated', () => {
   }
 });
 
+it('lets a featured description that exceeds four lines expand and collapse', () => {
+  const measurement = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => 120);
+  const getStyle = window.getComputedStyle.bind(window);
+  const typography = jest.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = getStyle(element, pseudo);
+    if (element.tagName === 'P') {
+      style.lineHeight = '18px';
+      style.fontSize = '13px';
+    }
+    return style;
+  });
+  try {
+    render(
+      <LearningContentCard
+        title="A starter path"
+        kind="path"
+        variant="featured"
+        onLaunch={jest.fn()}
+        description="A very long overview that runs well past the four lines the featured card shows."
+      />
+    );
+    const toggle = screen.getByRole('button', { name: 'Read more' });
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(screen.getByRole('button', { name: 'Read more' })).toHaveAttribute('aria-expanded', 'false');
+  } finally {
+    measurement.mockRestore();
+    typography.mockRestore();
+  }
+});
+
 it('prevents duplicate launches and keeps failure recovery inside the card', async () => {
   let reject: (error: Error) => void = () => {};
   const onLaunch = jest.fn(
