@@ -28,6 +28,7 @@ export function OtherDocs({ guides, onLaunch }: OtherDocsProps) {
             variant="secondary"
             fill="text"
             size="sm"
+            className={styles.otherDocsToggle}
             icon={expanded ? 'angle-down' : 'angle-right'}
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}

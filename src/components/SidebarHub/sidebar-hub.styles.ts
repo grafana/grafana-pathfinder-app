@@ -77,6 +77,14 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       overflowWrap: 'anywhere',
     }),
     tileCaption: css({ color: accent.text, fontSize: 11, fontWeight: theme.typography.fontWeightMedium }),
+    otherDocsToggle: css({
+      padding: 0,
+      height: 'auto',
+      color: theme.colors.text.primary,
+      fontSize: theme.typography.h5.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      '&:hover': { background: 'transparent', color: theme.colors.text.maxContrast },
+    }),
     sectionHeader: css({
       display: 'flex',
       alignItems: 'baseline',
