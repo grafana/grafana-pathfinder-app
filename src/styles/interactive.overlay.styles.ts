@@ -807,6 +807,15 @@ export const addGlobalInteractiveStyles = () => {
       line-height: 1.5;
     }
 
+    .interactive-comment-visibility-note {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--pathfinder-comment-text-secondary, rgba(255, 255, 255, 0.75));
+      margin: 0;
+      padding-top: 8px;
+      border-top: 1px solid var(--pathfinder-comment-btn-border, rgba(255, 255, 255, 0.2));
+    }
+
     /* Navigation buttons - clean, minimal */
     .interactive-comment-nav-btn {
       display: flex;

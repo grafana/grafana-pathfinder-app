@@ -1048,18 +1048,18 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 }
 ```
 
-| Field        | Type   | Default             | Description                                               |
-| ------------ | ------ | ------------------- | --------------------------------------------------------- |
-| `content`    | string | —                   | Markdown description shown above the button               |
-| `buttonText` | string | `"Try in terminal"` | Button label                                              |
-| `vmTemplate` | string | `""` (→ `vm-aws`)   | VM template to provision                                  |
-| `vmApp`      | string | `""`                | App name for `vm-aws-sample-app`                          |
-| `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
-| `gcx`        | bool   | `false`             | Also install a Grafana credential for the `gcx` CLI       |
+| Field         | Type   | Default             | Description                                               |
+| ------------- | ------ | ------------------- | --------------------------------------------------------- |
+| `content`     | string | —                   | Markdown description shown above the button               |
+| `buttonText`  | string | `"Try in terminal"` | Button label                                              |
+| `vmTemplate`  | string | `""` (→ `vm-aws`)   | VM template to provision                                  |
+| `vmApp`       | string | `""`                | App name for `vm-aws-sample-app`                          |
+| `vmScenario`  | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
+| `credentials` | array  | omitted             | Also install a Grafana credential for the `gcx` CLI       |
 
 Inside a section the block gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a `terminal-connect` step after any other step now shows "Complete previous step" where it previously offered the connect button unconditionally. The gate hides the whole action area, including the `gcx` controls below. The block takes no `requirements` or `skippable`, so position is its only gate and a blocked step offers no skip: the learner has to complete the step before it.
 
-With `gcx: true` the step also gives the VM a credential, so the `gcx` CLI that ships in every sandbox
+With `credentials: [{ "tool": "gcx" }]` the step also gives the VM a credential, so the `gcx` CLI that ships in every sandbox
 image can talk to this Grafana as the learner:
 
 ```json
@@ -1068,7 +1068,7 @@ image can talk to this Grafana as the learner:
   "content": "Connect a sandbox and set up `gcx`:",
   "buttonText": "Connect and set up gcx",
   "vmTemplate": "vm-aws",
-  "gcx": true
+  "credentials": [{ "tool": "gcx" }]
 }
 ```
 
@@ -1077,11 +1077,7 @@ sessions are open to editors — so the step offers a pasted service account tok
 path most learners take. A refusal never blocks the guide: the terminal is connected either way, so the
 step offers "Continue without gcx" and later `is-terminal-active` steps still run.
 
-> **`gcx` does not survive a write to the backend yet.** The backend CRD's `#Block` does not declare it,
-> and the API server prunes an undeclared field with a `200` and no message. That covers every path
-> through the CRD — `scripts/upsert-guide.sh`, and a **save or publish from the block editor** — so the
-> guide is stored, the step connects, and no credential is installed. Until the CUE declares it, a guide
-> that needs `gcx` has to be served from a bundled package or a local file.
+> Backend saves require the credentials schema in [grafana-pathfinder-backend#92](https://github.com/grafana/grafana-pathfinder-backend/pull/92). Deploy it before releasing the frontend. Replace the old `gcx: true` flag in bundled or local guides with the list shown above. Only the tool name belongs in guide JSON; never include a token.
 
 See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
 

@@ -1051,7 +1051,7 @@ function convertTerminalConnectBlock(
         vmTemplate: block.vmTemplate,
         vmApp: block.vmApp,
         vmScenario: block.vmScenario,
-        gcx: block.gcx,
+        gcx: block.credentials?.some(({ tool }) => tool === 'gcx'),
       },
       children,
     },

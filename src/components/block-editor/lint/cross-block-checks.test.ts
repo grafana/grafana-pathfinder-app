@@ -1,3 +1,5 @@
+import { clickToTargetState } from '../../../interactive-engine/action-handlers/toggle-click';
+import { parseTargetState } from '../../../lib/dom/toggle-state';
 /**
  * Tests for the editor-only cross-block checks.
  *
@@ -12,7 +14,9 @@ import {
   firstStepMissingOnPage,
   orphanSectionReference,
   requirementsImpliedByActionButNotDeclared,
+  looksLikeToggleTarget,
   runCrossBlockChecks,
+  toggleWithoutTargetState,
   unusedSection,
 } from './cross-block-checks';
 import type { JsonGuide } from '../../../types/json-guide.types';
@@ -376,6 +380,135 @@ describe('requirementsImpliedByActionButNotDeclared', () => {
     expect(issues).toHaveLength(1);
     // exists-reftarget and navmenu-open are both expected
     expect(issues[0]!.message).toContain('navmenu-open');
+  });
+});
+
+describe('toggleWithoutTargetState', () => {
+  const guideWith = (blocks: JsonGuide['blocks']): JsonGuide => ({ ...baseGuide, blocks });
+
+  it.each([
+    'button[aria-expanded="false"]',
+    '[data-testid="nav-item"][aria-selected="true"]',
+    'button[aria-pressed]',
+    'button[aria-label="Expand row"]',
+    "button[aria-label^='Collapse']",
+    'button[aria-label="Toggle menu"]',
+    '[aria-label="Collapse query row"]',
+    'div[data-testid="query row"]',
+  ])('flags a button step targeting %s', (reftarget) => {
+    const issues = toggleWithoutTargetState(
+      guideWith([{ type: 'interactive', action: 'button', reftarget, content: 'open it' }])
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe(CROSS_BLOCK_CHECK_CODES.TOGGLE_WITHOUT_TARGET_STATE);
+    expect(issues[0]!.severity).toBe('info');
+    expect(issues[0]!.path).toEqual(['blocks', 0, 'targetstate']);
+  });
+
+  it.each(['Save', 'Create', 'Run query', 'button[data-testid="save-dashboard"]', 'button[aria-label="Add query"]'])(
+    'does not flag a one-way button targeting %s',
+    (reftarget) => {
+      expect(
+        toggleWithoutTargetState(guideWith([{ type: 'interactive', action: 'button', reftarget, content: 'click' }]))
+      ).toEqual([]);
+    }
+  );
+
+  it('flags highlight steps and suggests the attribute the selector names', () => {
+    const issues = toggleWithoutTargetState(
+      guideWith([{ type: 'interactive', action: 'highlight', reftarget: 'a[aria-selected="false"]', content: 'tab' }])
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.message).toContain('"targetstate": "aria-selected:true"');
+  });
+
+  it('suggests inferred state without clicking an already-open label-only toggle', async () => {
+    const issues = toggleWithoutTargetState(
+      guideWith([
+        { type: 'interactive', action: 'button', reftarget: 'button[aria-label="Collapse row"]', content: 'x' },
+      ])
+    );
+    expect(issues[0]!.message).toContain('"targetstate": "true"');
+    const suggested = issues[0]!.message.match(/"targetstate": "([^"]+)"/)![1]!;
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', 'Collapse row');
+    const click = jest.spyOn(button, 'click');
+    await clickToTargetState(button, parseTargetState(suggested)!, jest.fn());
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('does not flag a toggle that declares a target state, including the camelCase alias', () => {
+    expect(
+      toggleWithoutTargetState(
+        guideWith([
+          {
+            type: 'interactive',
+            action: 'button',
+            reftarget: 'button[aria-expanded="false"]',
+            targetstate: 'aria-expanded:true',
+            content: 'open',
+          },
+          {
+            type: 'interactive',
+            action: 'button',
+            reftarget: 'button[aria-expanded="false"]',
+            targetState: true,
+            content: 'open',
+          },
+        ])
+      )
+    ).toEqual([]);
+  });
+
+  it('flags a blank target state', () => {
+    expect(
+      toggleWithoutTargetState(
+        guideWith([
+          {
+            type: 'interactive',
+            action: 'button',
+            reftarget: 'button[aria-expanded="false"]',
+            targetstate: '  ',
+            content: 'open',
+          },
+        ])
+      )
+    ).toHaveLength(1);
+  });
+
+  it('ignores actions other than button and highlight', () => {
+    expect(
+      toggleWithoutTargetState(
+        guideWith([
+          { type: 'interactive', action: 'hover', reftarget: 'button[aria-expanded="false"]', content: 'hover' },
+          {
+            type: 'interactive',
+            action: 'formfill',
+            reftarget: 'input[aria-label="Toggle search"]',
+            targetvalue: 'x',
+            content: 'type',
+          },
+        ])
+      )
+    ).toEqual([]);
+  });
+
+  it('descends into sections', () => {
+    const issues = toggleWithoutTargetState(
+      guideWith([
+        {
+          type: 'section',
+          title: 'Rows',
+          blocks: [{ type: 'interactive', action: 'button', reftarget: '[aria-expanded="false"]', content: 'open' }],
+        },
+      ])
+    );
+    expect(issues.map((d) => d.path)).toEqual([['blocks', 0, 'blocks', 0, 'targetstate']]);
+  });
+
+  it('exposes the matcher for the selector health badge', () => {
+    expect(looksLikeToggleTarget('button[aria-expanded="true"]')).toBe(true);
+    expect(looksLikeToggleTarget('Run query')).toBe(false);
   });
 });
 

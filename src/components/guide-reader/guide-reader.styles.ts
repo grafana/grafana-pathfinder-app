@@ -146,6 +146,11 @@ export const getGuideReaderStyles = (theme: GrafanaTheme2) => ({
   controllerStatusWaiting: css({
     background: theme.colors.warning.text,
   }),
+  controllerLinkAlert: css({
+    position: 'sticky',
+    top: theme.spacing(2),
+    zIndex: 1,
+  }),
 });
 
 export type GuideReaderStyles = ReturnType<typeof getGuideReaderStyles>;

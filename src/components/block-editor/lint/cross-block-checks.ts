@@ -45,6 +45,23 @@ const SECTION_COMPLETED_PREFIX = ParameterizedRequirementPrefix.SECTION_COMPLETE
 
 const DESTRUCTIVE_REFTARGET_PATTERN = /\b(delete|destroy|remove)\b/i;
 
+const TOGGLE_STATE_ATTRIBUTE_PATTERN = /\baria-(expanded|selected|pressed)\b/i;
+const TOGGLE_LABEL_PATTERN = /aria-label\s*[\^*~|]?=\s*["']?\s*(expand|collapse|toggle)\b/i;
+const QUERY_ROW_PATTERN = /query row["'\])\s]*$/i;
+
+export function looksLikeToggleTarget(reftarget: string): boolean {
+  return (
+    TOGGLE_STATE_ATTRIBUTE_PATTERN.test(reftarget) ||
+    TOGGLE_LABEL_PATTERN.test(reftarget) ||
+    QUERY_ROW_PATTERN.test(reftarget)
+  );
+}
+
+function suggestedTargetState(reftarget: string): string {
+  const attribute = TOGGLE_STATE_ATTRIBUTE_PATTERN.exec(reftarget)?.[1]?.toLowerCase();
+  return attribute ? `aria-${attribute}:true` : 'true';
+}
+
 type GuidedOrMultistep = JsonMultistepBlock | JsonGuidedBlock;
 
 /**
@@ -98,6 +115,7 @@ export const CROSS_BLOCK_CHECK_CODES = Object.freeze({
   DESTRUCTIVE_ACTION_WITHOUT_OBJECTIVE: 'editor.destructiveActionWithoutObjective',
   UNUSED_SECTION: 'editor.unusedSection',
   REQUIREMENTS_IMPLIED_BUT_NOT_DECLARED: 'editor.requirementsImpliedByActionButNotDeclared',
+  TOGGLE_WITHOUT_TARGET_STATE: 'editor.toggleWithoutTargetState',
 });
 
 // ---------------------------------------------------------------------------
@@ -373,6 +391,38 @@ export function requirementsImpliedByActionButNotDeclared(guide: JsonGuide): Dia
 }
 
 // ---------------------------------------------------------------------------
+// toggleWithoutTargetState
+// ---------------------------------------------------------------------------
+
+export function toggleWithoutTargetState(guide: JsonGuide): Diagnostic[] {
+  const issues: Diagnostic[] = [];
+  for (const { block, path } of walkBlocks(guide.blocks, ['blocks'])) {
+    if (!isInteractiveBlock(block)) {
+      continue;
+    }
+    const action = block.action ?? block.targetAction;
+    if (action !== 'button' && action !== 'highlight') {
+      continue;
+    }
+    const reftarget = block.reftarget ?? block.refTarget;
+    if (!reftarget || !looksLikeToggleTarget(reftarget)) {
+      continue;
+    }
+    const targetstate = block.targetstate ?? block.targetState;
+    if (targetstate !== undefined && String(targetstate).trim() !== '') {
+      continue;
+    }
+    issues.push({
+      severity: 'info',
+      code: CROSS_BLOCK_CHECK_CODES.TOGGLE_WITHOUT_TARGET_STATE,
+      message: `This ${action} step targets a control that opens and closes. Section recovery can only reopen it if the step says which state it leaves the control in, for example \`"targetstate": "${suggestedTargetState(reftarget)}"\`.`,
+      path: [...path, 'targetstate'],
+    });
+  }
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
 // Entry point — runs every cross-block check and returns the combined list.
 // ---------------------------------------------------------------------------
 
@@ -390,5 +440,6 @@ export function runCrossBlockChecks(guide: JsonGuide): Diagnostic[] {
     ...destructiveActionWithoutObjective(guide),
     ...unusedSection(guide),
     ...requirementsImpliedByActionButNotDeclared(guide),
+    ...toggleWithoutTargetState(guide),
   ];
 }

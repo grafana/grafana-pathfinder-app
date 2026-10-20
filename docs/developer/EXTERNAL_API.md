@@ -144,7 +144,8 @@ The gap is currently `defaultValue` on the `input` block, which costs the
 input its prefilled value; the whole `dataCheck*` family (`dataCheckQuery`,
 `dataCheckBlocking`, `dataCheckFailureMessage`, `dataCheckTimeFrom`,
 `dataCheckTimeTo`), which lands the picker without its data check — it
-renders, and the check simply never runs; and `gcx` on `terminal-connect`.
+renders, and the check simply never runs. Terminal `credentials` requires the schema in
+[grafana-pathfinder-backend#92](https://github.com/grafana/grafana-pathfinder-backend/pull/92).
 
 It has been much wider, and it moves in both directions. At one point
 the CUE was missing twenty-six fields including `autoCollapse`,

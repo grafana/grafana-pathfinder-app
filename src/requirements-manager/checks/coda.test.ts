@@ -28,10 +28,17 @@ describe('codaExitZeroCheck', () => {
     mockedSessionId.mockReturnValue(SESSION_ID);
   });
 
+  it('does not execute a command during a passive check, even with an active session', async () => {
+    const result = await codaExitZeroCheck('coda-exit-zero:echo hello');
+    expect(result.pass).toBe(false);
+    expect(mockedExec).not.toHaveBeenCalled();
+    expect(mockedSessionId).not.toHaveBeenCalled();
+  });
+
   it('passes when exit code is 0', async () => {
     mockedExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 42 });
 
-    const result = await codaExitZeroCheck('coda-exit-zero:test -f /etc/foo');
+    const result = await codaExitZeroCheck('coda-exit-zero:test -f /etc/foo', true);
 
     expect(result.pass).toBe(true);
     expect(mockedExec).toHaveBeenCalledWith(
@@ -43,7 +50,7 @@ describe('codaExitZeroCheck', () => {
   it('fails when exit code is non-zero', async () => {
     mockedExec.mockResolvedValue({ stdout: '', stderr: 'no such file\n', exitCode: 1, durationMs: 30 });
 
-    const result = await codaExitZeroCheck('coda-exit-zero:test -f /missing');
+    const result = await codaExitZeroCheck('coda-exit-zero:test -f /missing', true);
 
     expect(result.pass).toBe(false);
     expect(result.error).toContain('exited with code 1');
@@ -55,13 +62,13 @@ describe('codaExitZeroCheck', () => {
   it('always gates on the shared ready file', async () => {
     mockedExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
 
-    await codaExitZeroCheck('coda-exit-zero:true');
+    await codaExitZeroCheck('coda-exit-zero:true', true);
 
     expect(mockedExec).toHaveBeenCalledWith(SESSION_ID, expect.objectContaining({ readyFile: PATHFINDER_READY_FILE }));
   });
 
   it('fails with friendly message when command is missing', async () => {
-    const result = await codaExitZeroCheck('coda-exit-zero:');
+    const result = await codaExitZeroCheck('coda-exit-zero:', true);
 
     expect(result.pass).toBe(false);
     expect(result.error).toMatch(/requires a command/);
@@ -73,7 +80,7 @@ describe('codaExitZeroCheck', () => {
   it('reports not-ready when there is no active session', async () => {
     mockedSessionId.mockReturnValue(null);
 
-    const result = await codaExitZeroCheck('coda-exit-zero:true');
+    const result = await codaExitZeroCheck('coda-exit-zero:true', true);
 
     expect(result.pass).toBe(false);
     expect(result.error).toMatch(/environment is not ready/i);
@@ -90,7 +97,7 @@ describe('codaExitZeroCheck', () => {
   ])('translates %s into a setup-prerequisite error', async (code, status) => {
     mockedExec.mockRejectedValue({ status, data: { error: 'backend wording', code } });
 
-    const result = await codaExitZeroCheck('coda-exit-zero:true');
+    const result = await codaExitZeroCheck('coda-exit-zero:true', true);
 
     expect(result.pass).toBe(false);
     expect(result.error).toMatch(/environment is not ready/i);
@@ -106,7 +113,7 @@ describe('codaExitZeroCheck', () => {
       data: { error: 'Your Grafana role does not allow creating sandbox sessions', code: 'role_forbidden' },
     });
 
-    const result = await codaExitZeroCheck('coda-exit-zero:true');
+    const result = await codaExitZeroCheck('coda-exit-zero:true', true);
 
     expect(result.pass).toBe(false);
     expect(result.error).toMatch(/role does not allow/i);
@@ -117,7 +124,7 @@ describe('codaExitZeroCheck', () => {
   it('reports an absent plugin as unavailable', async () => {
     mockedExec.mockRejectedValue({ status: 404 });
 
-    const result = await codaExitZeroCheck('coda-exit-zero:true');
+    const result = await codaExitZeroCheck('coda-exit-zero:true', true);
 
     expect(result.pass).toBe(false);
     expect(result.error).toMatch(/unavailable/i);
@@ -126,7 +133,7 @@ describe('codaExitZeroCheck', () => {
   it('surfaces other transport errors verbatim', async () => {
     mockedExec.mockRejectedValue(new Error('Network down'));
 
-    const result = await codaExitZeroCheck('coda-exit-zero:true');
+    const result = await codaExitZeroCheck('coda-exit-zero:true', true);
 
     expect(result.pass).toBe(false);
     expect(result.error).toMatch(/Network down/);
@@ -135,7 +142,7 @@ describe('codaExitZeroCheck', () => {
   it('preserves shell metacharacters in the command parameter', async () => {
     mockedExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
 
-    await codaExitZeroCheck('coda-exit-zero:curl -sf localhost:9090/-/healthy | grep -q ok');
+    await codaExitZeroCheck('coda-exit-zero:curl -sf localhost:9090/-/healthy | grep -q ok', true);
 
     expect(mockedExec).toHaveBeenCalledWith(
       SESSION_ID,
@@ -146,7 +153,7 @@ describe('codaExitZeroCheck', () => {
   it('reports truncation and duration in the result context', async () => {
     mockedExec.mockResolvedValue({ stdout: 'x', stderr: '', exitCode: 0, durationMs: 77, truncated: true });
 
-    const result = await codaExitZeroCheck('coda-exit-zero:true');
+    const result = await codaExitZeroCheck('coda-exit-zero:true', true);
 
     expect(result.context).toEqual({ exitCode: 0, durationMs: 77, truncated: true });
   });
