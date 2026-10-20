@@ -74,6 +74,8 @@ export interface TerminalContextValue {
   isExpanded: boolean;
   /** Set terminal panel expanded state */
   setIsExpanded: (expanded: boolean) => void;
+  /** Release the panel registration and settle pending session waiters. */
+  _unregister: () => void;
   /** Register the underlying useTerminalLive hook values */
   _register: (opts: {
     status: ConnectionStatus;
@@ -229,6 +231,18 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     registeredDisconnectRef.current?.();
   }, []);
 
+  const unregister = useCallback(() => {
+    disconnect();
+    registeredConnectRef.current = null;
+    registeredDisconnectRef.current = null;
+    registeredSendCommandRef.current = null;
+    setIsTerminalRegistered(false);
+    setRegisteredStatus('disconnected');
+    setRegisteredSessionId(null);
+    setRegisteredError(null);
+    invalidateGcxCredentialForSession(null, null);
+  }, [disconnect]);
+
   const sendCommand = useCallback(async (command: string) => {
     if (!registeredSendCommandRef.current) {
       logger.warn('[TerminalContext] Cannot send command: terminal not registered');
@@ -297,6 +311,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     isExpanded,
     setIsExpanded,
     _register: register,
+    _unregister: unregister,
   };
 
   return <TerminalContext.Provider value={value}>{children}</TerminalContext.Provider>;

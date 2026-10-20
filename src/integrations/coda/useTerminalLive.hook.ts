@@ -231,6 +231,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
           vmId?: string;
           expiresAt?: string;
         }) => {
+          if (sessionRef.current !== session) {
+            return;
+          }
           if (vmId) {
             rememberVmId(vmId);
           }
@@ -339,6 +342,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
 
         onProtocolError: ({ detail, sessionId: sid, vmId }) => {
+          if (sessionRef.current !== session) {
+            return;
+          }
           // CodaSession deliberately reports an invalid frame without ending the
           // stream. Keep that non-fatal contract so a later compatible frame can
           // still recover; the visible diagnostic is the consumer-side action.

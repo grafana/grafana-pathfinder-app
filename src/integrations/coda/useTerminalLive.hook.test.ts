@@ -627,3 +627,31 @@ describe('automatic recovery', () => {
     expect(hook.result.current.sessionId).toBe('replacement-session');
   });
 });
+
+it('ignores status and protocol callbacks after the stream is superseded', async () => {
+  const first = fakeSession();
+  const { hook, terminalRef } = await connectedHook(first);
+  const terminal = terminalRef.current;
+  await act(async () => {
+    hook.result.current.disconnect();
+  });
+  const second = fakeSession('s_1123456789abcdef0123456789abcdef', 'current-vm');
+  mockedCreateSession.mockResolvedValueOnce(second.session);
+  await act(async () => {
+    await hook.result.current.connect();
+  });
+  await act(async () => {
+    second.handlers.current.onConnected?.('current-vm');
+  });
+  jest.mocked(terminal.write).mockClear();
+  jest.mocked(terminal.writeln).mockClear();
+  act(() => {
+    first.handlers.current.onStatus?.({ state: 'provisioning', vmId: 'stale-vm', expiresAt: 'old' });
+    first.handlers.current.onProtocolError?.({ detail: 'stale', sessionId: SESSION_ID, vmId: 'stale-vm' });
+  });
+  expect(hook.result.current.vmId).toBe('current-vm');
+  expect(hook.result.current.error).toBeNull();
+  expect(terminal.write).not.toHaveBeenCalled();
+  expect(terminal.writeln).not.toHaveBeenCalled();
+  hook.unmount();
+});

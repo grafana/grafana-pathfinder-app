@@ -89,6 +89,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
+  const unregisterTerminal = terminalCtx?._unregister;
+  useEffect(() => () => unregisterTerminal?.(), [unregisterTerminal]);
   const gcxCredential = useGcxCredential(undefined, sessionId);
   useEffect(() => {
     terminalCtx?._register({ status, sessionId, vmId, error, connect, disconnect, sendCommand });
