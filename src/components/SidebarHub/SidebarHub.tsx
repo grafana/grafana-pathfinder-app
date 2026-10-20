@@ -7,12 +7,13 @@ import type { HubResume, HubStats } from '../../learning-paths';
 import { FeaturedGuide } from './FeaturedGuide';
 import { CustomGuides } from './CustomGuides';
 import { GuideRow, type HubGuide } from './GuideRow';
+import { OtherDocs } from './OtherDocs';
 import { ResumeCard } from './ResumeCard';
 import { StatTiles, type HubTile } from './StatTiles';
 import { getSidebarHubStyles } from './sidebar-hub.styles';
 import { useGuardedLaunch } from './use-guarded-launch';
 
-const MORE_RECOMMENDED_COUNT = 3;
+export const MORE_RECOMMENDED_COUNT = 3;
 
 export type HubSource = 'header' | HubTile;
 
@@ -49,6 +50,7 @@ export function SidebarHub({
   const { pending, run } = useGuardedLaunch();
   const [featured, ...rest] = guides;
   const more = isLoadingGuides ? [] : rest.slice(0, MORE_RECOMMENDED_COUNT);
+  const other = isLoadingGuides ? [] : rest.slice(MORE_RECOMMENDED_COUNT);
 
   return (
     <Stack direction="column" gap={1.5} data-testid={testIds.sidebarHub.container}>
@@ -121,6 +123,7 @@ export function SidebarHub({
           </ul>
         </>
       )}
+      <OtherDocs guides={other} onLaunch={(guide) => run(guide.onLaunch)} />
       <CustomGuides guides={customGuides} isLoading={isLoadingCustomGuides} onLaunch={(guide) => run(guide.onLaunch)} />
     </Stack>
   );

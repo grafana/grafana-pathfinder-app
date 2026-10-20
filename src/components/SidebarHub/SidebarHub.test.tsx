@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { testIds } from '../../constants/testIds';
 import type { HubResume, HubStats } from '../../learning-paths';
 import { SidebarHub } from './SidebarHub';
@@ -107,6 +107,65 @@ describe('SidebarHub', () => {
     expect(screen.getByRole('heading', { name: 'More recommended' })).toBeInTheDocument();
     expect(within(screen.getByTestId(testIds.sidebarHub.moreList)).getAllByRole('button')).toHaveLength(3);
     expect(screen.queryByText('Fifth')).not.toBeInTheDocument();
+  });
+
+  describe('other documentation', () => {
+    const many = ['Featured guide', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh'].map((title) =>
+      guide(title)
+    );
+
+    it('stays out of the way until there are more than four recommendations', () => {
+      renderHub({ guides: many.slice(0, 4) });
+
+      expect(screen.queryByTestId(testIds.sidebarHub.otherDocs)).not.toBeInTheDocument();
+    });
+
+    it('collects the rest under a collapsed toggle with their count, below More recommended', () => {
+      renderHub({ guides: many });
+
+      const section = screen.getByRole('region', { name: 'Other documentation' });
+      const toggle = within(section).getByTestId(testIds.sidebarHub.otherDocsToggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(within(section).getByText('3 items')).toBeInTheDocument();
+      expect(screen.queryByTestId(testIds.sidebarHub.otherDocsList)).not.toBeInTheDocument();
+      expect(screen.queryByText('Fifth')).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId(testIds.sidebarHub.moreList).compareDocumentPosition(section) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
+
+    it('expands to the remaining titles in order and launches the one clicked', async () => {
+      renderHub({ guides: many });
+
+      fireEvent.click(screen.getByTestId(testIds.sidebarHub.otherDocsToggle));
+      const list = screen.getByTestId(testIds.sidebarHub.otherDocsList);
+      expect(screen.getByTestId(testIds.sidebarHub.otherDocsToggle)).toHaveAttribute('aria-expanded', 'true');
+      expect(within(list).getAllByRole('button').map((button) => button.textContent)).toEqual([
+        'Fifth',
+        'Sixth',
+        'Seventh',
+      ]);
+
+      fireEvent.click(screen.getByTestId(testIds.sidebarHub.otherDoc(1)));
+      await waitFor(() => expect(many[5]!.onLaunch).toHaveBeenCalledTimes(1));
+      expect(many[4]!.onLaunch).not.toHaveBeenCalled();
+    });
+
+    it('collapses again from the toggle', () => {
+      renderHub({ guides: many });
+
+      fireEvent.click(screen.getByTestId(testIds.sidebarHub.otherDocsToggle));
+      fireEvent.click(screen.getByTestId(testIds.sidebarHub.otherDocsToggle));
+
+      expect(screen.queryByTestId(testIds.sidebarHub.otherDocsList)).not.toBeInTheDocument();
+    });
+
+    it('is hidden while recommendations reload', () => {
+      renderHub({ guides: many, isLoadingGuides: true });
+
+      expect(screen.queryByTestId(testIds.sidebarHub.otherDocs)).not.toBeInTheDocument();
+    });
   });
 
   it('puts resume on top when there is no featured guide', () => {

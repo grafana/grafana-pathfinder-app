@@ -37,7 +37,7 @@ The components are organized into logical groups with clear responsibilities:
 
 - **EnableRecommenderBanner/**: Banner for enabling recommendation service
 - **HelpFooter/**: Help content and footer integration
-- **SidebarHub/**: The Recommended tab content behind the `pathfinder.sidebar-hub` flag: welcome header, featured recommendation, resume card, count tiles, "More recommended" rows, and a temporary custom guides list
+- **SidebarHub/**: The Recommended tab content behind the `pathfinder.sidebar-hub` flag: welcome header, featured recommendation, resume card, count tiles, "More recommended" rows, an expandable "Other documentation" list, and a temporary custom guides list
 - **DomPathTooltip/**: DOM path visualization tooltip for element inspection
 - **SkeletonLoader/**: Loading state skeleton UI with multiple variants
 - **FeedbackButton/**: User feedback collection button

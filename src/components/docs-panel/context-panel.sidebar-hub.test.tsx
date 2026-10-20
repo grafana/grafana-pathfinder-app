@@ -266,6 +266,77 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     );
   });
 
+  describe('other documentation', () => {
+    const rest = [
+      pkg('five', { matchAccuracy: 0.4 }),
+      { title: 'Docs six', url: 'https://grafana.com/docs/six/', type: 'docs-page' as const },
+    ];
+
+    it('lists every recommendation past the top four, collapsed by default', async () => {
+      setup({ featured: [pkg('top')], recommendations: [pkg('two'), pkg('three'), pkg('four'), ...rest] });
+
+      expect(screen.getByTestId(testIds.sidebarHub.otherDocsToggle)).toHaveAttribute('aria-expanded', 'false');
+      expect(within(screen.getByTestId(testIds.sidebarHub.otherDocs)).getByText('2 items')).toBeInTheDocument();
+      expect(screen.queryByText('Title five')).not.toBeInTheDocument();
+      expect(screen.getByText('Title four')).toBeInTheDocument();
+    });
+
+    it('is absent when the four visible cards cover every recommendation', async () => {
+      setup({ featured: [pkg('top')], recommendations: [pkg('two'), pkg('three'), pkg('four')] });
+
+      expect(screen.queryByTestId(testIds.sidebarHub.otherDocs)).not.toBeInTheDocument();
+    });
+
+    it('opens a package item with its package info and reports the old payload at the hub location', async () => {
+      setup({ featured: [pkg('top')], recommendations: [pkg('two'), pkg('three'), pkg('four'), ...rest] });
+
+      await click(screen.getByTestId(testIds.sidebarHub.otherDocsToggle));
+      await click(screen.getByTestId(testIds.sidebarHub.otherDoc(0)));
+
+      expect(openDocsPage).toHaveBeenCalledWith(
+        'https://cdn.example.com/five/content.json',
+        'Title five',
+        expect.objectContaining({ packageId: 'five' })
+      );
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+        content_title: 'Title five',
+        content_url: 'https://cdn.example.com/five/content.json',
+        content_type: 'interactive-guide',
+        interaction_location: 'hub_other_docs',
+        match_accuracy: 0.4,
+        total_milestones: 0,
+        completion_percentage: 0,
+      });
+    });
+
+    it('opens a docs page item without milestone fields', async () => {
+      setup({ featured: [pkg('top')], recommendations: [pkg('two'), pkg('three'), pkg('four'), ...rest] });
+
+      await click(screen.getByTestId(testIds.sidebarHub.otherDocsToggle));
+      await click(screen.getByTestId(testIds.sidebarHub.otherDoc(1)));
+
+      expect(openDocsPage).toHaveBeenCalledWith('https://grafana.com/docs/six/', 'Docs six', undefined);
+      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+        content_title: 'Docs six',
+        content_url: 'https://grafana.com/docs/six/',
+        content_type: 'docs',
+        interaction_location: 'hub_other_docs',
+        match_accuracy: 0,
+      });
+    });
+
+    it('does not count the resumed path among the top four', async () => {
+      setup({
+        startedPath: true,
+        featured: [pkg('getting-started')],
+        recommendations: [pkg('two'), pkg('three'), pkg('four'), pkg('five')],
+      });
+
+      expect(screen.queryByTestId(testIds.sidebarHub.otherDocs)).not.toBeInTheDocument();
+      expect(screen.getByText('Title five')).toBeInTheDocument();
+    });
+  });
+
   it('opens a docs page row without package info', async () => {
     setup({
       featured: [pkg('top')],

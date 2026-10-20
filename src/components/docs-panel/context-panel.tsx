@@ -9,7 +9,14 @@ import { Prerequisites } from '../Prerequisites';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
-import { SidebarHub, getFirstName, toHubCustomGuides, type HubGuide, type HubSource } from '../SidebarHub';
+import {
+  SidebarHub,
+  MORE_RECOMMENDED_COUNT,
+  getFirstName,
+  toHubCustomGuides,
+  type HubGuide,
+  type HubSource,
+} from '../SidebarHub';
 import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
 import { config, locationService, getAppEvents } from '@grafana/runtime';
 
@@ -250,6 +257,13 @@ function launchRecommendation(
     : openLearningJourney(contentUrl, recommendation.title);
 }
 
+function hubInteractionLocation(index: number): string {
+  if (index === 0) {
+    return 'hub_featured_card';
+  }
+  return index <= MORE_RECOMMENDED_COUNT ? 'hub_more_recommended' : 'hub_other_docs';
+}
+
 interface HubGuidesOptions {
   recommendations: Recommendation[];
   resume: Pick<HubResume, 'pathId' | 'guideUrl'> | undefined;
@@ -287,7 +301,7 @@ function toHubGuides({ recommendations, resume, assignments, ...openers }: HubGu
       progress: displayType === 'docs-page' ? undefined : recommendation.completionPercentage,
       onLaunch: () =>
         launchRecommendation(recommendation, {
-          interactionLocation: index === 0 ? 'hub_featured_card' : 'hub_more_recommended',
+          interactionLocation: hubInteractionLocation(index),
           packageInfo,
           ...openers,
         }),
