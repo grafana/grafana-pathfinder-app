@@ -106,6 +106,7 @@ interface SetupOptions {
   featured?: Recommendation[];
   startedPath?: boolean;
   manifestPath?: boolean;
+  privatePath?: boolean;
   assignments?: ResolvedAssignment[];
   hasLoadedAssignments?: boolean;
 }
@@ -116,6 +117,7 @@ function setup({
   featured = [],
   startedPath = false,
   manifestPath = false,
+  privatePath = false,
   assignments = [],
   hasLoadedAssignments = true,
 }: SetupOptions = {}) {
@@ -142,6 +144,7 @@ function setup({
     guides: ['a', 'b'],
     badgeId: 'b',
     ...(manifestPath && { manifest: { type: 'path', milestones: ['a', 'b'] } }),
+    ...(privatePath && { isPrivate: true }),
   };
   const memberUrl = (id: string) => (manifestPath ? `backend-guide:${id}` : `bundled:${id}`);
   mockUseLearningPaths.mockReturnValue({
@@ -162,7 +165,7 @@ function setup({
     ],
     hasLoaded: hasLoadedAssignments,
   });
-  render(<ContextPanel.Component model={model as never} />);
+  return render(<ContextPanel.Component model={model as never} />);
 }
 
 describe('ContextPanelRenderer sidebar hub flag', () => {
@@ -294,6 +297,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       content_type: 'learning-journey',
       interaction_location: 'hub_resume_card',
       completion_percentage: 50,
+      launch_target: 'current_guide',
     });
   });
 
@@ -318,6 +322,14 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       trackId: 'ops',
     });
     expect(openLearningJourney).not.toHaveBeenCalled();
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+      content_title: 'Getting started',
+      content_url: 'https://cdn/cover',
+      content_type: 'learning-journey',
+      interaction_location: 'hub_resume_card',
+      completion_percentage: 50,
+      launch_target: 'cover_page',
+    });
   });
 
   it('falls back to the current guide when the cover cannot be resolved', async () => {
@@ -332,6 +344,56 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       'Getting started',
       expect.objectContaining({ packageId: 'getting-started' })
     );
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.OpenResourceClick,
+      expect.objectContaining({ content_url: 'backend-guide:b', launch_target: 'current_guide_fallback' })
+    );
+  });
+
+  it('keeps the title and url of a private path out of the resume event', async () => {
+    mockResolvePackageNavLinks.mockResolvedValue([{ packageId: 'getting-started', contentUrl: 'https://cdn/cover' }]);
+    setup({ startedPath: true, manifestPath: true, privatePath: true });
+
+    await click(screen.getByTestId(testIds.sidebarHub.resumeAction));
+
+    await waitFor(() => expect(openDocsPage).toHaveBeenCalledTimes(1));
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+      content_type: 'learning-journey',
+      interaction_location: 'hub_resume_card',
+      completion_percentage: 50,
+      launch_target: 'cover_page',
+    });
+  });
+
+  it('does not open or report a resume that resolves after the hub unmounted', async () => {
+    let resolveCover: (links: unknown[]) => void = () => undefined;
+    mockResolvePackageNavLinks.mockReturnValue(new Promise((resolve) => (resolveCover = resolve)));
+    const { unmount } = setup({ startedPath: true, manifestPath: true });
+
+    await click(screen.getByTestId(testIds.sidebarHub.resumeAction));
+    expect(mockResolvePackageNavLinks).toHaveBeenCalledWith(['getting-started']);
+    unmount();
+    await act(async () => {
+      resolveCover([{ packageId: 'getting-started', contentUrl: 'https://cdn/cover' }]);
+    });
+
+    expect(openDocsPage).not.toHaveBeenCalled();
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+  });
+
+  it('does not open a resume whose cover lookup fails after the hub unmounted', async () => {
+    let rejectCover: (error: Error) => void = () => undefined;
+    mockResolvePackageNavLinks.mockReturnValue(new Promise((_resolve, reject) => (rejectCover = reject)));
+    const { unmount } = setup({ startedPath: true, manifestPath: true });
+
+    await click(screen.getByTestId(testIds.sidebarHub.resumeAction));
+    unmount();
+    await act(async () => {
+      rejectCover(new Error('offline'));
+    });
+
+    expect(openDocsPage).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 
   it('leaves the resumed path out of the recommendations', async () => {

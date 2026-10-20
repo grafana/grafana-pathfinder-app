@@ -199,6 +199,14 @@ describe('SidebarHub', () => {
     expect(screen.queryByTestId(testIds.sidebarHub.tiles)).not.toBeInTheDocument();
   });
 
+  it('hides the more recommended rows while recommendations reload', () => {
+    renderHub({ isLoadingGuides: true });
+
+    expect(screen.queryByTestId(testIds.sidebarHub.featured)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.sidebarHub.moreList)).not.toBeInTheDocument();
+    expect(screen.queryByText('More recommended')).not.toBeInTheDocument();
+  });
+
   it('shows the recommendations error and still renders learning progress', () => {
     renderHub({ guides: [], recommendationsError: 'Service down' });
 

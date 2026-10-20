@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@emotion/css';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
@@ -877,21 +877,35 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     });
     locationService.push(PLUGIN_BASE_URL);
   }, []);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const resumeLearning = useCallback(
     async (resume: HubResume) => {
-      reportAppInteraction(UserInteraction.OpenResourceClick, {
-        content_title: resume.pathTitle,
-        content_url: resume.guideUrl,
-        content_type: AnalyticsContentType.LearningJourney,
-        interaction_location: 'hub_resume_card',
-        completion_percentage: resume.percent,
-      });
+      const reportResume = (contentUrl: string, launchTarget: string) =>
+        reportAppInteraction(UserInteraction.OpenResourceClick, {
+          ...(!resume.isPrivate && { content_title: resume.pathTitle, content_url: contentUrl }),
+          content_type: AnalyticsContentType.LearningJourney,
+          interaction_location: 'hub_resume_card',
+          completion_percentage: resume.percent,
+          launch_target: launchTarget,
+        });
       if (!resume.manifest || resume.pathUrl) {
+        reportResume(resume.guideUrl, 'current_guide');
         return openLearningJourney(resume.guideUrl, resume.guideTitle);
       }
       // Manifest-backed paths open on their cover, like My learning; the cover resumes the current module.
       const [cover] = await resolvePackageNavLinks([resume.pathId]).catch(() => []);
-      return openDocsPage(cover?.contentUrl || resume.guideUrl, resume.pathTitle, {
+      if (!mountedRef.current) {
+        return;
+      }
+      const coverUrl = cover?.contentUrl;
+      reportResume(coverUrl || resume.guideUrl, coverUrl ? 'cover_page' : 'current_guide_fallback');
+      return openDocsPage(coverUrl || resume.guideUrl, resume.pathTitle, {
         packageId: resume.pathId,
         packageManifest: { ...resume.manifest, id: resume.pathId },
         ...(resume.trackId && { trackId: resume.trackId }),

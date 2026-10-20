@@ -22,6 +22,7 @@ export interface HubResume {
   trackLabel?: string;
   pathUrl?: string;
   manifest?: Record<string, unknown>;
+  isPrivate?: boolean;
 }
 
 export type HubDue = { tone: 'today' | 'later' | 'overdue'; days: number; dueAt: string };
@@ -60,6 +61,7 @@ function startedPaths(deps: HubLearningDeps): HubResume[] {
         trackLabel: assignment?.trackLabel,
         pathUrl: path.url,
         manifest: path.manifest,
+        isPrivate: path.isPrivate,
       },
     ];
   });

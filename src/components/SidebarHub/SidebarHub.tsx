@@ -48,7 +48,7 @@ export function SidebarHub({
   const styles = useStyles2(getSidebarHubStyles);
   const { pending, run } = useGuardedLaunch();
   const [featured, ...rest] = guides;
-  const more = rest.slice(0, MORE_RECOMMENDED_COUNT);
+  const more = isLoadingGuides ? [] : rest.slice(0, MORE_RECOMMENDED_COUNT);
 
   return (
     <Stack direction="column" gap={1.5} data-testid={testIds.sidebarHub.container}>

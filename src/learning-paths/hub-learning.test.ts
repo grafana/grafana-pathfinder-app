@@ -94,6 +94,11 @@ describe('selectHubResume', () => {
     expect(resume).toMatchObject({ guideUrl: 'https://example.com/a/', pathUrl: 'https://example.com/a/', manifest });
   });
 
+  it('marks a resume from an organization path as private', () => {
+    expect(selectHubResume(deps([path('a', { isPrivate: true })], { a: 1 }))?.isPrivate).toBe(true);
+    expect(selectHubResume(deps([path('b')], { b: 1 }))?.isPrivate).toBeUndefined();
+  });
+
   it('skips a path with no current guide', () => {
     const none = (id: string): PathGuide[] => guidesFor(id, 1).map((guide) => ({ ...guide, isCurrent: false }));
     expect(selectHubResume({ ...deps([path('a')], { a: 1 }), getPathGuides: none })).toBeNull();
