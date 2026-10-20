@@ -1,3 +1,4 @@
+import { mergeRankedRecommendations } from '../../lib/recommendation-ranking';
 import React, { memo, useEffect, useState } from 'react';
 import { cx } from '@emotion/css';
 
@@ -240,6 +241,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 }
 
 interface RecommendationsSectionProps {
+  currentPath?: string;
   recommendations: Recommendation[];
   featuredRecommendations: Recommendation[];
   customGuides: PublishedGuide[];
@@ -263,8 +265,9 @@ interface RecommendationsSectionProps {
 }
 
 export const RecommendationsSection = memo(function RecommendationsSection({
-  recommendations,
-  featuredRecommendations,
+  currentPath = '',
+  recommendations: incomingRecommendations,
+  featuredRecommendations: incomingFeaturedRecommendations,
   customGuides,
   customGuidePaths,
   customGuideOrphans,
@@ -284,6 +287,13 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   toggleOtherDocsExpansion,
   assignments = [],
 }: RecommendationsSectionProps) {
+  const ordered = mergeRankedRecommendations(
+    incomingRecommendations,
+    incomingFeaturedRecommendations.map((rec) => ({ ...rec, editorialFeatured: true })),
+    currentPath
+  );
+  const recommendations = ordered.filter((rec) => !rec.placement);
+  const featuredRecommendations = ordered.filter((rec) => rec.placement);
   const styles = useStyles2(getStyles);
   const skeletonStyles = useStyles2(getSkeletonStyles);
   const hasCustomGuidesContent = isLoadingCustomGuides || customGuides.length > 0;
@@ -745,6 +755,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
 
           {/* Recommendations Section - Memoized to prevent unnecessary rerenders */}
           <RecommendationsSection
+            currentPath={contextData.currentPath}
             recommendations={recommendations}
             featuredRecommendations={contextData.featuredRecommendations}
             customGuides={customGuides}

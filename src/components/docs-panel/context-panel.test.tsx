@@ -831,6 +831,22 @@ describe('suggested path assignment badges', () => {
     expect(card).not.toHaveTextContent('Today');
   });
 
+  it('places contextual matches ahead of ordinary server-featured cards', () => {
+    renderSuggested({
+      recommendations: [
+        {
+          title: 'Active task',
+          url: 'task',
+          relevance: { version: 1, tier: 3, taskSignals: 1, urlSpecificity: 8, environmentSignals: 0 },
+        },
+      ],
+      featuredRecommendations: [{ title: 'Editorial pick', url: 'editorial' }],
+    });
+    expect(screen.getByTestId(testIds.contextPanel.recommendationTitle(0))).toHaveTextContent('Active task');
+    expect(screen.getByTestId(testIds.contextPanel.recommendationTitle(1))).toHaveTextContent('Editorial pick');
+    expect(screen.queryByTestId('featured-section')).not.toBeInTheDocument();
+  });
+
   describe('track routing', () => {
     const trackedPath = {
       title: 'Grafana Foundations',
@@ -868,11 +884,11 @@ describe('suggested path assignment badges', () => {
       expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
     });
 
-    it('badges a featured path and opens it on its assigned track', () => {
+    it('badges an explicitly suggested path and opens it on its assigned track', () => {
       const openDocsPage = jest.fn();
       renderSuggested({
         recommendations: [],
-        featuredRecommendations: [trackedPath],
+        featuredRecommendations: [{ ...trackedPath, placement: 'suggestion' }],
         assignments: [trackedAssignment()],
         openDocsPage,
       });
@@ -892,6 +908,7 @@ describe('suggested path assignment badges', () => {
       const openDocsPage = jest.fn();
       const filler = [1, 2, 3, 4].map((n) => ({
         title: `Filler ${n}`,
+        relevance: { version: 1 as const, tier: 2, taskSignals: 0, urlSpecificity: 8, environmentSignals: 0 },
         url: `https://grafana.com/docs/filler-${n}/`,
         type: 'docs-page' as const,
       }));

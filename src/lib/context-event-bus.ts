@@ -1,4 +1,5 @@
-import { getEchoSrv, EchoEventType } from '@grafana/runtime';
+import { contextLocationKey } from './context-location';
+import { getEchoSrv, EchoEventType, locationService } from '@grafana/runtime';
 import { logger } from './logging';
 
 // Module-scoped state keeps one EchoSrv subscription and shared inferred values across all consumers.
@@ -8,48 +9,73 @@ interface BufferedEvent {
   visualizationType?: string;
   timestamp: number;
   source: string;
+  path?: string;
 }
 
 const BUFFER_SIZE = 10;
 const BUFFER_TTL = 300000; // 5 minutes
 
 let echoLoggingInitialized = false;
-let currentDatasourceType: string | null = null;
-let currentVisualizationType: string | null = null;
+let currentDatasource: BufferedEvent | null = null;
+let currentVisualization: BufferedEvent | null = null;
+let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+
+function currentPath(): string {
+  const location = locationService?.getLocation() ?? window.location;
+  return contextLocationKey(location.pathname, location.search);
+}
+
+function isCurrent(event: BufferedEvent): boolean {
+  return event.path === currentPath() && Date.now() - event.timestamp < BUFFER_TTL;
+}
+
+function expireObservations(): void {
+  eventBuffer = eventBuffer.filter(isCurrent);
+  if (currentDatasource && !isCurrent(currentDatasource)) {
+    currentDatasource = null;
+  }
+  if (currentVisualization && !isCurrent(currentVisualization)) {
+    currentVisualization = null;
+  }
+}
+
+function scheduleExpiry(): void {
+  clearTimeout(expiryTimer);
+  const observations = [currentDatasource, currentVisualization].filter(
+    (event): event is BufferedEvent => event !== null
+  );
+  if (!changeListeners.size || !observations.length) {
+    return;
+  }
+  const expiresAt = Math.min(...observations.map((event) => event.timestamp + BUFFER_TTL));
+  expiryTimer = setTimeout(
+    () => {
+      expireObservations();
+      notifyContextChange();
+      scheduleExpiry();
+    },
+    Math.max(0, expiresAt - Date.now())
+  );
+}
 let eventBuffer: BufferedEvent[] = [];
 const changeListeners: Set<() => void> = new Set();
 
-/**
- * Datasource type detected from EchoSrv events (Phase 2 & 3: Echo-based detection).
- *
- * Supported event sources:
- * - grafana_ds_add_datasource_clicked: New datasource configuration
- * - grafana_ds_test_datasource_clicked: Existing datasource configuration (workaround)
- * - dashboards_dspicker_clicked: Dashboard datasource selection for querying
- * - data-request (meta-analytics): Active query execution in explore/dashboard
- */
 export function getDetectedDatasourceType(): string | null {
-  return currentDatasourceType;
+  expireObservations();
+  return currentDatasource?.datasourceType ?? null;
 }
 
-/**
- * Visualization type detected from EchoSrv events (Phase 4: Echo-based detection).
- *
- * Supported event sources:
- * - dashboards_panel_plugin_picker_clicked: Panel/visualization type selection in dashboards
- */
 export function getDetectedVisualizationType(): string | null {
-  return currentVisualizationType;
+  expireObservations();
+  return currentVisualization?.visualizationType ?? null;
 }
 
-/**
- * Subscribe to context changes (for hooks to refresh when EchoSrv events occur).
- * Returns an unsubscribe function.
- */
 export function onContextChange(listener: () => void): () => void {
   changeListeners.add(listener);
+  scheduleExpiry();
   return () => {
     changeListeners.delete(listener);
+    scheduleExpiry();
   };
 }
 
@@ -64,44 +90,50 @@ function notifyContextChange(): void {
 }
 
 function addToEventBuffer(event: BufferedEvent): void {
-  const now = Date.now();
-  eventBuffer = eventBuffer.filter((e) => now - e.timestamp < BUFFER_TTL);
+  expireObservations();
+  event = { ...event, path: currentPath() };
+  const previousDatasource = currentDatasource?.datasourceType;
+  const previousVisualization = currentVisualization?.visualizationType;
+  if (event.datasourceType) {
+    currentDatasource = event;
+  }
+  if (event.visualizationType) {
+    currentVisualization = event;
+  }
+  eventBuffer = eventBuffer.filter((e) => isCurrent(e));
   eventBuffer.push(event);
   if (eventBuffer.length > BUFFER_SIZE) {
     eventBuffer = eventBuffer.slice(-BUFFER_SIZE);
   }
-  notifyContextChange();
+  scheduleExpiry();
+  if (
+    previousDatasource !== currentDatasource?.datasourceType ||
+    previousVisualization !== currentVisualization?.visualizationType
+  ) {
+    notifyContextChange();
+  }
 }
 
-/**
- * Initialize context from recent events (called when plugin reopens).
- * Replays the most recent buffered datasource and visualization events so a
- * fresh hook mount reflects what the user was doing before the panel closed.
- */
 export function initializeFromRecentEvents(): void {
-  const now = Date.now();
-
+  expireObservations();
   const recentDatasourceEvent = eventBuffer
-    .filter((e) => e.datasourceType && now - e.timestamp < BUFFER_TTL)
+    .filter((e) => e.datasourceType && isCurrent(e))
     .sort((a, b) => b.timestamp - a.timestamp)[0];
 
   const recentVizEvent = eventBuffer
-    .filter((e) => e.visualizationType && now - e.timestamp < BUFFER_TTL)
+    .filter((e) => e.visualizationType && isCurrent(e))
     .sort((a, b) => b.timestamp - a.timestamp)[0];
 
   if (recentDatasourceEvent) {
-    currentDatasourceType = recentDatasourceEvent.datasourceType!;
+    currentDatasource = recentDatasourceEvent;
   }
 
   if (recentVizEvent) {
-    currentVisualizationType = recentVizEvent.visualizationType!;
+    currentVisualization = recentVizEvent;
   }
+  scheduleExpiry();
 }
 
-/**
- * Initialize EchoSrv event logging. Idempotent — safe to call from both the
- * plugin lifecycle hook and the lazy fallback in `ContextService.getContextData`.
- */
 export function initializeEchoLogging(): void {
   if (echoLoggingInitialized) {
     return;
@@ -122,7 +154,6 @@ export function initializeEchoLogging(): void {
           if (event.payload?.interactionName === 'grafana_ds_add_datasource_clicked') {
             const pluginId = event.payload?.properties?.plugin_id;
             if (pluginId) {
-              currentDatasourceType = pluginId;
               addToEventBuffer({ datasourceType: pluginId, timestamp: Date.now(), source: 'add' });
             }
           }
@@ -133,7 +164,6 @@ export function initializeEchoLogging(): void {
           if (event.payload?.interactionName === 'grafana_ds_test_datasource_clicked') {
             const pluginId = event.payload?.properties?.plugin_id;
             if (pluginId) {
-              currentDatasourceType = pluginId;
               addToEventBuffer({ datasourceType: pluginId, timestamp: Date.now(), source: 'test' });
             }
           }
@@ -141,7 +171,6 @@ export function initializeEchoLogging(): void {
           if (event.payload?.interactionName === 'dashboards_dspicker_clicked') {
             const dsType = event.payload?.properties?.ds_type;
             if (dsType) {
-              currentDatasourceType = dsType;
               addToEventBuffer({ datasourceType: dsType, timestamp: Date.now(), source: 'dashboard-picker' });
             }
           }
@@ -149,7 +178,6 @@ export function initializeEchoLogging(): void {
           if (event.payload?.interactionName === 'dashboards_panel_plugin_picker_clicked') {
             const pluginId = event.payload?.properties?.plugin_id;
             if (pluginId && event.payload?.properties?.item === 'select_panel_plugin') {
-              currentVisualizationType = pluginId;
               addToEventBuffer({ visualizationType: pluginId, timestamp: Date.now(), source: 'panel-picker' });
             }
           }
@@ -160,7 +188,6 @@ export function initializeEchoLogging(): void {
           const datasourceType = event.payload?.datasourceType;
           const source = event.payload?.source;
           if (datasourceType && source) {
-            currentDatasourceType = datasourceType;
             addToEventBuffer({ datasourceType, timestamp: Date.now(), source: `${source}-query` });
           }
         }
@@ -173,36 +200,21 @@ export function initializeEchoLogging(): void {
   }
 }
 
-/**
- * Test-only reset. Clears all mutable state and the registered EchoSrv backend
- * tracking flag. Production callers must not use this — the EchoSrv backend
- * itself is registered exactly once and cannot be unregistered.
- */
 export function __resetContextEventBusForTests(): void {
   echoLoggingInitialized = false;
-  currentDatasourceType = null;
-  currentVisualizationType = null;
+  currentDatasource = null;
+  currentVisualization = null;
+  clearTimeout(expiryTimer);
   eventBuffer = [];
   changeListeners.clear();
 }
 
-/**
- * Test-only trigger that fires the notify-listeners path without having to
- * stage a buffered event. Used by integration tests in `requirements-manager`
- * that just want to assert listener wiring.
- */
 export function __notifyContextChangeForTests(): void {
   notifyContextChange();
 }
 
-/**
- * Test-only clear of the inferred `current*` values while leaving the buffer
- * and listener set intact. Exists so tests can stage buffered events, wipe
- * the "live" cache, and then assert that `initializeFromRecentEvents` replays
- * the most-recent entry — the only path through which that function does any
- * observable work.
- */
 export function __clearCurrentValuesForTests(): void {
-  currentDatasourceType = null;
-  currentVisualizationType = null;
+  currentDatasource = null;
+  currentVisualization = null;
+  clearTimeout(expiryTimer);
 }

@@ -1,0 +1,277 @@
+{
+  "cases": [
+    {
+      "name": "general",
+      "match": {
+        "urlPrefix": "/"
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 0,
+        "taskSignals": 0,
+        "urlSpecificity": 0,
+        "environmentSignals": 0
+      },
+      "local": true
+    },
+    {
+      "name": "area",
+      "match": {
+        "urlPrefix": "/explore"
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 2,
+        "taskSignals": 0,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": true
+    },
+    {
+      "name": "environment",
+      "match": {
+        "datasource": "prometheus"
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 1,
+        "taskSignals": 0,
+        "urlSpecificity": 0,
+        "environmentSignals": 1
+      },
+      "local": false
+    },
+    {
+      "name": "task",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/explore"
+          },
+          {
+            "tag": "selected-datasource:loki"
+          }
+        ]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 3,
+        "taskSignals": 1,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": false
+    },
+    {
+      "name": "task-multiple",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/explore"
+          },
+          {
+            "allTags": ["selected-datasource:loki", "explore:edit"]
+          }
+        ]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 3,
+        "taskSignals": 2,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": false
+    },
+    {
+      "name": "partial",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "selected-datasource:loki"
+          }
+        ]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 0,
+        "taskSignals": 0,
+        "urlSpecificity": 0,
+        "environmentSignals": 0
+      },
+      "local": false
+    },
+    {
+      "name": "or-separate",
+      "match": {
+        "or": [
+          {
+            "urlPrefix": "/explore"
+          },
+          {
+            "tag": "selected-datasource:loki"
+          }
+        ]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 2,
+        "taskSignals": 0,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": false
+    },
+    {
+      "name": "duplicate-signal",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/explore"
+          },
+          {
+            "tag": "selected-datasource:loki"
+          },
+          {
+            "tag": "selected-datasource:loki"
+          }
+        ]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 3,
+        "taskSignals": 1,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": false
+    },
+    {
+      "name": "prefix-list",
+      "match": {
+        "urlPrefixIn": ["/", "/explore", "/explore/much-longer"]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 2,
+        "taskSignals": 0,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": true
+    },
+    {
+      "name": "platform-only",
+      "match": {
+        "targetPlatform": "cloud"
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 0,
+        "taskSignals": 0,
+        "urlSpecificity": 0,
+        "environmentSignals": 0
+      },
+      "local": true
+    },
+    {
+      "name": "or-platform",
+      "match": {
+        "or": [
+          {
+            "and": [
+              {
+                "urlPrefix": "/explore"
+              },
+              {
+                "targetPlatform": "cloud"
+              }
+            ]
+          },
+          {
+            "urlPrefix": "/"
+          }
+        ]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 2,
+        "taskSignals": 0,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": true
+    }
+  ],
+  "order": ["task-multiple", "task", "area", "environment", "general"]
+}

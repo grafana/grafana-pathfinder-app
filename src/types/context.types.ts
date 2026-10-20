@@ -65,7 +65,20 @@ export interface ResolvedNavLink {
   repository?: string;
 }
 
+export interface RecommendationRelevance {
+  version: 1;
+  tier: number;
+  taskSignals: number;
+  urlSpecificity: number;
+  environmentSignals: number;
+}
+
 export interface Recommendation {
+  relevance?: RecommendationRelevance;
+  matchedCriteria?: string[];
+  missingCriteria?: string[];
+  placement?: 'suggestion' | 'experiment';
+  editorialFeatured?: boolean;
   title: string;
   url: string;
   type?: 'learning-journey' | 'docs-page' | 'interactive' | 'package';

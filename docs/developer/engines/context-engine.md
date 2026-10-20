@@ -472,3 +472,35 @@ Configuration is managed through plugin settings (`PathfinderPluginConfig`):
 - `docs/architecture.dot` - Overall system architecture
 - `docs/developer/utils/README.md` - TimeoutManager and utility documentation
 - `docs/developer/ASSISTANT_INTEGRATION.md` - Assistant integration using context data
+
+## Contextual ordering
+
+`src/lib/recommendation-ranking.ts` ranks current task, current area, environment,
+then general recommendations. The optional v1 `relevance` response object carries
+server-evaluated evidence from the strongest satisfied rule branch. The server
+ranks before its result cap; client completion reordering applies only to returned
+candidates. Older responses receive conservative literal-route evidence from
+`matchedCriteria`, or general relevance if evidence is absent or partial.
+
+Within a tier, known completed content follows unfinished or unknown content;
+then task-signal count, matched literal URL-prefix length, environment-signal
+count and match accuracy break ties. Within equally relevant completion groups,
+`depends` and `recommends` place a prerequisite before the guide that references
+it. This is ordering only: missing prerequisites, cycles and `suggests` do not
+remove candidates. Stronger context and completion take precedence. Content
+format, a starting location on the current page, editorial status and canonical
+identity order otherwise-ready peers. Explicit suggestions and auto-open experiment placements
+retain priority. Ordinary server-featured cards join the contextual list instead
+of automatically preceding it. Local matching retains its existing vocabulary
+and rejects unsupported predicates; its route evidence does not expand eligibility.
+
+Observed data-source and visualization selections expire after five minutes and
+are scoped to pathname plus `editPanel`, `editview`, `firstPanel` and `id` query
+parameters. Repeated identical observations refresh freshness without refetching.
+Panel edit-mode changes refresh context; unrelated time-range changes do not. An
+inferred default visualization does not emit an observed `panel-type` signal.
+Context and recommendation requests ignore stale results after navigation or
+unmount. No additional analytics or query content is collected.
+
+`src/lib/testdata/relevance.v1.json` is shared with the recommender's
+`internal/recommender/testdata/relevance.v1.json`; update both copies together.
