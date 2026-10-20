@@ -126,6 +126,7 @@ function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest
     isExpanded: false,
     setIsExpanded: jest.fn(),
     _register: jest.fn(),
+    _unregister: jest.fn(),
   });
   return { openTerminal, disconnect };
 }

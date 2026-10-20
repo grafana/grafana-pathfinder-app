@@ -288,6 +288,82 @@ describe('state shared across surfaces', () => {
     expect(result.current.credential).toBeNull();
   });
 
+  it('keeps ready GCX shared by the toolbar and step after same-VM recovery without completing twice', async () => {
+    act(() => invalidateGcxCredentialForSession('s_abc', 'vm-1'));
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onReady = jest.fn();
+    const step = renderHook(({ id }) => useGcxCredential(onReady, id, 'step-a'), { initialProps: { id: 's_abc' } });
+    const toolbar = renderHook(({ id }) => useGcxCredential(undefined, id), { initialProps: { id: 's_abc' } });
+    await act(async () => step.result.current.run('s_abc'));
+    act(() => invalidateGcxCredentialForSession(null, 'vm-1'));
+    act(() => invalidateGcxCredentialForSession('s_def', 'vm-1'));
+    step.rerender({ id: 's_def' });
+    toolbar.rerender({ id: 's_def' });
+    expect(step.result.current.state).toBe('ready');
+    expect(toolbar.result.current.credential).toBe(CREDENTIAL);
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(mockProvisionGcx).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mint again when a caller installs into a session recovered onto the same VM', async () => {
+    act(() => invalidateGcxCredentialForSession('s_abc', 'vm-1'));
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onReady = jest.fn();
+    const step = renderHook(({ id }) => useGcxCredential(onReady, id, 'step-a'), { initialProps: { id: 's_abc' } });
+    await act(async () => step.result.current.run('s_abc'));
+    act(() => invalidateGcxCredentialForSession('s_def', 'vm-1'));
+    step.rerender({ id: 's_def' });
+    await act(async () => step.result.current.run('s_def'));
+    expect(mockProvisionGcx).toHaveBeenCalledTimes(1);
+    expect(step.result.current.state).toBe('ready');
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps ready GCX across same-VM recovery when the VM id arrives after the install started', async () => {
+    act(() => invalidateGcxCredentialForSession('s_abc', null));
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const hook = renderHook(({ id }) => useGcxCredential(undefined, id), { initialProps: { id: 's_abc' } });
+    await act(async () => hook.result.current.run('s_abc'));
+    act(() => invalidateGcxCredentialForSession('s_abc', 'vm-1'));
+    act(() => invalidateGcxCredentialForSession('s_def', 'vm-1'));
+    hook.rerender({ id: 's_def' });
+    expect(hook.result.current.state).toBe('ready');
+    expect(hook.result.current.credential).toBe(CREDENTIAL);
+  });
+
+  it.each(['vm-2', null])('forgets ready GCX when the recovered VM is different or unknown (%s)', async (vmId) => {
+    act(() => invalidateGcxCredentialForSession('s_abc', 'vm-1'));
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const hook = renderHook(() => useGcxCredential(undefined, 's_abc'));
+    await act(async () => hook.result.current.run('s_abc'));
+    act(() => invalidateGcxCredentialForSession('s_def', vmId));
+    expect(hook.result.current.state).toBe('idle');
+  });
+
+  it('does not carry an unfinished install into a recovered session or accept its late result', async () => {
+    act(() => invalidateGcxCredentialForSession('s_abc', 'vm-1'));
+    let finish!: (credential: typeof CREDENTIAL) => void;
+    mockProvisionGcx.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const onReady = jest.fn();
+    const hook = renderHook(({ id }) => useGcxCredential(onReady, id, 'step-a'), { initialProps: { id: 's_abc' } });
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = hook.result.current.run('s_abc');
+    });
+    act(() => invalidateGcxCredentialForSession('s_def', 'vm-1'));
+    hook.rerender({ id: 's_def' });
+    await act(async () => {
+      finish(CREDENTIAL);
+      await pending;
+    });
+    expect(hook.result.current.state).toBe('idle');
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
   it('keeps the credential across a disconnect that may reconnect to the same session', async () => {
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);
     const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));

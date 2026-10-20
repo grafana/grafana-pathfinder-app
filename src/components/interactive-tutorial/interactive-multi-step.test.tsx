@@ -262,6 +262,19 @@ describe('InteractiveMultiStep — completeEarly lifecycle', () => {
   });
 });
 
+it('tells its section while it runs', async () => {
+  const onExecutingChange = jest.fn();
+  render(
+    <InteractiveMultiStep
+      stepId="multi-running"
+      internalActions={[{ targetAction: 'unsupported-action' } as any]}
+      onExecutingChange={onExecutingChange}
+    />
+  );
+  fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('multi-running')));
+  await waitFor(() => expect(onExecutingChange.mock.calls).toEqual([[true], [false]]));
+});
+
 describe('InteractiveMultiStep — full-screen fallback location', () => {
   // Regression test (Cursor Bugbot, "Multi-step show omits handoff path"):
   // the show-phase call dropped fullScreenFallbackLocation while the do-phase

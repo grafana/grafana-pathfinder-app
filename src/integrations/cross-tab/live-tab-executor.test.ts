@@ -1,6 +1,6 @@
 import { readerReturnChannel } from '../../global-state/auto-launch';
 import { waitFor } from '@testing-library/react';
-import { getAppEvents } from '@grafana/runtime';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { installLiveTabExecutor, resetLiveTabExecutorForTests, DEFAULT_PACING } from './live-tab-executor';
 import { GUIDED_ACTION_TYPES, GUIDED_DOM_ACTION_TYPES } from '../../types/interactive-actions.types';
 import { INTERACTIVE_ACTION_TYPES } from '../../types/interactive.types';
@@ -48,7 +48,7 @@ jest.mock('../../interactive-engine/action-handlers', () => {
 jest.mock('@grafana/runtime', () => {
   const actual = jest.requireActual('@grafana/runtime');
   const publish = jest.fn();
-  return { ...actual, getAppEvents: jest.fn(() => ({ publish })) };
+  return { ...actual, locationService: { push: jest.fn() }, getAppEvents: jest.fn(() => ({ publish })) };
 });
 
 jest.mock('../../global-state/sidebar', () => ({
@@ -123,6 +123,91 @@ describe('installLiveTabExecutor', () => {
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
     (checkRequirements as jest.Mock).mockResolvedValue({ requirements: '', pass: true, error: [] });
     (dispatchFix as jest.Mock).mockResolvedValue({ ok: true });
+  });
+
+  it.each([
+    [true, `${window.location.origin}/dashboards?orgId=1#recent`, '/dashboards?orgId=1#recent'],
+    [false, `${window.location.origin}/dashboards`, null],
+    [true, 'https://example.com/dashboards', null],
+    [true, 'javascript:alert(1)', null],
+    [true, `${window.location.origin}/logout`, null],
+    [true, `${window.location.origin}//example.com`, null],
+  ])('validates ordinary link navigation (authorized=%s, url=%s)', async (authorized, url, expected) => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, authorized ? openAuthGate : closedAuthGate);
+    transport.emit({ source: 'pathfinder', senderId: 'controller', timestamp: 0, kind: 'navigate-link', url });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (expected) {
+      expect(locationService.push).toHaveBeenCalledWith(expected);
+    } else {
+      expect(locationService.push).not.toHaveBeenCalled();
+    }
+    expect(transport.postedMessages).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'step-complete' })])
+    );
+    uninstall();
+  });
+
+  it('reports passive completion evidence when an ordinary link matches a pending navigate step', async () => {
+    const previousUrl = window.location.href;
+    window.history.replaceState({}, '', '/dashboards');
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    try {
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'observation-subscribe',
+        generation: 1,
+        subscriptionId: 'link-nav',
+        guideKey: 'bundled:guide',
+        revision: 0,
+        steps: [{ id: 'open-explore', cursor: 0, actions: [{ targetAction: 'navigate', refTarget: '/explore' }] }],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'observation-evidence' }));
+      jest.mocked(locationService.push).mockImplementationOnce((url) => {
+        window.history.pushState({}, '', String(url));
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'navigate-link',
+        url: `${window.location.origin}/explore`,
+      });
+      await waitFor(() =>
+        expect(transport.postedMessages).toContainEqual(
+          expect.objectContaining({ kind: 'observation-evidence', id: 'open-explore', index: 0 })
+        )
+      );
+      expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ kind: 'step-complete' }));
+    } finally {
+      uninstall();
+      window.history.replaceState({}, '', previousUrl);
+    }
+  });
+
+  it.each([
+    [`${window.location.origin}/grafana/explore?left=1`, '/explore?left=1'],
+    [`${window.location.origin}/grafana`, '/'],
+    [`${window.location.origin}/dashboards`, '/dashboards'],
+    [`${window.location.origin}/grafanax/explore`, '/grafanax/explore'],
+  ])('strips the Grafana subpath from %s before navigating', async (url, expected) => {
+    const previous = config.appSubUrl;
+    config.appSubUrl = '/grafana';
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    try {
+      transport.emit({ source: 'pathfinder', senderId: 'controller', timestamp: 0, kind: 'navigate-link', url });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(locationService.push).toHaveBeenCalledWith(expected);
+    } finally {
+      uninstall();
+      config.appSubUrl = previous;
+    }
   });
 
   it('cancels an active guided run without waiting behind the execution queue', async () => {

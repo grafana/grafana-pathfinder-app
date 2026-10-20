@@ -3,6 +3,7 @@ import type { PathfinderPluginConfig } from '../../../constants';
 import { getFeatureFlagValue } from '../../../utils/openfeature';
 import { isDevModeEnabled } from '../../../utils/dev-mode';
 
+/** Gates must come from resolved plugin config; an unresolved one reads as `devMode: false`. */
 export interface TabGates {
   allowEditor: boolean;
   allowDevTools: boolean;
