@@ -23,6 +23,7 @@ const SESSION_ID = 's_0123456789abcdef0123456789abcdef';
 
 /** Stands in for TerminalPanel, which is the only caller of `_register`. */
 const mockConnect = jest.fn();
+const mockDisconnect = jest.fn();
 function FakePanel({
   status,
   sessionId,
@@ -40,7 +41,7 @@ function FakePanel({
       vmId,
       error: null,
       connect: mockConnect,
-      disconnect: jest.fn(),
+      disconnect: mockDisconnect,
       sendCommand: jest.fn(),
     });
   }, [ctx, status, sessionId, vmId]);
@@ -169,6 +170,7 @@ describe('connection recovery consumers', () => {
   }
   beforeEach(() => {
     mockConnect.mockClear();
+    mockDisconnect.mockClear();
     jest.mocked(codaApi.provisionGcx).mockReset();
     resetGcxCredentialStore();
   });
@@ -191,6 +193,41 @@ describe('connection recovery consumers', () => {
       expect(mockConnect).not.toHaveBeenCalled();
       view.rerender(tree('connected', 'new-session'));
       await expect(waiting).resolves.toBe('new-session');
+    }
+  );
+
+  it.each(['connecting', 'connected'] as const)(
+    'reuses configured VM options when openTerminal omits options while %s',
+    async (status) => {
+      jest.useFakeTimers();
+      try {
+        const view = render(tree('disconnected', null));
+        act(() => context.connect({ template: 'configured-template', app: 'app', scenario: 'scenario' }));
+        view.rerender(tree('connected', SESSION_ID));
+        if (status === 'connecting') {
+          view.rerender(tree('connecting', null));
+        }
+        mockConnect.mockClear();
+        mockDisconnect.mockClear();
+        const settled = jest.fn();
+        let waiting!: Promise<string | null>;
+        await act(async () => {
+          waiting = context.openTerminal();
+          void waiting.then(settled);
+          jest.advanceTimersByTime(200);
+        });
+        expect(mockDisconnect).not.toHaveBeenCalled();
+        expect(mockConnect).not.toHaveBeenCalled();
+        if (status === 'connecting') {
+          expect(settled).not.toHaveBeenCalled();
+          view.rerender(tree('connected', 'recovered-session'));
+          await expect(waiting).resolves.toBe('recovered-session');
+        } else {
+          await expect(waiting).resolves.toBe(SESSION_ID);
+        }
+      } finally {
+        jest.useRealTimers();
+      }
     }
   );
 

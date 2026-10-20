@@ -263,7 +263,9 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       const activeTemplate = activeVmOptsRef.current?.template || '';
       const activeApp = activeVmOptsRef.current?.app || '';
       const activeScenario = activeVmOptsRef.current?.scenario || '';
+      // Omitted options mean use the current sandbox, including during SDK recovery.
       const needsReconnect =
+        vmOpts !== undefined &&
         !needsConnect &&
         (requestedTemplate !== activeTemplate || requestedApp !== activeApp || requestedScenario !== activeScenario);
 
