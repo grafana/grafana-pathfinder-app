@@ -130,6 +130,9 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
             "type": "guide",
           },
           "manifest": {
+            "author": {
+              "name": "pathfinder-mcp",
+            },
             "id": "snapshot-fixture",
             "repository": "interactive-tutorials",
             "schemaVersion": "1.1.0",
@@ -248,6 +251,9 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
               "additionalFields": {
                 "schemaVersion": "1.1.0",
               },
+              "author": {
+                "name": "pathfinder-mcp",
+              },
               "repository": "interactive-tutorials",
               "type": "guide",
             },
@@ -314,6 +320,7 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
       description: 'Alerting enablement',
       milestones: ['alerting-intro', 'alerting-rules'],
       depends: [['grafana-basics']],
+      author: { name: 'pathfinder-mcp' },
       additionalFields: { schemaVersion: CURRENT_SCHEMA_VERSION },
     });
     // `spec.type` is not in the CRD — the API server prunes it with a warning.

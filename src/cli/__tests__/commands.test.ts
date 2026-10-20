@@ -928,3 +928,32 @@ describe('runValidate', () => {
     }
   });
 });
+
+describe('runCreate author', () => {
+  async function createdAuthor(
+    args: { authorName?: string; authorTeam?: string },
+    options?: Parameters<typeof runCreate>[1]
+  ) {
+    const dir = path.join(tempDir(), 'pkg');
+    const result = await runCreate({ dir, id: 'author-test', title: 'Author Test', type: 'guide', ...args }, options);
+    expect(result.status).toBe('ok');
+    return readPackage(dir).manifest?.author;
+  }
+
+  it('writes a supplied author name and team into the manifest', async () => {
+    expect(await createdAuthor({ authorName: 'Ada', authorTeam: 'Docs' })).toEqual({ name: 'Ada', team: 'Docs' });
+  });
+
+  it('defaults to pathfinder-mcp when no author is supplied or inferable', async () => {
+    expect(await createdAuthor({})).toEqual({ name: 'pathfinder-mcp' });
+  });
+
+  it('uses the local identity only when no author is supplied', async () => {
+    expect(await createdAuthor({}, { localAuthorName: () => 'Local Dev' })).toEqual({ name: 'Local Dev' });
+    expect(await createdAuthor({ authorName: 'Ada' }, { localAuthorName: () => 'Local Dev' })).toEqual({ name: 'Ada' });
+  });
+
+  it('falls back to pathfinder-mcp when the local identity is unavailable', async () => {
+    expect(await createdAuthor({}, { localAuthorName: () => undefined })).toEqual({ name: 'pathfinder-mcp' });
+  });
+});
