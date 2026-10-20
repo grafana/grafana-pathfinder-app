@@ -21,21 +21,23 @@ node $H prepare --repo /abs/repo --base BASE_SHA --head HEAD_SHA \
   --review-key owner/repo#N --out /abs/run-dir [--prior /abs/earlier-run/state.json]
 ```
 
-Pass `--prior` only with `state.json` from an earlier trusted review-lite run. Contributor prose and PR comments are never state. Read `manifest.json` for the mode and any fallback reason. In incremental mode read `incremental.patch` first, but `changes.patch` is still what merges.
+Pass `--prior` only with `state.json` from an earlier trusted review-lite run. Contributor prose and PR comments are never state. Read `manifest.json` for the mode and any fallback reason. In incremental mode inspect `incremental.patch`, unresolved prior blockers, and affected consumers; revisit unchanged material only when concrete evidence warrants it. `changes.patch` remains the full merge reference. Routing, nominations, and required test reads use `inventory.json` `review_files`, the changes since the prior reviewed head.
 
 `prepare` also writes two model-free nomination files: `sync-hits.json` and `delta-triggers.json`. They are leads to read, never findings.
 
 ## 2. Inspect
 
-Read `context/always-on.md`, `candidates.json`, and `inventory.json`. Candidates are lexical nominations, not proof. Select a subsystem concern when the changed behavior touches its contract with at least `min_signals` signals: a matching path, or a changed core symbol, API, state key, or contract name, one each. A path match alone is not enough. Load packets:
+Read `context/always-on.md`, `candidates.json`, `inventory.json`, and `obligations.json`. Candidates are lexical nominations, not proof. Select a subsystem concern when the changed behavior touches its contract with at least `min_signals` signals: a matching path, or a changed core symbol, API, state key, or contract name, one each. A path match alone is not enough. Load packets:
 
 ```bash
 node $H context --run /abs/run-dir --concerns concern-a,concern-b
 ```
 
+For each unselected candidate, record its `concern:<id>` obligation as `irrelevant` with a concrete dismissal reason in `checks`. Selecting the concern satisfies that routing obligation.
+
 Add a concern at any point when code shows an indirect dependency, even if routing did not nominate it. Read unrouted and targeted-inspection files directly, or disclose them as limitations.
 
-For each selected concern, compare head with the merge base. Read the changed behavior, the direct consumers of every changed export at head, and the relevant tests. A diff-only skim is not a review, and loading a packet is not evidence that you reviewed the concern.
+For each selected concern, inspect this round's changed behavior and affected consumers at head, comparing with the merge base to establish attribution. Read the direct consumers of exports changed this round and the relevant tests. A diff-only skim is not a review, and loading a packet is not evidence that you reviewed the concern.
 
 ### Sync nominations
 
@@ -47,7 +49,7 @@ Read `sync-hits.json`. Each hit is a place where something the PR changed is als
 - `config-line-in-changed-file` and `untouched-peer`: another place that shares a changed literal. Look for a coupling nothing tests, such as a filter that must match a name defined elsewhere.
 - `doc_gaps`: a doc that lists a key but not a value the PR newly emits.
 
-Open every `doc-line-in-changed-file`, `stale-reference`, and `doc_gaps` entry and decide: contradiction, undocumented value, or irrelevant. Skim the rest. A hit that holds up is a finding. Do not report a hit you did not read.
+Open every `doc-line-in-changed-file`, `stale-reference`, and `doc_gaps` entry and decide: contradiction, undocumented value, or irrelevant. Skim the rest. A hit that holds up is a finding. Do not report a hit you did not read. Record each mandatory sync or doc-gap obligation in `checks`: `checked`, `irrelevant`, or `unresolved`, with evidence.
 
 ### Behavior-delta pass
 
@@ -60,11 +62,11 @@ Failures are not the only way a change hurts. For every selected concern, and fo
 - **Lifecycle:** for each lease, lock, controller, or listener the change acquires or hands off, trace the release on every exit: unmount, moving between hosts or panels, navigation, cancel, error, timeout. What happens if the owner is replaced while the run is active?
 - **Coupling:** does the change depend on a string, name, or format defined somewhere nothing checks?
 
-An answer of "no change" needs the line you read. A delta that is real but harmless is a nit. One that loses a capability, delays a signal, or leaves a state blank is at least a follow-up.
+An answer of "no change" needs the line you read. Clear harmless deltas without a finding; reserve nits for concrete defects worth fixing. Record each delta obligation in `checks` with its status and base/head evidence. One that loses a capability, delays a signal, or leaves a state blank is at least a follow-up.
 
 ### Tests
 
-Read every changed test file at head, not from the patch. Read it in full unless it has more than 400 changed lines, or the changed test files you would read in full total more than 1200 changed lines (`inventory.json` has the counts). For such a file read every changed hunk plus the surrounding test names, and record `scope: changed_hunks`. For each new or changed assertion ask whether it would fail if the behavior it names regressed, and whether its test name claims more than it asserts. Record each file in the result's `tests` array: `read: true` with `scope` and `assertions_checked`, or `read: false` with a `reason_kind` (`binary`, `generated`, `not_in_head`, or `tooling_blocked`) and the specifics in `reason`. Effort, time, and size are not reasons: a large file uses `scope: changed_hunks`. `finish` rejects a complete assessment that leaves a changed test file out. Do not use a limitation line to skip a file you can read.
+Read every test file changed in this round (`inventory.json` `review_files`) at head, not from the patch. Do not reread unchanged tests in incremental mode unless a prior blocker or new evidence implicates them. Read it in full unless it has more than 400 changed lines, or the changed test files you would read in full total more than 1200 changed lines (`inventory.json` has the counts). For such a file read every changed hunk plus the surrounding test names, and record `scope: changed_hunks`. For each new or changed assertion ask whether it would fail if the behavior it names regressed, and whether its test name claims more than it asserts. Record each file in the result's `tests` array: `read: true` with `scope` and `assertions_checked`, or `read: false` with a `reason_kind` (`binary`, `generated`, `not_in_head`, or `tooling_blocked`) and the specifics in `reason`. Effort, time, and size are not reasons: a large file uses `scope: changed_hunks`. `finish` rejects a complete assessment that leaves a changed test file out. Do not use a limitation line to skip a file you can read.
 
 ## 3. Challenge
 
@@ -77,11 +79,11 @@ Before you keep a blocker, establish:
 
 A finding is a blocker when it is reachable on a shipped path and meets one of these triggers. Check them for every candidate:
 
-- **Documented invariant:** it violates a rule the repository states in a doc, a contract table, or a "must not" comment in code the diff touches.
+- **Documented behavioral invariant:** it violates a behavior the repository requires in a doc, contract table, or "must not" comment in code the diff touches; an unmet process requirement alone is not this trigger.
 - **State:** it corrupts, contaminates, or silently makes persistent user or tenant state, or leaves data that base deleted.
 - **One-way door:** it cannot be reverted by reverting the PR.
 
-A candidate that meets a trigger is a blocker even when its severity is low. Behind a default-off flag it is a follow-up unless the PR enables the flag. A candidate that meets no trigger is a follow-up or a nit, and the follow-up records which trigger you checked in `why_not_blocker`.
+Apply these rules in order: a pre-existing defect is a follow-up unless newly exposed; an unmet process requirement alone is a follow-up; otherwise a reachable candidate meeting a trigger is a blocker even at low severity. A default-off flag makes it a follow-up only when the harmful path itself cannot run with the flag off and the PR does not enable it. Flag-independent effects still qualify as blockers. A candidate that meets no trigger is a follow-up or a nit, and the follow-up records which trigger you checked in `why_not_blocker`.
 
 Use `blocker`, `follow_up`, and `nit`. A `nit` is a small correctness-of-wording, test-quality, or doc-accuracy issue a maintainer would fix in passing. At most five. Nits never block, never carry into state, and never change the headline. Omit speculative improvements. Security exposure, data loss, serious contract breakage, and shipped-path regressions get particular scrutiny, but a label or severity does not decide disposition. A pre-existing issue is a follow-up unless the PR makes it newly reachable. State required fixes as invariants, not patches, and do not suggest changes that widen the changed surface. A late round or reviewer-induced scope does not excuse newly established serious harm.
 
@@ -101,4 +103,4 @@ Write one result object as specified in `.cursor/skills/review-lite/references/r
 node $H finish --run /abs/run-dir --input /abs/run-dir/result.json
 ```
 
-Coverage lists every concern in `selected.json`, which `context` extends. Fix every validation error `finish` lists. The helper checks structure, not truth. Mark the assessment `incomplete` only when missing evidence prevents a material conclusion; lack of delegation alone is not a reason. Give the user `report.md` as written, plus the run directory path.
+Every mandatory obligation needs a `checks` entry; an unselected candidate needs a dismissal. `finish` rejects missing decisions or unresolved checks in a complete assessment. Coverage lists every concern in `selected.json`, which `context` extends. Fix every validation error `finish` lists. The helper checks structure, not truth. Mark the assessment `incomplete` only when missing evidence prevents a material conclusion; lack of delegation alone is not a reason. Give the user `report.md` as written, plus the run directory path.

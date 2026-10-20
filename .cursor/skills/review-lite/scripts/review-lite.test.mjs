@@ -82,6 +82,11 @@ function result(runDir, overrides = {}) {
     assessment: 'complete',
     limitations: [],
     coverage: coverageFor(runDir),
+    checks: readJson(join(runDir, 'obligations.json')).map(({ id, concern_id }) => ({
+      id,
+      status: concern_id ? 'irrelevant' : 'checked',
+      evidence: 'Fixture inspection found no affected contract or behavior.',
+    })),
     findings: [],
     prior_decisions: [],
     clearances: [],
@@ -339,6 +344,7 @@ describe('finish', () => {
       status: 'not_applicable',
       evidence: 'Fixture-only selection.',
     });
+    example.checks = result(runDir).checks;
     const outcome = finishWith(runDir, example);
     assert.equal(outcome.headline, 'Changes requested');
     assert.deepEqual(
@@ -976,5 +982,110 @@ describe('command line', () => {
     assert.equal(relative.status, 2);
     assert.match(relative.stderr, /must be an absolute path/);
     assert.equal(run(['publish']).status, 2);
+  });
+});
+
+describe('inspection accounting', () => {
+  test('requires mandatory nominations and dismissals, allowing selected concerns instead', () => {
+    const { repo, base } = makeRepo({
+      'src/interactive-engine/runner.ts': "export const defaultMode = 'old-mode';\n",
+      'docs/modes.md': 'The runner uses old-mode.\n',
+    });
+    const head = commit(
+      repo,
+      { 'src/interactive-engine/runner.ts': "export const defaultMode = 'new-mode';\n" },
+      'head'
+    );
+    const runDir = prepared({ repo, base, head });
+    const checks = result(runDir).checks;
+    assert.ok(checks.some(({ id }) => id.startsWith('sync:')));
+    assert.ok(checks.some(({ id }) => id.startsWith('delta:')));
+    assert.ok(checks.some(({ id }) => id.startsWith('concern:')));
+    for (const omitted of checks) {
+      assert.throws(
+        () =>
+          finishWith(
+            runDir,
+            result(runDir, {
+              checks: checks.filter(({ id }) => id !== omitted.id),
+            })
+          ),
+        /missing inspection decision/
+      );
+    }
+    const candidate = checks.find(({ id }) => id.startsWith('concern:'));
+    addContext({ run: runDir, concerns: candidate.id.slice('concern:'.length) });
+    assert.equal(
+      finishWith(
+        runDir,
+        result(runDir, {
+          checks: checks.filter(({ id }) => id !== candidate.id),
+        })
+      ).headline,
+      'No blocking findings'
+    );
+    for (const changes of [{ status: 'unresolved' }, { status: 'skipped' }, { evidence: 'N/A' }, { id: 'unknown' }]) {
+      assert.throws(
+        () =>
+          finishWith(
+            runDir,
+            result(runDir, {
+              checks: [{ ...checks[0], ...changes }, ...checks.slice(1)],
+            })
+          ),
+        /Result is invalid/
+      );
+    }
+    assert.throws(() => finishWith(runDir, result(runDir, { checks: [...checks, checks[0]] })), /duplicate/);
+  });
+
+  test('doc gaps require a decision even without a finding', () => {
+    const { repo, base } = makeRepo({
+      'src/lib/mode.ts': "export const config = { run_mode: 'old' };\n",
+      'docs/mode.md': 'run_mode supports old.\n',
+    });
+    const head = commit(repo, { 'src/lib/mode.ts': "export const config = { run_mode: 'new' };\n" }, 'head');
+    const runDir = prepared({ repo, base, head });
+    assert.ok(result(runDir).checks.some(({ id }) => id.startsWith('doc-gap:')));
+    assert.throws(
+      () =>
+        finishWith(
+          runDir,
+          result(runDir, {
+            checks: result(runDir).checks.filter(({ id }) => !id.startsWith('doc-gap:')),
+          })
+        ),
+      /missing inspection decision: doc-gap/
+    );
+  });
+
+  test('incremental rounds nominate and require test reads only for the new diff', () => {
+    const path = 'src/interactive-engine/runner.test.ts';
+    const { repo, base } = makeRepo({ [path]: 'test("old", () => {});\n' });
+    const head = commit(repo, { [path]: 'test("new", () => {});\n' }, 'round one');
+    const first = prepared({ repo, base, head });
+    finishWith(
+      first,
+      result(first, {
+        tests: [{ path, read: true, scope: 'full', assertions_checked: 'No assertions in this fixture.' }],
+      })
+    );
+    const secondHead = commit(repo, { 'docs/readme.md': 'A documentation correction.\n' }, 'round two');
+    const second = prepared({ repo, base, head: secondHead, prior: join(first, 'state.json') });
+    const inventory = readJson(join(second, 'inventory.json'));
+    assert.ok(inventory.files.some((file) => file.path === path));
+    assert.deepEqual(
+      inventory.review_files.map((file) => file.path),
+      ['docs/readme.md']
+    );
+    assert.equal(
+      readJson(join(second, 'candidates.json')).candidates.some(({ path_files }) => path_files.includes(path)),
+      false
+    );
+    assert.equal(finishWith(second, result(second)).headline, 'No blocking findings');
+    const third = prepared({ repo, base, head: secondHead, prior: join(second, 'state.json') });
+    assert.deepEqual(readJson(join(third, 'obligations.json')), []);
+    assert.deepEqual(readJson(join(third, 'inventory.json')).review_files, []);
+    assert.equal(finishWith(third, result(third)).headline, 'No blocking findings');
   });
 });

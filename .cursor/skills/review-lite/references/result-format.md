@@ -13,6 +13,8 @@
 | `coverage[].concern_id` | string | A selected concern ID. |
 | `coverage[].status` | `checked` \| `not_applicable` \| `unresolved` | A complete assessment allows no `unresolved`. |
 | `coverage[].evidence` | string | What you inspected. For `not_applicable`, the concrete reason. |
+| `checks` | object[] | Decisions for `obligations.json`: each mandatory sync/doc-gap/delta item, plus each unselected concern candidate. Selected candidates need no entry. |
+| `checks[].id`, `status`, `evidence` | string | Use the generated ID; status is `checked`, `irrelevant`, or `unresolved`. Unselected concerns require `irrelevant` with a concrete reason. Complete assessments allow no unresolved checks. |
 | `findings` | object[] | `blocker`, `follow_up`, or `nit`. At most five nits. |
 | `findings[].id` | string | Short, stable, `^[A-Za-z][A-Za-z0-9-]{0,31}$`. Reuse the same ID for the same invariant across rounds. |
 | `findings[].concern_id` | string | A selected concern ID. |
@@ -23,7 +25,7 @@
 | `findings[].next_action` | string | Required for a follow-up: a concrete proposed issue, test, or doc change, never a merge condition. Required for a nit: the suggested change. |
 | `findings[].why_not_blocker` | string | Required for a follow-up: which blocker trigger you checked (SKILL.md, Challenge) and why it does not apply. |
 | `findings[].attribution` | `introduced` \| `newly_exposed` \| `pre_existing` | Required for a follow-up: how the PR relates to the defect. For `pre_existing`, `base_comparison` must cite the base code as `path:line` and say whether the PR changed what that path does to stored state; a bare "same as base" is rejected. |
-| `tests` | object[] | One entry per changed, non-deleted test file in `inventory.json`. Required for a complete assessment when any test file changed. |
+| `tests` | object[] | One entry per changed, non-deleted test file in `inventory.json` `review_files`. Required for a complete assessment when any test file changed. |
 | `tests[].path` | string | A changed test file. |
 | `tests[].read` | boolean | `true` only when you read the file at head, not just the patch. |
 | `tests[].scope` | `full` \| `changed_hunks` | Required when `read` is true. `changed_hunks` is allowed only for a test file with more than 400 changed lines, or for any test file when the changed test files of 400 lines or fewer total more than 1200 changed lines: then read every changed hunk plus the surrounding test names. |
@@ -85,6 +87,7 @@ Nits render under `## Nits`, never change the headline, and are not written to `
       "evidence": "Traced fetchRecommendations with two locales at base and head."
     }
   ],
+  "checks": [],
   "findings": [
     {
       "id": "cache-key-locale",

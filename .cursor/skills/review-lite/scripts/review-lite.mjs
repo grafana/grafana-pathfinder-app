@@ -674,26 +674,44 @@ export function prepare(options) {
     sync_hits: 'sync-hits.json',
     delta_triggers: 'delta-triggers.json',
     prior: 'prior.json',
+    obligations: 'obligations.json',
   };
   let incrementalFiles = null;
+  let reviewFiles = files;
   if (prior.mode === 'incremental') {
     savePatch(repo, prior.reviewed_head, head, join(out, 'incremental.patch'));
-    incrementalFiles = inventoryDiff(repo, prior.reviewed_head, head).map((file) => file.path);
+    reviewFiles = inventoryDiff(repo, prior.reviewed_head, head);
+    incrementalFiles = reviewFiles.map((file) => file.path);
     artifacts.incremental_patch = 'incremental.patch';
   }
   const diffs = new Map(
-    files.filter((file) => !file.binary).map((file) => [file.path, diffLines(repo, mergeBase, head, file)])
+    reviewFiles
+      .filter((file) => !file.binary)
+      .map((file) => [
+        file.path,
+        diffLines(repo, prior.mode === 'incremental' ? prior.reviewed_head : mergeBase, head, file),
+      ])
   );
   const linesByPath = new Map([...diffs].map(([path, entries]) => [path, entries.map(({ text }) => text)]));
-  const routing = routeCandidates(registry, files, linesByPath);
+  const routing = routeCandidates(registry, reviewFiles, linesByPath);
   const checklist = renderAlwaysOnChecklist(registry);
 
-  writeJson(join(out, 'inventory.json'), { files, incremental_files: incrementalFiles });
+  writeJson(join(out, 'inventory.json'), { files, review_files: reviewFiles, incremental_files: incrementalFiles });
   writeJson(join(out, 'candidates.json'), routing);
-  const sync = scanSync({ git, repo, head, files, diffs });
-  const delta = deltaTriggers({ files, diffs });
+  const sync = scanSync({ git, repo, head, files: reviewFiles, diffs });
+  const delta = deltaTriggers({ files: reviewFiles, diffs });
   writeJson(join(out, 'sync-hits.json'), sync);
   writeJson(join(out, 'delta-triggers.json'), delta);
+  writeJson(join(out, 'obligations.json'), [
+    ...routing.candidates.map(({ id }) => ({ id: `concern:${id}`, concern_id: id })),
+    ...sync.hits.flatMap((hit, index) =>
+      ['stale-reference', 'doc-line-in-changed-file'].includes(hit.classification)
+        ? [{ id: `sync:${index}`, source: `sync-hits.json hits[${index}]` }]
+        : []
+    ),
+    ...sync.doc_gaps.map((_, index) => ({ id: `doc-gap:${index}`, source: `sync-hits.json doc_gaps[${index}]` })),
+    ...delta.triggers.map(({ id }) => ({ id: `delta:${id}`, source: 'delta-triggers.json' })),
+  ]);
   writeJson(join(out, 'prior.json'), prior);
   writeFileSync(join(out, 'context', 'always-on.md'), checklist.text);
   writeJson(join(out, 'selected.json'), {
@@ -725,6 +743,7 @@ function readRun(run) {
   }
   return {
     manifest: readJson(join(run, 'manifest.json'), 'run manifest'),
+    obligations: readJson(join(run, 'obligations.json'), 'inspection obligations'),
     selected: readJson(join(run, 'selected.json'), 'run selection'),
     prior: readJson(join(run, 'prior.json'), 'run prior state'),
     inventory: existsSync(join(run, 'inventory.json')) ? readJson(join(run, 'inventory.json'), 'run inventory') : null,
@@ -787,14 +806,13 @@ function priorItemsById(prior) {
 }
 
 function changedTestPaths(inventory) {
-  return (inventory?.files ?? [])
+  return (inventory?.review_files ?? inventory?.files ?? [])
     .filter((file) => file.status !== 'D' && !file.binary && isTestPath(file.path))
     .map(({ path }) => path);
 }
 
-// Lines the reviewer would otherwise read in full: files above LARGE_FILE_LINES already allow changed_hunks.
 export function fullReadLines(inventory) {
-  const files = inventory?.files ?? [];
+  const files = inventory?.review_files ?? inventory?.files ?? [];
   const wanted = new Set(changedTestPaths(inventory));
   return files
     .filter(({ path }) => wanted.has(path))
@@ -822,7 +840,7 @@ function validateTestReview(errors, result, inventory) {
     }
     seen.add(entry.path);
     if (entry.read === true) {
-      const file = (inventory?.files ?? []).find(({ path }) => path === entry.path);
+      const file = (inventory?.review_files ?? inventory?.files ?? []).find(({ path }) => path === entry.path);
       const large = (file !== undefined && file.added + file.deleted > LARGE_FILE_LINES) || overBudget;
       if (!TEST_SCOPES.includes(entry.scope)) {
         errors.push(`${label}.scope must be one of ${TEST_SCOPES.join(', ')} when read is true`);
@@ -862,7 +880,7 @@ function validateTestReview(errors, result, inventory) {
   }
 }
 
-export function validateResult(result, { selected, prior, registry, inventory }) {
+export function validateResult(result, { selected, prior, registry, inventory, obligations = [] }) {
   const errors = [];
   if (!result || typeof result !== 'object' || Array.isArray(result)) {
     return ['result must be an object'];
@@ -971,6 +989,42 @@ export function validateResult(result, { selected, prior, registry, inventory })
     }
   });
 
+  const expected = new Map(obligations.map((entry) => [entry.id, entry]));
+  const checked = new Set();
+  requireArray(errors, result.checks ?? [], 'checks').forEach((check, index) => {
+    const obligation = expected.get(check?.id);
+    if (!obligation || checked.has(check.id)) {
+      errors.push(`checks[${index}] has an unknown or duplicate obligation id`);
+      return;
+    }
+    checked.add(check.id);
+    if (!['checked', 'irrelevant', 'unresolved'].includes(check.status)) {
+      errors.push(`checks[${index}].status must be checked, irrelevant, or unresolved`);
+    }
+    if (
+      requireString(errors, check.evidence, `checks[${index}].evidence`) &&
+      PLACEHOLDER_REASONS.has(check.evidence.trim().toLowerCase().replace(/\.$/, ''))
+    ) {
+      errors.push(`checks[${index}] needs concrete evidence`);
+    }
+    if (
+      obligation.concern_id &&
+      !selectedConcerns.has(obligation.concern_id) &&
+      !['irrelevant', 'unresolved'].includes(check.status)
+    ) {
+      errors.push(`unselected concern ${obligation.concern_id} needs a dismissal reason`);
+    }
+    if (result.assessment === 'complete' && check.status === 'unresolved') {
+      errors.push(`a complete assessment cannot leave ${check.id} unresolved`);
+    }
+  });
+  if (result.assessment === 'complete') {
+    for (const entry of obligations) {
+      if (!checked.has(entry.id) && !selectedConcerns.has(entry.concern_id)) {
+        errors.push(`missing inspection decision: ${entry.id}`);
+      }
+    }
+  }
   validateTestReview(errors, result, inventory);
 
   if (result.assessment === 'complete') {
@@ -1113,6 +1167,9 @@ export function renderReport(result, { manifest, prior }) {
     for (const entry of tests.filter(({ read }) => !read)) {
       scope.push(`- Limitation: test file ${entry.path} was not read in full: ${entry.reason}`);
     }
+  }
+  for (const check of (result.checks ?? []).filter(({ status }) => status === 'unresolved')) {
+    scope.push(`- Unresolved inspection: ${check.id}: ${check.evidence}`);
   }
   for (const limitation of result.limitations) {
     scope.push(`- Limitation: ${limitation}`);
