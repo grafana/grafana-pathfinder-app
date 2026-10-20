@@ -43,7 +43,7 @@ jest.mock('./interactive-conditional', () =>
 );
 
 import type { JsonBlock } from '../../types/json-guide.types';
-import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { computeGuideBlockIndex, sectionRuntimeId } from '../../lib/guide-stats';
 import { createChoiceProgressModel } from '../../lib/guide-stats/choice-progress';
 import { sectionCollapseStorage } from '../../lib/user-storage'; // real storage: jsdom localStorage
 import {
@@ -103,6 +103,11 @@ function guideBlocks(mode: GateMode): JsonBlock[] {
   ];
 }
 
+// Seed and assertions must target the section's runtime id, derived by the
+// same helper the parser and component use, so a change to the id format
+// cannot strand the seed on an unused storage key.
+const PARENT_SECTION_ID = sectionRuntimeId('parent', 'blocks[0]');
+
 function publishReadinessModel(contentKey: string, mode: GateMode): void {
   const blocks = guideBlocks(mode);
   const index = computeGuideBlockIndex(blocks);
@@ -144,9 +149,9 @@ describe('collapsed parent section with a nested visibility gate', () => {
       // The gate reports while the parent is expanded; readiness settles.
       await waitFor(() => expect(isGuideChoiceProgressReady(contentKey)).toBe(true));
 
-      fireEvent.click(screen.getByTestId('interactive-section-toggle-section-parent'));
+      fireEvent.click(screen.getByTestId(`interactive-section-toggle-${PARENT_SECTION_ID}`));
 
-      expect(screen.getByTestId('interactive-section-section-parent').className).toContain('collapsed');
+      expect(screen.getByTestId(`interactive-section-${PARENT_SECTION_ID}`).className).toContain('collapsed');
       // Collapse must not unmount the gate or forget its report.
       expect(screen.getByText('Nested instructions')).toBeInTheDocument();
       expect(isGuideChoiceProgressReady(contentKey)).toBe(true);
@@ -160,12 +165,12 @@ describe('collapsed parent section with a nested visibility gate', () => {
       setContentKeyOverride(contentKey);
       publishReadinessModel(contentKey, mode);
       // Reload path: the collapsed state is restored from storage on mount.
-      await sectionCollapseStorage.set(contentKey, 'section-parent', true);
+      await sectionCollapseStorage.set(contentKey, PARENT_SECTION_ID, true);
 
       render(<Tree mode={mode} />);
 
       await waitFor(() =>
-        expect(screen.getByTestId('interactive-section-section-parent').className).toContain('collapsed')
+        expect(screen.getByTestId(`interactive-section-${PARENT_SECTION_ID}`).className).toContain('collapsed')
       );
       // The gate mounts under the collapsed parent and reports in this session.
       await waitFor(() => expect(isGuideChoiceProgressReady(contentKey)).toBe(true));
