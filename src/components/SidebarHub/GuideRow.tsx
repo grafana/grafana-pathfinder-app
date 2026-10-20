@@ -1,4 +1,5 @@
 import React, { useId } from 'react';
+import { cx } from '@emotion/css';
 import { Card, Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import type { Milestone } from '../../types/content.types';
@@ -74,6 +75,7 @@ export function GuideRow({ guide, testId, expansionTestIds, onLaunch, onOpenModu
               label={expansion.hasModules ? t('learningCard.showModules', 'Show modules') : undefined}
               collapseLabel={expansion.hasModules ? t('learningCard.hideModules', 'Hide modules') : undefined}
               controls={detailsId}
+              subtle
               testId={expansionTestIds?.toggle}
               onToggle={expansion.onToggle}
             />
@@ -84,7 +86,11 @@ export function GuideRow({ guide, testId, expansionTestIds, onLaunch, onOpenModu
         </Card.SecondaryActions>
         {expansion && expanded && (
           <Card.Description className={styles.denseDetails}>
-            <div id={detailsId} className={cardStyles.details} data-testid={expansionTestIds?.details}>
+            <div
+              id={detailsId}
+              className={cx(cardStyles.details, styles.detailsBody)}
+              data-testid={expansionTestIds?.details}
+            >
               {guide.summary && <p className={cardStyles.description}>{guide.summary}</p>}
               <GuideDetails
                 expansion={expansion}

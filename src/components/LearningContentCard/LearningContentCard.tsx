@@ -13,6 +13,7 @@ export interface LearningContentCardProps {
   variant?: 'compact' | 'featured';
   eyebrow?: string;
   expandableDescription?: boolean;
+  actionAtBottom?: boolean;
   topic?: string;
   kind: 'guide' | 'path' | 'docs';
   description?: string;
@@ -44,6 +45,7 @@ export function LearningContentCard({
   variant = 'compact',
   eyebrow,
   expandableDescription = false,
+  actionAtBottom = false,
   topic,
   kind,
   description,
@@ -150,11 +152,13 @@ export function LearningContentCard({
     }
   };
 
+  const bottomAction = featured && actionAtBottom;
   const launchButton = (
     <Button
       ref={actionRef}
-      className={styles.action}
-      size="sm"
+      className={bottomAction ? undefined : styles.action}
+      size={bottomAction ? 'md' : 'sm'}
+      fullWidth={bottomAction}
       icon={kind === 'docs' ? 'file-alt' : 'play'}
       disabled={launchDisabled || launching || pending}
       onClick={launch}
@@ -162,6 +166,25 @@ export function LearningContentCard({
     >
       {launching || pending ? t('learningCard.opening', 'Opening…') : label}
     </Button>
+  );
+  const toggle = canExpand && (
+    <LearningDetailsToggle
+      expanded={isExpanded}
+      hasDetails={Boolean(details)}
+      label={disclosureLabel}
+      collapseLabel={collapseLabel}
+      controls={detailsId}
+      subtle={bottomAction}
+      testId={disclosureTestId}
+      onToggle={() => (onToggleDetails ? onToggleDetails() : setLocalExpanded((value) => !value))}
+    />
+  );
+  const progressLabel = percent > 0 && (
+    <span className={cx(styles.progress, percent === 100 && styles.completed)}>
+      {percent === 100
+        ? t('learningCard.completed', 'Completed')
+        : t('learningCard.progress', '{{percent}}% complete', { percent })}
+    </span>
   );
 
   return (
@@ -236,40 +259,35 @@ export function LearningContentCard({
           </p>
         )}
         {featured ? (
-          <div className={styles.featuredFooter}>
-            {effort && <div className={styles.metadata}>{effort}</div>}
-            {launchButton}
-          </div>
+          bottomAction ? null : (
+            <div className={styles.featuredFooter}>
+              {effort && <div className={styles.metadata}>{effort}</div>}
+              {launchButton}
+            </div>
+          )
         ) : (
           effort && <div className={styles.metadata}>{effort}</div>
         )}
-        {(canExpand || percent > 0) && (
-          <div className={styles.footer}>
-            {canExpand && (
-              <LearningDetailsToggle
-                expanded={isExpanded}
-                hasDetails={Boolean(details)}
-                label={disclosureLabel}
-                collapseLabel={collapseLabel}
-                controls={detailsId}
-                testId={disclosureTestId}
-                onToggle={() => (onToggleDetails ? onToggleDetails() : setLocalExpanded((value) => !value))}
-              />
+        {bottomAction
+          ? (effort || canExpand || percent > 0) && (
+              <div className={styles.featuredMeta}>
+                {effort && <div className={styles.metadata}>{effort}</div>}
+                {toggle}
+                {progressLabel}
+              </div>
+            )
+          : (canExpand || percent > 0) && (
+              <div className={styles.footer}>
+                {toggle}
+                {progressLabel}
+              </div>
             )}
-            {percent > 0 && (
-              <span className={cx(styles.progress, percent === 100 && styles.completed)}>
-                {percent === 100
-                  ? t('learningCard.completed', 'Completed')
-                  : t('learningCard.progress', '{{percent}}% complete', { percent })}
-              </span>
-            )}
-          </div>
-        )}
         {details && isExpanded && (
           <div id={detailsId} className={styles.details} data-testid={detailsTestId}>
             {details}
           </div>
         )}
+        {bottomAction && launchButton}
         {(launchError || error) && (
           <div className={styles.error} role="alert">
             <p>{launchError || t('learningCard.launchError', 'Could not open this content. Try again.')}</p>

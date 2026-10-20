@@ -23,12 +23,25 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
     }),
     denseCard: css({
       gridTemplate:
-        '"Figure Heading Secondary" "Figure Meta Secondary" ". Actions Actions" "Description Description Description" / auto 1fr auto',
+        '"Figure Heading Heading Secondary" "Figure Meta Actions Secondary" "Description Description Description Description" / auto 1fr auto auto',
       alignItems: 'center',
     }),
     denseAction: css({ marginTop: 0 }),
-    denseToggle: css({ position: 'relative', marginTop: 0, justifySelf: 'start' }),
+    denseToggle: css({ position: 'relative', marginTop: 0, alignSelf: 'center', justifySelf: 'end' }),
     denseDetails: css({ position: 'relative', cursor: 'default', marginTop: theme.spacing(0.5) }),
+    detailsBody: css({
+      '&&': { paddingTop: theme.spacing(0.75) },
+      '& p': { marginBottom: theme.spacing(0.75) },
+    }),
+    detailsSkeleton: css({ '&&': { padding: theme.spacing(0.5, 0), borderTop: 'none', gap: 0 } }),
+    detailsHeading: css({
+      '&&': {
+        margin: theme.spacing(0, 0, 0.5),
+        fontSize: theme.typography.bodySmall.fontSize,
+        fontWeight: theme.typography.fontWeightMedium,
+        color: theme.colors.text.secondary,
+      },
+    }),
     noWrap: css({ whiteSpace: 'nowrap' }),
     denseHeading: css({ minWidth: 0, overflowWrap: 'anywhere' }),
     play: css({

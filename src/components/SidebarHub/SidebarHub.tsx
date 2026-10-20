@@ -137,8 +137,8 @@ export function SidebarHub({
           </ul>
         </>
       )}
-      <OtherDocs guides={other} onLaunch={(guide) => run(guide.onLaunch)} />
       <CustomGuides guides={customGuides} isLoading={isLoadingCustomGuides} onLaunch={(guide) => run(guide.onLaunch)} />
+      <OtherDocs guides={other} onLaunch={(guide) => run(guide.onLaunch)} />
     </Stack>
   );
 }

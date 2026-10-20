@@ -27,6 +27,7 @@ export function FeaturedGuide({
       variant="featured"
       eyebrow={t('sidebarHub.recommendedForYou', 'Recommended for you')}
       expandableDescription
+      actionAtBottom
       title={guide.title}
       kind={guide.kind}
       topic={guide.topic}

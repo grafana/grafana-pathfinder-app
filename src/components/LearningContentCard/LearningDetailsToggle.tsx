@@ -1,4 +1,5 @@
 import React from 'react';
+import { cx } from '@emotion/css';
 import { Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { getLearningContentCardStyles } from './learning-content-card.styles';
@@ -11,6 +12,7 @@ interface LearningDetailsToggleProps {
   collapseLabel?: string;
   controls?: string;
   disabled?: boolean;
+  subtle?: boolean;
   testId?: string;
   onToggle: () => void;
 }
@@ -22,6 +24,7 @@ export function LearningDetailsToggle({
   collapseLabel,
   controls,
   disabled,
+  subtle,
   testId,
   onToggle,
 }: LearningDetailsToggleProps) {
@@ -29,7 +32,7 @@ export function LearningDetailsToggle({
 
   return (
     <button
-      className={styles.disclosure}
+      className={cx(styles.disclosure, subtle && styles.disclosureSubtle)}
       aria-expanded={expanded}
       aria-controls={controls}
       disabled={disabled}

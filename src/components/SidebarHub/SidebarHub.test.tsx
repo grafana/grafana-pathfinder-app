@@ -206,6 +206,19 @@ describe('SidebarHub', () => {
       ).toBeTruthy();
     });
 
+    it('comes after the Custom guides section', () => {
+      renderHub({
+        guides: many,
+        customGuides: [guide('Org guide')],
+      });
+
+      const custom = screen.getByTestId(testIds.sidebarHub.customGuides);
+      expect(
+        custom.compareDocumentPosition(screen.getByTestId(testIds.sidebarHub.otherDocs)) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
+
     it('expands to the remaining titles in order and launches the one clicked', async () => {
       renderHub({ guides: many });
 

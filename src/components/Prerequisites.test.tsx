@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { Prerequisites } from './Prerequisites';
 
 describe('Prerequisites', () => {
@@ -11,6 +11,34 @@ describe('Prerequisites', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('renders the compact note with the same items and no alert chrome', () => {
+    render(
+      <Prerequisites
+        compact
+        prerequisites={[
+          { id: 'a', label: 'A running Grafana instance' },
+          { id: 'b', label: '**Admin** access', format: 'markdown' },
+        ]}
+      />
+    );
+
+    const note = screen.getByRole('note');
+    expect(note).toHaveTextContent('Prerequisites');
+    expect(
+      within(note)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent)
+    ).toEqual(['A running Grafana instance', 'Admin access']);
+    expect(within(note).getByText('Admin').tagName).toBe('STRONG');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing in compact mode without valid items', () => {
+    const { container } = render(<Prerequisites compact prerequisites={[{ id: '', label: '' }]} />);
+
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('keeps default and unknown formats as exact literal text', () => {

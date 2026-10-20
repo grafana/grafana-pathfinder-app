@@ -161,6 +161,44 @@ it('offers no summary toggle on a featured card unless it opts in to expanding',
   }
 });
 
+it('keeps the featured primary action last, after the toggle and the details, when it sits at the bottom', () => {
+  const { rerender } = render(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      actionAtBottom
+      expanded
+      onToggleDetails={jest.fn()}
+      details={<p>Module link</p>}
+      effort="3 modules"
+      onLaunch={jest.fn()}
+    />
+  );
+  const follows = (before: HTMLElement, after: HTMLElement) =>
+    Boolean(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const start = screen.getByRole('button', { name: 'Start path' });
+  expect(follows(screen.getByRole('button', { name: 'Hide details' }), screen.getByText('Module link'))).toBe(true);
+  expect(follows(screen.getByText('Module link'), start)).toBe(true);
+  expect(follows(screen.getByText('3 modules'), start)).toBe(true);
+
+  rerender(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      expanded
+      onToggleDetails={jest.fn()}
+      details={<p>Module link</p>}
+      effort="3 modules"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(
+    follows(screen.getByRole('button', { name: 'Start path' }), screen.getByRole('button', { name: 'Hide details' }))
+  ).toBe(true);
+});
+
 it('prevents duplicate launches and keeps failure recovery inside the card', async () => {
   let reject: (error: Error) => void = () => {};
   const onLaunch = jest.fn(
