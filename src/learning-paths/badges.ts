@@ -94,6 +94,22 @@ export const BADGES: Badge[] = [
     trigger: { type: 'path-completed', pathId: 'drilldown-logs' },
   },
   {
+    id: 'span-sleuth',
+    title: 'Span Sleuth',
+    description: 'Followed a slow request to the exact span that added the delay',
+    icon: 'share-alt',
+    emoji: '🔗',
+    trigger: { type: 'path-completed', pathId: 'drilldown-traces' },
+  },
+  {
+    id: 'flame-finder',
+    title: 'Flame Finder',
+    description: 'Read a flame graph and found the function burning the CPU',
+    icon: 'bolt',
+    emoji: '🔥',
+    trigger: { type: 'path-completed', pathId: 'drilldown-profiles' },
+  },
+  {
     id: 'dashboard-artisan',
     title: 'Dashboard Artisan',
     description: 'Crafted a metrics dashboard with the skill of a Renaissance painter',
