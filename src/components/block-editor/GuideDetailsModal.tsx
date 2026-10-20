@@ -2,8 +2,8 @@
  * `GuideDetailsModal` — edits the manifest author name and team of the guide being written.
  *
  * Values are held in editor memory and written at the next backend save, so opening this modal
- * never touches the stored guide. Leaving the name empty keeps whatever the save would otherwise
- * choose; a field is reported only when the author changed it.
+ * never touches the stored guide. Clearing the name drops any name chosen here, so the save chooses
+ * as it would by default; a field is reported only when the author changed it.
  */
 
 import React, { useState } from 'react';
@@ -13,10 +13,10 @@ import type { GuideDetails } from './utils/derive-manifest';
 
 export interface GuideDetailsModalProps {
   isOpen: boolean;
-  /** Author name already in effect for this guide, or empty when none is stored. */
+  /** Author name the next save writes. */
   initialAuthorName: string;
   initialTeam: string;
-  /** Shown when the name is empty: what a save will use. */
+  /** Shown when the name is empty: what a save writes when no name is chosen here. */
   authorPlaceholder: string;
   onSave: (changes: GuideDetails) => void;
   onClose: () => void;
@@ -47,7 +47,7 @@ export function GuideDetailsModal({
     const nextName = authorName.trim();
     const nextTeam = team.trim();
     onSave({
-      ...(nextName !== initialAuthorName && nextName !== '' ? { authorName: nextName } : {}),
+      ...(nextName !== initialAuthorName ? { authorName: nextName || undefined } : {}),
       ...(nextTeam !== initialTeam ? { team: nextTeam } : {}),
     });
     onClose();

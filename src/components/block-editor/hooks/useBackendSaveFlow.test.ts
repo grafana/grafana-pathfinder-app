@@ -156,7 +156,9 @@ describe('useBackendSaveFlow — author details', () => {
   it('announces the name a save chose for an unauthored guide', async () => {
     const announceAuthor = jest.fn();
     const backendGuides = makeBackendGuides({
-      saveGuide: jest.fn().mockResolvedValue({ defaultedAuthorName: 'Sam Rivera' }),
+      saveGuide: jest
+        .fn()
+        .mockResolvedValue({ defaultedAuthor: { name: 'Sam Rivera', replacedName: 'pathfinder-mcp' } }),
     });
     const { result } = renderHook(() =>
       useBackendSaveFlow({ editor: { getGuide: () => guide() }, backendGuides, announceAuthor })
@@ -166,7 +168,7 @@ describe('useBackendSaveFlow — author details', () => {
       await result.current.performSaveDraft();
     });
 
-    expect(announceAuthor).toHaveBeenCalledWith('Sam Rivera');
+    expect(announceAuthor).toHaveBeenCalledWith({ name: 'Sam Rivera', replacedName: 'pathfinder-mcp' });
   });
 
   it('stays quiet when the guide already had an author', async () => {
@@ -181,6 +183,45 @@ describe('useBackendSaveFlow — author details', () => {
     });
 
     expect(announceAuthor).not.toHaveBeenCalled();
+  });
+
+  describe('details that differ from the stored author', () => {
+    const tracked = () => {
+      const g = guide();
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ resourceName: 'g1', backendStatus: 'draft', lastPublishedJson: JSON.stringify(g) })
+      );
+      const entry = makeGuideEntry('g1', 'Guide one', 'draft');
+      entry.spec.manifest = { author: { name: 'Sam Rivera', team: 'Docs' } };
+      return { editor: { getGuide: () => g }, backendGuides: makeBackendGuides({ guides: [entry] }) };
+    };
+
+    it('count as unsynced changes on an otherwise synced draft', () => {
+      const { editor, backendGuides } = tracked();
+
+      const { result, rerender } = renderHook(
+        ({ guideDetails }) => useBackendSaveFlow({ editor, backendGuides, guideDetails }),
+        { initialProps: { guideDetails: {} as { authorName?: string; team?: string } } }
+      );
+      expect(result.current.hasUnsyncedChanges).toBe(false);
+
+      rerender({ guideDetails: { authorName: 'Dana' } });
+      expect(result.current.hasUnsyncedChanges).toBe(true);
+
+      rerender({ guideDetails: { team: '' } });
+      expect(result.current.hasUnsyncedChanges).toBe(true);
+    });
+
+    it('do not count once they match what is stored', () => {
+      const { editor, backendGuides } = tracked();
+
+      const { result } = renderHook(() =>
+        useBackendSaveFlow({ editor, backendGuides, guideDetails: { authorName: 'Sam Rivera', team: 'Docs' } })
+      );
+
+      expect(result.current.hasUnsyncedChanges).toBe(false);
+    });
   });
 });
 

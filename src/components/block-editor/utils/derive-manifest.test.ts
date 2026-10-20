@@ -7,7 +7,7 @@
 import { summarizeGuideBlocks } from '../../../lib/guide-stats';
 import type { JsonBlock, JsonGuide } from '../types';
 
-import { deriveManifest } from './derive-manifest';
+import { authorNameToWrite, deriveManifest, detailsDifferFromAuthor } from './derive-manifest';
 
 /**
  * Top-level `spec.manifest` keys the InteractiveGuide CRD declares. Hand
@@ -946,5 +946,40 @@ describe('deriveManifest — author', () => {
     for (const key of Object.keys(result)) {
       expect(CRD_MANIFEST_KEYS.has(key)).toBe(true);
     }
+  });
+});
+
+describe('authorNameToWrite', () => {
+  it('names the signed-in user for an authorless guide', () => {
+    expect(authorNameToWrite(undefined, { signedInName: 'Sam Rivera' })).toBe('Sam Rivera');
+  });
+
+  it('names the real identity, not the placeholder it will replace', () => {
+    expect(authorNameToWrite({ name: 'pathfinder-mcp' }, { signedInName: 'Sam Rivera' })).toBe('Sam Rivera');
+  });
+
+  it('names a kept author as stored', () => {
+    expect(authorNameToWrite({ name: 'Enablement' }, { signedInName: 'Sam Rivera' })).toBe('Enablement');
+    expect(authorNameToWrite({ name: 'pathfinder-mcp' }, {})).toBe('pathfinder-mcp');
+  });
+});
+
+describe('detailsDifferFromAuthor', () => {
+  const stored = { name: 'Enablement', team: 'Docs' };
+
+  it('ignores fields the author has not chosen', () => {
+    expect(detailsDifferFromAuthor(stored, {})).toBe(false);
+    expect(detailsDifferFromAuthor(undefined, undefined)).toBe(false);
+  });
+
+  it('flags a chosen name or team that differs from the stored one', () => {
+    expect(detailsDifferFromAuthor(stored, { authorName: 'Dana' })).toBe(true);
+    expect(detailsDifferFromAuthor(stored, { team: '' })).toBe(true);
+    expect(detailsDifferFromAuthor(undefined, { authorName: 'Dana' })).toBe(true);
+  });
+
+  it('does not flag choices that are already stored', () => {
+    expect(detailsDifferFromAuthor(stored, { authorName: 'Enablement', team: 'Docs' })).toBe(false);
+    expect(detailsDifferFromAuthor({ name: 'Enablement' }, { team: '' })).toBe(false);
   });
 });

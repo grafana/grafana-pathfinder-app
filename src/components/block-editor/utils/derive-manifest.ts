@@ -30,7 +30,7 @@ import { readAliasedField } from '../../../validation/normalize-guide-aliases';
 import type { JsonBlock, JsonGuide } from '../types';
 
 /** Every App Platform guide is app-platform-sourced; see `repository-identity-authority`. */
-const APP_PLATFORM_REPOSITORY = 'app-platform';
+export const APP_PLATFORM_REPOSITORY = 'app-platform';
 
 const ON_PAGE_PREFIX = ParameterizedRequirementPrefix.ON_PAGE;
 
@@ -40,7 +40,7 @@ const ON_PAGE_PREFIX = ParameterizedRequirementPrefix.ON_PAGE;
  * stamp instead of a wrong one — an absent denominator is recoverable, a
  * confidently wrong one is not.
  */
-const PLAIN_GUIDE_TYPE = 'guide';
+export const PLAIN_GUIDE_TYPE = 'guide';
 
 const TRANSPARENT_CONTAINERS: ReadonlySet<string> = new Set(TRANSPARENT_CONTAINER_BLOCK_TYPES);
 
@@ -238,10 +238,16 @@ export interface ManifestAuthoring {
   details?: GuideDetails;
 }
 
+/** A name a save chose itself, and the placeholder it replaced, if any. */
+export interface DefaultedAuthor {
+  name: string;
+  replacedName?: string;
+}
+
 export interface ResolvedAuthor {
   author: Record<string, unknown>;
   /** Set only when this save chose the name itself, rather than keeping or being handed one. */
-  defaultedName?: string;
+  defaulted?: DefaultedAuthor;
 }
 
 function nonBlank(value: unknown): string | undefined {
@@ -267,12 +273,12 @@ export function resolveAuthor(inheritedAuthor: unknown, authoring: ManifestAutho
   const explicitTeam = authoring.details?.team === undefined ? undefined : authoring.details.team.trim();
 
   let name = inheritedName;
-  let defaultedName: string | undefined;
+  let defaulted: DefaultedAuthor | undefined;
   if (explicitName) {
     name = explicitName;
   } else if (!inheritedName || (isFallbackAuthorName(inheritedName) && authoring.signedInName)) {
     name = authoring.signedInName ?? EDITOR_FALLBACK_AUTHOR;
-    defaultedName = name;
+    defaulted = { name, ...(inheritedName ? { replacedName: inheritedName } : {}) };
   }
 
   const team = explicitTeam === undefined ? inherited?.team : explicitTeam || undefined;
@@ -287,7 +293,23 @@ export function resolveAuthor(inheritedAuthor: unknown, authoring: ManifestAutho
   } else {
     author.team = team;
   }
-  return { author, defaultedName };
+  return { author, defaulted };
+}
+
+/** The author name the next save writes. */
+export function authorNameToWrite(inheritedAuthor: unknown, authoring?: ManifestAuthoring): string {
+  const resolved = resolveAuthor(inheritedAuthor, authoring);
+  return resolved ? String(resolved.author.name) : (nonBlank(asRecord(inheritedAuthor)?.name) ?? '');
+}
+
+/** True when an explicit details choice differs from the author stored on the guide. */
+export function detailsDifferFromAuthor(storedAuthor: unknown, details: GuideDetails = {}): boolean {
+  const stored = asRecord(storedAuthor);
+  const storedTeam = typeof stored?.team === 'string' ? stored.team : '';
+  return (
+    (details.authorName !== undefined && details.authorName !== nonBlank(stored?.name)) ||
+    (details.team !== undefined && details.team !== storedTeam)
+  );
 }
 
 /** Layers the resolved author over `manifest`; an unchanged author leaves the manifest as it was. */

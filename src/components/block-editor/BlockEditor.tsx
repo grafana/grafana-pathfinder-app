@@ -24,6 +24,7 @@ import { canMergeSelection } from './hooks/useBlockEditor.bulk-delete';
 import { useBackendGuides, hasManageableBackendGuides } from './hooks/useBackendGuides';
 import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuideDetails } from './hooks/useGuideDetails';
+import { authorNameToWrite, type DefaultedAuthor } from './utils/derive-manifest';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
 import { currentUserAuthorName } from '../../utils/current-user-name';
@@ -241,6 +242,16 @@ function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
     return a.sectionId === b.sectionId;
   }
   return false;
+}
+
+export function authorNoticeText({ name, replacedName }: DefaultedAuthor): string {
+  if (name === EDITOR_FALLBACK_AUTHOR) {
+    return 'This guide had no author and your account has no name, so it was given a placeholder author.';
+  }
+  if (replacedName) {
+    return `This guide was attributed to the placeholder ${replacedName}, so it was attributed to you instead.`;
+  }
+  return 'This guide had no author, so it was attributed to you.';
 }
 
 function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideTitleChange }: BlockEditorProps) {
@@ -712,11 +723,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     [editor, trackLoadedGuide, resetDetails]
   );
 
-  // The author shown in the details modal: what the author chose this session, else what is stored.
-  const storedAuthor = backendGuides.guides.find((g) => g.metadata.name === backendSaveFlow.currentGuideResourceName)
-    ?.spec.manifest?.author as { name?: unknown; team?: unknown } | undefined;
-  const storedAuthorName = typeof storedAuthor?.name === 'string' ? storedAuthor.name : '';
-  const storedTeam = typeof storedAuthor?.team === 'string' ? storedAuthor.team : '';
+  const defaultAuthorName = authorNameToWrite(backendSaveFlow.storedAuthor, { signedInName: currentUserAuthorName() });
+  const storedTeam = (backendSaveFlow.storedAuthor as { team?: unknown } | undefined)?.team;
 
   // Open guide library
   const handleOpenGuideLibrary = useCallback(() => {
@@ -865,11 +873,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
       {guideDetails.authorNotice && (
         <Alert
           severity="info"
-          title={`Author set to ${guideDetails.authorNotice}`}
+          title={`Author set to ${guideDetails.authorNotice.name}`}
           onRemove={guideDetails.dismissAuthorNotice}
           data-testid={testIds.blockEditor.authorNotice}
         >
-          This guide had no author, so it was attributed to you. Readers see this name.{' '}
+          {authorNoticeText(guideDetails.authorNotice)} Readers see this name.{' '}
           <Button
             size="sm"
             variant="secondary"
@@ -928,9 +936,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         hasBlocks={hasBlocks}
         onNewGuideConfirm={guideOps.handleNewGuide}
         onImportGuide={guideOps.handleImportGuide}
-        authorName={guideDetails.details.authorName ?? storedAuthorName}
-        team={guideDetails.details.team ?? storedTeam}
-        authorPlaceholder={currentUserAuthorName() ?? EDITOR_FALLBACK_AUTHOR}
+        authorName={guideDetails.details.authorName ?? defaultAuthorName}
+        team={guideDetails.details.team ?? (typeof storedTeam === 'string' ? storedTeam : '')}
+        authorPlaceholder={defaultAuthorName}
         onSaveGuideDetails={guideDetails.applyDetails}
       />
 

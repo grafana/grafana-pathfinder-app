@@ -163,9 +163,9 @@ Open **More actions** for other available actions, such as **Publish** for a dra
 
 ### Author and team
 
-When you save a guide that has no author, the editor attributes it to your Grafana name, or your login if you have no name. A notice shows the name it used. Select **Change author** to edit it, or dismiss the notice. Saving never waits on it.
+When you save a guide that has no author, the editor attributes it to your Grafana name, or your login if you have no name. A notice shows the name it used and why. Select **Change author** to edit it, or dismiss the notice. Saving never waits on it.
 
-To set the author or a team yourself, open **More actions** > **Guide details**. The name and team you enter are written the next time you save or publish. A guide that already has an author keeps it, unless that author is a placeholder name such as `pathfinder-mcp`, which your name replaces.
+To set the author or a team yourself, open **More actions** > **Guide details**. The name and team you enter are written the next time you save or publish, and the editor shows them as unsaved changes until then. Clear the name to go back to the default. A guide that already has an author keeps it, unless that author is a placeholder name such as `pathfinder-mcp`, which your name replaces.
 
 ### Unpublish
 

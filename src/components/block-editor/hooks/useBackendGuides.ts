@@ -9,7 +9,15 @@ import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
 import { APP_PLATFORM_API_VERSION, collectionUrl, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
-import { applyAuthor, deriveManifest, resolveAuthor, type GuideDetails } from '../utils/derive-manifest';
+import {
+  APP_PLATFORM_REPOSITORY,
+  applyAuthor,
+  deriveManifest,
+  PLAIN_GUIDE_TYPE,
+  resolveAuthor,
+  type DefaultedAuthor,
+  type GuideDetails,
+} from '../utils/derive-manifest';
 import { currentUserAuthorName } from '../../../utils/current-user-name';
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { logger } from '../../../lib/logging';
@@ -103,7 +111,7 @@ export function preservedSpec(
 }
 
 /** The base a legacy manifest-less guide gets when publish or unpublish has to hold an author. */
-const MINTED_MANIFEST = { type: 'guide', repository: 'app-platform' };
+const MINTED_MANIFEST = { type: PLAIN_GUIDE_TYPE, repository: APP_PLATFORM_REPOSITORY };
 
 /**
  * Publish and unpublish re-PUT the stored spec rather than re-deriving it, so the author default is
@@ -119,8 +127,8 @@ function specWithAuthorDefault(spec: BackendGuideSpec, status: 'draft' | 'publis
 
 /** What a save tells the editor about the author it wrote. */
 export interface SaveGuideResult {
-  /** The name this save chose for the guide, set only when it was not already authored. */
-  defaultedAuthorName?: string;
+  /** The name this save chose for the guide, set only when it was not already authored by a real name. */
+  defaultedAuthor?: DefaultedAuthor;
 }
 
 export interface UseBackendGuidesReturn {
@@ -275,10 +283,10 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           metadata,
           spec: preservedSpec(exportable, status, inheritedSpec, details),
         };
-        const defaultedAuthorName = resolveAuthor(inheritedSpec?.manifest?.author, {
+        const defaultedAuthor = resolveAuthor(inheritedSpec?.manifest?.author, {
           signedInName: currentUserAuthorName(),
           details,
-        })?.defaultedName;
+        })?.defaulted;
 
         await lastValueFrom(
           getBackendSrv().fetch({
@@ -290,7 +298,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         );
 
         await refreshGuides();
-        return { defaultedAuthorName };
+        return { defaultedAuthor };
       } finally {
         setIsSaving(false);
       }

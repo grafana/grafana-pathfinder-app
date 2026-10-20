@@ -26,14 +26,21 @@ jest.mock('../../../utils/fetchBackendGuides', () => ({
   fetchBackendGuides: jest.fn(),
 }));
 
+jest.mock('../../../lib/analytics', () => ({
+  ...jest.requireActual('../../../lib/analytics'),
+  reportAppInteraction: jest.fn(),
+}));
+
 jest.mock('../../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 import { getBackendSrv } from '@grafana/runtime';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import { logger } from '../../../lib/logging';
+import { reportAppInteraction } from '../../../lib/analytics';
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { PERSISTED_DIVIDER_MARKDOWN } from '../../../types/app-platform-guide-compat';
 import type { JsonGuide } from '../types';
@@ -553,7 +560,7 @@ describe('author attribution', () => {
       saved = await result.current.saveGuide(fresh());
     });
 
-    expect(saved).toEqual({ defaultedAuthorName: 'Sam Rivera' });
+    expect(saved).toEqual({ defaultedAuthor: { name: 'Sam Rivera' } });
   });
 
   it('reports nothing when the guide already had an author', async () => {
@@ -565,7 +572,7 @@ describe('author attribution', () => {
       saved = await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
     });
 
-    expect(saved?.defaultedAuthorName).toBeUndefined();
+    expect(saved?.defaultedAuthor).toBeUndefined();
   });
 
   it('fills an authorless stored guide on its next save', async () => {
@@ -600,6 +607,50 @@ describe('author attribution', () => {
     });
 
     expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Sam Rivera' });
+  });
+
+  it('reports the placeholder a real identity replaced', async () => {
+    const resource = pathCoverPage();
+    resource.spec.manifest = { ...MANIFEST, author: { name: 'pathfinder-mcp' } };
+    const result = await renderLoaded([resource]);
+
+    let saved: Awaited<ReturnType<typeof result.current.saveGuide>> | undefined;
+    await act(async () => {
+      saved = await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
+    });
+
+    expect(saved).toEqual({ defaultedAuthor: { name: 'Sam Rivera', replacedName: 'pathfinder-mcp' } });
+  });
+
+  it('never sends the author name to the logger or telemetry, even when writes fail', async () => {
+    const resource = unauthored();
+    const result = await renderLoaded([resource]);
+
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft', false, {
+        authorName: 'Dana',
+      });
+      await result.current.publishGuide('alerting-path', resource.metadata);
+      await result.current.unpublishGuide('alerting-path', resource.metadata);
+    });
+    mockFetch.mockReturnValue(throwError(() => new Error('boom')));
+    (fetchBackendGuides as jest.Mock).mockRejectedValue(new Error('boom'));
+    await act(async () => {
+      await result.current.publishGuide('alerting-path', resource.metadata).catch(() => {});
+      await result.current.deleteGuide('alerting-path').catch(() => {});
+      await result.current.refreshGuides().catch(() => {});
+    });
+
+    const calls = [
+      ...Object.values(logger).flatMap((fn) => (fn as jest.Mock).mock.calls),
+      ...(reportAppInteraction as jest.Mock).mock.calls,
+    ];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(JSON.stringify(call, (_key, value) => (value instanceof Error ? value.message : value))).not.toMatch(
+        /Sam Rivera|Dana/
+      );
+    }
   });
 
   it('lets the details modal choices win over everything stored', async () => {

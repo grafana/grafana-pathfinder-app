@@ -58,12 +58,12 @@ describe('GuideDetailsModal', () => {
     expect(props.onSave).toHaveBeenCalledWith({ authorName: 'Dana' });
   });
 
-  it('does not treat an emptied name as a choice', () => {
+  it('clears a chosen name so the save default applies again', () => {
     const props = renderModal({ initialAuthorName: 'Dana' });
 
     type(testIds.blockEditor.guideDetailsAuthorInput, '');
     fireEvent.click(screen.getByTestId(testIds.blockEditor.guideDetailsSave));
 
-    expect(props.onSave).toHaveBeenCalledWith({});
+    expect((props.onSave as jest.Mock).mock.calls[0][0]).toStrictEqual({ authorName: undefined });
   });
 });
