@@ -13,6 +13,7 @@ import type { JsonGuide } from '../types';
 import { BACKEND_TRACKING_STORAGE_KEY } from '../constants';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
+import type { GuideDetails } from '../utils/derive-manifest';
 
 /**
  * Normalize a guide id or title into a Kubernetes-style resource name:
@@ -62,8 +63,9 @@ export interface BackendSaveFlowGuidesInterface {
     existingResourceName?: string,
     existingMetadata?: any,
     status?: 'draft' | 'published',
-    replacesForeignResource?: boolean
-  ) => Promise<void>;
+    replacesForeignResource?: boolean,
+    details?: GuideDetails
+  ) => Promise<{ defaultedAuthorName?: string } | void>;
   refreshGuides: () => Promise<BackendSaveFlowGuideEntry[]>;
   unpublishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
 }
@@ -73,6 +75,10 @@ export interface UseBackendSaveFlowOptions {
   editor: BackendSaveFlowEditorInterface;
   /** Backend guide list/save/refresh/unpublish operations */
   backendGuides: BackendSaveFlowGuidesInterface;
+  /** Author choices from the guide details modal, written at the next save. */
+  guideDetails?: GuideDetails;
+  /** Called with the name a save chose for a guide that had no author, so the editor can say so. */
+  announceAuthor?: (name: string) => void;
 }
 
 /**
@@ -126,7 +132,12 @@ export interface UseBackendSaveFlowReturn {
 /**
  * Backend draft/publish/unpublish orchestration for the block editor.
  */
-export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
+export function useBackendSaveFlow({
+  editor,
+  backendGuides,
+  guideDetails,
+  announceAuthor,
+}: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
   const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(
     () => readBackendTracking().resourceName
   );
@@ -201,7 +212,17 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
         throw new Error('Guide title or ID must contain at least one alphanumeric character');
       }
 
-      await backendGuides.saveGuide(guide, resourceName, metadata, status, replacesForeignResource);
+      const saved = await backendGuides.saveGuide(
+        guide,
+        resourceName,
+        metadata,
+        status,
+        replacesForeignResource,
+        guideDetails
+      );
+      if (saved?.defaultedAuthorName) {
+        announceAuthor?.(saved.defaultedAuthorName);
+      }
 
       // Track the content that was last synced to the backend
       setLastPublishedJson(JSON.stringify(guide));
@@ -218,7 +239,7 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
         notify('success', isUpdate ? 'Draft updated.' : 'Guide saved as draft.');
       }
     },
-    [backendGuides]
+    [backendGuides, guideDetails, announceAuthor]
   );
 
   /**

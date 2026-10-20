@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useStyles2 } from '@grafana/ui';
+import { Alert, Button, useStyles2 } from '@grafana/ui';
 import { createInstanceId } from '../../lib/create-instance-id';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
@@ -23,8 +23,11 @@ import { useGuideOperations } from './hooks/useGuideOperations';
 import { canMergeSelection } from './hooks/useBlockEditor.bulk-delete';
 import { useBackendGuides, hasManageableBackendGuides } from './hooks/useBackendGuides';
 import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
+import { useGuideDetails } from './hooks/useGuideDetails';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
+import { currentUserAuthorName } from '../../utils/current-user-name';
+import { EDITOR_FALLBACK_AUTHOR } from '../../types/author-defaults';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { publishEditorChromeStatus, readStoredEditorGuide, resetEditorChromeStatus } from './editor-chrome-status';
 import { BlockFormModal } from './BlockFormModal';
@@ -302,7 +305,19 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
 
   // Backend guides management
   const backendGuides = useBackendGuides();
-  const backendSaveFlow = useBackendSaveFlow({ editor, backendGuides });
+  const guideDetails = useGuideDetails();
+  const backendSaveFlow = useBackendSaveFlow({
+    editor,
+    backendGuides,
+    guideDetails: guideDetails.details,
+    announceAuthor: guideDetails.announceAuthor,
+  });
+  const { resetDetails } = guideDetails;
+  const { handleClearBackendTracking } = backendSaveFlow;
+  const handleStartNewGuide = useCallback(() => {
+    handleClearBackendTracking();
+    resetDetails();
+  }, [handleClearBackendTracking, resetDetails]);
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -623,7 +638,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     modals,
     onCopy,
     onDownload,
-    onNewGuide: backendSaveFlow.handleClearBackendTracking,
+    onNewGuide: handleStartNewGuide,
   });
 
   // Handle block type selection from palette
@@ -691,10 +706,17 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
       trackLoadedGuide(guide, resourceName);
+      resetDetails();
       editor.markSaved();
     },
-    [editor, trackLoadedGuide]
+    [editor, trackLoadedGuide, resetDetails]
   );
+
+  // The author shown in the details modal: what the author chose this session, else what is stored.
+  const storedAuthor = backendGuides.guides.find((g) => g.metadata.name === backendSaveFlow.currentGuideResourceName)
+    ?.spec.manifest?.author as { name?: unknown; team?: unknown } | undefined;
+  const storedAuthorName = typeof storedAuthor?.name === 'string' ? storedAuthor.name : '';
+  const storedTeam = typeof storedAuthor?.team === 'string' ? storedAuthor.team : '';
 
   // Open guide library
   const handleOpenGuideLibrary = useCallback(() => {
@@ -815,6 +837,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         onTitleCommit={handleTitleCommit}
         onOpenTour={() => modals.open('tour')}
         onOpenGuideLibrary={handleOpenGuideLibrary}
+        onOpenGuideDetails={() => modals.open('guideDetails')}
         onOpenImport={() => modals.open('import')}
         onCopy={guideOps.handleCopy}
         onDownload={guideOps.handleDownload}
@@ -838,6 +861,25 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         undoLabel={editor.undoLabel}
         redoLabel={editor.redoLabel}
       />
+
+      {guideDetails.authorNotice && (
+        <Alert
+          severity="info"
+          title={`Author set to ${guideDetails.authorNotice}`}
+          onRemove={guideDetails.dismissAuthorNotice}
+          data-testid={testIds.blockEditor.authorNotice}
+        >
+          This guide had no author, so it was attributed to you. Readers see this name.{' '}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => modals.open('guideDetails')}
+            data-testid={testIds.blockEditor.authorNoticeEdit}
+          >
+            Change author
+          </Button>
+        </Alert>
+      )}
 
       <BlockEditorContent
         viewMode={state.viewMode}
@@ -886,6 +928,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         hasBlocks={hasBlocks}
         onNewGuideConfirm={guideOps.handleNewGuide}
         onImportGuide={guideOps.handleImportGuide}
+        authorName={guideDetails.details.authorName ?? storedAuthorName}
+        team={guideDetails.details.team ?? storedTeam}
+        authorPlaceholder={currentUserAuthorName() ?? EDITOR_FALLBACK_AUTHOR}
+        onSaveGuideDetails={guideDetails.applyDetails}
       />
 
       {/* Guide Library Modal */}

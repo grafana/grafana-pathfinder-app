@@ -9,7 +9,8 @@ import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
 import { APP_PLATFORM_API_VERSION, collectionUrl, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
-import { deriveManifest } from '../utils/derive-manifest';
+import { applyAuthor, deriveManifest, resolveAuthor, type GuideDetails } from '../utils/derive-manifest';
+import { currentUserAuthorName } from '../../../utils/current-user-name';
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { logger } from '../../../lib/logging';
 import { encodeAppPlatformGuideBlocks } from '../../../types/app-platform-guide-compat';
@@ -78,11 +79,13 @@ export function preservedMetadata(
  * owns only what it can compute from the blocks, so a path cover page keeps its `type` and
  * `milestones`. It gets the previously-read BLOCKS as well as the previously-read manifest, because
  * deciding whether the editor owns `startingLocation` means asking what that content derived.
+ * `details` carries the author's explicit guide-details choices.
  */
 export function preservedSpec(
   guide: JsonGuide,
   status: 'draft' | 'published',
-  existingSpec?: BackendGuideSpec | null
+  existingSpec?: BackendGuideSpec | null,
+  details?: GuideDetails
 ): BackendGuideSpec {
   return {
     ...(existingSpec ?? {}),
@@ -92,8 +95,32 @@ export function preservedSpec(
     schemaVersion: guide.schemaVersion || CURRENT_SCHEMA_VERSION,
     blocks: encodeAppPlatformGuideBlocks(guide.blocks),
     status,
-    manifest: deriveManifest(guide, existingSpec?.manifest, existingSpec?.blocks),
+    manifest: deriveManifest(guide, existingSpec?.manifest, existingSpec?.blocks, {
+      signedInName: currentUserAuthorName(),
+      details,
+    }),
   };
+}
+
+/** The base a legacy manifest-less guide gets when publish or unpublish has to hold an author. */
+const MINTED_MANIFEST = { type: 'guide', repository: 'app-platform' };
+
+/**
+ * Publish and unpublish re-PUT the stored spec rather than re-deriving it, so the author default is
+ * layered on here alone: nothing else about the manifest is the editor's to recompute from a status flip.
+ */
+function specWithAuthorDefault(spec: BackendGuideSpec, status: 'draft' | 'published'): BackendGuideSpec {
+  return {
+    ...spec,
+    status,
+    manifest: applyAuthor(spec.manifest ?? MINTED_MANIFEST, { signedInName: currentUserAuthorName() }),
+  };
+}
+
+/** What a save tells the editor about the author it wrote. */
+export interface SaveGuideResult {
+  /** The name this save chose for the guide, set only when it was not already authored. */
+  defaultedAuthorName?: string;
 }
 
 export interface UseBackendGuidesReturn {
@@ -108,8 +135,9 @@ export interface UseBackendGuidesReturn {
     existingResourceName?: string,
     existingMetadata?: Partial<BackendGuideMetadata> | null,
     status?: 'draft' | 'published',
-    replacesForeignResource?: boolean
-  ) => Promise<void>;
+    replacesForeignResource?: boolean,
+    details?: GuideDetails
+  ) => Promise<SaveGuideResult>;
   publishGuide: (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => Promise<void>;
   unpublishGuide: (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => Promise<void>;
   deleteGuide: (resourceName: string) => Promise<void>;
@@ -188,8 +216,9 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       existingResourceName?: string,
       existingMetadata?: Partial<BackendGuideMetadata> | null,
       status: 'draft' | 'published' = 'draft',
-      replacesForeignResource = false
-    ) => {
+      replacesForeignResource = false,
+      details?: GuideDetails
+    ): Promise<SaveGuideResult> => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -239,12 +268,17 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         // Author notes are private to the editor session and must never be persisted.
         const exportable = stripAuthorNotes(guide);
 
+        const inheritedSpec = inheritUnowned ? existing?.spec : undefined;
         const k8sResource = {
           apiVersion: APP_PLATFORM_API_VERSION,
           kind: 'InteractiveGuide',
           metadata,
-          spec: preservedSpec(exportable, status, inheritUnowned ? existing?.spec : undefined),
+          spec: preservedSpec(exportable, status, inheritedSpec, details),
         };
+        const defaultedAuthorName = resolveAuthor(inheritedSpec?.manifest?.author, {
+          signedInName: currentUserAuthorName(),
+          details,
+        })?.defaultedName;
 
         await lastValueFrom(
           getBackendSrv().fetch({
@@ -256,6 +290,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         );
 
         await refreshGuides();
+        return { defaultedAuthorName };
       } finally {
         setIsSaving(false);
       }
@@ -292,7 +327,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
               apiVersion: APP_PLATFORM_API_VERSION,
               kind: 'InteractiveGuide',
               metadata,
-              spec: { ...existing.spec, status: 'published' as const },
+              spec: specWithAuthorDefault(existing.spec, 'published'),
             },
             showErrorAlert: false,
           })
@@ -335,7 +370,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
               apiVersion: APP_PLATFORM_API_VERSION,
               kind: 'InteractiveGuide',
               metadata,
-              spec: { ...existing.spec, status: 'draft' as const },
+              spec: specWithAuthorDefault(existing.spec, 'draft'),
             },
             showErrorAlert: false,
           })

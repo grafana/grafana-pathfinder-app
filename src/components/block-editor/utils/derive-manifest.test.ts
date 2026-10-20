@@ -840,3 +840,111 @@ describe('deriveManifest — CRD key invariant', () => {
     expect(['guide', 'path', 'journey']).toContain(deriveManifest(guide([markdown()])).type);
   });
 });
+
+describe('deriveManifest — author', () => {
+  const authoring = { signedInName: 'Sam Rivera' };
+
+  it('attributes an authorless guide to the signed-in user', () => {
+    const result = deriveManifest(guide([markdown()]), undefined, undefined, authoring);
+
+    expect(result.author).toEqual({ name: 'Sam Rivera' });
+  });
+
+  it('uses the editor placeholder when the environment has no usable name', () => {
+    const result = deriveManifest(guide([markdown()]), undefined, undefined, {});
+
+    expect(result.author).toEqual({ name: 'pathfinder-block-editor' });
+  });
+
+  it('writes only name and team, never anything else about the user', () => {
+    const result = deriveManifest(guide([markdown()]), undefined, undefined, authoring);
+
+    expect(Object.keys(result.author as object)).toEqual(['name']);
+  });
+
+  it('keeps a real inherited author, whoever is signed in', () => {
+    const inherited = { type: 'guide', repository: 'app-platform', author: { name: 'Enablement', team: 'Docs' } };
+
+    const result = deriveManifest(guide([markdown()]), inherited, undefined, authoring);
+
+    expect(result.author).toEqual({ name: 'Enablement', team: 'Docs' });
+  });
+
+  it.each(['pathfinder-mcp', 'pathfinder-block-editor'])('replaces the %s placeholder with a real identity', (name) => {
+    const result = deriveManifest(guide([markdown()]), { type: 'guide', author: { name } }, undefined, authoring);
+
+    expect(result.author).toEqual({ name: 'Sam Rivera' });
+  });
+
+  it('never swaps one placeholder for the other', () => {
+    const result = deriveManifest(
+      guide([markdown()]),
+      { type: 'guide', author: { name: 'pathfinder-mcp' } },
+      undefined,
+      {}
+    );
+
+    expect(result.author).toEqual({ name: 'pathfinder-mcp' });
+  });
+
+  it('fills a missing name but keeps a team that was already set', () => {
+    const result = deriveManifest(
+      guide([markdown()]),
+      { type: 'guide', author: { team: 'Docs' } },
+      undefined,
+      authoring
+    );
+
+    expect(result.author).toEqual({ team: 'Docs', name: 'Sam Rivera' });
+  });
+
+  it('lets an explicit name from the details modal win over a real inherited author', () => {
+    const result = deriveManifest(guide([markdown()]), { type: 'guide', author: { name: 'Enablement' } }, undefined, {
+      ...authoring,
+      details: { authorName: '  Dana  ' },
+    });
+
+    expect(result.author).toEqual({ name: 'Dana' });
+  });
+
+  it('sets and clears team from the details modal', () => {
+    const inherited = { type: 'guide', author: { name: 'Enablement', team: 'Docs' } };
+
+    const set = deriveManifest(guide([markdown()]), inherited, undefined, { details: { team: 'Observability' } });
+    const cleared = deriveManifest(guide([markdown()]), inherited, undefined, { details: { team: ' ' } });
+
+    expect(set.author).toEqual({ name: 'Enablement', team: 'Observability' });
+    expect(cleared.author).toEqual({ name: 'Enablement' });
+  });
+
+  it('replays an authored manifest untouched, down to key order', () => {
+    const inherited = {
+      type: 'guide',
+      author: { team: 'Docs', name: 'Enablement' },
+      repository: 'app-platform',
+      additionalFields: { stats: summarizeGuideBlocks([markdown()]) },
+    };
+
+    const result = deriveManifest(guide([markdown()]), inherited, [markdown()], authoring);
+
+    expect(JSON.stringify(result)).toBe(JSON.stringify(inherited));
+  });
+
+  it('does not guess the fields it cannot know', () => {
+    const result = deriveManifest(guide([markdown()]), undefined, undefined, authoring);
+
+    for (const key of ['category', 'description', 'minGrafanaVersion', 'testEnvironment', 'targeting']) {
+      expect(result).not.toHaveProperty(key);
+    }
+    expect(result.additionalFields).not.toHaveProperty('estimatedMinutes');
+    expect(result.additionalFields).not.toHaveProperty('language');
+  });
+
+  it('stays inside the keys the CRD keeps', () => {
+    const result = deriveManifest(guide([markdown()]), undefined, undefined, authoring);
+
+    for (const key of Object.keys(result)) {
+      expect(CRD_MANIFEST_KEYS.has(key)).toBe(true);
+    }
+  });
+});

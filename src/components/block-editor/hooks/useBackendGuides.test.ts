@@ -6,9 +6,20 @@
  */
 import { renderHook, waitFor, act } from '@testing-library/react';
 
+const mockUser: { name?: string; login?: string; email: string } = {
+  name: 'Sam Rivera',
+  login: 'sam',
+  email: 'sam@example.com',
+};
+
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
-  config: { namespace: 'stacks-1' },
+  config: {
+    namespace: 'stacks-1',
+    get bootData() {
+      return { user: mockUser };
+    },
+  },
 }));
 
 jest.mock('../../../utils/fetchBackendGuides', () => ({
@@ -32,12 +43,13 @@ const mockFetch = jest.fn();
 
 // `type` is deliberately not one of the CRD's three values: it proves the editor passes an inherited
 // type through rather than recognising a whitelist, and that an unrecognised type gets no stats stamp.
-const MANIFEST = {
+const MANIFEST: Record<string, unknown> = {
   id: 'alerting-path',
   type: 'learning-journey',
   // The CRD defaults `repository` on write, so a manifest read back off a resource always carries
   // one. Modelling that is what keeps the byte-identical replay below honest.
   repository: 'app-platform',
+  author: { name: 'Enablement', team: 'Docs' },
   milestones: [
     { id: 'alerting-intro', title: 'Intro' },
     { id: 'alerting-rules', title: 'Rules' },
@@ -49,8 +61,20 @@ const ANNOTATIONS = {
   'pathfinderbackend.ext.grafana.app/source-package': 'alerting-enablement',
 };
 
+interface StoredGuide {
+  metadata: Record<string, unknown> & { name: string; namespace: string };
+  spec: {
+    id: string;
+    title: string;
+    schemaVersion: string;
+    blocks: Array<{ id: string; type: string; content: string }>;
+    status: 'draft' | 'published';
+    manifest?: Record<string, unknown>;
+  };
+}
+
 /** A path cover page as the upload script leaves it on the backend. */
-function pathCoverPage() {
+function pathCoverPage(): StoredGuide {
   return {
     metadata: {
       name: 'alerting-path',
@@ -73,7 +97,7 @@ function pathCoverPage() {
 }
 
 /** The JsonGuide the guide library builds from a backend resource on load. */
-function loadedGuide(resource: ReturnType<typeof pathCoverPage>): JsonGuide {
+function loadedGuide(resource: StoredGuide): JsonGuide {
   return {
     id: resource.spec.id,
     title: resource.spec.title,
@@ -82,7 +106,7 @@ function loadedGuide(resource: ReturnType<typeof pathCoverPage>): JsonGuide {
   } as JsonGuide;
 }
 
-async function renderLoaded(items: Array<ReturnType<typeof pathCoverPage>>) {
+async function renderLoaded(items: StoredGuide[]) {
   (fetchBackendGuides as jest.Mock).mockResolvedValue(items);
   const { result } = renderHook(() => useBackendGuides());
   await waitFor(() => expect(result.current.hasLoaded).toBe(true));
@@ -95,6 +119,8 @@ function lastRequest() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUser.name = 'Sam Rivera';
+  mockUser.login = 'sam';
   mockFetch.mockReturnValue(of({ data: {} }));
   (getBackendSrv as jest.Mock).mockReturnValue({ fetch: mockFetch });
 });
@@ -167,6 +193,8 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(spec.manifest.type).toBe('guide');
     expect(spec.manifest.milestones).toBeUndefined();
     expect(spec.manifest.id).toBeUndefined();
+    // Nor does it inherit the old resource's author: the overwriting guide is the signed-in user's.
+    expect(spec.manifest.author).toEqual({ name: 'Sam Rivera' });
     // Inheriting would let the upload script's ownership guard pass on content it never wrote.
     expect(metadata.annotations).toBeUndefined();
     expect(metadata.labels).toBeUndefined();
@@ -282,6 +310,7 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
         additionalFields: {
           stats: { version: 2, blockCount: 1, sectionCount: 0, completableBlockCount: 0, finalCompletablePosition: 0 },
         },
+        author: { name: 'Sam Rivera' },
       },
     });
     expect(request.data.metadata).toEqual({ name: 'fresh', namespace: 'stacks-1' });
@@ -476,5 +505,148 @@ describe('publishGuide / unpublishGuide — annotation passthrough', () => {
     expect(metadata.annotations).toEqual(ANNOTATIONS);
     expect(spec.manifest).toEqual(MANIFEST);
     expect(spec.status).toBe('draft');
+  });
+});
+
+describe('author attribution', () => {
+  const unauthored = () => {
+    const resource = pathCoverPage();
+    const { author: _author, ...manifest } = MANIFEST;
+    return { ...resource, spec: { ...resource.spec, manifest } };
+  };
+
+  const fresh = () =>
+    ({ id: 'fresh', title: 'Fresh guide', blocks: [{ id: 'b1', type: 'markdown', content: 'hi' }] }) as JsonGuide;
+
+  it('attributes a guide with no author to the signed-in user, never writing email', async () => {
+    const result = await renderLoaded([]);
+
+    await act(async () => {
+      await result.current.saveGuide(fresh());
+    });
+
+    expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Sam Rivera' });
+    expect(JSON.stringify(lastRequest().data)).not.toContain('sam@example.com');
+  });
+
+  it('falls back to the login, then to the editor placeholder', async () => {
+    const result = await renderLoaded([]);
+
+    mockUser.name = '';
+    await act(async () => {
+      await result.current.saveGuide(fresh());
+    });
+    expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'sam' });
+
+    mockUser.login = undefined;
+    await act(async () => {
+      await result.current.saveGuide(fresh());
+    });
+    expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'pathfinder-block-editor' });
+  });
+
+  it('reports the name it chose so the editor can say so', async () => {
+    const result = await renderLoaded([]);
+
+    let saved: Awaited<ReturnType<typeof result.current.saveGuide>> | undefined;
+    await act(async () => {
+      saved = await result.current.saveGuide(fresh());
+    });
+
+    expect(saved).toEqual({ defaultedAuthorName: 'Sam Rivera' });
+  });
+
+  it('reports nothing when the guide already had an author', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([resource]);
+
+    let saved: Awaited<ReturnType<typeof result.current.saveGuide>> | undefined;
+    await act(async () => {
+      saved = await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
+    });
+
+    expect(saved?.defaultedAuthorName).toBeUndefined();
+  });
+
+  it('fills an authorless stored guide on its next save', async () => {
+    const resource = unauthored();
+    const result = await renderLoaded([resource]);
+
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
+    });
+
+    expect(lastRequest().data.spec.manifest).toEqual({ ...resource.spec.manifest, author: { name: 'Sam Rivera' } });
+  });
+
+  it('keeps a real stored author, even for a different signed-in user', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([resource]);
+
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'published');
+    });
+
+    expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Enablement', team: 'Docs' });
+  });
+
+  it('replaces a stored placeholder with a real identity', async () => {
+    const resource = pathCoverPage();
+    resource.spec.manifest = { ...MANIFEST, author: { name: 'pathfinder-mcp' } };
+    const result = await renderLoaded([resource]);
+
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
+    });
+
+    expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Sam Rivera' });
+  });
+
+  it('lets the details modal choices win over everything stored', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([resource]);
+
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft', false, {
+        authorName: 'Dana',
+        team: 'Observability',
+      });
+    });
+
+    expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Dana', team: 'Observability' });
+  });
+
+  it('applies the signed-in default when publishing and unpublishing an authorless guide', async () => {
+    const resource = unauthored();
+    const result = await renderLoaded([resource]);
+
+    await act(async () => {
+      await result.current.publishGuide('alerting-path', resource.metadata);
+    });
+    expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Sam Rivera' });
+    expect(lastRequest().data.spec.status).toBe('published');
+
+    await act(async () => {
+      await result.current.unpublishGuide('alerting-path', resource.metadata);
+    });
+    expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Sam Rivera' });
+    expect(lastRequest().data.spec.status).toBe('draft');
+  });
+
+  it('gives a manifest-less legacy guide a minimal manifest to hold the author on publish', async () => {
+    const resource = pathCoverPage();
+    const { manifest: _manifest, ...spec } = resource.spec;
+    const legacy = { ...resource, spec };
+    const result = await renderLoaded([legacy]);
+
+    await act(async () => {
+      await result.current.publishGuide('alerting-path', legacy.metadata);
+    });
+
+    expect(lastRequest().data.spec.manifest).toEqual({
+      type: 'guide',
+      repository: 'app-platform',
+      author: { name: 'Sam Rivera' },
+    });
   });
 });

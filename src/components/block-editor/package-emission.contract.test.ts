@@ -148,10 +148,46 @@ describe('block-editor package emission contract', () => {
     expect(source).toContain('spec: preservedSpec');
   });
 
+  it('applies the author default on every backend write, publish and unpublish included', () => {
+    const source = read('components/block-editor/hooks/useBackendGuides.ts');
+
+    expect(source).toContain('signedInName: currentUserAuthorName()');
+    expect(source).toContain("specWithAuthorDefault(existing.spec, 'published')");
+    expect(source).toContain("specWithAuthorDefault(existing.spec, 'draft')");
+  });
+
+  it('never sends the author name to telemetry or the logger', () => {
+    const files = [
+      'components/block-editor/BlockEditor.tsx',
+      'components/block-editor/GuideDetailsModal.tsx',
+      'components/block-editor/hooks/useGuideDetails.ts',
+      'components/block-editor/hooks/useBackendGuides.ts',
+      'components/block-editor/hooks/useBackendSaveFlow.ts',
+      'components/block-editor/utils/derive-manifest.ts',
+      'utils/current-user-name.ts',
+    ];
+    const authorNames = /(authorName|authorNotice|defaultedAuthorName|defaultedName|announceAuthor)/;
+
+    for (const file of files) {
+      const source = read(file);
+      for (const call of source.matchAll(/(?:reportAppInteraction|logger\.\w+)\(([^;]*?)\);/gs)) {
+        expect(call[1]).not.toMatch(authorNames);
+      }
+    }
+  });
+
+  it('keeps the guide details control out of the export inventory', () => {
+    const source = read('components/block-editor/header/HeaderKebab.tsx');
+
+    expect(source).toContain('label="Guide details"');
+    expect(EXPORT_SURFACES.some((surface) => surface.label === 'Guide details')).toBe(false);
+  });
+
   it('does not let the content-only baseline drift into a package claim', () => {
     const source = read('components/block-editor/hooks/useGuideOperations.ts');
 
     expect(source).toContain('const json = JSON.stringify(guide, null, 2);');
     expect(source).not.toContain('deriveManifest');
+    expect(source).not.toContain('author');
   });
 });

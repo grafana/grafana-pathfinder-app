@@ -50,15 +50,15 @@ When you open the editor for a new guide, you see the empty canvas:
 
 ![Block editor with a new guide, Edit, Preview, and JSON views, the Save button, and Add block control.](/media/docs/pathfinder/2026-09-30/block-editor.jpg)
 
-| Area                                 | What it does                                                                                                |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Title                                | Name the guide. The editor generates an ID from its title; saved guides retain their identity when renamed. |
-| Status badge                         | Shows whether the guide is a draft or published and whether it has local changes.                           |
-| View mode toggle                     | Switch between **Edit**, **Preview**, and **JSON**.                                                         |
-| **Save**, **Publish**, or **Update** | Save a draft or publish changes when server storage is available.                                           |
-| More actions                         | Start a new guide, open the library, import or export JSON, change display mode, or take a tour.            |
-| **Undo** and **Redo**                | Reverse or reapply changes during your editing session.                                                     |
-| Add block                            | Open the palette to add content or interactive steps.                                                       |
+| Area                                 | What it does                                                                                                         |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Title                                | Name the guide. The editor generates an ID from its title; saved guides retain their identity when renamed.          |
+| Status badge                         | Shows whether the guide is a draft or published and whether it has local changes.                                    |
+| View mode toggle                     | Switch between **Edit**, **Preview**, and **JSON**.                                                                  |
+| **Save**, **Publish**, or **Update** | Save a draft or publish changes when server storage is available.                                                    |
+| More actions                         | Start a new guide, open the library, edit guide details, import or export JSON, change display mode, or take a tour. |
+| **Undo** and **Redo**                | Reverse or reapply changes during your editing session.                                                              |
+| Add block                            | Open the palette to add content or interactive steps.                                                                |
 
 ## Create your first guide
 
@@ -160,6 +160,12 @@ Open **More actions** for other available actions, such as **Publish** for a dra
 1. Click **Load** next to the guide.
 1. Make your changes—the badge changes to **Published (modified)**.
 1. Click **Update** to push the changes live. Users see the new version on their next refresh.
+
+### Author and team
+
+When you save a guide that has no author, the editor attributes it to your Grafana name, or your login if you have no name. A notice shows the name it used. Select **Change author** to edit it, or dismiss the notice. Saving never waits on it.
+
+To set the author or a team yourself, open **More actions** > **Guide details**. The name and team you enter are written the next time you save or publish. A guide that already has an author keeps it, unless that author is a placeholder name such as `pathfinder-mcp`, which your name replaces.
 
 ### Unpublish
 
