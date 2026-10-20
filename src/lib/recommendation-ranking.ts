@@ -97,33 +97,54 @@ export function rankRecommendations(recommendations: readonly Recommendation[], 
     const bi = recommendationIdentity(b);
     return order || (ai < bi ? -1 : ai > bi ? 1 : 0);
   });
+  const byPackageId = new Map<string, number[]>();
+  ordered.forEach((rec, index) => {
+    const id = packageId(rec);
+    if (id !== undefined) {
+      byPackageId.set(id, [...(byPackageId.get(id) ?? []), index]);
+    }
+  });
+  // Edges only join peers, so pulling a prerequisite forward never displaces stronger context.
   const prerequisites = ordered.map((rec, index) => {
     const ids = [rec.manifest?.depends, rec.manifest?.recommends].flatMap((field) =>
       Array.isArray(field) ? field.filter((id): id is string => typeof id === 'string') : []
     );
-    return new Set(
-      ids.flatMap((id) => {
-        const candidates = ordered.flatMap((candidate, i) =>
-          i !== index && packageId(candidate) === id && comparePriority(rec, candidate) === 0 ? [i] : []
-        );
-        const sameRepository = candidates.find((i) => ordered[i]?.repository === rec.repository);
-        const prerequisite = sameRepository ?? (candidates.length === 1 ? candidates[0] : undefined);
-        return prerequisite === undefined ? [] : [prerequisite];
-      })
-    );
+    const found = ids.flatMap((id) => {
+      const candidates = (byPackageId.get(id) ?? []).filter(
+        (i) => i !== index && comparePriority(rec, ordered[i]!) === 0
+      );
+      const sameRepository = candidates.find((i) => ordered[i]?.repository === rec.repository);
+      const prerequisite = sameRepository ?? (candidates.length === 1 ? candidates[0] : undefined);
+      return prerequisite === undefined ? [] : [prerequisite];
+    });
+    return [...new Set(found)].sort((a, b) => a - b);
   });
-  const pending = ordered.map((_, index) => index);
+  const reaches = (from: number, target: number): boolean => {
+    const seen = new Set<number>();
+    const stack = [from];
+    while (stack.length) {
+      const index = stack.pop()!;
+      if (index === target) {
+        return true;
+      }
+      if (!seen.has(index)) {
+        seen.add(index);
+        stack.push(...prerequisites[index]!);
+      }
+    }
+    return false;
+  };
+  const emitted = new Set<number>();
   const result: Recommendation[] = [];
-  while (pending.length) {
-    // Only reorder peers; a weak prerequisite must never displace stronger context.
-    const first = pending[0]!;
-    const ready = pending.findIndex(
-      (index) => comparePriority(ordered[first]!, ordered[index]!) === 0 && !prerequisites[index]!.size
-    );
-    const [index] = pending.splice(ready < 0 ? 0 : ready, 1);
-    result.push(ordered[index!]!);
-    prerequisites.forEach((dependencies) => dependencies.delete(index!));
-  }
+  const emit = (index: number) => {
+    if (emitted.has(index)) {
+      return;
+    }
+    emitted.add(index);
+    prerequisites[index]!.filter((prerequisite) => !reaches(prerequisite, index)).forEach(emit);
+    result.push(ordered[index]!);
+  };
+  ordered.forEach((_, index) => emit(index));
   return result;
 }
 

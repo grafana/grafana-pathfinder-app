@@ -135,3 +135,24 @@ it('ignores context from an earlier navigation', async () => {
   expect(result.current.contextData.currentPath).toBe('/dashboards');
   unmount();
 });
+
+it('settles recommendations when a refresh supersedes a pending fetch with identical context', async () => {
+  let finishOld!: (value: unknown) => void;
+  mockGetContextData.mockImplementation(async () => context());
+  mockFetchRecommendations.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishOld = resolve;
+      })
+  );
+  const { result, unmount } = renderHook(() => useContextPanel());
+  await act(async () => jest.advanceTimersByTimeAsync(refreshDelay));
+  expect(mockFetchRecommendations).toHaveBeenCalledTimes(1);
+  act(() => setAutoOpenGuideEnrollment({ variant: 'treatment', experiences: [] }));
+  await act(async () => jest.advanceTimersByTimeAsync(refreshDelay));
+  await act(async () => finishOld({ recommendations: [], featuredRecommendations: [] }));
+  expect(mockFetchRecommendations).toHaveBeenCalledTimes(2);
+  expect(result.current.isLoadingRecommendations).toBe(false);
+  expect(result.current.hasFetchedRecommendations).toBe(true);
+  unmount();
+});

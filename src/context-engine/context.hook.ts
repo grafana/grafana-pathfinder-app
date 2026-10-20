@@ -42,6 +42,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const [hasFetchedRecommendations, setHasFetchedRecommendations] = useState(false);
   const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
+  const [contextRevision, setContextRevision] = useState(0);
 
   const contextVersion = useRef(0);
   const recommendationVersion = useRef(0);
@@ -65,6 +66,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       const newContextData = await ContextService.getContextData();
       if (mounted.current && version === contextVersion.current) {
         setContextData(newContextData);
+        setContextRevision((revision) => revision + 1);
       }
     } catch (error) {
       if (!mounted.current || version !== contextVersion.current) {
@@ -72,6 +74,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       }
       logger.error('Failed to fetch context data', { error });
       setContextData((prev) => ({ ...prev, isLoading: false }));
+      setContextRevision((revision) => revision + 1);
     }
   }, []);
 
@@ -248,6 +251,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     contextData.currentPath,
     tagsString, // Extracted to separate variable - includes datasource tags
     contextData.visualizationType, // Direct viz type tracking
+    contextRevision,
     fetchRecommendations,
   ]);
 

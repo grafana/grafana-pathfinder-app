@@ -485,8 +485,8 @@ candidates. Older responses receive conservative literal-route evidence from
 Within a tier, known completed content follows unfinished or unknown content;
 then task-signal count, matched literal URL-prefix length, environment-signal
 count and match accuracy break ties. Within equally relevant completion groups,
-`depends` and `recommends` place a prerequisite before the guide that references
-it. This is ordering only: missing prerequisites, cycles and `suggests` do not
+`depends` and `recommends` pull a prerequisite forward to sit immediately before
+the guide that references it; edges inside a cycle are ignored. This is ordering only: missing prerequisites, cycles and `suggests` do not
 remove candidates. Stronger context and completion take precedence. Content
 format, a starting location on the current page, editorial status and canonical
 identity order otherwise-ready peers. Explicit suggestions and auto-open experiment placements
@@ -496,11 +496,13 @@ and rejects unsupported predicates; its route evidence does not expand eligibili
 
 Observed data-source and visualization selections expire after five minutes and
 are scoped to pathname plus `editPanel`, `editview`, `firstPanel` and `id` query
-parameters. Repeated identical observations refresh freshness without refetching.
+parameters. An added data source also stays current on the edit page Grafana opens
+for it. Repeated identical observations refresh freshness without refetching.
 Panel edit-mode changes refresh context; unrelated time-range changes do not. An
 inferred default visualization does not emit an observed `panel-type` signal.
 Context and recommendation requests ignore stale results after navigation or
-unmount. No additional analytics or query content is collected.
+unmount, and every completed context refresh refetches recommendations so a
+superseded request cannot leave the loading state behind. No additional analytics or query content is collected.
 
 `src/lib/testdata/relevance.v1.json` is shared with the recommender's
 `internal/recommender/testdata/relevance.v1.json`; update both copies together.

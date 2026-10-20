@@ -25,6 +25,20 @@ it('agrees with the server ranking golden', () => {
   expect(rankRecommendations([...candidates].reverse()).map((r) => r.url)).toEqual(fixture.order);
 });
 
+it.each(fixture.prerequisites)('agrees with the server prerequisite golden: $name', ({ path, candidates, order }) => {
+  const recs = candidates.map(({ id, ...manifest }) =>
+    rec(id, {
+      type: 'package',
+      repository: 'tutorials',
+      relevance: { ...GENERAL_RELEVANCE, tier: 2, urlSpecificity: 11 },
+      manifest: { id, type: 'guide', ...manifest },
+    })
+  );
+  for (const input of [recs, [...recs].reverse()]) {
+    expect(rankRecommendations(input, path).map((r) => r.manifest?.id)).toEqual(order);
+  }
+});
+
 it.each(fixture.cases.filter((c) => c.local))(
   'evaluates local route evidence: $name',
   ({ match, context, relevance }) => {
@@ -102,6 +116,13 @@ it('preserves explicit overrides, merges duplicates and does not prepend editori
       [{ ...strong, placement: 'experiment', editorialFeatured: true }]
     )[0]
   ).toMatchObject({ relevance: strong.relevance, placement: 'suggestion', editorialFeatured: true });
+});
+
+it('keeps route evidence for a featured guide on the page it targets', () => {
+  const area = { ...GENERAL_RELEVANCE, tier: 2, urlSpecificity: 11 };
+  const docs = ['d1', 'd2', 'd3', 'd4', 'd5'].map((url) => rec(url, { type: 'docs-page', relevance: area }));
+  const featured = rec('featured', { relevance: area, editorialFeatured: true });
+  expect(mergeRankedRecommendations(docs, [featured], '/dashboards')[0]?.url).toBe('featured');
 });
 
 it('breaks score ties by stable identity', () => {

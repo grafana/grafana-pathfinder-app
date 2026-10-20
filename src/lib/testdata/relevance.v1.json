@@ -271,7 +271,193 @@
         "environmentSignals": 0
       },
       "local": true
+    },
+    {
+      "name": "mixed-case-tag",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/explore"
+          },
+          {
+            "tagIn": ["selected-datasource:loki"]
+          }
+        ]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["Selected-Datasource:Loki"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 3,
+        "taskSignals": 1,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": false
+    },
+    {
+      "name": "empty-prefix",
+      "match": {
+        "urlPrefixIn": ["", "/"]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"]
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 0,
+        "taskSignals": 0,
+        "urlSpecificity": 0,
+        "environmentSignals": 0
+      },
+      "local": true
+    },
+    {
+      "name": "wrong-source-in",
+      "match": {
+        "or": [
+          {
+            "and": [
+              {
+                "urlPrefix": "/explore"
+              },
+              {
+                "tag": "selected-datasource:loki"
+              }
+            ],
+            "sourceIn": ["other"]
+          },
+          {
+            "urlPrefix": "/explore",
+            "sourceIn": ["current"]
+          }
+        ]
+      },
+      "context": {
+        "path": "/explore",
+        "platform": "cloud",
+        "datasources": ["prometheus", "loki"],
+        "tags": ["selected-datasource:loki", "explore:edit"],
+        "source": "current"
+      },
+      "relevance": {
+        "version": 1,
+        "tier": 2,
+        "taskSignals": 0,
+        "urlSpecificity": 8,
+        "environmentSignals": 0
+      },
+      "local": false
     }
   ],
-  "order": ["task-multiple", "task", "area", "environment", "general"]
+  "order": ["task-multiple", "task", "area", "environment", "general"],
+  "prerequisites": [
+    {
+      "name": "pulls-prerequisite-forward",
+      "path": "/dashboards",
+      "candidates": [
+        {
+          "id": "b-follow",
+          "startingLocation": "/dashboards",
+          "recommends": ["z-prereq"]
+        },
+        {
+          "id": "c",
+          "startingLocation": "/dashboards"
+        },
+        {
+          "id": "d",
+          "startingLocation": "/dashboards"
+        },
+        {
+          "id": "e",
+          "startingLocation": "/dashboards"
+        },
+        {
+          "id": "z-prereq",
+          "startingLocation": "/elsewhere"
+        }
+      ],
+      "order": ["z-prereq", "b-follow", "c", "d", "e"]
+    },
+    {
+      "name": "transitive",
+      "path": "/dashboards",
+      "candidates": [
+        {
+          "id": "a",
+          "startingLocation": "/dashboards",
+          "depends": ["b"]
+        },
+        {
+          "id": "x",
+          "startingLocation": "/dashboards"
+        },
+        {
+          "id": "b",
+          "startingLocation": "/elsewhere",
+          "depends": ["c"]
+        },
+        {
+          "id": "c",
+          "startingLocation": "/elsewhere"
+        }
+      ],
+      "order": ["c", "b", "a", "x"]
+    },
+    {
+      "name": "first-dashboard",
+      "path": "/dashboards",
+      "candidates": [
+        {
+          "id": "dashboard-playlists-guide",
+          "startingLocation": "/playlists",
+          "recommends": ["first-dashboard"]
+        },
+        {
+          "id": "dashboard-snapshot-guide",
+          "startingLocation": "/dashboards",
+          "recommends": ["first-dashboard"]
+        },
+        {
+          "id": "first-dashboard",
+          "startingLocation": "/dashboards"
+        },
+        {
+          "id": "grafana-quickpizza-working-filters",
+          "startingLocation": "/a/grafana-demodashboards-app"
+        }
+      ],
+      "order": [
+        "first-dashboard",
+        "dashboard-snapshot-guide",
+        "dashboard-playlists-guide",
+        "grafana-quickpizza-working-filters"
+      ]
+    },
+    {
+      "name": "cycle-keeps-rank",
+      "path": "/dashboards",
+      "candidates": [
+        {
+          "id": "a",
+          "startingLocation": "/dashboards",
+          "recommends": ["b", "missing"]
+        },
+        {
+          "id": "b",
+          "startingLocation": "/dashboards",
+          "depends": ["a"]
+        }
+      ],
+      "order": ["a", "b"]
+    }
+  ]
 }

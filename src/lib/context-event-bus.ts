@@ -10,6 +10,7 @@ interface BufferedEvent {
   timestamp: number;
   source: string;
   path?: string;
+  destination?: string;
 }
 
 const BUFFER_SIZE = 10;
@@ -26,17 +27,25 @@ function currentPath(): string {
 }
 
 function isCurrent(event: BufferedEvent): boolean {
-  return event.path === currentPath() && Date.now() - event.timestamp < BUFFER_TTL;
+  const path = currentPath();
+  return (event.path === path || event.destination === path) && Date.now() - event.timestamp < BUFFER_TTL;
 }
 
-function expireObservations(): void {
+function expireObservations(): boolean {
   eventBuffer = eventBuffer.filter(isCurrent);
+  let changed = false;
   if (currentDatasource && !isCurrent(currentDatasource)) {
     currentDatasource = null;
+    changed = true;
   }
   if (currentVisualization && !isCurrent(currentVisualization)) {
     currentVisualization = null;
+    changed = true;
   }
+  if (changed) {
+    scheduleExpiry();
+  }
+  return changed;
 }
 
 function scheduleExpiry(): void {
@@ -50,9 +59,11 @@ function scheduleExpiry(): void {
   const expiresAt = Math.min(...observations.map((event) => event.timestamp + BUFFER_TTL));
   expiryTimer = setTimeout(
     () => {
-      expireObservations();
-      notifyContextChange();
-      scheduleExpiry();
+      if (expireObservations()) {
+        notifyContextChange();
+      } else {
+        scheduleExpiry();
+      }
     },
     Math.max(0, expiresAt - Date.now())
   );
@@ -153,8 +164,18 @@ export function initializeEchoLogging(): void {
           // Primary: New datasource selection
           if (event.payload?.interactionName === 'grafana_ds_add_datasource_clicked') {
             const pluginId = event.payload?.properties?.plugin_id;
+            const uid = event.payload?.properties?.datasource_uid;
             if (pluginId) {
-              addToEventBuffer({ datasourceType: pluginId, timestamp: Date.now(), source: 'add' });
+              addToEventBuffer({
+                datasourceType: pluginId,
+                timestamp: Date.now(),
+                source: 'add',
+                // Grafana navigates to the new data source's edit page right after reporting the add.
+                destination:
+                  typeof uid === 'string' && uid
+                    ? contextLocationKey(`/connections/datasources/edit/${encodeURIComponent(uid)}`)
+                    : undefined,
+              });
             }
           }
 

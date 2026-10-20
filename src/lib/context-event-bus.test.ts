@@ -332,6 +332,34 @@ describe('observation scope and freshness', () => {
     expect(getDetectedDatasourceType()).toBeNull();
   });
 
+  it('keeps an added data source on the edit page Grafana opens next', () => {
+    initializeEchoLogging();
+    window.history.replaceState({}, '', '/connections/datasources/new');
+    dispatch({
+      type: 'interaction',
+      payload: {
+        interactionName: 'grafana_ds_add_datasource_clicked',
+        properties: { plugin_id: 'prometheus', datasource_uid: 'abc123' },
+      },
+    });
+    window.history.replaceState({}, '', '/connections/datasources/edit/abc123');
+    expect(getDetectedDatasourceType()).toBe('prometheus');
+    window.history.replaceState({}, '', '/connections/datasources/edit/other');
+    expect(getDetectedDatasourceType()).toBeNull();
+  });
+
+  it('does not refresh again when navigation already discarded the observation', () => {
+    initializeEchoLogging();
+    const listener = jest.fn();
+    const unsubscribe = onContextChange(listener);
+    select();
+    window.history.replaceState({}, '', '/dashboards');
+    expect(getDetectedDatasourceType()).toBeNull();
+    jest.advanceTimersByTime(300000);
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
   it('refreshes freshness without refetching for identical observations', () => {
     initializeEchoLogging();
     const listener = jest.fn();
