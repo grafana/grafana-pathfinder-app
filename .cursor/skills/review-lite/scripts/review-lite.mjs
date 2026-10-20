@@ -1232,11 +1232,10 @@ export function renderReport(result, { manifest, prior }) {
 
 export function finish({ run, input }) {
   const context = readRun(run);
+  ['report.md', 'state.json'].forEach((name) => rmSync(join(run, name), { force: true }));
   const result = readJson(input, 'result');
-  const derived = ['report.md', 'state.json'].map((name) => join(run, name));
   const errors = validateResult(result, context);
   if (errors.length > 0) {
-    derived.forEach((path) => rmSync(path, { force: true }));
     throw new Error(`Result is invalid; no report or state was written:\n- ${errors.join('\n- ')}`);
   }
   const report = renderReport(result, context);
