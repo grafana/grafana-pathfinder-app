@@ -98,6 +98,29 @@ Privacy protection is split between enforced normalization and caller discipline
   - The **query is stripped**, everywhere. On a Grafana URL the query is where the user's own choices live — `var-*` template values, Explore's serialized queries, `?doc=` deep links — which is a different class of data from a title.
   - This applies on **two independent channels**. `replay-scrub.ts` covers URLs inside the rrweb payload; `redactPageUrl` in `filtering.ts` covers `meta.page.url`, which Faro sets from `location.href` on every item regardless of payload. The second one matters more than it looks: Grafana Cloud's collector explodes that query into `page.attributes`, so an unscrubbed URL arrives as first-class searchable `page_attr_var_*` fields.
 
+## Section recovery events
+
+Implicit section recovery reports when a section pauses, how a Restore ends, and how each pause resolved. All three carry guide identity through `guideIdentityAnalyticsProperties`, the cursor step's `step_action`, and `section_id` only when `guide_visibility` is `public`, because a private guide's section ids are authored text. No selectors, requirement strings or URLs are sent.
+
+| Event                       | Fires                                    | Properties                                                                                                  |
+| --------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `section_recovery_paused`   | Once per pause, after drift is confirmed | `trigger` (`page`, `target`), `recipe_length` (toggles to replay), `location_restore`                       |
+| `section_recovery_restore`  | When a Restore finishes or is cancelled  | `outcome` (`restored`, `failed`, `cancelled`), `duration_ms`, `failure_reason` (`repair_failed`, `drifted`) |
+| `section_recovery_resolved` | Once when each pause ends                | `resolved_by` (see below)                                                                                   |
+
+`resolved_by` values:
+
+- `restore`: a Restore put the state back.
+- `self`: the drift cleared without a Restore.
+- `step_completed`: the cursor moved to another step while paused.
+- `plan_changed`: the plan was dropped or replaced for the same step, for example by an alignment pause, the section becoming unreached or complete, or the kill switch.
+- `unrestorable`: Restore could no longer act, or a Restore gave up.
+- `requirements_failed`: the section's own requirements stopped passing.
+- `controller_mode`: the tab became the two-tab controller.
+- `unmount`: the guide or section closed.
+
+`self` and `step_completed` are the false-pause signals to watch across the catalog. The kill switch is `pathfinder.section-recovery`.
+
 ## Completion events
 
 `guide_completed` and `journey_completed` (`pathfinder_guide_completed` and `pathfinder_journey_completed` in the warehouse) are the Track 1 events of the [Completion Records RFC](https://github.com/grafana/pathfinder-rfcs/blob/main/rfc/COMPLETION_RECORDS.md#73-track-1-event-additions). The RFC keeps completion records on the customer's stack, so these events are how Grafana sees completions across stacks. They fire from `src/completion-records/completion-recorder.ts`, the same seam as the durable write, so every completion path reports both. The report has its own persisted guard (`completionReportedStorage`) and runs before the recorder's pre-arm startup buffer, so it never waits on the write hook arming or on the durable write being accepted, and never stands in for either.
