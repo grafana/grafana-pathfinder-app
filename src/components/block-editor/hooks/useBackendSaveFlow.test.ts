@@ -93,7 +93,7 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
       await result.current.performSaveDraft();
     });
 
-    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'draft', false);
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'draft', false, undefined);
     expect(result.current.currentGuideResourceName).toBe('g1');
     expect(result.current.lastPublishedJson).toBe(JSON.stringify(g));
     expect(publish).toHaveBeenCalledWith(
@@ -137,6 +137,94 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
   });
 });
 
+describe('useBackendSaveFlow — author details', () => {
+  it('hands the guide details to saveGuide so an explicit author choice reaches the manifest', async () => {
+    const g = guide();
+    const guideDetails = { authorName: 'Dana', team: 'Docs' };
+    const backendGuides = makeBackendGuides();
+    const { result } = renderHook(() =>
+      useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides, guideDetails })
+    );
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'draft', false, guideDetails);
+  });
+
+  it('announces the name a save chose for an unauthored guide', async () => {
+    const announceAuthor = jest.fn();
+    const backendGuides = makeBackendGuides({
+      saveGuide: jest
+        .fn()
+        .mockResolvedValue({ defaultedAuthor: { name: 'Sam Rivera', replacedName: 'pathfinder-mcp' } }),
+    });
+    const { result } = renderHook(() =>
+      useBackendSaveFlow({ editor: { getGuide: () => guide() }, backendGuides, announceAuthor })
+    );
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(announceAuthor).toHaveBeenCalledWith({ name: 'Sam Rivera', replacedName: 'pathfinder-mcp' });
+  });
+
+  it('stays quiet when the guide already had an author', async () => {
+    const announceAuthor = jest.fn();
+    const backendGuides = makeBackendGuides({ saveGuide: jest.fn().mockResolvedValue({}) });
+    const { result } = renderHook(() =>
+      useBackendSaveFlow({ editor: { getGuide: () => guide() }, backendGuides, announceAuthor })
+    );
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(announceAuthor).not.toHaveBeenCalled();
+  });
+
+  describe('details that differ from the stored author', () => {
+    const tracked = () => {
+      const g = guide();
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ resourceName: 'g1', backendStatus: 'draft', lastPublishedJson: JSON.stringify(g) })
+      );
+      const entry = makeGuideEntry('g1', 'Guide one', 'draft');
+      entry.spec.manifest = { author: { name: 'Sam Rivera', team: 'Docs' } };
+      return { editor: { getGuide: () => g }, backendGuides: makeBackendGuides({ guides: [entry] }) };
+    };
+
+    it('count as unsynced changes on an otherwise synced draft', () => {
+      const { editor, backendGuides } = tracked();
+
+      const { result, rerender } = renderHook(
+        ({ guideDetails }) => useBackendSaveFlow({ editor, backendGuides, guideDetails }),
+        { initialProps: { guideDetails: {} as { authorName?: string; team?: string } } }
+      );
+      expect(result.current.hasUnsyncedChanges).toBe(false);
+
+      rerender({ guideDetails: { authorName: 'Dana' } });
+      expect(result.current.hasUnsyncedChanges).toBe(true);
+
+      rerender({ guideDetails: { team: '' } });
+      expect(result.current.hasUnsyncedChanges).toBe(true);
+    });
+
+    it('do not count once they match what is stored', () => {
+      const { editor, backendGuides } = tracked();
+
+      const { result } = renderHook(() =>
+        useBackendSaveFlow({ editor, backendGuides, guideDetails: { authorName: 'Sam Rivera', team: 'Docs' } })
+      );
+
+      expect(result.current.hasUnsyncedChanges).toBe(false);
+    });
+  });
+});
+
 describe('useBackendSaveFlow — handlePostToBackend', () => {
   it('publishes a new guide and marks it published', async () => {
     const g = guide();
@@ -154,7 +242,7 @@ describe('useBackendSaveFlow — handlePostToBackend', () => {
       await result.current.handlePostToBackend();
     });
 
-    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'published', false);
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'published', false, undefined);
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ payload: ['Guide published.'] }));
     expect(result.current.publishedStatus).toBe('published');
   });
@@ -192,7 +280,8 @@ describe('useBackendSaveFlow — overwrite conflict', () => {
       'existing-guide',
       { name: 'existing-guide' },
       'draft',
-      true
+      true,
+      undefined
     );
     expect(result.current.confirmModal.isOpen).toBe(false);
     expect(result.current.currentGuideResourceName).toBe('existing-guide');
@@ -235,7 +324,8 @@ describe('useBackendSaveFlow — overwrite conflict', () => {
       'existing-guide',
       { name: 'existing-guide' },
       'draft',
-      true
+      true,
+      undefined
     );
   });
 

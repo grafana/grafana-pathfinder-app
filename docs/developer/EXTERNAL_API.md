@@ -144,7 +144,8 @@ The gap is currently `defaultValue` on the `input` block, which costs the
 input its prefilled value; the whole `dataCheck*` family (`dataCheckQuery`,
 `dataCheckBlocking`, `dataCheckFailureMessage`, `dataCheckTimeFrom`,
 `dataCheckTimeTo`), which lands the picker without its data check — it
-renders, and the check simply never runs; and `gcx` on `terminal-connect`.
+renders, and the check simply never runs. Terminal `credentials` requires the schema in
+[grafana-pathfinder-backend#92](https://github.com/grafana/grafana-pathfinder-backend/pull/92).
 
 It has been much wider, and it moves in both directions. At one point
 the CUE was missing twenty-six fields including `autoCollapse`,
@@ -363,6 +364,12 @@ typed home yet, so
 than dropping them — as it does for any manifest key the CRD doesn't
 declare, including surplus `author` subkeys. The block editor writes the two it
 derives, `stats` and `startingLocation`, to the same place.
+
+The block editor also fills the typed `author` key when a guide has none: the
+signed-in user's `name` (else `login`, else `pathfinder-block-editor`), never
+`email` or `gravatarUrl`. It leaves a real author as found, and replaces only a
+placeholder one (`pathfinder-block-editor` or `pathfinder-mcp`) with a real
+identity. A package you upload with an author keeps it through every editor save.
 
 Which of them actually _work_ from `additionalFields` depends on whether
 anything reads that location:

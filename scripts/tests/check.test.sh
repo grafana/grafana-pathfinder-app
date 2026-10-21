@@ -2,9 +2,7 @@
 # Behavioural tests for scripts/check.js — the pre-merge gate runner — run by
 # `npm run test:scripts`.
 #
-# npm is replaced by a stub on PATH, so the runner is exercised end to end
-# without spending minutes on the real gate: the stub records every step it is
-# asked to run and can be told to fail on one of them.
+# Stub npm's JavaScript entry point so this never re-enters the real gate.
 
 set -uo pipefail
 
@@ -15,27 +13,22 @@ CHECK="${REPO_ROOT}/scripts/check.js"
 PASS=0
 FAIL=0
 WORK=$(mktemp -d)
+if command -v cygpath >/dev/null; then
+  WORK=$(cygpath -m "$WORK")
+fi
 trap 'rm -rf "$WORK"' EXIT
 
-BIN="${WORK}/bin"
-mkdir -p "$BIN"
-cat >"${BIN}/npm" <<'STUB'
-#!/usr/bin/env bash
-# Stands in for npm. Logs "<script>" per invocation and fails on STUB_FAIL_ON.
-printf '%s\n' "$2" >>"${STUB_LOG:-/dev/null}"
-[[ "$2" == "${STUB_FAIL_ON:-}" ]] && exit 3
-exit 0
-STUB
-chmod +x "${BIN}/npm"
-export PATH="${BIN}:${PATH}"
+NODE=$(command -v node)
+EMPTY_PATH="${WORK}/empty-path"
+NPM_STUB="${WORK}/npm-stub.js"
+mkdir -p "$EMPTY_PATH"
+cat >"$NPM_STUB" <<'STUB'
+const fs = require('fs');
 
-# Without the stub, a run would reach the real npm and re-enter this suite
-# through the gate's own test:scripts step, with no depth bound.
-RESOLVED_NPM=$(command -v npm)
-if [[ "$RESOLVED_NPM" != "${BIN}/npm" ]]; then
-  printf 'check.test.sh: npm stub is not on PATH (resolved %s); refusing to run the real gate\n' "${RESOLVED_NPM:-nothing}" >&2
-  exit 1
-fi
+const step = process.argv[3];
+fs.appendFileSync(process.env.STUB_LOG, `${step}\n`);
+process.exit(step === process.env.STUB_FAIL_ON ? 3 : 0);
+STUB
 
 ok() {
   PASS=$((PASS + 1))
@@ -48,11 +41,18 @@ nope() {
   [[ -z "${2:-}" ]] || printf '%s\n' "$2" | sed 's/^/         /'
 }
 
-# Runs the runner with the stub on PATH. Sets RUN_OUT, RUN_CODE and RUN_LOG.
+# Sets RUN_OUT, RUN_CODE and RUN_LOG using the lifecycle fixture.
 run() {
   local log="${WORK}/steps.log"
   : >"$log"
-  RUN_OUT=$(STUB_LOG="$log" STUB_FAIL_ON="${FAIL_ON:-}" node "$CHECK" "$@" 2>&1)
+  # Require the lifecycle-provided npm entry point instead of PATH fallback.
+  RUN_OUT=$(
+    PATH="$EMPTY_PATH" \
+      npm_execpath="$NPM_STUB" \
+      STUB_LOG="$log" \
+      STUB_FAIL_ON="${FAIL_ON:-}" \
+      "$NODE" "$CHECK" "$@" 2>&1
+  )
   RUN_CODE=$?
   RUN_LOG=$(cat "$log")
 }
@@ -118,6 +118,29 @@ if [[ "$RUN_LOG" == "$(printf '%s\n' "${STEPS[@]}")" ]]; then
   ok "runs the steps in the declared order"
 else
   nope "runs the steps in the declared order" "$RUN_LOG"
+fi
+
+if [[ "$(node -p 'process.platform')" != 'win32' ]]; then
+  BIN="${WORK}/bin"
+  mkdir -p "$BIN"
+  cat >"${BIN}/npm" <<'STUB'
+#!/bin/sh
+exec "$STUB_NODE" "$STUB_ENTRY" "$@"
+STUB
+  chmod +x "${BIN}/npm"
+  : >"${WORK}/fallback.log"
+  FALLBACK_OUT=$(
+    PATH="$BIN" npm_execpath='' STUB_NODE="$NODE" STUB_ENTRY="$NPM_STUB" \
+      STUB_LOG="${WORK}/fallback.log" STUB_FAIL_ON='' "$NODE" "$CHECK" 2>&1
+  )
+  FALLBACK_CODE=$?
+  if [[ "$FALLBACK_CODE" == 0 && "$(cat "${WORK}/fallback.log")" == "$(printf '%s\n' "${STEPS[@]}")" ]]; then
+    ok "direct Node invocation retains the PATH-based npm fallback"
+  else
+    nope "direct Node invocation retains the PATH-based npm fallback" "$FALLBACK_OUT"
+  fi
+else
+  printf '  skip PATH-based npm fallback (requires POSIX executables)\n'
 fi
 
 # Fail-fast: the gate stops at the first failing step and exits with its status.

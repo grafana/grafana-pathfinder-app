@@ -38,6 +38,8 @@ export interface RegisterAuthoringToolsOptions {
    * and check it on subsequent calls. See `lib/session-pin.ts`.
    */
   mcpSessionId?: string;
+  /** See `BuildServerOptions.identityFromEnvironment`. */
+  identityFromEnvironment?: boolean;
 }
 
 export function registerAuthoringTools(server: McpServer, options: RegisterAuthoringToolsOptions): void {

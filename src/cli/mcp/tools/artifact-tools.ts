@@ -13,8 +13,9 @@ import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { createSpec } from '../../commands/create';
+import { createSpec, runCreate } from '../../commands/create';
 import { parseCommandInput } from '../../contracts';
+import { readGitUserName } from '../../utils/local-identity';
 import { buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
 import { MCP_TMPDIR_PREFIX } from '../lib/constants';
 import { bindCommandInterface, validateCommandArgs } from '../lib/command-interface';
@@ -27,16 +28,16 @@ import { sanitizeOutcomeForMcp, outcomeResult, textResult, withToolErrorEnvelope
 
 export function registerArtifactTools(
   server: McpServer,
-  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
+  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string; identityFromEnvironment?: boolean }
 ): void {
-  const { sessionStore, mcpSessionId } = options;
+  const { sessionStore, mcpSessionId, identityFromEnvironment } = options;
   bindCommandInterface('create');
 
   server.registerTool(
     'pathfinder_create_package',
     {
       description:
-        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call pathfinder_help({ command: "create" }) for the `opts` interface. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
+        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call pathfinder_help({ command: "create" }) for the `opts` interface. Pass `authorName` (and `authorTeam` if known): resolve the author from context and ask the user when unclear — it defaults to pathfinder-mcp. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
       annotations: writeAppend('Create Pathfinder package'),
       inputSchema: {
         opts: z
@@ -60,7 +61,9 @@ export function registerArtifactTools(
           if (!parsed.ok) {
             return outcomeResult(parsed.outcome);
           }
-          const outcome = await createSpec.run(parsed.value);
+          const outcome = await runCreate(parsed.value, {
+            localAuthorName: identityFromEnvironment ? readGitUserName : undefined,
+          });
           if (outcome.status !== 'ok') {
             return outcomeResult(outcome);
           }

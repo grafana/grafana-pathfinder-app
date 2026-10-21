@@ -6,7 +6,7 @@
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { ManifestJsonSchema } from '../../../types/package.schema';
-import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import type { Author, ContentJson, ManifestJson } from '../../../types/package.types';
 import type { PackageState } from './disk';
 
 export function newPackageState(args: {
@@ -14,6 +14,7 @@ export function newPackageState(args: {
   title: string;
   type: 'guide' | 'path' | 'journey';
   description?: string;
+  author?: Author;
 }): PackageState {
   const content: ContentJson = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -31,6 +32,7 @@ export function newPackageState(args: {
     id: args.id,
     type: args.type,
     description: args.description,
+    author: args.author,
   }) as ManifestJson;
 
   // `create` writes schemaVersion explicitly, so a freshly-created package

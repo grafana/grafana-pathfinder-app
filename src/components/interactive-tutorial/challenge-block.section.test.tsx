@@ -89,6 +89,7 @@ beforeEach(() => {
     isExpanded: false,
     setIsExpanded: jest.fn(),
     _register: jest.fn(),
+    _unregister: jest.fn(),
   });
 });
 

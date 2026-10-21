@@ -5,6 +5,7 @@
  * - ConfirmModal (new guide)
  * - ImportGuideModal
  * - GitHubPRModal
+ * - GuideDetailsModal
  * - BlockEditorTour
  *
  * Note: BlockFormModal remains in BlockEditor due to complex editing state dependencies.
@@ -15,9 +16,11 @@ import React from 'react';
 import { ConfirmModal } from '@grafana/ui';
 import { ImportGuideModal } from './ImportGuideModal';
 import { GitHubPRModal } from './GitHubPRModal';
+import { GuideDetailsModal } from './GuideDetailsModal';
 import { BlockEditorTour } from './BlockEditorTour';
 import type { JsonGuide } from './types';
 import type { ModalName } from './hooks/useModalManager';
+import type { GuideDetails } from './utils/derive-manifest';
 
 export interface BlockEditorModalsProps {
   /** Modal visibility state */
@@ -37,6 +40,12 @@ export interface BlockEditorModalsProps {
 
   /** Import handlers */
   onImportGuide: (guide: JsonGuide) => void;
+
+  /** Guide details (author and team) */
+  authorName: string;
+  team: string;
+  authorPlaceholder: string;
+  onSaveGuideDetails: (changes: GuideDetails) => void;
 }
 
 export function BlockEditorModals({
@@ -47,6 +56,10 @@ export function BlockEditorModals({
   hasBlocks,
   onNewGuideConfirm,
   onImportGuide,
+  authorName,
+  team,
+  authorPlaceholder,
+  onSaveGuideDetails,
 }: BlockEditorModalsProps) {
   return (
     <>
@@ -68,6 +81,15 @@ export function BlockEditorModals({
       />
 
       <GitHubPRModal isOpen={isModalOpen('githubPr')} guide={guide} onClose={() => closeModal('githubPr')} />
+
+      <GuideDetailsModal
+        isOpen={isModalOpen('guideDetails')}
+        initialAuthorName={authorName}
+        initialTeam={team}
+        authorPlaceholder={authorPlaceholder}
+        onSave={onSaveGuideDetails}
+        onClose={() => closeModal('guideDetails')}
+      />
 
       {isModalOpen('tour') && <BlockEditorTour onClose={() => closeModal('tour')} />}
     </>

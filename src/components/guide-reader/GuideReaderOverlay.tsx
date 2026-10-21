@@ -29,6 +29,7 @@ import { findDocPage } from '../../utils/find-doc-page';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { ControllerPairingLaunch } from '../../lib/pairing-manager';
 import { getGuideReaderStyles } from './guide-reader.styles';
+import { ControllerProductLinks } from './ControllerProductLinks';
 import { OutlineRail } from './OutlineRail';
 import { beginGuideLoad, finishGuideLoad, markGuideLoadStage } from '../../lib/telemetry/guide-load';
 import { diagnoseGuideError } from '../../lib/guide-diagnostics';
@@ -410,7 +411,7 @@ function GuideReaderInner({
             {mode === 'controller' ? (
               <ControllerChannelProvider pairing={controllerPairing} position={returnPosition}>
                 <ControllerStatusBadge pairingCode={controllerPairing?.pairingCode} />
-                {body}
+                <ControllerProductLinks>{body}</ControllerProductLinks>
               </ControllerChannelProvider>
             ) : (
               body

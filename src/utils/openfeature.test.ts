@@ -131,6 +131,10 @@ describe('openfeature', () => {
         // The experiments SDK owns this exposure; a trackingKey would double-count it.
         expect(pathfinderFeatureFlags['pathfinder.auto-open-guide-experiment']).not.toHaveProperty('trackingKey');
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].trackingKey).toBe('frontend_telemetry');
+        expect(pathfinderFeatureFlags['pathfinder.section-recovery']).toMatchObject({
+          trackingKey: 'section_recovery',
+          defaultValue: true,
+        });
         expect(pathfinderFeatureFlags['pathfinder.session-replay'].trackingKey).toBe('session_replay');
         expect(pathfinderFeatureFlags['pathfinder.session-replay-sampling-rate'].trackingKey).toBe(
           'session_replay_sampling_rate'

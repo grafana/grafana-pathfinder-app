@@ -522,6 +522,27 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     lineHeight: 1.4,
   },
 
+  '.interactive-section-recovery': {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    margin: `${theme.spacing(1)} ${theme.spacing(2)} 0`,
+    padding: theme.spacing(1),
+    background: theme.colors.info.transparent,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+  },
+
+  '.interactive-section-recovery-label': {
+    flex: '1 1 auto',
+  },
+
+  '.recovery-paused .interactive-section-content .interactive-step-requirement-explanation, .recovery-paused .interactive-section-content .interactive-guided-requirement-box':
+    {
+      display: 'none',
+    },
+
   // Alignment paused banner (implied 0th step) — info-blue to match the top
   // AlignmentPrompt (which uses Alert severity="info"), no icon, with link
   // back to the top prompt. Distinct from the generic requirements banner
@@ -686,6 +707,23 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   '@keyframes spin': {
     from: { transform: 'rotate(0deg)' },
     to: { transform: 'rotate(360deg)' },
+  },
+
+  '.interactive-step-recovery-hint': {
+    display: 'block',
+    marginTop: theme.spacing(0.5),
+    padding: 0,
+    border: 'none',
+    background: 'none',
+    font: 'inherit',
+    color: theme.colors.text.link,
+    textDecoration: 'underline',
+    cursor: 'pointer',
+  },
+
+  '.interactive-step-revealed': {
+    boxShadow: `0 0 0 2px ${theme.colors.primary.border}`,
+    transition: 'box-shadow 0.3s ease',
   },
 
   '.interactive-step-requirement-buttons': {

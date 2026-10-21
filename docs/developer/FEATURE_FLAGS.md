@@ -183,6 +183,25 @@ The flag and the setting are a plain OR, applied once settings resolve in `src/m
 
 ---
 
+### `pathfinder.section-recovery`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill switch for implicit section recovery, which pauses a section the learner drifted out of and offers Restore (see `docs/design/AUTORECOVERY_DESIGN.md`).
+
+**Default**: `true`. OSS stacks have no flag provider, so recovery is always on there.
+
+**Behavior**:
+
+- **`true`**: active sections derive a recovery plan from their steps and may pause with Restore.
+- **`false`**: no plan is derived, nothing polls, and sections behave as before recovery existed.
+
+The flag is read once per page load (`src/utils/section-recovery-enablement.ts`), so a flip takes effect on the next reload. Registering it in MTFF needs both `flags/` and `flag-definitions.libsonnet` in `grafana/deployment_tools`, marked `Public()`, with the default kept `true` to match the registry.
+
+**Tracking key**: `section_recovery`
+
+---
+
 ### `pathfinder.progress-analytics`
 
 **Type**: Boolean

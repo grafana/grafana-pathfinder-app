@@ -12,7 +12,7 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 | `paths-cloud.json`                             | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)                              |
 | `app-platform-paths.ts`                        | Adapts published App Platform path and journey packages into learning paths                             |
 | `badge-coordinator.ts`                         | Orchestrates guide completion, badge awarding, streak updates, analytics, and progress events           |
-| `badges.ts`                                    | 12 badge definitions, trigger types, and earning logic                                                  |
+| `badges.ts`                                    | 14 badge definitions, trigger types, and earning logic                                                  |
 | `learning-paths.hook.ts`                       | Main `useLearningPaths()` hook — unified state management                                               |
 | `streak-tracker.ts`                            | Streak calculation, milestones, and display helpers                                                     |
 | `fetch-path-guides.ts`                         | Fetches guide lists from remote `index.json` for URL-based paths                                        |
@@ -93,7 +93,7 @@ interface PathsDataSet {
 
 ### Definitions
 
-The `BADGES` array in `badges.ts` defines 12 badges. Each badge has an `id`, `title`, `description`, `icon`, an optional `emoji`, and a `trigger` that determines how it is earned.
+The `BADGES` array in `badges.ts` defines 14 badges. Each badge has an `id`, `title`, `description`, `icon`, an optional `emoji`, and a `trigger` that determines how it is earned.
 
 ### Trigger types
 
@@ -114,7 +114,7 @@ For `path-completed` triggers, `isPathCompleted()` returns `false` when `path.gu
 - `getBadgeById(id)` — look up a single badge definition
 - `getBadgesByTriggerType(type)` — filter badges by trigger type
 - `getEarnedBadgeCount(progress)` — count earned badges
-- `getTotalBadgeCount()` — total badge count (currently 12)
+- `getTotalBadgeCount()` — total badge count (currently 14)
 - `sortBadgesForDisplay(badges, earnedIds)` — sort earned badges first, preserving original order within groups
 
 ### Legacy badge handling

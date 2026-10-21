@@ -187,10 +187,11 @@ it('emits private guide diagnostics without private identifiers, bodies or messa
 });
 
 it('records the served kiosk tier and degradation without catalog content', () => {
-  recordKioskCatalogLoaded('bundled', true);
+  recordKioskCatalogLoaded('configured', false, 2);
   expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_kiosk_catalog_loaded', {
-    tier: 'bundled',
-    degraded: true,
+    tier: 'configured',
+    degraded: false,
+    rejected_rules: 2,
   });
 });
 
