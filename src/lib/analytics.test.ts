@@ -66,19 +66,65 @@ describe('reportAppInteraction', () => {
     expect(JSON.stringify(payload)).not.toContain('private-resource');
     expect(JSON.stringify(payload)).not.toContain('Private');
   });
-  it.each(['app-platform', 'other', 'unresolved'])('keeps %s identity in RudderStack only', (source) => {
+  it.each(['other', 'unresolved'])(
+    'keeps %s identity in RudderStack and only the operational fields in Faro',
+    (source) => {
+      const properties = {
+        guide_source: source,
+        guide_visibility: 'private',
+        guide_id: 'customer-guide',
+        guide_title: 'Customer guide',
+        path_id: 'customer-path',
+        completion_source: 'objectives',
+        completion_percentage: 100,
+        total_block_count: 12,
+        completable_block_count: 8,
+      };
+      reportAppInteraction(UserInteraction.GuideCompleted, properties);
+      expect(mockReportInteraction).toHaveBeenCalledWith(
+        'pathfinder_guide_completed',
+        expect.objectContaining(properties)
+      );
+      expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_guide_completed', {
+        plugin_version: '1.0.0-test',
+        guide_source: source,
+        guide_visibility: 'private',
+        completion_source: 'objectives',
+        completion_percentage: 100,
+        total_block_count: 12,
+        completable_block_count: 8,
+      });
+    }
+  );
+
+  it('drops private journey identity from Faro', () => {
+    reportAppInteraction(UserInteraction.JourneyCompleted, {
+      guide_source: 'unresolved',
+      guide_visibility: 'private',
+      journey_id: 'customer-journey',
+      journey_title: 'Customer journey',
+      completion_source: 'manual',
+    });
+    expect(mockPushFaroUserAction.mock.calls[0][1]).toEqual({
+      plugin_version: '1.0.0-test',
+      guide_source: 'unresolved',
+      guide_visibility: 'private',
+      completion_source: 'manual',
+    });
+  });
+
+  it('fully strips an App Platform guide completion from Faro', () => {
     reportAppInteraction(UserInteraction.GuideCompleted, {
-      guide_source: source,
+      guide_source: 'app-platform',
       guide_visibility: 'private',
       guide_id: 'customer-guide',
       guide_title: 'Customer guide',
+      completion_source: 'objectives',
+      total_block_count: 12,
     });
     expect(mockReportInteraction).toHaveBeenCalledWith(
       'pathfinder_guide_completed',
-      expect.objectContaining({
-        guide_id: 'customer-guide',
-        guide_title: 'Customer guide',
-      })
+      expect.objectContaining({ guide_id: 'customer-guide', guide_title: 'Customer guide' })
     );
     expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_guide_completed', { plugin_version: '1.0.0-test' });
   });

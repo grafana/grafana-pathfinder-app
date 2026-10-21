@@ -224,15 +224,15 @@ export function guideIdentityAnalyticsProperties({
   };
 }
 
-export function pathAnalyticsProperties(path: PathAnalyticsIdentity | undefined): Record<string, string> {
-  return path ? { path_id: path.guideId } : {};
-}
-
-export function completionAnalyticsOptions(identity: { pathIdentity?: PathAnalyticsIdentity }): {
-  privatePath: boolean;
+export function pathAnalytics(path: PathAnalyticsIdentity | undefined): {
+  properties: Record<string, string>;
+  options: { privatePath: boolean };
 } {
-  const path = identity.pathIdentity;
+  if (!path) {
+    return { properties: {}, options: { privatePath: false } };
+  }
   return {
-    privatePath: Boolean(path && (!path.sourceConfirmed || !isPublicGuideSource(path.guideSource, path.guideId))),
+    properties: { path_id: path.guideId },
+    options: { privatePath: !path.sourceConfirmed || !isPublicGuideSource(path.guideSource, path.guideId) },
   };
 }

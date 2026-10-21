@@ -25,8 +25,7 @@ export {
   manifestGuideSource,
   normalizeGuideId,
   guideIdentityAnalyticsProperties,
-  pathAnalyticsProperties,
-  completionAnalyticsOptions,
+  pathAnalytics,
 } from './completion-identity';
 export type {
   ResolveCompletionIdentityInput,

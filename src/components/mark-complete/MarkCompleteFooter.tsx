@@ -27,11 +27,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
-import {
-  completionAnalyticsOptions,
-  guideIdentityAnalyticsProperties,
-  pathAnalyticsProperties,
-} from '../../completion-records';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../completion-records';
 import { useGuideResponsesOptional, type AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import {
   getGuideIndex,
@@ -256,13 +252,13 @@ export function MarkCompleteFooter({
       // Record before the celebration in case the reader navigates away.
       onMarkComplete?.();
 
+      const path = pathAnalytics(completionIdentity?.pathIdentity);
       reportAppInteraction(
         UserInteraction.MarkCompleteClicked,
         {
-          ...(completionIdentity && {
-            ...guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity, guideTitle }),
-            ...pathAnalyticsProperties(completionIdentity.pathIdentity),
-          }),
+          ...(completionIdentity &&
+            guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity, guideTitle })),
+          ...path.properties,
           interaction_location: 'content_footer',
           completion_context: context,
           completion_percentage_before: percentage,
@@ -271,7 +267,7 @@ export function MarkCompleteFooter({
           ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
           ...getGuideBlockCountProperties(contentKey),
         },
-        completionAnalyticsOptions(completionIdentity ?? {})
+        path.options
       );
       void (
         choiceCompletionKeys === undefined

@@ -277,6 +277,8 @@ export function tabTypeToContentType(tabType: string | undefined): AnalyticsCont
   return (tabType && TAB_TYPE_TO_CONTENT_TYPE[tabType]) || AnalyticsContentType.Docs;
 }
 
+const PRIVATE_IDENTITY_KEYS = ['guide_id', 'guide_title', 'journey_id', 'journey_title', 'path_id'];
+
 export function reportAppInteraction(
   type: UserInteraction,
   properties: Record<string, string | number | boolean> = {},
@@ -317,13 +319,11 @@ export function reportAppInteraction(
       if (options.privatePath) {
         delete faroProperties.path_id;
       }
-      const privateGuide =
-        faroProperties.guide_visibility === 'private' ||
-        Object.values(faroProperties).some(
-          (value) =>
-            typeof value === 'string' &&
-            (value.startsWith('backend-guide:') || value === 'app-platform' || value.includes('/interactiveguides/'))
-        );
+      const privateGuide = Object.values(faroProperties).some(
+        (value) =>
+          typeof value === 'string' &&
+          (value.startsWith('backend-guide:') || value === 'app-platform' || value.includes('/interactiveguides/'))
+      );
       if (privateGuide) {
         for (const key of Object.keys(faroProperties)) {
           if (
@@ -332,6 +332,10 @@ export function reportAppInteraction(
           ) {
             delete faroProperties[key];
           }
+        }
+      } else if (faroProperties.guide_visibility === 'private') {
+        for (const key of PRIVATE_IDENTITY_KEYS) {
+          delete faroProperties[key];
         }
       }
       // Strip URL queries and fragments at the final Faro boundary.

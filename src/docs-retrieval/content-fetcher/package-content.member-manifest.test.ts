@@ -10,10 +10,7 @@
 import { of } from 'rxjs';
 import { fetchPackageContent, setPackageResolver, setPackageResolverFactory } from './package-content';
 import { resolveSurfaceCompletionIdentity } from '../learning-journey-helpers';
-import {
-  guideIdentityAnalyticsProperties,
-  pathAnalyticsProperties,
-} from '../../completion-records/completion-identity';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../completion-records/completion-identity';
 import { resolveStartingLocation } from '../../recovery/starting-location';
 
 const mockFetch = jest.fn();
@@ -244,7 +241,10 @@ describe('member launch keeps the loader manifest reachable', () => {
       guide_id: 'member-id',
       guide_title: 'Alerting module 1',
     });
-    expect(pathAnalyticsProperties(identity!.pathIdentity)).toEqual({ path_id: 'path-id' });
+    expect(pathAnalytics(identity!.pathIdentity)).toEqual({
+      properties: { path_id: 'path-id' },
+      options: { privatePath: true },
+    });
   });
 
   it('keeps the explicitly supplied path repository as the member completion source', async () => {

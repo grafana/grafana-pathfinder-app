@@ -1,10 +1,7 @@
 import { of } from 'rxjs';
 import { restoreTabsFromStorage } from './tab-storage-restore';
 import { resolveSurfaceCompletionIdentity } from '../../../docs-retrieval/learning-journey-helpers';
-import {
-  guideIdentityAnalyticsProperties,
-  pathAnalyticsProperties,
-} from '../../../completion-records/completion-identity';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../../completion-records/completion-identity';
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import {
   fetchPackageContent,
@@ -271,7 +268,10 @@ describe('restored private path analytics', () => {
       guide_id: 'member-one',
       guide_title: 'member-one',
     });
-    expect(pathAnalyticsProperties(identity.pathIdentity)).toEqual({ path_id: 'parent-path' });
+    expect(pathAnalytics(identity.pathIdentity)).toEqual({
+      properties: { path_id: 'parent-path' },
+      options: { privatePath: true },
+    });
     expect(identity.pathIdentity).toMatchObject({ guideSource: 'app-platform', sourceConfirmed: true });
   });
 });
