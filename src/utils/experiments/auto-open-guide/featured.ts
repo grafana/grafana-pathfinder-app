@@ -15,6 +15,7 @@ export function getAutoOpenGuideFeatured(currentPath: string): Recommendation | 
     return null;
   }
   return {
+    placement: 'experiment',
     title: docPage.title,
     url: docPage.url,
     type: docPage.type,

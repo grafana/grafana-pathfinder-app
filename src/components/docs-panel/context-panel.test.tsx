@@ -25,6 +25,11 @@ jest.mock('@grafana/i18n', () => ({
   t: jest.fn((key: string, fallback: string) => fallback),
 }));
 
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportAppInteraction: jest.fn(),
+}));
+
 const paragraphHeight = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
   this: HTMLElement
 ) {
@@ -33,6 +38,7 @@ const paragraphHeight = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
 afterAll(() => paragraphHeight.mockRestore());
 
 const { __mockPublish: mockPublish, __mockPush: mockPush } = jest.requireMock('@grafana/runtime');
+const { reportAppInteraction: mockReportAppInteraction } = jest.requireMock('../../lib/analytics');
 
 describe('RecommendationsSection', () => {
   beforeEach(() => {
@@ -215,6 +221,9 @@ describe('RecommendationsSection', () => {
       );
 
       const prerequisite = screen.getByRole('link', { name: 'Prometheus server' });
+      expect(
+        screen.getByTestId(featured ? 'featured-section' : testIds.contextPanel.recommendationsGrid)
+      ).toContainElement(prerequisite);
       expect(screen.getByRole('note')).toHaveTextContent('Prerequisites');
       expect(prerequisite).toHaveAttribute('target', '_blank');
       expect(prerequisite).toHaveAttribute('rel', 'noopener noreferrer');
@@ -831,6 +840,33 @@ describe('suggested path assignment badges', () => {
     expect(card).not.toHaveTextContent('Today');
   });
 
+  it('keeps an editorial pick without route evidence in the featured grid', () => {
+    const contextual = [1, 2, 3, 4].map((n) => ({
+      title: `Active task ${n}`,
+      url: `https://grafana.com/docs/task-${n}/`,
+      type: 'docs-page' as const,
+      relevance: { version: 1 as const, tier: 3, taskSignals: 1, urlSpecificity: 8, environmentSignals: 0 },
+    }));
+    renderSuggested({
+      recommendations: contextual,
+      featuredRecommendations: [
+        { title: 'Editorial pick', url: 'https://grafana.com/docs/editorial/', type: 'docs-page' },
+      ],
+    });
+
+    const featuredCard = screen.getByTestId('featured-recommendation-card-0');
+    expect(screen.getByTestId('featured-section')).toContainElement(featuredCard);
+    expect(featuredCard).toHaveTextContent('Editorial pick');
+    expect(screen.getByTestId(testIds.contextPanel.recommendationsGrid)).not.toHaveTextContent('Editorial pick');
+    expect(screen.queryByTestId(testIds.contextPanel.otherDocsSection)).not.toBeInTheDocument();
+
+    fireEvent.click(within(featuredCard).getByRole('button', { name: 'Read' }));
+    expect(mockReportAppInteraction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ content_title: 'Editorial pick', interaction_location: 'featured_card_button' })
+    );
+  });
+
   describe('track routing', () => {
     const trackedPath = {
       title: 'Grafana Foundations',
@@ -892,6 +928,7 @@ describe('suggested path assignment badges', () => {
       const openDocsPage = jest.fn();
       const filler = [1, 2, 3, 4].map((n) => ({
         title: `Filler ${n}`,
+        relevance: { version: 1 as const, tier: 2, taskSignals: 0, urlSpecificity: 8, environmentSignals: 0 },
         url: `https://grafana.com/docs/filler-${n}/`,
         type: 'docs-page' as const,
       }));

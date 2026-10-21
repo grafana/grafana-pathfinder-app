@@ -287,3 +287,89 @@ describe('initializeFromRecentEvents', () => {
     (Date.now as jest.Mock).mockRestore();
   });
 });
+
+describe('observation scope and freshness', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    window.history.replaceState({}, '', '/explore');
+  });
+  afterEach(() => {
+    __resetContextEventBusForTests();
+    jest.useRealTimers();
+    window.history.replaceState({}, '', '/');
+  });
+  const select = () =>
+    dispatch({
+      type: 'interaction',
+      payload: { interactionName: 'dashboards_dspicker_clicked', properties: { ds_type: 'loki' } },
+    });
+
+  it('expires a selected data source and notifies an open panel', () => {
+    initializeEchoLogging();
+    const listener = jest.fn();
+    const unsubscribe = onContextChange(listener);
+    select();
+    expect(getDetectedDatasourceType()).toBe('loki');
+    jest.advanceTimersByTime(300000);
+    expect(getDetectedDatasourceType()).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it('invalidates observations on navigation and panel changes', () => {
+    initializeEchoLogging();
+    select();
+    window.history.replaceState({}, '', '/dashboards');
+    expect(getDetectedDatasourceType()).toBeNull();
+    initializeFromRecentEvents();
+    expect(getDetectedDatasourceType()).toBeNull();
+    window.history.replaceState({}, '', '/explore');
+    initializeFromRecentEvents();
+    expect(getDetectedDatasourceType()).toBeNull();
+    window.history.replaceState({}, '', '/d/example?editPanel=1');
+    select();
+    window.history.replaceState({}, '', '/d/example?editPanel=2');
+    expect(getDetectedDatasourceType()).toBeNull();
+  });
+
+  it('keeps an added data source on the edit page Grafana opens next', () => {
+    initializeEchoLogging();
+    window.history.replaceState({}, '', '/connections/datasources/new');
+    dispatch({
+      type: 'interaction',
+      payload: {
+        interactionName: 'grafana_ds_add_datasource_clicked',
+        properties: { plugin_id: 'prometheus', datasource_uid: 'abc123' },
+      },
+    });
+    window.history.replaceState({}, '', '/connections/datasources/edit/abc123');
+    expect(getDetectedDatasourceType()).toBe('prometheus');
+    window.history.replaceState({}, '', '/connections/datasources/edit/other');
+    expect(getDetectedDatasourceType()).toBeNull();
+  });
+
+  it('does not refresh again when navigation already discarded the observation', () => {
+    initializeEchoLogging();
+    const listener = jest.fn();
+    const unsubscribe = onContextChange(listener);
+    select();
+    window.history.replaceState({}, '', '/dashboards');
+    expect(getDetectedDatasourceType()).toBeNull();
+    jest.advanceTimersByTime(300000);
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('refreshes freshness without refetching for identical observations', () => {
+    initializeEchoLogging();
+    const listener = jest.fn();
+    const unsubscribe = onContextChange(listener);
+    select();
+    jest.advanceTimersByTime(240000);
+    select();
+    jest.advanceTimersByTime(60000);
+    expect(getDetectedDatasourceType()).toBe('loki');
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+});

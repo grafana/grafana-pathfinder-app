@@ -54,7 +54,10 @@ describe('ContextService.injectAutoOpenGuide', () => {
 
   it('prepends the matched guide for the treatment arm', () => {
     enroll('treatment');
-    expect(callInject([rec({ url: 'a' })], '/explore/metrics', [])).toEqual([synthetic, rec({ url: 'a' })]);
+    expect(callInject([rec({ url: 'a' })], '/explore/metrics', [])).toEqual([
+      { ...synthetic, placement: 'experiment' },
+      rec({ url: 'a' }),
+    ]);
   });
 
   it('features the guide that was offered when several experiences match the page', () => {
@@ -72,7 +75,10 @@ describe('ContextService.injectAutoOpenGuide', () => {
   it('promotes an existing card for the same URL instead of duplicating it', () => {
     enroll('treatment');
     const existing = rec({ title: 'Existing', url: 'Bundled:X' });
-    expect(callInject([rec({ url: 'a' }), existing], '/explore', [])).toEqual([existing, rec({ url: 'a' })]);
+    expect(callInject([rec({ url: 'a' }), existing], '/explore', [])).toEqual([
+      { ...existing, placement: 'experiment' },
+      rec({ url: 'a' }),
+    ]);
   });
 
   it('does not inject a guide already in the regular recommendations', () => {

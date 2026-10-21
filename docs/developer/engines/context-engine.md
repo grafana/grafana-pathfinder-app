@@ -145,7 +145,7 @@ The module also exports two backward-compatible hooks for consumers that only ne
 
 The engine detects context through multiple sources:
 
-1. **Location Service** - Monitors URL changes via browser popstate events and Grafana's LocationService history listener. Tracks pathname changes to detect page navigation.
+1. **Location Service** - Monitors URL changes via browser popstate events and Grafana's LocationService history listener. Tracks a location key of the pathname plus the `editPanel`, `editview`, `firstPanel` and `id` query parameters (`contextLocationKey` in `src/lib/context-location.ts`), so entering panel edit on the same dashboard counts as navigation.
 
 2. **EchoSrv Events** - Listens to Grafana analytics events for real-time user interactions:
    - `grafana_ds_add_datasource_clicked` - New datasource configuration
@@ -164,7 +164,7 @@ The engine detects context through multiple sources:
 
 Context tags are semantic identifiers generated from user context to match relevant documentation:
 
-- **Entity-Action tags** - Extracted from URL paths (e.g., `dashboard:edit`, `datasource:create`, `explore:view`)
+- **Entity-Action tags** - Extracted from URL paths (e.g., `dashboard:edit`, `datasource:create`, `explore:view`). The dashboards listing at `/dashboards` maps to the `dashboard` entity and sends `dashboard:view`
 - **Selected datasource tags** - From EchoSrv events (e.g., `selected-datasource:prometheus`, `selected-datasource:loki`)
 - **Panel type tags** - Only when creating/editing visualizations (e.g., `panel-type:timeseries`, `panel-type:gauge`)
 - **Connection type tags** - From add-new-connection URLs (e.g., `connection-type:clickhouse`)
@@ -188,7 +188,7 @@ The recommendation system follows a three-tier approach with automatic fallback:
 6. **XSS Protection** - Sanitize recommendations using explicit allowlist to prevent prototype pollution
 7. **Completion Processing** - Fetch metadata and completion percentages for learning paths and interactive guides. Uses type-specific storage: learning paths read from `journeyCompletionStorage` (via `getJourneyCompletionPercentageAsync`), interactives read from `interactiveCompletionStorage`. Bundled interactives (URLs starting with `bundled:`) are skipped here and handled by `buildBundledInteractiveRecommendations` instead.
 8. **Filtering** - Remove low-confidence recommendations (below 0.5 threshold)
-9. **Sorting** - Prioritize by type (interactive > learning-journey > docs-page), then by accuracy
+9. **Ranking** - Order with `rankRecommendations`; see [Contextual ordering](#contextual-ordering)
 
 ### Tier 2: Bundled Interactives (on external service failure)
 
@@ -389,7 +389,7 @@ The Context Engine includes offline-capable bundled content located in `src/bund
 
 ## Recommendation Scoring
 
-Recommendations are filtered and sorted based on accuracy and content type:
+Recommendations are filtered by accuracy and ordered by context:
 
 **Accuracy Scores**:
 
@@ -398,17 +398,7 @@ Recommendations are filtered and sorted based on accuracy and content type:
 - Static links: 0.7 (good confidence)
 - Confidence threshold: 0.5 (recommendations below this are filtered out)
 
-**Content Type Priority** (lower number = higher priority):
-
-1. Interactive guides (0) - Hands-on, step-by-step tutorials
-2. Learning paths (1) - Multi-step educational paths (type value: `'learning-journey'`)
-3. Docs pages (2) - Static documentation
-
-**Sorting Algorithm**:
-
-1. Primary sort: Content type priority (interactive first)
-2. Secondary sort: Accuracy score descending
-3. Featured recommendations: Server-curated, not filtered by confidence, preserve server order
+**Ordering**: see [Contextual ordering](#contextual-ordering). Relevance evidence, completion and match accuracy decide order; content format (interactive, then learning path, then docs page) only breaks ties between otherwise equal candidates. Featured recommendations are server-curated and render in the Featured grid.
 
 **Filtering Rules**:
 
@@ -472,3 +462,40 @@ Configuration is managed through plugin settings (`PathfinderPluginConfig`):
 - `docs/architecture.dot` - Overall system architecture
 - `docs/developer/utils/README.md` - TimeoutManager and utility documentation
 - `docs/developer/ASSISTANT_INTEGRATION.md` - Assistant integration using context data
+
+## Contextual ordering
+
+`src/lib/recommendation-ranking.ts` ranks current task, current area, environment,
+then general recommendations. The optional v1 `relevance` response object carries
+server-evaluated evidence from the strongest satisfied rule branch. The server
+ranks before its result cap; client completion reordering applies only to returned
+candidates. Older responses receive conservative literal-route evidence from
+`matchedCriteria`, or general relevance if evidence is absent or partial.
+
+Within a tier, known completed content follows unfinished or unknown content;
+then task-signal count, matched literal URL-prefix length, environment-signal
+count and match accuracy break ties. Among equally relevant peers, meaning the
+same evidence tier, completion group, signal counts and match accuracy, `depends`
+and `recommends` pull a prerequisite forward to sit immediately before the guide
+that references it; edges inside a cycle are ignored. A follow-on guide with
+higher match accuracy stays ahead of a less accurate prerequisite. This is ordering only: missing prerequisites, cycles and `suggests` do not
+remove candidates. Stronger context and completion take precedence. Content
+format, a starting location on the current page, editorial status and canonical
+identity order otherwise-ready peers. Explicit suggestions and auto-open experiment placements
+retain priority. Server-featured editorial picks (`editorialFeatured`) render in
+the Featured grid above the contextual list, as do suggestions and experiment
+placements, and report `featured_card_button`. Local matching retains its existing vocabulary
+and rejects unsupported predicates; its route evidence does not expand eligibility.
+
+Observed data-source and visualization selections expire after five minutes and
+are scoped to pathname plus `editPanel`, `editview`, `firstPanel` and `id` query
+parameters. An added data source also stays current on the edit page Grafana opens
+for it. Repeated identical observations refresh freshness without refetching.
+Panel edit-mode changes refresh context; unrelated time-range changes do not. An
+inferred default visualization does not emit an observed `panel-type` signal.
+Context and recommendation requests ignore stale results after navigation or
+unmount, and every completed context refresh refetches recommendations so a
+superseded request cannot leave the loading state behind. No additional analytics or query content is collected.
+
+`src/lib/testdata/relevance.v1.json` is shared with the recommender's
+`internal/recommender/testdata/relevance.v1.json`; update both copies together.
