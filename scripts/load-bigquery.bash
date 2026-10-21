@@ -76,14 +76,23 @@ EOF
 function existing_package_count {
   local project_id="$1"
   local dataset="$2"
-  local output
+  local output errors errors_file status=0
 
-  if output=$(bq show --project_id="${project_id}" --format=json "${dataset}.pathfinder_packages" 2>&1); then
-    jq -r '.numRows // "0"' <<< "${output}"
-  elif [[ "${output}" == *"Not found"* ]]; then
+  # stderr stays out of the JSON: on a runner, gcloud warns there about the active account even when bq succeeds.
+  errors_file=$(mktemp) || return 1
+  output=$(bq show --project_id="${project_id}" --format=json "${dataset}.pathfinder_packages" 2> "${errors_file}") || status=$?
+  errors=$(cat "${errors_file}")
+  rm -f "${errors_file}"
+
+  if (( status == 0 )); then
+    jq -re '.numRows // "0" | tonumber' <<< "${output}" || {
+      printf 'could not read numRows from bq show:\n%s\n' "${output}" >&2
+      return 1
+    }
+  elif [[ "${output}${errors}" == *"Not found"* ]]; then
     echo ''
   else
-    printf '%s\n' "${output}" >&2
+    printf '%s\n%s\n' "${output}" "${errors}" >&2
     return 1
   fi
 }
