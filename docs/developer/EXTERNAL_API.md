@@ -365,6 +365,12 @@ than dropping them — as it does for any manifest key the CRD doesn't
 declare, including surplus `author` subkeys. The block editor writes the two it
 derives, `stats` and `startingLocation`, to the same place.
 
+The block editor also fills the typed `author` key when a guide has none: the
+signed-in user's `name` (else `login`, else `pathfinder-block-editor`), never
+`email` or `gravatarUrl`. It leaves a real author as found, and replaces only a
+placeholder one (`pathfinder-block-editor` or `pathfinder-mcp`) with a real
+identity. A package you upload with an author keeps it through every editor save.
+
 Which of them actually _work_ from `additionalFields` depends on whether
 anything reads that location:
 
