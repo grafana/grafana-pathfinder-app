@@ -100,7 +100,7 @@ Privacy protection is split between enforced normalization and caller discipline
 
 ## Section recovery events
 
-Implicit section recovery reports when a section pauses, how a Restore ends, and how each pause resolved. All three carry guide identity through `guideIdentityAnalyticsProperties`, the cursor step's `step_action`, and `section_id` only when `guide_visibility` is `public`, because a private guide's section ids are authored text. No selectors, requirement strings or URLs are sent.
+Implicit section recovery reports when a section pauses, how a Restore ends, and how each pause resolved. All three carry guide identity through `guideIdentityAnalyticsProperties` (a private guide's id included, per the [identity policy](#identity-policy)), the cursor step's `step_action`, and `section_id` only when `guide_visibility` is `public`, because a private guide's section ids are authored text. No selectors, requirement strings or URLs are sent.
 
 | Event                       | Fires                                    | Properties                                                                                                  |
 | --------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
