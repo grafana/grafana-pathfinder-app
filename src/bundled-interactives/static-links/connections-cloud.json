@@ -1328,7 +1328,14 @@
                     "urlPrefix": "/connections/datasources"
                   },
                   {
-                    "tag": "selected-datasource:pyroscope"
+                    "or": [
+                      {
+                        "tag": "selected-datasource:pyroscope"
+                      },
+                      {
+                        "tag": "selected-datasource:grafana-pyroscope-datasource"
+                      }
+                    ]
                   }
                 ]
               },
@@ -1358,7 +1365,14 @@
                     "urlPrefix": "/connections/datasources"
                   },
                   {
-                    "tag": "selected-datasource:pyroscope"
+                    "or": [
+                      {
+                        "tag": "selected-datasource:pyroscope"
+                      },
+                      {
+                        "tag": "selected-datasource:grafana-pyroscope-datasource"
+                      }
+                    ]
                   }
                 ]
               },
@@ -1388,7 +1402,14 @@
                     "urlPrefix": "/connections/datasources"
                   },
                   {
-                    "tag": "selected-datasource:pyroscope"
+                    "or": [
+                      {
+                        "tag": "selected-datasource:pyroscope"
+                      },
+                      {
+                        "tag": "selected-datasource:grafana-pyroscope-datasource"
+                      }
+                    ]
                   }
                 ]
               },
