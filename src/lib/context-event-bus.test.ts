@@ -146,6 +146,21 @@ describe('interaction event routing', () => {
     expect(getDetectedDatasourceType()).toBe('mimir');
   });
 
+  it('notifies on built-in datasource data-requests without replacing the detected datasource', () => {
+    const listener = jest.fn();
+    onContextChange(listener);
+    dispatch({
+      type: 'meta-analytics',
+      payload: { eventName: 'data-request', datasourceType: 'prometheus', source: 'dashboard' },
+    });
+    dispatch({
+      type: 'meta-analytics',
+      payload: { eventName: 'data-request', datasourceType: 'datasource', source: 'dashboard' },
+    });
+    expect(getDetectedDatasourceType()).toBe('prometheus');
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
   it('ignores meta-analytics data-request when source is missing', () => {
     dispatch({
       type: 'meta-analytics',

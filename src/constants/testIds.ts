@@ -60,6 +60,7 @@ export const testIds = {
     userProfileBarAllComplete: 'user-profile-bar-all-complete',
     recommendationsContainer: 'context-panel-recommendations-container',
     recommendationsGrid: 'context-panel-recommendations-grid',
+    recommendationsLoading: 'context-panel-recommendations-loading',
     recommendationCard: (index: number) => `context-panel-recommendation-card-${index}`,
     recommendationTitle: (index: number) => `context-panel-recommendation-title-${index}`,
     recommendationStartButton: (index: number) => `context-panel-recommendation-start-${index}`,

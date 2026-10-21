@@ -114,17 +114,19 @@ The EchoSrv subscription, inferred datasource/visualization values, and change-l
 **Key Features**:
 
 - Monitors URL location changes via browser events and Grafana LocationService
-- Subscribes to EchoSrv-triggered context changes for datasource and visualization events
+- Subscribes to EchoSrv-triggered context changes, refreshing only when the detected datasource or visualization type changes
 - Centralizes debouncing using TimeoutManager to prevent competing refresh mechanisms
 - Separates context data loading from recommendation fetching for better performance
 - Manages recommendation expansion state and error handling
 - Provides action handlers for opening learning paths and docs pages
 - Refreshes recommendations when interactive progress is cleared
+- Skips the recommendations fetch when a refreshed context leaves `RECOMMENDATION_CONTEXT_FIELDS` (`recommendation-inputs.ts`) and the plugin config unchanged; progress clears, auto-open enrollment, `refreshContext()` and error results still refetch
+- Ignores context and recommendation responses superseded by a newer request, and keeps the current list on screen until its replacement arrives
 
 **Return Shape**:
 
 - `contextData` - Current context data (path, tags, datasources, dashboard info, etc.)
-- `isLoadingRecommendations` - Whether recommendations are currently being fetched
+- `isLoadingRecommendations` - Whether recommendations are being fetched, or have not been fetched yet
 - `otherDocsExpanded` - Whether the "other docs" section is expanded
 - `refreshContext()` - Manually trigger a context refresh
 - `refreshRecommendations()` - Manually trigger a recommendations refresh
@@ -152,7 +154,7 @@ The engine detects context through multiple sources:
    - `grafana_ds_test_datasource_clicked` - Datasource testing (workaround for edit detection)
    - `dashboards_dspicker_clicked` - Dashboard datasource selection
    - `dashboards_panel_plugin_picker_clicked` - Visualization type selection
-   - `data-request` (meta-analytics) - Active query execution in Explore or dashboards
+   - `data-request` (meta-analytics) - Active query execution in Explore or dashboards. Requests from Grafana's built-in `datasource` type (annotations, `-- Grafana --`, mixed) still notify listeners but don't change the detected datasource.
 
 3. **Backend APIs** - Fetches structured data from Grafana REST APIs:
    - `/api/datasources` - All configured datasources with types and metadata

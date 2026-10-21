@@ -914,3 +914,79 @@ describe('suggested path assignment badges', () => {
     });
   });
 });
+
+describe('RecommendationsSection while refreshing', () => {
+  const renderRefreshing = (props: Partial<React.ComponentProps<typeof RecommendationsSection>> = {}) =>
+    render(
+      <RecommendationsSection
+        recommendations={[]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+        {...props}
+      />
+    );
+
+  it('shows only the loading bar before anything has loaded', () => {
+    renderRefreshing();
+
+    expect(screen.getByTestId(testIds.contextPanel.recommendationsLoading)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.contextPanel.recommendationsContainer)).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByTestId(testIds.contextPanel.emptyState)).not.toBeInTheDocument();
+  });
+
+  it('keeps the current suggested guides on screen while the next ones load', () => {
+    renderRefreshing({
+      isLoadingContext: false,
+      isLoadingRecommendations: true,
+      recommendations: [{ title: 'Build your first dashboard', url: 'bundled:first-dashboard', type: 'interactive' }],
+    });
+
+    expect(screen.getByText('Build your first dashboard')).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.contextPanel.suggestedGuidesToggle)).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.contextPanel.recommendationsLoading)).not.toBeInTheDocument();
+  });
+
+  it('keeps custom guides on screen and shows the loading bar for suggested guides', () => {
+    renderRefreshing({
+      customGuides: [{ id: 'org-guide', title: 'Our onboarding guide', status: 'published' }],
+    });
+
+    expect(screen.getByTestId(testIds.contextPanel.customGuidesSection)).toBeInTheDocument();
+    expect(screen.getByText('Our onboarding guide')).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.contextPanel.recommendationsLoading)).toBeInTheDocument();
+  });
+
+  it('keeps the previous error on screen alongside the loading bar', () => {
+    renderRefreshing({ recommendationsError: 'Recommender unreachable' });
+
+    expect(screen.getByTestId(testIds.contextPanel.errorAlert)).toHaveTextContent('Recommender unreachable');
+    expect(screen.getByTestId(testIds.contextPanel.recommendationsLoading)).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.contextPanel.emptyState)).not.toBeInTheDocument();
+  });
+
+  it('drops the loading bar and busy state once the refresh settles', () => {
+    renderRefreshing({
+      isLoadingContext: false,
+      recommendations: [{ title: 'Build your first dashboard', url: 'bundled:first-dashboard', type: 'interactive' }],
+    });
+
+    expect(screen.queryByTestId(testIds.contextPanel.recommendationsLoading)).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.contextPanel.recommendationsContainer)).toHaveAttribute('aria-busy', 'false');
+  });
+});
