@@ -91,9 +91,9 @@ function existing_package_count {
 function validate_packages {
   local repository_file="$1"
 
-  if ! jq -e 'type == "object" and length > 0' "${repository_file}" > /dev/null; then
+  if ! jq -e 'type == "object" and length > 0 and all(.[]; type == "object")' "${repository_file}" > /dev/null; then
     cat <<EOF
-✗ repository.json is not a non-empty package map
+✗ repository.json is not a non-empty map of package objects
 EOF
     return 1
   fi
@@ -106,7 +106,7 @@ EOF
         or (.value.title | type) != "string"
         or (.value.type | IN("guide", "path", "journey") | not)
       )
-    | .key' "${repository_file}")
+    | .key' "${repository_file}") || return 1
   if [[ -n "${invalid_ids}" ]]; then
     cat <<EOF
 ✗ packages missing a path, title or known type:
@@ -122,7 +122,7 @@ EOF
     | .key as $path_id
     | .value.milestones // [] | .[]
     | select(($catalog[.].type // "") != "guide")
-    | "\($path_id) -> \(.)"' "${repository_file}")
+    | "\($path_id) -> \(.)"' "${repository_file}") || return 1
   if [[ -n "${missing_milestones}" ]]; then
     cat <<EOF
 ✗ milestones that are not guides in the catalog:
@@ -146,7 +146,7 @@ EOF
         or $own.sectionCount < ($members | map(.sectionCount) | add)
         or $own.completableBlockCount < ($members | map(.completableBlockCount) | add)
       )
-    | $path_id' "${repository_file}")
+    | $path_id' "${repository_file}") || return 1
   if [[ -n "${short_paths}" ]]; then
     cat <<EOF
 ✗ paths whose stats do not cover their milestones (stale build-stats?):
@@ -162,7 +162,7 @@ function check_row_count {
   local rows_file="$3"
 
   local new_count existing_count
-  new_count=$(wc -l < "${rows_file}" | tr -d ' ')
+  new_count=$(wc -l < "${rows_file}" | tr -d ' ') || return 1
   existing_count=$(existing_package_count "${project_id}" "${dataset}") || return 1
 
   if [[ -z "${existing_count}" ]]; then
@@ -178,47 +178,65 @@ EOF
   fi
 }
 
-function load_packages {
+# Called from `||` in update_tables, where errexit is off, so every step checks its own status.
+function fetch_and_load_packages {
   local project_id="$1"
   local dataset="$2"
   local script_dir="$3"
+  local work_dir="$4"
 
   local repository_url='https://interactive-learning.grafana.net/packages/repository.json'
-  local temp_repository_file temp_packages_file
-  temp_repository_file=$(mktemp)
-  temp_packages_file=$(mktemp)
+  local repository_file="${work_dir}/repository.json"
+  local rows_file="${work_dir}/rows.ndjson"
 
   cat <<EOF
 Fetching and loading ${repository_url}...
 EOF
 
-  curl -fsSL "${repository_url}" > "${temp_repository_file}"
+  curl -fsSL "${repository_url}" > "${repository_file}" || return 1
 
   # --replace swaps the whole table, so a truncated, partial or malformed response must not reach it.
-  if validate_packages "${temp_repository_file}"; then
-    jq -c \
-      --arg loaded_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      -f "${script_dir}/bigquery/pathfinder-packages.jq" \
-      "${temp_repository_file}" > "${temp_packages_file}"
-  fi
+  validate_packages "${repository_file}" || return 1
 
-  if [[ ! -s "${temp_packages_file}" ]] || ! check_row_count "${project_id}" "${dataset}" "${temp_packages_file}"; then
+  jq -c \
+    --arg loaded_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -f "${script_dir}/bigquery/pathfinder-packages.jq" \
+    "${repository_file}" > "${rows_file}" || return 1
+
+  if [[ ! -s "${rows_file}" ]]; then
     cat <<EOF
-✗ refusing to replace pathfinder_packages
+✗ repository.json produced no rows
 EOF
-    rm -f "${temp_repository_file}" "${temp_packages_file}"
     return 1
   fi
+
+  check_row_count "${project_id}" "${dataset}" "${rows_file}" || return 1
 
   bq load \
     --project_id="${project_id}" \
     --source_format=NEWLINE_DELIMITED_JSON \
     --replace \
     "${dataset}.pathfinder_packages" \
-    "${temp_packages_file}" \
-    "${script_dir}/bigquery/pathfinder-packages.schema.json"
+    "${rows_file}" \
+    "${script_dir}/bigquery/pathfinder-packages.schema.json" || return 1
+}
 
-  rm -f "${temp_repository_file}" "${temp_packages_file}"
+function load_packages {
+  local project_id="$1"
+  local dataset="$2"
+  local script_dir="$3"
+
+  local work_dir status=0
+  work_dir=$(mktemp -d) || return 1
+  fetch_and_load_packages "${project_id}" "${dataset}" "${script_dir}" "${work_dir}" || status=1
+  rm -rf "${work_dir}"
+
+  if (( status != 0 )); then
+    cat <<EOF
+✗ pathfinder_packages was not replaced
+EOF
+    return 1
+  fi
 
   cat <<EOF
 ✓ pathfinder_packages table loaded successfully
@@ -234,7 +252,8 @@ function update_tables {
 Updating BigQuery tables in ${project_id}.${dataset}...
 EOF
 
-  load_packages "${project_id}" "${dataset}" "${script_dir}"
+  local packages_status=0
+  load_packages "${project_id}" "${dataset}" "${script_dir}" || packages_status=1
 
   local remote_index_url='https://raw.githubusercontent.com/grafana/interactive-tutorials/main/index.json'
   local temp_index_file
@@ -290,6 +309,17 @@ EOF
 
   cat <<EOF
 ✓ app_states table loaded successfully
+EOF
+
+  if (( packages_status != 0 )); then
+    cat <<EOF
+
+✗ interactive_tutorials and app_states were updated, but pathfinder_packages was not (see above)
+EOF
+    return 1
+  fi
+
+  cat <<EOF
 
 All tables updated successfully in ${project_id}.${dataset}
 EOF

@@ -8,7 +8,7 @@
   { "name": "author_name", "type": "STRING", "mode": "NULLABLE" },
   { "name": "author_team", "type": "STRING", "mode": "NULLABLE" },
   { "name": "starting_location", "type": "STRING", "mode": "NULLABLE" },
-  { "name": "estimated_minutes", "type": "INTEGER", "mode": "NULLABLE" },
+  { "name": "estimated_minutes", "type": "FLOAT", "mode": "NULLABLE" },
   { "name": "min_grafana_version", "type": "STRING", "mode": "NULLABLE" },
   {
     "name": "milestones",

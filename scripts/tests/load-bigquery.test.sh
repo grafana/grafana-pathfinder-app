@@ -24,7 +24,10 @@ cat >"${BIN}/curl" <<'EOF'
 #!/usr/bin/env bash
 for arg in "$@"; do
   case "$arg" in
-    */packages/repository.json) cat "$STUB_REPOSITORY" ;;
+    */packages/repository.json)
+      [[ "$STUB_REPOSITORY" != fail ]] || { echo "curl: (22) The requested URL returned error: 503" >&2 && exit 22; }
+      cat "$STUB_REPOSITORY"
+      ;;
     */index.json) printf '{"rules":[]}' ;;
   esac
 done
@@ -50,6 +53,7 @@ for arg in "$@"; do
     *) [[ -n "$table" && -z "$data" ]] && data="$arg" ;;
   esac
 done
+[[ "$table" != pathfinder_packages || -z "${STUB_FAIL_PACKAGES_LOAD:-}" ]] || { echo "BigQuery error in load operation: Error while reading data" && exit 1; }
 cp "$data" "${STUB_CAPTURE}/${table}.ndjson"
 EOF
 chmod +x "${BIN}/curl" "${BIN}/bq"
@@ -79,7 +83,17 @@ run_update() {
   RUN_LOG=$(cat "${WORK}/bq.log")
 }
 
-loaded() { [[ "$RUN_LOG" == *"--replace docs_site.pathfinder_packages"* ]]; }
+loaded() { loaded_table pathfinder_packages; }
+loaded_table() { [[ "$RUN_LOG" == *"--replace docs_site.$1 "* ]]; }
+
+expect_others_loaded() {
+  local label="$1"
+  if loaded_table interactive_tutorials && loaded_table app_states; then
+    ok "$label"
+  else
+    nope "$label" "$RUN_LOG"
+  fi
+}
 
 expect_refused() {
   local label="$1"
@@ -221,6 +235,43 @@ fi
 
 run_update "$EMPTY"
 expect_refused "an empty package map is refused"
+expect_others_loaded "and interactive_tutorials and app_states still load"
+if [[ "$RUN_OUT" == *"pathfinder_packages was not"* ]]; then
+  ok "and the run ends by saying pathfinder_packages was not updated"
+else
+  nope "and the run ends by saying pathfinder_packages was not updated" "$RUN_OUT"
+fi
+
+run_update fail
+expect_refused "an unreachable catalog fails the run"
+expect_others_loaded "and interactive_tutorials and app_states still load"
+
+STUB_FAIL_PACKAGES_LOAD=1 run_update "$FIXTURE"
+if [[ "$RUN_CODE" != 0 && "$RUN_OUT" != *"pathfinder_packages table loaded successfully"* ]]; then
+  ok "a rejected bq load fails the run instead of reporting success"
+else
+  nope "a rejected bq load fails the run instead of reporting success (exit ${RUN_CODE})" "$RUN_OUT"
+fi
+expect_others_loaded "and interactive_tutorials and app_states still load"
+
+mkfixture "${WORK}/non-object.json" '.["demo-guide"] = "not an object"'
+run_update "${WORK}/non-object.json"
+expect_refused "a non-object entry is refused"
+if [[ "$RUN_OUT" == *"not a non-empty map of package objects"* ]]; then
+  ok "and says why rather than surfacing a raw jq error"
+else
+  nope "and says why rather than surfacing a raw jq error" "$RUN_OUT"
+fi
+
+mkfixture "${WORK}/fractional.json" '.["demo-guide"].estimatedMinutes = 7.5'
+run_update "${WORK}/fractional.json"
+expect_loaded "a fractional estimatedMinutes loads"
+expect_jq "and keeps its fraction" demo-guide '.estimated_minutes == 7.5'
+if jq -e '.[] | select(.name == "estimated_minutes") | .type == "FLOAT"' "${REPO_ROOT}/scripts/bigquery/pathfinder-packages.schema.json" >/dev/null; then
+  ok "estimated_minutes is a FLOAT column"
+else
+  nope "estimated_minutes is a FLOAT column"
+fi
 
 NINE="${WORK}/nine.json"
 mkfixture "$NINE" '[range(9) as $i | {key: "guide-\($i)", value: {path: "guide-\($i)/", type: "guide", title: "Guide \($i)"}}] | from_entries'
@@ -284,6 +335,18 @@ for case in \
     nope "and names the bad entry (${name})" "$RUN_OUT"
   fi
 done
+
+# --- create -----------------------------------------------------------------
+
+: >"${WORK}/bq.log"
+CREATE_OUT=$(STUB_LOG="${WORK}/bq.log" "$LOADER" create 2>&1)
+CREATE_CODE=$?
+CREATE_LOG=$(cat "${WORK}/bq.log")
+if [[ "$CREATE_CODE" == 0 && "$CREATE_LOG" == *"mk "*"docs_site.pathfinder_packages "*"bigquery/pathfinder-packages.schema.json"* ]]; then
+  ok "create makes pathfinder_packages from the schema file"
+else
+  nope "create makes pathfinder_packages from the schema file (exit ${CREATE_CODE})" "${CREATE_OUT}"$'\n'"${CREATE_LOG}"
+fi
 
 echo
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
