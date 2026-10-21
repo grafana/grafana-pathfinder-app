@@ -33,6 +33,13 @@ EOF
 cat >"${BIN}/bq" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$STUB_LOG"
+if [[ "$1" == show ]]; then
+  case "$STUB_EXISTING" in
+    missing) echo "BigQuery error in show operation: Not found: Table docs_site.pathfinder_packages" && exit 1 ;;
+    broken) echo "BigQuery error in show operation: Access Denied" && exit 1 ;;
+    *) printf '{"numRows":"%s"}\n' "$STUB_EXISTING" && exit 0 ;;
+  esac
+fi
 [[ "$1" == load ]] || exit 0
 table=
 data=
@@ -58,7 +65,8 @@ nope() {
   [[ -z "${2:-}" ]] || printf '%s\n' "$2" | sed 's/^/         /'
 }
 
-# Runs `update` against a fixture. Sets RUN_OUT, RUN_CODE, RUN_LOG, CAPTURE.
+# Runs `update` against a fixture. EXISTING is the current table's row count,
+# or missing/broken for `bq show` failures. Sets RUN_OUT, RUN_CODE, RUN_LOG, CAPTURE.
 run_update() {
   local fixture="$1"
   CAPTURE="${WORK}/capture"
@@ -66,9 +74,33 @@ run_update() {
   mkdir -p "$CAPTURE"
   : >"${WORK}/bq.log"
   RUN_OUT=$(STUB_REPOSITORY="$fixture" STUB_LOG="${WORK}/bq.log" STUB_CAPTURE="$CAPTURE" \
-    "$LOADER" update 2>&1)
+    STUB_EXISTING="${EXISTING:-2}" ALLOW_PACKAGE_DROP="${ALLOW:-}" "$LOADER" update 2>&1)
   RUN_CODE=$?
   RUN_LOG=$(cat "${WORK}/bq.log")
+}
+
+loaded() { [[ "$RUN_LOG" == *"--replace docs_site.pathfinder_packages"* ]]; }
+
+expect_refused() {
+  local label="$1"
+  if [[ "$RUN_CODE" != 0 ]] && ! loaded; then
+    ok "$label"
+  else
+    nope "$label (exit ${RUN_CODE})" "$RUN_OUT"
+  fi
+}
+
+expect_loaded() {
+  local label="$1"
+  if [[ "$RUN_CODE" == 0 ]] && loaded; then
+    ok "$label"
+  else
+    nope "$label (exit ${RUN_CODE})" "$RUN_OUT"
+  fi
+}
+
+mkfixture() { # file, jq expression applied to the base fixture
+  jq "$2" "$FIXTURE" >"$1"
 }
 
 row() { jq -c --arg id "$1" 'select(.id == $id)' "${CAPTURE}/pathfinder_packages.ndjson"; }
@@ -157,16 +189,48 @@ fi
 # --- guard ------------------------------------------------------------------
 
 run_update "$EMPTY"
-if [[ "$RUN_CODE" != 0 ]]; then
-  ok "an empty package map fails the run"
+expect_refused "an empty package map is refused"
+
+NINE="${WORK}/nine.json"
+mkfixture "$NINE" '[range(9) as $i | {key: "guide-\($i)", value: {path: "guide-\($i)/", type: "guide", title: "Guide \($i)"}}] | from_entries'
+
+EXISTING=10 run_update "$NINE"
+expect_loaded "a 10% drop is allowed"
+
+EXISTING=11 run_update "$NINE"
+expect_refused "a drop of more than 10% is refused"
+if [[ "$RUN_OUT" == *"9 packages, down from 11"* ]]; then
+  ok "and says how far the catalog shrank"
 else
-  nope "an empty package map fails the run" "$RUN_OUT"
+  nope "and says how far the catalog shrank" "$RUN_OUT"
 fi
-if [[ "$RUN_LOG" != *"pathfinder_packages"* ]]; then
-  ok "an empty package map never reaches bq"
-else
-  nope "an empty package map never reaches bq" "$RUN_LOG"
-fi
+
+EXISTING=732 run_update "$FIXTURE"
+expect_refused "a two-package response cannot replace 732 rows"
+
+EXISTING=732 ALLOW=true run_update "$FIXTURE"
+expect_loaded "ALLOW_PACKAGE_DROP=true lets an intended drop through"
+
+EXISTING=missing run_update "$FIXTURE"
+expect_loaded "a missing table is created on the first run"
+
+EXISTING=broken run_update "$FIXTURE"
+expect_refused "a failed table lookup is refused rather than treated as a first run"
+
+for case in \
+  'no-title|.["demo-guide"] |= del(.title)' \
+  'empty-path|.["demo-guide"].path = ""' \
+  'unknown-type|.["demo-guide"].type = "tutorial"'; do
+  name="${case%%|*}"
+  mkfixture "${WORK}/${name}.json" "${case#*|}"
+  run_update "${WORK}/${name}.json"
+  expect_refused "an entry with ${name} is refused"
+  if [[ "$RUN_OUT" == *"demo-guide"* ]]; then
+    ok "and names the bad entry (${name})"
+  else
+    nope "and names the bad entry (${name})" "$RUN_OUT"
+  fi
+done
 
 echo
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"

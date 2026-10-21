@@ -73,6 +73,67 @@ All tables created successfully in ${project_id}.${dataset}
 EOF
 }
 
+function existing_package_count {
+  local project_id="$1"
+  local dataset="$2"
+  local output
+
+  if output=$(bq show --project_id="${project_id}" --format=json "${dataset}.pathfinder_packages" 2>&1); then
+    jq -r '.numRows // "0"' <<< "${output}"
+  elif [[ "${output}" == *"Not found"* ]]; then
+    echo ''
+  else
+    printf '%s\n' "${output}" >&2
+    return 1
+  fi
+}
+
+function validate_packages {
+  local project_id="$1"
+  local dataset="$2"
+  local repository_file="$3"
+
+  if ! jq -e 'type == "object" and length > 0' "${repository_file}" > /dev/null; then
+    cat <<EOF
+✗ repository.json is not a non-empty package map
+EOF
+    return 1
+  fi
+
+  local invalid_ids
+  invalid_ids=$(jq -r '
+    to_entries[]
+    | select(
+        (.value.path | type) != "string" or (.value.path | length) == 0
+        or (.value.title | type) != "string"
+        or (.value.type | IN("guide", "path", "journey") | not)
+      )
+    | .key' "${repository_file}")
+  if [[ -n "${invalid_ids}" ]]; then
+    cat <<EOF
+✗ packages missing a path, title or known type:
+${invalid_ids}
+EOF
+    return 1
+  fi
+
+  local new_count existing_count
+  new_count=$(jq 'length' "${repository_file}")
+  existing_count=$(existing_package_count "${project_id}" "${dataset}") || return 1
+
+  if [[ -z "${existing_count}" ]]; then
+    cat <<EOF
+pathfinder_packages does not exist yet; the load will create it with ${new_count} rows
+EOF
+  elif (( new_count * 10 < existing_count * 9 )) && [[ "${ALLOW_PACKAGE_DROP:-}" != 'true' ]]; then
+    cat <<EOF
+✗ repository.json has ${new_count} packages, down from ${existing_count} in pathfinder_packages (more than 10%)
+  Set ALLOW_PACKAGE_DROP=true (the allow_package_drop workflow input) if the drop is intended.
+EOF
+    return 1
+  fi
+}
+
 function load_packages {
   local project_id="$1"
   local dataset="$2"
@@ -89,10 +150,10 @@ EOF
 
   curl -fsSL "${repository_url}" > "${temp_repository_file}"
 
-  # --replace swaps the whole table, so a truncated or empty CDN response must not reach it.
-  if ! jq -e 'type == "object" and length > 0' "${temp_repository_file}" > /dev/null; then
+  # --replace swaps the whole table, so a truncated, partial or malformed response must not reach it.
+  if ! validate_packages "${project_id}" "${dataset}" "${temp_repository_file}"; then
     cat <<EOF
-✗ ${repository_url} is not a non-empty package map; refusing to replace pathfinder_packages
+✗ refusing to replace pathfinder_packages
 EOF
     rm -f "${temp_repository_file}" "${temp_packages_file}"
     return 1
