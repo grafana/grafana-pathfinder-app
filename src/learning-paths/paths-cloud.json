@@ -50,6 +50,26 @@
       "icon": "search"
     },
     {
+      "id": "drilldown-traces",
+      "title": "Explore traces with drilldown",
+      "description": "Find high-latency requests using Traces Drilldown.",
+      "url": "https://grafana.com/docs/learning-paths/drilldown-traces/",
+      "guides": [],
+      "badgeId": "span-sleuth",
+      "estimatedMinutes": 15,
+      "icon": "share-alt"
+    },
+    {
+      "id": "drilldown-profiles",
+      "title": "Explore profiles with drilldown",
+      "description": "Find CPU and memory bottlenecks using Profiles Drilldown.",
+      "url": "https://grafana.com/docs/learning-paths/drilldown-profiles/",
+      "guides": [],
+      "badgeId": "flame-finder",
+      "estimatedMinutes": 10,
+      "icon": "bolt"
+    },
+    {
       "id": "visualization-metrics",
       "title": "Build a metrics dashboard",
       "description": "Add visualizations, write queries, and save a metrics dashboard.",

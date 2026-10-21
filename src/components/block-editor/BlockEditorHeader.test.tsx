@@ -27,6 +27,7 @@ const baseProps = {
   onTitleCommit: jest.fn(),
   onOpenTour: jest.fn(),
   onOpenGuideLibrary: jest.fn(),
+  onOpenGuideDetails: jest.fn(),
   onOpenImport: jest.fn(),
   onCopy: jest.fn(),
   onDownload: jest.fn(),
@@ -138,6 +139,26 @@ describe('BlockEditorHeader: Library menu item visibility', () => {
     // The menu is open (Import is always present), but Library is gated out.
     expect(screen.getByText('Import')).toBeInTheDocument();
     expect(screen.queryByText('Library')).not.toBeInTheDocument();
+  });
+});
+
+describe('BlockEditorHeader: Guide details menu item', () => {
+  const openMoreActions = () => {
+    fireEvent.click(screen.getByTestId(testIds.blockEditor.moreActionsButton));
+  };
+
+  it('opens the guide details modal from the kebab when the backend is available', () => {
+    const onOpenGuideDetails = jest.fn();
+    render(<BlockEditorHeader {...baseProps} isBackendAvailable={true} onOpenGuideDetails={onOpenGuideDetails} />);
+    openMoreActions();
+    fireEvent.click(screen.getByTestId(testIds.blockEditor.guideDetailsButton));
+    expect(onOpenGuideDetails).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides Guide details when there is no backend to save an author to', () => {
+    render(<BlockEditorHeader {...baseProps} isBackendAvailable={false} />);
+    openMoreActions();
+    expect(screen.queryByTestId(testIds.blockEditor.guideDetailsButton)).not.toBeInTheDocument();
   });
 });
 

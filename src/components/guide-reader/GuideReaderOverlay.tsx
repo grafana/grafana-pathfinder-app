@@ -6,8 +6,10 @@ import { config } from '@grafana/runtime';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { GuideProgressBar } from '../guide-progress';
 import {
   fetchUnifiedContent,
+  isJourneyCoverPage,
   resolveActiveMilestoneSequence,
   fetchPackageContent,
   getNextMilestoneUrlFromContent,
@@ -27,6 +29,7 @@ import { findDocPage } from '../../utils/find-doc-page';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { ControllerPairingLaunch } from '../../lib/pairing-manager';
 import { getGuideReaderStyles } from './guide-reader.styles';
+import { ControllerProductLinks } from './ControllerProductLinks';
 import { OutlineRail } from './OutlineRail';
 import { beginGuideLoad, finishGuideLoad, markGuideLoadStage } from '../../lib/telemetry/guide-load';
 import { diagnoseGuideError } from '../../lib/guide-diagnostics';
@@ -356,6 +359,7 @@ function GuideReaderInner({
             </Button>
           </nav>
         )}
+        <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
         <ContentRenderer
           content={content}
           containerRef={contentRef}
@@ -407,7 +411,7 @@ function GuideReaderInner({
             {mode === 'controller' ? (
               <ControllerChannelProvider pairing={controllerPairing} position={returnPosition}>
                 <ControllerStatusBadge pairingCode={controllerPairing?.pairingCode} />
-                {body}
+                <ControllerProductLinks>{body}</ControllerProductLinks>
               </ControllerChannelProvider>
             ) : (
               body

@@ -75,6 +75,8 @@ github.com/grafana/authlib/types v0.0.0-20260930204439-665ccbf27cbe h1:rZ4YTid1I
 github.com/grafana/authlib/types v0.0.0-20260930204439-665ccbf27cbe/go.mod h1:/nf5Y9wbsrPAOGKScnfFYO9Bdb7eLsP/VPEuJUsDzzM=
 github.com/grafana/dskit v0.0.0-20261006162119-a8b892e14f88 h1:tRG9W6Fj/aALumMiTiejmFW3f6qZXT5l84bnGHriNgU=
 github.com/grafana/dskit v0.0.0-20261006162119-a8b892e14f88/go.mod h1:JRfSXoPMy/K8sJ08PdQ9qStOIM18gr8Ayh7Wyi/3YQA=
+github.com/grafana/dskit v0.0.0-20261014094829-7a896efbf053 h1:OTSIU1Wjz31kOs1it5F/2x54ciPIzpRb/LoryoSbsF4=
+github.com/grafana/dskit v0.0.0-20261014094829-7a896efbf053/go.mod h1:nQfsT41DI2m4MbDhgwm7aGK/krVLCZnra3LKnS0tzrs=
 github.com/grafana/grafana-plugin-sdk-go v0.297.0 h1:uZlnm720OGH0VaaF3NuuOaJDrxTYx4qu3UHkzKZ+VPM=
 github.com/grafana/grafana-plugin-sdk-go v0.297.0/go.mod h1:OpS1VRORuEz7nFM+bZY+G/pKR1SO8rLARecM+7QaXGE=
 github.com/grafana/otel-profiling-go v0.7.0 h1:Q6CBLSgAnYmNQNNrj4ipG0S/K/K8iazA9E4kYRzZf0I=
@@ -248,6 +250,8 @@ golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8U
 golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/exp v0.0.0-20261007192929-f45ad48fbe92 h1:kc+Gi2MFkd0KWtdDlVxVwjw4KB98/77usJDFj+6YFQ8=
 golang.org/x/exp v0.0.0-20261007192929-f45ad48fbe92/go.mod h1:SRjTzy5WcYqRRqquLUvHeeovSwLO0CZ3xcltZNO4Fck=
+golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e h1:HgI6W1OolKK6tcV74is+rl9SMT0njsHlp0TbQiGXI/A=
+golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e/go.mod h1:DBoxwWhjaW8DJJw/YeM4zpeOKMC1FMXSblsYy+1mFSw=
 golang.org/x/mod v0.2.0/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
 golang.org/x/mod v0.3.0/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
 golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=

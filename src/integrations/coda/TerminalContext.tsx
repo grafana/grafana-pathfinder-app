@@ -74,10 +74,13 @@ export interface TerminalContextValue {
   isExpanded: boolean;
   /** Set terminal panel expanded state */
   setIsExpanded: (expanded: boolean) => void;
+  /** Release the panel registration and settle pending session waiters. */
+  _unregister: () => void;
   /** Register the underlying useTerminalLive hook values */
   _register: (opts: {
     status: ConnectionStatus;
     sessionId: string | null;
+    vmId?: string | null;
     error: string | null;
     connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
@@ -138,7 +141,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
         waiter.leftConnected = true;
       });
     }
-    const settled = waiters.filter((waiter) => (status === 'connected' && waiter.leftConnected) || status === 'error');
+    const settled = waiters.filter(
+      (waiter) =>
+        (status === 'connected' && sessionId !== null && waiter.leftConnected) ||
+        status === 'error' ||
+        (status === 'disconnected' && !reconnectingRef.current && !pendingConnectTimerRef.current)
+    );
     if (settled.length === 0) {
       return;
     }
@@ -155,7 +163,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   useEffect(() => {
     _moduleTerminalSessionId = registeredSessionId;
-    invalidateGcxCredentialForSession(registeredSessionId);
   }, [registeredSessionId]);
 
   useEffect(() => {
@@ -174,6 +181,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     (opts: {
       status: ConnectionStatus;
       sessionId: string | null;
+      vmId?: string | null;
       error: string | null;
       connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
@@ -186,6 +194,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
       registeredSendCommandRef.current = opts.sendCommand;
+      invalidateGcxCredentialForSession(opts.sessionId, opts.vmId ?? null);
       settleWaiters(opts.status, opts.sessionId);
 
       // When a disconnect/error originates outside openTerminal (e.g. panel button,
@@ -222,6 +231,18 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     registeredDisconnectRef.current?.();
   }, []);
 
+  const unregister = useCallback(() => {
+    disconnect();
+    registeredConnectRef.current = null;
+    registeredDisconnectRef.current = null;
+    registeredSendCommandRef.current = null;
+    setIsTerminalRegistered(false);
+    setRegisteredStatus('disconnected');
+    setRegisteredSessionId(null);
+    setRegisteredError(null);
+    invalidateGcxCredentialForSession(null, null);
+  }, [disconnect]);
+
   const sendCommand = useCallback(async (command: string) => {
     if (!registeredSendCommandRef.current) {
       logger.warn('[TerminalContext] Cannot send command: terminal not registered');
@@ -242,12 +263,19 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       const activeTemplate = activeVmOptsRef.current?.template || '';
       const activeApp = activeVmOptsRef.current?.app || '';
       const activeScenario = activeVmOptsRef.current?.scenario || '';
+      // Omitted options mean use the current sandbox, including during SDK recovery.
       const needsReconnect =
+        vmOpts !== undefined &&
         !needsConnect &&
         (requestedTemplate !== activeTemplate || requestedApp !== activeApp || requestedScenario !== activeScenario);
 
       if (!needsConnect && !needsReconnect) {
-        return Promise.resolve(registeredSessionId);
+        if (registeredStatus === 'connected' && registeredSessionId) {
+          return Promise.resolve(registeredSessionId);
+        }
+        return new Promise((resolve) => {
+          sessionWaitersRef.current.push({ resolve, leftConnected: true });
+        });
       }
 
       if (needsReconnect) {
@@ -285,6 +313,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     isExpanded,
     setIsExpanded,
     _register: register,
+    _unregister: unregister,
   };
 
   return <TerminalContext.Provider value={value}>{children}</TerminalContext.Provider>;

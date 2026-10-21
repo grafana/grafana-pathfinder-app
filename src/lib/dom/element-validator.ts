@@ -73,6 +73,19 @@ function isHidden(element: HTMLElement): boolean {
   return false;
 }
 
+export function isReplaySafeControl(element: HTMLElement): boolean {
+  return (
+    element.matches('button, [role="button"], [role="tab"], [role="menuitem"]') &&
+    !element.matches(':disabled, [aria-disabled="true"]') &&
+    !element.closest('a[href]') &&
+    !(
+      element instanceof HTMLButtonElement &&
+      element.type !== 'button' &&
+      (element.form !== null || element.hasAttribute('type'))
+    )
+  );
+}
+
 /**
  * Check if element is actually visible (not just present in DOM)
  * Validates display, visibility, and opacity on element and all parents

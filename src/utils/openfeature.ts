@@ -183,6 +183,16 @@ const pathfinderFeatureFlags = {
     trackingKey: 'intercept_docs_links',
   },
   /**
+   * Kill switch for implicit section recovery: pausing a section the learner
+   * drifted out of and offering Restore. Read once per page load.
+   */
+  'pathfinder.section-recovery': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'section_recovery',
+  },
+  /**
    * Kill switch for the `guide_progress` and `guide_completed` analytics
    * events. Only stops the events: guide attempts are still tracked locally,
    * and completion records are unaffected.

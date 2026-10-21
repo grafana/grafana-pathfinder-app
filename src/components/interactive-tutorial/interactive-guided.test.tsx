@@ -1528,6 +1528,29 @@ describe('InteractiveGuided — successor ownership', () => {
   });
 });
 
+it('tells its section while a guided interaction is running', async () => {
+  let finish!: (result: string) => void;
+  mockExecuteGuidedStep.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  const onExecutingChange = jest.fn();
+  const cancelsBefore = mockCancel.mock.calls.length;
+  const actions = [{ targetAction: 'highlight' as const, refTarget: '#target' }];
+  render(
+    <InteractiveGuided stepId="checkpoint-drift" internalActions={actions} onExecutingChange={onExecutingChange} />
+  );
+  fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+  await waitFor(() => expect(onExecutingChange).toHaveBeenLastCalledWith(true));
+  expect(mockCancel).toHaveBeenCalledTimes(cancelsBefore);
+  await act(async () => {
+    finish('completed');
+  });
+  await waitFor(() => expect(onExecutingChange).toHaveBeenLastCalledWith(false));
+});
+
 describe('InteractiveGuided — under the completion coordinator', () => {
   it('persists a completeEarly final click during capture when completion collapses the host', async () => {
     const actionOrder: string[] = [];

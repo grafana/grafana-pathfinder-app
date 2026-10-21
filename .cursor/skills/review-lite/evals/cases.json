@@ -1,0 +1,148 @@
+{
+  "version": "review-lite-evals-v1",
+  "note": "Reviewers under test must not read this file. Give them only the skill, the request, and the fixture repository built by build-fixture.mjs.",
+  "synthetic": [
+    {
+      "id": "consumer-break",
+      "purpose": "A small change breaks an invariant that an unchanged direct consumer relies on.",
+      "doubles_as": [],
+      "request": "Review this PR with review-lite: 'Show 1-based step numbers in the progress label'.",
+      "base": {
+        "src/interactive-engine/step-cursor.ts": "export interface StepCursor {\n  completed: readonly string[];\n}\n\nexport function nextStepIndex(stepIds: readonly string[], cursor: StepCursor): number {\n  const done = new Set(cursor.completed);\n  const index = stepIds.findIndex((id) => !done.has(id));\n  return index === -1 ? stepIds.length : index;\n}\n",
+        "src/interactive-engine/step-cursor.test.ts": "import { nextStepIndex } from './step-cursor';\n\ntest('returns the first incomplete step', () => {\n  expect(nextStepIndex(['a', 'b', 'c'], { completed: ['a'] })).toBe(1);\n});\n\ntest('returns the step count when every step is complete', () => {\n  expect(nextStepIndex(['a'], { completed: ['a'] })).toBe(1);\n});\n",
+        "src/interactive-engine/guide-runner.ts": "import { nextStepIndex, StepCursor } from './step-cursor';\n\nexport interface Step {\n  id: string;\n  run: (signal: AbortSignal) => Promise<void>;\n}\n\nexport async function resumeGuide(steps: Step[], cursor: StepCursor, signal: AbortSignal): Promise<string[]> {\n  const executed: string[] = [];\n  for (let index = nextStepIndex(steps.map((step) => step.id), cursor); index < steps.length; index++) {\n    if (signal.aborted) {\n      break;\n    }\n    await steps[index].run(signal);\n    executed.push(steps[index].id);\n  }\n  return executed;\n}\n",
+        "src/components/progress-label.ts": "import { nextStepIndex, StepCursor } from '../interactive-engine/step-cursor';\n\nexport function progressLabel(stepIds: string[], cursor: StepCursor): string {\n  const index = nextStepIndex(stepIds, cursor);\n  return index >= stepIds.length ? 'Complete' : `Step ${index + 1} of ${stepIds.length}`;\n}\n"
+      },
+      "rounds": [
+        {
+          "message": "Show 1-based step numbers in the progress label",
+          "files": {
+            "src/interactive-engine/step-cursor.ts": "export interface StepCursor {\n  completed: readonly string[];\n}\n\n// Returns the 1-based number of the next step so display code can use it directly.\nexport function nextStepIndex(stepIds: readonly string[], cursor: StepCursor): number {\n  const done = new Set(cursor.completed);\n  const index = stepIds.findIndex((id) => !done.has(id));\n  return index === -1 ? stepIds.length + 1 : index + 1;\n}\n",
+            "src/interactive-engine/step-cursor.test.ts": "import { nextStepIndex } from './step-cursor';\n\ntest('returns the first incomplete step number', () => {\n  expect(nextStepIndex(['a', 'b', 'c'], { completed: ['a'] })).toBe(2);\n});\n\ntest('returns one past the step count when every step is complete', () => {\n  expect(nextStepIndex(['a'], { completed: ['a'] })).toBe(2);\n});\n",
+            "src/components/progress-label.ts": "import { nextStepIndex, StepCursor } from '../interactive-engine/step-cursor';\n\nexport function progressLabel(stepIds: string[], cursor: StepCursor): string {\n  const step = nextStepIndex(stepIds, cursor);\n  return step > stepIds.length ? 'Complete' : `Step ${step} of ${stepIds.length}`;\n}\n"
+          }
+        }
+      ],
+      "expected": {
+        "headline": "Changes requested",
+        "must_find": "guide-runner.ts (unchanged) starts its loop at the now 1-based value, so resuming skips a step and the last step never runs; base returned the 0-based index.",
+        "must_not": "Block on comment style or on the progress label, which the PR updated consistently."
+      }
+    },
+    {
+      "id": "validation-added",
+      "purpose": "A change adds imperfect validation where base had none; the pre-existing limitation must not be reported as a widened boundary.",
+      "doubles_as": ["single-agent-no-delegation"],
+      "request": "Review this PR with review-lite: 'Block script URLs in documentation links'. Subagents are not available in this run.",
+      "base": {
+        "src/docs-retrieval/link-opener.ts": "export function openDocLink(href: string, target: Pick<Window, 'open'> = window): void {\n  target.open(href, '_blank', 'noopener,noreferrer');\n}\n",
+        "src/docs-retrieval/content-links.ts": "import { openDocLink } from './link-opener';\n\nexport function handleContentClick(event: MouseEvent): void {\n  const anchor = (event.target as HTMLElement).closest('a');\n  if (!anchor) {\n    return;\n  }\n  event.preventDefault();\n  openDocLink(anchor.getAttribute('href') ?? '');\n}\n"
+      },
+      "rounds": [
+        {
+          "message": "Block script URLs in documentation links",
+          "files": {
+            "src/docs-retrieval/link-opener.ts": "const BLOCKED_SCHEMES = ['javascript:', 'data:', 'vbscript:'];\n\nexport function isSafeDocHref(href: string): boolean {\n  const normalized = href.trim().toLowerCase();\n  return !BLOCKED_SCHEMES.some((scheme) => normalized.startsWith(scheme));\n}\n\nexport function openDocLink(href: string, target: Pick<Window, 'open'> = window): void {\n  if (!isSafeDocHref(href)) {\n    return;\n  }\n  target.open(href, '_blank', 'noopener,noreferrer');\n}\n",
+            "src/docs-retrieval/link-opener.test.ts": "import { isSafeDocHref, openDocLink } from './link-opener';\n\ntest('blocks script schemes', () => {\n  expect(isSafeDocHref('javascript:alert(1)')).toBe(false);\n  expect(isSafeDocHref(' JavaScript:alert(1)')).toBe(false);\n  expect(isSafeDocHref('data:text/html,hi')).toBe(false);\n});\n\ntest('opens ordinary links', () => {\n  const open = jest.fn();\n  openDocLink('https://grafana.com/docs/', { open });\n  expect(open).toHaveBeenCalledWith('https://grafana.com/docs/', '_blank', 'noopener,noreferrer');\n});\n"
+          }
+        }
+      ],
+      "expected": {
+        "headline": "No blocking findings",
+        "must_find": "Nothing blocking. A denylist that misses embedded control characters (for example java\\tscript:) is acceptable as a follow-up, since base opened every href unchecked.",
+        "must_not": "Claim the PR widens a trust boundary, or require an allowlist rewrite as a merge condition."
+      }
+    },
+    {
+      "id": "two-round-fix",
+      "purpose": "Round 1 has a blocker; round 2 fixes it. The reviewer verifies the fix, carries accepted follow-ups, and adds no new merge requirement.",
+      "doubles_as": [],
+      "request": "Review round 1 of this PR with review-lite: 'Pulse the highlighted element during Show me'. Then review round 2 with the round 1 state.",
+      "base": {
+        "src/interactive-engine/show-me.ts": "export async function showMe(element: HTMLElement, signal: AbortSignal): Promise<void> {\n  element.scrollIntoView({ block: 'center' });\n  element.classList.add('pathfinder-highlight');\n  await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));\n  element.classList.remove('pathfinder-highlight');\n}\n"
+      },
+      "rounds": [
+        {
+          "message": "Pulse the highlighted element during Show me",
+          "files": {
+            "src/interactive-engine/pulse.ts": "export function pulseHighlight(element: HTMLElement, periodMs = 250): () => void {\n  element.classList.add('pathfinder-pulse');\n  setInterval(() => element.classList.toggle('pathfinder-pulse-on'), periodMs);\n  return () => {\n    element.classList.remove('pathfinder-pulse', 'pathfinder-pulse-on');\n  };\n}\n",
+            "src/interactive-engine/show-me.ts": "import { pulseHighlight } from './pulse';\n\nexport async function showMe(element: HTMLElement, signal: AbortSignal): Promise<void> {\n  element.scrollIntoView({ block: 'center' });\n  element.classList.add('pathfinder-highlight');\n  const stopPulse = pulseHighlight(element);\n  await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));\n  stopPulse();\n  element.classList.remove('pathfinder-highlight');\n}\n"
+          }
+        },
+        {
+          "message": "Clear the pulse interval when Show me ends",
+          "files": {
+            "src/interactive-engine/pulse.ts": "export function pulseHighlight(element: HTMLElement, periodMs = 250): () => void {\n  element.classList.add('pathfinder-pulse');\n  const interval = setInterval(() => element.classList.toggle('pathfinder-pulse-on'), periodMs);\n  return () => {\n    clearInterval(interval);\n    element.classList.remove('pathfinder-pulse', 'pathfinder-pulse-on');\n  };\n}\n",
+            "src/interactive-engine/pulse.test.ts": "import { pulseHighlight } from './pulse';\n\ntest('stopping the pulse clears its interval and classes', () => {\n  jest.useFakeTimers();\n  const element = document.createElement('div');\n  const stop = pulseHighlight(element, 100);\n  jest.advanceTimersByTime(100);\n  stop();\n  expect(jest.getTimerCount()).toBe(0);\n  expect(element.className).toBe('');\n  jest.useRealTimers();\n});\n"
+          }
+        }
+      ],
+      "expected": {
+        "round_1_headline": "Changes requested",
+        "round_1_must_find": "The interval is never cleared, so every Show me leaks a timer that keeps toggling a class on the element after the step ends.",
+        "round_2_headline": "No blocking findings",
+        "round_2_must_find": "The round 1 blocker is resolved with head evidence; any round 1 follow-up (for example reduced-motion handling) is carried, not re-raised as a requirement.",
+        "must_not": "Introduce a new round 2 merge requirement that round 1 could have raised, or ask again for an accepted follow-up."
+      }
+    },
+    {
+      "id": "clean-control",
+      "purpose": "A correct, tested change. The reviewer must not manufacture a blocker.",
+      "doubles_as": [],
+      "request": "Review this PR with review-lite: 'Label guides with no steps'.",
+      "base": {
+        "src/components/progress-label.ts": "export function progressLabel(stepIds: string[], completed: number): string {\n  return completed >= stepIds.length ? 'Complete' : `Step ${completed + 1} of ${stepIds.length}`;\n}\n"
+      },
+      "rounds": [
+        {
+          "message": "Label guides with no steps",
+          "files": {
+            "src/components/progress-label.ts": "export function progressLabel(stepIds: string[], completed: number): string {\n  if (stepIds.length === 0) {\n    return 'No steps';\n  }\n  return completed >= stepIds.length ? 'Complete' : `Step ${completed + 1} of ${stepIds.length}`;\n}\n",
+            "src/components/progress-label.test.ts": "import { progressLabel } from './progress-label';\n\ntest('labels a guide with no steps', () => {\n  expect(progressLabel([], 0)).toBe('No steps');\n});\n\ntest('labels progress', () => {\n  expect(progressLabel(['a', 'b'], 1)).toBe('Step 2 of 2');\n  expect(progressLabel(['a', 'b'], 2)).toBe('Complete');\n});\n"
+          }
+        }
+      ],
+      "expected": {
+        "headline": "No blocking findings",
+        "must_find": "Nothing blocking.",
+        "must_not": "Raise any blocker."
+      }
+    }
+  ],
+  "adoption_benchmark": {
+    "status": "proposed; not run as part of the prototype",
+    "arms": [
+      { "id": "generic", "description": "The same model with a generic code-review prompt and no concern workflow." },
+      { "id": "review-lite", "description": "The same model with this prototype skill." },
+      {
+        "id": "review-full",
+        "description": "The current /review pipeline. Without independent skeptics it is a constrained variant, not a faithful baseline; record subagent availability per run."
+      }
+    ],
+    "controls": "Same model, revision, tools, knowledge snapshot (pass --knowledge pinned to one registry revision), and execution permissions across arms. Disclose possible future-knowledge leakage for historical PRs.",
+    "historical_candidates": [
+      { "pr": 2009, "claim": "A shortcut review missed three blocking regressions that the full pipeline found." },
+      { "pr": 1971, "claim": "Validation-adding PR: most 'boundary widened' findings were inverted." },
+      { "pr": 1986, "claim": "A low-severity, unreachable copy defect blocked a PR." },
+      {
+        "pr": 1768,
+        "claim": "One finding blocked three rounds because the requirement stated a patch, not an invariant."
+      },
+      { "pr": 1728, "claim": "Four rounds with a new blocker ID every round." },
+      { "pr": 1702, "claim": "Hand-written rounds lost continuity between reviews." },
+      { "pr": 1775, "claim": "A stale contract-anchor finding was discarded by contract-evolution policy." },
+      { "pr": 2193, "claim": "Two review arms disagreed on whether a controller path was part of the defect." }
+    ],
+    "candidate_caveat": "Claims come from a secondhand handoff note. An independent adjudicator must establish the expected defects and acceptable merge decisions for each case before any arm is scored.",
+    "metrics": [
+      "material defects missed (adjudicated)",
+      "unsupported blockers",
+      "unnecessary scope expansion",
+      "rounds to convergence",
+      "wall-clock latency",
+      "billed usage or cost where available; character counts and summed tokens are proxies only"
+    ],
+    "trials": "Repeat at least three trials per arm on a subset including clean controls; report sample size limits instead of claiming equivalence.",
+    "proposed_threshold": "Agree before scoring. Suggested: no additional adjudicated material misses, no increase in unsupported blockers, and at least 50% lower median billed cost on routine cases."
+  }
+}

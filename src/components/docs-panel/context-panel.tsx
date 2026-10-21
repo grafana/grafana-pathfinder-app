@@ -469,15 +469,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
   const secondaryDocs = recommendations.slice(4);
 
-  if (isLoadingRecommendations || isLoadingContext) {
-    return (
-      <div className={styles.recommendationsContainer} data-testid={testIds.contextPanel.recommendationsContainer}>
-        <SkeletonLoader type="recommendations" />
-      </div>
-    );
-  }
+  const isRefreshing = isLoadingRecommendations || isLoadingContext;
 
   if (
+    !isRefreshing &&
     recommendationsError &&
     recommendations.length === 0 &&
     featuredRecommendations.length === 0 &&
@@ -494,7 +489,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
-  if (recommendations.length === 0 && featuredRecommendations.length === 0 && !hasCustomGuidesContent) {
+  if (!isRefreshing && suggestedGuidesCount === 0 && !hasCustomGuidesContent) {
     return (
       <>
         <div className={styles.emptyContainer} data-testid={testIds.contextPanel.emptyState}>
@@ -536,7 +531,11 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         </Alert>
       )}
 
-      <div className={styles.recommendationsContainer} data-testid={testIds.contextPanel.recommendationsContainer}>
+      <div
+        className={styles.recommendationsContainer}
+        data-testid={testIds.contextPanel.recommendationsContainer}
+        aria-busy={isRefreshing}
+      >
         {hasCustomGuidesContent && (
           <CustomGuidesSection
             guides={customGuides}
@@ -548,6 +547,12 @@ export const RecommendationsSection = memo(function RecommendationsSection({
             openDocsPage={openDocsPage}
             assignments={assignments}
           />
+        )}
+
+        {isRefreshing && suggestedGuidesCount === 0 && (
+          <div data-testid={testIds.contextPanel.recommendationsLoading}>
+            <SkeletonLoader type="recommendations" />
+          </div>
         )}
 
         {suggestedGuidesCount > 0 && (

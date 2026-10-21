@@ -89,10 +89,12 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
+  const unregisterTerminal = terminalCtx?._unregister;
+  useEffect(() => () => unregisterTerminal?.(), [unregisterTerminal]);
   const gcxCredential = useGcxCredential(undefined, sessionId);
   useEffect(() => {
-    terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
-  }, [terminalCtx, status, sessionId, error, connect, disconnect, sendCommand]);
+    terminalCtx?._register({ status, sessionId, vmId, error, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, sessionId, vmId, error, connect, disconnect, sendCommand]);
 
   // Sync: when something calls context.openTerminal, the context sets its
   // isExpanded flag. Mirror that into the panel's local state so we actually
@@ -110,15 +112,34 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   // only during the initial connect attempt (autoReconnectAttemptedRef gates
   // this) — NOT when an established session hits a transient error — so that
   // page refresh still triggers auto-reconnect for a VM that was working.
-  const everConnectedRef = useRef(false);
+  const [everConnected, setEverConnected] = useState(status === 'connected');
+  if (status === 'connected' && !everConnected) {
+    setEverConnected(true);
+  }
   useEffect(() => {
     if (status === 'connected') {
-      everConnectedRef.current = true;
       setWasConnected(true);
-    } else if (status === 'error' && !everConnectedRef.current) {
+    } else if (status === 'error' && !everConnected) {
       setWasConnected(false);
     }
-  }, [status]);
+  }, [status, everConnected]);
+
+  const [showReconnecting, setShowReconnecting] = useState(false);
+  const [previousStatus, setPreviousStatus] = useState(status);
+  if (previousStatus !== status) {
+    setPreviousStatus(status);
+    setShowReconnecting(false);
+  }
+  const isRecovering = status === 'connecting' && everConnected;
+  useEffect(() => {
+    if (!isRecovering) {
+      return;
+    }
+    const timer = window.setTimeout(() => setShowReconnecting(true), 2000);
+    return () => window.clearTimeout(timer);
+  }, [isRecovering]);
+  // Keep brief transport blips out of the status UI; actions still use real status.
+  const displayStatus = isRecovering && !showReconnecting ? 'connected' : status;
 
   // Auto-reconnect on mount if user was previously connected (page refresh).
   // Restores the previous VM template/app/scenario so the correct VM type is used.
@@ -369,7 +390,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   // are cancelled, matching how handleConnect routes through context.
   const handleDisconnect = useCallback(() => {
     setWasConnected(false);
-    everConnectedRef.current = false;
+    setEverConnected(false);
     clearScrollback();
     if (terminalInstanceRef.current) {
       terminalInstanceRef.current.writeln('\r\n\x1b[31mDisconnected.\x1b[0m');
@@ -442,7 +463,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       case 'connected':
         return 'Connected';
       case 'connecting':
-        return 'Connecting...';
+        return isRecovering ? 'Reconnecting...' : 'Connecting...';
       case 'error':
         return 'Disconnected';
       case 'disconnected':
@@ -494,15 +515,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               <div
                 className={styles.statusIndicator}
                 role="status"
-                aria-label={getStatusText(status)}
-                title={getStatusText(status)}
+                aria-label={getStatusText(displayStatus)}
+                title={getStatusText(displayStatus)}
               >
-                {isConnecting ? (
+                {displayStatus === 'connecting' ? (
                   <Spinner size="xs" />
                 ) : (
-                  <div className={`${styles.statusDot} ${getStatusDotClass(status)}`} />
+                  <div className={`${styles.statusDot} ${getStatusDotClass(displayStatus)}`} />
                 )}
-                {status !== 'connected' && <span>{getStatusText(status)}</span>}
+                {displayStatus !== 'connected' && <span>{getStatusText(displayStatus)}</span>}
               </div>
               {renderVmExpiry()}
             </div>
@@ -569,15 +590,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             <div
               className={styles.statusIndicator}
               role="status"
-              aria-label={getStatusText(status)}
-              title={getStatusText(status)}
+              aria-label={getStatusText(displayStatus)}
+              title={getStatusText(displayStatus)}
             >
-              {isConnecting ? (
+              {displayStatus === 'connecting' ? (
                 <Spinner size="xs" />
               ) : (
-                <div className={`${styles.statusDot} ${getStatusDotClass(status)}`} />
+                <div className={`${styles.statusDot} ${getStatusDotClass(displayStatus)}`} />
               )}
-              {status !== 'connected' && <span>{getStatusText(status)}</span>}
+              {displayStatus !== 'connected' && <span>{getStatusText(displayStatus)}</span>}
             </div>
             {isExpanded && renderVmExpiry()}
           </div>
