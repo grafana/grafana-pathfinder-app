@@ -119,7 +119,9 @@ it('lets a featured description that exceeds four lines expand and collapse', ()
       />
     );
     const toggle = screen.getByRole('button', { name: 'Read more' });
+    expect(screen.getByText(/A very long overview/)).toHaveStyle({ WebkitLineClamp: '4' });
     fireEvent.click(toggle);
+    expect(screen.getByText(/A very long overview/)).not.toHaveStyle({ WebkitLineClamp: '4' });
     expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
     expect(screen.getByRole('button', { name: 'Read more' })).toHaveAttribute('aria-expanded', 'false');
@@ -152,6 +154,7 @@ it('offers no summary toggle on a featured card unless it opts in to expanding',
       />
     );
     expect(screen.queryByRole('button', { name: 'Read more' })).not.toBeInTheDocument();
+    expect(screen.getByText(/A very long overview/)).not.toHaveStyle({ WebkitLineClamp: '4' });
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(screen.getByText('Module link')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show less' })).not.toBeInTheDocument();
