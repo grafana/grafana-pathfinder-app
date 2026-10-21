@@ -112,6 +112,10 @@ A stamped manifest carries a top-level `stats` key, which reaches `repository.js
 
 A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
 
+### Bundled guides mirrored from interactive-tutorials
+
+The user-facing bundled guides (the `GUIDES` list in `scripts/sync-bundled-guides.sh`) share their id with a copy in [grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials), which is the source of truth. Edit them there. The daily [sync bundled guides workflow](../../.github/workflows/sync-bundled-guides.yml) copies `content.json` and `manifest.json` back, restamps `stats` and `repository.json`, and opens or updates a PR on `automation/sync-bundled-guides` when the bundled copy has drifted. `repository` stays `"bundled"`. A guide that is not yet published upstream is skipped.
+
 ---
 
 ## Tracks

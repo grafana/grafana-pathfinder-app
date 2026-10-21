@@ -1,0 +1,144 @@
+name: Sync bundled guides
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-bundled-guides
+  cancel-in-progress: false
+
+jobs:
+  # Runs npm and the CLI with no credentials. The write token is minted in a
+  # separate job so install scripts here can never reach it (e.g. via $GITHUB_ENV).
+  diff:
+    name: Compare with interactive-tutorials
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+      upstream-sha: ${{ steps.upstream.outputs.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Checkout interactive-tutorials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: grafana/interactive-tutorials
+          path: interactive-tutorials
+          persist-credentials: false
+
+      - name: Record upstream commit
+        id: upstream
+        run: echo "sha=$(git -C interactive-tutorials rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build CLI
+        run: npm run build:cli
+
+      - name: Copy upstream guides
+        run: scripts/sync-bundled-guides.sh interactive-tutorials | tee sync.log
+
+      - name: Regenerate stats and repository.json
+        run: |
+          npm run stats:build
+          npm run repository:build
+          npx prettier --config .prettierrc.js --write src/bundled-interactives
+
+      - name: Detect drift
+        id: diff
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          {
+            echo "## Bundled guide sync"
+            echo
+            echo "Compared against grafana/interactive-tutorials@${UPSTREAM_SHA}."
+            echo
+            echo '```'
+            cat sync.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if git diff --quiet -- src/bundled-interactives; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No drift." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- src/bundled-interactives
+            {
+              echo
+              echo '```'
+              git diff --stat -- src/bundled-interactives
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload synced guides
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: bundled-interactives
+          path: src/bundled-interactives/
+          retention-days: 1
+
+  pull-request:
+    name: Open sync PR
+    needs: diff
+    if: needs.diff.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required by create-github-app-token for OIDC auth to Vault
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download synced guides
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: bundled-interactives
+          path: src/bundled-interactives
+
+      # GITHUB_TOKEN can't be used: its PRs don't trigger CI, and its pushes
+      # aren't signed. The broker entry lives in deployment_tools at
+      # terraform/repositories/grafana-pathfinder-app/github-app-configs/config.yaml.
+      - name: Get GitHub App token
+        id: app-token
+        uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
+        with:
+          github_app: updater-for-ci
+
+      - name: Open or update pull request
+        uses: peter-evans/create-pull-request@67ccf781d68cd99b580ae25a5c18a1cc84ffff1f # 7.0.6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          sign-commits: true
+          add-paths: src/bundled-interactives/**
+          branch: automation/sync-bundled-guides
+          delete-branch: true
+          commit-message: 'chore(bundled-interactives): sync guides from interactive-tutorials'
+          title: 'chore(bundled-interactives): sync guides from interactive-tutorials'
+          body: |
+            The bundled copies of these guides have drifted from [grafana/interactive-tutorials@${{ needs.diff.outputs.upstream-sha }}](https://github.com/grafana/interactive-tutorials/tree/${{ needs.diff.outputs.upstream-sha }}), which is their source of truth.
+
+            Opened by the [sync bundled guides workflow](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}). Each run force-updates this branch, so edit the guide upstream rather than here. Merging ships the change in the next plugin release.
+
+            `repository` and `stats` in each manifest, and `repository.json`, are regenerated here and not copied.
