@@ -65,8 +65,8 @@ func TestGuideProgress_GuideAndPath(t *testing.T) {
 	done := completionsFor(path, "2026-09-14T15:00:00Z")
 
 	guide := assignmentSpec{TargetType: "guide", TargetID: path.Guides[0], TargetSource: "bundled"}
-	if satisfiedFromGuides(mustGuideProgress(t, ev, guide, done[:1])) {
-		t.Error("a guide target is not evaluated")
+	if !satisfiedFromGuides(mustGuideProgress(t, ev, guide, done[:1])) {
+		t.Error("a guide target is evaluated directly")
 	}
 
 	asg := assignmentSpec{TargetType: "path", TargetID: path.ID}
@@ -169,8 +169,8 @@ func TestBundledPathGuides_FallsBackToPathIndex(t *testing.T) {
 	}
 	t.Cleanup(func() { pathIndexFetch = prev })
 
-	guides, found, err := bundledPathGuides(log.DefaultLogger)(context.Background(), "linux-server-integration", "")
-	if err != nil || !found || len(guides) != 1 || guides[0] != "select-platform" {
+	guides, found, err := bundledPathGuides(log.DefaultLogger)(context.Background(), "linux-server-integration", "", "")
+	if err != nil || !found || len(guides) != 1 || guides[0] != (assignmentGuideIdentity{GuideID: "select-platform", GuideSource: "bundled"}) {
 		t.Fatalf("guides = %v, found = %v, err = %v", guides, found, err)
 	}
 }
@@ -351,6 +351,8 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 					case strings.HasSuffix(rawURL, "/online-tracked-path/v1/manifest.json"):
 						return []byte(`{"id": "online-tracked-path", "type": "path", "milestones": ["online-milestone-1"],
 							"tracks": [{"trackId": "ops", "label": "Ops", "guides": ["online-track-guide"]}]}`), nil
+					case strings.HasSuffix(rawURL, "/guides/online-track-slug/manifest.json"):
+						return []byte(`{"id":"online-track-guide"}`), nil
 					default:
 						return nil, fmt.Errorf("unexpected URL %q", rawURL)
 					}

@@ -953,7 +953,7 @@ func TestOnlinePathGuides(t *testing.T) {
 				fetches[tc.target] = 0
 			}
 
-			guides, found, err := app.onlinePathGuides(log.DefaultLogger)(context.Background(), tc.target, tc.track)
+			guides, found, err := app.onlinePathGuides(log.DefaultLogger)(context.Background(), tc.target, tc.track, "")
 
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
@@ -961,8 +961,8 @@ func TestOnlinePathGuides(t *testing.T) {
 			if found != tc.wantFound {
 				t.Errorf("found = %v, want %v", found, tc.wantFound)
 			}
-			if !reflect.DeepEqual(guides, tc.wantGuides) {
-				t.Errorf("guides = %v, want %v", guides, tc.wantGuides)
+			if !reflect.DeepEqual(guides, guideIdentities(tc.wantGuides, "bundled")) {
+				t.Errorf("guides = %v, want %v", guides, guideIdentities(tc.wantGuides, "bundled"))
 			}
 			if fetches[tc.target] != tc.wantFetches {
 				t.Errorf("manifest fetches = %d, want %d", fetches[tc.target], tc.wantFetches)

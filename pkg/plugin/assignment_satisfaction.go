@@ -4,23 +4,17 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
-// Obligation evaluation for GET /assignments/my and the completion-time status
-// write. One completion row must meet a guide on its own, so this reads raw
-// completion specs rather than the collated index.
-
-// assignmentGuideEntry is one guide within an assignment's target, on the wire.
 type assignmentGuideEntry struct {
-	GuideID   string `json:"guideId"`
-	Completed bool   `json:"completed"`
+	GuideID     string `json:"guideId"`
+	GuideSource string `json:"guideSource"`
+	Completed   bool   `json:"completed"`
 }
 
-// satisfiedFromGuides is true when the target resolved and every guide is done.
 func satisfiedFromGuides(guides []assignmentGuideEntry) bool {
 	if len(guides) == 0 {
 		return false
@@ -34,7 +28,7 @@ func satisfiedFromGuides(guides []assignmentGuideEntry) bool {
 }
 
 type resolvedGuides struct {
-	guides []string
+	guides []assignmentGuideIdentity
 	err    error
 }
 
@@ -68,7 +62,7 @@ func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []co
 	for i, guideID := range guideIDs {
 		done := false
 		for _, rec := range completions {
-			if rec.GuideID != guideID {
+			if rec.GuideID != guideID.GuideID || rec.GuideSource != guideID.GuideSource {
 				continue
 			}
 			at, ok := parseCompletionTime(rec.CompletedAt)
@@ -81,15 +75,12 @@ func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []co
 			done = true
 			break
 		}
-		entries[i] = assignmentGuideEntry{GuideID: guideID, Completed: done}
+		entries[i] = assignmentGuideEntry{GuideID: guideID.GuideID, GuideSource: guideID.GuideSource, Completed: done}
 	}
 	return entries, nil
 }
 
-// assignmentGuides is the guides an assignment requires, nil when unresolved.
-// Guide targets stay unresolved: grading a whole path would mark a narrower
-// obligation done. A track assignment is graded against that track's guides.
-func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) ([]string, error) {
+func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) ([]assignmentGuideIdentity, error) {
 	if e.resolved == nil {
 		e.resolved = map[string]resolvedGuides{}
 	}
@@ -98,6 +89,19 @@ func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) ([]string, er
 		return cached.guides, cached.err
 	}
 	guides, err := e.resolveGuides(asg)
+	seen := make(map[assignmentGuideIdentity]bool, len(guides))
+	unique := make([]assignmentGuideIdentity, 0, len(guides))
+	for _, guide := range guides {
+		if guide.GuideID == "" || guide.GuideSource == "" {
+			unique = nil
+			break
+		}
+		if !seen[guide] {
+			seen[guide] = true
+			unique = append(unique, guide)
+		}
+	}
+	guides = unique
 	e.resolved[key] = resolvedGuides{guides: guides, err: err}
 	return guides, err
 }
@@ -106,19 +110,19 @@ func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) ([]string, er
 // failed, so the target may exist.
 var errAssignmentUncheckable = errors.New("assignment target could not be checked")
 
-// resolveGuides returns the first source's answer that finds the target. A
-// failing source is logged and skipped.
-func (e *obligationEvaluator) resolveGuides(asg assignmentSpec) ([]string, error) {
+func (e *obligationEvaluator) resolveGuides(asg assignmentSpec) ([]assignmentGuideIdentity, error) {
 	if asg.TargetType == assignmentTargetGuide {
-		e.logger.Error("assignment guide target is not evaluated", "targetType", asg.TargetType, "targetId", asg.TargetID)
-		return nil, nil
+		if asg.TargetID == "" || asg.TargetSource == "" || asg.TrackID != "" {
+			return nil, nil
+		}
+		return []assignmentGuideIdentity{{GuideID: asg.TargetID, GuideSource: asg.TargetSource}}, nil
 	}
 	if asg.TargetType != assignmentTargetPath || asg.TargetID == "" {
 		return nil, nil
 	}
 	failed := false
 	for _, source := range e.sources {
-		guides, found, err := source(e.ctx, asg.TargetID, asg.TrackID)
+		guides, found, err := source(e.ctx, asg.TargetID, asg.TrackID, asg.TargetSource)
 		if err != nil {
 			failed = true
 			e.logger.Info("assignment guide source failed", "targetId", asg.TargetID, "trackId", asg.TrackID, "error", err)
@@ -150,7 +154,7 @@ func (a *App) lazyCustomPathGuides(r *http.Request, logger log.Logger) pathGuide
 	var source pathGuideSource
 	var loadErr error
 	loaded := false
-	return func(ctx context.Context, targetID, trackID string) ([]string, bool, error) {
+	return func(ctx context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
 		if !loaded {
 			loaded = true
 			source, loadErr = a.drainCustomPathGuides(r, logger)
@@ -161,7 +165,7 @@ func (a *App) lazyCustomPathGuides(r *http.Request, logger log.Logger) pathGuide
 		if source == nil {
 			return nil, false, nil
 		}
-		return source(ctx, targetID, trackID)
+		return source(ctx, targetID, trackID, targetSource)
 	}
 }
 
@@ -271,6 +275,15 @@ func (a *App) dispatchStatusWrite(r *http.Request, logger log.Logger, work func(
 	go run()
 }
 
+func containsAssignmentGuide(guides []assignmentGuideIdentity, rec completionRecordSpec) bool {
+	for _, guide := range guides {
+		if guide.GuideID == rec.GuideID && guide.GuideSource == rec.GuideSource {
+			return true
+		}
+	}
+	return false
+}
+
 func isStatusSatisfied(rec assignmentSpec) bool {
 	return rec.StatusSatisfied != nil && *rec.StatusSatisfied
 }
@@ -300,7 +313,7 @@ func (a *App) syncSatisfiedAssignments(r *http.Request, userID string, just comp
 			logger.Info("assignment status write skipped", "targetId", rec.TargetID, "error", err)
 			continue
 		}
-		if slices.Contains(guideIDs, just.GuideID) {
+		if containsAssignmentGuide(guideIDs, just) {
 			candidates = append(candidates, rec)
 		}
 	}
