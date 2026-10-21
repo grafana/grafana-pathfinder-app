@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { copyTextToClipboard } from '../../lib/clipboard';
 import type { LearningInsightsAssignment, LearningInsightsResponse } from '../../types/learning-insights';
 import { learningLink, personName, utcTime } from './insights.helpers';
 import type { InsightsStyles } from './learning-insights.styles';
@@ -30,21 +31,11 @@ function AssignmentEvidence({
     if (!link) {
       return;
     }
-    void navigator.clipboard?.writeText(link).then(
-      () => {
-        if (mounted.current) {
-          setCopyState('Learning link copied.');
-        }
-      },
-      () => {
-        if (mounted.current) {
-          setCopyState('Could not copy. Use the open learning content link.');
-        }
+    void copyTextToClipboard(link).then((copied) => {
+      if (mounted.current) {
+        setCopyState(copied ? 'Learning link copied.' : 'Could not copy. Use the open learning content link.');
       }
-    );
-    if (!navigator.clipboard) {
-      setCopyState('Copy is unavailable in this browser. Use the open learning content link.');
-    }
+    });
   };
   const known = row.status !== 'unknown';
   return (

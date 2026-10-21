@@ -212,6 +212,13 @@ test('browser role gate avoids reporting fetch for a nonadmin', () => {
   expect(useLearningInsights).not.toHaveBeenCalled();
 });
 
+test('server-admin flag does not substitute for the current-org role', () => {
+  config.bootData.user.orgRole = OrgRole.Viewer;
+  config.bootData.user.isGrafanaAdmin = true;
+  render(<LearningInsightsPage />);
+  expect(useLearningInsights).not.toHaveBeenCalled();
+});
+
 test('period selector requests complete UTC days and refresh remains actionable', () => {
   render(<LearningInsightsPage />);
   fireEvent.change(screen.getByLabelText('Completion period'), { target: { value: '7' } });

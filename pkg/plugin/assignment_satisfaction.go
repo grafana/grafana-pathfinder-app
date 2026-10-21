@@ -62,7 +62,7 @@ func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []co
 	for i, guideID := range guideIDs {
 		done := false
 		for _, rec := range completions {
-			if rec.GuideID != guideID.GuideID || rec.GuideSource != guideID.GuideSource {
+			if rec.GuideID != guideID.GuideID || rec.GuideSource != guideID.GuideSource || rec.CompletionPercent < 100 {
 				continue
 			}
 			at, ok := parseCompletionTime(rec.CompletedAt)

@@ -85,7 +85,9 @@ export function Overview({ data, styles: s, onPerson, onAssignments }: Props) {
             <div className={s.legend}>
               <span className={s.success}>{number(counts.complete)} complete</span>
               <span className={s.warning}>{number(counts.outstanding)} outstanding</span>
-              <span>{number(counts.unknown)} unknown</span>
+              <span>
+                {counts.unknown} unknown{partial ? ' in returned records' : ''}
+              </span>
             </div>
             <p className={s.muted} style={{ textAlign: 'center', marginTop: 12 }}>
               {number(active)} active obligations · {number(counts.overdue)} of the recorded outstanding are overdue.{' '}
@@ -140,7 +142,10 @@ export function Overview({ data, styles: s, onPerson, onAssignments }: Props) {
             <div className={s.tableWrap}>
               <table className={s.table}>
                 <caption>
-                  {partial ? 'Recorded lower-bound completions' : 'Guide completions'} by interval [from, to)
+                  {partial
+                    ? 'Observed completions; missing evidence may change interval placement'
+                    : 'Guide completions'}{' '}
+                  by interval [from, to)
                 </caption>
                 <thead>
                   <tr>
@@ -154,7 +159,7 @@ export function Overview({ data, styles: s, onPerson, onAssignments }: Props) {
                     <tr key={bucket.from}>
                       <td>{utcTime(bucket.from)}</td>
                       <td>{utcTime(bucket.to)}</td>
-                      <td>{number(bucket.count)}</td>
+                      <td>{bucket.count}</td>
                     </tr>
                   ))}
                 </tbody>

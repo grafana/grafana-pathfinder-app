@@ -40,7 +40,7 @@ The response has these fields; arrays are never null:
 
 Each request performs a fresh bounded read. There is **no reporting cache**, no cache hit bypassing authorization, and no stale replay; responses carry `Cache-Control: no-store`. A displayed `asOf` describes the last successful response, not an automatic promise that the page is continuously live.
 
-The completion and assignment LIST drains each stop at **20 pages or 10,000 retained rows**, under a **30-second request deadline**. The shared client caps each page body at **8 MiB** (at most 160 MiB read per kind). These are safety limits, not total stack capacity promises. Continuation tokens are followed; repeated tokens, budget exhaustion, timeouts, unsupported reads, and failed fetches are reported rather than silently treated as complete coverage. Target-resolution failures remain unknown.
+The completion and assignment LIST drains each stop at **20 pages or 10,000 retained rows**, under a **30-second data-read/evaluation deadline after identity verification**. The shared client caps each page body at **8 MiB** (at most 160 MiB read per kind). These are safety limits, not total stack capacity promises. Continuation tokens are followed; repeated tokens, budget exhaustion, timeouts, unsupported reads, and failed fetches are reported rather than silently treated as complete coverage. Target-resolution failures remain unknown.
 
 ## Metric definitions
 
@@ -50,7 +50,7 @@ A guide completion is a distinct tenant/person/**guide source**/guide ID with te
 
 Unique recorded completers are distinct subjects in those completion rows. Daily trends, guide rankings, and recent completions derive from the same deduplicated rows. Rankings mean **most completed**, not most viewed or started. Recent completions are not a raw attempt/event stream: a later duplicate within the period does not replace its earliest qualifying row. Changing the interval can change which timestamp qualifies.
 
-Do not join by title, bare guide slug, or display name. Do not sum path-level records and milestone-guide totals as equivalent guide completions. Evidence is self-reported, including manual/skipped/objective-based completion methods; it is **not attested mastery, compliance, or proof of a content revision**.
+Do not join by title, bare guide slug, or display name. Do not sum path-level records and milestone-guide totals as equivalent guide completions. The stored contract lacks a guide-versus-journey discriminator: `learning-journey` rows count only when a nonempty `pathId` differs from `guideId` (identifiable milestone evidence). Other journey-shaped rows are excluded with `journey-identity-ambiguous`, making the report partial and preventing negative assignment conclusions from that history. Evidence is self-reported, including manual/skipped/objective-based completion methods; it is **not attested mastery, compliance, or proof of a content revision**.
 
 ### Current assignments
 

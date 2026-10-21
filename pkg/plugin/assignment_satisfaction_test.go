@@ -114,8 +114,12 @@ func TestGuideProgress_AcceptCompletionsFrom(t *testing.T) {
 	if met(early) {
 		t.Error("a completion before acceptCompletionsFrom does not count")
 	}
+	if met(early, late) {
+		t.Error("a later partial record is not terminal evidence")
+	}
+	late.CompletionPercent = 100
 	if !met(early, late) {
-		t.Error("a later completion counts, including one after dueAt and under 100 percent")
+		t.Error("a later terminal completion counts, including one after dueAt")
 	}
 	exact := rec("user:1", "bundled", guideID, guideID, "interactive", "", "objectives", asg.AcceptCompletionsFrom, 100)
 	if !met(exact) {
@@ -153,6 +157,10 @@ func TestGuideProgress_PartialRecordDoesNotSatisfyAssignment(t *testing.T) {
 	}
 	if met(partial, otherGuide) {
 		t.Error("a completed record for a different guide does not satisfy the assignment")
+	}
+	partial.CompletedAt = "2026-06-01T15:00:00Z"
+	if met(partial) {
+		t.Error("a timestamp without terminal percentage does not satisfy the assignment")
 	}
 	if !met(completed) {
 		t.Error("a completed record satisfies the assignment")

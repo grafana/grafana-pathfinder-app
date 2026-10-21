@@ -26,7 +26,7 @@ func TestDirectGuideProgress_SourceAndTerminalEvidence(t *testing.T) {
 		{"terminal completion", "app-platform", "2026-02-01T00:00:00Z", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rows := []completionRecordSpec{{GuideID: asg.TargetID, GuideSource: tc.source, CompletedAt: tc.at}}
+			rows := []completionRecordSpec{{GuideID: asg.TargetID, GuideSource: tc.source, CompletedAt: tc.at, CompletionPercent: 100}}
 			guides := mustGuideProgress(t, newTestEvaluator(), asg, rows)
 			if len(guides) != 1 || guides[0].GuideSource != asg.TargetSource || satisfiedFromGuides(guides) != tc.want {
 				t.Fatalf("guides = %+v, want completed %v", guides, tc.want)
@@ -54,8 +54,8 @@ func TestCustomPathGuides_PreservesMemberSources(t *testing.T) {
 	ev := newTestEvaluator(source)
 	asg := assignmentSpec{TargetType: "path", TargetID: path.ID, TargetSource: "app-platform"}
 	rows := []completionRecordSpec{
-		{GuideID: "local", GuideSource: "app-platform", CompletedAt: "2026-01-01T00:00:00Z"},
-		{GuideID: "external", GuideSource: "app-platform", CompletedAt: "2026-01-01T00:00:00Z"},
+		{GuideID: "local", GuideSource: "app-platform", CompletedAt: "2026-01-01T00:00:00Z", CompletionPercent: 100},
+		{GuideID: "external", GuideSource: "app-platform", CompletedAt: "2026-01-01T00:00:00Z", CompletionPercent: 100},
 	}
 	guides := mustGuideProgress(t, ev, asg, rows)
 	want := []assignmentGuideEntry{{GuideID: "local", GuideSource: "app-platform", Completed: true}, {GuideID: "external", GuideSource: "online-cdn"}}

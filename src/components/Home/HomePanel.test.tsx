@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+import { OrgRole } from '@grafana/data';
 import { render, screen } from '@testing-library/react';
 import { HomePanelRenderer } from './HomePanel';
 import { sidebarState } from '../../global-state/sidebar';
@@ -134,20 +135,20 @@ describe('HomePanelRenderer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     capturedOnOpenGuide = undefined;
-    config.bootData.user.orgRole = 'Viewer';
+    config.bootData.user.orgRole = OrgRole.Viewer;
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
     (panelModeManager.getMode as jest.Mock).mockReturnValue('sidebar');
   });
 
   describe('composition', () => {
     it('discovers insights only for current-org administrators', () => {
-      config.bootData.user.orgRole = 'Admin';
+      config.bootData.user.orgRole = OrgRole.Admin;
       const { rerender } = render(<HomePanelRenderer />);
       expect(screen.getByRole('link', { name: 'Learning insights' })).toHaveAttribute(
         'href',
         '/a/grafana-pathfinder-app/learning-insights'
       );
-      config.bootData.user.orgRole = 'Viewer';
+      config.bootData.user.orgRole = OrgRole.Viewer;
       rerender(<HomePanelRenderer />);
       expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
     });

@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
 import { useStyles2 } from '@grafana/ui';
 import { InsightsSymbol } from './InsightsSymbol';
-import { useLearningInsights } from '../../hooks/useLearningInsights';
+import { useLearningInsights } from '../../hooks';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { Assignments } from './Assignments';
 import { Overview } from './Overview';
@@ -234,13 +234,13 @@ function AuthorizedLearningInsights() {
 export default function LearningInsightsPage() {
   const s = useStyles2(getStyles);
   const user = config.bootData.user;
-  if (!user?.isGrafanaAdmin && user?.orgRole !== 'Admin') {
+  if (user?.orgRole !== 'Admin') {
     return (
       <main className={s.page}>
         <h1>Learning insights</h1>
         <p className={s.notice}>
-          Learning insights is available to stack and current-organization admins. Switch to an organization you
-          administer or ask an admin for access.
+          Learning insights is available to current-organization admins. Switch to an organization you administer or ask
+          an admin for access.
         </p>
         <p className={s.muted}>
           This browser check is for navigation only. The server independently verifies reporting permissions.

@@ -4,7 +4,7 @@ import { Alert, LoadingPlaceholder } from '@grafana/ui';
 import { config } from '@grafana/runtime';
 import { prefixRoute } from '../utils/utils.routing';
 
-const LearningInsightsPage = lazy(() => import('./LearningInsights/LearningInsightsPage'));
+const LearningInsightsPage = lazy(() => import('./LearningInsights'));
 
 class LearningInsightsPanel extends SceneObjectBase {
   static Component = LearningInsightsRenderer;
