@@ -1,5 +1,6 @@
 import { waitForReactUpdates } from '../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS } from './constants';
 import logoSvg from '../img/logo.svg';
 import {
   describeElement,
@@ -52,10 +53,14 @@ export interface CommentBoxStepInfo {
   progress: 'performed' | 'position';
 }
 
+export function performedStepPercent(completedCount: number, total: number): number {
+  return (completedCount / total) * 100;
+}
+
 function progressBarPercent(stepInfo: CommentBoxStepInfo): number {
   switch (stepInfo.progress) {
     case 'performed':
-      return (stepInfo.completedSteps.length / stepInfo.total) * 100;
+      return performedStepPercent(stepInfo.completedSteps.length, stepInfo.total);
     case 'position':
       return ((stepInfo.current + 1) / stepInfo.total) * 100;
     default:
@@ -103,6 +108,12 @@ export class NavigationManager {
     document.querySelectorAll('.interactive-guided-active').forEach((el) => {
       el.classList.remove('interactive-guided-active');
     });
+  }
+
+  getOwnedCommentBox(): HTMLElement | null {
+    return (
+      Array.from(this.ownedHighlights).find((element) => element.classList.contains('interactive-comment-box')) ?? null
+    );
   }
 
   clearOwnedHighlights(): void {
@@ -196,6 +207,7 @@ export class NavigationManager {
     );
 
     document.body.appendChild(commentBox);
+    this.ownedHighlights.add(commentBox);
 
     return commentBox;
   }
@@ -892,7 +904,7 @@ export class NavigationManager {
       progressContainer.className = 'interactive-comment-progress-container';
 
       const progressBar = document.createElement('div');
-      progressBar.className = 'interactive-comment-progress-bar';
+      progressBar.className = INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS;
       progressBar.style.width = `${progressBarPercent(stepInfo)}%`;
 
       progressContainer.appendChild(progressBar);

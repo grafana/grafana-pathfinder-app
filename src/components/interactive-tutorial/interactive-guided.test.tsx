@@ -94,7 +94,7 @@ jest.mock('../../constants/interactive-config', () => ({
     guided: { stepTimeout: 120000, hoverDwell: 500 },
     delays: {},
   })),
-  INTERACTIVE_CONFIG: { guided: { stepTimeout: 120000 } },
+  INTERACTIVE_CONFIG: jest.requireActual('../../constants/interactive-config').INTERACTIVE_CONFIG,
 }));
 
 // ─── Mock DOM utils ──────────────────────────────────────────────────────────
@@ -183,6 +183,7 @@ jest.mock('../../interactive-engine', () => ({
     ensureNavigationOpen: jest.fn().mockResolvedValue(undefined),
     ensureElementVisible: jest.fn().mockResolvedValue(undefined),
   })),
+  performedStepPercent: jest.requireActual('../../interactive-engine/navigation-manager').performedStepPercent,
 }));
 
 // ─── Mock panel-mode (full-screen -> sidebar handoff) ────────────────────────
@@ -216,6 +217,109 @@ beforeEach(() => {
   mockMarkSkipped.mockImplementation(() => {
     mockStoredCompleted = true;
   });
+});
+
+describe('InteractiveGuided terminal presentation with real handler and comment box', () => {
+  it.each([
+    { outcome: 'completed', total: 1 },
+    { outcome: 'skipped', total: 1 },
+    { outcome: 'completed', total: 2 },
+    { outcome: 'skipped', total: 2 },
+  ] as const)(
+    'synchronizes both bars on $outcome in a $total-action tour and persists before dismissal',
+    async ({ outcome, total }) => {
+      jest.useFakeTimers();
+      const { GuidedHandler: RealGuidedHandler } = jest.requireActual(
+        '../../interactive-engine/action-handlers/guided-handler'
+      );
+      const { NavigationManager: RealNavigationManager } = jest.requireActual(
+        '../../interactive-engine/navigation-manager'
+      );
+      const { GuidedHandler } = jest.requireMock('../../interactive-engine');
+      const { querySelectorAllEnhanced } = jest.requireMock('../../lib/dom');
+      const target = document.createElement('button');
+      target.id = 'paired-target';
+      document.body.appendChild(target);
+      querySelectorAllEnhanced.mockReturnValue({ elements: [target], usedFallback: false });
+      const navigation = new RealNavigationManager();
+      navigation.ensureNavigationOpen = jest.fn().mockResolvedValue(undefined);
+      navigation.ensureElementVisible = jest.fn().mockResolvedValue(undefined);
+      navigation.highlightWithComment = jest.fn(
+        async (
+          _target: HTMLElement,
+          comment: string,
+          _cleanup: boolean,
+          info: unknown,
+          _skip: unknown,
+          cancel: () => void
+        ) => {
+          navigation.showCenteredComment(comment, info, cancel, undefined, undefined, { skipAnimations: true });
+        }
+      );
+      const handler = new RealGuidedHandler({}, navigation, async () => {});
+      GuidedHandler.mockImplementationOnce(() => handler);
+      const onComplete = jest.fn();
+      const view = render(
+        <InteractiveGuided
+          stepId="paired-progress"
+          onComplete={onComplete}
+          internalActions={Array.from({ length: total }, () => ({
+            targetAction: 'button' as const,
+            refTarget: '#paired-target',
+            targetComment: 'Activate the target',
+            isSkippable: true,
+          }))}
+        />
+      );
+      try {
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '0%' });
+        expect(view.container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '0%' });
+        if (total === 2) {
+          await act(async () => {
+            target.click();
+            await jest.advanceTimersByTimeAsync(500);
+          });
+          expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '50%' });
+          expect(view.container.querySelector('.interactive-guided-progress-fill')).toHaveStyle({ width: '50%' });
+        }
+        await act(async () => {
+          if (outcome === 'skipped') {
+            document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: total - 1 } }));
+          } else {
+            target.click();
+          }
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+        expect(view.container.querySelector('.interactive-guided')).toHaveAttribute(
+          'data-test-step-state',
+          'completed'
+        );
+        expect(view.container.querySelector('.interactive-guided-completed')).toBeInTheDocument();
+        expect(view.container.querySelector('.interactive-guided-progress-fill')).toBeNull();
+        expect(view.container.querySelector('.interactive-guided-instruction')).toBeNull();
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(10000);
+        });
+        expect(onComplete).toHaveBeenCalledTimes(1);
+        expect(mockStoredCompleted).toBe(true);
+        const box = document.querySelector('.interactive-comment-box')!;
+        expect(Array.from(box.querySelectorAll('button'), (button) => button.textContent)).toEqual(['Close']);
+        fireEvent.click(box.querySelector('button')!);
+        expect(box).not.toBeInTheDocument();
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      } finally {
+        view.unmount();
+        handler.cancel();
+        target.remove();
+        jest.useRealTimers();
+      }
+    }
+  );
 });
 
 describe('InteractiveGuided — double skip button (issue #786)', () => {
@@ -513,6 +617,7 @@ describe('InteractiveGuided — cancellation', () => {
         .spyOn(target, 'getBoundingClientRect')
         .mockReturnValue({ left: 100, right: 200, top: 100, bottom: 140, width: 100, height: 40 } as DOMRect);
       const navigation = {
+        getOwnedCommentBox: jest.fn(() => null),
         ensureNavigationOpen: jest.fn(),
         ensureElementVisible: jest.fn(),
         expandParentNavigationSection: jest.fn(),
@@ -1594,6 +1699,7 @@ describe('InteractiveGuided — under the completion coordinator', () => {
       .spyOn(target, 'getBoundingClientRect')
       .mockReturnValue({ left: 100, right: 200, top: 100, bottom: 140, width: 100, height: 40 } as DOMRect);
     const navigation = {
+      getOwnedCommentBox: jest.fn(() => null),
       ensureNavigationOpen: jest.fn(),
       ensureElementVisible: jest.fn(),
       expandParentNavigationSection: jest.fn(),
