@@ -37,6 +37,7 @@ it('refetches context and recommendations when the auto-open guide activation ch
   mockGetContextData.mockResolvedValue({
     currentPath: '/explore',
     tags: [],
+    dataSources: [],
     isLoading: false,
     recommendations: [],
     featuredRecommendations: [],

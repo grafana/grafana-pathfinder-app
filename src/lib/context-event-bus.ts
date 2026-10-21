@@ -12,6 +12,7 @@ interface BufferedEvent {
 
 const BUFFER_SIZE = 10;
 const BUFFER_TTL = 300000; // 5 minutes
+const BUILT_IN_DATASOURCE_TYPE = 'datasource';
 
 let echoLoggingInitialized = false;
 let currentDatasourceType: string | null = null;
@@ -159,7 +160,7 @@ export function initializeEchoLogging(): void {
         if (event.type === 'meta-analytics' && event.payload?.eventName === 'data-request') {
           const datasourceType = event.payload?.datasourceType;
           const source = event.payload?.source;
-          if (datasourceType && source) {
+          if (datasourceType && source && datasourceType !== BUILT_IN_DATASOURCE_TYPE) {
             currentDatasourceType = datasourceType;
             addToEventBuffer({ datasourceType, timestamp: Date.now(), source: `${source}-query` });
           }
