@@ -13,7 +13,7 @@ import { buildServer } from '../server';
 
 export async function runStdio(): Promise<void> {
   const sessionStore = await getDefaultSessionStore();
-  const server = buildServer({ sessionStore });
+  const server = buildServer({ sessionStore, identityFromEnvironment: true });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 

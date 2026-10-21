@@ -441,6 +441,13 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  */
 const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
+    violation: 'types/author-defaults.ts',
+    reason:
+      'Fallback author names shared by the block editor and the authoring CLI/MCP. Imported only from src/cli/**, ' +
+      'which buildModuleGraph() does not cover; drop this entry once an app module imports it.',
+    tracking: '#1923',
+  },
+  {
     violation: 'types/v1-recommender.types.ts',
     reason:
       'Every production importer uses `import type`, but v1-recommender.types.test.ts value-imports ' +

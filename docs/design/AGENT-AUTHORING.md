@@ -100,9 +100,13 @@ pathfinder-cli create <dir>
   --id <kebab-string>                 Guide identifier (optional, kebab-case)
   --type <guide|path|journey>         Package type (default: guide)
   --description <string>              Package description
+  --author-name <string>              Who wrote the guide (default: git user.name, then pathfinder-mcp)
+  --author-team <string>              Team that owns the guide
 ```
 
 Creates `<dir>/content.json` and `<dir>/manifest.json` with the provided values. The `schemaVersion` is set to `CURRENT_SCHEMA_VERSION` in both files. The `content.json` starts with an empty `blocks` array.
+
+**Author.** `manifest.author` is always written. An explicit `--author-name` wins; otherwise the CLI uses git's `user.name`, then falls back to `pathfinder-mcp`. The OS username is never used — in Docker or CI it reads `root` or `runner`. The fallback differs from the block editor's `pathfinder-block-editor` so a guide's author shows which surface produced it. Missing author metadata never blocks or invalidates anything. See [Author defaults](../developer/package-authoring.md#author-defaults).
 
 **ID generation.** When `--id` is omitted, the CLI generates a default of the form `<kebab-of-title>-<random-suffix>`, where the suffix is 6 characters of base32 entropy (e.g., `loki-setup-x7q2k1`). The suffix makes ID collisions in the target App Platform namespace statistically negligible without any pre-publish lookup, so the agent never has to coordinate naming with a remote registry. If the agent intentionally wants to overwrite an existing guide, it can pass an explicit `--id` matching the existing resource name; that path is the only one where the publish step needs the "GET-before-POST" overwrite check.
 
