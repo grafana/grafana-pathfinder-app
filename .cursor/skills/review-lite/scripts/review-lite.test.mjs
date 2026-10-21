@@ -369,6 +369,17 @@ describe('finish', () => {
     assert.match(outcome.report, /Unresolved: `security`: Could not read the proxy handler\./);
   });
 
+  test('a failed finish removes previously derived report and state', () => {
+    const { runDir } = interactiveRun();
+    finishWith(runDir, result(runDir));
+    assert.ok(existsSync(join(runDir, 'report.md')));
+    assert.ok(existsSync(join(runDir, 'state.json')));
+    writeFileSync(join(runDir, 'result.json'), '{not json');
+    assert.throws(() => finish({ run: runDir, input: join(runDir, 'result.json') }), /is not valid JSON/);
+    assert.ok(!existsSync(join(runDir, 'report.md')));
+    assert.ok(!existsSync(join(runDir, 'state.json')));
+  });
+
   test('repeated finish on identical input produces identical report and state', () => {
     const { runDir } = interactiveRun();
     const value = result(runDir, { findings: [blocker, followUp], clearances: [clearance] });
