@@ -4,6 +4,7 @@ import { RecommendationsSection } from './context-panel';
 import { PLUGIN_BASE_URL } from '../../constants';
 import { testIds } from '../../constants/testIds';
 import type { ResolvedAssignment } from '../../learning-paths';
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class {},
@@ -20,6 +21,11 @@ jest.mock('@grafana/runtime', () => {
     __mockPush: mockPush,
   };
 });
+
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportAppInteraction: jest.fn(),
+}));
 
 jest.mock('@grafana/i18n', () => ({
   t: jest.fn((key: string, fallback: string) => fallback),
@@ -119,6 +125,97 @@ describe('RecommendationsSection', () => {
         packageManifest: { id: 'alerting-101', type: 'guide' },
       }
     );
+  });
+
+  it.each([
+    { featured: true, interactionLocation: 'featured_card_button' },
+    { featured: false, interactionLocation: 'main_card_button' },
+  ])('reports the launch from the $interactionLocation location', ({ featured, interactionLocation }) => {
+    const recommendation = {
+      title: 'Alerting 101',
+      url: '',
+      contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+      type: 'package' as const,
+      summary: 'Learn alerting basics.',
+      matchAccuracy: 0.9,
+      totalSteps: 4,
+      completionPercentage: 25,
+      manifest: { id: 'alerting-101', type: 'guide' },
+    };
+    render(
+      <RecommendationsSection
+        recommendations={featured ? [] : [recommendation]}
+        featuredRecommendations={featured ? [recommendation] : []}
+        customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Resume/ }));
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+      content_title: 'Alerting 101',
+      content_url: recommendation.contentUrl,
+      content_type: 'interactive-guide',
+      interaction_location: interactionLocation,
+      match_accuracy: 0.9,
+      total_milestones: 4,
+      completion_percentage: 25,
+    });
+  });
+
+  it('reports a docs page launch without milestone or completion fields and opens it as a learning journey', () => {
+    const openLearningJourney = jest.fn();
+    const openDocsPage = jest.fn();
+    render(
+      <RecommendationsSection
+        recommendations={[{ title: 'Docs page', url: 'https://grafana.com/docs/x/', type: 'docs-page' }]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={openLearningJourney}
+        openDocsPage={openDocsPage}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Read' }));
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+      content_title: 'Docs page',
+      content_url: 'https://grafana.com/docs/x/',
+      content_type: expect.any(String),
+      interaction_location: 'main_card_button',
+      match_accuracy: 0,
+    });
+    expect(openDocsPage).toHaveBeenCalledWith('https://grafana.com/docs/x/', 'Docs page', undefined);
   });
 
   it('displays path-type package as learning path, not interactive guide', () => {

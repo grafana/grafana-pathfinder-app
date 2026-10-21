@@ -16,8 +16,9 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 | `learning-paths.hook.ts`                       | Main `useLearningPaths()` hook — unified state management                                               |
 | `streak-tracker.ts`                            | Streak calculation, milestones, and display helpers                                                     |
 | `fetch-path-guides.ts`                         | Fetches guide lists from remote `index.json` for URL-based paths                                        |
-| `useNextLearningAction.ts`                     | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar                    |
+| `useNextLearningAction.ts`                     | `useNextLearningAction()`, `computeNextAction()` and `resolveCurrentGuideUrl()` for the UserProfileBar  |
 | `useDiscoverMore.ts`                           | `useDiscoverMore()` hook — surfaces external learning paths for the My Learning "Discover more" section |
+| `hub-learning.ts`                              | Selectors for the sidebar hub: the path to resume and the tile counts                                   |
 | `learning-paths.test.ts`                       | Data-integrity tests for path, badge, and guide metadata definitions                                    |
 | `fetch-path-guides.test.ts`                    | Tests for remote guide fetching                                                                         |
 | `app-platform-paths.test.ts`                   | Tests for App Platform catalogue adaptation                                                             |
@@ -27,6 +28,7 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 | `reset-path-completion.test.ts`                | Integration tests for path reset behavior                                                               |
 | `useNextLearningAction.test.ts`                | Tests for next-action computation                                                                       |
 | `useDiscoverMore.test.ts`                      | Tests for the Discover more hook                                                                        |
+| `hub-learning.test.ts`                         | Tests for the sidebar hub selectors                                                                     |
 
 ## Path types
 

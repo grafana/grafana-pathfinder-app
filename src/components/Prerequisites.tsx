@@ -1,6 +1,8 @@
 import React from 'react';
 import { css } from '@emotion/css';
-import { Alert } from '@grafana/ui';
+import type { GrafanaTheme2 } from '@grafana/data';
+import { t } from '@grafana/i18n';
+import { Alert, useStyles2 } from '@grafana/ui';
 import { MarkdownManager } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -119,18 +121,47 @@ function InlineMarkdown({ label }: { label: string }) {
   return paragraph.content!.map((node, index) => renderMarkdownText(node, String(index)));
 }
 
-export function Prerequisites({ prerequisites }: { prerequisites: unknown }) {
+const getCompactStyles = (theme: GrafanaTheme2) => ({
+  box: css({
+    margin: theme.spacing(0, 0, 1),
+    padding: theme.spacing(0.5, 1),
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderLeft: `3px solid ${theme.colors.info.main}`,
+    borderRadius: theme.shape.radius.default,
+    background: theme.colors.background.primary,
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+  }),
+  title: css({ fontWeight: theme.typography.fontWeightMedium, color: theme.colors.text.primary }),
+  list: css({ margin: 0, paddingLeft: theme.spacing(2) }),
+});
+
+export function Prerequisites({ prerequisites, compact = false }: { prerequisites: unknown; compact?: boolean }) {
+  const compactStyles = useStyles2(getCompactStyles);
   const items = getPrerequisites(prerequisites);
   if (items.length === 0) {
     return null;
   }
 
+  const list = items.map(({ id, label, format }) => (
+    <li key={id}>{format === 'markdown' ? <InlineMarkdown label={label} /> : label}</li>
+  ));
+
+  if (compact) {
+    return (
+      <div className={compactStyles.box} role="note">
+        <div className={compactStyles.title}>{t('learningCard.prerequisites', 'Prerequisites')}</div>
+        <ul className={compactStyles.list} data-testid="prerequisites-list">
+          {list}
+        </ul>
+      </div>
+    );
+  }
+
   return (
     <Alert className={containerClass} severity="info" title="Prerequisites" role="note">
       <ul className={listClass} data-testid="prerequisites-list">
-        {items.map(({ id, label, format }) => (
-          <li key={id}>{format === 'markdown' ? <InlineMarkdown label={label} /> : label}</li>
-        ))}
+        {list}
       </ul>
     </Alert>
   );
