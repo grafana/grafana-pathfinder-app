@@ -104,7 +104,10 @@ func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) p
 	for i := range entries {
 		if entries[i].Status == "published" {
 			source := "app-platform"
-			if entries[i].Manifest != nil && entries[i].Manifest.Repository != "" {
+			if entries[i].Manifest == nil {
+				continue
+			}
+			if entries[i].Manifest.Repository != "" {
 				source = entries[i].Manifest.Repository
 			}
 			published[entries[i].ID] = source
@@ -129,9 +132,11 @@ func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) p
 			}
 			var guides []assignmentGuideIdentity
 			for _, id := range ids {
-				if source, ok := published[id]; ok {
-					guides = append(guides, assignmentGuideIdentity{GuideID: id, GuideSource: source})
+				source, ok := published[id]
+				if !ok || id == "" {
+					return nil, true, nil
 				}
+				guides = append(guides, assignmentGuideIdentity{GuideID: id, GuideSource: source})
 			}
 			return guides, true, nil
 		}
@@ -145,48 +150,52 @@ func (a *App) onlinePathGuides(logger log.Logger) pathGuideSource {
 		if err != nil {
 			return nil, false, err
 		}
-		for i := range resp.Packages {
-			entry := &resp.Packages[i]
-			if entry.ID != targetID {
-				continue
-			}
-			manifest := entry.Manifest
-			if manifest == nil {
-				manifestURL := buildPackageFileURL(resp.BaseURL, entry.Path, "manifest.json")
-				if manifestURL == "" || !isAllowedInteractiveLearningHost(manifestURL) {
-					return nil, true, nil
-				}
-				fetch := packageRepositoryFetcherOverride
-				if fetch == nil {
-					fetch = defaultPackageRepositoryFetcher
-				}
-				body, fetchErr := fetch(ctx, manifestURL, packageManifestMaxBytes)
-				if fetchErr != nil {
-					return nil, true, fetchErr
-				}
-				if jsonErr := json.Unmarshal(body, &manifest); jsonErr != nil {
-					return nil, true, fmt.Errorf("parse manifest: %w", jsonErr)
-				}
-			}
-			pathSource, _ := manifest["repository"].(string)
-			if pathSource == "" {
-				pathSource = "interactive-tutorials"
-			}
-			if targetSource != "" && targetSource != pathSource {
-				continue
-			}
-			ids, _ := manifest["milestones"].([]interface{})
-			if trackID != "" {
-				var ok bool
-				if ids, ok = manifestTrackGuides(manifest, trackID); !ok {
-					return trackNotFound(logger, targetID, trackID)
-				}
-			}
-			guides, err := a.resolveOnlineGuideIdentities(ctx, resp, ids)
-			return guides, true, err
-		}
-		return nil, false, nil
+		return a.resolveOnlinePathGuides(ctx, resp, logger, targetID, trackID, targetSource)
 	}
+}
+
+func (a *App) resolveOnlinePathGuides(ctx context.Context, resp *PackageRecommendationsResponse, logger log.Logger, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+	for i := range resp.Packages {
+		entry := &resp.Packages[i]
+		if entry.ID != targetID {
+			continue
+		}
+		manifest := entry.Manifest
+		if manifest == nil {
+			manifestURL := buildPackageFileURL(resp.BaseURL, entry.Path, "manifest.json")
+			if manifestURL == "" || !isAllowedInteractiveLearningHost(manifestURL) {
+				return nil, true, nil
+			}
+			fetch := packageRepositoryFetcherOverride
+			if fetch == nil {
+				fetch = defaultPackageRepositoryFetcher
+			}
+			body, fetchErr := fetch(ctx, manifestURL, packageManifestMaxBytes)
+			if fetchErr != nil {
+				return nil, true, fetchErr
+			}
+			if jsonErr := json.Unmarshal(body, &manifest); jsonErr != nil {
+				return nil, true, fmt.Errorf("parse manifest: %w", jsonErr)
+			}
+		}
+		pathSource, _ := manifest["repository"].(string)
+		if pathSource == "" {
+			pathSource = "interactive-tutorials"
+		}
+		if targetSource != "" && targetSource != pathSource {
+			continue
+		}
+		ids, _ := manifest["milestones"].([]interface{})
+		if trackID != "" {
+			var ok bool
+			if ids, ok = manifestTrackGuides(manifest, trackID); !ok {
+				return trackNotFound(logger, targetID, trackID)
+			}
+		}
+		guides, err := a.resolveOnlineGuideIdentities(ctx, resp, ids)
+		return guides, true, err
+	}
+	return nil, false, nil
 }
 
 // manifestTrackGuides is the guide ids of the named track in a path manifest;
@@ -214,10 +223,12 @@ func (a *App) resolveOnlineGuideIdentities(ctx context.Context, resp *PackageRec
 			return nil, nil
 		}
 		source := "bundled"
+		found := false
 		for _, entry := range resp.Packages {
 			if entry.ID != memberID {
 				continue
 			}
+			found = true
 			manifest := entry.Manifest
 			if manifest == nil {
 				manifestURL := buildPackageFileURL(resp.BaseURL, entry.Path, "manifest.json")
@@ -236,10 +247,16 @@ func (a *App) resolveOnlineGuideIdentities(ctx context.Context, resp *PackageRec
 					return nil, fmt.Errorf("parse member manifest: %w", err)
 				}
 			}
+			if manifest == nil || lastPathSegment(entry.Path) == "" {
+				return nil, nil
+			}
 			if repository, ok := manifest["repository"].(string); ok && repository != "" {
 				source = repository
 			}
 			break
+		}
+		if !found {
+			return nil, nil
 		}
 		guides = append(guides, assignmentGuideIdentity{GuideID: resolveMilestoneGuideID(resp.Packages, memberID), GuideSource: source})
 	}

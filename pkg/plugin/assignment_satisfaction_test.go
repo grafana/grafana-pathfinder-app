@@ -247,7 +247,7 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 			},
 		},
 		{
-			name: "App Platform path ignores a draft member",
+			name: "App Platform path with a draft member is unresolved",
 			setup: func(t *testing.T) (string, []completionRecordSpec) {
 				path := guideEntry("fe-alerting-path", "Alerting enablement", "published", "path")
 				path.Manifest.Milestones = []string{"fe-alerting-01", "fe-alerting-draft"}
@@ -260,7 +260,6 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 					rec("user:1", "app-platform", "fe-alerting-01", "Module 1", "interactive", "fe-alerting-path", "objectives", "2026-09-14T15:00:00Z", 100),
 				}
 			},
-			wantSatisfied: true,
 		},
 		{
 			name: "App Platform path partially done reports per-guide state",
@@ -278,9 +277,11 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 				withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
 					switch {
 					case strings.HasSuffix(rawURL, "repository.json"):
-						return []byte(`{"online-only-path": {"path": "online-only-path/v1", "type": "path"}}`), nil
+						return []byte(`{"online-only-path": {"path": "online-only-path/v1", "type": "path"}, "online-milestone-1":{"path":"guides/online-milestone-1","type":"guide"}}`), nil
 					case strings.HasSuffix(rawURL, "/online-only-path/v1/manifest.json"):
 						return []byte(`{"id": "online-only-path", "milestones": ["online-milestone-1"]}`), nil
+					case strings.HasSuffix(rawURL, "/guides/online-milestone-1/manifest.json"):
+						return []byte(`{}`), nil
 					default:
 						return nil, fmt.Errorf("unexpected URL %q", rawURL)
 					}

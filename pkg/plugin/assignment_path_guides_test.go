@@ -141,6 +141,38 @@ func TestOnlinePathGuides_MemberManifestsAndFailures(t *testing.T) {
 	}
 }
 
+func TestPathGuides_MissingRequiredMemberStaysUnresolved(t *testing.T) {
+	for _, trackID := range []string{"", "ops"} {
+		for _, state := range []string{"missing", "draft", "missing manifest"} {
+			t.Run(trackID+"/"+state, func(t *testing.T) {
+				path := guideEntry("path", "Path", "published", "path")
+				path.Manifest.Milestones = []string{"present", "absent"}
+				path.Manifest.Tracks = []customGuideManifestTrack{{TrackID: "ops", Guides: path.Manifest.Milestones}}
+				entries := []customGuideRepositoryEntry{path, guideEntry("present", "Present", "published", "guide")}
+				if state != "missing" {
+					member := guideEntry("absent", "Absent", "published", "guide")
+					if state == "draft" {
+						member.Status = "draft"
+					} else {
+						member.Manifest = nil
+					}
+					entries = append(entries, member)
+				}
+				ev := newTestEvaluator(customPathGuides(entries, log.DefaultLogger))
+				got := mustGuideProgress(t, ev, assignmentSpec{TargetType: "path", TargetID: "path", TargetSource: "app-platform", TrackID: trackID}, []completionRecordSpec{{GuideID: "present", GuideSource: "app-platform", CompletedAt: "2026-01-01T00:00:00Z"}})
+				if got != nil {
+					t.Fatalf("incomplete membership resolved: %+v", got)
+				}
+			})
+		}
+	}
+	resp := &PackageRecommendationsResponse{Packages: []PackageEntry{{ID: "present", Path: "guides/present", Manifest: map[string]interface{}{"repository": "bundled"}}}}
+	guides, err := newTestApp(t).resolveOnlineGuideIdentities(context.Background(), resp, []interface{}{"present", "absent"})
+	if err != nil || guides != nil {
+		t.Fatalf("missing online member resolved: %+v, %v", guides, err)
+	}
+}
+
 func TestAssignmentGuideEntry_RequiredSourceJSON(t *testing.T) {
 	body, err := json.Marshal(assignmentGuideEntry{GuideID: "guide"})
 	if err != nil || !strings.Contains(string(body), `"guideSource":""`) {

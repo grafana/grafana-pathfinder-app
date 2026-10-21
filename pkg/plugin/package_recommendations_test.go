@@ -887,9 +887,14 @@ func TestOnlinePathGuides(t *testing.T) {
 		"assigned-untargeted": {"path": "assigned-untargeted/v1", "type": "path"},
 		"no-milestones": {"path": "no-milestones/v1", "type": "path"},
 		"tracked": {"path": "tracked/v1", "type": "path"},
-		"tracked-journey": {"path": "tracked-journey/v1", "type": "journey"}
+		"tracked-journey": {"path": "tracked-journey/v1", "type": "journey"},
+		"m1": {"path":"guides/m1","type":"guide"},
+		"m2": {"path":"guides/m2","type":"guide"},
+		"m3": {"path":"guides/m3","type":"guide"},
+		"m4": {"path":"guides/m4","type":"guide"}
 	}`
 	manifests := map[string]string{
+		"m1": `{}`, "m2": `{}`, "m3": `{}`, "m4": `{}`,
 		"assigned-targeted":   `{"id": "assigned-targeted", "milestones": ["m1", "m2"]}`,
 		"assigned-untargeted": `{"id": "assigned-untargeted", "milestones": ["m3"]}`,
 		"no-milestones":       `{"id": "no-milestones", "milestones": []}`,
@@ -909,7 +914,7 @@ func TestOnlinePathGuides(t *testing.T) {
 				return []byte(repoBody), nil
 			}
 			for id, manifest := range manifests {
-				if strings.HasSuffix(rawURL, "/"+id+"/v1/manifest.json") {
+				if strings.HasSuffix(rawURL, "/"+id+"/v1/manifest.json") || strings.HasSuffix(rawURL, "/guides/"+id+"/manifest.json") {
 					fetches[id]++
 					if manifestErr != nil {
 						return nil, manifestErr
