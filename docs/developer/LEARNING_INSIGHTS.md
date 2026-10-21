@@ -114,3 +114,12 @@ Only GET reporting reads and local observation are authorized by this procedure.
 ## Scope boundaries
 
 This release adds no roster integration, assignment creation/bulk mutation, automated contact, new database/CRD/warehouse, badge ledger, retry/error pipeline, inactivity-based stuck labeling, or content-revision attestation. Existing learning links are navigation, not evidence of a reporting-side mutation. Raw GAP authorization remediation remains explicitly separate.
+
+## UI reference captures
+
+These are screenshots of the implemented React UI rendered locally with fictional test fixtures, not cloud-stack captures or generated mockups. The fixture banner is intentional; no demo data is included in the production request path.
+
+- [Overview, dark theme](images/learning-insights/overview-dark.png)
+- [Overview, light theme](images/learning-insights/overview-light.png)
+- [Assignments and learner evidence](images/learning-insights/assignments-dark.png)
+- [Assignments and learner evidence, narrow viewport](images/learning-insights/assignments-mobile.png)
