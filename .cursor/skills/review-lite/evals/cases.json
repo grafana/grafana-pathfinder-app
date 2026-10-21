@@ -73,7 +73,7 @@
           "message": "Clear the pulse interval when Show me ends",
           "files": {
             "src/interactive-engine/pulse.ts": "export function pulseHighlight(element: HTMLElement, periodMs = 250): () => void {\n  element.classList.add('pathfinder-pulse');\n  const interval = setInterval(() => element.classList.toggle('pathfinder-pulse-on'), periodMs);\n  return () => {\n    clearInterval(interval);\n    element.classList.remove('pathfinder-pulse', 'pathfinder-pulse-on');\n  };\n}\n",
-            "src/interactive-engine/pulse.test.ts": "import { pulseHighlight } from './pulse';\n\ntest('stopping the pulse clears its interval and classes', () => {\n  jest.useFakeTimers();\n  const element = document.createElement('div');\n  const stop = pulseHighlight(element, 100);\n  jest.advanceTimersByTime(100);\n  stop();\n  jest.advanceTimersByTime(1000);\n  expect(element.className).toBe('');\n  jest.useRealTimers();\n});\n"
+            "src/interactive-engine/pulse.test.ts": "import { pulseHighlight } from './pulse';\n\ntest('stopping the pulse clears its interval and classes', () => {\n  jest.useFakeTimers();\n  const element = document.createElement('div');\n  const stop = pulseHighlight(element, 100);\n  jest.advanceTimersByTime(100);\n  stop();\n  expect(jest.getTimerCount()).toBe(0);\n  expect(element.className).toBe('');\n  jest.useRealTimers();\n});\n"
           }
         }
       ],
