@@ -73,6 +73,7 @@ func contractRoots() []contractRoot {
 		{"completion-records-my", reflect.TypeOf(myCompletionsResponse{})},
 		{"completion-records-capability", reflect.TypeOf(completionCapability{})},
 		{"assignments-my", reflect.TypeOf(myAssignmentsResponse{})},
+		{"learning-insights", reflect.TypeOf(learningInsightsResponse{})},
 	}
 }
 
@@ -102,6 +103,8 @@ func contractCases() []contractCase {
 		{"assignments-my.default", captureMyAssignmentsDefault},
 		{"assignments-my.empty", captureMyAssignmentsEmpty},
 		{"assignments-my.unavailable", captureMyAssignmentsUnavailable},
+		{"learning-insights.default", captureLearningInsightsDefault},
+		{"learning-insights.unavailable", captureLearningInsightsUnavailable},
 	}
 }
 

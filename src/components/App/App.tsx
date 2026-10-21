@@ -8,6 +8,7 @@ import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
 import { fullScreenPage } from '../../pages/fullScreenPage';
 import { browsePage } from '../../pages/browsePage';
+import { learningInsightsPage } from '../../pages/learningInsightsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { onPluginStart } from '../../context-engine';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
@@ -128,7 +129,7 @@ const getErrorStyles = (theme: GrafanaTheme2) => ({
 
 function getSceneApp() {
   return new SceneApp({
-    pages: [homePage, docsPage, fullScreenPage, browsePage],
+    pages: [homePage, docsPage, fullScreenPage, browsePage, learningInsightsPage],
   });
 }
 
