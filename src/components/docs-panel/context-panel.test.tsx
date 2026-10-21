@@ -25,6 +25,11 @@ jest.mock('@grafana/i18n', () => ({
   t: jest.fn((key: string, fallback: string) => fallback),
 }));
 
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportAppInteraction: jest.fn(),
+}));
+
 const paragraphHeight = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
   this: HTMLElement
 ) {
@@ -33,6 +38,7 @@ const paragraphHeight = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
 afterAll(() => paragraphHeight.mockRestore());
 
 const { __mockPublish: mockPublish, __mockPush: mockPush } = jest.requireMock('@grafana/runtime');
+const { reportAppInteraction: mockReportAppInteraction } = jest.requireMock('../../lib/analytics');
 
 describe('RecommendationsSection', () => {
   beforeEach(() => {
@@ -215,6 +221,9 @@ describe('RecommendationsSection', () => {
       );
 
       const prerequisite = screen.getByRole('link', { name: 'Prometheus server' });
+      expect(
+        screen.getByTestId(featured ? 'featured-section' : testIds.contextPanel.recommendationsGrid)
+      ).toContainElement(prerequisite);
       expect(screen.getByRole('note')).toHaveTextContent('Prerequisites');
       expect(prerequisite).toHaveAttribute('target', '_blank');
       expect(prerequisite).toHaveAttribute('rel', 'noopener noreferrer');
@@ -831,20 +840,31 @@ describe('suggested path assignment badges', () => {
     expect(card).not.toHaveTextContent('Today');
   });
 
-  it('places contextual matches ahead of ordinary server-featured cards', () => {
+  it('keeps an editorial pick without route evidence in the featured grid', () => {
+    const contextual = [1, 2, 3, 4].map((n) => ({
+      title: `Active task ${n}`,
+      url: `https://grafana.com/docs/task-${n}/`,
+      type: 'docs-page' as const,
+      relevance: { version: 1 as const, tier: 3, taskSignals: 1, urlSpecificity: 8, environmentSignals: 0 },
+    }));
     renderSuggested({
-      recommendations: [
-        {
-          title: 'Active task',
-          url: 'task',
-          relevance: { version: 1, tier: 3, taskSignals: 1, urlSpecificity: 8, environmentSignals: 0 },
-        },
+      recommendations: contextual,
+      featuredRecommendations: [
+        { title: 'Editorial pick', url: 'https://grafana.com/docs/editorial/', type: 'docs-page' },
       ],
-      featuredRecommendations: [{ title: 'Editorial pick', url: 'editorial' }],
     });
-    expect(screen.getByTestId(testIds.contextPanel.recommendationTitle(0))).toHaveTextContent('Active task');
-    expect(screen.getByTestId(testIds.contextPanel.recommendationTitle(1))).toHaveTextContent('Editorial pick');
-    expect(screen.queryByTestId('featured-section')).not.toBeInTheDocument();
+
+    const featuredCard = screen.getByTestId('featured-recommendation-card-0');
+    expect(screen.getByTestId('featured-section')).toContainElement(featuredCard);
+    expect(featuredCard).toHaveTextContent('Editorial pick');
+    expect(screen.getByTestId(testIds.contextPanel.recommendationsGrid)).not.toHaveTextContent('Editorial pick');
+    expect(screen.queryByTestId(testIds.contextPanel.otherDocsSection)).not.toBeInTheDocument();
+
+    fireEvent.click(within(featuredCard).getByRole('button', { name: 'Read' }));
+    expect(mockReportAppInteraction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ content_title: 'Editorial pick', interaction_location: 'featured_card_button' })
+    );
   });
 
   describe('track routing', () => {
@@ -884,11 +904,11 @@ describe('suggested path assignment badges', () => {
       expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
     });
 
-    it('badges an explicitly suggested path and opens it on its assigned track', () => {
+    it('badges a featured path and opens it on its assigned track', () => {
       const openDocsPage = jest.fn();
       renderSuggested({
         recommendations: [],
-        featuredRecommendations: [{ ...trackedPath, placement: 'suggestion' }],
+        featuredRecommendations: [trackedPath],
         assignments: [trackedAssignment()],
         openDocsPage,
       });

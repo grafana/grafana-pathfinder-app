@@ -153,6 +153,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       const key = contextLocationKey(currentPath, location.search);
       if (lastLocationRef.current !== key) {
         lastLocationRef.current = key;
+        // Called only because the getters expire observations bound to the previous location.
         getDetectedDatasourceType();
         getDetectedVisualizationType();
 

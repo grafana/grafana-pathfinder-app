@@ -168,6 +168,26 @@ it('does not move weak or completed prerequisites ahead of relevant unfinished c
   );
 });
 
+it('treats prerequisites as peers only when match accuracy is equal too', () => {
+  const followOn = guide('a-follow-on', '/dashboards', ['z-foundation'], { matchAccuracy: 0.9 });
+  const foundation = guide('z-foundation', '/dashboards', [], { matchAccuracy: 0.8 });
+  for (const input of [
+    [followOn, foundation],
+    [foundation, followOn],
+  ]) {
+    expect(rankRecommendations(input, '/dashboards').map((r) => r.manifest?.id)).toEqual([
+      'a-follow-on',
+      'z-foundation',
+    ]);
+    expect(
+      rankRecommendations(
+        input.map((r) => ({ ...r, matchAccuracy: 0.8 })),
+        '/dashboards'
+      ).map((r) => r.manifest?.id)
+    ).toEqual(['z-foundation', 'a-follow-on']);
+  }
+});
+
 it('keeps cycles, missing prerequisites and related suggestions available with stable order', () => {
   const a = guide('a', '/dashboards', ['b', 'missing']);
   const b = guide('b', '/dashboards', ['a']);

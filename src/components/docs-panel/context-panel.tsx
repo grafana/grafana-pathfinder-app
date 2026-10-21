@@ -292,8 +292,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
     incomingFeaturedRecommendations.map((rec) => ({ ...rec, editorialFeatured: true })),
     currentPath
   );
-  const recommendations = ordered.filter((rec) => !rec.placement);
-  const featuredRecommendations = ordered.filter((rec) => rec.placement);
+  const recommendations = ordered.filter((rec) => !rec.editorialFeatured);
+  const featuredRecommendations = ordered.filter((rec) => rec.editorialFeatured);
   const styles = useStyles2(getStyles);
   const skeletonStyles = useStyles2(getSkeletonStyles);
   const hasCustomGuidesContent = isLoadingCustomGuides || customGuides.length > 0;

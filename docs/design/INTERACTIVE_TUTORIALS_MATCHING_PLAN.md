@@ -19,7 +19,7 @@ Task evidence includes selected data-source type, observed panel type, connectio
 
 The strongest fully satisfied OR branch supplies evidence. AND combines evidence only when its requirements are fully satisfied. Repeated tags in one category do not multiply its strength. Platform, role, cohort and source predicates constrain eligibility but do not increase relevance.
 
-The server ranks before its result cap. The app demotes completed content within the same relevance tier. `depends` and `recommends` put prerequisite content before equally relevant follow-on guides; `suggests` does not. Format, starting on the current page and editorial status are late tie-breakers. Content authors should express real conditions rather than trying to optimize a numeric score.
+The server ranks before its result cap. The app demotes completed content within the same relevance tier. `depends` and `recommends` put prerequisite content before equally relevant follow-on guides; `suggests` does not. Equally relevant means the same evidence tier and signal counts, the same completion state and the same match accuracy, so a follow-on guide with higher match accuracy stays ahead of a less accurate prerequisite. Format, starting on the current page and editorial status are late tie-breakers. Content authors should express real conditions rather than trying to optimize a numeric score.
 
 Client fallback matching supports only `urlPrefix`, `urlPrefixIn`, `targetPlatform`, `and` and `or`. Richer rules must be tested against the server. Do not expand fallback eligibility or add unsupported predicates to make a particular guide appear.
 
