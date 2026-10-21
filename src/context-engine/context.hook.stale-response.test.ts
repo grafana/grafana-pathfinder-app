@@ -147,3 +147,56 @@ it('keeps the current recommendations on screen until the next ones arrive', asy
   expect(titles(result.current.contextData.recommendations)).toEqual(['home']);
   unmount();
 });
+
+it('keeps the previous recommendations error until the next result arrives', async () => {
+  mockGetContextData.mockResolvedValue(context('/explore'));
+  mockFetchRecommendations.mockResolvedValue({
+    ...recommendationsResult('fallback'),
+    error: 'Recommender unreachable',
+    errorType: 'unavailable',
+    usingFallbackRecommendations: true,
+  });
+  const { result, unmount } = renderHook(() => useContextPanel());
+  await act(async () => jest.advanceTimersByTimeAsync(INTERACTIVE_CONFIG.delays.debouncing.contextRefresh));
+  expect(result.current.contextData.recommendationsError).toBe('Recommender unreachable');
+
+  const nextRecommendations = deferred<ReturnType<typeof recommendationsResult>>();
+  mockFetchRecommendations.mockImplementationOnce(() => nextRecommendations.promise);
+  await act(async () => result.current.refreshContext());
+
+  expect(result.current.contextData.recommendationsError).toBe('Recommender unreachable');
+  expect(result.current.contextData.recommendationsErrorType).toBe('unavailable');
+  expect(result.current.contextData.usingFallbackRecommendations).toBe(true);
+
+  await act(async () => nextRecommendations.resolve(recommendationsResult('recovered')));
+  expect(result.current.contextData.recommendationsError).toBeNull();
+  expect(titles(result.current.contextData.recommendations)).toEqual(['recovered']);
+  unmount();
+});
+
+it('reports recommendations as not yet fetched until the first fetch settles', async () => {
+  mockGetContextData.mockResolvedValue(context('/explore'));
+  const firstRecommendations = deferred<ReturnType<typeof recommendationsResult>>();
+  mockFetchRecommendations.mockImplementationOnce(() => firstRecommendations.promise);
+  const { result, unmount } = renderHook(() => useContextPanel());
+  expect(result.current.hasFetchedRecommendations).toBe(false);
+
+  await act(async () => jest.advanceTimersByTimeAsync(INTERACTIVE_CONFIG.delays.debouncing.contextRefresh));
+  expect(result.current.contextData.isLoading).toBe(false);
+  expect(result.current.hasFetchedRecommendations).toBe(false);
+
+  await act(async () => firstRecommendations.resolve(recommendationsResult('initial')));
+  expect(result.current.hasFetchedRecommendations).toBe(true);
+  unmount();
+});
+
+it('stops waiting for recommendations when the first context fetch fails', async () => {
+  mockGetContextData.mockRejectedValue(new Error('network'));
+  const { result, unmount } = renderHook(() => useContextPanel());
+  await act(async () => jest.advanceTimersByTimeAsync(INTERACTIVE_CONFIG.delays.debouncing.contextRefresh));
+
+  expect(result.current.contextData.isLoading).toBe(false);
+  expect(result.current.hasFetchedRecommendations).toBe(true);
+  expect(mockFetchRecommendations).not.toHaveBeenCalled();
+  unmount();
+});

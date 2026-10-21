@@ -758,7 +758,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             isLoadingCustomGuides={isLoadingCustomGuides}
             customGuidesExpanded={customGuidesExpanded}
             suggestedGuidesExpanded={suggestedGuidesExpanded}
-            isLoadingRecommendations={isLoadingRecommendations}
+            isLoadingRecommendations={isLoadingRecommendations || !hasFetchedRecommendations}
             isLoadingContext={contextData.isLoading}
             recommendationsError={recommendationsError}
             otherDocsExpanded={otherDocsExpanded}

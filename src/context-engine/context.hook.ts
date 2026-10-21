@@ -89,6 +89,9 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         ...newContextData,
         recommendations: prev.recommendations,
         featuredRecommendations: prev.featuredRecommendations,
+        recommendationsError: prev.recommendationsError,
+        recommendationsErrorType: prev.recommendationsErrorType,
+        usingFallbackRecommendations: prev.usingFallbackRecommendations,
       }));
       setContextVersion((version) => version + 1);
     } catch (error) {
@@ -97,6 +100,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       }
       logger.error('Failed to fetch context data', { error });
       setContextData((prev) => ({ ...prev, isLoading: false }));
+      setHasFetchedRecommendations(true);
     }
   }, []);
 
