@@ -305,7 +305,7 @@ a path's milestones into one `GuideStatsSummary`, and no rollup index ever lands
 beside it: path progress consumes per-guide percentages, not a summed
 `blockCount`. The rollup remains valid and useful as a **reporting and
 authoring** figure — how big is this path, how much of it is instrumented — but
-it is not a completion denominator. The `completion-denominator-authority`
+it is not a completion denominator. The `denominator-position-pairing`
 invariant and `rollUpGuideStats`'s own docstring both say so, and the formula
 itself is `meanOfMemberPercentages` in `src/lib/guide-stats/rollup.ts`.
 
@@ -884,7 +884,7 @@ cost the exact-key cross-tab match the store's storage listener depends on.
   here is not a formula tweak; it pulls the declared-count machinery back in.
 - **`src/lib/guide-stats` publishes the denominator and the per-block positions
   together**, so a numerator and a denominator can never come from two traversals
-  — see `completion-denominator-authority` in `docs/design/CONCERN_DETAILS.md`.
+  — see `denominator-position-pairing` in `docs/design/CONCERN_DETAILS.md`.
 - **An unresolvable member is excluded from the mean, never scored zero**
   (decision 9), and the join reads `interactiveCompletionStorage` by key
   presence, taking the furthest record in `[0, 100]` across a member's

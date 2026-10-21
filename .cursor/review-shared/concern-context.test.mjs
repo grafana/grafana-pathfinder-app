@@ -66,7 +66,7 @@ test('includes the concern anchor and named invariants', () => {
   });
 
   assert.equal(context.contract_anchor.evidence, '#1411 → #1700 → #2090');
-  assert.equal(context.named_invariants.length, 11);
+  assert.equal(context.named_invariants.length, 16);
   assert.equal(context.named_invariants[0].name, 'payload-boundary-normalization');
 });
 
@@ -260,13 +260,23 @@ test('emits every completion-records doc as one loadable path', () => {
   assert.deepEqual(context.load_docs, [
     'docs/developer/COMPLETION_RECORDING.md',
     'docs/design/BACKEND_PROXY_PATTERN.md',
-    '.cursor/rules/systemPatterns.mdc (tier-1 lib/ guide-stats bullet)',
+    '.cursor/rules/systemPatterns.mdc',
     'docs/developer/STEP_MODEL.md',
     'docs/design/COMPLETION-MODEL.md',
   ]);
   for (const doc of context.load_docs) {
     assert.doesNotMatch(doc, /`/);
     assert.ok(existsSync(fileURLToPath(new URL(`../../${doc.split(' ')[0]}`, import.meta.url))), doc);
+  }
+});
+
+test('every concern extracts within a budget that leaves headroom under the worker cap', () => {
+  const ids = [...concerns.matchAll(/^\| `([a-z0-9-]+)` \| (AO|sub|xcut) \|/gm)].map((match) => match[1]);
+  assert.ok(ids.length > 0);
+  for (const concern of ids) {
+    const context = extractConcernContext({ routingMarkdown: concerns, detailMarkdown: concernDetails, concern });
+    const size = JSON.stringify(context).length;
+    assert.ok(size < 20_000, `${concern} extracts to ${size} characters; trim CONCERN_DETAILS.md to stay under 20,000`);
   }
 });
 
