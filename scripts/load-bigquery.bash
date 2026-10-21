@@ -89,9 +89,7 @@ function existing_package_count {
 }
 
 function validate_packages {
-  local project_id="$1"
-  local dataset="$2"
-  local repository_file="$3"
+  local repository_file="$1"
 
   if ! jq -e 'type == "object" and length > 0' "${repository_file}" > /dev/null; then
     cat <<EOF
@@ -117,8 +115,54 @@ EOF
     return 1
   fi
 
+  local missing_milestones
+  missing_milestones=$(jq -r '
+    . as $catalog
+    | to_entries[]
+    | .key as $path_id
+    | .value.milestones // [] | .[]
+    | select(($catalog[.].type // "") != "guide")
+    | "\($path_id) -> \(.)"' "${repository_file}")
+  if [[ -n "${missing_milestones}" ]]; then
+    cat <<EOF
+✗ milestones that are not guides in the catalog:
+${missing_milestones}
+EOF
+    return 1
+  fi
+
+  # A path's stats are its own body plus every milestone (build-stats rolls them up), so they can never be smaller.
+  local short_paths
+  short_paths=$(jq -r '
+    . as $catalog
+    | to_entries[]
+    | select(.value.milestones)
+    | .key as $path_id
+    | .value.stats as $own
+    | [.value.milestones[] | $catalog[.].stats] as $members
+    | select(
+        $own == null or ($members | any(. == null))
+        or $own.blockCount < ($members | map(.blockCount) | add)
+        or $own.sectionCount < ($members | map(.sectionCount) | add)
+        or $own.completableBlockCount < ($members | map(.completableBlockCount) | add)
+      )
+    | $path_id' "${repository_file}")
+  if [[ -n "${short_paths}" ]]; then
+    cat <<EOF
+✗ paths whose stats do not cover their milestones (stale build-stats?):
+${short_paths}
+EOF
+    return 1
+  fi
+}
+
+function check_row_count {
+  local project_id="$1"
+  local dataset="$2"
+  local rows_file="$3"
+
   local new_count existing_count
-  new_count=$(jq 'length' "${repository_file}")
+  new_count=$(wc -l < "${rows_file}" | tr -d ' ')
   existing_count=$(existing_package_count "${project_id}" "${dataset}") || return 1
 
   if [[ -z "${existing_count}" ]]; then
@@ -127,7 +171,7 @@ pathfinder_packages does not exist yet; the load will create it with ${new_count
 EOF
   elif (( new_count * 10 < existing_count * 9 )) && [[ "${ALLOW_PACKAGE_DROP:-}" != 'true' ]]; then
     cat <<EOF
-✗ repository.json has ${new_count} packages, down from ${existing_count} in pathfinder_packages (more than 10%)
+✗ the catalog produces ${new_count} rows, down from ${existing_count} in pathfinder_packages (more than 10%)
   Set ALLOW_PACKAGE_DROP=true (the allow_package_drop workflow input) if the drop is intended.
 EOF
     return 1
@@ -151,18 +195,20 @@ EOF
   curl -fsSL "${repository_url}" > "${temp_repository_file}"
 
   # --replace swaps the whole table, so a truncated, partial or malformed response must not reach it.
-  if ! validate_packages "${project_id}" "${dataset}" "${temp_repository_file}"; then
+  if validate_packages "${temp_repository_file}"; then
+    jq -c \
+      --arg loaded_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      -f "${script_dir}/bigquery/pathfinder-packages.jq" \
+      "${temp_repository_file}" > "${temp_packages_file}"
+  fi
+
+  if [[ ! -s "${temp_packages_file}" ]] || ! check_row_count "${project_id}" "${dataset}" "${temp_packages_file}"; then
     cat <<EOF
 ✗ refusing to replace pathfinder_packages
 EOF
     rm -f "${temp_repository_file}" "${temp_packages_file}"
     return 1
   fi
-
-  jq -c \
-    --arg loaded_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    -f "${script_dir}/bigquery/pathfinder-packages.jq" \
-    "${temp_repository_file}" > "${temp_packages_file}"
 
   bq load \
     --project_id="${project_id}" \

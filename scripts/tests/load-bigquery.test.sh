@@ -126,13 +126,26 @@ cat >"$FIXTURE" <<'EOF'
     "category": "take-action",
     "author": { "name": "someone", "team": "interactive-learning" },
     "startingLocation": "/explore",
-    "milestones": ["demo-guide"],
+    "milestones": ["demo-step-one", "demo-step-two"],
     "targeting": { "match": { "or": [{ "urlPrefix": "/explore" }] } },
     "testEnvironment": { "tier": "cloud" },
     "stats": { "version": 2, "blockCount": 12, "sectionCount": 3, "completableBlockCount": 4, "finalCompletablePosition": 9 }
   },
+  "demo-step-one": {
+    "path": "demo-path/step-one/",
+    "type": "guide",
+    "title": "Step one",
+    "stats": { "version": 2, "blockCount": 5, "sectionCount": 1, "completableBlockCount": 2, "finalCompletablePosition": 4 }
+  },
+  "demo-step-two": {
+    "path": "demo-path/step-two/",
+    "type": "guide",
+    "title": "Step two",
+    "depends": ["demo-step-one"],
+    "stats": { "version": 2, "blockCount": 4, "sectionCount": 1, "completableBlockCount": 1, "finalCompletablePosition": 2 }
+  },
   "demo-guide": {
-    "path": "demo-path/demo-guide/",
+    "path": "demo-guide/",
     "type": "guide",
     "title": "Demo guide",
     "depends": ["first", ["either-a", "either-b"]],
@@ -157,15 +170,25 @@ fi
 
 ROWS=$(wc -l <"${CAPTURE}/pathfinder_packages.ndjson" 2>/dev/null | tr -d ' ')
 if [[ "$ROWS" == 2 ]]; then
-  ok "one row per package"
+  ok "one row per path or standalone guide"
 else
-  nope "one row per package (got ${ROWS:-none})"
+  nope "one row per path or standalone guide (got ${ROWS:-none})"
+fi
+
+if [[ -z "$(row demo-step-one)" && -z "$(row demo-step-two)" ]]; then
+  ok "milestone guides get no row of their own"
+else
+  nope "milestone guides get no row of their own"
 fi
 
 expect_jq "id comes from the map key" demo-path '.id == "demo-path" and .path == "demo-path/"'
 expect_jq "author is flattened" demo-path '.author_name == "someone" and .author_team == "interactive-learning"'
 expect_jq "stats are flattened into columns" demo-path \
   '.stats_version == 2 and .block_count == 12 and .section_count == 3 and .completable_block_count == 4 and .final_completable_position == 9'
+expect_jq "the path lists its milestones in order" demo-path \
+  '[.milestones[] | "\(.position):\(.id)"] == ["1:demo-step-one", "2:demo-step-two"]'
+expect_jq "each milestone carries its title, path and stats" demo-path \
+  '.milestones[1] == {position: 2, id: "demo-step-two", path: "demo-path/step-two/", title: "Step two", block_count: 4, section_count: 1, completable_block_count: 1, final_completable_position: 2}'
 expect_jq "targeting is kept whole" demo-path '.targeting.match.or[0].urlPrefix == "/explore"'
 expect_jq "missing arrays load as empty" demo-guide '.milestones == [] and .provides == []'
 expect_jq "an OR dependency clause survives" demo-guide '.depends[1] == ["either-a", "either-b"]'
@@ -173,11 +196,19 @@ expect_jq "unknown manifest fields are dropped" demo-guide 'has("fieldFromTheFut
 expect_jq "every row carries loaded_at" demo-guide '.loaded_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$")'
 
 SCHEMA_COLUMNS=$(jq -r '[.[].name] | sort | join(",")' "${REPO_ROOT}/scripts/bigquery/pathfinder-packages.schema.json")
-ROW_COLUMNS=$(row demo-guide | jq -r 'keys | sort | join(",")')
+ROW_COLUMNS=$(row demo-path | jq -r 'keys | sort | join(",")')
 if [[ "$SCHEMA_COLUMNS" == "$ROW_COLUMNS" ]]; then
   ok "filter output matches the schema columns"
 else
   nope "filter output matches the schema columns" "schema: ${SCHEMA_COLUMNS}"$'\n'"rows:   ${ROW_COLUMNS}"
+fi
+
+MILESTONE_SCHEMA=$(jq -r '.[] | select(.name == "milestones") | [.fields[].name] | sort | join(",")' "${REPO_ROOT}/scripts/bigquery/pathfinder-packages.schema.json")
+MILESTONE_ROW=$(row demo-path | jq -r '.milestones[0] | keys | sort | join(",")')
+if [[ "$MILESTONE_SCHEMA" == "$MILESTONE_ROW" ]]; then
+  ok "milestone records match the schema fields"
+else
+  nope "milestone records match the schema fields" "schema: ${MILESTONE_SCHEMA}"$'\n'"rows:   ${MILESTONE_ROW}"
 fi
 
 if [[ "$RUN_LOG" == *"--replace docs_site.pathfinder_packages"*"pathfinder-packages.schema.json"* ]]; then
@@ -199,16 +230,16 @@ expect_loaded "a 10% drop is allowed"
 
 EXISTING=11 run_update "$NINE"
 expect_refused "a drop of more than 10% is refused"
-if [[ "$RUN_OUT" == *"9 packages, down from 11"* ]]; then
+if [[ "$RUN_OUT" == *"9 rows, down from 11"* ]]; then
   ok "and says how far the catalog shrank"
 else
   nope "and says how far the catalog shrank" "$RUN_OUT"
 fi
 
-EXISTING=732 run_update "$FIXTURE"
-expect_refused "a two-package response cannot replace 732 rows"
+EXISTING=244 run_update "$FIXTURE"
+expect_refused "a two-row catalog cannot replace 244 rows"
 
-EXISTING=732 ALLOW=true run_update "$FIXTURE"
+EXISTING=244 ALLOW=true run_update "$FIXTURE"
 expect_loaded "ALLOW_PACKAGE_DROP=true lets an intended drop through"
 
 EXISTING=missing run_update "$FIXTURE"
@@ -216,6 +247,28 @@ expect_loaded "a missing table is created on the first run"
 
 EXISTING=broken run_update "$FIXTURE"
 expect_refused "a failed table lookup is refused rather than treated as a first run"
+
+mkfixture "${WORK}/missing-milestone.json" '.["demo-path"].milestones += ["demo-step-three"]'
+run_update "${WORK}/missing-milestone.json"
+expect_refused "a path naming a milestone missing from the catalog is refused"
+if [[ "$RUN_OUT" == *"demo-path -> demo-step-three"* ]]; then
+  ok "and names the path and the missing milestone"
+else
+  nope "and names the path and the missing milestone" "$RUN_OUT"
+fi
+
+mkfixture "${WORK}/stale-stats.json" '.["demo-path"].stats.completableBlockCount = 2'
+run_update "${WORK}/stale-stats.json"
+expect_refused "a path whose stats are below its milestones' total is refused"
+if [[ "$RUN_OUT" == *"stale build-stats"*"demo-path"* ]]; then
+  ok "and names the path"
+else
+  nope "and names the path" "$RUN_OUT"
+fi
+
+mkfixture "${WORK}/exact-stats.json" '.["demo-path"].stats |= (.blockCount = 9 | .sectionCount = 2 | .completableBlockCount = 3)'
+run_update "${WORK}/exact-stats.json"
+expect_loaded "a path with no body of its own, whose stats equal its milestones' total, loads"
 
 for case in \
   'no-title|.["demo-guide"] |= del(.title)' \

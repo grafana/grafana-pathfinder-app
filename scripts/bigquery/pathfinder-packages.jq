@@ -1,4 +1,7 @@
-to_entries[]
+. as $catalog
+| ([.[] | .milestones // [] | .[] | {key: ., value: true}] | from_entries) as $milestone_ids
+| to_entries[]
+| select($milestone_ids[.key] | not)
 | .key as $id
 | .value
 | {
@@ -13,7 +16,22 @@ to_entries[]
     starting_location: .startingLocation,
     estimated_minutes: .estimatedMinutes,
     min_grafana_version: .minGrafanaVersion,
-    milestones: (.milestones // []),
+    milestones: [
+      (.milestones // []) | to_entries[]
+      | .key as $index
+      | .value as $milestone_id
+      | $catalog[$milestone_id]
+      | {
+          position: ($index + 1),
+          id: $milestone_id,
+          path,
+          title,
+          block_count: .stats.blockCount,
+          section_count: .stats.sectionCount,
+          completable_block_count: .stats.completableBlockCount,
+          final_completable_position: .stats.finalCompletablePosition
+        }
+    ],
     provides: (.provides // []),
     depends,
     recommends,
