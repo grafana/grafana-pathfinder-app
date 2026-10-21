@@ -47,3 +47,5 @@
     final_completable_position: .stats.finalCompletablePosition,
     loaded_at: $loaded_at
   }
+# An explicit null loads into a JSON column as JSON null, not SQL NULL; an absent field loads as NULL.
+| with_entries(select(.value != null))
