@@ -53,7 +53,8 @@ interface HeldRequest {
 export type ObservationCheck = (
   conditions: ConditionInput,
   step: ObservationStep,
-  signal: AbortSignal
+  signal: AbortSignal,
+  checkCommand: boolean
 ) => Promise<boolean | undefined>;
 
 export type StartedStep = Pick<ObservationStep, 'id' | 'stepId' | 'guideKey' | 'sectionId'>;
@@ -551,13 +552,13 @@ export class CompletionCoordinator {
     this.dirty = false;
     const work = [...this.entries.values()];
     const checks = new Map<string, Promise<boolean | undefined>>();
-    const firstUnmet = async (conditions: ConditionInput, step: ObservationStep) => {
+    const firstUnmet = async (conditions: ConditionInput, step: ObservationStep, checkCommand: boolean) => {
       for (const token of conditionTokens(conditions)) {
         const implicitTarget = token.includes('reftarget') ? step.actions[0] : undefined;
-        const key = JSON.stringify([token, implicitTarget]);
+        const key = JSON.stringify([token, implicitTarget, checkCommand]);
         let result = checks.get(key);
         if (!result) {
-          result = this.check([token], step, this.abortController.signal).catch(() => undefined);
+          result = this.check([token], step, this.abortController.signal, checkCommand).catch(() => undefined);
           checks.set(key, result);
         }
         const met = await result;
@@ -592,13 +593,14 @@ export class CompletionCoordinator {
         if (conditions && !isPassiveCondition(conditions) && !entry.checkCommand) {
           continue;
         }
+        const checkCommand = entry.checkCommand === true;
         entry.checkCommand = false;
         const invalidBlank = Array.isArray(conditions) && conditions.some((token) => !token.trim());
         const blocked =
           invalidBlank || (!conditionTokens(conditions).length && objectiveGate)
             ? { token: '', known: true }
             : conditionTokens(conditions).length
-              ? await firstUnmet(conditions!, step)
+              ? await firstUnmet(conditions!, step, checkCommand)
               : undefined;
         if (
           !this.active ||

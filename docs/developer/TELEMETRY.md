@@ -98,6 +98,29 @@ Privacy protection is split between enforced normalization and caller discipline
   - The **query is stripped**, everywhere. On a Grafana URL the query is where the user's own choices live — `var-*` template values, Explore's serialized queries, `?doc=` deep links — which is a different class of data from a title.
   - This applies on **two independent channels**. `replay-scrub.ts` covers URLs inside the rrweb payload; `redactPageUrl` in `filtering.ts` covers `meta.page.url`, which Faro sets from `location.href` on every item regardless of payload. The second one matters more than it looks: Grafana Cloud's collector explodes that query into `page.attributes`, so an unscrubbed URL arrives as first-class searchable `page_attr_var_*` fields.
 
+## Section recovery events
+
+Implicit section recovery reports when a section pauses, how a Restore ends, and how each pause resolved. All three carry guide identity through `guideIdentityAnalyticsProperties`, the cursor step's `step_action`, and `section_id` only when `guide_visibility` is `public`, because a private guide's section ids are authored text. No selectors, requirement strings or URLs are sent.
+
+| Event                       | Fires                                    | Properties                                                                                                  |
+| --------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `section_recovery_paused`   | Once per pause, after drift is confirmed | `trigger` (`page`, `target`), `recipe_length` (toggles to replay), `location_restore`                       |
+| `section_recovery_restore`  | When a Restore finishes or is cancelled  | `outcome` (`restored`, `failed`, `cancelled`), `duration_ms`, `failure_reason` (`repair_failed`, `drifted`) |
+| `section_recovery_resolved` | Once when each pause ends                | `resolved_by` (see below)                                                                                   |
+
+`resolved_by` values:
+
+- `restore`: a Restore put the state back.
+- `self`: the drift cleared without a Restore.
+- `step_completed`: the cursor moved to another step while paused.
+- `plan_changed`: the plan was dropped or replaced for the same step, for example by an alignment pause, the section becoming unreached or complete, or the kill switch.
+- `unrestorable`: Restore could no longer act, or a Restore gave up.
+- `requirements_failed`: the section's own requirements stopped passing.
+- `controller_mode`: the tab became the two-tab controller.
+- `unmount`: the guide or section closed.
+
+`self` and `step_completed` are the false-pause signals to watch across the catalog. The kill switch is `pathfinder.section-recovery`.
+
 ## Completion events
 
 `guide_completed` and `journey_completed` (`pathfinder_guide_completed` and `pathfinder_journey_completed` in the warehouse) are the Track 1 events of the [Completion Records RFC](https://github.com/grafana/pathfinder-rfcs/blob/main/rfc/COMPLETION_RECORDS.md#73-track-1-event-additions). The RFC keeps completion records on the customer's stack, so these events are how Grafana sees completions across stacks. They fire from `src/completion-records/completion-recorder.ts`, the same seam as the durable write, so every completion path reports both. The report has its own persisted guard (`completionReportedStorage`) and runs before the recorder's pre-arm startup buffer, so it never waits on the write hook arming or on the durable write being accepted, and never stands in for either.
@@ -324,7 +347,7 @@ Live values are computed when the event fires. Stored values are read back from 
 
 ## Kiosk catalogs and launches
 
-`pathfinder_kiosk_catalog_loaded` is sent to RudderStack through `reportAppInteraction` and mirrored as a Faro user action. The existing Faro event remains available for operational queries. It records the served `tier` (`override`, `configured`, `generic`, or `bundled`) and whether loading `degraded`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason; rejected rule logs name the invalid field without its value.
+`pathfinder_kiosk_catalog_loaded` is sent to RudderStack through `reportAppInteraction` and mirrored as a Faro user action. The existing Faro event remains available for operational queries. It records the served `tier` (`override`, `configured`, `generic`, or `bundled`), whether loading `degraded`, and `rejected_rules`. `degraded` means only that a higher tier failed and a fallback served. `rejected_rules` counts the rules the served catalog lost to validation, capped at 100, so a catalog that still loads but serves a truncated tile list reports `degraded: false` with a non-zero `rejected_rules`. An unconfigured kiosk serves bundled rules without degradation. Cancelled loads emit no outcome. Catalog failure logs contain only the tier and a bounded reason. Rule rejections log once per tier with the uncapped count and the sorted names of the invalid fields, never their values.
 
 `KioskDemoStarted` includes `launch_mode` (`instance` or `presentation`). Since URL-selected kiosks were added, `target_instance` is the current origin for instance launches and the catalog target (or current origin) for presentation launches. Filter by `launch_mode = presentation` for booth-demo comparisons; older events lack this field. Catalog URLs, rule content, and raw failure messages are not added to catalog telemetry.
 

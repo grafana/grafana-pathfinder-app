@@ -2,7 +2,7 @@ import { readerReturnChannel } from '../../global-state/auto-launch';
 import { OBSERVATION_HANDOFF_EVENT } from '../../global-state/observation/handoff';
 import { createPassiveObserver } from './passive-observer';
 import { conditionLabel } from '../../lib/condition-input';
-import { config, getAppEvents } from '@grafana/runtime';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 import { sleep, waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
@@ -44,6 +44,8 @@ import { acquireGuidedRun } from '../../global-state/guided-run';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import pluginJson from '../../plugin.json';
+import { parseUrlSafely, validateInternalNavigationPath } from '../../security/url-validator';
+import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { logger } from '../../lib/logging';
 import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
 import { TELEMETRY_ACTIONS } from '../../lib/telemetry';
@@ -372,6 +374,7 @@ export function installLiveTabExecutor(
       }
       const result = await (message.passive ? checkPostconditions : checkRequirements)({
         requirements: message.requirements,
+        allowCodaExecution: message.allowCodaExecution === true,
         targetAction: message.targetAction ?? 'button',
         refTarget: message.refTarget ?? '',
         targetValue: message.targetValue,
@@ -475,6 +478,25 @@ export function installLiveTabExecutor(
           void evaluateRequirements(validated);
         } else if (validated.kind === 'fix-requirement') {
           void runRemoteFix(validated);
+        } else if (validated.kind === 'navigate-link') {
+          const url = parseUrlSafely(validated.url);
+          if (
+            url &&
+            ['http:', 'https:'].includes(url.protocol) &&
+            url.origin === window.location.origin &&
+            !url.username &&
+            !url.password
+          ) {
+            const appSubUrl = config.appSubUrl ?? '';
+            const pathname =
+              appSubUrl && (url.pathname === appSubUrl || url.pathname.startsWith(`${appSubUrl}/`))
+                ? url.pathname.slice(appSubUrl.length) || '/'
+                : url.pathname;
+            const path = validateInternalNavigationPath(pathname + url.search + url.hash, currentUserIsAdmin());
+            if (path) {
+              locationService.push(path);
+            }
+          }
         } else if (validated.kind === 'sidebar-handoff') {
           if (validated.action === 'close') {
             if (sidebarState.getIsSidebarMounted()) {

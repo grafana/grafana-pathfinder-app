@@ -67,41 +67,29 @@ describe('TerminalConnectBlockForm gcx', () => {
     fireEvent.change(screen.getByPlaceholderText(/Click the button below/), { target: { value: 'Connect' } });
 
     // Absent, not `false`: an omitted field keeps existing guides byte-identical.
-    expect(submitted(onSubmit)).not.toHaveProperty('gcx');
+    expect(submitted(onSubmit)).not.toHaveProperty('credentials');
   });
 
-  it('emits gcx: true when the author ticks it', () => {
+  it('emits a named credential request when the author ticks it', () => {
     const onSubmit = renderForm();
     fireEvent.change(screen.getByPlaceholderText(/Click the button below/), { target: { value: 'Connect' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /set up gcx/i }));
 
-    expect(submitted(onSubmit).gcx).toBe(true);
+    expect(submitted(onSubmit).credentials).toEqual([{ tool: 'gcx' }]);
   });
 
   it('preserves gcx across an edit round-trip', () => {
-    const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', gcx: true });
+    const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', credentials: [{ tool: 'gcx' }] });
 
     expect(screen.getByRole('checkbox', { name: /set up gcx/i })).toBeChecked();
-    expect(submitted(onSubmit).gcx).toBe(true);
+    expect(submitted(onSubmit).credentials).toEqual([{ tool: 'gcx' }]);
   });
 
   it('lets an author turn gcx back off', () => {
-    const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', gcx: true });
+    const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', credentials: [{ tool: 'gcx' }] });
     fireEvent.click(screen.getByRole('checkbox', { name: /set up gcx/i }));
 
-    expect(submitted(onSubmit)).not.toHaveProperty('gcx');
-  });
-
-  it('warns that a backend write drops the field, only once it is ticked', () => {
-    // The CRD's `#Block` does not declare `gcx`, and the API server prunes an
-    // undeclared field with a 200 and no message — so a save or publish from
-    // here reloads the guide without it.
-    renderForm();
-    expect(screen.queryByText(/not stored on the backend/i)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('checkbox', { name: /set up gcx/i }));
-
-    expect(screen.getByText(/not stored on the backend/i)).toBeInTheDocument();
+    expect(submitted(onSubmit)).not.toHaveProperty('credentials');
   });
 
   it('keeps gcx alongside the VM options', () => {
@@ -110,13 +98,13 @@ describe('TerminalConnectBlockForm gcx', () => {
       content: 'Connect',
       vmTemplate: 'vm-aws-sample-app',
       vmApp: 'nginx',
-      gcx: true,
+      credentials: [{ tool: 'gcx' }],
     });
 
     expect(submitted(onSubmit)).toMatchObject({
       vmTemplate: 'vm-aws-sample-app',
       vmApp: 'nginx',
-      gcx: true,
+      credentials: [{ tool: 'gcx' }],
     });
   });
 });

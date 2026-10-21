@@ -130,6 +130,11 @@ export enum UserInteraction {
   AlignmentPromptConfirmed = 'alignment_prompt_confirmed',
   AlignmentPromptDismissed = 'alignment_prompt_dismissed',
 
+  // Section recovery
+  SectionRecoveryPaused = 'section_recovery_paused',
+  SectionRecoveryRestore = 'section_recovery_restore',
+  SectionRecoveryResolved = 'section_recovery_resolved',
+
   // Sandbox gcx credentials
   GcxCredentialInstalled = 'gcx_credential_installed',
   GcxSetupSkipped = 'gcx_setup_skipped',

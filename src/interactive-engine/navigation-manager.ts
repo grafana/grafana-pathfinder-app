@@ -693,20 +693,6 @@ export class NavigationManager {
     return this.highlightWithComment(element);
   }
 
-  /**
-   * Highlight an element with optional comment box
-   *
-   * @param element - The element to highlight
-   * @param comment - Optional comment text to display in a comment box
-   * @param enableAutoCleanup - Whether to enable auto-cleanup on scroll/click (default: true, false for guided mode)
-   * @param stepInfo - Optional step progress info for guided interactions and tours
-   * @param onSkipCallback - Optional callback when skip button is clicked
-   * @param onCancelCallback - Optional callback when cancel button is clicked (for guided mode)
-   * @param onNextCallback - Optional callback when next button is clicked (for tour mode)
-   * @param onPreviousCallback - Optional callback when previous button is clicked (for tour mode)
-   * @param options - Additional options for the comment box
-   * @returns Promise that resolves when highlighting is complete
-   */
   async highlightWithComment(
     element: HTMLElement,
     comment?: string,
@@ -718,24 +704,15 @@ export class NavigationManager {
     onPreviousCallback?: () => void,
     options?: CommentBoxOptions
   ): Promise<HTMLElement> {
-    // First, ensure navigation is open and element is visible
     // Keep old highlight visible during this async work for smooth transitions
     await this.ensureNavigationOpen(element);
     await this.ensureElementVisible(element);
 
-    // No DOM settling delay needed - scrollend event ensures scroll is complete
-    // and DOM is stable. Highlight immediately for better responsiveness!
-
-    // If selector targeted a hidden input (common in dropdowns), highlight the visible parent instead
     options?.signal?.throwIfAborted();
     const highlightTarget = getVisibleHighlightTarget(element);
 
-    // Position the outline around the target element using CSS custom properties
-    // All overlay elements use position:fixed, so coordinates are viewport-relative
-    // (no scroll offsets needed — getBoundingClientRect already returns viewport coords)
     const rect = highlightTarget.getBoundingClientRect();
 
-    // Check if element has no valid position at all (truly invalid)
     const hasNoPosition = rect.top === 0 && rect.left === 0 && rect.width === 0 && rect.height === 0;
     if (hasNoPosition) {
       logger.warn('Cannot highlight element: invalid position or dimensions', {
@@ -744,21 +721,12 @@ export class NavigationManager {
       return element;
     }
 
-    // Determine if we should use dot indicator instead of bounding box
     const isSmallElement =
       rect.width < INTERACTIVE_CONFIG.highlighting.minDimensionForBox ||
       rect.height < INTERACTIVE_CONFIG.highlighting.minDimensionForBox;
     const isHiddenElement = !isElementVisible(highlightTarget);
     const useDotIndicator = isSmallElement || isHiddenElement;
 
-    // For hidden elements, ALWAYS prepend warning to comment (regardless of size)
-    let effectiveComment = comment;
-    if (isHiddenElement) {
-      const hiddenWarning = 'Item may be hidden due to screen size; enlarge to see.\n\n';
-      effectiveComment = effectiveComment ? hiddenWarning + effectiveComment : hiddenWarning;
-    }
-
-    // Create highlight element (dot or bounding box)
     const highlightElement = document.createElement('div');
 
     // The floating panel dodges highlight overlays; exempt in-panel ones so it can't flee its own.
@@ -769,15 +737,12 @@ export class NavigationManager {
 
     if (useDotIndicator) {
       highlightElement.className = 'interactive-highlight-dot';
-      // Position at element's center (viewport coords for position:fixed)
       const dotTop = rect.top + rect.height / 2;
       const dotLeft = rect.left + rect.width / 2;
       highlightElement.style.setProperty('--highlight-top', `${dotTop}px`);
       highlightElement.style.setProperty('--highlight-left', `${dotLeft}px`);
     } else {
       highlightElement.className = 'interactive-highlight-outline';
-      // Note: We always show the highlight draw animation (looks good)
-      // skipAnimations only affects the comment box transition
       highlightElement.style.setProperty('--highlight-top', `${rect.top - 4}px`);
       highlightElement.style.setProperty('--highlight-left', `${rect.left - 4}px`);
       highlightElement.style.setProperty('--highlight-width', `${rect.width + 8}px`);
@@ -787,27 +752,24 @@ export class NavigationManager {
     if (!enableAutoCleanup) {
       highlightElement.classList.add('interactive-highlight-persistent');
     }
-    // Clear old highlights RIGHT BEFORE adding new one for seamless transition
     this.clearAllHighlights();
 
     document.body.appendChild(highlightElement);
     this.ownedHighlights.add(highlightElement);
 
-    // Create comment box if comment is provided OR if any callback is provided
-    // Comment box is always attached to body with absolute positioning
     let commentBox: HTMLElement | null = null;
     if (
-      (effectiveComment && effectiveComment.trim()) ||
+      (comment && comment.trim()) ||
+      isHiddenElement ||
       onSkipCallback ||
       onCancelCallback ||
       onNextCallback ||
       onPreviousCallback
     ) {
-      // Calculate highlight rect in viewport coordinates (position:fixed)
       const highlightRect = this.calculateHighlightRect(rect, useDotIndicator);
 
       commentBox = this.createCommentBox(
-        effectiveComment || '',
+        comment || '',
         rect,
         highlightRect,
         stepInfo,
@@ -815,70 +777,45 @@ export class NavigationManager {
         onCancelCallback,
         onNextCallback,
         onPreviousCallback,
-        options
+        options,
+        isHiddenElement
       );
 
       if (isInternalTarget) {
         commentBox.setAttribute('data-pathfinder-internal', 'true');
       }
 
-      // Always append to body (unified positioning)
       document.body.appendChild(commentBox);
       this.ownedHighlights.add(commentBox);
     }
 
-    // GUARDRAIL: Auto-remove highlight after fixed duration
-    // CSS handles visual fade, this is the cleanup failsafe
-    //
-    // Guided mode (!enableAutoCleanup): CSS animations run to completion but
-    // DOM element persists until clearAllHighlights() is called by the guided
-    // interaction flow. This is intentional - guides control their own lifecycle.
     if (useDotIndicator && enableAutoCleanup) {
       const dotRemovalTimeout = setTimeout(() => {
         if (highlightElement.isConnected) {
           highlightElement.remove();
         }
-        // Also remove comment box (now on body, not child of dot)
         if (commentBox?.isConnected) {
           commentBox.remove();
         }
       }, INTERACTIVE_CONFIG.highlighting.dotDurationMs);
 
-      // Store timeout for cleanup if clearAllHighlights is called early
       this.activeCleanupHandlers.push(() => clearTimeout(dotRemovalTimeout));
     } else if (!useDotIndicator && enableAutoCleanup) {
-      // GUARDRAIL: Auto-remove bounding box after animation completes (non-guided mode only)
-      // CSS handles visual fade-out, this ensures cleanup after animation finishes
       const outlineRemovalTimeout = setTimeout(() => {
         if (highlightElement.isConnected) {
           highlightElement.remove();
         }
-        // Also remove comment box (body-attached)
         if (commentBox?.isConnected) {
           commentBox.remove();
         }
       }, INTERACTIVE_CONFIG.highlighting.outlineDurationMs);
 
-      // Store timeout for cleanup if clearAllHighlights is called early
       this.activeCleanupHandlers.push(() => clearTimeout(outlineRemovalTimeout));
     }
 
-    // Highlights and comments now persist until explicitly cleared
-    // They will be removed when:
-    // 1. User clicks the close button on highlight
-    // 2. A new highlight is shown (clearAllHighlights called)
-    // 3. Section/guided execution starts
-    // 4. (If auto-cleanup enabled) User scrolls
-    // 5. (If auto-cleanup enabled) User clicks outside
-
-    // Always set up position tracking (efficient with ResizeObserver)
-    // Enable drift detection for guided mode (!enableAutoCleanup) for more responsive tracking
-    // FIX: Track the highlightTarget (visible parent) instead of original element
     const enableDriftDetection = !enableAutoCleanup;
     this.setupPositionTracking(highlightTarget, highlightElement, commentBox, enableDriftDetection, useDotIndicator);
 
-    // Set up smart auto-cleanup (unless disabled for guided mode)
-    // FIX: Use highlightTarget for auto-cleanup detection
     if (enableAutoCleanup) {
       this.setupAutoCleanup(highlightTarget);
     }
@@ -886,13 +823,6 @@ export class NavigationManager {
     return element;
   }
 
-  /**
-   * Create a themed comment box positioned near the highlighted element.
-   * Uses absolute positioning attached to document.body, clamped to viewport.
-   * Uses a clean, polished card design for both tour and guided modes.
-   *
-   * @param highlightRect - The absolute document coordinates of the highlight element
-   */
   private createCommentBox(
     comment: string,
     targetRect: DOMRect | null,
@@ -902,21 +832,18 @@ export class NavigationManager {
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
     onPreviousCallback?: () => void,
-    options?: CommentBoxOptions
+    options?: CommentBoxOptions,
+    isTargetHidden = false
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
 
-    // Apply E2E testing contract attributes
     applyE2ECommentBoxAttributes(commentBox, {
       actionType: options?.actionType,
       targetValue: options?.targetValue,
       refTarget: options?.refTarget,
     });
 
-    // We'll calculate position after building the content so we can measure actual height
-
-    // Defer visibility to prevent layout bounce (unless skipping animations)
     if (options?.skipAnimations) {
       commentBox.setAttribute('data-ready', 'true');
       commentBox.classList.add('interactive-comment-box--instant');
@@ -926,11 +853,9 @@ export class NavigationManager {
       });
     }
 
-    // Create content structure - clean card design
     const content = document.createElement('div');
     content.className = 'interactive-comment-content interactive-comment-glow';
 
-    // Close button (absolute positioned for simple tooltips)
     const closeButton = document.createElement('button');
     closeButton.className = 'interactive-comment-close';
     closeButton.innerHTML = '×'; // eslint-disable-line no-restricted-syntax -- Static HTML entity
@@ -950,7 +875,6 @@ export class NavigationManager {
 
     content.appendChild(closeButton);
 
-    // === HEADER: Step badge (only when stepInfo provided) ===
     if (stepInfo) {
       const headerContainer = document.createElement('div');
       headerContainer.className = 'interactive-comment-header';
@@ -963,7 +887,6 @@ export class NavigationManager {
       content.appendChild(headerContainer);
     }
 
-    // === PROGRESS BAR ===
     if (stepInfo) {
       const progressContainer = document.createElement('div');
       progressContainer.className = 'interactive-comment-progress-container';
@@ -976,11 +899,9 @@ export class NavigationManager {
       content.appendChild(progressContainer);
     }
 
-    // === CONTENT: Title + Description ===
     const contentSection = document.createElement('div');
     contentSection.className = 'interactive-comment-content-section';
 
-    // Title (optional)
     if (options?.stepTitle) {
       const titleElement = document.createElement('h4');
       titleElement.className = 'interactive-comment-title';
@@ -988,16 +909,23 @@ export class NavigationManager {
       contentSection.appendChild(titleElement);
     }
 
-    // Description/comment
-    const descriptionElement = document.createElement('p');
-    descriptionElement.className = 'interactive-comment-description';
-    // eslint-disable-next-line no-restricted-syntax -- Sanitized with DOMPurify via sanitizeDocumentationHTML
-    descriptionElement.innerHTML = sanitizeDocumentationHTML(comment || '');
-    contentSection.appendChild(descriptionElement);
+    if (comment?.trim()) {
+      const descriptionElement = document.createElement('p');
+      descriptionElement.className = 'interactive-comment-description';
+      // eslint-disable-next-line no-restricted-syntax -- Sanitized with DOMPurify via sanitizeDocumentationHTML
+      descriptionElement.innerHTML = sanitizeDocumentationHTML(comment);
+      contentSection.appendChild(descriptionElement);
+    }
+
+    if (isTargetHidden) {
+      const visibilityNote = document.createElement('p');
+      visibilityNote.className = 'interactive-comment-visibility-note';
+      visibilityNote.textContent = 'This item may be hidden until you open its menu or panel.';
+      contentSection.appendChild(visibilityNote);
+    }
 
     content.appendChild(contentSection);
 
-    // === STEP DOTS ===
     if (stepInfo) {
       const dotsContainer = document.createElement('div');
       dotsContainer.className = 'interactive-comment-dots';
@@ -1018,7 +946,6 @@ export class NavigationManager {
       content.appendChild(dotsContainer);
     }
 
-    // === NAVIGATION BUTTONS ===
     const hasGuidedButtons = onSkipCallback || onCancelCallback;
     const hasTourButtons = onNextCallback || onPreviousCallback;
 
@@ -1026,9 +953,7 @@ export class NavigationManager {
       const buttonContainer = document.createElement('div');
       buttonContainer.className = 'interactive-comment-buttons';
 
-      // Tour mode: Previous/Next navigation
       if (hasTourButtons) {
-        // Previous button
         const prevButton = document.createElement('button');
         prevButton.className = 'interactive-comment-nav-btn';
         prevButton.textContent = '← Back';
@@ -1044,12 +969,10 @@ export class NavigationManager {
 
         buttonContainer.appendChild(prevButton);
 
-        // Spacer
         const spacer = document.createElement('div');
         spacer.className = 'interactive-comment-nav-spacer';
         buttonContainer.appendChild(spacer);
 
-        // Next button - primary style
         const nextButton = document.createElement('button');
         const isLastStep = stepInfo && stepInfo.current === stepInfo.total - 1;
         const nextLabel = options?.nextLabel ?? (isLastStep ? 'Done' : 'Next →');
@@ -1067,9 +990,7 @@ export class NavigationManager {
         buttonContainer.appendChild(nextButton);
       }
 
-      // Guided mode: Cancel/Skip buttons (same row layout as tour)
       if (hasGuidedButtons && !hasTourButtons) {
-        // Cancel button (left side)
         if (onCancelCallback) {
           const cancelButton = document.createElement('button');
           cancelButton.className = 'interactive-comment-nav-btn interactive-comment-nav-btn--cancel';
@@ -1086,12 +1007,10 @@ export class NavigationManager {
           buttonContainer.appendChild(cancelButton);
         }
 
-        // Spacer
         const spacer = document.createElement('div');
         spacer.className = 'interactive-comment-nav-spacer';
         buttonContainer.appendChild(spacer);
 
-        // Skip button (right side, if skippable)
         if (onSkipCallback) {
           const skipButton = document.createElement('button');
           skipButton.className = 'interactive-comment-nav-btn';
@@ -1112,7 +1031,6 @@ export class NavigationManager {
       content.appendChild(buttonContainer);
     }
 
-    // === KEYBOARD HINT ===
     if (options?.showKeyboardHint) {
       const keyboardHint = document.createElement('div');
       keyboardHint.className = 'interactive-comment-keyboard-hint';

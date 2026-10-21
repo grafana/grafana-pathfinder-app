@@ -28,6 +28,9 @@ npm run test:ci
 # and disposition policy, adversarial-verification policy, and report renderer
 npm run test:review-contract
 
+# Validate the review-lite skill's helper: prepare, context, finish, and sync scan
+npm run test:review-lite
+
 # Run tests in watch mode (for local development)
 npm test
 

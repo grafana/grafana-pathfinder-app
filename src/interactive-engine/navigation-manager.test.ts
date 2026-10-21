@@ -419,6 +419,27 @@ describe('NavigationManager', () => {
     });
 
     describe('hidden elements', () => {
+      it.each([undefined, '', '   '])('shows the visibility note without a tooltip (%p)', async (comment) => {
+        mockIsElementVisible.mockReturnValue(false);
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, comment);
+
+        const commentBox = document.querySelector('.interactive-comment-box');
+        expect(commentBox).not.toBeNull();
+        expect(commentBox?.querySelector('.interactive-comment-description')).toBeNull();
+        expect(commentBox?.querySelector('.interactive-comment-visibility-note')?.textContent).toBe(
+          'This item may be hidden until you open its menu or panel.'
+        );
+      });
+
       it('keeps a wide hidden target comment inside the viewport initially and after movement', async () => {
         mockIsElementVisible.mockReturnValue(false);
         const rect = { top: 100, left: 20, bottom: 200, right: 920, width: 900, height: 100 };
@@ -466,7 +487,7 @@ describe('NavigationManager', () => {
         expect(commentBox?.textContent).toContain('hidden');
       });
 
-      it('should prepend hidden warning even for normal-sized hidden elements', async () => {
+      it('should keep the original tooltip separate from the hidden item note', async () => {
         mockIsElementVisible.mockReturnValue(false);
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
           top: 100,
@@ -480,8 +501,11 @@ describe('NavigationManager', () => {
         await navigationManager.highlightWithComment(mockElement, 'Original comment');
 
         const commentBox = document.querySelector('.interactive-comment-box');
-        expect(commentBox?.textContent).toContain('Item may be hidden');
-        expect(commentBox?.textContent).toContain('Original comment');
+        const description = commentBox?.querySelector('.interactive-comment-description');
+        const note = commentBox?.querySelector('.interactive-comment-visibility-note');
+        expect(description?.textContent).toBe('Original comment');
+        expect(note?.textContent).toBe('This item may be hidden until you open its menu or panel.');
+        expect(description?.nextElementSibling).toBe(note);
       });
 
       it('should check visibility on highlightTarget, not original element (dropdown input fix)', async () => {
@@ -516,7 +540,7 @@ describe('NavigationManager', () => {
 
         // Should NOT show hidden warning since highlightTarget is visible
         const commentBox = document.querySelector('.interactive-comment-box');
-        expect(commentBox?.textContent).not.toContain('Item may be hidden');
+        expect(commentBox?.querySelector('.interactive-comment-visibility-note')).toBeNull();
         expect(commentBox?.textContent).toContain('Test comment');
 
         // Clean up

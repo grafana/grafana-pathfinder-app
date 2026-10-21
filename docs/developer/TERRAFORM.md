@@ -247,9 +247,9 @@ on the next read. There is no 422 and no error body.
 
 Depth decides whether a field survives. Blocks nested three or more levels
 deep fall under `x-kubernetes-preserve-unknown-fields` and are kept; anything
-shallower is not. Today's gap is `input.defaultValue`, the `dataCheck*` family,
-and `gcx` on `terminal-connect` — losing that last one connects the terminal
-step without installing a credential. The set is pinned as
+shallower is not. Today's gap includes `input.defaultValue` and the `dataCheck*` family.
+Terminal `credentials` requires the schema from
+[grafana-pathfinder-backend#92](https://github.com/grafana/grafana-pathfinder-backend/pull/92). The set is pinned as
 [`PRUNED_BY_CRD`](../../src/validation/upsert-script-crd-fields.test.ts) and
 moves both ways as the CUE changes, so trust a dry run over any enumeration.
 

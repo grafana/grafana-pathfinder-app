@@ -958,3 +958,24 @@ it('keeps observing while only an action-less section entry is executing, as dur
   expect(coordinator.executing()).toBe(true);
   coordinator.stop();
 });
+
+it('consumes explicit command permission once per manual request or retry', async () => {
+  const check = jest.fn().mockResolvedValue(false);
+  const coordinator = new CompletionCoordinator(check);
+  const item = step({ objectives: ['coda-exit-zero:true'] });
+  coordinator.register(item);
+  coordinator.start();
+  await settle();
+  expect(check).not.toHaveBeenCalled();
+  coordinator.request(item.id, 'manual');
+  await settle();
+  expect(check).toHaveBeenLastCalledWith(['coda-exit-zero:true'], item, expect.any(AbortSignal), true);
+  coordinator.recheck();
+  await settle();
+  expect(check).toHaveBeenCalledTimes(1);
+  coordinator.retry(item.id);
+  await settle();
+  expect(check).toHaveBeenCalledTimes(2);
+  expect(check).toHaveBeenLastCalledWith(['coda-exit-zero:true'], item, expect.any(AbortSignal), true);
+  coordinator.stop();
+});

@@ -138,6 +138,11 @@ export interface ReaderPosition {
   trackId?: string;
 }
 
+export interface NavigateLinkMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'navigate-link';
+  url: string;
+}
+
 export interface SidebarHandoffMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'sidebar-handoff';
   action: 'close' | 'reopen';
@@ -147,7 +152,10 @@ export interface SidebarHandoffMessage extends CrossTabEnvelope, Partial<Control
 // Requirement round-trip (controller → live → controller); requestId correlates
 // each reply to its request since several steps may be in flight.
 export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  /** Use postcondition probes without scrolling or retries. */
   passive?: boolean;
+  /** Explicit user-requested command evaluation; defaults to false. */
+  allowCodaExecution?: boolean;
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
@@ -240,6 +248,7 @@ export type CrossTabMessage =
   | StepCancelMessage
   | HeartbeatMessage
   | SidebarHandoffMessage
+  | NavigateLinkMessage
   | CheckRequirementsMessage
   | RequirementResultMessage
   | FixRequirementMessage
@@ -270,6 +279,7 @@ export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Se
   'check-requirements',
   'fix-requirement',
   'sidebar-handoff',
+  'navigate-link',
 ]);
 
 // Same-build assumption: the controller and live tabs are the same plugin
@@ -435,6 +445,7 @@ function isValidCheckRequirements(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
     (message.passive === undefined || typeof message.passive === 'boolean') &&
+    (message.allowCodaExecution === undefined || typeof message.allowCodaExecution === 'boolean') &&
     typeof message.stepId === 'string' &&
     isBoundedConditionInput(message.requirements) &&
     isOptionalString(message.targetAction) &&
@@ -591,6 +602,7 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
     (m.index as number) < 256,
   heartbeat: isValidHeartbeat,
   'sidebar-handoff': isValidSidebarHandoff,
+  'navigate-link': (message) => isBoundedString(message.url, 8192) && (message.url as string).length > 0,
   'check-requirements': isValidCheckRequirements,
   'requirement-result': isValidRequirementResult,
   'fix-requirement': isValidFixRequirement,
