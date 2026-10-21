@@ -179,13 +179,16 @@ it('reports recommendations as not yet fetched until the first fetch settles', a
   const firstRecommendations = deferred<ReturnType<typeof recommendationsResult>>();
   mockFetchRecommendations.mockImplementationOnce(() => firstRecommendations.promise);
   const { result, unmount } = renderHook(() => useContextPanel());
+  expect(result.current.isLoadingRecommendations).toBe(true);
   expect(result.current.hasFetchedRecommendations).toBe(false);
 
   await act(async () => jest.advanceTimersByTimeAsync(INTERACTIVE_CONFIG.delays.debouncing.contextRefresh));
   expect(result.current.contextData.isLoading).toBe(false);
+  expect(result.current.isLoadingRecommendations).toBe(true);
   expect(result.current.hasFetchedRecommendations).toBe(false);
 
   await act(async () => firstRecommendations.resolve(recommendationsResult('initial')));
+  expect(result.current.isLoadingRecommendations).toBe(false);
   expect(result.current.hasFetchedRecommendations).toBe(true);
   unmount();
 });
@@ -196,6 +199,7 @@ it('stops waiting for recommendations when the first context fetch fails', async
   await act(async () => jest.advanceTimersByTimeAsync(INTERACTIVE_CONFIG.delays.debouncing.contextRefresh));
 
   expect(result.current.contextData.isLoading).toBe(false);
+  expect(result.current.isLoadingRecommendations).toBe(false);
   expect(result.current.hasFetchedRecommendations).toBe(true);
   expect(mockFetchRecommendations).not.toHaveBeenCalled();
   unmount();

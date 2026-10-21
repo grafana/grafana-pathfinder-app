@@ -9,10 +9,10 @@ jest.mock('./context.service', () => ({
     fetchRecommendations: (...args: unknown[]) => mockFetchRecommendations(...args),
   },
 }));
-jest.mock('../hooks', () => {
-  const config = {};
-  return { usePathfinderPluginConfig: () => ({ config }) };
-});
+let mockPluginConfig: object = {};
+jest.mock('../hooks', () => ({
+  usePathfinderPluginConfig: () => ({ config: mockPluginConfig }),
+}));
 jest.mock('@grafana/runtime', () => ({
   locationService: {
     getLocation: () => ({ pathname: '/d/abc' }),
@@ -73,6 +73,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   contextListeners.clear();
   detectedDatasource = null;
+  mockPluginConfig = {};
   mockGetContextData.mockResolvedValue(context());
   mockFetchRecommendations.mockResolvedValue(recommendationsResult());
 });
@@ -140,5 +141,29 @@ it('retries recommendations on the next refresh after an error, even when the co
   await settle();
 
   expect(mockFetchRecommendations).toHaveBeenCalledTimes(2);
+  unmount();
+});
+
+it('refetches recommendations with the new plugin config when it resolves after the first fetch', async () => {
+  const { rerender, unmount } = await renderSettled();
+  const resolvedConfig = { acceptedTermsAndConditions: true };
+  mockPluginConfig = resolvedConfig;
+
+  await act(async () => rerender());
+
+  expect(mockGetContextData).toHaveBeenCalledTimes(1);
+  expect(mockFetchRecommendations).toHaveBeenCalledTimes(2);
+  expect(mockFetchRecommendations).toHaveBeenLastCalledWith(expect.anything(), resolvedConfig);
+  unmount();
+});
+
+it('does not refetch when built-in datasource queries leave the detected datasource unchanged', async () => {
+  const { unmount } = await renderSettled();
+
+  emitContextEvent(null);
+  await settle();
+
+  expect(mockGetContextData).toHaveBeenCalledTimes(1);
+  expect(mockFetchRecommendations).toHaveBeenCalledTimes(1);
   unmount();
 });

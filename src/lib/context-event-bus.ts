@@ -27,7 +27,8 @@ const changeListeners: Set<() => void> = new Set();
  * - grafana_ds_add_datasource_clicked: New datasource configuration
  * - grafana_ds_test_datasource_clicked: Existing datasource configuration (workaround)
  * - dashboards_dspicker_clicked: Dashboard datasource selection for querying
- * - data-request (meta-analytics): Active query execution in explore/dashboard
+ * - data-request (meta-analytics): Active query execution in explore/dashboard; built-in `datasource`-type
+ *   requests (annotations, -- Grafana --, mixed) notify listeners but leave the detected datasource unchanged
  */
 export function getDetectedDatasourceType(): string | null {
   return currentDatasourceType;
@@ -160,9 +161,13 @@ export function initializeEchoLogging(): void {
         if (event.type === 'meta-analytics' && event.payload?.eventName === 'data-request') {
           const datasourceType = event.payload?.datasourceType;
           const source = event.payload?.source;
-          if (datasourceType && source && datasourceType !== BUILT_IN_DATASOURCE_TYPE) {
-            currentDatasourceType = datasourceType;
-            addToEventBuffer({ datasourceType, timestamp: Date.now(), source: `${source}-query` });
+          if (datasourceType && source) {
+            if (datasourceType === BUILT_IN_DATASOURCE_TYPE) {
+              notifyContextChange();
+            } else {
+              currentDatasourceType = datasourceType;
+              addToEventBuffer({ datasourceType, timestamp: Date.now(), source: `${source}-query` });
+            }
           }
         }
       },

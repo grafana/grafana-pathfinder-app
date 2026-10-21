@@ -146,7 +146,7 @@ describe('interaction event routing', () => {
     expect(getDetectedDatasourceType()).toBe('mimir');
   });
 
-  it('ignores data-requests from built-in datasources so annotation queries do not replace the real one', () => {
+  it('notifies on built-in datasource data-requests without replacing the detected datasource', () => {
     const listener = jest.fn();
     onContextChange(listener);
     dispatch({
@@ -158,7 +158,7 @@ describe('interaction event routing', () => {
       payload: { eventName: 'data-request', datasourceType: 'datasource', source: 'dashboard' },
     });
     expect(getDetectedDatasourceType()).toBe('prometheus');
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 
   it('ignores meta-analytics data-request when source is missing', () => {

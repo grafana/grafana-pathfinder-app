@@ -11,15 +11,7 @@ import { StorageEvents } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
 import { subscribeToAutoOpenGuideEnrollment } from '../utils/experiments/auto-open-guide/state';
-
-const recommendationsInputKey = (data: ContextData) =>
-  JSON.stringify([
-    data.currentPath,
-    data.tags,
-    data.visualizationType,
-    data.platform,
-    [...new Set(data.dataSources.map((ds) => ds.type))].sort(),
-  ]);
+import { recommendationsInputKey } from './recommendation-inputs';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
@@ -48,7 +40,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     platform: 'oss', // Default to oss, will be updated by getContextData
   });
 
-  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(true);
   const [hasFetchedRecommendations, setHasFetchedRecommendations] = useState(false);
   const [contextVersion, setContextVersion] = useState(0);
   const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
@@ -100,7 +92,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       }
       logger.error('Failed to fetch context data', { error });
       setContextData((prev) => ({ ...prev, isLoading: false }));
-      setHasFetchedRecommendations(true);
+      if (recommendationsRequestRef.current === 0) {
+        setIsLoadingRecommendations(false);
+        setHasFetchedRecommendations(true);
+      }
     }
   }, []);
 
