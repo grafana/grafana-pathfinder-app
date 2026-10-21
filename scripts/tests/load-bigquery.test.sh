@@ -37,9 +37,13 @@ cat >"${BIN}/bq" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$STUB_LOG"
 if [[ "$1" == show ]]; then
+  # What gcloud prints on a GitHub runner, even when the command succeeds.
+  echo "ERROR: (gcloud.config.config-helper) You do not currently have an active account selected." >&2
   case "$STUB_EXISTING" in
     missing) echo "BigQuery error in show operation: Not found: Table docs_site.pathfinder_packages" && exit 1 ;;
+    missing-on-stderr) echo "BigQuery error in show operation: Not found: Table docs_site.pathfinder_packages" >&2 && exit 1 ;;
     broken) echo "BigQuery error in show operation: Access Denied" && exit 1 ;;
+    not-json) echo "Table docs_site.pathfinder_packages" && exit 0 ;;
     *) printf '{"numRows":"%s"}\n' "$STUB_EXISTING" && exit 0 ;;
   esac
 fi
@@ -316,6 +320,15 @@ expect_loaded "ALLOW_PACKAGE_DROP=true lets an intended drop through"
 
 EXISTING=missing run_update "$FIXTURE"
 expect_loaded "a missing table is created on the first run"
+
+EXISTING=9 run_update "$NINE"
+expect_loaded "a gcloud warning on stderr does not break reading the current row count"
+
+EXISTING=missing-on-stderr run_update "$FIXTURE"
+expect_loaded "a Not found reported on stderr still counts as a first run"
+
+EXISTING=not-json run_update "$FIXTURE"
+expect_refused "an unreadable bq show response is refused"
 
 EXISTING=broken run_update "$FIXTURE"
 expect_refused "a failed table lookup is refused rather than treated as a first run"
