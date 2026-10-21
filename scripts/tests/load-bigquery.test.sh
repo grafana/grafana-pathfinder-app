@@ -209,12 +209,33 @@ expect_jq "an OR dependency clause survives" demo-guide '.depends[1] == ["either
 expect_jq "unknown manifest fields are dropped" demo-guide 'has("fieldFromTheFuture") | not'
 expect_jq "every row carries loaded_at" demo-guide '.loaded_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$")'
 
-SCHEMA_COLUMNS=$(jq -r '[.[].name] | sort | join(",")' "${REPO_ROOT}/scripts/bigquery/pathfinder-packages.schema.json")
-ROW_COLUMNS=$(row demo-path | jq -r 'keys | sort | join(",")')
-if [[ "$SCHEMA_COLUMNS" == "$ROW_COLUMNS" ]]; then
-  ok "filter output matches the schema columns"
+if jq -e 'select(any(.[]; . == null))' "${CAPTURE}/pathfinder_packages.ndjson" >/dev/null; then
+  nope "no row carries an explicit null" "$(cat "${CAPTURE}/pathfinder_packages.ndjson")"
 else
-  nope "filter output matches the schema columns" "schema: ${SCHEMA_COLUMNS}"$'\n'"rows:   ${ROW_COLUMNS}"
+  ok "no row carries an explicit null"
+fi
+expect_jq "a missing JSON value is left out so it loads as SQL NULL" demo-guide \
+  '(has("targeting") or has("tracks") or has("test_environment") or has("recommends")) | not'
+expect_jq "a missing scalar is left out too" demo-guide '(has("description") or has("block_count")) | not'
+
+SCHEMA_COLUMNS=$(jq -r '[.[].name] | sort | join(",")' "${REPO_ROOT}/scripts/bigquery/pathfinder-packages.schema.json")
+FULL="${WORK}/full.json"
+cat >"$FULL" <<'EOF'
+{
+  "full-guide": {
+    "path": "full-guide/", "type": "guide", "title": "Full", "description": "Every field set", "category": "c",
+    "author": { "name": "n", "team": "t" }, "startingLocation": "/", "estimatedMinutes": 5, "minGrafanaVersion": "12.0.0",
+    "provides": ["p"], "depends": ["d"], "recommends": ["r"], "suggests": ["s"], "tracks": [], "prerequisites": [],
+    "targeting": { "match": {} }, "testEnvironment": { "tier": "cloud" },
+    "stats": { "version": 2, "blockCount": 1, "sectionCount": 1, "completableBlockCount": 1, "finalCompletablePosition": 1 }
+  }
+}
+EOF
+ROW_COLUMNS=$(jq -c --arg loaded_at x -f "${REPO_ROOT}/scripts/bigquery/pathfinder-packages.jq" "$FULL" | jq -r 'keys | sort | join(",")')
+if [[ "$SCHEMA_COLUMNS" == "$ROW_COLUMNS" ]]; then
+  ok "a fully populated package fills every schema column"
+else
+  nope "a fully populated package fills every schema column" "schema: ${SCHEMA_COLUMNS}"$'\n'"rows:   ${ROW_COLUMNS}"
 fi
 
 MILESTONE_SCHEMA=$(jq -r '.[] | select(.name == "milestones") | [.fields[].name] | sort | join(",")' "${REPO_ROOT}/scripts/bigquery/pathfinder-packages.schema.json")
