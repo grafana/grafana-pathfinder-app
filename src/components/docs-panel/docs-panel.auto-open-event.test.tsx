@@ -121,3 +121,16 @@ describe('Auto-open listener is mounted on all launch surfaces (#1450)', () => {
     expect(src).toContain(call);
   });
 });
+
+/**
+ * The sidebar unmount cleanup must reach `sidebarState.closeSidebar()`, which
+ * emits the close event, ends the telemetry session and clears the mounted
+ * flag only while the sidebar still owns the mode (#1450). ContextSidebar is
+ * not runtime-mountable in Jest, so this pins the call at the source.
+ */
+describe('Sidebar unmount cleanup delegates to closeSidebar (#1450)', () => {
+  it('module.tsx returns a cleanup that calls sidebarState.closeSidebar()', () => {
+    const moduleSrc = fs.readFileSync(path.join(PANEL_ROOT, '..', '..', 'module.tsx'), 'utf-8');
+    expect(moduleSrc).toContain('return () => sidebarState.closeSidebar()');
+  });
+});

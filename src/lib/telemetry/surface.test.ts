@@ -184,7 +184,7 @@ describe('panel session', () => {
     });
     surface.reportPathfinderSurface('sidebar');
     const id = surface.getPanelSessionId();
-    expect(id).toMatch(/^[0-9a-f-]{32,36}$/);
+    expect(id).toMatch(/^[0-9a-f]{32}$/);
     expect(idSeenByListener).toBe(id);
     surface.reportPathfinderSurface('floating');
     expect(surface.getPanelSessionId()).toBe(id);

@@ -74,6 +74,7 @@ describe('reportAppInteraction panel session', () => {
     const rudder = mockReportInteraction.mock.calls.at(-1)![1];
     const faro = mockPushFaroUserAction.mock.calls.at(-1)![1];
     expect(faro.pathfinder_session_id).toBe(rudder.pathfinder_session_id);
+    expect(faro.session_started_at).toBe(rudder.session_started_at);
     expect(faro).not.toHaveProperty('guide_id');
   });
 });
