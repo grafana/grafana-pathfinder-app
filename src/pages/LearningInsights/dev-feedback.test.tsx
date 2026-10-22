@@ -83,6 +83,19 @@ test('failed assignment loads do not report no assignments or all clear', () => 
   expect(screen.getByText(/Assignment records could not all be loaded/)).toBeInTheDocument();
   expect(screen.queryByText(/No assignments yet|No assignments need attention/)).not.toBeInTheDocument();
   expect(screen.getByText('Assignment summary unavailable')).toBeInTheDocument();
+  expect(screen.getByText('Guide completions')).toBeInTheDocument();
+  expect(screen.queryByText('Guide completions · available records')).not.toBeInTheDocument();
+});
+
+test('all people includes completion-only people when there are no assignments', () => {
+  show({ ...fixture(), assignments: [] });
+  fireEvent.click(screen.getByRole('button', { name: 'Assignments and people' }));
+  expect(screen.getByLabelText('Person')).toHaveDisplayValue('All people');
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect Alex' }));
+  expect(screen.getByRole('complementary')).toBeInTheDocument();
+  expect(within(screen.getByRole('complementary')).getByText('First dashboard', { exact: false })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Person'), { target: { value: '' } });
+  expect(screen.getByRole('button', { name: 'Inspect Alex' })).toBeInTheDocument();
 });
 
 test('true zero attention is calm but unknown statuses require follow-up', () => {

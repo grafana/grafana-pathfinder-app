@@ -274,12 +274,6 @@ function findPercentageCalculationViolations(): Set<string> {
 
 const ALLOWED_PERCENTAGE_CALCULATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
-    violation: 'pages/LearningInsights/Overview.tsx',
-    reason:
-      'Reporting chart geometry represents the distribution of current recipient obligations, not progress through a guide/path. The server evaluates each obligation; see docs/developer/LEARNING_INSIGHTS.md.',
-    tracking: ARCHITECTURE_BY_DESIGN,
-  },
-  {
     violation: 'interactive-engine/navigation-manager.ts',
     reason:
       "The guided-tour comment box's progress bar tracks position within one guided/multistep block's own child steps — a `guided` block counts as ONE block with its children outside the denominator (COMPLETION-MODEL.md decision 1), so this is a different altitude from guide/path/journey completion and never a denominator this model owns.",

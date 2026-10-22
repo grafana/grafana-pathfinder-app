@@ -102,13 +102,12 @@ beforeEach(() => {
     .mockReturnValue({ data: fixture(), loading: false, error: null, refresh: jest.fn() });
 });
 
-test('shows exact exclusive UTC window, current assignment summary and accessible chart data', () => {
+test('shows current assignment summary and accessible completion chart intervals', () => {
   renderView();
-  expect(screen.getAllByText(/2026-07-29 00:00:00 UTC/).length).toBeGreaterThan(0);
-  expect(screen.getByText(/\(exclusive\)/)).toBeInTheDocument();
   expect(screen.getByText('Guide completions')).toBeInTheDocument();
-  expect(screen.getByText('1 unknown')).toBeInTheDocument();
-  expect(screen.getByRole('table', { name: /Guide completions by interval/ })).toBeInTheDocument();
+  expect(screen.getByText(/1 complete · 1 outstanding · 1 unknown/)).toBeInTheDocument();
+  expect(screen.getByRole('list', { name: 'Guide completions by interval' })).toBeInTheDocument();
+  expect(screen.getAllByRole('listitem', { name: /guide completions/ })).toHaveLength(4);
   expect(screen.getAllByText('Your first dashboard').length).toBeGreaterThanOrEqual(2);
   expect(screen.getByRole('button', { name: 'user:unmatched' })).toBeInTheDocument();
 });
@@ -131,7 +130,11 @@ test('opens overdue obligations and contextual evidence with learning-only links
   const evidence = screen.getByRole('complementary');
   expect(within(evidence).getByRole('heading', { name: 'Alex Morgan' })).toHaveFocus();
   expect(within(evidence).getByRole('heading', { name: '1 of 2 guides credited' })).toBeInTheDocument();
-  expect(within(evidence).getByText(/2026-07-20 00:00:00 UTC/)).toBeInTheDocument();
+  expect(within(evidence).getByText(/Due:/)).toHaveTextContent(
+    new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(
+      new Date('2026-07-20T00:00:00Z')
+    )
+  );
   const link = within(evidence).getByRole('link', { name: /Open learning content/ });
   const url = new URL(link.getAttribute('href')!);
   expect(url.pathname).toBe('/a/grafana-pathfinder-app');
@@ -143,7 +146,7 @@ test('opens overdue obligations and contextual evidence with learning-only links
   expect(writeText).toHaveBeenCalledWith(url.toString());
   expect(await screen.findByText('Learning link copied.')).toBeInTheDocument();
   fireEvent.click(within(evidence).getByRole('button', { name: 'Close details' }));
-  expect(screen.getByLabelText('Recorded person')).toHaveFocus();
+  expect(screen.getByLabelText('Person')).toHaveFocus();
 });
 
 test('filters rules, targets, persons and status and preserves unknown evidence', () => {
@@ -154,6 +157,7 @@ test('filters rules, targets, persons and status and preserves unknown evidence'
   fireEvent.click(screen.getByRole('button', { name: 'user:unmatched' }));
   expect(screen.getByText('Required-guide evidence is unresolved')).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /Open learning content/ })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Person'), { target: { value: '' } });
   fireEvent.change(screen.getByLabelText('Wave or rule'), { target: { value: '' } });
   fireEvent.change(screen.getByLabelText('Target'), {
     target: { value: JSON.stringify(['guide', 'app-platform', 'dashboard']) },
@@ -166,20 +170,20 @@ test('filters rules, targets, persons and status and preserves unknown evidence'
 test('people include older subjects without pretending they completed in this window', () => {
   renderView();
   fireEvent.click(screen.getByRole('button', { name: 'Assignments and people' }));
-  fireEvent.change(screen.getByLabelText('Recorded person'), { target: { value: 'user:older' } });
+  fireEvent.change(screen.getByLabelText('Person'), { target: { value: 'user:older' } });
   expect(screen.getByText(/Older evidence may still satisfy an assignment/)).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: '1 of 1 guides credited' })).toBeInTheDocument();
 });
 
-test('partial results describe lower bounds and preserve warnings', () => {
+test('partial completion reads scope available-record counts without exposing codes', () => {
   const data = fixture();
   data.completeness = 'partial';
-  data.warnings = ['completion-page-budget'];
+  data.warnings = ['completions-page-limit'];
   renderView(data);
-  expect(screen.getByText(/counts are lower bounds/)).toBeInTheDocument();
-  expect(screen.getByText(/ranking of returned records only/)).toBeInTheDocument();
-  expect(screen.getByText('completion-page-budget')).toBeInTheDocument();
-  expect(screen.getAllByText('At least 2').length).toBeGreaterThan(0);
+  expect(screen.getByText(/Completion records could not all be loaded/)).toBeInTheDocument();
+  expect(screen.getByText('Guide completions · available records')).toBeInTheDocument();
+  expect(screen.queryByText('completions-page-limit')).not.toBeInTheDocument();
+  expect(screen.queryByText(/At least/)).not.toBeInTheDocument();
 });
 
 test.each([
@@ -188,7 +192,7 @@ test.each([
 ])('does not present cached numbers as current during loading or error', (state, message) => {
   renderView(fixture(), state);
   expect(screen.getByText(message)).toBeInTheDocument();
-  expect(screen.queryByText('Learning, made visible.')).not.toBeInTheDocument();
+  expect(screen.queryByText('Guide completions')).not.toBeInTheDocument();
 });
 
 test('unavailable is not an empty stack with zero totals', () => {
@@ -219,13 +223,14 @@ test('server-admin flag does not substitute for the current-org role', () => {
   expect(useLearningInsights).not.toHaveBeenCalled();
 });
 
-test('period selector requests complete UTC days and refresh remains actionable', () => {
+test('native time picker requests complete UTC days and native refresh remains actionable', () => {
   render(<LearningInsightsPage />);
-  fireEvent.change(screen.getByLabelText('Completion period'), { target: { value: '7' } });
+  fireEvent.click(screen.getByRole('button', { name: /Time range selected/ }));
+  fireEvent.click(screen.getByText('Last 7 complete days'));
   const args = jest.mocked(useLearningInsights).mock.calls.at(-1)!;
   expect(Date.parse(args[1]!) - Date.parse(args[0]!)).toBe(7 * 86400000);
   expect(args[0]).toMatch(/T00:00:00.000Z$/);
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
   expect(jest.mocked(useLearningInsights).mock.results.at(-1)!.value.refresh).toHaveBeenCalled();
 });
 

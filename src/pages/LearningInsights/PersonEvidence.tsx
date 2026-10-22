@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { copyTextToClipboard } from '../../lib/clipboard';
 import type { LearningInsightsAssignment, LearningInsightsResponse } from '../../types/learning-insights';
-import { learningLink, personName, utcTime } from './insights.helpers';
+import { learningLink, personName, displayTime, completionMethod } from './insights.helpers';
 import type { InsightsStyles } from './learning-insights.styles';
 
 interface Props {
@@ -9,14 +9,17 @@ interface Props {
   userId: string;
   styles: InsightsStyles;
   onClose: () => void;
+  timeZone?: string;
 }
 
 function AssignmentEvidence({
   assignment: row,
   styles: s,
+  timeZone,
 }: {
   assignment: LearningInsightsAssignment;
   styles: InsightsStyles;
+  timeZone: string;
 }) {
   const link = learningLink(row.targetSource, row.targetId, row.targetType);
   const [copyState, setCopyState] = useState('');
@@ -60,11 +63,19 @@ function AssignmentEvidence({
                   : 'Outstanding'}
         </strong>
       </p>
-      {row.reason && <p className={s.muted}>Evaluation reason: {row.reason}</p>}
+      {row.reason && (
+        <p className={s.muted}>
+          {row.reason === 'completion-history-incomplete'
+            ? 'Completion history is incomplete. Refresh to retry; missing credit cannot yet be ruled out.'
+            : row.reason === 'lifecycle-unsupported'
+              ? 'This assignment uses an unsupported state. Ask your administrator to check it.'
+              : 'Required learning content could not be verified. Refresh, then check that the assigned content is still available.'}
+        </p>
+      )}
       <p className={s.muted}>
-        Assigned: {utcTime(row.assignedAt)}
+        Assigned: {displayTime(row.assignedAt, timeZone)}
         <br />
-        Due: {row.dueAt ? utcTime(row.dueAt) : 'No due date recorded'}
+        Due: {row.dueAt ? displayTime(row.dueAt, timeZone) : 'No due date recorded'}
       </p>
       <h3>
         {!known
@@ -107,7 +118,7 @@ function AssignmentEvidence({
   );
 }
 
-export function PersonEvidence({ data, userId, styles: s, onClose }: Props) {
+export function PersonEvidence({ data, userId, styles: s, onClose, timeZone = 'UTC' }: Props) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus();
@@ -118,7 +129,7 @@ export function PersonEvidence({ data, userId, styles: s, onClose }: Props) {
   return (
     <aside className={s.detail} aria-labelledby="person-evidence-title">
       <div className={s.header}>
-        <span className={s.badge}>Recorded learner</span>
+        <span className={s.muted}>Person details</span>
         <button className={s.button} onClick={onClose}>
           Close details
         </button>
@@ -130,14 +141,14 @@ export function PersonEvidence({ data, userId, styles: s, onClose }: Props) {
         Subject: {userId}
         {person?.userLogin ? ` · Login: ${person.userLogin}` : ''}
       </p>
-      <p className={s.notice}>
+      <p className={s.muted}>
         Partial step progress is not recorded here. Missing completion is not evidence of a failed attempt or of never
         starting.
       </p>
       <h3>Current assignments ({assignments.length})</h3>
       {!assignments.length && <p className={s.muted}>No assignment records returned for this person.</p>}
       {assignments.map((assignment) => (
-        <AssignmentEvidence key={assignment.name} assignment={assignment} styles={s} />
+        <AssignmentEvidence key={assignment.name} assignment={assignment} styles={s} timeZone={timeZone} />
       ))}
       <section className={s.section}>
         <h3>Completion evidence in selected period ({completions.length})</h3>
@@ -153,9 +164,11 @@ export function PersonEvidence({ data, userId, styles: s, onClose }: Props) {
               <li key={JSON.stringify([row.guideSource, row.guideId])}>
                 <span className={s.success}>✓ {row.guideTitle || row.guideId}</span>
                 <div className={s.muted}>
-                  {row.guideSource} · {row.source || 'Method not recorded'}
+                  {completionMethod(row.source)}
                   <br />
-                  <time dateTime={row.completedAt}>{utcTime(row.completedAt)}</time>
+                  <time dateTime={row.completedAt} title={row.completedAt}>
+                    {displayTime(row.completedAt, timeZone)}
+                  </time>
                 </div>
               </li>
             ))}

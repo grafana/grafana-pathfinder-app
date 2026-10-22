@@ -1,13 +1,14 @@
 import React, { useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
-import { useStyles2 } from '@grafana/ui';
-import { InsightsSymbol } from './InsightsSymbol';
+import { dateMath, dateTime, type RawTimeRange, type TimeRange } from '@grafana/data';
+import { RefreshPicker, TimeRangePicker, useStyles2 } from '@grafana/ui';
 import { useLearningInsights } from '../../hooks';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { Assignments } from './Assignments';
 import { Overview } from './Overview';
 import { PersonEvidence } from './PersonEvidence';
-import { defaultWindow, personName, utcTime } from './insights.helpers';
+import { personName } from './insights.helpers';
+import { insightsQuality } from './insights-quality';
 import { getStyles } from './learning-insights.styles';
 
 export interface LearningInsightsViewProps {
@@ -15,36 +16,68 @@ export interface LearningInsightsViewProps {
   loading?: boolean;
   error?: string | null;
   refresh: () => void;
-  period?: string;
-  onPeriod?: (days: string) => void;
+  timeRange?: TimeRange;
+  onTimeRange?: (range: TimeRange) => void;
+  onTimeZone?: (zone: string) => void;
 }
+
+function reportRange(raw: RawTimeRange, timeZone = 'utc'): TimeRange {
+  return { from: dateMath.parse(raw.from, false, timeZone)!, to: dateMath.parse(raw.to, false, timeZone)!, raw };
+}
+const initialRange = () => reportRange({ from: 'now-28d/d', to: 'now/d' });
 
 export function LearningInsightsView({
   data,
   loading = false,
   error = null,
   refresh,
-  period = '28',
-  onPeriod,
+  timeRange,
+  onTimeRange,
+  onTimeZone,
 }: LearningInsightsViewProps) {
   const s = useStyles2(getStyles);
+  const [timeZone, setTimeZone] = useState('utc');
+  const displayZone =
+    timeZone === 'browser'
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : timeZone.toUpperCase() === 'UTC'
+        ? 'UTC'
+        : timeZone;
   const [view, setView] = useState('overview');
   const [status, setStatus] = useState('');
+  const [visiblePeople, setVisiblePeople] = useState(50);
   const [selectedPerson, setSelectedPerson] = useState('');
+  const [localRange, setLocalRange] = useState(() =>
+    data ? reportRange({ from: data.from, to: data.to }) : initialRange()
+  );
   const personPicker = useRef<HTMLSelectElement>(null);
+  const range = timeRange ?? localRange;
+  const changeRange = (next: TimeRange) => {
+    const normalized = reportRange(next.raw, timeZone);
+    setLocalRange(normalized);
+    onTimeRange?.(normalized);
+  };
+  const shiftRange = (factor: number, zoom = false) => {
+    const width = range.to.valueOf() - range.from.valueOf();
+    const from = dateTime(range.from.valueOf() + width * factor);
+    const to = dateTime(range.to.valueOf() + width * factor + (zoom ? width : 0));
+    changeRange({ from, to, raw: { from, to } });
+  };
   const selectPerson = (userId: string) => {
     setSelectedPerson(userId);
+    setStatus('');
     setView('assignments');
   };
   const changeView = (next: string) => {
     setView(next);
     setSelectedPerson('');
+    setStatus('');
   };
   const reviewAssignments = (nextStatus: string) => {
-    setStatus(nextStatus);
     changeView('assignments');
+    setStatus(nextStatus);
   };
-  const available = data?.capability.available;
+  const quality = data ? insightsQuality(data) : null;
   const subjects = data
     ? Array.from(
         new Set([
@@ -57,30 +90,37 @@ export function LearningInsightsView({
   return (
     <main className={s.page} aria-labelledby="learning-insights-title" aria-busy={loading}>
       <header className={s.header}>
-        <div className={s.title}>
-          <span className={s.medallion}>
-            <InsightsSymbol kind="chart" />
-          </span>
-          <h1 id="learning-insights-title">Learning insights</h1>
-          <span className={s.badge}>Admins</span>
-        </div>
-        <div className={s.header} style={{ marginBottom: 0 }}>
-          <label>
-            Completion period
-            <select value={period} onChange={(event) => onPeriod?.(event.target.value)} disabled={!onPeriod || loading}>
-              <option value="7">Last 7 complete days</option>
-              <option value="28">Last 28 complete days</option>
-              <option value="90">Last 90 complete days</option>
-            </select>
-          </label>
-          <button className={s.button} onClick={refresh} disabled={loading}>
-            Refresh
-          </button>
+        <h1 id="learning-insights-title">Learning insights</h1>
+        <div className={s.controls}>
+          <TimeRangePicker
+            value={range}
+            timeZone={timeZone}
+            onChangeTimeZone={(zone) => {
+              setTimeZone(zone);
+              onTimeZone?.(zone);
+              const next = reportRange(range.raw, zone);
+              setLocalRange(next);
+              onTimeRange?.(next);
+            }}
+            onChange={changeRange}
+            onMoveBackward={() => shiftRange(-1)}
+            onMoveForward={() => shiftRange(1)}
+            onZoom={() => shiftRange(-0.5, true)}
+            quickRanges={[
+              { from: 'now-7d/d', to: 'now/d', display: 'Last 7 complete days' },
+              { from: 'now-28d/d', to: 'now/d', display: 'Last 28 complete days' },
+              { from: 'now-90d/d', to: 'now/d', display: 'Last 90 complete days' },
+            ]}
+          />
+          <RefreshPicker
+            onRefresh={refresh}
+            onIntervalChanged={() => undefined}
+            noIntervalPicker
+            isLoading={loading}
+            text="Refresh"
+          />
         </div>
       </header>
-      <p className={s.muted}>
-        Recorded learning evidence for your current organization. Access is verified by the server.
-      </p>
       <nav className={s.tabs} aria-label="Learning insights views">
         <button className={s.tab} aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>
           Overview
@@ -89,6 +129,9 @@ export function LearningInsightsView({
           Assignments and people
         </button>
       </nav>
+      <p className={s.muted}>
+        Dates and times shown in {displayZone}. The selected period includes its start and excludes its end.
+      </p>
       {loading && (
         <div className={s.notice} role="status">
           Loading learning records…
@@ -105,69 +148,46 @@ export function LearningInsightsView({
         </div>
       )}
       {!loading && !error && !data && <p className={s.notice}>No response is available. Try Refresh.</p>}
-      {!loading && !error && data && !available && (
+      {!loading && !error && data && !data.capability.available && (
         <section className={s.notice}>
           <h2>Learning insights is unavailable</h2>
-          <p>Reporting is not available for this stack or identity. No zero totals are inferred.</p>
-          {data.capability.reason && <p className={s.muted}>Reason: {data.capability.reason}</p>}
+          <p>
+            Reporting is not available for this stack or identity. Ask your Grafana administrator to check reporting
+            configuration and access. No zero totals are inferred.
+          </p>
         </section>
       )}
-      {!loading && !error && data && available && (
+      {!loading && !error && data?.capability.available && (
         <>
-          <p className={s.muted}>
-            Completion window [from, to): <time dateTime={data.from}>{utcTime(data.from)}</time> (inclusive) →{' '}
-            <time dateTime={data.to}>{utcTime(data.to)}</time> (exclusive).
-          </p>
-          <p className={s.muted}>
-            Snapshot as of: {data.asOf ? utcTime(data.asOf) : 'Not available'} · Source: completion and assignment
-            records · {data.completeness === 'partial' ? 'Partial evidence' : 'Complete bounded read'} · Refresh to
-            update this snapshot.
-          </p>
-          {data.completeness === 'partial' && (
-            <div className={s.notice} role="status">
-              <strong>Partial results — counts are lower bounds, not stack totals.</strong>
-              <p>
-                Some records could not be read. Ranking and assignment shares describe returned records only; unresolved
-                assignment evidence stays unknown.
-              </p>
-            </div>
-          )}
-          {!!data.warnings.length && (
-            <details className={s.notice}>
-              <summary>Source warnings ({data.warnings.length})</summary>
-              <ul>
-                {data.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-          {!subjects.length && (
-            <p className={s.notice}>
-              No learning records returned for this organization. People appear only when a completion or assignment
-              record exists; this is not a roster.
+          {quality!.notices.map((notice) => (
+            <p key={notice} className={s.notice} role="status">
+              {notice}
+            </p>
+          ))}
+          {!subjects.length && !quality!.completionsIncomplete && !quality!.assignmentsIncomplete && (
+            <p className={s.empty}>
+              No learning records returned for this organization. People appear when they have completion or assignment
+              records.
             </p>
           )}
           {view === 'overview' ? (
-            <Overview data={data} styles={s} onPerson={selectPerson} onAssignments={reviewAssignments} />
+            <Overview
+              data={data}
+              styles={s}
+              onPerson={selectPerson}
+              onAssignments={reviewAssignments}
+              timeZone={displayZone}
+            />
           ) : (
             <>
-              <section className={s.hero}>
-                <div className={s.eyebrow}>Current learning obligations</div>
-                <h2>Make the next step clearer.</h2>
-                <p>Review assignments alongside the evidence. Offer support, not assumptions.</p>
-                <p className={s.muted}>
-                  Assignment evaluation uses older completion history and acceptance cutoffs, not only the chart period.
-                </p>
-              </section>
-              <label>
-                Recorded person
+              <label className={s.personFilter}>
+                Person
                 <select
                   ref={personPicker}
                   value={selectedPerson}
                   onChange={(event) => setSelectedPerson(event.target.value)}
                 >
-                  <option value="">Choose a person to inspect</option>
+                  <option value="">All people</option>
                   {subjects.map((userId) => (
                     <option key={userId} value={userId}>
                       {personName(
@@ -186,6 +206,7 @@ export function LearningInsightsView({
                   onStatus={setStatus}
                   selectedPerson={selectedPerson}
                   onPerson={setSelectedPerson}
+                  timeZone={displayZone}
                 />
                 <div id="learner-evidence">
                   {selectedPerson && (
@@ -194,6 +215,7 @@ export function LearningInsightsView({
                       data={data}
                       userId={selectedPerson}
                       styles={s}
+                      timeZone={displayZone}
                       onClose={() => {
                         setSelectedPerson('');
                         personPicker.current?.focus();
@@ -202,13 +224,56 @@ export function LearningInsightsView({
                   )}
                 </div>
               </div>
+              {!selectedPerson && (
+                <section className={s.section} aria-labelledby="people-title">
+                  <h2 id="people-title">People</h2>
+                  <p className={s.muted}>
+                    People with available learning records, not an organization roster. Completion counts use the
+                    selected period.
+                  </p>
+                  {!subjects.length && (
+                    <p>
+                      No people available
+                      {quality!.completionsIncomplete || quality!.assignmentsIncomplete
+                        ? '; some records could not be loaded'
+                        : ''}
+                      .
+                    </p>
+                  )}
+                  <div className={s.peopleGrid}>
+                    {subjects.slice(0, visiblePeople).map((userId) => (
+                      <div key={userId} className={s.row}>
+                        <button
+                          className={s.textButton}
+                          aria-label={`Inspect ${personName(
+                            data.people.find((person) => person.userId === userId),
+                            userId
+                          )}`}
+                          onClick={() => selectPerson(userId)}
+                        >
+                          {personName(
+                            data.people.find((person) => person.userId === userId),
+                            userId
+                          )}
+                        </button>
+                        <span className={s.muted}>
+                          {data.completions.filter((row) => row.userId === userId).length} guide completion
+                          {data.completions.filter((row) => row.userId === userId).length === 1 ? '' : 's'} ·{' '}
+                          {data.assignments.filter((row) => row.userId === userId).length} assignment
+                          {data.assignments.filter((row) => row.userId === userId).length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {subjects.length > visiblePeople && (
+                    <button className={s.button} onClick={() => setVisiblePeople((value) => value + 50)}>
+                      Show more people ({Math.min(visiblePeople, subjects.length)} of {subjects.length})
+                    </button>
+                  )}
+                </section>
+              )}
             </>
           )}
-          <footer className={s.footnote}>
-            Names are recorded snapshots, with subject identifiers as fallback. Assignments use current target
-            membership, not an immutable content revision. Historical identity changes cannot be reconstructed. Last
-            completion is not last activity.
-          </footer>
         </>
       )}
     </main>
@@ -216,17 +281,24 @@ export function LearningInsightsView({
 }
 
 function AuthorizedLearningInsights() {
-  const [days, setDays] = useState('28');
-  const [window, setWindow] = useState<{ from?: string; to?: string }>({});
-  const result = useLearningInsights(window.from, window.to);
+  const [timeZone, setTimeZone] = useState('utc');
+  const [timeRange, setTimeRange] = useState(initialRange);
+  const result = useLearningInsights(timeRange.from.toISOString(), timeRange.to.toISOString());
+  const refresh = () => {
+    const next = reportRange(timeRange.raw, timeZone);
+    if (next.from.valueOf() !== timeRange.from.valueOf() || next.to.valueOf() !== timeRange.to.valueOf()) {
+      setTimeRange(next);
+    } else {
+      result.refresh();
+    }
+  };
   return (
     <LearningInsightsView
       {...result}
-      period={days}
-      onPeriod={(value) => {
-        setDays(value);
-        setWindow(defaultWindow(Number(value)));
-      }}
+      refresh={refresh}
+      timeRange={timeRange}
+      onTimeRange={setTimeRange}
+      onTimeZone={setTimeZone}
     />
   );
 }
@@ -241,9 +313,6 @@ export default function LearningInsightsPage() {
         <p className={s.notice}>
           Learning insights is available to current-organization admins. Switch to an organization you administer or ask
           an admin for access.
-        </p>
-        <p className={s.muted}>
-          This browser check is for navigation only. The server independently verifies reporting permissions.
         </p>
       </main>
     );

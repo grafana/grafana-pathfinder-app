@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
-import { personName, utcTime } from './insights.helpers';
+import { personName, displayTime } from './insights.helpers';
+import { insightsQuality } from './insights-quality';
 import type { InsightsStyles } from './learning-insights.styles';
 
 interface Props {
@@ -10,9 +11,11 @@ interface Props {
   onStatus: (status: string) => void;
   selectedPerson: string;
   onPerson: (userId: string) => void;
+  timeZone?: string;
 }
 
-export function Assignments({ data, styles: s, status, onStatus, selectedPerson, onPerson }: Props) {
+export function Assignments({ data, styles: s, status, onStatus, selectedPerson, onPerson, timeZone = 'UTC' }: Props) {
+  const quality = insightsQuality(data);
   const [rule, setRule] = useState('');
   const [target, setTarget] = useState('');
   const [search, setSearch] = useState('');
@@ -25,6 +28,7 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
   );
   const rows = data.assignments.filter(
     (row) =>
+      (!selectedPerson || row.userId === selectedPerson) &&
       (!rule || (row.ruleId || '__unrecorded') === rule) &&
       (!target || JSON.stringify([row.targetType, row.targetSource, row.targetId]) === target) &&
       (!status || row.status === status) &&
@@ -33,13 +37,21 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
           .toLocaleLowerCase()
           .includes(search.toLocaleLowerCase()))
   );
+  if (!data.assignments.length) {
+    return (
+      <section aria-labelledby="assignments-title">
+        <h2 id="assignments-title">Assignments</h2>
+        <p className={s.empty}>
+          {quality.assignmentsIncomplete
+            ? 'No assignment records available. The assignment read is incomplete.'
+            : 'No assignments yet.'}
+        </p>
+      </section>
+    );
+  }
   return (
     <section aria-labelledby="assignments-title">
-      <h2 id="assignments-title">Who needs a follow-up?</h2>
-      <p className={s.muted}>
-        Current recipient obligations, independent of the completion period. Overdue is a subset of outstanding; unknown
-        is separate.
-      </p>
+      <h2 id="assignments-title">Assignments</h2>
       <div className={s.filters}>
         <label>
           Find a person
@@ -89,8 +101,8 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
       <div className={s.tableWrap} tabIndex={0} role="region" aria-label="Assignment records, scroll for more columns">
         <table className={s.table}>
           <caption>
-            {data.completeness === 'partial' ? 'Returned' : 'Recorded'} assignments · {rows.length} matching obligations
-            · Showing {Math.min(visibleCount, rows.length)}
+            {quality.assignmentsIncomplete ? 'Available' : 'Current'} assignments · {rows.length} matching assignments ·
+            Showing {Math.min(visibleCount, rows.length)}
           </caption>
           <thead>
             <tr>
@@ -98,7 +110,7 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
               <th scope="col">Target / rule</th>
               <th scope="col">Guides credited</th>
               <th scope="col">Status</th>
-              <th scope="col">Due (UTC)</th>
+              <th scope="col">Due ({timeZone})</th>
             </tr>
           </thead>
           <tbody>
@@ -148,7 +160,15 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
                             ? 'Withdrawn'
                             : 'Outstanding'}
                   </td>
-                  <td>{row.dueAt ? utcTime(row.dueAt) : 'No due date'}</td>
+                  <td>
+                    {row.dueAt ? (
+                      <time dateTime={row.dueAt} title={row.dueAt}>
+                        {displayTime(row.dueAt, timeZone)}
+                      </time>
+                    ) : (
+                      'No due date'
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -159,17 +179,16 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
         <p className={s.notice}>
           {data.assignments.length
             ? 'No assignments match these filters.'
-            : 'No assignment records returned. This is not an all-member roster.'}
+            : quality.assignmentsIncomplete
+              ? 'No assignment records available. The assignment read is incomplete.'
+              : 'No assignments yet.'}
         </p>
       )}
       {rows.length > visibleCount && (
         <button className={s.button} onClick={() => setVisibleCount((value) => value + 50)}>
-          Show 50 more obligations
+          Show 50 more assignments
         </button>
       )}
-      <p className={s.muted} style={{ marginTop: 16 }}>
-        Select a person to inspect current required guides, credited evidence and learning links. No reminder is sent.
-      </p>
     </section>
   );
 }

@@ -26,6 +26,28 @@ export function utcTime(value: string): string {
   return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toISOString().replace('T', ' ').replace('.000Z', ' UTC');
 }
 
+export function displayTime(value: string, timeZone = 'UTC'): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Not recorded'
+    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(date);
+}
+
+export function displayDate(value: string, timeZone = 'UTC'): string {
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone }).format(new Date(value));
+}
+
+export function completionMethod(value: string): string {
+  switch (value) {
+    case 'objectives':
+      return 'Steps completed';
+    case 'manual':
+      return 'Marked complete';
+    default:
+      return 'Completion recorded';
+  }
+}
+
 export function contentKey(source: string, id: string): string {
   return JSON.stringify([source, id]);
 }
@@ -36,11 +58,13 @@ export function completionTrend(rows: LearningInsightsCompletion[], from: string
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return [];
   }
-  const count = Math.min(4, Math.max(1, Math.ceil((end - start) / 86400000)));
-  const width = (end - start) / count;
+  const days = (end - start) / 86400000;
+  const bucketDays = days <= 7 ? 1 : days <= 42 ? 7 : Math.ceil(days / 49) * 7;
+  const width = bucketDays * 86400000;
+  const count = Math.ceil((end - start) / width);
   return Array.from({ length: count }, (_, index) => {
     const lower = start + width * index;
-    const upper = index === count - 1 ? end : start + width * (index + 1);
+    const upper = Math.min(end, start + width * (index + 1));
     return {
       from: new Date(lower).toISOString(),
       to: new Date(upper).toISOString(),
