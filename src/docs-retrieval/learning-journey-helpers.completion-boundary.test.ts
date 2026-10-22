@@ -172,6 +172,26 @@ afterEach(() => {
   unsubscribe();
 });
 
+test('milestone records retain an explicitly typed parent manifest when pathId was not supplied', async () => {
+  await markMilestoneDone('base', 'm1', milestoneUrl('base', 'm1'), undefined, {
+    packageManifest: { id: 'linux-journey', type: 'journey' },
+    repository: 'app-platform',
+  });
+  expect(emitted[0]).toMatchObject({
+    kind: 'guide',
+    guideId: 'm1',
+    guideSource: 'app-platform',
+    pathId: 'linux-journey',
+  });
+});
+
+test('milestone manifests are not mistaken for their own parent journey', async () => {
+  await markMilestoneDone('base', 'm1', milestoneUrl('base', 'm1'), undefined, {
+    packageManifest: { id: 'm1', type: 'guide', repository: 'app-platform' },
+  });
+  expect(emitted[0]?.pathId).toBeUndefined();
+});
+
 describe('bundled guide reaching 100% (trigger class A)', () => {
   it('routes through the recorder as an interactive guide keyed on the bundled slug', () => {
     setJourneyCompletionPercentage('bundled:first-dashboard', 100);
