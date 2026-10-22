@@ -25,6 +25,7 @@ import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
 import { normalizeTelemetryUrl } from './url';
 import { retryChunkImport } from '../retry-chunk-import';
+import { checkValueCasing } from '../analytics-values';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -303,6 +304,7 @@ let userActionSeq = 0;
 // built-in click instrumentation (UserActionController) does the exact same
 // cast internally, since UserActionsAPI has no top-level `endUserAction()`.
 export function pushFaroUserAction(name: string, attributes?: Record<string, unknown>): void {
+  checkValueCasing(name, attributes);
   guardTelemetry(() => {
     if (!faroInstance) {
       return;
@@ -356,6 +358,7 @@ export async function withFaroUserAction<T>(
   options?: WithFaroUserActionOptions<T>
 ): Promise<T> {
   let action: StampableUserAction | undefined;
+  checkValueCasing(name, attributes);
   guardTelemetry(() => {
     if (faroInstance && faroInstance.api.getActiveUserAction() === undefined) {
       action = faroInstance.api.startUserAction(
@@ -413,6 +416,7 @@ export function setFaroUserActionAttributes(attributes: Record<string, unknown>)
 // reportAppInteraction, nothing here reaches RudderStack. skipDedupe keeps
 // repeated identical failures countable.
 export function pushFaroEvent(name: string, attributes?: Record<string, unknown>): void {
+  checkValueCasing(name, attributes);
   guardTelemetry(() => {
     faroInstance?.api.pushEvent(name, attributes ? stringifyAttributes(attributes) : undefined, undefined, {
       skipDedupe: true,
@@ -429,6 +433,7 @@ export function pushFaroMeasurement(
   values: Record<string, number>,
   context?: Record<string, string>
 ): void {
+  checkValueCasing(type, context);
   guardTelemetry(() => {
     faroInstance?.api.pushMeasurement({ type, values }, context ? { context } : undefined);
   });

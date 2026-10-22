@@ -57,9 +57,9 @@ describe('measurement and event domain operations', () => {
     const calls = mockPushFaroEvent.mock.calls.filter(([name]) => name === 'pathfinder_recommend_completions');
     expect(calls.map(([, attrs]) => attrs)).toEqual([
       { outcome: 'ok', item_bucket: '0', truncated: 'false' },
-      { outcome: 'ok', item_bucket: '1-10', truncated: 'false' },
-      { outcome: 'ok', item_bucket: '11-50', truncated: 'false' },
-      { outcome: 'ok', item_bucket: '51-249', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '1_10', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '11_50', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '51_249', truncated: 'false' },
       { outcome: 'ok', item_bucket: '250', truncated: 'true' },
       { outcome: 'timeout' },
     ]);
@@ -93,12 +93,12 @@ describe('measurement and event domain operations', () => {
     expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
       'pathfinder_content_fetch',
       { content_fetch_ms: 42 },
-      { tier: 'content-json', outcome: 'ok', content_url: 'grafana.com/docs/x/' }
+      { tier: 'content_json', outcome: 'ok', content_url: 'grafana.com/docs/x/' }
     );
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_content_fetch_fallback', {
       content_url: 'grafana.com/docs/x/',
-      tier_used: 'unstyled-html',
-      error_type: 'content-json-null',
+      tier_used: 'unstyled_html',
+      error_type: 'content_json_null',
     });
   });
 
@@ -138,21 +138,21 @@ describe('measurement and event domain operations', () => {
   it('recordCustomGuideCatalogueUnavailable emits the capability event with the reason', () => {
     recordCustomGuideCatalogueUnavailable('obo-unavailable');
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_custom_guide_catalogue_unavailable', {
-      reason: 'obo-unavailable',
+      reason: 'obo_unavailable',
     });
   });
 
   it('recordSettingsStoreResolved emits the rung the settings read landed on', () => {
     recordSettingsStoreResolved('kind-not-served');
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_settings_store_resolved', {
-      outcome: 'kind-not-served',
+      outcome: 'kind_not_served',
     });
   });
 
   it('recordAssignmentTargetsUnresolved emits the count of unresolvable targets', () => {
     recordAssignmentTargetsUnresolved(2);
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_assignment_target_unresolved', {
-      reason: 'unresolvable-target',
+      reason: 'unresolvable_target',
       count: 2,
     });
   });

@@ -17,7 +17,7 @@ import { pushFaroUserAction } from './telemetry/bridge';
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
 export { toAnalyticsValue } from './analytics-values';
-import { findKebabCaseValues, recordValueCasingViolation, toAnalyticsValue } from './analytics-values';
+import { checkValueCasing, toAnalyticsValue } from './analytics-values';
 import { furthestEvidencedPosition } from './guide-stats/progress';
 import { GUIDE_STATS_VERSION } from './guide-stats/version';
 import type { GuideBlockIndex } from './guide-stats/block-index';
@@ -294,10 +294,7 @@ export function reportAppInteraction(
   try {
     const interactionName = createInteractionName(type);
 
-    const kebabValues = findKebabCaseValues(properties);
-    if (kebabValues.length > 0) {
-      recordValueCasingViolation(interactionName, kebabValues);
-    }
+    checkValueCasing(interactionName, properties);
 
     // Evaluating experiments while reporting their evaluation would recurse.
     const shouldEnrichWithExperiments = type !== UserInteraction.FeatureFlagEvaluated;
