@@ -8,7 +8,10 @@
 # interactive-tutorials is the source of truth for content.json and
 # manifest.json. Two manifest fields stay owned here: `repository` is always
 # "bundled", and `stats` is dropped for `npm run stats:build` to restamp.
-# A guide not yet published upstream is skipped, never deleted.
+# The guide's index.json entry takes its title and summary from upstream; its
+# url and targetPlatform drive the offline fallback and stay owned here.
+# A guide not yet published upstream is skipped, never deleted. A broken
+# upstream guide is skipped and fails the run once the others are synced.
 
 set -euo pipefail
 
@@ -24,6 +27,7 @@ GUIDES=(
 
 UPSTREAM=${1:?usage: sync-bundled-guides.sh <interactive-tutorials-dir> [bundled-dir]}
 BUNDLED=${2:-src/bundled-interactives}
+INDEX="${BUNDLED}/index.json"
 
 [[ -d "$UPSTREAM" ]] || {
   echo "upstream directory not found: ${UPSTREAM}" >&2
@@ -55,12 +59,27 @@ for id in "${GUIDES[@]}"; do
     STATUS=1
     continue
   fi
+  if [[ -z "$(jq -r '.type // empty' "${src}/manifest.json")" ]]; then
+    echo "untyped ${id}: upstream manifest has no type" >&2
+    STATUS=1
+    continue
+  fi
 
   mkdir -p "$dest"
   cp "${src}/content.json" "${dest}/content.json"
   jq '{id, type, repository: "bundled"} + del(.repository, .stats)' \
     "${src}/manifest.json" >"${dest}/manifest.json.tmp"
   mv "${dest}/manifest.json.tmp" "${dest}/manifest.json"
+
+  if [[ -f "$INDEX" ]]; then
+    jq --arg id "$id" --slurpfile content "${src}/content.json" --slurpfile manifest "${src}/manifest.json" '
+      .interactives |= map(
+        if .id == $id then
+          .title = ($content[0].title // .title) | .summary = ($manifest[0].description // .summary)
+        else . end
+      )' "$INDEX" >"${INDEX}.tmp"
+    mv "${INDEX}.tmp" "$INDEX"
+  fi
   echo "synced ${id}"
 done
 

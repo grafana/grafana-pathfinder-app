@@ -114,7 +114,7 @@ A bare package `id` must be unique across **every** repository a stack can see â
 
 ### Bundled guides mirrored from interactive-tutorials
 
-The user-facing bundled guides (the `GUIDES` list in `scripts/sync-bundled-guides.sh`) share their id with a copy in [grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials), which is the source of truth. Edit them there. The daily [sync bundled guides workflow](../../.github/workflows/sync-bundled-guides.yml) copies `content.json` and `manifest.json` back, restamps `stats` and `repository.json`, and opens or updates a PR on `automation/sync-bundled-guides` when the bundled copy has drifted. `repository` stays `"bundled"`. A guide that is not yet published upstream is skipped.
+The user-facing bundled guides (the `GUIDES` list in `scripts/sync-bundled-guides.sh`) share their id with a copy in [grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials), which is the source of truth. Edit them there. The daily [sync bundled guides workflow](../../.github/workflows/sync-bundled-guides.yml) copies `content.json` and `manifest.json` back, restamps `stats` and `repository.json`, and opens or updates a PR on `automation/sync-bundled-guides` when the bundled copy has drifted. `repository` stays `"bundled"`. The guide's `index.json` entry takes its title and summary from upstream, but its `url` and `targetPlatform` stay hand-maintained here because they only drive the offline fallback. A guide that is not yet published upstream is skipped. A broken upstream guide is skipped too, and fails the run after the PR for the others is opened.
 
 ---
 

@@ -32,6 +32,8 @@ fixture() {
   printf '{"id":"first-dashboard","title":"Old"}\n' >"${BUN}/first-dashboard/content.json"
   printf '{"id":"first-dashboard","type":"guide","repository":"bundled","stats":{"version":2}}\n' \
     >"${BUN}/first-dashboard/manifest.json"
+  printf '{"interactives":[{"id":"first-dashboard","title":"Old","summary":"Old summary","url":["/"],"targetPlatform":"oss"},{"id":"welcome-to-grafana","title":"Welcome"}]}\n' \
+    >"${BUN}/index.json"
 }
 
 upstream_guide() {
@@ -68,6 +70,13 @@ if [[ "$MANIFEST" == "$WANT" ]]; then
 else
   nope "keeps repository as bundled and drops stats for restamping" "$MANIFEST"
 fi
+INDEX=$(jq -c '.interactives' "${BUN}/index.json")
+WANT='[{"id":"first-dashboard","title":"New","summary":"Upstream","url":["/"],"targetPlatform":"oss"},{"id":"welcome-to-grafana","title":"Welcome"}]'
+if [[ "$INDEX" == "$WANT" ]]; then
+  ok "takes the index.json title and summary from upstream, keeping url and targetPlatform"
+else
+  nope "takes the index.json title and summary from upstream, keeping url and targetPlatform" "$INDEX"
+fi
 if [[ "$RUN_OUT" == *"missing welcome-to-grafana"* && ! -e "${BUN}/welcome-to-grafana" ]]; then
   ok "skips a guide not yet published upstream"
 else
@@ -93,6 +102,41 @@ if [[ "$RUN_CODE" != 0 && "$RUN_OUT" == *"mismatch first-dashboard"* ]] &&
   ok "fails when the upstream manifest id differs from its directory"
 else
   nope "fails when the upstream manifest id differs from its directory" "$RUN_OUT"
+fi
+
+fixture untyped
+mkdir -p "${UP}/first-dashboard"
+printf '{}\n' >"${UP}/first-dashboard/content.json"
+printf '{"id":"first-dashboard"}\n' >"${UP}/first-dashboard/manifest.json"
+run
+if [[ "$RUN_CODE" != 0 && "$RUN_OUT" == *"untyped first-dashboard"* ]] &&
+  grep -q '"Old"' "${BUN}/first-dashboard/content.json"; then
+  ok "fails when the upstream manifest has no type"
+else
+  nope "fails when the upstream manifest has no type" "$RUN_OUT"
+fi
+
+fixture keeps-going
+upstream_guide first-dashboard
+mkdir -p "${UP}/welcome-to-grafana"
+printf '{}\n' >"${UP}/welcome-to-grafana/content.json"
+run
+if [[ "$RUN_CODE" != 0 && "$RUN_OUT" == *"synced first-dashboard"* ]] &&
+  grep -q '"New"' "${BUN}/first-dashboard/content.json"; then
+  ok "still syncs the healthy guides when another one is broken"
+else
+  nope "still syncs the healthy guides when another one is broken" "$RUN_OUT"
+fi
+
+# The workflow, not the script, decides whether a failure surfaces: a bare
+# `| tee` runs without pipefail and reports tee's status instead.
+STEP=$(awk '/- name: Copy upstream guides/{on=1} on&&/- name: Regenerate/{exit} on' \
+  "${REPO_ROOT}/.github/workflows/sync-bundled-guides.yml")
+if [[ "$STEP" == *"shell: bash"* && "$STEP" == *"sync-bundled-guides.sh interactive-tutorials 2>&1 | tee sync.log"* &&
+  "$STEP" == *'status=${PIPESTATUS[0]}'* ]]; then
+  ok "the workflow captures the script's exit status and stderr"
+else
+  nope "the workflow captures the script's exit status and stderr" "$STEP"
 fi
 
 fixture no-upstream

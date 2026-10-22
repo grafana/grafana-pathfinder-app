@@ -51,8 +51,15 @@ jobs:
       - name: Build CLI
         run: npm run build:cli
 
+      # A broken upstream guide must not block the PR for the others; the
+      # last step fails the run once they have been handed on.
       - name: Copy upstream guides
-        run: scripts/sync-bundled-guides.sh interactive-tutorials | tee sync.log
+        id: sync
+        shell: bash
+        run: |
+          set +e
+          scripts/sync-bundled-guides.sh interactive-tutorials 2>&1 | tee sync.log
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Regenerate stats and repository.json
         run: |
@@ -75,16 +82,16 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if git diff --quiet -- src/bundled-interactives; then
+          if [ -z "$(git status --porcelain -- src/bundled-interactives)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No drift." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            git diff --stat -- src/bundled-interactives
+            git status --porcelain -- src/bundled-interactives
             {
               echo
               echo '```'
-              git diff --stat -- src/bundled-interactives
+              git status --porcelain -- src/bundled-interactives
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -97,10 +104,16 @@ jobs:
           path: src/bundled-interactives/
           retention-days: 1
 
+      - name: Fail on unsyncable upstream guides
+        if: steps.sync.outputs.status != '0'
+        run: |
+          echo "::error::Some upstream guides could not be synced. See the Copy upstream guides step."
+          exit 1
+
   pull-request:
     name: Open sync PR
     needs: diff
-    if: needs.diff.outputs.changed == 'true'
+    if: ${{ !cancelled() && needs.diff.outputs.changed == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -141,4 +154,4 @@ jobs:
 
             Opened by the [sync bundled guides workflow](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}). Each run force-updates this branch, so edit the guide upstream rather than here. Merging ships the change in the next plugin release.
 
-            `repository` and `stats` in each manifest, and `repository.json`, are regenerated here and not copied.
+            `repository` and `stats` in each manifest, and `repository.json`, are regenerated here and not copied. Each guide's `index.json` title and summary come from upstream; its `url` and `targetPlatform` stay as they are here.
