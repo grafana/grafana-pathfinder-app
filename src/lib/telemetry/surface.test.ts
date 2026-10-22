@@ -209,10 +209,17 @@ describe('panel session', () => {
     expect(second).toEqual({ pathfinder_session_id: first?.pathfinder_session_id });
   });
 
-  it('mints lazily for a surface already open at cold start', () => {
-    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+  it('does not mint from a persisted panel mode alone, only from a reported surface', () => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'fullscreen');
     const surface = freshSurface();
-    expect(surface.getPanelSessionId()).not.toBeNull();
+    expect(surface.isPathfinderOpen()).toBe(true);
+    expect(surface.takePanelSessionProperties()).toBeNull();
+    expect(surface.getPanelSessionId()).toBeNull();
+    surface.reportPathfinderSurface('sidebar');
+    expect(surface.takePanelSessionProperties()).toEqual({
+      pathfinder_session_id: expect.any(String),
+      session_started_at: expect.any(Number),
+    });
   });
 
   it('never persists the id', () => {

@@ -36,23 +36,19 @@ function mintPanelSession(): PanelSession {
 }
 
 export function getPanelSessionId(): string | null {
-  if (panelSession === null && getPathfinderSurface() !== 'closed') {
-    panelSession = mintPanelSession();
-  }
   return panelSession?.id ?? null;
 }
 
 // `session_started_at` rides on the first event of a session only.
 export function takePanelSessionProperties(): { pathfinder_session_id: string; session_started_at?: number } | null {
-  const id = getPanelSessionId();
-  if (panelSession === null || id === null) {
+  if (panelSession === null) {
     return null;
   }
   if (panelSession.startedAtSent) {
-    return { pathfinder_session_id: id };
+    return { pathfinder_session_id: panelSession.id };
   }
   panelSession.startedAtSent = true;
-  return { pathfinder_session_id: id, session_started_at: panelSession.startedAt };
+  return { pathfinder_session_id: panelSession.id, session_started_at: panelSession.startedAt };
 }
 
 // Mode literals mirror PanelMode in global-state/panel-mode — importing
