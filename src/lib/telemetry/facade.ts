@@ -176,17 +176,17 @@ export function recordCompletionWriteDegradation(reason: CompletionWriteDegradat
 }
 
 // The custom-guide catalogue could not be listed — a soft-200 reporting itself
-// unavailable with a machine `reason`, or a rejected request (`http-<status>` /
-// `transport-error`) — so the surface renders empty. This is the countable,
+// unavailable with a machine `reason`, or a rejected request (`http_<status>` /
+// `transport_error` once converted) — so the surface renders empty. This is the countable,
 // alertable signal the capability-degradation ladder needs — a log alone can't
 // distinguish "no guides authored" from "OBO unavailable on this stack", which
 // is exactly how a recent incident stayed invisible. `reason` is Faro-only
-// (never RudderStack): it includes open-ended `upstream-<status>` values.
+// (never RudderStack): it includes open-ended `upstream_<status>` values.
 export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEventChecked(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason: toAnalyticsValue(reason) });
 }
 
-// Reason is a capability.reason, `http-<status>` or `transport-error`; never an id or identity.
+// Input reason is a capability.reason, `http-<status>` or `transport-error`; never an id or identity.
 export function recordAssignmentsUnavailable(reason: string): void {
   pushFaroEventChecked(TELEMETRY_EVENTS.assignmentsUnavailable, { reason: toAnalyticsValue(reason) });
 }

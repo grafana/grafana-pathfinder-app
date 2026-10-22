@@ -9,6 +9,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { toAnalyticsValue } from '../../lib/analytics-values';
 import { getKioskName, getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
@@ -102,7 +103,7 @@ export function launchKioskGuide(
     kiosk_name: kioskName,
     guide_url: rule.url,
     guide_title: rule.title,
-    guide_type: rule.type,
+    guide_type: rule.type === 'learning-journey' ? toAnalyticsValue(rule.type) : rule.type,
     launch_mode: mode,
     target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
   });

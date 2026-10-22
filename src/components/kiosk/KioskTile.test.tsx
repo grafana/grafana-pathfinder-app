@@ -131,6 +131,19 @@ describe('KioskTile', () => {
     expect(analyticsCallOrder).toBeLessThan(openCallOrder);
   });
 
+  it.each([
+    ['learning-journey', 'learning_journey'],
+    ['interactive', 'interactive'],
+  ])('reports guide_type %s as %s', (type, expected) => {
+    render(<KioskTile rule={{ ...rule, type }} index={0} />);
+    fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.KioskDemoStarted,
+      expect.objectContaining({ guide_type: expected })
+    );
+  });
+
   it('falls back to window.location.origin when targetUrl is not set', () => {
     const ruleWithoutTarget: KioskRule = { ...rule, targetUrl: undefined };
     render(<KioskTile rule={ruleWithoutTarget} index={0} />);

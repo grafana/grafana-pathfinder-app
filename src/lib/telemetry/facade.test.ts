@@ -9,6 +9,11 @@ import {
   recordSettingsStoreResolved,
   recordStartupSettings,
   recordPanelReady,
+  recordAssignmentsUnavailable,
+  recordGcxCredentialDegradation,
+  recordPackageIndex,
+  recordProxyFailure,
+  recordSandboxUnavailable,
   recordRecommendCompletions,
   recordRecommenderFallback,
   recordRecommenderRequest,
@@ -202,4 +207,50 @@ it('records bounded startup settings latency and fail-open outcome without ident
     { startup_settings_ms: 3000 },
     { outcome: 'timeout' }
   );
+});
+
+describe('snake_case conversion of kebab-case vocabularies', () => {
+  it('recordSandboxUnavailable converts the reason and block type', () => {
+    recordSandboxUnavailable('plugin-missing', 'terminal-connect');
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_sandbox_unavailable', {
+      reason: 'plugin_missing',
+      blockType: 'terminal_connect',
+    });
+  });
+
+  it('recordGcxCredentialDegradation converts the reason', () => {
+    recordGcxCredentialDegradation('account-outranks-caller');
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_gcx_credential_degraded', {
+      reason: 'account_outranks_caller',
+    });
+  });
+
+  it('recordAssignmentsUnavailable converts capability and http reasons', () => {
+    recordAssignmentsUnavailable('http-503');
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_assignments_unavailable', { reason: 'http_503' });
+  });
+
+  it('recordPackageIndex converts the reason and passes other attributes through', () => {
+    recordPackageIndex({ outcome: 'degraded', reason: 'upstream-timeout', http_status: 504 });
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_package_index', {
+      outcome: 'degraded',
+      reason: 'upstream_timeout',
+      http_status: 504,
+    });
+  });
+
+  it('recordProxyFailure converts stage and reason, including the defaults', () => {
+    recordProxyFailure({ outcome: 'error', stage: 'upstream-fetch', reason: 'bad-gateway' } as never);
+    recordProxyFailure({ outcome: 'error' } as never);
+    expect(mockPushFaroEvent).toHaveBeenNthCalledWith(
+      1,
+      'pathfinder_proxy_failure',
+      expect.objectContaining({ stage: 'upstream_fetch', reason: 'bad_gateway' })
+    );
+    expect(mockPushFaroEvent).toHaveBeenNthCalledWith(
+      2,
+      'pathfinder_proxy_failure',
+      expect.objectContaining({ stage: 'unknown', reason: 'unexpected_error' })
+    );
+  });
 });

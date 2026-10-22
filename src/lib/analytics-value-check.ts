@@ -1,7 +1,7 @@
 /**
  * Development and test check behind the snake_case value convention (see
- * `analytics-values.ts`). Callers guard on `process.env.NODE_ENV` so the
- * production entry bundle carries none of it.
+ * `analytics-values.ts`). `checkValueCasing` returns at once in production, so
+ * the minifier drops the scanning code from the entry bundle.
  */
 
 const KEBAB_CASE_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;

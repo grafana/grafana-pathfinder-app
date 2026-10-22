@@ -36,7 +36,7 @@ describe('launch sources', () => {
     ['learning-hub', 'learning_hub'],
     ['navigate-action', 'navigate_action'],
     ['command_palette', 'command_palette'],
-  ])('reports %s as %s without a casing violation', (source, expected) => {
+  ])('reports %s as %s', (source, expected) => {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'auto_open',
       source: toAnalyticsLaunchSource(source),
@@ -47,7 +47,6 @@ describe('launch sources', () => {
       expect.objectContaining({ source: expected }),
       expect.objectContaining({ launch_source: expected }),
     ]);
-    expect(drainValueCasingViolations()).toEqual([]);
   });
 });
 

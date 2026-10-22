@@ -2,7 +2,12 @@ import { reportInteraction } from '@grafana/runtime';
 
 import { AnalyticsContentType, AnalyticsLinkType, UserInteraction, reportAppInteraction } from './analytics';
 import { toAnalyticsValue } from './analytics-values';
-import { drainValueCasingViolations, findKebabCaseValues, isExemptAnalyticsProperty } from './analytics-value-check';
+import {
+  checkValueCasing,
+  drainValueCasingViolations,
+  findKebabCaseValues,
+  isExemptAnalyticsProperty,
+} from './analytics-value-check';
 
 jest.mock('@grafana/runtime', () => ({
   ...jest.requireActual('@grafana/runtime'),
@@ -80,6 +85,26 @@ describe('reportAppInteraction value casing', () => {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'auto_open', source: 'learning_hub' });
 
     expect(drainValueCasingViolations()).toEqual([]);
+  });
+});
+
+describe('checkValueCasing in production', () => {
+  const original = process.env.NODE_ENV;
+
+  afterEach(() => {
+    process.env.NODE_ENV = original;
+    drainValueCasingViolations();
+  });
+
+  it('is a no-op: records nothing and logs nothing', () => {
+    const info = jest.spyOn(console, 'info').mockImplementation(() => {});
+    process.env.NODE_ENV = 'production';
+
+    checkValueCasing('pathfinder_docs_panel_interaction', { action: 'auto-open' });
+
+    expect(drainValueCasingViolations()).toEqual([]);
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
   });
 });
 

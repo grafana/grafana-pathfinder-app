@@ -60,6 +60,9 @@ async function boot(
     armCompletionWriteHook: jest.fn(),
     clearExtensionSidebarDocked: jest.fn(),
     setPendingOpenSource: jest.fn(),
+    consumePendingOpenSource: jest.fn(() => ({ source: 'unset', action: 'open' })),
+    setIsSidebarMounted: jest.fn(),
+    enrollInteractiveLearningBannerExperiment: jest.fn(),
     recordStartupSettings: jest.fn(),
     startHelpButtonExperiment: jest.fn().mockResolvedValue(jest.fn()),
     startAutoOpenGuideExperiment: jest.fn().mockResolvedValue(jest.fn()),
@@ -73,6 +76,7 @@ async function boot(
     reportPathfinderSurfaceClosed: jest.fn(),
     readPathfinderStartupPreference: jest.fn(async () => (read ? await read : settings)),
   };
+  const reportAppInteraction = jest.fn();
   const modules: Record<string, unknown> = {
     react: React,
     '@grafana/data': {
@@ -91,8 +95,12 @@ async function boot(
         return load();
       },
     },
-    './lib/analytics': { reportAppInteraction: jest.fn(), UserInteraction: {}, bindExperimentsProvider: jest.fn() },
-    './lib/analytics-values': { toAnalyticsValue: (value: string) => value },
+    './lib/analytics': {
+      reportAppInteraction,
+      UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction' },
+      bindExperimentsProvider: jest.fn(),
+    },
+    './lib/analytics-values': jest.requireActual('../lib/analytics-values'),
     './lib/retry-chunk-import': { retryChunkImport },
     './lib/logging': { logger: { exception: jest.fn(), error: jest.fn(), warn: jest.fn() } },
     './plugin.json': { id: 'grafana-pathfinder-app' },
@@ -172,7 +180,7 @@ async function boot(
   const exports = {};
   const execute = runInNewContext(`(async (require, exports) => { ${compiled}\n })`, { window, document, CustomEvent });
   await execute(requireModule, exports);
-  return { plugin, effects, root, requireModule };
+  return { plugin, effects, root, requireModule, reportAppInteraction };
 }
 
 it.each([
@@ -551,4 +559,19 @@ it('allows URL kiosk preloading before enablement without mounting a disabled su
   plugin.init();
   expect(effects.initializeConfiguredSurfaces).not.toHaveBeenCalled();
   expect(effects.createCompatRoot).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['learning-hub', 'learning_hub'],
+  ['plg-survey-frontend-o11y', 'plg-survey-frontend-o11y'],
+  ['command_palette', 'command_palette'],
+])('reports the sidebar open source %s as %s', async (source, expected) => {
+  const { plugin, effects, reportAppInteraction } = await boot(true, true);
+  effects.consumePendingOpenSource.mockReturnValue({ source, action: 'auto_open' });
+  const Sidebar = plugin.addComponent.mock.calls[0][0].component as React.ComponentType;
+  render(<Sidebar />);
+  expect(reportAppInteraction).toHaveBeenCalledWith('docs_panel_interaction', {
+    action: 'auto_open',
+    source: expected,
+  });
 });
