@@ -31,7 +31,7 @@ test.each([
   const quality = insightsQuality(data(warnings));
   expect(quality.completionsIncomplete).toBe(completionsIncomplete);
   expect(quality.assignmentsIncomplete).toBe(assignmentsIncomplete);
-  expect(quality.notices.length).toBeGreaterThan(0);
+  expect(quality.notices.length > 0).toBe(completionsIncomplete || assignmentsIncomplete);
   for (const token of warnings) {
     expect(quality.notices.join(' ')).not.toContain(token);
   }

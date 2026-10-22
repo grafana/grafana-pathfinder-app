@@ -2,7 +2,9 @@ import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
 
 export const getStyles = (theme: GrafanaTheme2) => {
-  const link = theme.colors.primary.text;
+  const link = theme.isDark ? '#c7b7ff' : '#6940b5';
+  const amber = theme.isDark ? '#ffc078' : '#915100';
+  const teal = theme.isDark ? '#87d9cb' : '#087f8c';
   return {
     page: css({
       color: theme.colors.text.primary,
@@ -50,7 +52,7 @@ export const getStyles = (theme: GrafanaTheme2) => {
       padding: 16,
       background: theme.colors.background.secondary,
       border: `1px solid ${theme.colors.border.weak}`,
-      borderRadius: 2,
+      borderRadius: 6,
       '& p:last-child': { marginBottom: 0 },
     }),
     muted: css({ color: theme.colors.text.secondary, fontSize: 13 }),
@@ -65,16 +67,79 @@ export const getStyles = (theme: GrafanaTheme2) => {
       '&[aria-pressed=true]': { color: theme.colors.text.primary, borderBottomColor: link },
     }),
     metrics: css({
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '16px 40px',
-      margin: '16px 0',
-      padding: 16,
-      background: theme.colors.background.secondary,
-      border: `1px solid ${theme.colors.border.weak}`,
-      borderRadius: 2,
-      '& strong': { display: 'block', fontSize: 28, lineHeight: 1.2 },
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gap: 16,
+      margin: '20px 0 12px',
+      '& > div': {
+        position: 'relative',
+        padding: 20,
+        border: `1px solid ${theme.isDark ? '#48405f' : '#d9cfee'}`,
+        borderRadius: 10,
+        background: theme.isDark
+          ? 'linear-gradient(120deg, #28233b, #1b202c)'
+          : 'linear-gradient(120deg, #f1ebfc, #f7f8fc)',
+        boxShadow: theme.isDark ? '0 4px 14px rgba(0,0,0,0.12)' : '0 4px 14px rgba(68,45,105,0.04)',
+      },
+      '& > div:nth-of-type(2)': {
+        borderColor: theme.isDark ? '#514337' : '#ead6bc',
+        background: theme.isDark
+          ? 'linear-gradient(120deg, #30283a, #272421)'
+          : 'linear-gradient(120deg, #fcf0e1, #fbf8f3)',
+        '& strong, & svg': { color: amber },
+      },
+      '& > div:nth-of-type(3)': {
+        borderColor: theme.isDark ? '#314b50' : '#c6e2df',
+        background: theme.isDark
+          ? 'linear-gradient(120deg, #202c36, #1b292d)'
+          : 'linear-gradient(120deg, #e9f5f3, #f4f9f9)',
+        '& strong, & svg': { color: teal },
+      },
+      '& strong': {
+        color: link,
+        display: 'block',
+        fontSize: 'clamp(22px, 3vw, 36px)',
+        fontWeight: 500,
+        lineHeight: 1.2,
+        marginBottom: 8,
+      },
       '& span': { color: theme.colors.text.secondary, fontSize: 13 },
+      '@media (max-width: 600px)': { gap: 8, '& > div': { padding: 12 } },
+    }),
+    metricIcon: css({
+      position: 'absolute',
+      right: 20,
+      top: 20,
+      color: link,
+      opacity: 0.8,
+      width: 24,
+      height: 24,
+      '@media (max-width: 600px)': { display: 'none' },
+    }),
+    metricContext: css({
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'start',
+      flexWrap: 'wrap',
+      gap: '4px 16px',
+      marginBottom: 16,
+      '& p': { marginBottom: 0 },
+    }),
+    scope: css({
+      fontSize: 12,
+      color: theme.colors.text.secondary,
+      maxWidth: 460,
+      '& summary': {
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        width: 'fit-content',
+        padding: '2px 0',
+        '&:focus-visible': { outline: `2px solid ${link}`, outlineOffset: 2 },
+      },
+      '& summary:hover': { color: link },
+      '& p': { padding: '8px 0 0', fontSize: 12, marginBottom: 8 },
     }),
     grid: css({
       display: 'grid',
@@ -84,7 +149,27 @@ export const getStyles = (theme: GrafanaTheme2) => {
       alignItems: 'start',
       '@media (max-width: 1000px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
     }),
-    section: css({ minWidth: 0, padding: '16px 0', borderTop: `1px solid ${theme.colors.border.weak}` }),
+    section: css({
+      minWidth: 0,
+      padding: 20,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: 10,
+      background: theme.colors.background.secondary,
+      '& > h2': {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        '&::before': {
+          content: '""',
+          display: 'inline-block',
+          height: 16,
+          width: 3,
+          background: link,
+          borderRadius: 2,
+        },
+      },
+      '@media (max-width: 600px)': { padding: 16 },
+    }),
     row: css({
       display: 'flex',
       alignItems: 'center',
@@ -92,8 +177,9 @@ export const getStyles = (theme: GrafanaTheme2) => {
       gap: 16,
       padding: 12,
       flexWrap: 'wrap',
-      background: theme.colors.background.secondary,
-      borderRadius: 2,
+      background: theme.colors.background.primary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: 6,
       marginTop: 10,
       overflowWrap: 'anywhere',
     }),
@@ -108,13 +194,13 @@ export const getStyles = (theme: GrafanaTheme2) => {
       '&:disabled': { cursor: 'default', opacity: 0.6 },
     }),
     primary: css({
-      background: theme.colors.primary.main,
-      borderRadius: 2,
-      color: theme.colors.primary.contrastText,
+      background: theme.isDark ? '#7758bc' : '#6940b5',
+      borderRadius: 4,
+      color: '#fff',
       padding: '6px 12px',
       display: 'inline-block',
       textDecoration: 'none !important',
-      '&:link, &:visited': { color: theme.colors.primary.contrastText },
+      '&:link, &:visited': { color: '#fff' },
     }),
     textButton: css({
       background: 'none',
@@ -162,7 +248,7 @@ export const getStyles = (theme: GrafanaTheme2) => {
       border: `1px solid ${theme.colors.border.medium}`,
       background: theme.colors.background.secondary,
       padding: 16,
-      borderRadius: 2,
+      borderRadius: 10,
       minWidth: 0,
       overflowWrap: 'anywhere',
       '& ul': { paddingLeft: 20 },
@@ -200,9 +286,11 @@ export const getStyles = (theme: GrafanaTheme2) => {
     bar: css({
       width: '65%',
       maxWidth: 100,
-      background: theme.colors.primary.main,
-      borderTop: `4px solid ${link}`,
-      borderRadius: '2px 2px 0 0',
+      background: theme.isDark
+        ? 'linear-gradient(180deg, #b69aee, #8061bb)'
+        : 'linear-gradient(180deg, #a887dc, #7850b6)',
+      borderTop: `3px solid ${link}`,
+      borderRadius: '4px 4px 0 0',
       marginTop: 6,
     }),
     chartLabels: css({

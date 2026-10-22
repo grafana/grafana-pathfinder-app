@@ -3,6 +3,8 @@ import { copyTextToClipboard } from '../../lib/clipboard';
 import type { LearningInsightsAssignment, LearningInsightsResponse } from '../../types/learning-insights';
 import { learningLink, personName, displayTime, completionMethod } from './insights.helpers';
 import type { InsightsStyles } from './learning-insights.styles';
+import { CompletionScope } from './CompletionScope';
+import { insightsQuality } from './insights-quality';
 
 interface Props {
   data: LearningInsightsResponse;
@@ -152,6 +154,7 @@ export function PersonEvidence({ data, userId, styles: s, onClose, timeZone = 'U
       ))}
       <section className={s.section}>
         <h3>Completion evidence in selected period ({completions.length})</h3>
+        {insightsQuality(data).ambiguous && <CompletionScope styles={s} />}
         {!completions.length && (
           <p className={s.muted}>
             No completion records returned in this period. Older evidence may still satisfy an assignment.

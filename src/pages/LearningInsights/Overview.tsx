@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { Icon } from '@grafana/ui';
+import { CompletionScope } from './CompletionScope';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import {
   assignmentCounts,
@@ -44,21 +46,25 @@ export function Overview({ data, styles: s, onPerson, onAssignments, timeZone = 
     <>
       <section className={s.metrics} aria-label="Learning summary">
         <div>
+          <Icon name="users-alt" className={s.metricIcon} />
           <strong>{new Set(data.completions.map((row) => row.userId)).size}</strong>
           <span>People completing{observed ? ' · available guide records' : ''}</span>
         </div>
         <div>
+          <Icon name="book-open" className={s.metricIcon} />
           <strong>{data.completions.length}</strong>
           <span>Guide completions{observed ? ' · available records' : ''}</span>
         </div>
         <div>
+          <Icon name="clipboard-alt" className={s.metricIcon} />
           <strong>{quality.assignmentsIncomplete ? '—' : data.assignments.length - counts.withdrawn}</strong>
           <span>Current assignments</span>
         </div>
       </section>
-      <p className={s.muted}>
-        Each person and guide counts once in the selected period. Assignments are current, independent of that period.
-      </p>
+      <div className={s.metricContext}>
+        <p className={s.muted}>Each person and guide counts once per period. Assignments are current.</p>
+        {quality.ambiguous && <CompletionScope styles={s} />}
+      </div>
       <div className={s.grid}>
         <section className={s.section} aria-labelledby="completions-chart-title">
           <div className={s.header}>
@@ -86,7 +92,7 @@ export function Overview({ data, styles: s, onPerson, onAssignments, timeZone = 
             <>
               <div className={s.chart} role="list" aria-label="Guide completions by interval">
                 {trend.map((bucket) => {
-                  const label = `${displayTime(bucket.from, timeZone)} to ${displayTime(bucket.to, timeZone)} (end excluded): ${bucket.count} guide completions`;
+                  const label = `${displayTime(bucket.from, timeZone)} to ${displayTime(bucket.to, timeZone)} ${timeZone} (end excluded): ${bucket.count} guide completions`;
                   return (
                     <div
                       className={s.barColumn}

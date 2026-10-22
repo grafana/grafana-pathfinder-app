@@ -6,6 +6,7 @@ import { useLearningInsights } from '../../hooks';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { Assignments } from './Assignments';
 import { Overview } from './Overview';
+import { CompletionScope } from './CompletionScope';
 import { PersonEvidence } from './PersonEvidence';
 import { personName } from './insights.helpers';
 import { insightsQuality } from './insights-quality';
@@ -129,9 +130,6 @@ export function LearningInsightsView({
           Assignments and people
         </button>
       </nav>
-      <p className={s.muted}>
-        Dates and times shown in {displayZone}. The selected period includes its start and excludes its end.
-      </p>
       {loading && (
         <div className={s.notice} role="status">
           Loading learning records…
@@ -227,6 +225,7 @@ export function LearningInsightsView({
               {!selectedPerson && (
                 <section className={s.section} aria-labelledby="people-title">
                   <h2 id="people-title">People</h2>
+                  {quality!.ambiguous && <CompletionScope styles={s} />}
                   <p className={s.muted}>
                     People with available learning records, not an organization roster. Completion counts use the
                     selected period.

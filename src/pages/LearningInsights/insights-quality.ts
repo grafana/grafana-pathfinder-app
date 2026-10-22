@@ -24,11 +24,6 @@ export function insightsQuality(data: LearningInsightsResponse) {
       'Completion records could not all be loaded. Counts, rankings and the chart cover available records only; missing records may change totals and dates. Refresh to retry. If this continues, ask your administrator to check reporting access and read limits.'
     );
   }
-  if (ambiguous) {
-    notices.push(
-      'Some journey records cannot be identified as individual guides. They are excluded from completion counts, people completing, rankings and the chart, and from recent completions. Counts cover identifiable guides only. If guide credit is missing, ask your administrator to check the original records; refreshing cannot repair older records.'
-    );
-  }
   if (assignmentsIncomplete) {
     notices.push(
       'Assignment records could not all be loaded. Counts and follow-up lists cover available records only, so an empty list is not an all-clear. Refresh to retry. If this continues, ask your administrator to check reporting access and read limits.'

@@ -49,7 +49,7 @@ test('compact overview has no marketing hero, raw window or diagnostic dump', ()
     screen.queryByText(/Learning, made visible|Completion window|Snapshot as of|View trend data/)
   ).not.toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Guide completions over time' })).toBeInTheDocument();
-  expect(screen.getByText(/Dates and times shown in UTC/)).toBeInTheDocument();
+  expect(screen.queryByText(/Dates and times shown/)).not.toBeInTheDocument();
   expect(screen.queryByText(/objectives/)).not.toBeInTheDocument();
   expect(screen.getByText('Steps completed')).toBeInTheDocument();
   const timestamp = screen.getByText(
@@ -70,10 +70,9 @@ test('sparse completion data with no assignments has a useful empty state, not a
 
 test('journey ambiguity scopes the notice to completions and does not taint exact assignment zeros', () => {
   show({ ...fixture(), assignments: [], completeness: 'partial', warnings: ['journey-identity-ambiguous'] });
-  expect(screen.getByText(/Some journey records cannot be identified as individual guides/)).toBeInTheDocument();
-  expect(
-    screen.getByText(/excluded from completion counts, people completing, rankings and the chart/)
-  ).toBeInTheDocument();
+  expect(screen.getByText('About completion counts').closest('details')).not.toHaveAttribute('open');
+  expect(screen.getByText(/Older journey records with unclear guide identity are excluded/)).toBeInTheDocument();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(screen.getByText('No assignments yet')).toBeInTheDocument();
   expect(screen.queryByText(/journey-identity-ambiguous|At least/)).not.toBeInTheDocument();
 });
