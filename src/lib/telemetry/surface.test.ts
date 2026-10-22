@@ -163,3 +163,63 @@ describe('surface owner', () => {
     expect(second).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('panel session', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+  });
+
+  it('has no session while closed', () => {
+    const surface = freshSurface();
+    expect(surface.getPanelSessionId()).toBeNull();
+    expect(surface.takePanelSessionProperties()).toBeNull();
+  });
+
+  it('mints before listeners run and keeps the id across handoffs', () => {
+    const surface = freshSurface();
+    let idSeenByListener: string | null = null;
+    surface.onPathfinderSurfaceChange(() => {
+      idSeenByListener = surface.getPanelSessionId();
+    });
+    surface.reportPathfinderSurface('sidebar');
+    const id = surface.getPanelSessionId();
+    expect(id).toMatch(/^[0-9a-f-]{32,36}$/);
+    expect(idSeenByListener).toBe(id);
+    surface.reportPathfinderSurface('floating');
+    expect(surface.getPanelSessionId()).toBe(id);
+  });
+
+  it('rotates after close and reopen', () => {
+    const surface = freshSurface();
+    surface.reportPathfinderSurface('sidebar');
+    const first = surface.getPanelSessionId();
+    surface.reportPathfinderSurface('closed');
+    expect(surface.getPanelSessionId()).toBeNull();
+    surface.reportPathfinderSurface('sidebar');
+    expect(surface.getPanelSessionId()).not.toBe(first);
+  });
+
+  it('sends session_started_at as epoch ms on the first read only', () => {
+    const surface = freshSurface();
+    surface.reportPathfinderSurface('sidebar');
+    const first = surface.takePanelSessionProperties();
+    expect(typeof first?.session_started_at).toBe('number');
+    const second = surface.takePanelSessionProperties();
+    expect(second).toEqual({ pathfinder_session_id: first?.pathfinder_session_id });
+  });
+
+  it('mints lazily for a surface already open at cold start', () => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    const surface = freshSurface();
+    expect(surface.getPanelSessionId()).not.toBeNull();
+  });
+
+  it('never persists the id', () => {
+    const surface = freshSurface();
+    surface.reportPathfinderSurface('sidebar');
+    const id = surface.getPanelSessionId()!;
+    expect(JSON.stringify({ ...localStorage })).not.toContain(id);
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain(id);
+  });
+});

@@ -18,6 +18,43 @@ let reportedSurface: PathfinderSurface | null = null;
 let latchedColdSurface: PathfinderSurface | null = null;
 const listeners = new Set<SurfaceListener>();
 
+interface PanelSession {
+  id: string;
+  startedAt: number;
+  startedAtSent: boolean;
+}
+
+// In-memory and per tab by design: never written to storage, so a reload ends the session.
+let panelSession: PanelSession | null = null;
+
+function mintPanelSession(): PanelSession {
+  const id =
+    typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+  return { id, startedAt: Date.now(), startedAtSent: false };
+}
+
+export function getPanelSessionId(): string | null {
+  if (panelSession === null && getPathfinderSurface() !== 'closed') {
+    panelSession = mintPanelSession();
+  }
+  return panelSession?.id ?? null;
+}
+
+// `session_started_at` rides on the first event of a session only.
+export function takePanelSessionProperties(): { pathfinder_session_id: string; session_started_at?: number } | null {
+  const id = getPanelSessionId();
+  if (panelSession === null || id === null) {
+    return null;
+  }
+  if (panelSession.startedAtSent) {
+    return { pathfinder_session_id: id };
+  }
+  panelSession.startedAtSent = true;
+  return { pathfinder_session_id: id, session_started_at: panelSession.startedAt };
+}
+
 // Mode literals mirror PanelMode in global-state/panel-mode — importing
 // panelModeManager here would cycle via global-state → analytics → faro.
 export function readPathfinderSurface(): PathfinderSurface {
@@ -66,6 +103,11 @@ export function reportPathfinderSurface(surface: PathfinderSurface): void {
   }
   reportedSurface = surface;
   latchedColdSurface = null;
+  if (surface === 'closed') {
+    panelSession = null;
+  } else {
+    panelSession ??= mintPanelSession();
+  }
   for (const listener of listeners) {
     try {
       listener(surface);

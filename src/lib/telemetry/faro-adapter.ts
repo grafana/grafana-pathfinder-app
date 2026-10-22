@@ -15,6 +15,7 @@ import {
 } from './filtering';
 import { buildTelemetryIdentity } from './identity';
 import {
+  getPanelSessionId,
   getPathfinderSurface,
   hasReportedPathfinderSurface,
   isPathfinderOpen,
@@ -118,7 +119,7 @@ async function initializeFaroInstance(options?: InitFaroOptions): Promise<void> 
   // Stamp both an already-open surface and future transitions after delayed initialization.
   const stampSurface = () => {
     markPathfinderActive();
-    setFaroSessionAttributes({ surface: getPathfinderSurface() });
+    setFaroSessionAttributes({ surface: getPathfinderSurface(), pathfinder_session_id: getPanelSessionId() ?? '' });
   };
   onPathfinderSurfaceChange(stampSurface);
   stampSurface();
