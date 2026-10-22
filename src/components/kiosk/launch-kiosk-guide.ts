@@ -52,7 +52,7 @@ export function launchKioskGuide(
         target.searchParams.set(key, value);
       }
       target.hash = destination.hash;
-      reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
+      reportKioskInteraction(mode, blockIndex, { component: 'guide_links', action: 'open_product', ruleId: rule.id });
       window.open(target.href, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -64,7 +64,7 @@ export function launchKioskGuide(
     if (subpath && (destination.pathname === subpath || destination.pathname.startsWith(`${subpath}/`))) {
       destination.pathname = destination.pathname.slice(subpath.length) || '/';
     }
-    reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
+    reportKioskInteraction(mode, blockIndex, { component: 'guide_links', action: 'open_product', ruleId: rule.id });
     onLaunch?.();
     if (sidebarState.getIsSidebarMounted() && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });

@@ -328,7 +328,7 @@ describe('product navigation', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
       launch_mode: 'instance',
       block_index: 4,
-      component: 'guide-links',
+      component: 'guide_links',
       action: 'open_product',
       rule_id: 'synthetic',
     });
@@ -364,7 +364,7 @@ describe('product navigation', () => {
       kiosk_name: 'dem',
       launch_mode: mode,
       block_index: 2,
-      component: 'guide-links',
+      component: 'guide_links',
       action: 'open_product',
       rule_id: 'synthetic',
     });
