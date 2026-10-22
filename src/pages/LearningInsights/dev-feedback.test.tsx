@@ -3,6 +3,13 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { LearningInsightsView } from './LearningInsightsPage';
 
+beforeAll(() => {
+  jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    measureText: (text: string) => ({ width: text.length * 8 }),
+  } as unknown as CanvasRenderingContext2D);
+});
+afterAll(() => jest.restoreAllMocks());
+
 jest.mock('@grafana/runtime', () => ({ config: { bootData: { user: { orgRole: 'Admin' } } } }));
 
 const fixture = (): LearningInsightsResponse => ({
@@ -70,8 +77,7 @@ test('sparse completion data with no assignments has a useful empty state, not a
 
 test('journey ambiguity scopes the notice to completions and does not taint exact assignment zeros', () => {
   show({ ...fixture(), assignments: [], completeness: 'partial', warnings: ['journey-identity-ambiguous'] });
-  expect(screen.getByText('About completion counts').closest('details')).not.toHaveAttribute('open');
-  expect(screen.getByText(/Older journey records with unclear guide identity are excluded/)).toBeInTheDocument();
+  expect(screen.queryByText('About completion counts')).not.toBeInTheDocument();
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(screen.getByText('No assignments yet')).toBeInTheDocument();
   expect(screen.queryByText(/journey-identity-ambiguous|At least/)).not.toBeInTheDocument();
@@ -105,7 +111,7 @@ test('true zero attention is calm but unknown statuses require follow-up', () =>
   data.assignments[0] = { ...data.assignments[0]!, status: 'unknown', guides: [], reason: 'target-unresolved' };
   show(data);
   expect(screen.queryByText('No assignments need attention')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Check unknown assignments/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Review unresolved assignments/ })).toBeInTheDocument();
 });
 
 test('all people defaults to actual people and assignment views, filters and restores all rows', () => {

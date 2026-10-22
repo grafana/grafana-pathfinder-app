@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { config } from '@grafana/runtime';
 import { dateMath, dateTime, type RawTimeRange, type TimeRange } from '@grafana/data';
 import { RefreshPicker, TimeRangePicker, useStyles2 } from '@grafana/ui';
@@ -6,7 +6,6 @@ import { useLearningInsights } from '../../hooks';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { Assignments } from './Assignments';
 import { Overview } from './Overview';
-import { CompletionScope } from './CompletionScope';
 import { PersonEvidence } from './PersonEvidence';
 import { personName } from './insights.helpers';
 import { insightsQuality } from './insights-quality';
@@ -51,7 +50,6 @@ export function LearningInsightsView({
   const [localRange, setLocalRange] = useState(() =>
     data ? reportRange({ from: data.from, to: data.to }) : initialRange()
   );
-  const personPicker = useRef<HTMLSelectElement>(null);
   const range = timeRange ?? localRange;
   const changeRange = (next: TimeRange) => {
     const normalized = reportRange(next.raw, timeZone);
@@ -89,9 +87,8 @@ export function LearningInsightsView({
       )
     : [];
   return (
-    <main className={s.page} aria-labelledby="learning-insights-title" aria-busy={loading}>
-      <header className={s.header}>
-        <h1 id="learning-insights-title">Learning insights</h1>
+    <main className={s.page} aria-label="Learning insights" aria-busy={loading}>
+      <div className={s.toolbar}>
         <div className={s.controls}>
           <TimeRangePicker
             value={range}
@@ -121,7 +118,7 @@ export function LearningInsightsView({
             text="Refresh"
           />
         </div>
-      </header>
+      </div>
       <nav className={s.tabs} aria-label="Learning insights views">
         <button className={s.tab} aria-pressed={view === 'overview'} onClick={() => changeView('overview')}>
           Overview
@@ -177,14 +174,10 @@ export function LearningInsightsView({
               timeZone={displayZone}
             />
           ) : (
-            <>
+            <div className={s.assignmentLayout}>
               <label className={s.personFilter}>
                 Person
-                <select
-                  ref={personPicker}
-                  value={selectedPerson}
-                  onChange={(event) => setSelectedPerson(event.target.value)}
-                >
+                <select value={selectedPerson} onChange={(event) => setSelectedPerson(event.target.value)}>
                   <option value="">All people</option>
                   {subjects.map((userId) => (
                     <option key={userId} value={userId}>
@@ -196,7 +189,7 @@ export function LearningInsightsView({
                   ))}
                 </select>
               </label>
-              <div className={selectedPerson ? s.grid : undefined}>
+              <div className={s.assignmentLayout}>
                 <Assignments
                   data={data}
                   styles={s}
@@ -206,30 +199,22 @@ export function LearningInsightsView({
                   onPerson={setSelectedPerson}
                   timeZone={displayZone}
                 />
-                <div id="learner-evidence">
-                  {selectedPerson && (
+                {selectedPerson && (
+                  <div id="learner-evidence">
                     <PersonEvidence
                       key={selectedPerson}
                       data={data}
                       userId={selectedPerson}
                       styles={s}
                       timeZone={displayZone}
-                      onClose={() => {
-                        setSelectedPerson('');
-                        personPicker.current?.focus();
-                      }}
                     />
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
               {!selectedPerson && (
                 <section className={s.section} aria-labelledby="people-title">
                   <h2 id="people-title">People</h2>
-                  {quality!.ambiguous && <CompletionScope styles={s} />}
-                  <p className={s.muted}>
-                    People with available learning records, not an organization roster. Completion counts use the
-                    selected period.
-                  </p>
+                  <p className={s.muted}>People with learning records. Completion counts use the selected period.</p>
                   {!subjects.length && (
                     <p>
                       No people available
@@ -271,7 +256,7 @@ export function LearningInsightsView({
                   )}
                 </section>
               )}
-            </>
+            </div>
           )}
         </>
       )}
@@ -307,8 +292,7 @@ export default function LearningInsightsPage() {
   const user = config.bootData.user;
   if (user?.orgRole !== 'Admin') {
     return (
-      <main className={s.page}>
-        <h1>Learning insights</h1>
+      <main className={s.page} aria-label="Learning insights">
         <p className={s.notice}>
           Learning insights is available to current-organization admins. Switch to an organization you administer or ask
           an admin for access.

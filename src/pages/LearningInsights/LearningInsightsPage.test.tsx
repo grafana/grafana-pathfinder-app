@@ -7,6 +7,24 @@ import { useLearningInsights } from '../../hooks/useLearningInsights';
 import LearningInsightsPage, { LearningInsightsView } from './LearningInsightsPage';
 import { completionTrend, defaultWindow, learningLink, personName } from './insights.helpers';
 
+const originalObserver = global.IntersectionObserver;
+beforeAll(() => {
+  jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+  jest.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+  global.IntersectionObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof IntersectionObserver;
+  jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    measureText: (text: string) => ({ width: text.length * 8 }),
+  } as unknown as CanvasRenderingContext2D);
+});
+afterAll(() => {
+  global.IntersectionObserver = originalObserver;
+  jest.restoreAllMocks();
+});
+
 jest.mock('@grafana/runtime', () => ({ config: { bootData: { user: { orgRole: 'Admin', isGrafanaAdmin: false } } } }));
 jest.mock('../../hooks/useLearningInsights', () => ({ useLearningInsights: jest.fn() }));
 
@@ -105,7 +123,7 @@ beforeEach(() => {
 test('shows current assignment summary and accessible completion chart intervals', () => {
   renderView();
   expect(screen.getByText('Guide completions')).toBeInTheDocument();
-  expect(screen.getByText(/1 complete · 1 outstanding · 1 unknown/)).toBeInTheDocument();
+  expect(screen.getByText(/1 complete · 1 outstanding · 1 need review/)).toBeInTheDocument();
   expect(screen.getByRole('list', { name: 'Guide completions by interval' })).toBeInTheDocument();
   expect(screen.getAllByRole('listitem', { name: /guide completions/ })).toHaveLength(4);
   expect(screen.getAllByText('Your first dashboard').length).toBeGreaterThanOrEqual(2);
@@ -127,9 +145,10 @@ test('opens overdue obligations and contextual evidence with learning-only links
   expect(screen.getByLabelText('Status')).toHaveValue('overdue');
   expect(screen.getByRole('table').querySelectorAll('tbody tr')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Alex Morgan' }));
-  const evidence = screen.getByRole('complementary');
-  expect(within(evidence).getByRole('heading', { name: 'Alex Morgan' })).toHaveFocus();
-  expect(within(evidence).getByRole('heading', { name: '1 of 2 guides credited' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'metrics' }));
+  const evidence = screen.getByRole('region', { name: 'metrics' });
+  expect(within(evidence).getByRole('heading', { name: 'metrics' })).toHaveFocus();
+  expect(within(evidence).getByRole('heading', { name: '1 of 2 guides completed' })).toBeInTheDocument();
   expect(within(evidence).getByText(/Due:/)).toHaveTextContent(
     new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(
       new Date('2026-07-20T00:00:00Z')
@@ -145,26 +164,48 @@ test('opens overdue obligations and contextual evidence with learning-only links
   fireEvent.click(within(evidence).getByRole('button', { name: 'Copy learning link' }));
   expect(writeText).toHaveBeenCalledWith(url.toString());
   expect(await screen.findByText('Learning link copied.')).toBeInTheDocument();
-  fireEvent.click(within(evidence).getByRole('button', { name: 'Close details' }));
-  expect(screen.getByLabelText('Person')).toHaveFocus();
+  fireEvent.click(within(evidence).getByRole('button', { name: 'Close assignment details' }));
+  expect(screen.getByRole('button', { name: 'metrics' })).toHaveFocus();
 });
 
-test('filters rules, targets, persons and status and preserves unknown evidence', () => {
+test('filters content, persons and status and preserves unresolved evidence', async () => {
   renderView();
   fireEvent.click(screen.getByRole('button', { name: 'Assignments and people' }));
-  fireEvent.change(screen.getByLabelText('Wave or rule'), { target: { value: 'other-wave' } });
+  expect(screen.queryByText('More filters')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'unknown' } });
   expect(screen.getByRole('table').querySelectorAll('tbody tr')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'user:unmatched' }));
-  expect(screen.getByText('Required-guide evidence is unresolved')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'unresolved' }));
+  expect(screen.getByText('Completion cannot be checked')).toBeInTheDocument();
+  expect(screen.getByText('Cannot check')).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /Open learning content/ })).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Person'), { target: { value: '' } });
-  fireEvent.change(screen.getByLabelText('Wave or rule'), { target: { value: '' } });
-  fireEvent.change(screen.getByLabelText('Target'), {
-    target: { value: JSON.stringify(['guide', 'app-platform', 'dashboard']) },
-  });
+  fireEvent.change(screen.getByLabelText('Status'), { target: { value: '' } });
+  const content = screen.getByRole('combobox', { name: 'Learning content' });
+  fireEvent.click(content);
+  fireEvent.change(content, { target: { value: 'dashboard' } });
+  fireEvent.click(await screen.findByRole('option', { name: /Your first dashboard.*app-platform/ }));
   expect(screen.getByRole('table').querySelectorAll('tbody tr')).toHaveLength(1);
+  fireEvent.keyDown(content, { key: 'Escape' });
+  expect(screen.getByRole('table').querySelectorAll('tbody tr')).toHaveLength(3);
   fireEvent.change(screen.getByLabelText('Find a person'), { target: { value: 'no-match' } });
   expect(screen.getByText('No assignments match these filters.')).toBeInTheDocument();
+});
+
+test('content search supports keyboard selection without losing reset to all content', async () => {
+  renderView();
+  fireEvent.click(screen.getByRole('button', { name: 'Assignments and people' }));
+  const content = screen.getByRole('combobox', { name: 'Learning content' });
+  expect(content).toHaveAttribute('placeholder', 'Search learning content');
+  fireEvent.click(content);
+  fireEvent.change(content, { target: { value: 'unresolved' } });
+  await screen.findByRole('option', { name: /unresolved/ });
+  fireEvent.keyDown(content, { key: 'ArrowDown' });
+  fireEvent.keyDown(content, { key: 'Enter' });
+  expect(screen.getByRole('table').querySelectorAll('tbody tr')).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'unresolved' })).toBeInTheDocument();
+  fireEvent.keyDown(content, { key: 'Escape' });
+  expect(screen.getByRole('table').querySelectorAll('tbody tr')).toHaveLength(3);
 });
 
 test('people include older subjects without pretending they completed in this window', () => {
@@ -172,16 +213,19 @@ test('people include older subjects without pretending they completed in this wi
   fireEvent.click(screen.getByRole('button', { name: 'Assignments and people' }));
   fireEvent.change(screen.getByLabelText('Person'), { target: { value: 'user:older' } });
   expect(screen.getByText(/Older evidence may still satisfy an assignment/)).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: '1 of 1 guides credited' })).toBeInTheDocument();
+  expect(within(screen.getByRole('table')).getAllByText('Complete')).toHaveLength(2);
 });
 
-test('partial completion reads scope available-record counts without exposing codes', () => {
+test('partial completion reads show one notice without qualifying every metric label', () => {
   const data = fixture();
   data.completeness = 'partial';
   data.warnings = ['completions-page-limit'];
   renderView(data);
   expect(screen.getByText(/Completion records could not all be loaded/)).toBeInTheDocument();
-  expect(screen.getByText('Guide completions · available records')).toBeInTheDocument();
+  expect(screen.getByText('Guide completions')).toBeInTheDocument();
+  expect(screen.getByText('People completing')).toBeInTheDocument();
+  expect(screen.getByText('People per guide in this period')).toBeInTheDocument();
+  expect(screen.queryByText(/available (guide )?records/i)).not.toBeInTheDocument();
   expect(screen.queryByText('completions-page-limit')).not.toBeInTheDocument();
   expect(screen.queryByText(/At least/)).not.toBeInTheDocument();
 });

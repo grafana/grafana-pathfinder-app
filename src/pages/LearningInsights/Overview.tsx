@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Icon } from '@grafana/ui';
-import { CompletionScope } from './CompletionScope';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import {
   assignmentCounts,
@@ -41,19 +40,18 @@ export function Overview({ data, styles: s, onPerson, onAssignments, timeZone = 
   const trend = completionTrend(rows, data.from, data.to);
   const max = Math.max(1, ...trend.map((bucket) => bucket.count));
   const people = new Map(data.people.map((person) => [person.userId, person]));
-  const observed = quality.completionsIncomplete || quality.ambiguous;
   return (
     <>
       <section className={s.metrics} aria-label="Learning summary">
         <div>
           <Icon name="users-alt" className={s.metricIcon} />
           <strong>{new Set(data.completions.map((row) => row.userId)).size}</strong>
-          <span>People completing{observed ? ' · available guide records' : ''}</span>
+          <span>People completing</span>
         </div>
         <div>
           <Icon name="book-open" className={s.metricIcon} />
           <strong>{data.completions.length}</strong>
-          <span>Guide completions{observed ? ' · available records' : ''}</span>
+          <span>Guide completions</span>
         </div>
         <div>
           <Icon name="clipboard-alt" className={s.metricIcon} />
@@ -63,7 +61,6 @@ export function Overview({ data, styles: s, onPerson, onAssignments, timeZone = 
       </section>
       <div className={s.metricContext}>
         <p className={s.muted}>Each person and guide counts once per period. Assignments are current.</p>
-        {quality.ambiguous && <CompletionScope styles={s} />}
       </div>
       <div className={s.grid}>
         <section className={s.section} aria-labelledby="completions-chart-title">
@@ -140,8 +137,8 @@ export function Overview({ data, styles: s, onPerson, onAssignments, timeZone = 
           {data.assignments.length > 0 && (
             <>
               <p>
-                {counts.complete} complete · {counts.outstanding} outstanding · {counts.unknown} unknown ·{' '}
-                {counts.withdrawn} withdrawn{quality.assignmentsIncomplete ? ' in available records' : ''}
+                {counts.complete} complete · {counts.outstanding} outstanding · {counts.unknown} need review ·{' '}
+                {counts.withdrawn} withdrawn
               </p>
               {counts.overdue > 0 && (
                 <div className={s.row}>
@@ -160,14 +157,14 @@ export function Overview({ data, styles: s, onPerson, onAssignments, timeZone = 
                 <div className={s.row}>
                   <div>
                     <h3>
-                      {counts.unknown} unknown {counts.unknown === 1 ? 'status' : 'statuses'}
+                      {counts.unknown} {counts.unknown === 1 ? 'assignment needs' : 'assignments need'} review
                     </h3>
                     <p className={s.muted}>
                       Completion history or required guides could not be verified. Refresh, then check the assigned
                       content if this continues.
                     </p>
                     <button className={s.textButton} onClick={() => onAssignments('unknown')}>
-                      Check unknown assignments →
+                      Review unresolved assignments →
                     </button>
                   </div>
                 </div>
@@ -184,7 +181,7 @@ export function Overview({ data, styles: s, onPerson, onAssignments, timeZone = 
       <div className={s.grid}>
         <section className={s.section} aria-labelledby="ranking-title">
           <h2 id="ranking-title">What people are completing</h2>
-          <p className={s.muted}>People per guide{observed ? ' · available guide records only' : ' in this period'}</p>
+          <p className={s.muted}>People per guide in this period</p>
           {!rankings.length && (
             <p>
               {quality.completionsIncomplete

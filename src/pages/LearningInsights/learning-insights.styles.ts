@@ -8,17 +8,17 @@ export const getStyles = (theme: GrafanaTheme2) => {
   return {
     page: css({
       color: theme.colors.text.primary,
-      background: theme.colors.background.primary,
-      maxWidth: 1640,
-      margin: '0 auto',
-      padding: theme.spacing(2),
+      width: '100%',
+      minWidth: 0,
+      boxSizing: 'border-box',
       lineHeight: 1.55,
       '& h1, & h2, & h3, & p': { marginTop: 0 },
       '& h1': { fontSize: 24, fontWeight: 500, marginBottom: 0 },
       '& h2': { fontSize: 18, fontWeight: 500, marginBottom: 8 },
       '& h3': { fontSize: 16, fontWeight: 500 },
       '& button, & input, & select, & a': { '&:focus-visible': { outline: `2px solid ${link}`, outlineOffset: 2 } },
-      '& button, & select': { cursor: 'pointer' },
+      '& button, & select, & summary': { cursor: 'pointer' },
+      '& dd': { overflowWrap: 'anywhere' },
       '& input, & select': {
         color: theme.colors.text.primary,
         background: theme.colors.background.secondary,
@@ -40,8 +40,10 @@ export const getStyles = (theme: GrafanaTheme2) => {
       flexWrap: 'wrap',
       marginBottom: 12,
     }),
+    toolbar: css({ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }),
     controls: css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 }),
-    personFilter: css({ maxWidth: 320, marginBottom: 16 }),
+    personFilter: css({ maxWidth: 320 }),
+    assignmentLayout: css({ display: 'flex', flexDirection: 'column', gap: 24, minWidth: 0 }),
     peopleGrid: css({
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
@@ -125,22 +127,6 @@ export const getStyles = (theme: GrafanaTheme2) => {
       marginBottom: 16,
       '& p': { marginBottom: 0 },
     }),
-    scope: css({
-      fontSize: 12,
-      color: theme.colors.text.secondary,
-      maxWidth: 460,
-      '& summary': {
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        width: 'fit-content',
-        padding: '2px 0',
-        '&:focus-visible': { outline: `2px solid ${link}`, outlineOffset: 2 },
-      },
-      '& summary:hover': { color: link },
-      '& p': { padding: '8px 0 0', fontSize: 12, marginBottom: 8 },
-    }),
     grid: css({
       display: 'grid',
       gridTemplateColumns: 'minmax(0, 1.55fr) minmax(0, 1fr)',
@@ -212,6 +198,12 @@ export const getStyles = (theme: GrafanaTheme2) => {
       textUnderlineOffset: 3,
       overflowWrap: 'anywhere',
     }),
+    completionScope: css({
+      margin: '12px 0',
+      fontSize: 13,
+      '& summary': { cursor: 'pointer', color: theme.colors.text.secondary },
+      '& p, & label': { marginTop: 8 },
+    }),
     filters: css({
       display: 'flex',
       flexWrap: 'wrap',
@@ -245,6 +237,7 @@ export const getStyles = (theme: GrafanaTheme2) => {
       '& td': { overflowWrap: 'anywhere', maxWidth: 260 },
     }),
     detail: css({
+      margin: '16px 0',
       border: `1px solid ${theme.colors.border.medium}`,
       background: theme.colors.background.secondary,
       padding: 16,

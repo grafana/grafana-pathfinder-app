@@ -21,12 +21,12 @@ export function insightsQuality(data: LearningInsightsResponse) {
   const notices: string[] = [];
   if (completionsIncomplete) {
     notices.push(
-      'Completion records could not all be loaded. Counts, rankings and the chart cover available records only; missing records may change totals and dates. Refresh to retry. If this continues, ask your administrator to check reporting access and read limits.'
+      'Completion records could not all be loaded. Completion totals may be incomplete. Refresh to retry; if this continues, contact your administrator.'
     );
   }
   if (assignmentsIncomplete) {
     notices.push(
-      'Assignment records could not all be loaded. Counts and follow-up lists cover available records only, so an empty list is not an all-clear. Refresh to retry. If this continues, ask your administrator to check reporting access and read limits.'
+      'Assignment records could not all be loaded. Some assignments may be missing from the summary and follow-up lists. Refresh to retry; if this continues, contact your administrator.'
     );
   }
   return { completionsIncomplete, assignmentsIncomplete, ambiguous, notices };

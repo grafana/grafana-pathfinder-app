@@ -9,6 +9,42 @@ export function personName(person: LearningInsightsPerson | undefined, userId: s
   return person?.userDisplayName || person?.userLogin || userId;
 }
 
+export function assignmentTitle(row: LearningInsightsAssignment, completions: LearningInsightsCompletion[]): string {
+  return (
+    (row.targetType === 'guide'
+      ? completions.find((guide) => guide.guideId === row.targetId && guide.guideSource === row.targetSource)
+          ?.guideTitle
+      : undefined) || row.targetId
+  );
+}
+
+export function assignmentIssue(reason: string): string {
+  switch (reason) {
+    case 'target-unresolved':
+      return 'Learning content could not be found or its required guides could not be identified.';
+    case 'target-fetch-failed':
+      return 'Learning content could not be loaded. Refresh to retry.';
+    case 'completion-history-incomplete':
+      return 'Completion history could not be fully loaded. Refresh to retry.';
+    case 'lifecycle-unsupported':
+      return 'This assignment uses an unsupported state. Ask your administrator to check it.';
+    default:
+      return 'Completion could not be checked. Refresh, then ask your administrator to check the assignment.';
+  }
+}
+
+export function assignmentStatus(status: LearningInsightsAssignment['status']): string {
+  return status === 'unknown'
+    ? 'Needs review'
+    : status === 'complete'
+      ? 'Complete'
+      : status === 'overdue'
+        ? 'Overdue'
+        : status === 'withdrawn'
+          ? 'Withdrawn'
+          : 'Outstanding';
+}
+
 export function defaultWindow(days = 28, now = new Date()) {
   const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const from = new Date(to);

@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
+import { Combobox } from '@grafana/ui';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
-import { personName, displayTime } from './insights.helpers';
+import { personName, displayTime, assignmentTitle, assignmentStatus, assignmentIssue } from './insights.helpers';
 import { insightsQuality } from './insights-quality';
+import { AssignmentEvidence } from './AssignmentEvidence';
 import type { InsightsStyles } from './learning-insights.styles';
 
 interface Props {
@@ -16,10 +18,12 @@ interface Props {
 
 export function Assignments({ data, styles: s, status, onStatus, selectedPerson, onPerson, timeZone = 'UTC' }: Props) {
   const quality = insightsQuality(data);
-  const [rule, setRule] = useState('');
+  const contentInputId = useId();
   const [target, setTarget] = useState('');
   const [search, setSearch] = useState('');
   const [visibleCount, setVisibleCount] = useState(50);
+  const [selectedAssignment, setSelectedAssignment] = useState('');
+  const trigger = useRef<HTMLButtonElement | null>(null);
   const people = new Map(data.people.map((person) => [person.userId, person]));
   const targets = Array.from(
     new Map(
@@ -29,21 +33,22 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
   const rows = data.assignments.filter(
     (row) =>
       (!selectedPerson || row.userId === selectedPerson) &&
-      (!rule || (row.ruleId || '__unrecorded') === rule) &&
       (!target || JSON.stringify([row.targetType, row.targetSource, row.targetId]) === target) &&
       (!status || row.status === status) &&
-      (!search ||
+      (selectedPerson ||
+        !search ||
         `${personName(people.get(row.userId), row.userId)} ${row.userId} ${people.get(row.userId)?.userLogin || ''}`
           .toLocaleLowerCase()
           .includes(search.toLocaleLowerCase()))
   );
+  const selected = rows.find((row) => row.name === selectedAssignment);
   if (!data.assignments.length) {
     return (
       <section aria-labelledby="assignments-title">
         <h2 id="assignments-title">Assignments</h2>
         <p className={s.empty}>
           {quality.assignmentsIncomplete
-            ? 'No assignment records available. The assignment read is incomplete.'
+            ? 'Assignments could not all be loaded. Refresh to retry.'
             : 'No assignments yet.'}
         </p>
       </section>
@@ -51,48 +56,44 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
   }
   return (
     <section aria-labelledby="assignments-title">
-      <h2 id="assignments-title">Assignments</h2>
+      <h2 id="assignments-title">
+        {selectedPerson ? `Assignments for ${personName(people.get(selectedPerson), selectedPerson)}` : 'Assignments'}
+      </h2>
       <div className={s.filters}>
-        <label>
-          Find a person
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Name, login or subject"
+        {!selectedPerson && (
+          <label>
+            Find a person
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Name or login"
+            />
+          </label>
+        )}
+        <label htmlFor={contentInputId}>
+          Learning content
+          <Combobox
+            id={contentInputId}
+            aria-label="Learning content"
+            placeholder="Search learning content"
+            value={target || null}
+            isClearable
+            options={targets.map(([key, row]) => ({
+              value: key,
+              label: assignmentTitle(row, data.completions),
+              description: `${row.targetType} · ${row.targetSource}`,
+            }))}
+            onChange={(option) => setTarget(option?.value ?? '')}
           />
-        </label>
-        <label>
-          Wave or rule
-          <select value={rule} onChange={(event) => setRule(event.target.value)}>
-            <option value="">All rules</option>
-            {Array.from(new Set(data.assignments.map((row) => row.ruleId || '__unrecorded')))
-              .sort()
-              .map((value) => (
-                <option key={value} value={value}>
-                  {value === '__unrecorded' ? 'No recorded rule' : value}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label>
-          Target
-          <select value={target} onChange={(event) => setTarget(event.target.value)}>
-            <option value="">All targets</option>
-            {targets.map(([key, row]) => (
-              <option value={key} key={key}>
-                {row.targetId} · {row.targetSource} · {row.targetType}
-              </option>
-            ))}
-          </select>
         </label>
         <label>
           Status
           <select value={status} onChange={(event) => onStatus(event.target.value)}>
             <option value="">All statuses</option>
-            {['complete', 'outstanding', 'overdue', 'unknown', 'withdrawn'].map((value) => (
+            {(['complete', 'outstanding', 'overdue', 'unknown', 'withdrawn'] as const).map((value) => (
               <option value={value} key={value}>
-                {value === 'outstanding' ? 'Outstanding (not overdue)' : value.charAt(0).toUpperCase() + value.slice(1)}
+                {value === 'outstanding' ? 'Outstanding (not overdue)' : assignmentStatus(value)}
               </option>
             ))}
           </select>
@@ -101,14 +102,14 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
       <div className={s.tableWrap} tabIndex={0} role="region" aria-label="Assignment records, scroll for more columns">
         <table className={s.table}>
           <caption>
-            {quality.assignmentsIncomplete ? 'Available' : 'Current'} assignments · {rows.length} matching assignments ·
-            Showing {Math.min(visibleCount, rows.length)}
+            {quality.assignmentsIncomplete ? 'Partial assignment list' : 'Current assignments'} · {rows.length} matching
+            {rows.length > visibleCount ? ` · Showing ${visibleCount}` : ''}
           </caption>
           <thead>
             <tr>
-              <th scope="col">Person</th>
-              <th scope="col">Target / rule</th>
-              <th scope="col">Guides credited</th>
+              {!selectedPerson && <th scope="col">Person</th>}
+              <th scope="col">Learning content</th>
+              <th scope="col">Completion</th>
               <th scope="col">Status</th>
               <th scope="col">Due ({timeZone})</th>
             </tr>
@@ -116,49 +117,65 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
           <tbody>
             {rows.slice(0, visibleCount).map((row) => {
               const completed = row.guides.filter((guide) => guide.completed).length;
-              const resolved = row.status !== 'unknown' && row.guides.length > 0;
+              const checkable = row.status !== 'unknown' && row.guides.length > 0;
               return (
-                <tr key={row.name} aria-selected={selectedPerson === row.userId}>
+                <tr key={row.name} aria-selected={selectedAssignment === row.name}>
+                  {!selectedPerson && (
+                    <td>
+                      <button className={s.textButton} onClick={() => onPerson(row.userId)}>
+                        {personName(people.get(row.userId), row.userId)}
+                      </button>
+                    </td>
+                  )}
                   <td>
                     <button
                       className={s.textButton}
-                      onClick={() => onPerson(row.userId)}
-                      aria-expanded={selectedPerson === row.userId}
-                      aria-controls="learner-evidence"
+                      aria-expanded={selected?.name === row.name}
+                      aria-controls="assignment-details"
+                      onClick={(event) => {
+                        trigger.current = event.currentTarget;
+                        setSelectedAssignment(row.name);
+                      }}
                     >
-                      {personName(people.get(row.userId), row.userId)}
+                      {assignmentTitle(row, data.completions)}
                     </button>
                   </td>
                   <td>
-                    {row.targetId}
-                    <div className={s.muted}>
-                      {row.targetSource} · {row.targetType}
-                      <br />
-                      {row.ruleId || 'No recorded rule'}
-                    </div>
-                  </td>
-                  <td>
-                    {resolved ? (
-                      <>
-                        {completed} / {row.guides.length}
-                        <progress value={completed} max={row.guides.length} aria-label="Required guides credited" />
-                      </>
+                    {row.status === 'withdrawn' ? (
+                      '—'
+                    ) : checkable ? (
+                      row.guides.length === 1 ? (
+                        completed ? (
+                          'Complete'
+                        ) : (
+                          'No completion recorded'
+                        )
+                      ) : (
+                        <>
+                          {completed} of {row.guides.length} guides
+                          <progress
+                            value={completed}
+                            max={row.guides.length}
+                            aria-label="Guides completed for this assignment"
+                          />
+                        </>
+                      )
+                    ) : row.guides.length > 0 ? (
+                      `${completed} completed · check incomplete`
                     ) : (
-                      'Unknown'
+                      'Cannot check'
                     )}
                   </td>
                   <td
                     className={row.status === 'complete' ? s.success : row.status === 'overdue' ? s.warning : undefined}
                   >
-                    {row.status === 'complete'
-                      ? '✓ Complete'
-                      : row.status === 'unknown'
-                        ? 'Unknown'
-                        : row.status === 'overdue'
-                          ? 'Overdue'
-                          : row.status === 'withdrawn'
-                            ? 'Withdrawn'
-                            : 'Outstanding'}
+                    {assignmentStatus(row.status)}
+                    {row.status === 'unknown' && (
+                      <details className={s.completionScope}>
+                        <summary>Why?</summary>
+                        <p>{assignmentIssue(row.reason)}</p>
+                      </details>
+                    )}
                   </td>
                   <td>
                     {row.dueAt ? (
@@ -166,7 +183,7 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
                         {displayTime(row.dueAt, timeZone)}
                       </time>
                     ) : (
-                      'No due date'
+                      '—'
                     )}
                   </td>
                 </tr>
@@ -175,19 +192,24 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
           </tbody>
         </table>
       </div>
-      {!rows.length && (
-        <p className={s.notice}>
-          {data.assignments.length
-            ? 'No assignments match these filters.'
-            : quality.assignmentsIncomplete
-              ? 'No assignment records available. The assignment read is incomplete.'
-              : 'No assignments yet.'}
-        </p>
-      )}
+      {!rows.length && <p className={s.notice}>No assignments match these filters.</p>}
       {rows.length > visibleCount && (
         <button className={s.button} onClick={() => setVisibleCount((value) => value + 50)}>
           Show 50 more assignments
         </button>
+      )}
+      {selected && (
+        <AssignmentEvidence
+          key={selected.name}
+          assignment={selected}
+          data={data}
+          styles={s}
+          timeZone={timeZone}
+          onClose={() => {
+            setSelectedAssignment('');
+            trigger.current?.focus();
+          }}
+        />
       )}
     </section>
   );
