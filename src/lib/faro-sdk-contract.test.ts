@@ -9,7 +9,9 @@
  * bump instead.
  */
 import { PathfinderErrorsInstrumentation } from './telemetry/browser-errors';
-import { filterPathfinderTelemetry } from './telemetry/filtering';
+import { trackPanelSession } from './telemetry/faro-adapter';
+import { filterPathfinderTelemetry, stampPanelSessionAttribute } from './telemetry/filtering';
+import { getPanelSessionId, reportPathfinderSurface, reportPathfinderSurfaceClosed } from './telemetry/surface';
 import {
   BaseTransport,
   initializeFaro,
@@ -116,6 +118,46 @@ describe('faro-web-sdk session identity contract', () => {
       (item) => item.type === 'event' && (item.payload as { name?: string }).name === 'session_start'
     );
     expect(sessionStarts).toHaveLength(0);
+  });
+});
+
+describe('panel session attribute through the installed Faro SDK', () => {
+  const transport = new CaptureTransport();
+  const faro = initializeFaro({
+    app: { name: 'pathfinder-panel-session-test', version: '0.0.0' },
+    transports: [transport],
+    instrumentations: [new SessionInstrumentation()],
+    sessionTracking: { enabled: true, persistent: false },
+    isolate: true,
+    globalObjectKey: 'pathfinderPanelSessionTest',
+    batching: { enabled: false },
+    dedupe: false,
+    beforeSend: stampPanelSessionAttribute,
+  });
+  trackPanelSession(faro);
+
+  const sessionAttributesOf = (name: string) =>
+    transport.items.find((item) => item.type === 'event' && (item.payload as { name?: string }).name === name)?.meta
+      .session?.attributes;
+
+  it('stamps the open session id on each item without writing it to sessionStorage', () => {
+    reportPathfinderSurface('sidebar');
+    const panelSessionId = getPanelSessionId();
+    expect(panelSessionId).toBeDefined();
+    faro.api.setSession({ ...faro.api.getSession(), attributes: { surface: 'sidebar' } });
+
+    faro.api.pushEvent('while_open');
+    reportPathfinderSurfaceClosed('sidebar');
+    faro.api.pushEvent('while_closed');
+
+    expect(sessionAttributesOf('while_open')).toMatchObject({ surface: 'sidebar', pathfinder_session_id: panelSessionId });
+    expect(sessionAttributesOf('while_closed')).toMatchObject({ pathfinder_session_id: '' });
+    expect(sessionStorage.getItem('com.grafana.faro.session')).toBeTruthy();
+    for (const storage of [sessionStorage, localStorage]) {
+      for (let i = 0; i < storage.length; i++) {
+        expect(storage.getItem(storage.key(i)!)).not.toContain(panelSessionId!);
+      }
+    }
   });
 });
 
