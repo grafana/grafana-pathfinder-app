@@ -38,6 +38,18 @@ it('still requests close when storage is unavailable', () => {
   expect(mockPublish).toHaveBeenCalledTimes(1);
 });
 
+it('openSidebar reports the sidebar right away so a dock keeps the session', async () => {
+  reportPathfinderSurface('floating');
+  const sessionId = getPanelSessionId();
+  reportPathfinderSurface('closed');
+
+  sidebarState.openSidebar('Interactive learning');
+  await Promise.resolve();
+
+  expect(getPathfinderSurface()).toBe('sidebar');
+  expect(getPanelSessionId()).toBe(sessionId);
+});
+
 describe('closeSidebar', () => {
   const mockReportAppInteraction = reportAppInteraction as jest.Mock;
   const mockGetMode = panelModeManager.getMode as jest.Mock;

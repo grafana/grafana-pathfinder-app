@@ -190,14 +190,26 @@ describe('panel session', () => {
     expect(surface.getPanelSessionId()).toBe(id);
   });
 
-  it('rotates after close and reopen', () => {
+  it('rotates after close and reopen', async () => {
     const surface = freshSurface();
     surface.reportPathfinderSurface('sidebar');
     const first = surface.getPanelSessionId();
     surface.reportPathfinderSurface('closed');
     expect(surface.getPanelSessionId()).toBeNull();
+    expect(surface.takePanelSessionProperties()).toBeNull();
+    await Promise.resolve();
     surface.reportPathfinderSurface('sidebar');
     expect(surface.getPanelSessionId()).not.toBe(first);
+  });
+
+  it('keeps the id when the next surface reports in the same task as the close', async () => {
+    const surface = freshSurface();
+    surface.reportPathfinderSurface('floating');
+    const id = surface.getPanelSessionId();
+    surface.reportPathfinderSurface('closed');
+    surface.reportPathfinderSurface('sidebar');
+    await Promise.resolve();
+    expect(surface.getPanelSessionId()).toBe(id);
   });
 
   it('sends session_started_at as epoch ms on the first read only', () => {

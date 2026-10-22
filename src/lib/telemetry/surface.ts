@@ -35,20 +35,25 @@ function mintPanelSession(): PanelSession {
   return { id, startedAt: Date.now(), startedAtSent: false };
 }
 
+function activePanelSession(): PanelSession | null {
+  return reportedSurface === 'closed' ? null : panelSession;
+}
+
 export function getPanelSessionId(): string | null {
-  return panelSession?.id ?? null;
+  return activePanelSession()?.id ?? null;
 }
 
 // `session_started_at` rides on the first event of a session only.
 export function takePanelSessionProperties(): { pathfinder_session_id: string; session_started_at?: number } | null {
-  if (panelSession === null) {
+  const session = activePanelSession();
+  if (session === null) {
     return null;
   }
-  if (panelSession.startedAtSent) {
-    return { pathfinder_session_id: panelSession.id };
+  if (session.startedAtSent) {
+    return { pathfinder_session_id: session.id };
   }
-  panelSession.startedAtSent = true;
-  return { pathfinder_session_id: panelSession.id, session_started_at: panelSession.startedAt };
+  session.startedAtSent = true;
+  return { pathfinder_session_id: session.id, session_started_at: session.startedAt };
 }
 
 // Mode literals mirror PanelMode in global-state/panel-mode — importing
@@ -100,7 +105,12 @@ export function reportPathfinderSurface(surface: PathfinderSurface): void {
   reportedSurface = surface;
   latchedColdSurface = null;
   if (surface === 'closed') {
-    panelSession = null;
+    // A mode change closes the old surface and opens the next in one task; only a close that outlives it ends the session.
+    queueMicrotask(() => {
+      if (reportedSurface === 'closed') {
+        panelSession = null;
+      }
+    });
   } else {
     panelSession ??= mintPanelSession();
   }
