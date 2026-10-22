@@ -1,7 +1,6 @@
-import { config } from '@grafana/runtime';
-
 import { collectKeysByPrefix, clearKeysByPrefix } from '../lib/storage/key-utils';
 import { StorageKeys } from '../lib/storage-keys';
+import { currentUser } from '../utils/current-user-role';
 
 import type { CompletionWriteBody } from './completion-write-client';
 import { LEASE_TTL_MS } from './completion-write-timing';
@@ -39,9 +38,8 @@ interface StoredLease {
 }
 
 export function currentCompletionQueueOwnerKey(): string | null {
-  const userId = config?.bootData?.user?.id;
-  const orgId = config?.bootData?.user?.orgId;
-  if (!Number.isInteger(userId) || Number(userId) <= 0 || !Number.isInteger(orgId) || Number(orgId) <= 0) {
+  const { id: userId, orgId } = currentUser();
+  if (!userId || !orgId) {
     return null;
   }
   return `user-${userId}:org-${orgId}`;

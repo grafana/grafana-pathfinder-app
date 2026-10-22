@@ -1,5 +1,5 @@
 import pluginJson from './plugin.json';
-import { config } from '@grafana/runtime';
+import { currentPlatform } from './constants/platform';
 
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
@@ -218,7 +218,7 @@ export const getConfigWithDefaults = (config: PathfinderPluginConfig): ResolvedP
       ? config.recommenderServiceUrl
       : getDefaultRecommenderUrl(),
   tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
-  acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
+  acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? currentPlatform() === 'cloud',
   termsVersion: config.termsVersion || TERMS_VERSION,
   // Dev mode: `devMode` is the tenant-level gate, `devModeOptIn` is this user's
   // opt-in from per-user storage. Both must be true for dev surfaces to show.
@@ -251,22 +251,6 @@ export const getConfigWithDefaults = (config: PathfinderPluginConfig): ResolvedP
   // Two-tab interactive controller
   enableTwoTabController: config.enableTwoTabController ?? DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
 });
-
-/**
- * Get platform-specific default for recommender enabled state
- * Cloud: enabled by default (always online)
- * OSS: disabled by default (might be offline)
- */
-const getPlatformSpecificDefault = (): boolean => {
-  try {
-    const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
-    return isCloud; // Cloud = true (enabled), OSS = false (disabled)
-  } catch (error) {
-    // eslint-disable-next-line no-console -- tier 0 cannot import lib/logging (it's in the logger's own import chain)
-    console.warn('Failed to detect platform, defaulting to disabled:', error);
-    return false; // Conservative default
-  }
-};
 
 export const isRecommenderEnabled = (pluginConfig: PathfinderPluginConfig): boolean => {
   return getConfigWithDefaults(pluginConfig).acceptedTermsAndConditions;

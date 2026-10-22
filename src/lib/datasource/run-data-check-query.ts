@@ -3,10 +3,20 @@
  * below are enforced once.
  */
 
-import { getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import {
+  dateMath,
+  dateTime,
+  LoadingState,
+  type DataQueryRequest,
+  type DataQueryResponse,
+  type DateTime,
+  type TimeRange,
+} from '@grafana/data';
+import type { DataQuery } from '@grafana/schema';
+import { defer, from as fromInput, fromEvent, lastValueFrom, switchMap, takeUntil } from 'rxjs';
 import type { SupportedDatasourceType } from '../../constants/datasource-types';
 import { logger } from '../logging';
+import { getDataSourceApi } from './datasource-registry';
 
 export const DATA_CHECK_QUERY_LIMITS = {
   maxDataPoints: 100,
@@ -31,14 +41,7 @@ export type DataCheckQueryResult =
   | { ok: true; hasData: boolean; seriesCount: number; rowCount: number }
   | { ok: false; error: string; failureKind: DataCheckFailureKind };
 
-/** Shape of the `/api/ds/query` response we actually read. */
-interface DsQueryFrame {
-  schema?: { fields?: Array<{ name?: string }> };
-  data?: { values?: unknown[][] };
-}
-interface DsQueryResponse {
-  results?: Record<string, { frames?: DsQueryFrame[]; error?: string; status?: number }>;
-}
+const QUERY_INTERVAL = { interval: '1m', intervalMs: 60_000 } as const;
 
 /**
  * Per-type query model. Prometheus and Loki share `expr`; Tempo takes TraceQL
@@ -71,12 +74,19 @@ function buildQueryModel(type: SupportedDatasourceType, query: string): Record<s
  * returns an empty frame (schema, no values) for a query that matched nothing,
  * so frame count alone would report every miss as a hit.
  */
-function countRows(frames: DsQueryFrame[]): { seriesCount: number; rowCount: number } {
+function frameRowCount(frame: unknown): number {
+  const shape = frame as { length?: unknown; fields?: Array<{ values?: { length?: number } }> } | null;
+  if (typeof shape?.length === 'number') {
+    return shape.length;
+  }
+  return (shape?.fields ?? []).reduce((max, field) => Math.max(max, field?.values?.length ?? 0), 0);
+}
+
+function countRows(frames: DataQueryResponse['data']): { seriesCount: number; rowCount: number } {
   let rowCount = 0;
   let seriesCount = 0;
   for (const frame of frames) {
-    const columns = frame.data?.values ?? [];
-    const rows = columns.reduce((max, column) => Math.max(max, column?.length ?? 0), 0);
+    const rows = frameRowCount(frame);
     if (rows > 0) {
       seriesCount += 1;
       rowCount += rows;
@@ -85,16 +95,49 @@ function countRows(frames: DsQueryFrame[]): { seriesCount: number; rowCount: num
   return { seriesCount, rowCount };
 }
 
+/** Reads both thrown fetch errors and the `DataQueryError` a data source folds a failed query into. */
 function describeError(err: unknown): string {
-  const fetchErr = err as { status?: number; statusText?: string; data?: { message?: string; error?: string } };
-  const backendMessage = fetchErr?.data?.message ?? fetchErr?.data?.error;
+  const queryErr = err as {
+    status?: number;
+    statusText?: string;
+    refId?: string;
+    message?: string;
+    data?: { message?: string; error?: string };
+  } | null;
+  const backendMessage = queryErr?.data?.message ?? queryErr?.data?.error;
   if (backendMessage) {
     return backendMessage;
   }
-  if (fetchErr?.status) {
-    return `Query failed (HTTP ${fetchErr.status}${fetchErr.statusText ? ` ${fetchErr.statusText}` : ''}).`;
+  if (queryErr?.refId && queryErr.message) {
+    return queryErr.message;
   }
-  return err instanceof Error ? err.message : 'Query failed.';
+  if (queryErr?.status) {
+    return `Query failed (HTTP ${queryErr.status}${queryErr.statusText ? ` ${queryErr.statusText}` : ''}).`;
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return queryErr?.message || 'Query failed.';
+}
+
+function responseError(response: DataQueryResponse): string | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- toDataQueryResponse sets only `error` for a non-200 fetch
+  const error = response.errors?.[0] ?? response.error;
+  if (error) {
+    return describeError(error);
+  }
+  return response.state === LoadingState.Error ? 'Query failed.' : undefined;
+}
+
+function parseTime(raw: string, roundUp: boolean): DateTime | undefined {
+  const time = /^\d+$/.test(raw) ? dateTime(Number(raw)) : dateMath.toDateTime(raw, { roundUp });
+  return time?.isValid() ? time : undefined;
+}
+
+function toTimeRange(from: string, to: string): TimeRange | undefined {
+  const fromTime = parseTime(from, false);
+  const toTime = parseTime(to, true);
+  return fromTime && toTime ? { from: fromTime, to: toTime, raw: { from, to } } : undefined;
 }
 
 /**
@@ -103,12 +146,21 @@ function describeError(err: unknown): string {
  */
 let requestSequence = 0;
 
-/** `showErrorAlert: false` keeps a failed check in the step, off Grafana's global toast. */
+const CANCELLED = 'Query was cancelled.';
+
+/** Grafana's `BackendSrv` keeps a failed data query off the global toast, so a failed check stays in the step. */
 export async function runDataCheckQuery(request: DataCheckQueryRequest): Promise<DataCheckQueryResult> {
   const { datasourceUid, datasourceType, query, from, to, signal } = request;
 
   if (!query.trim()) {
     return { ok: false, error: 'No query to run.', failureKind: 'query' };
+  }
+
+  const rawFrom = from || DATA_CHECK_QUERY_LIMITS.defaultFrom;
+  const rawTo = to || DATA_CHECK_QUERY_LIMITS.defaultTo;
+  const range = toTimeRange(rawFrom, rawTo);
+  if (!range) {
+    return { ok: false, error: `Invalid time range: ${rawFrom} to ${rawTo}.`, failureKind: 'query' };
   }
 
   const timeoutController = new AbortController();
@@ -122,36 +174,49 @@ export async function runDataCheckQuery(request: DataCheckQueryRequest): Promise
 
   requestSequence += 1;
 
-  try {
-    const response = await lastValueFrom(
-      getBackendSrv().fetch<DsQueryResponse>({
-        url: '/api/ds/query',
-        method: 'POST',
-        showErrorAlert: false,
-        abortSignal: timeoutController.signal,
-        requestId: `pathfinder-data-check-${datasourceUid}-${requestSequence}`,
-        data: {
-          from: from || DATA_CHECK_QUERY_LIMITS.defaultFrom,
-          to: to || DATA_CHECK_QUERY_LIMITS.defaultTo,
-          queries: [
-            {
-              refId: 'A',
-              datasource: { uid: datasourceUid, type: datasourceType },
-              maxDataPoints: DATA_CHECK_QUERY_LIMITS.maxDataPoints,
-              intervalMs: 60_000,
-              ...buildQueryModel(datasourceType, query),
-            },
-          ],
-        },
-      })
-    );
+  const dsRequest: DataQueryRequest<DataQuery & Record<string, unknown>> = {
+    requestId: `pathfinder-data-check-${datasourceUid}-${requestSequence}`,
+    app: 'pathfinder',
+    timezone: 'browser',
+    range,
+    rangeRaw: range.raw,
+    ...QUERY_INTERVAL,
+    maxDataPoints: DATA_CHECK_QUERY_LIMITS.maxDataPoints,
+    scopedVars: {},
+    startTime: Date.now(),
+    targets: [
+      {
+        refId: 'A',
+        datasource: { uid: datasourceUid, type: datasourceType },
+        maxDataPoints: DATA_CHECK_QUERY_LIMITS.maxDataPoints,
+        intervalMs: QUERY_INTERVAL.intervalMs,
+        ...buildQueryModel(datasourceType, query),
+      },
+    ],
+  };
 
-    const result = response.data?.results?.A;
-    if (result?.error) {
-      return { ok: false, error: result.error, failureKind: 'query' };
+  try {
+    if (timeoutController.signal.aborted) {
+      throw new Error(CANCELLED);
+    }
+    // Unsubscribing is what cancels the in-flight request, so the abort has to end the subscription.
+    const response = await lastValueFrom(
+      defer(() => getDataSourceApi(datasourceUid)).pipe(
+        switchMap((ds) => fromInput(ds.query(dsRequest))),
+        takeUntil(fromEvent(timeoutController.signal, 'abort'))
+      ),
+      { defaultValue: undefined }
+    );
+    if (timeoutController.signal.aborted) {
+      throw new Error(CANCELLED);
     }
 
-    const { seriesCount, rowCount } = countRows(result?.frames ?? []);
+    const error = response ? responseError(response) : undefined;
+    if (error) {
+      return { ok: false, error, failureKind: 'query' };
+    }
+
+    const { seriesCount, rowCount } = countRows(response?.data ?? []);
     return { ok: true, hasData: rowCount > 0, seriesCount, rowCount };
   } catch (err) {
     if (timeoutController.signal.aborted && !signal?.aborted) {

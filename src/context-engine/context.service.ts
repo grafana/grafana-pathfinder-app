@@ -1,4 +1,4 @@
-import { getBackendSrv, config, locationService } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 import {
   getDetectedDatasourceType,
   getDetectedVisualizationType,
@@ -22,9 +22,9 @@ import {
 } from '../lib/learning-journey-content-bridge';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { logger } from '../lib/logging';
-import { fetchDataSources } from '../lib/grafana-api';
+import { fetchDashboardSummary, fetchDataSources } from '../lib/grafana-api';
 import { withTimeout } from '../lib/async-utils';
-import { currentPlatform } from '../lib/platform';
+import { currentPlatform } from '../constants/platform';
 import {
   buildTelemetryIdentity,
   recordRecommenderFallback,
@@ -1040,25 +1040,8 @@ export class ContextService {
    * Fetch dashboard info if on dashboard page
    */
   private static async fetchDashboardInfo(currentPath: string): Promise<DashboardInfo | null> {
-    try {
-      const pathMatch = currentPath.match(/\/d\/([^\/]+)/);
-      if (pathMatch) {
-        const dashboardUid = pathMatch[1];
-        const dashboardInfo = await getBackendSrv().get(`/api/dashboards/uid/${dashboardUid}`);
-        return {
-          id: dashboardInfo.dashboard?.id,
-          title: dashboardInfo.dashboard?.title,
-          uid: dashboardInfo.dashboard?.uid,
-          tags: dashboardInfo.dashboard?.tags,
-          folderId: dashboardInfo.meta?.folderId,
-          folderTitle: dashboardInfo.meta?.folderTitle,
-        };
-      }
-      return null;
-    } catch (error) {
-      logger.warn('Failed to fetch dashboard info', { error });
-      return null;
-    }
+    const uid = currentPath.match(/\/d\/([^\/]+)/)?.[1];
+    return uid ? fetchDashboardSummary(uid) : null;
   }
 
   /**
@@ -1263,7 +1246,7 @@ export class ContextService {
    */
   private static getGrafanaVersion(): string {
     try {
-      return config.bootData.settings.buildInfo.version || 'Unknown';
+      return config.buildInfo.version || 'Unknown';
     } catch {
       return 'Unknown';
     }

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
 	"github.com/grafana/grafana-plugin-sdk-go/experimental/featuretoggles"
 )
@@ -1017,7 +1016,8 @@ func TestCompletionWrite_RateLimited(t *testing.T) {
 	creator := &fakeCreator{}
 	withCreator(t, creator)
 
-	app := &App{logger: log.DefaultLogger, completionWriteRateLimiter: newCompletionWriteRateLimiter()}
+	app := newTestApp(t)
+	app.completionWriteRateLimiter = newCompletionWriteRateLimiter()
 
 	var last int
 	// Burst is completionWriteRateBurst; the next request over budget is 429.
@@ -1037,7 +1037,8 @@ func TestCompletionWrite_RateLimitIsPerUser(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	creator := &fakeCreator{}
 	withCreator(t, creator)
-	app := &App{logger: log.DefaultLogger, completionWriteRateLimiter: newCompletionWriteRateLimiter()}
+	app := newTestApp(t)
+	app.completionWriteRateLimiter = newCompletionWriteRateLimiter()
 
 	// Exhaust user A's burst.
 	for i := 0; i < int(completionWriteRateBurst)+1; i++ {
@@ -1057,7 +1058,8 @@ func TestCompletionWrite_RateLimitIsPerUser(t *testing.T) {
 func TestCompletionWrite_RateLimitRefillsAfterClockAdvance(t *testing.T) {
 	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	withCreator(t, &fakeCreator{})
-	app := &App{logger: log.DefaultLogger, completionWriteRateLimiter: newCompletionWriteRateLimiter()}
+	app := newTestApp(t)
+	app.completionWriteRateLimiter = newCompletionWriteRateLimiter()
 
 	// Drain the whole burst, then one more to hit the limit.
 	for i := 0; i < int(completionWriteRateBurst); i++ {
@@ -1097,23 +1099,24 @@ func TestCompletionWrite_InvalidatesReadCache(t *testing.T) {
 	withCreator(t, creator)
 
 	// Prime the read cache (1 upstream LIST).
-	doMyCompletions(t, "/completion-records/my", "user:abc")
+	app := newTestApp(t)
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:abc")
 	if lister.callCount() != 1 {
 		t.Fatalf("expected 1 LIST after first read, got %d", lister.callCount())
 	}
 	// A second read within TTL is a cache hit (still 1 LIST).
-	doMyCompletions(t, "/completion-records/my", "user:abc")
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:abc")
 	if lister.callCount() != 1 {
 		t.Fatalf("expected cache hit (1 LIST), got %d", lister.callCount())
 	}
 
 	// A successful write must invalidate the namespace index.
-	if rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+	if rec := doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
 		t.Fatalf("write status = %d, want 201", rec.Code)
 	}
 
 	// The next read refreshes (LIST count advances).
-	doMyCompletions(t, "/completion-records/my", "user:abc")
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:abc")
 	if lister.callCount() != 2 {
 		t.Fatalf("expected a refresh after invalidation (2 LISTs), got %d", lister.callCount())
 	}
@@ -1134,7 +1137,8 @@ func TestCompletionWrite_ClearsFailureCooldown(t *testing.T) {
 	withCreator(t, &fakeCreator{})
 
 	// A cold read fails and stamps the failure cooldown.
-	doMyCompletions(t, "/completion-records/my", "user:abc")
+	app := newTestApp(t)
+	doMyCompletionsOn(t, app, "/completion-records/my", "user:abc")
 	if lister.callCount() != 1 {
 		t.Fatalf("expected 1 LIST after failing read, got %d", lister.callCount())
 	}
@@ -1143,10 +1147,10 @@ func TestCompletionWrite_ClearsFailureCooldown(t *testing.T) {
 	// invalidation must clear the cooldown so the post-write read refreshes
 	// instead of replaying the stale error.
 	fail = false
-	if rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
+	if rec := doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())); rec.Code != http.StatusCreated {
 		t.Fatalf("write status = %d, want 201", rec.Code)
 	}
-	rr, body := doMyCompletions(t, "/completion-records/my", "user:abc")
+	rr, body := doMyCompletionsOn(t, app, "/completion-records/my", "user:abc")
 	if lister.callCount() != 2 {
 		t.Fatalf("expected post-write read to refresh (2 LISTs), got %d", lister.callCount())
 	}

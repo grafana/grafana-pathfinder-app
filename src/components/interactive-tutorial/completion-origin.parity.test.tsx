@@ -100,12 +100,7 @@ jest.mock('../../lib/datasource/run-data-check-query', () => ({
   runDataCheckQuery: jest.fn().mockResolvedValue({ ok: true, hasData: true, seriesCount: 1, rowCount: 3 }),
 }));
 
-jest.mock('@grafana/runtime', () => ({
-  ...jest.requireActual('@grafana/runtime'),
-  getDataSourceSrv: () => ({
-    getList: () => [{ uid: 'prom', name: 'Prometheus', type: 'prometheus', meta: { id: 'prometheus' } }],
-  }),
-}));
+jest.mock('./use-data-source-list', () => require('../../test-utils/data-check-stubs').dataSourceListStub);
 
 const CONTENT_KEY = 'https://example.com/parity-guide/content.json';
 const STEP_ID = 'parity-step';

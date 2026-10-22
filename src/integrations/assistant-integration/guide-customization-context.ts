@@ -5,7 +5,7 @@ import {
   createOpenFeatureLocalStorageProvider,
 } from '@grafana/runtime';
 import type { InlineToolRunnable } from '@grafana/assistant';
-import { currentPlatform } from '../../lib/platform';
+import { currentPlatform } from '../../constants/platform';
 import { createDatasourceMetadataTool } from './tools/datasource-metadata.tool';
 
 function readUiFeatures() {
@@ -40,9 +40,8 @@ function readUiFeatures() {
 }
 
 export function getGuideCustomizationContext() {
-  const settings = config.bootData?.settings;
   return {
-    grafanaVersion: settings?.buildInfo?.version ?? 'unknown',
+    grafanaVersion: config.buildInfo?.version ?? 'unknown',
     platform: currentPlatform(),
     currentPath: locationService.getLocation().pathname,
     uiFeatures: readUiFeatures(),

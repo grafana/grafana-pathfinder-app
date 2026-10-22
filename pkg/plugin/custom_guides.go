@@ -19,8 +19,8 @@ type customGuidesResponse struct {
 }
 
 func (a *App) handleCustomGuides(w http.ResponseWriter, r *http.Request) {
-	client, namespace := a.appPlatformReadClient(w, r, customGuideResource, "list")
-	if client == nil {
+	client, namespace, ok := a.appPlatformReadClient(w, r, customGuideResource, "list")
+	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), customGuidesDeadline)

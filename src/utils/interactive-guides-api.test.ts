@@ -8,7 +8,13 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
-import { APP_PLATFORM_API_VERSION, collectionUrl, isBackendApiAvailable, itemUrl } from './interactive-guides-api';
+import {
+  APP_PLATFORM_API_VERSION,
+  collectionUrl,
+  isBackendApiAvailable,
+  isBackendApiRuledOut,
+  itemUrl,
+} from './interactive-guides-api';
 
 const GAP_TOGGLE = 'aggregation.pathfinderbackend-ext-grafana-app.enabled';
 
@@ -22,13 +28,34 @@ describe('isBackendApiAvailable', () => {
     expect(isBackendApiAvailable()).toBe(true);
   });
 
-  it('is false when the toggle is absent', () => {
+  it('is false when the toggle is absent from populated boot toggles', () => {
+    mockToggles = { someOtherToggle: true };
+    expect(isBackendApiAvailable()).toBe(false);
+  });
+
+  it('is false when the boot toggles are empty, so direct reads and writes stay off', () => {
     expect(isBackendApiAvailable()).toBe(false);
   });
 
   it('does not treat the legacy CAP toggle as availability', () => {
     mockToggles = { 'aggregation.pathfinderbackend-ext-grafana-com.enabled': true };
     expect(isBackendApiAvailable()).toBe(false);
+  });
+});
+
+describe('isBackendApiRuledOut', () => {
+  it('is true when populated boot toggles lack the GAP toggle', () => {
+    mockToggles = { 'aggregation.pathfinderbackend-ext-grafana-com.enabled': true };
+    expect(isBackendApiRuledOut()).toBe(true);
+  });
+
+  it('is false when the GAP toggle is on', () => {
+    mockToggles = { [GAP_TOGGLE]: true };
+    expect(isBackendApiRuledOut()).toBe(false);
+  });
+
+  it('is false when the boot toggles are empty, as under multi-tenancy', () => {
+    expect(isBackendApiRuledOut()).toBe(false);
   });
 });
 

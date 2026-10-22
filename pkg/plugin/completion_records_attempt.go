@@ -196,7 +196,7 @@ func (a *App) handleCompletionAttemptWrite(w http.ResponseWriter, r *http.Reques
 		status = http.StatusCreated
 	}
 	if outcome != attemptUnchanged || persisted.CompletedAt != "" {
-		invalidateCompletionIndex(namespace)
+		a.completions.invalidate(namespace)
 	}
 	if persisted.CompletedAt != "" {
 		a.writeSatisfiedAssignments(r, userID, completionRecordSpec{

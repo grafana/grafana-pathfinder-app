@@ -15,9 +15,7 @@ const mockSetResponse = jest.fn();
 
 jest.mock('@grafana/ui', () => require('../../test-utils/data-check-stubs').grafanaUiStub);
 
-jest.mock('@grafana/runtime', () => ({
-  getDataSourceSrv: () => ({ getList: () => require('../../test-utils/data-check-stubs').DATASOURCE_LIST }),
-}));
+jest.mock('./use-data-source-list', () => require('../../test-utils/data-check-stubs').dataSourceListStub);
 
 jest.mock('../../lib/datasource/run-data-check-query', () => ({
   runDataCheckQuery: (...args: unknown[]) => mockRunQuery(...args),

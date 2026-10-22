@@ -5,6 +5,7 @@
 
 import { config } from '@grafana/runtime';
 import type { CheckResultError } from '../../types/requirements.types';
+import { readGrafanaFeatureToggle } from '../../utils/openfeature';
 
 /**
  * Feature toggle: `has-feature:<name>`.
@@ -12,12 +13,19 @@ import type { CheckResultError } from '../../types/requirements.types';
 export async function hasFeatureCheck(check: string): Promise<CheckResultError> {
   try {
     const featureName = check.replace('has-feature:', '');
-    const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
-    const isEnabled = featureToggles && featureToggles[featureName];
+    const isEnabled = readGrafanaFeatureToggle(featureName);
+    if (isEnabled === undefined) {
+      return {
+        verdict: 'unavailable',
+        requirement: check,
+        pass: false,
+        error: `Feature toggle '${featureName}' could not be read`,
+      };
+    }
 
     return {
       requirement: check,
-      pass: !!isEnabled,
+      pass: isEnabled,
       error: isEnabled ? undefined : `Feature toggle '${featureName}' is not enabled`,
     };
   } catch (error) {
