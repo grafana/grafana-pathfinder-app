@@ -1,4 +1,7 @@
 import { of } from 'rxjs';
+import { restoreTabsFromStorage } from './tab-storage-restore';
+import { resolveSurfaceCompletionIdentity } from '../../../docs-retrieval/learning-journey-helpers';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../../completion-records/completion-identity';
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import {
   fetchPackageContent,
@@ -211,5 +214,64 @@ describe('path milestone prerequisite metadata', () => {
     expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: false });
     expect(mockResolve).toHaveBeenCalledWith('parent-path', { loadContent: 'metadata-only' });
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('restored private path analytics', () => {
+  it('reloads authoritative source metadata instead of trusting a persisted manifest default', async () => {
+    mockResolve.mockImplementation(async (id: string) => ({
+      ok: true,
+      id,
+      contentUrl: `backend-guide:${id}`,
+      manifestUrl: `backend-guide:${id}/manifest.json`,
+      repository: 'app-platform',
+      manifest: id === 'parent-path' ? pathManifest : memberManifest(id),
+    }));
+    const storedTabs = JSON.parse(
+      JSON.stringify([
+        {
+          id: 'private-path-tab',
+          type: 'learning-journey',
+          title: 'Private path',
+          baseUrl: 'backend-guide:parent-path',
+          currentUrl: 'backend-guide:member-one',
+          packageInfo: {
+            packageId: 'parent-path',
+            packageManifest: { ...pathManifest, repository: 'interactive-tutorials' },
+          },
+        },
+      ])
+    );
+    const tabs = await restoreTabsFromStorage(
+      {
+        getTabs: jest.fn().mockResolvedValue(storedTabs),
+        setTabs: jest.fn(),
+        getActiveTab: jest.fn(),
+        setActiveTab: jest.fn(),
+        clear: jest.fn(),
+      },
+      { isDevMode: false }
+    );
+    const tab = tabs.find((tab) => tab.id === 'private-path-tab')!;
+    const result = await loadDocsTabContentResult(tab.currentUrl, { packageInfo: tab.packageInfo });
+    const identity = resolveSurfaceCompletionIdentity({
+      baseUrl: tab.baseUrl,
+      currentUrl: tab.currentUrl,
+      contentUrl: result.content!.url,
+      metadata: result.content!.metadata,
+    })!;
+    expect(
+      guideIdentityAnalyticsProperties({ kind: 'guide', ...identity, guideTitle: result.content!.metadata.title })
+    ).toMatchObject({
+      guide_source: 'app-platform',
+      guide_visibility: 'private',
+      guide_id: 'member-one',
+      guide_title: 'member-one',
+    });
+    expect(pathAnalytics(identity.pathIdentity)).toEqual({
+      properties: { path_id: 'parent-path' },
+      options: { privatePath: true },
+    });
+    expect(identity.pathIdentity).toMatchObject({ guideSource: 'app-platform', sourceConfirmed: true });
   });
 });

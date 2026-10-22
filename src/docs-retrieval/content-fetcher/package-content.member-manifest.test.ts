@@ -10,6 +10,7 @@
 import { of } from 'rxjs';
 import { fetchPackageContent, setPackageResolver, setPackageResolverFactory } from './package-content';
 import { resolveSurfaceCompletionIdentity } from '../learning-journey-helpers';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../completion-records/completion-identity';
 import { resolveStartingLocation } from '../../recovery/starting-location';
 
 const mockFetch = jest.fn();
@@ -215,6 +216,35 @@ describe('member launch keeps the loader manifest reachable', () => {
 
     expect(result.content?.metadata.packageManifest).toMatchObject({ id: 'member-id', type: 'guide' });
     expect(result.content?.metadata.journeyManifest).toEqual(owningJourney);
+  });
+
+  it('attributes private path members without a caller repository', async () => {
+    usePathResolver('app-platform');
+    mockFetch.mockReturnValue(backendGuideResource({}));
+    const owner = { ...pathManifest, repository: 'interactive-tutorials' };
+    const result = await fetchPackageContent('backend-guide:member-id', owner, [resolvedMember]);
+    const identity = resolveSurfaceCompletionIdentity({
+      contentUrl: result.content!.url,
+      currentUrl: result.content!.url,
+      metadata: result.content!.metadata,
+    });
+    expect(identity).toMatchObject({
+      guideSource: 'app-platform',
+      sourceConfirmed: true,
+      pathIdentity: { guideSource: 'app-platform', guideId: 'path-id', sourceConfirmed: true },
+    });
+    expect(
+      guideIdentityAnalyticsProperties({ kind: 'guide', ...identity!, guideTitle: result.content!.metadata.title })
+    ).toMatchObject({
+      guide_source: 'app-platform',
+      guide_visibility: 'private',
+      guide_id: 'member-id',
+      guide_title: 'Alerting module 1',
+    });
+    expect(pathAnalytics(identity!.pathIdentity)).toEqual({
+      properties: { path_id: 'path-id' },
+      options: { privatePath: true },
+    });
   });
 
   it('keeps the explicitly supplied path repository as the member completion source', async () => {

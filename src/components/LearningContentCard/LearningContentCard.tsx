@@ -251,8 +251,7 @@ export function LearningContentCard({
             className={cx(
               styles.description,
               featured && styles.featuredDescription,
-              !(isExpanded && (!featured || expandableDescription)) &&
-                (featured ? styles.featuredClamp : styles.excerpt)
+              !isExpanded && (featured ? expandableDescription && styles.featuredClamp : styles.excerpt)
             )}
           >
             {description}

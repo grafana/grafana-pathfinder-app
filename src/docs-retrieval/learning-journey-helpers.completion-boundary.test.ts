@@ -104,6 +104,7 @@ import { publishGuideIndex, evictAllGuideIndexes } from '../global-state/active-
 import { computeGuideBlockIndex } from '../lib/guide-stats';
 import { of } from 'rxjs';
 import { config, setBackendSrv, type BackendSrv } from '@grafana/runtime';
+import { completionAnalytics } from '../completion-records/completion-analytics';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import {
   recordStandaloneGuideCompletion,
@@ -627,6 +628,20 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     expect(journeySetMock).toHaveBeenCalledWith(base, 100);
     expect(emitted.filter((f) => f.kind === 'guide')).toHaveLength(1);
     expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
+    const guide = completionAnalytics(emitted.find((f) => f.kind === 'guide')!).properties;
+    const journey = completionAnalytics(emitted.find((f) => f.kind === 'journey')!).properties;
+    expect(guide).toMatchObject({
+      guide_source: 'app-platform',
+      guide_visibility: 'private',
+      guide_id: 'm3',
+      path_id: 'linux-path',
+    });
+    expect(journey).toMatchObject({
+      guide_source: 'app-platform',
+      guide_visibility: 'private',
+      journey_id: 'linux-path',
+    });
+    expect(guide.path_id).toBe(journey.journey_id);
   });
 
   it('does not persist terminal completion before every backend-guide milestone is complete', async () => {
@@ -1131,6 +1146,12 @@ describe('standalone private guide opened straight off the backend-guide: scheme
       guideId: 'fe-solo-01',
       guideCategory: 'interactive',
       completionPercent: 100,
+    });
+    expect(completionAnalytics(emitted[0]!).properties).toMatchObject({
+      guide_source: 'app-platform',
+      guide_visibility: 'private',
+      guide_id: 'fe-solo-01',
+      guide_title: 'Solo guide',
     });
     expect(journeySetMock).not.toHaveBeenCalled();
   });
