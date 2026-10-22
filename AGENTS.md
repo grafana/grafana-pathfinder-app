@@ -82,6 +82,7 @@ Load files only when working in the relevant domain. The full routing table is *
 - `.cursor/rules/react-antipatterns.mdc` — R1-R21 routing index; load the themed file it names
 - `.cursor/rules/testingStrategy.mdc` — unit/smoke/integration guidance
 - `docs/developer/TELEMETRY.md` — Faro + RudderStack policy and privacy invariants
+- `docs/developer/ANALYTICS_EVENTS.md` — per-event RudderStack field matrix; update it with any event or property change
 
 ## PR reviews
 
