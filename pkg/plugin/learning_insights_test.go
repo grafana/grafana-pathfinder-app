@@ -24,9 +24,14 @@ func insightsRequest(t *testing.T, role, sub string) *http.Request {
 
 func insightsResponse(t *testing.T, r *http.Request) (*httptest.ResponseRecorder, learningInsightsResponse) {
 	t.Helper()
+	return insightsResponseWith(t, newTestApp(t), r)
+}
+
+func insightsResponseWith(t *testing.T, app *App, r *http.Request) (*httptest.ResponseRecorder, learningInsightsResponse) {
+	t.Helper()
 	rr := httptest.NewRecorder()
 	mux := http.NewServeMux()
-	newTestApp(t).registerRoutes(mux)
+	app.registerRoutes(mux)
 	mux.ServeHTTP(rr, r)
 	var resp learningInsightsResponse
 	if rr.Code == http.StatusOK {
@@ -172,5 +177,59 @@ func TestLearningInsightsInvalidPeriod(t *testing.T) {
 	rr, _ := insightsResponse(t, r)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatal(rr.Code)
+	}
+}
+
+func TestLearningInsightsReadRateLimit(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	completions := singlePageLister()
+	withLister(t, completions)
+	assignments := singlePageAssignmentLister()
+	withAssignmentLister(t, assignments)
+	app := newTestApp(t)
+	app.assignmentsReadRateLimiter = newUserRateLimiter(1, 1)
+	for _, role := range []string{"Viewer", "Editor", ""} {
+		rr, _ := insightsResponseWith(t, app, insightsRequest(t, role, "user:1"))
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("role %q: %d", role, rr.Code)
+		}
+	}
+	for _, identity := range []string{"missing", "foreign-namespace"} {
+		sub := ""
+		if identity == "foreign-namespace" {
+			sub = "user:1"
+		}
+		r := insightsRequest(t, "Admin", sub)
+		if identity == "foreign-namespace" {
+			pc := backend.PluginConfigFromContext(r.Context())
+			pc.Namespace = "other-stack"
+			r = r.WithContext(backend.WithPluginContext(r.Context(), pc))
+		}
+		rr, resp := insightsResponseWith(t, app, r)
+		if rr.Code != http.StatusOK || resp.Capability.Available {
+			t.Fatalf("identity %s: %d %+v", identity, rr.Code, resp)
+		}
+	}
+	if len(app.assignmentsReadRateLimiter.buckets) != 0 || completions.callCount() != 0 || assignments.callCount() != 0 {
+		t.Fatal("rejected callers consumed rate budget or read upstream")
+	}
+	rr, _ := insightsResponseWith(t, app, insightsRequest(t, "Admin", "user:1"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("first verified read: %d", rr.Code)
+	}
+	completionCalls, assignmentCalls := completions.callCount(), assignments.callCount()
+	rr, _ = insightsResponseWith(t, app, insightsRequest(t, "Admin", "user:1"))
+	if rr.Code != http.StatusTooManyRequests || rr.Header().Get("Retry-After") != "1" || rr.Body.String() != "{\"error\":\"rate-limited\"}\n" {
+		t.Errorf("over-budget response: %d %s %s", rr.Code, rr.Header().Get("Retry-After"), rr.Body.String())
+	}
+	if completions.callCount() != completionCalls || assignments.callCount() != assignmentCalls {
+		t.Fatal("rate-limited request read upstream")
+	}
+	rr, _ = insightsResponseWith(t, app, insightsRequest(t, "Admin", "user:2"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("another verified caller: %d", rr.Code)
+	}
+	if len(app.assignmentsReadRateLimiter.buckets) != 2 {
+		t.Fatal("limiter is not keyed on verified subjects")
 	}
 }
