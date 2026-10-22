@@ -34,3 +34,16 @@ it('preserves member navigation and keeps unpublished members disabled', () => {
   fireEvent.click(screen.getByRole('button', { name: /Welcome to Grafana/ }));
   expect(onOpen).toHaveBeenCalledWith(modules[0]);
 });
+
+it('hides module descriptions in the compact list but keeps every member and its navigation', () => {
+  const onOpen = jest.fn();
+  const described: Milestone[] = [{ ...modules[0]!, description: 'A tour of the key areas' }, modules[1]!];
+  const { rerender } = render(<LearningModuleList modules={described} onOpen={onOpen} />);
+  expect(screen.getByText('A tour of the key areas')).toBeInTheDocument();
+
+  rerender(<LearningModuleList compact modules={described} onOpen={onOpen} />);
+  expect(screen.queryByText('A tour of the key areas')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: /Welcome to Grafana/ }));
+  expect(onOpen).toHaveBeenCalledWith(described[0]);
+});

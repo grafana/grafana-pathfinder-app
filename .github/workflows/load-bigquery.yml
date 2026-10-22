@@ -1,7 +1,14 @@
 name: Load BigQuery data
 
 on:
+  schedule:
+    - cron: '17 6 * * *'
   workflow_dispatch:
+    inputs:
+      allow_package_drop:
+        description: Allow pathfinder_packages to shrink by more than 10%
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -33,3 +40,5 @@ jobs:
       - name: Load data
         run: ./scripts/load-bigquery.bash update
         shell: bash
+        env:
+          ALLOW_PACKAGE_DROP: ${{ inputs.allow_package_drop }}

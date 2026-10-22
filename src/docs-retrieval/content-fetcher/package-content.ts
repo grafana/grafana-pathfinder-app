@@ -21,6 +21,7 @@ import { buildBackendGuideContent, type BackendGuideResource } from './backend-g
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
+import { readDeclaredStartingLocation } from '../../recovery/starting-location';
 import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
 export { setPackageResolver, setPackageResolverFactory };
@@ -102,7 +103,7 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
     // already doing double duty as the title fallback above.
     const description = resolution.manifest?.description !== title ? resolution.manifest?.description : undefined;
     const estimatedMinutes = resolution.manifest?.estimatedMinutes;
-    const startingLocation = resolution.manifest?.startingLocation;
+    const startingLocation = readDeclaredStartingLocation(resolution.manifest);
 
     milestones.push({
       id,
@@ -114,7 +115,7 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
       ...(resolution.repository != null && { repository: resolution.repository }),
       ...(description != null && { description }),
       ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
-      ...(typeof startingLocation === 'string' && { startingLocation }),
+      ...(startingLocation != null && { startingLocation }),
       ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
     });
   }
@@ -551,6 +552,9 @@ export async function fetchPackageContent(
   }
 
   let packageManifestMetadata: Record<string, unknown> | undefined;
+  // The loaded guide's own starting location narrows an enclosing path's.
+  const ownStartingLocation =
+    readDeclaredStartingLocation(result.content.metadata.packageManifest) ?? (resolvedMember?.startingLocation || null);
   if (isMemberLoad) {
     if (result.content.metadata.packageManifest || resolvedMember?.packageManifest) {
       packageManifestMetadata = {
@@ -560,6 +564,12 @@ export async function fetchPackageContent(
     }
   } else if (packageManifest !== undefined) {
     packageManifestMetadata = { ...result.content.metadata.packageManifest, ...packageManifest };
+  }
+  if (ownStartingLocation) {
+    packageManifestMetadata = {
+      ...(packageManifestMetadata ?? result.content.metadata.packageManifest),
+      startingLocation: ownStartingLocation,
+    };
   }
 
   return {

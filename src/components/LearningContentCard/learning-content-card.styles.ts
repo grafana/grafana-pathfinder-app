@@ -63,6 +63,7 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       marginBottom: theme.spacing(0.5),
     }),
     featuredDescription: css({ fontSize: 13, lineHeight: 1.6 }),
+    featuredClamp: css({ display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }),
     featuredFooter: css({
       display: 'flex',
       justifyContent: 'space-between',
@@ -129,6 +130,19 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       fontSize: theme.typography.bodySmall.fontSize,
       '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
     }),
+    disclosureSubtle: css({
+      padding: theme.spacing(0.25, 0),
+      color: theme.colors.text.secondary,
+      '&:hover': { color: theme.colors.text.primary },
+    }),
+    featuredMeta: css({
+      display: 'flex',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      gap: theme.spacing(0.5, 1),
+      minWidth: 0,
+    }),
     progress: css({
       marginLeft: 'auto',
       color: theme.colors.text.secondary,
@@ -171,6 +185,23 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       color: theme.colors.text.secondary,
       textAlign: 'left',
       font: 'inherit',
+    }),
+    modulesCompact: css({
+      gap: theme.spacing(0.5),
+      maxHeight: 156,
+      overflowY: 'auto',
+      padding: theme.spacing(0.5),
+      margin: theme.spacing(-0.5),
+    }),
+    moduleRowCompact: css({ gap: theme.spacing(1), padding: theme.spacing(0.5, 1), alignItems: 'center' }),
+    moduleNumberCompact: css({ width: 20, height: 20, fontSize: 11 }),
+    moduleTitleCompact: css({
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+      overflow: 'hidden',
+      lineHeight: 1.4,
+      fontSize: theme.typography.bodySmall.fontSize,
     }),
     moduleLink: css({
       cursor: 'pointer',

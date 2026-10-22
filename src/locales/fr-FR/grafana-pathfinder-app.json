@@ -135,6 +135,25 @@
     "resetPathErrorTitle": "Réinitialisation incomplète",
     "subtitle": "Suivez votre progression, obtenez des badges et maîtrisez Grafana"
   },
+  "sidebarHub": {
+    "actionLabel": "",
+    "assignments": "",
+    "continueLabel": "",
+    "dueInDays_one": "",
+    "dueInDays_other": "",
+    "dueOn": "",
+    "dueToday": "",
+    "dueTomorrow": "",
+    "inProgress": "",
+    "moduleOf": "",
+    "moreRecommended": "",
+    "recommendedForYou": "",
+    "showAll": "",
+    "start": "",
+    "subtitle": "",
+    "welcomeBack": "",
+    "welcomeBackName": ""
+  },
   "userProfileBar": {
     "allComplete": "Tous les parcours sont terminés !",
     "allCompleteTooltip": "Vous avez terminé tous les parcours d’apprentissage, bravo !",

@@ -43,12 +43,15 @@ interface UseMyAssignmentsResult {
   onlinePaths: LearningPath[];
   /** Online targets get local completion overlaid; everything else defers to the passed-in getter. */
   getPathGuides: (pathId: string) => PathGuide[];
+  /** True once the first fetch has settled, whether or not it succeeded. */
+  hasLoaded: boolean;
 }
 
 export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignmentsResult {
   const { paths, getPathProgress, getPathGuides, completedGuides, resolveNavLinks } = options;
   const [rawAssignments, setRawAssignments] = useState<AssignmentEntry[]>([]);
   const namespace = config.namespace;
+  const [hasLoaded, setHasLoaded] = useState(!namespace);
   const isMountedRef = useRef(true);
   const inFlightRef = useRef(false);
   const pendingRef = useRef(false);
@@ -70,8 +73,11 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     do {
       pendingRef.current = false;
       const fetched = await fetchMyAssignments(namespace);
-      if (isMountedRef.current && fetched.ok) {
-        setRawAssignments(fetched.assignments);
+      if (isMountedRef.current) {
+        if (fetched.ok) {
+          setRawAssignments(fetched.assignments);
+        }
+        setHasLoaded(true);
       }
     } while (pendingRef.current && isMountedRef.current);
     inFlightRef.current = false;
@@ -199,5 +205,5 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     [onlineCardsById, getPathGuides, completedGuides, pathsById, assignmentByTargetId]
   );
 
-  return { items, notDone, assignmentByTargetId, onlinePaths, getPathGuides: getPathGuidesWithOnline };
+  return { items, notDone, assignmentByTargetId, onlinePaths, getPathGuides: getPathGuidesWithOnline, hasLoaded };
 }

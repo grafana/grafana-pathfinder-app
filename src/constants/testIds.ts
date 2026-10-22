@@ -60,6 +60,7 @@ export const testIds = {
     userProfileBarAllComplete: 'user-profile-bar-all-complete',
     recommendationsContainer: 'context-panel-recommendations-container',
     recommendationsGrid: 'context-panel-recommendations-grid',
+    recommendationsLoading: 'context-panel-recommendations-loading',
     recommendationCard: (index: number) => `context-panel-recommendation-card-${index}`,
     recommendationTitle: (index: number) => `context-panel-recommendation-title-${index}`,
     recommendationStartButton: (index: number) => `context-panel-recommendation-start-${index}`,
@@ -414,6 +415,38 @@ export const testIds = {
   // Feedback Button
   feedbackButton: {
     trigger: 'feedback-button',
+  },
+
+  // Sidebar hub
+  sidebarHub: {
+    container: 'sidebar-hub-container',
+    loading: 'sidebar-hub-loading',
+    myLearning: 'sidebar-hub-my-learning',
+    featured: 'sidebar-hub-featured',
+    featuredAction: 'sidebar-hub-featured-action',
+    featuredToggle: 'sidebar-hub-featured-toggle',
+    featuredDetails: 'sidebar-hub-featured-details',
+    featuredDetailsLoading: 'sidebar-hub-featured-details-loading',
+    featuredModule: (index: number) => `sidebar-hub-featured-module-${index}`,
+    resume: 'sidebar-hub-resume',
+    resumeAction: 'sidebar-hub-resume-action',
+    tiles: 'sidebar-hub-tiles',
+    tile: (name: string) => `sidebar-hub-tile-${name}`,
+    moreList: 'sidebar-hub-more-list',
+    row: (index: number) => `sidebar-hub-row-${index}`,
+    rowPlay: (rowTestId: string) => `${rowTestId}-play`,
+    rowToggle: (index: number) => `sidebar-hub-row-toggle-${index}`,
+    rowDetails: (index: number) => `sidebar-hub-row-details-${index}`,
+    rowDetailsLoading: (index: number) => `sidebar-hub-row-details-loading-${index}`,
+    rowModule: (row: number, index: number) => `sidebar-hub-row-${row}-module-${index}`,
+    otherDocs: 'sidebar-hub-other-docs',
+    otherDocsToggle: 'sidebar-hub-other-docs-toggle',
+    otherDocsList: 'sidebar-hub-other-docs-list',
+    otherDoc: (index: number) => `sidebar-hub-other-doc-${index}`,
+    customGuides: 'sidebar-hub-custom-guides',
+    customGuidesToggle: 'sidebar-hub-custom-guides-toggle',
+    customGuidesLoading: 'sidebar-hub-custom-guides-loading',
+    customRow: (index: number) => `sidebar-hub-custom-row-${index}`,
   },
 
   // Help Footer

@@ -1076,6 +1076,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           requestedUrl: url,
           packageManifest: packageInfo?.packageManifest,
           fetchedManifest: fetchedContent.metadata.packageManifest,
+          packageManifestIsFromEnclosingPath: fetchedContent.metadata.journeyManifest !== undefined,
           currentPath,
           launchSource,
           isAdmin: currentUserIsAdmin(),
