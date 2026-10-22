@@ -131,6 +131,19 @@ describe('KioskTile', () => {
     expect(analyticsCallOrder).toBeLessThan(openCallOrder);
   });
 
+  it.each([
+    ['learning-journey', 'learning_journey'],
+    ['interactive', 'interactive'],
+  ])('reports guide_type %s as %s', (type, expected) => {
+    render(<KioskTile rule={{ ...rule, type }} index={0} />);
+    fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.KioskDemoStarted,
+      expect.objectContaining({ guide_type: expected })
+    );
+  });
+
   it('falls back to window.location.origin when targetUrl is not set', () => {
     const ruleWithoutTarget: KioskRule = { ...rule, targetUrl: undefined };
     render(<KioskTile rule={ruleWithoutTarget} index={0} />);
@@ -285,7 +298,7 @@ describe('KioskTile', () => {
     };
     launchKioskGuide(rule, 'instance', jest.fn(), prepared);
     expect(sidebarState.getIsSidebarMounted()).toBe(true);
-    expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto-open' });
+    expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto_open' });
   });
 
   it('keeps the current route when no page is specified and forwards learning journeys', () => {
@@ -328,7 +341,7 @@ describe('product navigation', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
       launch_mode: 'instance',
       block_index: 4,
-      component: 'guide-links',
+      component: 'guide_links',
       action: 'open_product',
       rule_id: 'synthetic',
     });
@@ -364,7 +377,7 @@ describe('product navigation', () => {
       kiosk_name: 'dem',
       launch_mode: mode,
       block_index: 2,
-      component: 'guide-links',
+      component: 'guide_links',
       action: 'open_product',
       rule_id: 'synthetic',
     });

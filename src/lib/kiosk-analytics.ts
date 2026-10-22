@@ -1,4 +1,5 @@
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { toAnalyticsValue } from './analytics-values';
 
 let kioskSessionId: string | undefined;
 let kioskName: string | undefined;
@@ -35,10 +36,10 @@ export function setKioskSessionName(sessionId: string, name: string): void {
 type KioskInteraction =
   | { component: 'kiosk'; action: 'exit'; method: 'button' | 'escape' }
   | { component: 'input'; action: 'change' | 'invalid'; inputType: 'text' | 'datasource'; inputIndex: number }
-  | { component: 'launch-form'; action: 'submit' | 'ready' | 'fallback' }
-  | { component: 'launch-form'; action: 'error'; reason: 'validation' | 'storage' | 'unavailable' }
+  | { component: 'launch_form'; action: 'submit' | 'ready' | 'fallback' }
+  | { component: 'launch_form'; action: 'error'; reason: 'validation' | 'storage' | 'unavailable' }
   | { component: 'command'; action: 'copy'; outcome: 'success' | 'error' }
-  | { component: 'guide-links'; action: 'open_product'; ruleId?: string };
+  | { component: 'guide_links'; action: 'open_product'; ruleId?: string };
 
 const RULE_ID = /^[a-zA-Z_][a-zA-Z0-9_]{0,99}$/;
 
@@ -56,12 +57,12 @@ export function reportKioskInteraction(
     action: interaction.action,
     ...(interaction.component === 'kiosk' && { method: interaction.method }),
     ...(interaction.component === 'input' && {
-      input_type: interaction.inputType,
+      input_type: toAnalyticsValue(interaction.inputType),
       input_index: interaction.inputIndex,
     }),
-    ...(interaction.component === 'launch-form' && interaction.action === 'error' && { reason: interaction.reason }),
+    ...(interaction.component === 'launch_form' && interaction.action === 'error' && { reason: interaction.reason }),
     ...(interaction.component === 'command' && { outcome: interaction.outcome }),
-    ...(interaction.component === 'guide-links' &&
+    ...(interaction.component === 'guide_links' &&
       interaction.ruleId &&
       RULE_ID.test(interaction.ruleId) && { rule_id: interaction.ruleId }),
   });
