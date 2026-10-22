@@ -103,41 +103,84 @@ func TestGuideProgress_UnknownAndFailureStayUnknown(t *testing.T) {
 	}
 }
 
-func TestOnlinePathGuides_MemberManifestsAndFailures(t *testing.T) {
-	for _, failMember := range []bool{false, true} {
-		t.Run(map[bool]string{false: "sources", true: "member failure"}[failMember], func(t *testing.T) {
+func TestOnlinePathGuides_RecorderShapedCompletions(t *testing.T) {
+	for _, source := range []string{"online-cdn", "interactive-tutorials", "bundled", "app-platform", "untrusted-repository"} {
+		t.Run(source, func(t *testing.T) {
 			resetPackageRecommendationsCache()
 			withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
 				switch {
 				case strings.HasSuffix(rawURL, "repository.json"):
-					return []byte(`{"path":{"path":"path/v1","type":"path"},"a":{"path":"guides/slug-a","type":"guide"},"b":{"path":"guides/slug-b","type":"guide"}}`), nil
+					return []byte(`{"path":{"path":"path/v1","type":"path"},"member-id":{"path":"guides/member-slug","type":"guide"}}`), nil
 				case strings.Contains(rawURL, "/path/v1/"):
-					return []byte(`{"type":"path","repository":"interactive-tutorials","milestones":["a","b"]}`), nil
-				case strings.Contains(rawURL, "/slug-a/"):
-					return []byte(`{"repository":"online-cdn"}`), nil
-				case strings.Contains(rawURL, "/slug-b/"):
-					if failMember {
-						return nil, errors.New("member unavailable")
-					}
-					return []byte(`{"repository":"interactive-tutorials"}`), nil
+					return []byte(`{"type":"path","milestones":["member-id"]}`), nil
 				default:
-					t.Fatalf("unexpected URL %s", rawURL)
-					return nil, nil
+					return []byte(`{}`), nil
 				}
 			})
-			ev := newTestEvaluator(newTestApp(t).onlinePathGuides(log.DefaultLogger))
-			guides, err := ev.guideProgress(assignmentSpec{TargetType: "path", TargetID: "path", TargetSource: "interactive-tutorials"}, nil)
-			if failMember {
-				if guides != nil || !errors.Is(err, errAssignmentUncheckable) {
-					t.Fatalf("guides = %+v, error = %v", guides, err)
+			// markMilestoneDone emits the URL slug and resolver repository, with no pathId.
+			rows := []completionRecordSpec{{GuideID: "member-slug", GuideSource: source, GuideCategory: "learning-journey", CompletionPercent: 100, CompletedAt: "2026-10-21T12:00:00Z"}}
+			for _, targetSource := range []string{"", "online-cdn", "interactive-tutorials"} {
+				ev := newTestEvaluator(newTestApp(t).onlinePathGuides(log.DefaultLogger))
+				guides := mustGuideProgress(t, ev, assignmentSpec{TargetType: "path", TargetID: "path", TargetSource: targetSource}, rows)
+				wantCompleted := source == "online-cdn" || source == "interactive-tutorials"
+				if len(guides) != 1 || satisfiedFromGuides(guides) != wantCompleted {
+					t.Fatalf("target source %q: guides = %+v, want completed %v", targetSource, guides, wantCompleted)
 				}
-				return
-			}
-			want := []assignmentGuideEntry{{GuideID: "slug-a", GuideSource: "online-cdn"}, {GuideID: "slug-b", GuideSource: "interactive-tutorials"}}
-			if err != nil || !reflect.DeepEqual(guides, want) {
-				t.Fatalf("guides = %+v, error = %v", guides, err)
+				identities, err := ev.assignmentGuides(assignmentSpec{TargetType: "path", TargetID: "path", TargetSource: targetSource})
+				if err != nil || containsAssignmentGuide(identities, rows[0]) != wantCompleted {
+					t.Fatalf("status repair membership differs from evaluation: %+v, %v", identities, err)
+				}
 			}
 		})
+	}
+}
+
+func TestOnlinePathGuides_CachedIndexAvoidsMemberManifestFanout(t *testing.T) {
+	resetPackageRecommendationsCache()
+	memberFetches := 0
+	withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
+		switch {
+		case strings.HasSuffix(rawURL, "repository.json"):
+			return []byte(`{"path":{"path":"path/v1","type":"path","targeting":{"match":{"urlPrefix":"/x"}}},"a":{"path":"guides/slug-a","type":"guide"},"b":{"path":"guides/slug-b","type":"guide"}}`), nil
+		case strings.Contains(rawURL, "/path/v1/"):
+			return []byte(`{"type":"path","milestones":["a","b"]}`), nil
+		default:
+			memberFetches++
+			return nil, errors.New("member manifest unavailable")
+		}
+	})
+	app := newTestApp(t)
+	for range 2 {
+		ev := newTestEvaluator(app.onlinePathGuides(log.DefaultLogger))
+		guides, err := ev.guideProgress(assignmentSpec{TargetType: "path", TargetID: "path"}, []completionRecordSpec{{GuideID: "slug-a", GuideSource: "online-cdn", CompletedAt: "2026-10-21T12:00:00Z", CompletionPercent: 100}})
+		if err != nil || len(guides) != 2 || !guides[0].Completed || guides[1].Completed {
+			t.Fatalf("member outage lost assignment or known evidence: %+v, %v", guides, err)
+		}
+	}
+	if memberFetches != 0 {
+		t.Fatalf("member manifests fetched %d times; cached index is sufficient", memberFetches)
+	}
+}
+
+func TestOnlinePathGuides_ManifestCannotGrantOtherSourceCredit(t *testing.T) {
+	resp := &PackageRecommendationsResponse{Packages: []PackageEntry{
+		{ID: "path", Manifest: map[string]interface{}{"type": "path", "milestones": []interface{}{"member"}}},
+		{ID: "member", Path: "guides/member-slug", Manifest: map[string]interface{}{"repository": "app-platform"}},
+	}}
+	app := newTestApp(t)
+	source := func(ctx context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+		return app.resolveOnlinePathGuides(ctx, resp, log.DefaultLogger, targetID, trackID, targetSource)
+	}
+	rows := []completionRecordSpec{{GuideID: "member-slug", GuideSource: "app-platform", CompletedAt: "2026-10-21T12:00:00Z", CompletionPercent: 100}}
+	guides := mustGuideProgress(t, newTestEvaluator(source), assignmentSpec{TargetType: "path", TargetID: "path"}, rows)
+	if len(guides) != 1 || satisfiedFromGuides(guides) {
+		t.Fatalf("online manifest granted private-source credit: %+v", guides)
+	}
+	for _, targetSource := range []string{"bundled", "app-platform", "untrusted-repository"} {
+		guides := mustGuideProgress(t, newTestEvaluator(source), assignmentSpec{TargetType: "path", TargetID: "path", TargetSource: targetSource}, rows)
+		if guides != nil {
+			t.Fatalf("online path matched target source %q: %+v", targetSource, guides)
+		}
 	}
 }
 

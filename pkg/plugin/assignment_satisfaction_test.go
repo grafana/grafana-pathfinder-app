@@ -295,7 +295,7 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 					}
 				})
 				return "online-only-path", []completionRecordSpec{
-					rec("user:1", "bundled", "online-milestone-1", "Online milestone", "interactive", "online-only-path", "objectives", "2026-09-14T15:00:00Z", 100),
+					rec("user:1", "online-cdn", "online-milestone-1", "Online milestone", "interactive", "online-only-path", "objectives", "2026-09-14T15:00:00Z", 100),
 				}
 			},
 			wantSatisfied: true,
@@ -367,7 +367,7 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 					}
 				})
 				return "online-tracked-path", []completionRecordSpec{
-					rec("user:1", "bundled", "online-track-slug", "Online track guide", "interactive", "online-tracked-path", "objectives", "2026-09-14T15:00:00Z", 100),
+					rec("user:1", "interactive-tutorials", "online-track-slug", "Online track guide", "interactive", "online-tracked-path", "objectives", "2026-09-14T15:00:00Z", 100),
 				}
 			},
 			wantSatisfied: true,

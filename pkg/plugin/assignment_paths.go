@@ -17,9 +17,24 @@ import (
 	"github.com/grafana/grafana-pathfinder-app/src/learning-paths"
 )
 
+// Source qualification prevents same-slug guides in other repositories from granting credit.
 type assignmentGuideIdentity struct {
-	GuideID     string
-	GuideSource string
+	GuideID         string
+	GuideSource     string
+	alternateSource string
+}
+
+func assignmentGuideMatchesCompletion(guide assignmentGuideIdentity, rec completionRecordSpec) bool {
+	return guide.GuideID == rec.GuideID && guide.matchesSource(rec.GuideSource)
+}
+
+func (guide assignmentGuideIdentity) matchesSource(source string) bool {
+	return source != "" && (guide.GuideSource == source || guide.alternateSource == source)
+}
+
+func onlineAssignmentGuide(id string) assignmentGuideIdentity {
+	// The CDN and recommender resolvers name the same public content differently.
+	return assignmentGuideIdentity{GuideID: id, GuideSource: "online-cdn", alternateSource: "interactive-tutorials"}
 }
 
 // A found target with no guides is unresolved; an error must never mean outstanding.
@@ -99,6 +114,7 @@ func trackNotFound(logger log.Logger, targetID, trackID string) ([]assignmentGui
 	return nil, true, nil
 }
 
+// Every required custom member must be published before the path can be evaluated.
 func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) pathGuideSource {
 	published := map[string]string{}
 	for i := range entries {
@@ -178,11 +194,7 @@ func (a *App) resolveOnlinePathGuides(ctx context.Context, resp *PackageRecommen
 				return nil, true, fmt.Errorf("parse manifest: %w", jsonErr)
 			}
 		}
-		pathSource, _ := manifest["repository"].(string)
-		if pathSource == "" {
-			pathSource = "interactive-tutorials"
-		}
-		if targetSource != "" && targetSource != pathSource {
+		if targetSource != "" && !onlineAssignmentGuide(targetID).matchesSource(targetSource) {
 			continue
 		}
 		ids, _ := manifest["milestones"].([]interface{})
@@ -198,8 +210,7 @@ func (a *App) resolveOnlinePathGuides(ctx context.Context, resp *PackageRecommen
 	return nil, false, nil
 }
 
-// manifestTrackGuides is the guide ids of the named track in a path manifest;
-// ok is false when the manifest is not a path or declares no such track.
+// Only path manifests may declare assignment tracks.
 func manifestTrackGuides(manifest map[string]interface{}, trackID string) (ids []interface{}, ok bool) {
 	if manifest["type"] != "path" {
 		return nil, false
@@ -215,50 +226,23 @@ func manifestTrackGuides(manifest map[string]interface{}, trackID string) (ids [
 	return nil, false
 }
 
-func (a *App) resolveOnlineGuideIdentities(ctx context.Context, resp *PackageRecommendationsResponse, ids []interface{}) ([]assignmentGuideIdentity, error) {
+func (a *App) resolveOnlineGuideIdentities(_ context.Context, resp *PackageRecommendationsResponse, ids []interface{}) ([]assignmentGuideIdentity, error) {
+	members := make(map[string]string, len(resp.Packages))
+	for _, entry := range resp.Packages {
+		members[entry.ID] = lastPathSegment(entry.Path)
+	}
 	var guides []assignmentGuideIdentity
 	for _, id := range ids {
 		memberID, ok := id.(string)
 		if !ok || memberID == "" {
 			return nil, nil
 		}
-		source := "bundled"
-		found := false
-		for _, entry := range resp.Packages {
-			if entry.ID != memberID {
-				continue
-			}
-			found = true
-			manifest := entry.Manifest
-			if manifest == nil {
-				manifestURL := buildPackageFileURL(resp.BaseURL, entry.Path, "manifest.json")
-				if manifestURL == "" || !isAllowedInteractiveLearningHost(manifestURL) {
-					return nil, nil
-				}
-				fetch := packageRepositoryFetcherOverride
-				if fetch == nil {
-					fetch = defaultPackageRepositoryFetcher
-				}
-				body, err := fetch(ctx, manifestURL, packageManifestMaxBytes)
-				if err != nil {
-					return nil, err
-				}
-				if err := json.Unmarshal(body, &manifest); err != nil {
-					return nil, fmt.Errorf("parse member manifest: %w", err)
-				}
-			}
-			if manifest == nil || lastPathSegment(entry.Path) == "" {
-				return nil, nil
-			}
-			if repository, ok := manifest["repository"].(string); ok && repository != "" {
-				source = repository
-			}
-			break
-		}
-		if !found {
+		slug := members[memberID]
+		if slug == "" {
 			return nil, nil
 		}
-		guides = append(guides, assignmentGuideIdentity{GuideID: resolveMilestoneGuideID(resp.Packages, memberID), GuideSource: source})
+		// Recorders use the URL slug and resolver repository, never the member manifest's source.
+		guides = append(guides, onlineAssignmentGuide(slug))
 	}
 	return guides, nil
 }

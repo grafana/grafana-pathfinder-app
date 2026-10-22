@@ -26,7 +26,7 @@ func TestLearningInsightsOnlineSourceHonorsCancellation(t *testing.T) {
 	}
 }
 
-func TestLearningInsightsSourceMemberIdentityAndCancellation(t *testing.T) {
+func TestLearningInsightsSourceMemberIdentityWithoutManifestFetch(t *testing.T) {
 	ctx, cancel := context.WithCancel(insightsRequest(t, "Admin", "user:1").Context())
 	defer cancel()
 	withFetcherOverride(t, func(fetchCtx context.Context, rawURL string, _ int64) ([]byte, error) {
@@ -38,9 +38,6 @@ func TestLearningInsightsSourceMemberIdentityAndCancellation(t *testing.T) {
 			return []byte(`{"path":{"path":"path","type":"path"},"member":{"path":"guides/member","type":"guide"}}`), nil
 		case strings.HasSuffix(rawURL, "/path/manifest.json"):
 			return []byte(`{"type":"path","repository":"interactive-tutorials","milestones":["member"]}`), nil
-		case strings.HasSuffix(rawURL, "/guides/member/manifest.json"):
-			cancel()
-			return nil, fetchCtx.Err()
 		default:
 			t.Fatalf("unexpected URL %s", rawURL)
 			return nil, nil
@@ -49,7 +46,7 @@ func TestLearningInsightsSourceMemberIdentityAndCancellation(t *testing.T) {
 	r := insightsRequest(t, "Admin", "user:1").WithContext(ctx)
 	ev := newTestApp(t).insightsObligationEvaluator(r)
 	guides, found, err := ev.sources[2](ctx, "path", "", "interactive-tutorials")
-	if guides != nil || !found || !errors.Is(err, context.Canceled) {
+	if err != nil || !found || len(guides) != 1 || guides[0] != onlineAssignmentGuide("member") {
 		t.Fatalf("guides = %+v, found = %v, error = %v", guides, found, err)
 	}
 }

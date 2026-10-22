@@ -966,8 +966,12 @@ func TestOnlinePathGuides(t *testing.T) {
 			if found != tc.wantFound {
 				t.Errorf("found = %v, want %v", found, tc.wantFound)
 			}
-			if !reflect.DeepEqual(guides, guideIdentities(tc.wantGuides, "bundled")) {
-				t.Errorf("guides = %v, want %v", guides, guideIdentities(tc.wantGuides, "bundled"))
+			var wantGuides []assignmentGuideIdentity
+			for _, id := range tc.wantGuides {
+				wantGuides = append(wantGuides, onlineAssignmentGuide(id))
+			}
+			if !reflect.DeepEqual(guides, wantGuides) {
+				t.Errorf("guides = %v, want %v", guides, wantGuides)
 			}
 			if fetches[tc.target] != tc.wantFetches {
 				t.Errorf("manifest fetches = %d, want %d", fetches[tc.target], tc.wantFetches)
