@@ -55,6 +55,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9
 describe('KioskTile', () => {
   const mockOpen = jest.fn();
   const mockRandomUUID = jest.fn(() => '00000000-0000-4000-a000-000000000001');
+  const realCrypto = globalThis.crypto;
 
   const rule: KioskRule = {
     title: 'First Dashboard',
@@ -70,7 +71,7 @@ describe('KioskTile', () => {
     sidebarState.consumePendingOpenSource();
     window.open = mockOpen;
     Object.defineProperty(globalThis, 'crypto', {
-      value: { randomUUID: mockRandomUUID },
+      value: { randomUUID: mockRandomUUID, getRandomValues: realCrypto.getRandomValues.bind(realCrypto) },
       writable: true,
     });
   });
