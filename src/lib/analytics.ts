@@ -16,7 +16,6 @@ import { pushFaroUserAction } from './telemetry/bridge';
 // directly even from this entry-eager module.
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
-export { toAnalyticsValue } from './analytics-values';
 import { checkValueCasing, toAnalyticsValue } from './analytics-values';
 import { furthestEvidencedPosition } from './guide-stats/progress';
 import { GUIDE_STATS_VERSION } from './guide-stats/version';

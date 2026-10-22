@@ -91,12 +91,8 @@ async function boot(
         return load();
       },
     },
-    './lib/analytics': {
-      reportAppInteraction: jest.fn(),
-      toAnalyticsValue: (value: string) => value,
-      UserInteraction: {},
-      bindExperimentsProvider: jest.fn(),
-    },
+    './lib/analytics': { reportAppInteraction: jest.fn(), UserInteraction: {}, bindExperimentsProvider: jest.fn() },
+    './lib/analytics-values': { toAnalyticsValue: (value: string) => value },
     './lib/retry-chunk-import': { retryChunkImport },
     './lib/logging': { logger: { exception: jest.fn(), error: jest.fn(), warn: jest.fn() } },
     './plugin.json': { id: 'grafana-pathfinder-app' },

@@ -1,7 +1,8 @@
 import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import React, { useEffect } from 'react';
-import { reportAppInteraction, toAnalyticsValue, UserInteraction } from './lib/analytics';
+import { reportAppInteraction, UserInteraction } from './lib/analytics';
+import { toAnalyticsValue } from './lib/analytics-values';
 import { logger } from './lib/logging';
 import { retryChunkImport } from './lib/retry-chunk-import';
 import { createTranslatedComponent } from './components/App/TranslatedComponent';

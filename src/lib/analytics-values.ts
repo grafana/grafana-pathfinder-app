@@ -34,6 +34,9 @@ export function findKebabCaseValues(properties: Record<string, unknown>): string
 const recordedViolations: string[] = [];
 
 export function checkValueCasing(context: string, properties: Record<string, unknown> | undefined): void {
+  if (process.env.NODE_ENV === 'production') {
+    return;
+  }
   const offenders = properties ? findKebabCaseValues(properties) : [];
   if (offenders.length > 0) {
     recordValueCasingViolation(context, offenders);
@@ -43,7 +46,7 @@ export function checkValueCasing(context: string, properties: Record<string, unk
 function recordValueCasingViolation(context: string, offenders: string[]): void {
   if (process.env.NODE_ENV === 'test') {
     recordedViolations.push(`${context}: ${offenders.join(', ')}`);
-  } else if (process.env.NODE_ENV !== 'production') {
+  } else {
     // Not logger: logging reaches the Faro adapter, which imports this module.
     console.info(`[analytics] values must be snake_case: ${context}: ${offenders.join(', ')}`);
   }
