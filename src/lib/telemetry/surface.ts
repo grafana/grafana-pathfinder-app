@@ -2,6 +2,7 @@ import pluginJson from '../../plugin.json';
 import { StorageKeys } from '../storage-keys';
 import { isExtensionSidebarOwnedByPathfinder } from '../storage/extension-sidebar';
 import { KIOSK_OVERLAY_TEST_ID } from '../../constants/surface-selectors';
+import { newGuideLoadId } from '../guide-diagnostics';
 
 const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
 const CONTROLLER_ROOT_ID = 'pathfinder-controller-root';
@@ -18,42 +19,25 @@ let reportedSurface: PathfinderSurface | null = null;
 let latchedColdSurface: PathfinderSurface | null = null;
 const listeners = new Set<SurfaceListener>();
 
-interface PanelSession {
-  id: string;
-  startedAt: number;
-  startedAtSent: boolean;
-}
-
 // In-memory and per tab by design: never written to storage, so a reload ends the session.
-let panelSession: PanelSession | null = null;
-
-function mintPanelSession(): PanelSession {
-  const id =
-    typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
-  return { id, startedAt: Date.now(), startedAtSent: false };
-}
-
-function activePanelSession(): PanelSession | null {
-  return reportedSurface === 'closed' ? null : panelSession;
-}
+let panelSessionId: string | null = null;
+// Cleared once sent: `session_started_at` rides on the first event of a session only.
+let panelSessionStartedAt: number | null = null;
 
 export function getPanelSessionId(): string | null {
-  return activePanelSession()?.id ?? null;
+  return reportedSurface === 'closed' ? null : panelSessionId;
 }
 
-// `session_started_at` rides on the first event of a session only.
 export function takePanelSessionProperties(): { pathfinder_session_id: string; session_started_at?: number } | null {
-  const session = activePanelSession();
-  if (session === null) {
+  const id = getPanelSessionId();
+  if (id === null) {
     return null;
   }
-  if (session.startedAtSent) {
-    return { pathfinder_session_id: session.id };
-  }
-  session.startedAtSent = true;
-  return { pathfinder_session_id: session.id, session_started_at: session.startedAt };
+  const startedAt = panelSessionStartedAt;
+  panelSessionStartedAt = null;
+  return startedAt === null
+    ? { pathfinder_session_id: id }
+    : { pathfinder_session_id: id, session_started_at: startedAt };
 }
 
 // Mode literals mirror PanelMode in global-state/panel-mode — importing
@@ -108,11 +92,12 @@ export function reportPathfinderSurface(surface: PathfinderSurface): void {
     // A mode change closes the old surface and opens the next in one task; only a close that outlives it ends the session.
     queueMicrotask(() => {
       if (reportedSurface === 'closed') {
-        panelSession = null;
+        panelSessionId = null;
       }
     });
-  } else {
-    panelSession ??= mintPanelSession();
+  } else if (panelSessionId === null) {
+    panelSessionId = newGuideLoadId();
+    panelSessionStartedAt = Date.now();
   }
   for (const listener of listeners) {
     try {
