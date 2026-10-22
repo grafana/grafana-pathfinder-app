@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef,
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { CATALOG_BATCH_SIZE, type CatalogPackage, type CatalogViewState } from '../../types/package-catalog.types';
-import { catalogSearchTopic, reportCatalogInteraction } from '../../lib/catalog-analytics';
+import { catalogSearchTopic, publicCatalogTopics, reportCatalogInteraction } from '../../lib/catalog-analytics';
 import { filterCatalog, withoutPathMembers } from '../../lib/package-catalog';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { usePackageCatalog, useCatalogProgress } from '../../learning-paths';
@@ -120,8 +120,9 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
         : { mode, scrollTop: 0 }
     );
   };
+  const publicTopics = useMemo(() => publicCatalogTopics(catalog.items), [catalog.items]);
   const selectTopic = (topic: string, control: 'shortcut' | 'filter') => {
-    reportCatalogInteraction({ action: 'topic', topic, control });
+    reportCatalogInteraction({ action: 'topic', topic, control, publicTopics });
     update(
       control === 'shortcut'
         ? { category: topic, query: '', format: 'all', source: 'all', scrollTop: 0 }
