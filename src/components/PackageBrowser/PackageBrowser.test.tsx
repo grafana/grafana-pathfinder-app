@@ -594,3 +594,49 @@ it('reports a topic chosen from the filter as a filter selection', async () => {
     interaction_location: 'package_browser',
   });
 });
+
+it('reports official catalog topics as-is and organization-only topics as other', async () => {
+  mockItems.push(
+    {
+      key: 'bundled:play-demo',
+      id: 'play-demo',
+      title: 'Tour a play demo',
+      format: 'guide',
+      source: 'grafana',
+      category: 'play-demos',
+      url: 'bundled:play-demo',
+    },
+    {
+      key: 'app-platform:payments',
+      id: 'payments',
+      title: 'Payments runbook',
+      format: 'guide',
+      source: 'organization',
+      category: 'payments-team',
+      url: 'backend-guide:payments',
+      packageInfo: { packageId: 'payments', repository: 'app-platform' },
+    }
+  );
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  const topic = screen.getByRole('combobox', { name: 'Topic' });
+  const selectTopic = async (label: string) => {
+    fireEvent.change(topic, { target: { value: label } });
+    await act(async () => {});
+    fireEvent.keyDown(topic, { key: 'ArrowDown' });
+    fireEvent.keyDown(topic, { key: 'Enter' });
+  };
+  await selectTopic('play demos');
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'topic',
+    topic: 'play-demos',
+    control: 'filter',
+    interaction_location: 'package_browser',
+  });
+  await selectTopic('payments team');
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'topic',
+    topic: 'other',
+    control: 'filter',
+    interaction_location: 'package_browser',
+  });
+});
