@@ -181,7 +181,7 @@ func TestLearningInsightsInvalidPeriod(t *testing.T) {
 }
 
 func TestLearningInsightsReadRateLimit(t *testing.T) {
-	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	completions := singlePageLister()
 	withLister(t, completions)
 	assignments := singlePageAssignmentLister()
@@ -231,5 +231,14 @@ func TestLearningInsightsReadRateLimit(t *testing.T) {
 	}
 	if len(app.assignmentsReadRateLimiter.buckets) != 2 {
 		t.Fatal("limiter is not keyed on verified subjects")
+	}
+	advance(time.Second)
+	rr, _ = insightsResponseWith(t, app, insightsRequest(t, "Admin", "user:1"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("refilled caller: %d", rr.Code)
+	}
+	rr, _ = doMyAssignmentsWith(t, app, completionRequest(t, "/assignments/my", "user:1"))
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("assignment and insights routes must share caller budget: %d", rr.Code)
 	}
 }

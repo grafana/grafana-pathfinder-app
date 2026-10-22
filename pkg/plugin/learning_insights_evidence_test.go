@@ -22,7 +22,7 @@ func TestLearningInsightsSeparatesJourneyEvidence(t *testing.T) {
 	if len(resp.Completions) != 1 || resp.Completions[0].GuideID != "milestone" {
 		t.Fatalf("mixed guide/path totals: %+v", resp.Completions)
 	}
-	if resp.Completeness != "partial" || resp.Assignments[0].Status != "unknown" {
+	if resp.Completeness != "partial" || resp.Assignments[0].Status != "outstanding" {
 		t.Fatalf("ambiguous evidence: %+v", resp)
 	}
 	if len(resp.People) != 2 {

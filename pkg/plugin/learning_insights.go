@@ -113,10 +113,17 @@ func (a *App) handleLearningInsights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := newLearningInsightsResponse(from, to)
-	if status := a.validIDToken(r); status != identityVerified {
+	userID, status := a.subjectFromIDToken(r)
+	if status != identityVerified {
 		resp.Capability.Reason = status.capabilityReason()
 		a.writeJSON(w, resp, http.StatusOK)
 		return
+	}
+	if a.assignmentsReadRateLimiter != nil {
+		if allow, retryAfter := a.assignmentsReadRateLimiter.allow(userID); !allow {
+			a.writeRateLimited(w, retryAfter)
+			return
+		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), learningInsightsDeadline)
 	defer cancel()
@@ -240,8 +247,8 @@ func shapeLearningInsights(resp *learningInsightsResponse, records []completionR
 			continue
 		}
 		if rec.GuideCategory == "learning-journey" && (rec.PathID == "" || rec.PathID == rec.GuideID) {
+			// An ambiguous row is unusable evidence, not a gap in the namespace LIST.
 			resp.partial("journey-identity-ambiguous")
-			historyComplete = false
 			continue
 		}
 		byUser[rec.UserID] = append(byUser[rec.UserID], rec)
