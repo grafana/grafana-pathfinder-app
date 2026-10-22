@@ -55,7 +55,9 @@ describe('findKebabCaseValues', () => {
   it('exempts only by property name', () => {
     expect(isExemptAnalyticsProperty('guide_id')).toBe(true);
     expect(isExemptAnalyticsProperty('content_type')).toBe(false);
-    expect(isExemptAnalyticsProperty('source')).toBe(false);
+    expect(isExemptAnalyticsProperty('guide_source')).toBe(false);
+    expect(isExemptAnalyticsProperty('source')).toBe(true);
+    expect(isExemptAnalyticsProperty('launch_source')).toBe(true);
   });
 });
 

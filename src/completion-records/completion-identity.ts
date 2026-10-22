@@ -202,6 +202,12 @@ export function isPublicGuideSource(guideSource: string, guideId: string): boole
   );
 }
 
+export function guideSourceAnalyticsValue(guideSource: string): string {
+  return PUBLIC_GUIDE_SOURCES.has(guideSource) || guideSource === 'app-platform'
+    ? toAnalyticsValue(guideSource)
+    : 'other';
+}
+
 export function guideIdentityAnalyticsProperties({
   kind,
   guideSource,
@@ -218,11 +224,7 @@ export function guideIdentityAnalyticsProperties({
   }
   const isPublic = Boolean(sourceConfirmed) && PUBLIC_GUIDE_SOURCES.has(guideSource);
   return {
-    guide_source: !sourceConfirmed
-      ? 'unresolved'
-      : isPublic || guideSource === 'app-platform'
-        ? toAnalyticsValue(guideSource)
-        : 'other',
+    guide_source: sourceConfirmed ? guideSourceAnalyticsValue(guideSource) : 'unresolved',
     guide_visibility: isPublic ? 'public' : 'private',
     [idProperty]: guideId,
     ...(guideTitle !== undefined && { [titleProperty]: guideTitle }),

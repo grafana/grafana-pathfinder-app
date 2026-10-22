@@ -292,7 +292,7 @@ Join `setup-guide.onboarding-plg` separately if you need the parent A/B populati
 ### Gotchas for this readout
 
 - **Never use `context_traits_org_id`** on these Rudderstack events — it is org 1. Resolve org via instance URL + `user_id` / email through `stg_grafana_instance_url_xref` (same pattern as `rpt_pathfinder_onboarding_experiment`).
-- `plg-survey-*` is an **analytics source string** set by the onboarding flow when it auto-opens the sidebar. It is not a Pathfinder `LaunchSource`, so alignment-prompt classification treats it as unknown (needs check). That does not affect the auto-open event itself.
+- `plg-survey-*` is an **analytics source string** set by the onboarding flow when it auto-opens the sidebar. It is not a Pathfinder `LaunchSource`, so alignment-prompt classification treats it as unknown (needs check). That does not affect the auto-open event itself. Analytics reports it verbatim, without the snake_case conversion applied to Pathfinder's own values.
 - Staff users should be excluded via `core_users.is_staff`, not by filtering Rudderstack traits.
 
 ## Common gotchas

@@ -1,4 +1,5 @@
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { toAnalyticsValue } from './analytics-values';
 import { catalogTopic } from './catalog-discovery';
 import type { CatalogPackage } from '../types/package-catalog.types';
 
@@ -99,7 +100,10 @@ export function publicCatalogTopics(
 }
 
 function reportableTopic(topic: string, publicTopics: ReadonlySet<string> | undefined): string {
-  return TOPICS.has(topic) || publicTopics?.has(topic) ? topic : 'other';
+  if (TOPICS.has(topic)) {
+    return toAnalyticsValue(topic);
+  }
+  return publicTopics?.has(topic) ? topic : 'other';
 }
 
 export function reportCatalogInteraction(interaction: CatalogInteraction): void {
@@ -107,7 +111,7 @@ export function reportCatalogInteraction(interaction: CatalogInteraction): void 
     interaction_location: 'package_browser',
     action: interaction.action,
     ...(interaction.action === 'search' && {
-      search_topic: Object.hasOwn(SEARCH_TOPICS, interaction.topic) ? interaction.topic : 'other',
+      search_topic: Object.hasOwn(SEARCH_TOPICS, interaction.topic) ? toAnalyticsValue(interaction.topic) : 'other',
     }),
     ...(interaction.action === 'topic' && {
       topic: reportableTopic(interaction.topic, interaction.publicTopics),

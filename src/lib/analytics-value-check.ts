@@ -8,8 +8,9 @@ const KEBAB_CASE_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
 
 // Identifiers, titles, URLs and requirement expressions carry author- or
 // system-chosen text, not a fixed vocabulary, so they are exempt by property name.
+// Launch sources pass external values through verbatim (`toAnalyticsLaunchSource`).
 const EXEMPT_PROPERTY =
-  /(?:^|_)(?:id|ids|title|name|url|path|slug|version|selector|query|reftarget|requirement|target|text)$/;
+  /(?:^|_)(?:id|ids|title|name|url|path|slug|version|selector|query|reftarget|requirement|target|text)$|^(?:launch_)?source$/;
 
 export function isExemptAnalyticsProperty(name: string): boolean {
   return EXEMPT_PROPERTY.test(name);

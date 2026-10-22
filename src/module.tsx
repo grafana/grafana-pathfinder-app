@@ -370,7 +370,7 @@ if (pathfinderEnabled) {
 
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
           action,
-          source: toAnalyticsValue(source),
+          source: source === 'learning-hub' ? toAnalyticsValue(source) : source,
         });
 
         // Fire custom event when sidebar component mounts
