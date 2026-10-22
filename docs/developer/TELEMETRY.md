@@ -157,7 +157,7 @@ Guides with checkbox groups or section visibility controls use `block_progress_r
 
 A completed later section does not credit an unfinished earlier section. Hidden content does not count toward progress. Selection changes can lower the percentage without removing completed-step evidence.
 
-Checkbox-group submission events reuse `InputBlockSubmit` with `input_type: checkbox-group`. They do not include question text, option labels, option IDs, or selected values.
+Checkbox-group submission events reuse `InputBlockSubmit` with `input_type: checkbox_group`. They do not include question text, option labels, option IDs, or selected values.
 
 ### Identity policy
 
@@ -183,7 +183,7 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 
 - **Milestone completion** is `guide_completed` with `guide_category = 'learning_journey'`. `guide_id` is the bare milestone slug, not qualified by its path, so two journeys that share a slug under one source report it once; `path_id` tells them apart when the path is public.
 - **Path completion** is `journey_completed`; "journey" in code means a learning path. `journey_id` is the manifest id, else the curated path id. It fires when every milestone of a milestone-based path is complete, and is skipped when neither id exists, as for a docs-site journey that is not a curated path.
-- **Guide-list curated paths and Path Tracks** have no `journey_completed` trigger yet. Every curated guide-list path has a badge, and its completion shows up only as `badge_unlocked` with `trigger_type = 'path-completed'` (`src/learning-paths/badges.ts` maps `badge_id` to its path). Path completions are the union of `journey_completed` and those badge events. A milestone-based curated path can report both, so count each path once per reader.
+- **Guide-list curated paths and Path Tracks** have no `journey_completed` trigger yet. Every curated guide-list path has a badge, and its completion shows up only as `badge_unlocked` with `trigger_type = 'path_completed'` (`src/learning-paths/badges.ts` maps `badge_id` to its path). Path completions are the union of `journey_completed` and those badge events. A milestone-based curated path can report both, so count each path once per reader.
 - **Titles** on milestone and journey completions come from the completing surface: the tab's open-time title in the sidebar and floating panel, the content title in the guide reader. That is usually the journey's own title, so key them on the id.
 
 ### Source attribution
@@ -396,7 +396,7 @@ without settings, user IDs, or stack IDs.
 
 ## Assistant customization
 
-`assistant_customize_click`, `assistant_customize_success` and `assistant_customize_error` cover both inline block customization and whole-guide customization. Whole-guide runs carry the fixed `source: private-guide` attribute; filter by this attribute when measuring them separately from inline block runs. Inline block events retain their existing `source_document`, `step_id`, `assistant_id`, `assistant_type` and `content_key` attributes.
+`assistant_customize_click`, `assistant_customize_success` and `assistant_customize_error` cover both inline block customization and whole-guide customization. Whole-guide runs carry the fixed `source: private_guide` attribute; filter by this attribute when measuring them separately from inline block runs. Inline block events retain their existing `source_document`, `step_id`, `assistant_id`, `assistant_type` and `content_key` attributes.
 
 Whole-guide clicks are recorded before context collection and prompt serialization, so local validation failures have a matching attempt. Success means a generated guide passed validation and was offered for editor review; it does not mean the user saved or published it. A repair attempt belongs to the original click. These events contain no answers, guide content, data-source metadata or generated output.
 
