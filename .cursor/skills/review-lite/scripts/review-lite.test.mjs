@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { addContext, finish, fullReadLines, prepare, TEST_LINE_BUDGET } from './review-lite.mjs';
+import { addContext, finish, fullReadLines, prepare, TEST_LINE_BUDGET, validateState } from './review-lite.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./review-lite.mjs', import.meta.url));
 const TOOLING_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -63,9 +63,9 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function prepared({ repo, base, head, prior, key = 'org/repo#1', knowledge }) {
+function prepared({ repo, base, head, prior, key = 'org/repo#1', knowledge, round = 1 }) {
   const out = freshDir('run');
-  prepare({ repo, base, head, 'review-key': key, out, prior, knowledge });
+  prepare({ repo, base, head, 'review-key': key, out, prior, knowledge, round });
   return out;
 }
 
@@ -118,7 +118,7 @@ const followUp = {
   concern_id: 'testing-and-verification',
   disposition: 'follow_up',
   attribution: 'pre_existing',
-  why_not_blocker: 'No documented invariant is violated and no state is corrupted; only coverage is missing.',
+  why_not_blocker: 'The PR does not worsen this pre-existing test gap; a separate runner test is sufficient.',
   title: 'No test pins the runner and index helper together',
   location: 'src/interactive-engine/runner.ts',
   evidence: 'Only the helper has a unit test.',
@@ -134,6 +134,26 @@ const clearance = {
 };
 
 describe('prepare', () => {
+  test('requires a valid round even without prior state', () => {
+    const { repo, base } = makeRepo({ 'README.md': 'base\n' });
+    for (const round of [undefined, 0, -1, 1.5, 'bad', Number.MAX_SAFE_INTEGER + 1]) {
+      assert.throws(() => prepare({ repo, base, head: base, round, out: freshDir('invalid') }), /--round/);
+    }
+    const runDir = prepared({ repo, base, head: base, round: 3 });
+    assert.equal(readJson(join(runDir, 'manifest.json')).mode, 'full');
+    const outcome = finishWith(runDir, result(runDir));
+    assert.equal(outcome.state.round, 3);
+    assert.match(outcome.report, /Round: 3/);
+    const legacy = { ...outcome.state };
+    delete legacy.round;
+    assert.deepEqual(validateState(legacy), []);
+    writeFileSync(join(runDir, 'state.json'), JSON.stringify(legacy));
+    const next = prepared({ repo, base, head: base, prior: join(runDir, 'state.json'), round: 4 });
+    assert.equal(readJson(join(next, 'manifest.json')).prior_status, 'trusted');
+    assert.equal(finishWith(next, result(next)).state.round, 4);
+    assert.match(validateState({ ...legacy, round: 0 }).join(), /state.round/);
+  });
+
   test('reads pinned commits and trusted registries, never the target branch or working tree', () => {
     const { repo, base } = makeRepo({ 'src/interactive-engine/runner.ts': 'export const a = 1;\n' });
     const injected = readFileSync(join(TOOLING_ROOT, 'docs/design/CONCERNS.md'), 'utf8').replace(
@@ -227,7 +247,7 @@ describe('prepare', () => {
     const out = freshDir('run');
     mkdirSync(out);
     writeFileSync(join(out, 'leftover'), '');
-    assert.throws(() => prepare({ repo, base, head: base, 'review-key': 'k', out }), /not empty/);
+    assert.throws(() => prepare({ repo, base, head: base, 'review-key': 'k', round: 1, out }), /not empty/);
   });
 });
 
@@ -270,8 +290,8 @@ describe('finish', () => {
 
   test('derives the headline from assessment and blocker count without changing findings', () => {
     const { runDir } = interactiveRun();
-    assert.equal(finishWith(runDir, result(runDir)).headline, 'No blocking findings');
-    assert.equal(finishWith(runDir, result(runDir, { findings: [followUp] })).headline, 'No blocking findings');
+    assert.equal(finishWith(runDir, result(runDir)).headline, 'Approve');
+    assert.equal(finishWith(runDir, result(runDir, { findings: [followUp] })).headline, 'Approve');
     const blocked = finishWith(runDir, result(runDir, { findings: [blocker, followUp] }));
     assert.equal(blocked.headline, 'Changes requested');
     assert.match(blocked.report, /outside the merge requirements/);
@@ -405,7 +425,7 @@ describe('continuity', () => {
   }
 
   function secondRun(round, head, options = {}) {
-    const runDir = prepared({ repo: round.repo, base: round.base, head, prior: round.statePath, ...options });
+    const runDir = prepared({ repo: round.repo, base: round.base, head, prior: round.statePath, round: 2, ...options });
     addContext({ run: runDir, concerns: 'interactive-engine' });
     return runDir;
   }
@@ -420,6 +440,7 @@ describe('continuity', () => {
     const runDir = secondRun(round, head);
     const manifest = readJson(join(runDir, 'manifest.json'));
     assert.equal(manifest.mode, 'incremental');
+    assert.equal(manifest.round, 2);
     assert.equal(manifest.incremental_from, round.head);
     assert.match(readFileSync(join(runDir, 'incremental.patch'), 'utf8'), /\+export const i = 0;/);
     assert.equal(readJson(join(runDir, 'prior.json')).items.length, 3);
@@ -438,11 +459,13 @@ describe('continuity', () => {
         ],
       })
     );
-    assert.equal(outcome.headline, 'No blocking findings');
+    assert.equal(outcome.headline, 'Approve');
     assert.deepEqual(
       outcome.state.findings.map(({ id }) => id),
       ['step-index-test']
     );
+    assert.equal(outcome.state.round, 2);
+    assert.match(outcome.report, /Round: 2/);
     assert.equal(outcome.state.findings[0].recorded_at_head, round.head);
     assert.deepEqual(
       outcome.state.clearances.map(({ id }) => id),
@@ -513,6 +536,32 @@ describe('continuity', () => {
     );
   });
 
+  test('deferring an unresolved blocker preserves its ID and changes the verdict', () => {
+    const prior = firstRound();
+    const runDir = secondRun(prior, prior.head, { round: 3 });
+    const deferred = {
+      ...blocker,
+      disposition: 'follow_up',
+      attribution: 'introduced',
+      why_not_blocker: 'Fixture exercises an explicit deferral, not the substantive policy judgment.',
+      next_action: 'Track the remaining fix separately.',
+    };
+    const outcome = finishWith(
+      runDir,
+      result(runDir, {
+        findings: [deferred],
+        prior_decisions: [
+          { id: blocker.id, action: 'reopen', evidence: 'Unfixed; explicitly deferred.' },
+          { id: followUp.id, action: 'carry', evidence: 'Still deferred.' },
+          { id: clearance.id, action: 'carry', evidence: 'Unchanged and rechecked.' },
+        ],
+      })
+    );
+    assert.equal(outcome.headline, 'Approve');
+    assert.equal(outcome.state.round, 3);
+    assert.equal(outcome.state.findings.find(({ id }) => id === blocker.id).disposition, 'follow_up');
+  });
+
   test('rewritten history falls back to a full review that still requires reconciliation', () => {
     const round = firstRound();
     git(round.repo, 'reset', '-q', '--hard', round.base);
@@ -521,6 +570,7 @@ describe('continuity', () => {
     const manifest = readJson(join(runDir, 'manifest.json'));
     assert.equal(manifest.mode, 'full');
     assert.match(manifest.fallback_reason, /not an ancestor/);
+    assert.equal(manifest.round, 2);
     assert.ok(!existsSync(join(runDir, 'incremental.patch')));
     assert.throws(() => finishWith(runDir, result(runDir)), /needs a prior decision/);
   });
@@ -596,7 +646,7 @@ describe('nits and follow-up attribution', () => {
   test('nits render in their own section, never change the headline, and are not carried in state', () => {
     const { runDir } = interactiveRun();
     const outcome = finishWith(runDir, result(runDir, { findings: [nit] }));
-    assert.equal(outcome.headline, 'No blocking findings');
+    assert.equal(outcome.headline, 'Approve');
     assert.match(outcome.report, /## Nits\n\nNits never block a merge/);
     assert.match(outcome.report, /step-index-name/);
     assert.deepEqual(outcome.state.findings, []);
@@ -624,7 +674,7 @@ describe('nits and follow-up attribution', () => {
 });
 
 describe('follow-up calibration and test scope', () => {
-  test('a follow-up must say which blocker trigger it checked', () => {
+  test('a follow-up must explain why deferral is appropriate', () => {
     const { repo, base } = makeRepo({ 'src/interactive-engine/step-index.ts': 'export const i = 0;\n' });
     const head = commit(repo, { 'src/interactive-engine/step-index.ts': 'export const i = 1;\n' }, 'head');
     const runDir = prepared({ repo, base, head });
@@ -633,7 +683,7 @@ describe('follow-up calibration and test scope', () => {
       /why_not_blocker/
     );
     const outcome = finishWith(runDir, result(runDir, { findings: [followUp] }));
-    assert.match(outcome.report, /Why not a blocker: No documented invariant is violated/);
+    assert.match(outcome.report, /Why not a blocker: The PR does not worsen this pre-existing test gap/);
     assert.equal(outcome.state.findings[0].why_not_blocker, followUp.why_not_blocker);
   });
 
@@ -985,6 +1035,26 @@ describe('command line', () => {
     }
   });
 
+  test('prepare requires an explicit round on the command line', () => {
+    const args = [
+      'prepare',
+      '--repo',
+      '/abs/repo',
+      '--base',
+      'base',
+      '--head',
+      'head',
+      '--review-key',
+      'org/repo#1',
+      '--out',
+      '/abs/run',
+    ];
+    assert.match(run(args).stderr, /Missing --round/);
+    const invalid = run([...args, '--round', '0']);
+    assert.equal(invalid.status, 2);
+    assert.match(invalid.stderr, /--round must be a positive safe integer/);
+  });
+
   test('reports usage errors clearly with exit code 2', () => {
     const missing = run(['finish', '--run', '/abs/run']);
     assert.equal(missing.status, 2);
@@ -1033,7 +1103,7 @@ describe('inspection accounting', () => {
           checks: checks.filter(({ id }) => id !== candidate.id),
         })
       ).headline,
-      'No blocking findings'
+      'Approve'
     );
     for (const changes of [{ status: 'unresolved' }, { status: 'skipped' }, { evidence: 'N/A' }, { id: 'unknown' }]) {
       assert.throws(
@@ -1093,10 +1163,10 @@ describe('inspection accounting', () => {
       readJson(join(second, 'candidates.json')).candidates.some(({ path_files }) => path_files.includes(path)),
       false
     );
-    assert.equal(finishWith(second, result(second)).headline, 'No blocking findings');
+    assert.equal(finishWith(second, result(second)).headline, 'Approve');
     const third = prepared({ repo, base, head: secondHead, prior: join(second, 'state.json') });
     assert.deepEqual(readJson(join(third, 'obligations.json')), []);
     assert.deepEqual(readJson(join(third, 'inventory.json')).review_files, []);
-    assert.equal(finishWith(third, result(third)).headline, 'No blocking findings');
+    assert.equal(finishWith(third, result(third)).headline, 'Approve');
   });
 });

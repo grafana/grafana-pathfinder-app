@@ -23,7 +23,7 @@
 | `findings[].required_invariant` | string | Required for a blocker. State the property, not a patch. |
 | `findings[].merge_reason` | string | Required for a blocker: why delaying the merge beats a follow-up. |
 | `findings[].next_action` | string | Required for a follow-up: a concrete proposed issue, test, or doc change, never a merge condition. Required for a nit: the suggested change. |
-| `findings[].why_not_blocker` | string | Required for a follow-up: which blocker trigger you checked (SKILL.md, Challenge) and why it does not apply. |
+| `findings[].why_not_blocker` | string | Required for a follow-up: why deferral fits the consequence, scope, and review round (SKILL.md, Challenge). |
 | `findings[].attribution` | `introduced` \| `newly_exposed` \| `pre_existing` | Required for a follow-up: how the PR relates to the defect. For `pre_existing`, `base_comparison` must cite the base code as `path:line` and say whether the PR changed what that path does to stored state; a bare "same as base" is rejected. |
 | `tests` | object[] | One entry per changed, non-deleted test file in `inventory.json` `review_files`. Required for a complete assessment when any test file changed. |
 | `tests[].path` | string | A changed test file. |
@@ -43,11 +43,11 @@
 
 ## Nits and state
 
-Nits render under `## Nits`, never change the headline, and are not written to `state.json`. Follow-ups keep their `attribution` in state.
+Nits render under `## Nits`, never change the headline, and are not written to `state.json`. Follow-ups keep their `attribution` in state. State also records the review `round` from preparation; older state without it remains readable.
 
 ## Headline
 
-`Review incomplete` for an incomplete assessment. Otherwise `Changes requested` when a current or carried finding is a blocker, and `No blocking findings` when none is.
+`Review incomplete` for an incomplete assessment. Otherwise `Changes requested` when a current or carried finding is a blocker, and `Approve` when none is.
 
 ## Example
 
@@ -106,7 +106,7 @@ Nits render under `## Nits`, never change the headline, and are not written to `
       "concern_id": "testing-and-verification",
       "disposition": "follow_up",
       "attribution": "introduced",
-      "why_not_blocker": "No documented invariant is violated and nothing persisted is corrupted; expiry is only untested.",
+      "why_not_blocker": "Expiry was verified manually; automate that check separately in this late round.",
       "title": "No test pins cache expiry",
       "location": "src/context-engine/cache-key.test.ts",
       "evidence": "No test advances time past the TTL.",
