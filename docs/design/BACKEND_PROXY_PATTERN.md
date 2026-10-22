@@ -553,7 +553,7 @@ where a create differs from a read:
   source and no track, without a catalogue lookup. Path resolution tries bundled, custom, then
   online, respecting `targetSource`; a found path with an unknown track or a missing or
   unpublished custom member remains wholly unresolved, not partially satisfied. Online member
-  identity uses the successful CDN resolver repository (`interactive-tutorials`), not a
+  identity uses the public resolver source set (`online-cdn` for CDN resolution; `interactive-tutorials` for recommender resolution), not a
   manifest-embedded repository or the old `bundled` default. Member IDs come from index path slugs;
   member identity resolution uses index data without per-member manifest requests. A successful
   create also triggers a background, best-effort `status.satisfied` write (a status-subresource

@@ -21,8 +21,8 @@ func TestAssignmentSourceChainParity(t *testing.T) {
 		{"qualified bundled", bundled.ID, "bundled", guideIdentities(bundled.Guides, "bundled")},
 		{"custom wins over online", "parity-custom", "", guideIdentities([]string{"custom-member"}, "app-platform")},
 		{"qualified custom bypasses bundled", bundled.ID, "app-platform", guideIdentities([]string{"custom-member"}, "app-platform")},
-		{"online fallback", "parity-online", "", guideIdentities([]string{"recorder-slug"}, "interactive-tutorials")},
-		{"qualified online bypasses bundled and custom", bundled.ID, "interactive-tutorials", guideIdentities([]string{"recorder-slug"}, "interactive-tutorials")},
+		{"online fallback", "parity-online", "", []assignmentGuideIdentity{onlineAssignmentGuide("recorder-slug")}},
+		{"qualified online bypasses bundled and custom", bundled.ID, "interactive-tutorials", []assignmentGuideIdentity{onlineAssignmentGuide("recorder-slug")}},
 	}
 	constructors := []struct {
 		name  string
@@ -72,6 +72,11 @@ func TestAssignmentSourceChainParity(t *testing.T) {
 					var rows []completionRecordSpec
 					for _, guide := range tc.want {
 						rows = append(rows, rec("user:1", guide.GuideSource, guide.GuideID, "Member", "interactive", "", "objectives", asg.AcceptCompletionsFrom, 100))
+					}
+					for i, guide := range tc.want {
+						if guide.alternateSource != "" {
+							rows[i].GuideSource = guide.alternateSource
+						}
 					}
 					progress := mustGuideProgress(t, ev, asg, rows)
 					if !satisfiedFromGuides(progress) {

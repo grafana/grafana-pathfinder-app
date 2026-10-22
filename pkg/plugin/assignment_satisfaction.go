@@ -15,6 +15,7 @@ type assignmentGuideEntry struct {
 	Completed   bool   `json:"completed"`
 }
 
+// Empty or unresolved membership cannot prove satisfaction.
 func satisfiedFromGuides(guides []assignmentGuideEntry) bool {
 	if len(guides) == 0 {
 		return false
@@ -41,9 +42,7 @@ type obligationEvaluator struct {
 	resolved map[string]resolvedGuides
 }
 
-// guideProgress is one entry per guide the assignment requires. nil means the
-// target could not be resolved, distinct from a resolved target that is
-// incomplete; err means the assignment could not be checked.
+// Credit requires one raw row to meet identity, terminal percent and acceptance time together.
 func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []completionRecordSpec) ([]assignmentGuideEntry, error) {
 	guideIDs, err := e.assignmentGuides(asg)
 	if err != nil || len(guideIDs) == 0 {
@@ -62,7 +61,7 @@ func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []co
 	for i, guideID := range guideIDs {
 		done := false
 		for _, rec := range completions {
-			if rec.GuideID != guideID.GuideID || rec.GuideSource != guideID.GuideSource || rec.CompletionPercent < 100 {
+			if !assignmentGuideMatchesCompletion(guideID, rec) || rec.CompletionPercent < 100 {
 				continue
 			}
 			at, ok := parseCompletionTime(rec.CompletedAt)
@@ -80,6 +79,7 @@ func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []co
 	return entries, nil
 }
 
+// A missing member identity makes the whole target unresolved, not partially satisfiable.
 func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) ([]assignmentGuideIdentity, error) {
 	if e.resolved == nil {
 		e.resolved = map[string]resolvedGuides{}
@@ -110,6 +110,7 @@ func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) ([]assignment
 // failed, so the target may exist.
 var errAssignmentUncheckable = errors.New("assignment target could not be checked")
 
+// Source order is precedence: the first found target owns its membership, even if unresolved.
 func (e *obligationEvaluator) resolveGuides(asg assignmentSpec) ([]assignmentGuideIdentity, error) {
 	if asg.TargetType == assignmentTargetGuide {
 		if asg.TargetID == "" || asg.TargetSource == "" || asg.TrackID != "" {
@@ -275,9 +276,10 @@ func (a *App) dispatchStatusWrite(r *http.Request, logger log.Logger, work func(
 	go run()
 }
 
+// Status repair must use the same source-qualified match as per-guide credit.
 func containsAssignmentGuide(guides []assignmentGuideIdentity, rec completionRecordSpec) bool {
 	for _, guide := range guides {
-		if guide.GuideID == rec.GuideID && guide.GuideSource == rec.GuideSource {
+		if assignmentGuideMatchesCompletion(guide, rec) {
 			return true
 		}
 	}
