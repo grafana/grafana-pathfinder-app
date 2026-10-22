@@ -25,7 +25,7 @@ import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
 import { normalizeTelemetryUrl } from './url';
 import { retryChunkImport } from '../retry-chunk-import';
-import { checkValueCasing } from '../analytics-values';
+import { checkValueCasing } from '../analytics-value-check';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;

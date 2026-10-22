@@ -21,7 +21,7 @@ if (!globalThis.crypto.subtle) {
 
 // Analytics values are snake_case (#2067); fail any test whose code path
 // reported a kebab-case value so a new emitter cannot drift unnoticed.
-import { drainValueCasingViolations } from './src/lib/analytics-values';
+import { drainValueCasingViolations } from './src/lib/analytics-value-check';
 afterEach(() => {
   const violations = drainValueCasingViolations();
   if (violations.length > 0) {

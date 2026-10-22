@@ -1,12 +1,8 @@
 import { reportInteraction } from '@grafana/runtime';
 
 import { AnalyticsContentType, AnalyticsLinkType, UserInteraction, reportAppInteraction } from './analytics';
-import {
-  drainValueCasingViolations,
-  findKebabCaseValues,
-  isExemptAnalyticsProperty,
-  toAnalyticsValue,
-} from './analytics-values';
+import { toAnalyticsValue } from './analytics-values';
+import { drainValueCasingViolations, findKebabCaseValues, isExemptAnalyticsProperty } from './analytics-value-check';
 
 jest.mock('@grafana/runtime', () => ({
   ...jest.requireActual('@grafana/runtime'),

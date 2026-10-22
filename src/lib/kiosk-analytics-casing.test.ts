@@ -1,6 +1,6 @@
 import { reportInteraction } from '@grafana/runtime';
 import { reportKioskInteraction } from './kiosk-analytics';
-import { drainValueCasingViolations, findKebabCaseValues } from './analytics-values';
+import { drainValueCasingViolations, findKebabCaseValues } from './analytics-value-check';
 
 jest.mock('@grafana/runtime', () => ({
   reportInteraction: jest.fn(),

@@ -13,7 +13,8 @@ import {
   pushFaroMeasurement as emitFaroMeasurement,
   pushFaroUserAction,
 } from './faro-adapter';
-import { checkValueCasing, toAnalyticsValue } from '../analytics-values';
+import { toAnalyticsValue } from '../analytics-values';
+import { checkValueCasing } from '../analytics-value-check';
 import { normalizeTelemetryUrl } from './url';
 import { createInteractionName, UserInteraction } from '../analytics';
 import {

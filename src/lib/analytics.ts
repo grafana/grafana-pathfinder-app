@@ -16,7 +16,8 @@ import { pushFaroUserAction } from './telemetry/bridge';
 // directly even from this entry-eager module.
 import { normalizeTelemetryUrl } from './telemetry/url';
 import { logger } from './logging';
-import { checkValueCasing, toAnalyticsValue } from './analytics-values';
+import { toAnalyticsValue } from './analytics-values';
+import { checkValueCasing } from './analytics-value-check';
 import { furthestEvidencedPosition } from './guide-stats/progress';
 import { GUIDE_STATS_VERSION } from './guide-stats/version';
 import type { GuideBlockIndex } from './guide-stats/block-index';
@@ -293,7 +294,9 @@ export function reportAppInteraction(
   try {
     const interactionName = createInteractionName(type);
 
-    checkValueCasing(interactionName, properties);
+    if (process.env.NODE_ENV !== 'production') {
+      checkValueCasing(interactionName, properties);
+    }
 
     // Evaluating experiments while reporting their evaluation would recurse.
     const shouldEnrichWithExperiments = type !== UserInteraction.FeatureFlagEvaluated;
@@ -709,9 +712,7 @@ export function buildInteractiveStepProperties(
   return {
     ...getSourceDocument(stepId),
     ...baseProperties,
-    ...(typeof baseProperties.target_action === 'string' && {
-      target_action: toAnalyticsValue(baseProperties.target_action),
-    }),
+    ...(baseProperties.target_action && { target_action: toAnalyticsValue(String(baseProperties.target_action)) }),
     content_type: AnalyticsContentType.InteractiveGuide,
     ...(stepIndex !== undefined && { current_step: stepIndex + 1 }),
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
