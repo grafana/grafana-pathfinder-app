@@ -9,7 +9,7 @@ How Pathfinder ships frontend telemetry, what instrumentation a new feature gets
 | **RudderStack** (product analytics)  | What users do — funnels, adoption, experiments           | `reportAppInteraction()` (`src/lib/analytics.ts`) | Grafana's analytics warehouse via `reportInteraction` |
 | **Faro** (operational observability) | Whether the plugin works — errors, latency, degradations | `src/lib/telemetry/` facade + adapter             | Frontend Observability (ops collector)                |
 
-Both are Grafana-internal signals; neither is customer-visible. Every RudderStack event is mirrored into Faro (see below), so the two pipelines can be cross-checked against each other.
+Both are Grafana-internal signals; neither is customer-visible. For which fields each RudderStack event carries, see [`ANALYTICS_EVENTS.md`](ANALYTICS_EVENTS.md). Every RudderStack event is mirrored into Faro (see below), so the two pipelines can be cross-checked against each other.
 
 ## Architecture
 
