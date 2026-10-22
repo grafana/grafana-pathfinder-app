@@ -285,7 +285,7 @@ describe('KioskTile', () => {
     };
     launchKioskGuide(rule, 'instance', jest.fn(), prepared);
     expect(sidebarState.getIsSidebarMounted()).toBe(true);
-    expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto-open' });
+    expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto_open' });
   });
 
   it('keeps the current route when no page is specified and forwards learning journeys', () => {

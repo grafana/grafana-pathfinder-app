@@ -150,7 +150,7 @@ export function launchKioskGuide(
           })
         );
       } else {
-        sidebarState.setPendingOpenSource('kiosk_session', 'auto-open');
+        sidebarState.setPendingOpenSource('kiosk_session', 'auto_open');
         sidebarState.openSidebar('Interactive learning', {
           url: prepared.url,
           title: prepared.title,

@@ -48,6 +48,7 @@ import {
   getContentTypeForAnalytics,
   AnalyticsContentType,
 } from '../../lib/analytics';
+import { toAnalyticsValue } from '../../lib/analytics-values';
 import { rewriteGuideTrees } from '../../lib/guide-counting-source';
 import { logger } from '../../lib/logging';
 import type { GuideLoadOutcome } from '../../lib/telemetry';
@@ -671,7 +672,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     reportAppInteraction(UserInteraction.AlignmentPromptConfirmed, {
       guide_url: tab.baseUrl || tab.currentUrl || '',
       guide_title: tab.title,
-      launch_source: pending.launchSource,
+      launch_source: toAnalyticsValue(pending.launchSource),
       current_path: pending.currentPath,
       starting_location: pending.startingLocation,
       latency_ms: Date.now() - pending.decidedAt,
@@ -697,7 +698,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     reportAppInteraction(UserInteraction.AlignmentPromptDismissed, {
       guide_url: tab.baseUrl || tab.currentUrl || '',
       guide_title: tab.title,
-      launch_source: pending.launchSource,
+      launch_source: toAnalyticsValue(pending.launchSource),
       current_path: pending.currentPath,
       starting_location: pending.startingLocation,
       latency_ms: Date.now() - pending.decidedAt,
@@ -1093,7 +1094,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           reportAppInteraction(UserInteraction.AlignmentPromptShown, {
             guide_url: url,
             guide_title: finalTab?.title ?? '',
-            launch_source: pendingAlignment.launchSource,
+            launch_source: toAnalyticsValue(pendingAlignment.launchSource),
             current_path: pendingAlignment.currentPath,
             starting_location: pendingAlignment.startingLocation,
           });

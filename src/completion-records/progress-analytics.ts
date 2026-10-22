@@ -5,6 +5,7 @@ import { getFeatureFlagValue } from '../utils/openfeature';
 
 import type { RegisteredGuideIdentity } from './guide-identity-registry';
 import type { CompletionFact } from './types';
+import { toAnalyticsValue } from '../lib/analytics-values';
 
 const PROGRESS_ANALYTICS_FLAG = 'pathfinder.progress-analytics';
 const CROSSING_THRESHOLDS = [75, 50, 25] as const;
@@ -48,7 +49,7 @@ export function reportGuideProgress(
   reportAppInteraction(
     UserInteraction.GuideProgress,
     definedOnly({
-      guide_source: identity.guideSource,
+      guide_source: toAnalyticsValue(identity.guideSource),
       guide_id: identity.guideId,
       path_id: identity.pathId,
       percent,

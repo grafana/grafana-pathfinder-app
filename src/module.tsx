@@ -1,7 +1,7 @@
 import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import React, { useEffect } from 'react';
-import { reportAppInteraction, UserInteraction } from './lib/analytics';
+import { reportAppInteraction, toAnalyticsValue, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
 import { retryChunkImport } from './lib/retry-chunk-import';
 import { createTranslatedComponent } from './components/App/TranslatedComponent';
@@ -369,7 +369,7 @@ if (pathfinderEnabled) {
 
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
           action,
-          source,
+          source: toAnalyticsValue(source),
         });
 
         // Fire custom event when sidebar component mounts
@@ -566,7 +566,7 @@ function handlePathfinderSuggest(event: CustomEvent): void {
     sidebar_already_open: false,
     buffered,
   });
-  sidebarState.setPendingOpenSource('external_suggestion', 'auto-open');
+  sidebarState.setPendingOpenSource('external_suggestion', 'auto_open');
   sidebarState.openSidebar('Interactive learning');
   detail.status = 'accepted';
 }

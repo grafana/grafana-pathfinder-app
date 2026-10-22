@@ -1,4 +1,5 @@
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { toAnalyticsValue } from './analytics-values';
 
 let kioskSessionId: string | undefined;
 let kioskName: string | undefined;
@@ -56,7 +57,7 @@ export function reportKioskInteraction(
     action: interaction.action,
     ...(interaction.component === 'kiosk' && { method: interaction.method }),
     ...(interaction.component === 'input' && {
-      input_type: interaction.inputType,
+      input_type: toAnalyticsValue(interaction.inputType),
       input_index: interaction.inputIndex,
     }),
     ...(interaction.component === 'launch-form' && interaction.action === 'error' && { reason: interaction.reason }),

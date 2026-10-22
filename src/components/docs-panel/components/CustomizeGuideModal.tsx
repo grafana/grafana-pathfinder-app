@@ -78,7 +78,7 @@ export function CustomizeGuideModal({ guide, isOpen = true, sourceUrl, onReview,
     request.current.active = false;
     const current = { active: true, busy: true };
     request.current = current;
-    reportAppInteraction(UserInteraction.AssistantCustomizeClick, { source: 'private-guide' });
+    reportAppInteraction(UserInteraction.AssistantCustomizeClick, { source: 'private_guide' });
     setGeneratedGuide(undefined);
     setIsGenerating(true);
     setError(undefined);
@@ -170,12 +170,12 @@ export function CustomizeGuideModal({ guide, isOpen = true, sourceUrl, onReview,
         setPhase(t('docsPanel.customizeGuideCheckingResult', 'Checking the generated guide…'));
         customized = parseCustomizedGuide(response, guide, sourceUrl);
       }
-      reportAppInteraction(UserInteraction.AssistantCustomizeSuccess, { source: 'private-guide' });
+      reportAppInteraction(UserInteraction.AssistantCustomizeSuccess, { source: 'private_guide' });
       setGeneratedGuide(customized);
       onReview(customized);
     } catch (e) {
       if (isCurrent()) {
-        reportAppInteraction(UserInteraction.AssistantCustomizeError, { source: 'private-guide' });
+        reportAppInteraction(UserInteraction.AssistantCustomizeError, { source: 'private_guide' });
         setError(
           e instanceof GuideCustomizationError
             ? t('docsPanel.customizeGuideInvalid', '{{message}} Your draft is unchanged. Try again.', {

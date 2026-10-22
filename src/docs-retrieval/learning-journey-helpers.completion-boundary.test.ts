@@ -611,13 +611,13 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     const guide = completionAnalytics(emitted.find((f) => f.kind === 'guide')!).properties;
     const journey = completionAnalytics(emitted.find((f) => f.kind === 'journey')!).properties;
     expect(guide).toMatchObject({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_id: 'm3',
       path_id: 'linux-path',
     });
     expect(journey).toMatchObject({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       journey_id: 'linux-path',
     });
@@ -1128,7 +1128,7 @@ describe('standalone private guide opened straight off the backend-guide: scheme
       completionPercent: 100,
     });
     expect(completionAnalytics(emitted[0]!).properties).toMatchObject({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_id: 'fe-solo-01',
       guide_title: 'Solo guide',
