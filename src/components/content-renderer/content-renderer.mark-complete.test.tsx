@@ -273,7 +273,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     [
       'milestone',
       makeMilestone(),
-      { guide_source: 'unresolved', guide_visibility: 'private' },
+      { guide_source: 'unresolved', guide_visibility: 'private', guide_id: 'set-up', guide_title: 'Demo' },
       { current_milestone: 1, total_milestones: 1 },
     ],
   ])(
@@ -295,6 +295,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
             block_progress_rule_version: 'block-position-v1',
             ...milestoneProperties,
           },
+          { privatePath: false },
         ],
       ]);
     }
@@ -310,7 +311,11 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     await clickWhenReady();
 
     expect(markCompleteEvents()).toEqual([
-      [UserInteraction.MarkCompleteClicked, expect.objectContaining({ completion_context: 'guide' })],
+      [
+        UserInteraction.MarkCompleteClicked,
+        expect.objectContaining({ completion_context: 'guide' }),
+        { privatePath: false },
+      ],
     ]);
   });
 
@@ -415,7 +420,7 @@ describe('mark-complete guide identity', () => {
         guide_visibility: 'public',
         ...(guideSource === 'online-cdn' && { path_id: 'parent-path' }),
       });
-      expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_title');
+      expect(markCompleteEvents()[0]?.[1]).toHaveProperty('guide_title', content.metadata.title);
     }
   );
 
@@ -442,17 +447,21 @@ describe('mark-complete guide identity', () => {
     expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online-cdn' });
   });
 
-  it.each(['app-platform', 'remote-repo:private-company'])('omits private identifiers for %s', async (repository) => {
-    const content = makeContent({
-      url: 'backend-guide:private-guide',
-      metadata: { title: 'Private title', repository, packageManifest: { id: 'private-guide' } },
-    });
-    window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
-    await clickWhenReady();
-    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_visibility: 'private' });
-    expect(JSON.stringify(markCompleteEvents()[0]?.[1])).not.toMatch(/private-guide|Private title|private-company/);
-  });
+  it.each(['app-platform', 'remote-repo:private-company'])(
+    'includes private identifiers and titles for %s',
+    async (repository) => {
+      const content = makeContent({
+        url: 'backend-guide:private-guide',
+        metadata: { title: 'Private title', repository, packageManifest: { id: 'private-guide' } },
+      });
+      window.__DocsPluginActiveTabUrl = content.url;
+      render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
+      await clickWhenReady();
+      expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_visibility: 'private' });
+      expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'private-guide', guide_title: 'Private title' });
+      expect(JSON.stringify(markCompleteEvents()[0]?.[1])).not.toContain('private-company');
+    }
+  );
 
   it('does not guess a published source for an unresolved manifest', async () => {
     const content = makeContent({
@@ -463,6 +472,6 @@ describe('mark-complete guide identity', () => {
     render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
     await clickWhenReady();
     expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_source: 'unresolved', guide_visibility: 'private' });
-    expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_id');
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'private-guide', guide_title: 'Private title' });
   });
 });
