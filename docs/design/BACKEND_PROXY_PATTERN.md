@@ -545,8 +545,17 @@ where a create differs from a read:
   a post-write GET starts a new refresh.
 - **Assignment satisfaction is a second consumer of the raw rows**
   (`assignment_satisfaction.go`). It reads `CompletionRecords` uncollated, because collation drops
-  the per-row `completedAt`, and evaluates each row on its own: guide id plus `completedAt` against
-  the assignment's `acceptCompletionsFrom`, matching on guide id across guide sources. A successful
+  the per-row `completedAt`, and evaluates each row on its own. #2218 **extends** this contract to source-qualified
+  `(guideId, guideSource)` identity: one matching row must have `completionPercent` of 100 and
+  a parseable `completedAt` at or after the assignment's `acceptCompletionsFrom` when set
+  (the cutoff is inclusive). An invalid cutoff leaves the target unresolved. Neither percentage
+  nor timestamp may be borrowed from another row. Direct guide targets require an explicit
+  source and no track, without a catalogue lookup. Path resolution tries bundled, custom, then
+  online, respecting `targetSource`; a found path with an unknown track or a missing or
+  unpublished custom member remains wholly unresolved, not partially satisfied. Online member
+  identity uses the successful CDN resolver repository (`interactive-tutorials`), not a
+  manifest-embedded repository or the old `bundled` default. Member IDs come from index path slugs;
+  member identity resolution uses index data without per-member manifest requests. A successful
   create also triggers a background, best-effort `status.satisfied` write (a status-subresource
   PUT) on the caller's assignments that the new completion newly meets; it never fails the
   completion write. `GET /assignments/my` repairs any lost write, a 409 included: an assignment it
@@ -562,7 +571,19 @@ where a create differs from a read:
   The assignment and custom-guide LISTs are drained per caller with that caller's identity,
   because their RBAC identity-invariance is unproven (see `custom_guide_repository.go`). The
   raw-row completion drain is deliberately uncapped, bounded by its deadline and per-page size,
-  while `GET /completion-records/my` keeps its 50,000-record index cap. Known limit: docs path
+  while `GET /completion-records/my` keeps its 50,000-record index cap.
+  Admin `GET /learning-insights` applies the existing per-caller assignment-read token bucket
+  to the verified subject before upstream work (429 with `Retry-After` on exhaustion). It shares
+  the evaluator but intentionally bounds each completion,
+  assignment, and custom-catalogue LIST to 20 pages / 10,000 retained rows, under one cancellable
+  30-second report deadline. It marks truncated history partial and unmet obligations unknown,
+  rather than claiming outstanding or overdue work without complete evidence. The learner drain
+  stays uncapped so truncation cannot turn finished work into unmet work. Its custom catalogue
+  uses the standard catalogue drain; insights uses its report bounds. Learner online resolution
+  uses the recommendations cache; insights fetches a fresh online index under the report context
+  and refuses an incomplete enrichment. Source precedence and successful identity/progress parity
+  are covered by `pkg/plugin/assignment_source_parity_test.go`; these different freshness and
+  drain policies are deliberate, not an identity-contract difference. Known limit: docs path
   index lookups run sequentially, each bounded at 10s, so a stack that blackholes grafana.com
   slows the response by up to that per distinct bundled URL target. Known limit: a failed online
   package-index fetch is cached for the recommendations cache's full 6h TTL, so assignments only
