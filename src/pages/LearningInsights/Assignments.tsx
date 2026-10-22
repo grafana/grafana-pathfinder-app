@@ -1,5 +1,5 @@
 import React, { useId, useRef, useState } from 'react';
-import { Combobox } from '@grafana/ui';
+import { Combobox, Tooltip } from '@grafana/ui';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { personName, displayTime, assignmentTitle, assignmentStatus, assignmentIssue } from './insights.helpers';
 import { insightsQuality } from './insights-quality';
@@ -171,10 +171,14 @@ export function Assignments({ data, styles: s, status, onStatus, selectedPerson,
                   >
                     {assignmentStatus(row.status)}
                     {row.status === 'unknown' && (
-                      <details className={s.completionScope}>
-                        <summary>Why?</summary>
-                        <p>{assignmentIssue(row.reason)}</p>
-                      </details>
+                      <>
+                        {' '}
+                        <Tooltip content={assignmentIssue(row.reason)}>
+                          <button type="button" className={s.textButton} aria-label="Why this assignment needs review">
+                            Why?
+                          </button>
+                        </Tooltip>
+                      </>
                     )}
                   </td>
                   <td>

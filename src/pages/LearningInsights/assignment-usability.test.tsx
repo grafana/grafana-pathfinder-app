@@ -85,12 +85,16 @@ test.each([
   ['target-fetch-failed', /could not be loaded/],
   ['completion-history-incomplete', /could not be fully loaded/],
   ['lifecycle-unsupported', /unsupported state/],
-])('explains needs-review status for %s', (reason, message) => {
+])('explains needs-review status in a keyboard-accessible tooltip for %s', async (reason, message) => {
   const { table } = show({ status: 'unknown', guides: [], reason });
   expect(within(table).getByText('Needs review')).toBeInTheDocument();
   expect(within(table).getByText('Cannot check')).toBeInTheDocument();
-  fireEvent.click(within(table).getByText('Why?'));
-  expect(within(table).getByText(message)).toBeVisible();
+  const trigger = within(table).getByRole('button', { name: 'Why this assignment needs review' });
+  expect(trigger.closest('details')).toBeNull();
+  fireEvent.focus(trigger);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(message);
+  fireEvent.keyDown(trigger, { key: 'Escape' });
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   expect(within(table).queryByText('Unknown')).not.toBeInTheDocument();
 });
 
