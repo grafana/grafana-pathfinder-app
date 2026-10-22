@@ -150,7 +150,10 @@ describe('panel session attribute through the installed Faro SDK', () => {
     reportPathfinderSurfaceClosed('sidebar');
     faro.api.pushEvent('while_closed');
 
-    expect(sessionAttributesOf('while_open')).toMatchObject({ surface: 'sidebar', pathfinder_session_id: panelSessionId });
+    expect(sessionAttributesOf('while_open')).toMatchObject({
+      surface: 'sidebar',
+      pathfinder_session_id: panelSessionId,
+    });
     expect(sessionAttributesOf('while_closed')).toMatchObject({ pathfinder_session_id: '' });
     expect(sessionStorage.getItem('com.grafana.faro.session')).toBeTruthy();
     for (const storage of [sessionStorage, localStorage]) {
