@@ -22,7 +22,7 @@ func TestLearningInsightsSeparatesJourneyEvidence(t *testing.T) {
 	if len(resp.Completions) != 1 || resp.Completions[0].GuideID != "milestone" {
 		t.Fatalf("mixed guide/path totals: %+v", resp.Completions)
 	}
-	if resp.Completeness != "partial" || resp.Assignments[0].Status != "outstanding" {
+	if resp.Completeness != "partial" || resp.Assignments[0].Status != "complete" {
 		t.Fatalf("ambiguous evidence: %+v", resp)
 	}
 	if len(resp.People) != 2 {
@@ -89,7 +89,7 @@ func TestLearningInsightsRecorderRowsPreserveUnrelatedHistory(t *testing.T) {
 				}
 				for _, got := range resp.Assignments {
 					want := "outstanding"
-					if got.Name == "complete" {
+					if got.Name == "complete" || got.Name == "milestone" || got.Name == "journey" {
 						want = "complete"
 					} else if !historyComplete {
 						want = "unknown"

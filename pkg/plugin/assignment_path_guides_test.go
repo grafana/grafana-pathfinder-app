@@ -44,8 +44,9 @@ func TestDirectGuideProgress_SourceAndTerminalEvidence(t *testing.T) {
 	}
 }
 
-func TestCustomPathGuides_PreservesMemberSources(t *testing.T) {
+func TestCustomPathGuides_RecorderSourceOverridesManifest(t *testing.T) {
 	path := guideEntry("mixed-path", "Mixed path", "published", "path")
+	path.Manifest.Repository = "interactive-tutorials"
 	path.Manifest.Milestones = []string{"local", "external", "external"}
 	local := guideEntry("local", "Local", "published", "guide")
 	external := guideEntry("external", "External", "published", "guide")
@@ -58,13 +59,13 @@ func TestCustomPathGuides_PreservesMemberSources(t *testing.T) {
 		{GuideID: "external", GuideSource: "app-platform", CompletedAt: "2026-01-01T00:00:00Z", CompletionPercent: 100},
 	}
 	guides := mustGuideProgress(t, ev, asg, rows)
-	want := []assignmentGuideEntry{{GuideID: "local", GuideSource: "app-platform", Completed: true}, {GuideID: "external", GuideSource: "online-cdn"}}
+	want := []assignmentGuideEntry{{GuideID: "local", GuideSource: "app-platform", Completed: true}, {GuideID: "external", GuideSource: "app-platform", Completed: true}}
 	if !reflect.DeepEqual(guides, want) {
 		t.Fatalf("guides = %+v, want %+v", guides, want)
 	}
 	rows[1].GuideSource = "online-cdn"
-	if !satisfiedFromGuides(mustGuideProgress(t, ev, asg, rows)) {
-		t.Fatal("matching member sources did not satisfy assignment")
+	if satisfiedFromGuides(mustGuideProgress(t, ev, asg, rows)) {
+		t.Fatal("manifest repository granted public-source credit to a custom member")
 	}
 	asg.TargetSource = "bundled"
 	if got := mustGuideProgress(t, ev, asg, rows); got != nil {
@@ -104,7 +105,7 @@ func TestGuideProgress_UnknownAndFailureStayUnknown(t *testing.T) {
 }
 
 func TestOnlinePathGuides_RecorderShapedCompletions(t *testing.T) {
-	for _, source := range []string{"online-cdn", "interactive-tutorials", "bundled", "app-platform", "untrusted-repository"} {
+	for _, source := range []string{"online-cdn", "interactive-tutorials", "bundled", "app-platform", "untrusted-repository", ""} {
 		t.Run(source, func(t *testing.T) {
 			resetPackageRecommendationsCache()
 			withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {

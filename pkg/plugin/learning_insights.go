@@ -246,14 +246,13 @@ func shapeLearningInsights(resp *learningInsightsResponse, records []completionR
 			historyComplete = false
 			continue
 		}
+		byUser[rec.UserID] = append(byUser[rec.UserID], rec)
 		if rec.GuideCategory == "learning-journey" && (rec.PathID == "" || rec.PathID == rec.GuideID) {
-			// An ambiguous row is unusable evidence, not a gap in the namespace LIST.
 			if !at.Before(from) && at.Before(to) {
 				resp.partial("journey-identity-ambiguous")
 			}
 			continue
 		}
-		byUser[rec.UserID] = append(byUser[rec.UserID], rec)
 		if at.Before(from) || !at.Before(to) {
 			continue
 		}

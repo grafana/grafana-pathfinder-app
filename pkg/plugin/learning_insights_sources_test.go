@@ -72,7 +72,7 @@ func TestLearningInsightsCustomSourceQualifiedProgress(t *testing.T) {
 	r := insightsRequest(t, "Admin", "user:1")
 	ev := newTestApp(t).insightsObligationEvaluator(r)
 	guides, found, err := ev.sources[1](r.Context(), "path", "", "app-platform")
-	if err != nil || !found || len(guides) != 1 || guides[0].GuideSource != "online-cdn" {
+	if err != nil || !found || len(guides) != 1 || guides[0].GuideSource != "app-platform" {
 		t.Fatalf("guides = %+v, found = %v, error = %v", guides, found, err)
 	}
 	guides, found, err = ev.sources[1](r.Context(), "path", "", "bundled")

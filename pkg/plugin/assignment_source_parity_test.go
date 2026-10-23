@@ -35,13 +35,17 @@ func TestAssignmentSourceChainParity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, constructor := range constructors {
 				t.Run(constructor.name, func(t *testing.T) {
+					resetPackageRecommendationsCache()
 					var custom []customGuideRepositoryEntry
 					for _, id := range []string{bundled.ID, "parity-custom"} {
 						path := guideEntry(id, id, "published", "path")
+						path.Manifest.Repository = "interactive-tutorials"
 						path.Manifest.Milestones = []string{"custom-member"}
 						custom = append(custom, path)
 					}
-					custom = append(custom, guideEntry("custom-member", "Member", "published", "guide"))
+					member := guideEntry("custom-member", "Member", "published", "guide")
+					member.Manifest.Repository = "online-cdn"
+					custom = append(custom, member)
 					withGuideLister(t, singlePageGuideLister(custom...))
 					repository := map[string]interface{}{}
 					for _, id := range []string{bundled.ID, "parity-custom", "parity-online"} {
@@ -71,7 +75,7 @@ func TestAssignmentSourceChainParity(t *testing.T) {
 					}
 					var rows []completionRecordSpec
 					for _, guide := range tc.want {
-						rows = append(rows, rec("user:1", guide.GuideSource, guide.GuideID, "Member", "interactive", "", "objectives", asg.AcceptCompletionsFrom, 100))
+						rows = append(rows, rec("user:1", guide.GuideSource, guide.GuideID, "Member", "learning-journey", "", "objectives", asg.AcceptCompletionsFrom, 100))
 					}
 					for i, guide := range tc.want {
 						if guide.alternateSource != "" {

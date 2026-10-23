@@ -116,23 +116,16 @@ func trackNotFound(logger log.Logger, targetID, trackID string) ([]assignmentGui
 
 // Every required custom member must be published before the path can be evaluated.
 func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) pathGuideSource {
-	published := map[string]string{}
+	published := map[string]bool{}
 	for i := range entries {
-		if entries[i].Status == "published" {
-			source := "app-platform"
-			if entries[i].Manifest == nil {
-				continue
-			}
-			if entries[i].Manifest.Repository != "" {
-				source = entries[i].Manifest.Repository
-			}
-			published[entries[i].ID] = source
+		if entries[i].Status == "published" && entries[i].Manifest != nil {
+			published[entries[i].ID] = true
 		}
 	}
 	return func(_ context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
 		for i := range entries {
 			entry := &entries[i]
-			if entry.ID != targetID || entry.Status != "published" || entry.Manifest == nil || (targetSource != "" && targetSource != published[entry.ID]) {
+			if entry.ID != targetID || entry.Status != "published" || entry.Manifest == nil || (targetSource != "" && targetSource != "app-platform") {
 				continue
 			}
 			if entry.Manifest.Type != "path" && entry.Manifest.Type != "journey" {
@@ -148,11 +141,10 @@ func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) p
 			}
 			var guides []assignmentGuideIdentity
 			for _, id := range ids {
-				source, ok := published[id]
-				if !ok || id == "" {
+				if !published[id] || id == "" {
 					return nil, true, nil
 				}
-				guides = append(guides, assignmentGuideIdentity{GuideID: id, GuideSource: source})
+				guides = append(guides, assignmentGuideIdentity{GuideID: id, GuideSource: "app-platform"})
 			}
 			return guides, true, nil
 		}
@@ -162,6 +154,9 @@ func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) p
 
 func (a *App) onlinePathGuides(logger log.Logger) pathGuideSource {
 	return func(ctx context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+		if targetSource != "" && !onlineAssignmentGuide(targetID).matchesSource(targetSource) {
+			return nil, false, nil
+		}
 		resp, err := a.getCachedPackageRecommendations(ctx)
 		if err != nil {
 			return nil, false, err
@@ -171,6 +166,9 @@ func (a *App) onlinePathGuides(logger log.Logger) pathGuideSource {
 }
 
 func (a *App) resolveOnlinePathGuides(ctx context.Context, resp *PackageRecommendationsResponse, logger log.Logger, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+	if targetSource != "" && !onlineAssignmentGuide(targetID).matchesSource(targetSource) {
+		return nil, false, nil
+	}
 	for i := range resp.Packages {
 		entry := &resp.Packages[i]
 		if entry.ID != targetID {
@@ -193,9 +191,6 @@ func (a *App) resolveOnlinePathGuides(ctx context.Context, resp *PackageRecommen
 			if jsonErr := json.Unmarshal(body, &manifest); jsonErr != nil {
 				return nil, true, fmt.Errorf("parse manifest: %w", jsonErr)
 			}
-		}
-		if targetSource != "" && !onlineAssignmentGuide(targetID).matchesSource(targetSource) {
-			continue
 		}
 		ids, _ := manifest["milestones"].([]interface{})
 		if trackID != "" {

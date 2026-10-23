@@ -43,6 +43,9 @@ func (a *App) insightsObligationEvaluator(r *http.Request) *obligationEvaluator 
 	var onlineErr error
 	onlineLoaded := false
 	onlineSource := func(ctx context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+		if targetSource != "" && !onlineAssignmentGuide(targetID).matchesSource(targetSource) {
+			return nil, false, nil
+		}
 		if !onlineLoaded {
 			onlineLoaded = true
 			var partial bool
