@@ -582,7 +582,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       setup({ featured: [detailed('top')], recommendations: [pkg('two')] });
 
       const toggle = screen.getByTestId(testIds.sidebarHub.featuredToggle);
-      expect(toggle).toHaveTextContent('Show modules');
+      expect(toggle).toHaveTextContent('Show milestones');
       expect(toggle).toHaveAttribute('aria-expanded', 'false');
       expect(screen.queryByTestId(testIds.sidebarHub.featuredDetails)).not.toBeInTheDocument();
       await click(toggle);
@@ -604,7 +604,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       setup({ featured: [detailed('top', { summaryExpanded: true })], recommendations: [pkg('two')] });
 
       const details = screen.getByTestId(testIds.sidebarHub.featuredDetails);
-      expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveTextContent('Hide modules');
+      expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveTextContent('Hide milestones');
       expect(within(details).getByText('Have a data source')).toBeInTheDocument();
       expect(within(details).getByRole('heading', { name: 'Modules' })).toBeInTheDocument();
 
@@ -763,7 +763,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
         ],
       });
 
-      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide modules');
+      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide milestones');
       expect(screen.getByTestId(testIds.sidebarHub.rowDetailsLoading(0))).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
     });

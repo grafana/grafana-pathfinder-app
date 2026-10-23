@@ -124,7 +124,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const handleCompletionPanelVisibilityChange = React.useCallback(
     (visible: boolean) => {
       setCompletionPanel((previous) =>
-        previous?.url === contentUrl && previous.visible === visible ? previous : { url: contentUrl, visible }
+        previous?.url === contentUrl && previous?.visible === visible ? previous : { url: contentUrl, visible }
       );
     },
     [contentUrl]
