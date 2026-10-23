@@ -26,7 +26,6 @@ import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
-import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-handler';
 import { parseControllerPairingHash, parsePathfinderDeepLink } from './utils/pathfinder-search-params';
 import {
   clearExtensionSidebarDocked,
@@ -81,6 +80,9 @@ const { createExperimentDebugger, enrollInteractiveLearningBannerExperiment, sub
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
+const { handlePathfinderDeepLink, installDeepLinkNavListener } = await retryChunkImport(
+  () => import('./utils/pathfinder-deep-link-handler')
+);
 
 const pathfinderAvailability = await resolvePathfinderAvailability(
   getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(config.bootData.user?.authenticatedBy),
