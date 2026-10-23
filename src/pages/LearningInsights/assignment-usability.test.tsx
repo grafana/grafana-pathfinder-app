@@ -107,7 +107,7 @@ test('content titles are matched by source as well as guide ID', () => {
 test('credited online members display titles recorded through the historical resolver alias', () => {
   const guide = fixture.completions[0]!;
   const data: LearningInsightsResponse = {
-    ...fixture,
+    ...(fixture as LearningInsightsResponse),
     completions: [{ ...guide, guideSource: 'interactive-tutorials' }],
     assignments: [
       {

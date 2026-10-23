@@ -1,9 +1,11 @@
 import { config } from '@grafana/runtime';
-import type { LearningInsightsCompletion } from '../../types/learning-insights';
+import type { LearningInsightsCompletion, LearningInsightsResponse } from '../../types/learning-insights';
 import { assignmentTitle, guideTitle, learningLink } from './insights.helpers';
 import fixture from '../../../pkg/plugin/testdata/contract/learning-insights.default.json';
 
 jest.mock('@grafana/runtime', () => ({ config: { appSubUrl: '' } }));
+
+const assignment = (fixture as LearningInsightsResponse).assignments[0]!;
 
 const completion = (source: string, title = 'Recorded online title'): LearningInsightsCompletion => ({
   userId: 'user:learner',
@@ -42,10 +44,7 @@ test.each([
   const rows = [completion(recorded)];
   expect(guideTitle(target, 'same-slug', rows)).toBe('Recorded online title');
   expect(
-    assignmentTitle(
-      { ...fixture.assignments[0]!, targetType: 'guide', targetSource: target, targetId: 'same-slug' },
-      rows
-    )
+    assignmentTitle({ ...assignment, targetType: 'guide', targetSource: target, targetId: 'same-slug' }, rows)
   ).toBe('Recorded online title');
 });
 
@@ -69,9 +68,8 @@ test.each(['bundled', 'app-platform', 'other-source', ''])(
 test('does not borrow a title from another guide or use guide evidence as a path title', () => {
   expect(guideTitle('online-cdn', 'different-slug', [completion('interactive-tutorials')])).toBe('different-slug');
   expect(
-    assignmentTitle(
-      { ...fixture.assignments[0]!, targetType: 'path', targetSource: 'online-cdn', targetId: 'same-slug' },
-      [completion('interactive-tutorials')]
-    )
+    assignmentTitle({ ...assignment, targetType: 'path', targetSource: 'online-cdn', targetId: 'same-slug' }, [
+      completion('interactive-tutorials'),
+    ])
   ).toBe('same-slug');
 });
