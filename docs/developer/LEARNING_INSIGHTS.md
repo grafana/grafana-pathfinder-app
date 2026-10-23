@@ -12,6 +12,14 @@ Load this reference when changing the reporting route, its frontend consumer, me
 - `pkg/plugin/learning_insights.go` — trusted admin gate, bounded namespace reads, aggregation, and read-only assignment snapshot.
 - `pkg/plugin/assignment_satisfaction.go` and `assignment_paths.go` — source-qualified target membership and completion acceptance.
 
+## Production rollout
+
+The reporting UI is behind the default-off boolean MTFF flag `pathfinder.learning-insights`. It requires both an enabled flag and the current-org Admin role: the flag gates page registration, the My learning link, lazy page rendering, and mounting the reporting request hook. With it off, no reporting requests originate from the UI; normal My learning and completion recording continue unchanged.
+
+Register the flag in MTFF as public with a remote default of `false`, then target only the production test stack's namespace with `true`. Deploy the packaged frontend **and backend**, reload Grafana, and run the smoke procedure below. Leave other stacks off. Roll back the UI by setting the target to `false` and reloading; this is not an instant kill switch for already-open pages or in-flight reads. Registration in `grafana/deployment_tools` is separate from the app-side flag definition; see [Feature flags](FEATURE_FLAGS.md#pathfinderlearning-insights).
+
+The flag is a browser rollout control, not backend authorization. An authorized admin can still call the reporting resource directly when the UI is off. Non-admin denial, identity/OBO verification, namespace isolation, and the raw-resource RBAC limitation below remain independent release checks.
+
 ## Authorization and transport
 
 `GET /api/plugins/grafana-pathfinder-app/resources/learning-insights` is the browser-facing resource (`GET /learning-insights` inside the plugin). The backend requires `PluginConfig.User.Role == "Admin"` in Grafana's trusted current-org RPC context. Missing user context and non-admin roles receive **403**. A browser role predicate only controls discovery/rendering; it is not the authorization boundary. Being a server administrator is not a substitute for this current-org role check.
@@ -88,7 +96,7 @@ No stale reporting payload is supplied after a failure. An unavailable response 
 
 ### Prerequisites and current verification limit
 
-Use an already deployed build containing both the page and plugin resource. Obtain authorized current-org **Admin** and **Viewer** sessions, an available App Platform namespace, provisioned OBO exchange, and existing test records in that namespace. Do not assume Basic auth or a service-account token exercises the verified user-token/OBO path.
+Use an already deployed build containing both the page and plugin resource, with `pathfinder.learning-insights` enabled only for the test stack and Grafana reloaded. Obtain authorized current-org **Admin** and **Viewer** sessions, an available App Platform namespace, provisioned OBO exchange, and existing test records in that namespace. Do not assume Basic auth or a service-account token exercises the verified user-token/OBO path.
 
 The initial local probe reached `http://localhost:3000/api/health`, but `admin:admin` returned **401** for authenticated access. Actual authenticated live reporting, permission enforcement, and the upstream round trip therefore remain **unverified** by that probe. Health success alone proves neither plugin deployment nor authorization.
 

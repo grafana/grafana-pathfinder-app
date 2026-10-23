@@ -3,6 +3,7 @@ import { EmbeddedScene, SceneAppPage, SceneFlexItem, SceneFlexLayout, SceneObjec
 import { Alert, LoadingPlaceholder } from '@grafana/ui';
 import { config } from '@grafana/runtime';
 import { prefixRoute } from '../utils/utils.routing';
+import { getFeatureFlagValue } from '../utils/openfeature';
 
 const LearningInsightsPage = lazy(() => import('./LearningInsights'));
 
@@ -13,6 +14,9 @@ class LearningInsightsPanel extends SceneObjectBase {
 export function LearningInsightsRenderer() {
   if (config.bootData?.user?.orgRole !== 'Admin') {
     return <Alert severity="warning" title="Learning insights is for administrators of the current organization" />;
+  }
+  if (!getFeatureFlagValue('pathfinder.learning-insights', false)) {
+    return <Alert severity="info" title="Learning insights is not enabled for this stack" />;
   }
   return (
     <Suspense fallback={<LoadingPlaceholder text="Loading learning insights…" />}>

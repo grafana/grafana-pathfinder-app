@@ -4,6 +4,7 @@ import { dateMath, dateTime, type RawTimeRange, type TimeRange } from '@grafana/
 import { RefreshPicker, TimeRangePicker, useStyles2 } from '@grafana/ui';
 import { useLearningInsights } from '../../hooks';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 import { Assignments } from './Assignments';
 import { Overview } from './Overview';
 import { PersonEvidence } from './PersonEvidence';
@@ -297,6 +298,13 @@ export default function LearningInsightsPage() {
           Learning insights is available to current-organization admins. Switch to an organization you administer or ask
           an admin for access.
         </p>
+      </main>
+    );
+  }
+  if (!getFeatureFlagValue('pathfinder.learning-insights', false)) {
+    return (
+      <main className={s.page} aria-label="Learning insights">
+        <p className={s.notice}>Learning insights is not enabled for this stack.</p>
       </main>
     );
   }

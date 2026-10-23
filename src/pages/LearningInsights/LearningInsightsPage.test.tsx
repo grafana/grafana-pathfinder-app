@@ -4,6 +4,7 @@ import { config } from '@grafana/runtime';
 import { OrgRole } from '@grafana/data';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { useLearningInsights } from '../../hooks/useLearningInsights';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 import LearningInsightsPage, { LearningInsightsView } from './LearningInsightsPage';
 import { completionTrend, defaultWindow, learningLink, personName } from './insights.helpers';
 
@@ -27,6 +28,7 @@ afterAll(() => {
 
 jest.mock('@grafana/runtime', () => ({ config: { bootData: { user: { orgRole: 'Admin', isGrafanaAdmin: false } } } }));
 jest.mock('../../hooks/useLearningInsights', () => ({ useLearningInsights: jest.fn() }));
+jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn() }));
 
 const fixture = (): LearningInsightsResponse => ({
   asOf: '2026-07-29T12:00:00Z',
@@ -113,11 +115,20 @@ function renderView(data = fixture(), extra = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(getFeatureFlagValue).mockReturnValue(true);
   config.bootData.user.orgRole = OrgRole.Admin;
   config.bootData.user.isGrafanaAdmin = false;
   jest
     .mocked(useLearningInsights)
     .mockReturnValue({ data: fixture(), loading: false, error: null, refresh: jest.fn() });
+});
+
+test('does not mount the reporting hook for an admin when the rollout flag is off', () => {
+  jest.mocked(getFeatureFlagValue).mockReturnValue(false);
+  render(<LearningInsightsPage />);
+  expect(screen.getByText('Learning insights is not enabled for this stack.')).toBeInTheDocument();
+  expect(useLearningInsights).not.toHaveBeenCalled();
+  expect(getFeatureFlagValue).toHaveBeenCalledWith('pathfinder.learning-insights', false);
 });
 
 test('shows current assignment summary and accessible completion chart intervals', () => {

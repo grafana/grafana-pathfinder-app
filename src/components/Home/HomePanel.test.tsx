@@ -21,10 +21,13 @@ import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-laun
 import type { PreparedRawContent } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
+
+jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn() }));
 
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class SceneObjectBase {},
@@ -135,6 +138,7 @@ describe('HomePanelRenderer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     capturedOnOpenGuide = undefined;
+    jest.mocked(getFeatureFlagValue).mockReturnValue(true);
     config.bootData.user.orgRole = OrgRole.Viewer;
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
     (panelModeManager.getMode as jest.Mock).mockReturnValue('sidebar');
@@ -151,6 +155,15 @@ describe('HomePanelRenderer', () => {
       config.bootData.user.orgRole = OrgRole.Viewer;
       rerender(<HomePanelRenderer />);
       expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
+    });
+
+    it('hides insights from admins when the rollout flag is off without hiding My learning', () => {
+      config.bootData.user.orgRole = OrgRole.Admin;
+      jest.mocked(getFeatureFlagValue).mockReturnValue(false);
+      render(<HomePanelRenderer />);
+      expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('my-learning-tab')).toBeInTheDocument();
+      expect(getFeatureFlagValue).toHaveBeenCalledWith('pathfinder.learning-insights', false);
     });
 
     it('renders MyLearningTab', () => {
