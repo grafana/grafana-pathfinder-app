@@ -24,6 +24,7 @@ import {
   isJourneyCoverPage,
   journeyProgressFromMilestones,
   resolveActiveMilestoneToolbarContext,
+  resolveActiveMilestoneSequence,
 } from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
@@ -116,7 +117,19 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
   const { config: pluginConfig } = usePathfinderPluginConfig();
   const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
+  const completionPanelEnabled = useBooleanFlag('pathfinder.completion-panel', true);
   const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
+  const contentUrl = stableContent?.url;
+  const [completionPanel, setCompletionPanel] = React.useState<{ url?: string; visible: boolean } | null>(null);
+  const handleCompletionPanelVisibilityChange = React.useCallback(
+    (visible: boolean) => {
+      setCompletionPanel((previous) =>
+        previous?.url === contentUrl && previous?.visible === visible ? previous : { url: contentUrl, visible }
+      );
+    },
+    [contentUrl]
+  );
+  const completionPanelVisible = completionPanel?.url === contentUrl && completionPanel?.visible === true;
 
   // A restored track must belong to this cover's manifest ID.
   const stableContentPathId = stableContent?.metadata.packageManifest?.id;
@@ -126,6 +139,18 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
   // The loading toolbar also needs fresh completion evidence.
   useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
+
+  const activeSequence = stableContent
+    ? resolveActiveMilestoneSequence(stableContent, activeTab?.activeTrackId, activeTab?.activeTrackMilestones)
+    : null;
+  const completionSequence = activeSequence
+    ? {
+        ...activeSequence,
+        baseUrl:
+          (stableContent?.type === 'learning-journey' ? stableContent.metadata.learningJourney?.baseUrl : undefined) ??
+          stableContent?.metadata.trackMemberBaseUrl,
+      }
+    : undefined;
 
   const surfaceCompletionInput = stableContent
     ? {
@@ -455,8 +480,16 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         restoreScrollPosition();
                       }}
                       completion={{ kind: 'tracked', input: surfaceCompletionInput }}
+                      completionPanelEnabled={completionPanelEnabled}
+                      onCompletionPanelVisibilityChange={handleCompletionPanelVisibilityChange}
+                      completionSequence={completionPanelEnabled ? completionSequence : undefined}
                       onContinueToNextMilestone={
-                        model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
+                        model.canNavigateNext()
+                          ? () =>
+                              completionPanelEnabled
+                                ? model.navigateToNextMilestone({ rejectOnError: true })
+                                : model.navigateToNextMilestone()
+                          : undefined
                       }
                       onActiveTrackChange={
                         activeTab
@@ -471,23 +504,25 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </AlignmentPendingContext.Provider>
                 )}
 
-                {/* Go home button - always visible at bottom of content */}
-                <div className={styles.contentFooterAction}>
-                  <Button
-                    variant="secondary"
-                    icon="book-open"
-                    size="md"
-                    onClick={() => {
-                      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                        action: 'navigate_to_recommendations',
-                        source: 'content_footer',
-                      });
-                      model.setActiveTab(RECOMMENDATIONS_TAB_ID);
-                    }}
-                  >
-                    {t('docsPanel.returnToMyLearning', 'Return to my learning')}
-                  </Button>
-                </div>
+                {(!completionPanelEnabled || !completionPanelVisible) && (
+                  <div className={styles.contentFooterAction}>
+                    <Button
+                      variant="secondary"
+                      fill={completionPanelEnabled ? 'text' : undefined}
+                      icon="book-open"
+                      size={completionPanelEnabled ? 'sm' : 'md'}
+                      onClick={() => {
+                        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                          action: 'navigate_to_recommendations',
+                          source: 'content_footer',
+                        });
+                        model.setActiveTab(RECOMMENDATIONS_TAB_ID);
+                      }}
+                    >
+                      {t('docsPanel.returnToMyLearning', 'Return to my learning')}
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           );

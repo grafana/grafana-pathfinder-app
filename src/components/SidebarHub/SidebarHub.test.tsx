@@ -129,7 +129,7 @@ describe('SidebarHub', () => {
       const second = guide('Second', { expansion: withDetails });
       renderHub({ guides: [guide('Featured guide'), second] });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Show modules' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Show milestones' }));
 
       expect(withDetails.onToggle).toHaveBeenCalledTimes(1);
       expect(second.onLaunch).not.toHaveBeenCalled();
@@ -140,7 +140,7 @@ describe('SidebarHub', () => {
       renderHub({ guides: [guide('Featured guide'), guide('Second', { summary: 'About Second', expansion: open })] });
 
       const details = screen.getByTestId(testIds.sidebarHub.rowDetails(0));
-      expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('button', { name: 'Hide milestones' })).toHaveAttribute('aria-expanded', 'true');
       expect(within(details).getByText('About Second')).toBeInTheDocument();
       expect(within(details).getByRole('heading', { name: 'Modules' })).toBeInTheDocument();
 

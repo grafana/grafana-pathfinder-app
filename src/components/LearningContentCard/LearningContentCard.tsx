@@ -10,7 +10,7 @@ import { getLearningContentCardStyles } from './learning-content-card.styles';
 
 export interface LearningContentCardProps {
   title: string;
-  variant?: 'compact' | 'featured';
+  variant?: 'compact' | 'featured' | 'completion-primary' | 'completion-alternative';
   eyebrow?: string;
   expandableDescription?: boolean;
   actionAtBottom?: boolean;
@@ -21,6 +21,8 @@ export interface LearningContentCardProps {
   organization?: boolean;
   progress?: number;
   badges?: React.ReactNode;
+  actionLabel?: string;
+  actionAriaLabel?: string;
   onLaunch: () => void | Promise<void>;
   launching?: boolean;
   launchDisabled?: boolean;
@@ -54,6 +56,8 @@ export function LearningContentCard({
   progress,
   badges,
   onLaunch,
+  actionLabel,
+  actionAriaLabel,
   launching = false,
   launchDisabled = false,
   launchError,
@@ -70,7 +74,9 @@ export function LearningContentCard({
   actionRef,
 }: LearningContentCardProps) {
   const styles = useStyles2(getLearningContentCardStyles);
-  const featured = variant === 'featured';
+  const completion = variant === 'completion-primary' || variant === 'completion-alternative';
+  const featured = variant === 'featured' || variant === 'completion-primary';
+  const spacious = featured || completion;
   const topicLabel = getLearningTopicMetadata(topic, kind).label;
   const detailsId = useId();
   const [localExpanded, setLocalExpanded] = useState(false);
@@ -90,7 +96,9 @@ export function LearningContentCard({
       const lineHeight =
         parseFloat(style.lineHeight) * (style.lineHeight.endsWith('px') ? 1 : parseFloat(style.fontSize));
       const lines = featured ? FEATURED_DESCRIPTION_LINES : 2;
-      setTruncated((!featured || expandableDescription) && element.scrollHeight > lineHeight * lines + 1);
+      setTruncated(
+        !completion && (!featured || expandableDescription) && element.scrollHeight > lineHeight * lines + 1
+      );
     };
     measure();
     if (typeof ResizeObserver === 'undefined') {
@@ -100,7 +108,7 @@ export function LearningContentCard({
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [description, featured, expandableDescription]);
+  }, [description, completion, featured, expandableDescription]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -108,7 +116,7 @@ export function LearningContentCard({
     };
   }, []);
   const isExpanded = expanded ?? localExpanded;
-  const canExpand = Boolean(details || truncated);
+  const canExpand = Boolean(!completion && (details || truncated));
   const percent = typeof progress === 'number' && Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
   const action = getLearningAction(kind, percent);
   const label =
@@ -156,6 +164,7 @@ export function LearningContentCard({
   const launchButton = (
     <Button
       ref={actionRef}
+      aria-label={actionAriaLabel}
       className={bottomAction ? undefined : styles.action}
       size={bottomAction ? 'md' : 'sm'}
       fullWidth={bottomAction}
@@ -164,7 +173,7 @@ export function LearningContentCard({
       onClick={launch}
       data-testid={actionTestId}
     >
-      {launching || pending ? t('learningCard.opening', 'Opening…') : label}
+      {launching || pending ? t('learningCard.opening', 'Opening…') : (actionLabel ?? label)}
     </Button>
   );
   const toggle = canExpand && (
@@ -188,12 +197,15 @@ export function LearningContentCard({
   );
 
   return (
-    <article className={cx(styles.card, featured && styles.featured)} data-testid={testId}>
-      {!featured && <LearningTopicIcon topic={topic} kind={kind} />}
+    <article
+      className={cx(styles.card, completion && styles.completion, featured && styles.featured)}
+      data-testid={testId}
+    >
+      {!spacious && <LearningTopicIcon topic={topic} kind={kind} />}
       <div className={styles.content}>
-        {featured ? (
+        {spacious ? (
           <div className={styles.featuredHeader}>
-            <LearningTopicIcon topic="getting-started" size="lg" />
+            <LearningTopicIcon topic={topic ?? 'getting-started'} kind={kind} size="lg" />
             <div className={styles.featuredHeading}>
               <div className={styles.eyebrow}>
                 {eyebrow ?? t('learningCard.starterEyebrow', 'A good place to start')}
@@ -250,14 +262,14 @@ export function LearningContentCard({
             data-testid={isExpanded && !details ? detailsTestId : undefined}
             className={cx(
               styles.description,
-              featured && styles.featuredDescription,
-              !isExpanded && (featured ? expandableDescription && styles.featuredClamp : styles.excerpt)
+              spacious && styles.featuredDescription,
+              !isExpanded && !completion && (featured ? expandableDescription && styles.featuredClamp : styles.excerpt)
             )}
           >
             {description}
           </p>
         )}
-        {featured ? (
+        {spacious ? (
           bottomAction ? null : (
             <div className={styles.featuredFooter}>
               {effort && <div className={styles.metadata}>{effort}</div>}

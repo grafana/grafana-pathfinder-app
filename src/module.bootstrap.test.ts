@@ -131,6 +131,37 @@ describe('module bootstrap arms the durable completion-write hook', () => {
   });
 });
 
+describe('module bootstrap loads deep-link handling outside the entry bundle', () => {
+  const handlerModule = './utils/pathfinder-deep-link-handler';
+
+  it('awaits the handler chunk at module scope before plugin.init can run', () => {
+    const staticImports = sourceFile.statements.filter(ts.isImportDeclaration);
+    expect(
+      staticImports.some((statement) => statement.moduleSpecifier.getText(sourceFile).includes(handlerModule))
+    ).toBe(false);
+    const declaration = sourceFile.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((statement) => [...statement.declarationList.declarations])
+      .find((item) => item.name.getText(sourceFile).includes('installDeepLinkNavListener'));
+    expect(declaration?.initializer && ts.isAwaitExpression(declaration.initializer)).toBe(true);
+    expect(declaration?.initializer?.getText(sourceFile)).toContain(`import('${handlerModule}')`);
+  });
+
+  it('still installs navigation listeners synchronously inside plugin.init', () => {
+    const body = findPluginInitBody();
+    for (const name of ['handlePathfinderDeepLink', 'installDeepLinkNavListener']) {
+      const statement = body.find(
+        (item) =>
+          ts.isExpressionStatement(item) &&
+          ts.isCallExpression(item.expression) &&
+          ts.isIdentifier(item.expression.expression) &&
+          item.expression.expression.text === name
+      );
+      expect(statement).toBeDefined();
+    }
+  });
+});
+
 describe('module bootstrap waits for authoritative settings', () => {
   it('does not publish plugin metadata as an authoritative settings snapshot', () => {
     expect(sourceFile.getText()).not.toContain('publishPathfinderPluginConfig');

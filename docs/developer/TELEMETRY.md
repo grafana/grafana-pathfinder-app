@@ -179,8 +179,8 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 ### Source attribution
 
 Catalog Start and Resume report `open_resource_click` once per accepted click.
-The locations are `package_browser`, `my_learning_discover_more` and
-`my_learning_continue`. Confirmed official content retains its title and URL;
+The locations are `package_browser`, `my_learning_discover_more`,
+`my_learning_continue` and `content_completion_panel`. Confirmed official content retains its title and URL;
 organization content omits titles, URLs and resource identifiers. Duplicate
 clicks while a launch is pending do not emit another event.
 
@@ -190,6 +190,12 @@ source and `requires_grafana_ui` when known. Confirmed public content retains it
 URL without credentials, query or fragment; private content omits it. Sidebar
 selection is intentional for discovery cards, including reading-only guides, and
 does not change the stored surface preference.
+
+With `pathfinder.completion-panel` enabled, completed sidebar content replaces the `navigate_to_recommendations` event (`source: content_footer`) with `navigate_to_my_learning` (`source: content_completion_panel`). Non-completed content retains the quiet **Return to my learning** footer and its `navigate_to_recommendations` event (`source: content_footer`). The flag-off footer retains its original event and destination. The controller guide-reader overlay keeps the legacy footer regardless of the flag.
+
+`completion_panel_viewed` reports an actual viewport impression after confirmed completion, once per user/organization/content URL in the current page session. Its bounded in-memory deduplication stores no persistent state. The payload uses the existing completion identity helpers, including canonical private guide and path IDs under the identity policy above, without adding content titles or URLs. Both panel impressions and next-module clicks pass the containing path's privacy options to the reporter so private path IDs stay out of the Faro mirror. `completion_context` distinguishes guides from milestones.
+
+Next-module clicks use `open_resource_click` with `interaction_location: content_completion_panel` and `completion_action: next_module`. Their completion identity describes the finished guide, not the destination. Catalog suggestion clicks retain the selected public content attribution. Existing guide-load render outcomes and progress events measure subsequent engagement; a prepared launch or a click alone does not prove that the next guide opened. Consent and environment gates still apply.
 
 `guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app-platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive-tutorials`; a standalone guide whose manifest names no repository also falls back to `interactive-tutorials`. Those fallbacks are used for the durable key, but analytics reports them as `unresolved` unless the journey is a curated path. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
 

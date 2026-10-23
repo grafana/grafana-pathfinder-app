@@ -14,6 +14,18 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ## Current feature flags
 
+### `pathfinder.completion-panel`
+
+**Type**: Boolean
+
+**Default**: `true`
+
+Shows the shared completion panel after a guide or module completes. Completion and continuation are separate actions. The panel uses existing path navigation, authored recommendations and suggestions, then official catalog fallbacks. Organization suggestions require explicit same-organization references. Set it to `false` to restore the existing footer and its “Mark complete and continue” behavior without changing stored progress. The `pathfinder.package-browser` flag separately controls catalog suggestions and Explore links.
+
+**Tracking key**: `completion_panel`
+
+---
+
 ### `pathfinder.package-browser`
 
 **Type**: Boolean
