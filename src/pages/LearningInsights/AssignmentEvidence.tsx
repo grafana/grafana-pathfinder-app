@@ -8,6 +8,7 @@ import {
   assignmentTitle,
   assignmentStatus,
   assignmentIssue,
+  guideTitle,
 } from './insights.helpers';
 import type { InsightsStyles } from './learning-insights.styles';
 
@@ -82,10 +83,7 @@ export function AssignmentEvidence({
                     : row.status === 'unknown'
                       ? 'Not verified'
                       : 'No completion recorded'}{' '}
-                  —{' '}
-                  {data.completions.find(
-                    (item) => item.guideId === guide.guideId && item.guideSource === guide.guideSource
-                  )?.guideTitle || guide.guideId}
+                  — {guideTitle(guide.guideSource, guide.guideId, data.completions)}
                 </li>
               ))}
             </ul>

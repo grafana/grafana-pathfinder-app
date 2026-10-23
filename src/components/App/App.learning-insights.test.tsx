@@ -10,6 +10,7 @@ import { fullScreenPage } from '../../pages/fullScreenPage';
 import { browsePage } from '../../pages/browsePage';
 import { learningInsightsPage } from '../../pages/learningInsightsPage';
 import App from './App';
+import pluginJson from '../../plugin.json';
 
 jest.mock('@grafana/runtime', () => ({ config: { bootData: { user: { orgRole: 'Admin' } } } }));
 jest.mock('@grafana/scenes', () => ({
@@ -31,6 +32,14 @@ beforeEach(() => {
   jest.clearAllMocks();
   config.bootData.user.orgRole = OrgRole.Admin;
   jest.mocked(getFeatureFlagValue).mockImplementation((_name, fallback) => fallback);
+});
+
+test('does not publish an unconditional Grafana navigation entry outside the rollout gate', () => {
+  expect(pluginJson.includes.find((include) => include.name === 'Learning insights')).toMatchObject({
+    addToNav: false,
+    defaultNav: false,
+    role: 'Admin',
+  });
 });
 
 test('does not register the reporting route by default', () => {

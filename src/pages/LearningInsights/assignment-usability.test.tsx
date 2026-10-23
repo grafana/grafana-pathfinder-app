@@ -104,6 +104,29 @@ test('content titles are matched by source as well as guide ID', () => {
   expect(within(table).getAllByRole('button', { name: guide.guideId })).toHaveLength(2);
 });
 
+test('credited online members display titles recorded through the historical resolver alias', () => {
+  const guide = fixture.completions[0]!;
+  const data: LearningInsightsResponse = {
+    ...fixture,
+    completions: [{ ...guide, guideSource: 'interactive-tutorials' }],
+    assignments: [
+      {
+        ...fixture.assignments[0]!,
+        targetType: 'path',
+        targetSource: 'online-cdn',
+        targetId: 'online-path',
+        status: 'complete',
+        guides: [{ guideId: guide.guideId, guideSource: 'online-cdn', completed: true }],
+      },
+    ],
+  };
+  render(<LearningInsightsView data={data} refresh={jest.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Assignments and people' }));
+  fireEvent.click(screen.getByRole('button', { name: 'online-path' }));
+  const details = screen.getByRole('region', { name: 'online-path' });
+  expect(within(details).getByRole('listitem')).toHaveTextContent(`✓ Complete — ${guide.guideTitle}`);
+});
+
 test('withdrawn assignments do not show a spurious unknown completion', () => {
   const { table } = show({ status: 'withdrawn', guides: [] });
   const row = within(table).getByText('Withdrawn').closest('tr')!;

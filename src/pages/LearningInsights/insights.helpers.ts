@@ -1,3 +1,5 @@
+import { config } from '@grafana/runtime';
+import { PLUGIN_BASE_URL } from '../../constants';
 import type {
   LearningInsightsAssignment,
   LearningInsightsCompletion,
@@ -9,13 +11,25 @@ export function personName(person: LearningInsightsPerson | undefined, userId: s
   return person?.userDisplayName || person?.userLogin || userId;
 }
 
-export function assignmentTitle(row: LearningInsightsAssignment, completions: LearningInsightsCompletion[]): string {
+const ONLINE_GUIDE_SOURCES = new Set(['online-cdn', 'interactive-tutorials']);
+
+export function guideTitle(source: string, id: string, completions: LearningInsightsCompletion[]): string {
+  const exactTitle = completions.find(
+    (guide) => guide.guideId === id && guide.guideSource === source && guide.guideTitle
+  )?.guideTitle;
   return (
-    (row.targetType === 'guide'
-      ? completions.find((guide) => guide.guideId === row.targetId && guide.guideSource === row.targetSource)
-          ?.guideTitle
-      : undefined) || row.targetId
+    exactTitle ||
+    (ONLINE_GUIDE_SOURCES.has(source)
+      ? completions.find(
+          (guide) => guide.guideId === id && ONLINE_GUIDE_SOURCES.has(guide.guideSource) && guide.guideTitle
+        )?.guideTitle
+      : undefined) ||
+    id
   );
+}
+
+export function assignmentTitle(row: LearningInsightsAssignment, completions: LearningInsightsCompletion[]): string {
+  return row.targetType === 'guide' ? guideTitle(row.targetSource, row.targetId, completions) : row.targetId;
 }
 
 export function assignmentIssue(reason: string): string {
@@ -43,23 +57,6 @@ export function assignmentStatus(status: LearningInsightsAssignment['status']): 
         : status === 'withdrawn'
           ? 'Withdrawn'
           : 'Outstanding';
-}
-
-export function defaultWindow(days = 28, now = new Date()) {
-  const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const from = new Date(to);
-  from.setUTCDate(from.getUTCDate() - days);
-  return { from: from.toISOString(), to: to.toISOString() };
-}
-
-export function utcDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toISOString().slice(0, 10);
-}
-
-export function utcTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toISOString().replace('T', ' ').replace('.000Z', ' UTC');
 }
 
 export function displayTime(value: string, timeZone = 'UTC'): string {
@@ -123,7 +120,7 @@ export function learningLink(source: string, id: string, kind: string, origin = 
   if (!id || !['guide', 'path'].includes(kind) || !['app-platform', 'bundled'].includes(source)) {
     return null;
   }
-  const base = new URL('/a/grafana-pathfinder-app', origin);
+  const base = new URL(`${config.appSubUrl ?? ''}${PLUGIN_BASE_URL}`, origin);
   if (!['http:', 'https:'].includes(base.protocol)) {
     return null;
   }

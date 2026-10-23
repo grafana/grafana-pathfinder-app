@@ -6,7 +6,7 @@ import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { useLearningInsights } from '../../hooks/useLearningInsights';
 import { getFeatureFlagValue } from '../../utils/openfeature';
 import LearningInsightsPage, { LearningInsightsView } from './LearningInsightsPage';
-import { completionTrend, defaultWindow, learningLink, personName } from './insights.helpers';
+import { completionTrend, learningLink, personName } from './insights.helpers';
 
 const originalObserver = global.IntersectionObserver;
 beforeAll(() => {
@@ -290,10 +290,6 @@ test('native time picker requests complete UTC days and native refresh remains a
 });
 
 test('helpers respect period boundaries and do not fabricate unsupported content links', () => {
-  expect(defaultWindow(28, new Date('2026-07-29T23:00:00Z'))).toEqual({
-    from: '2026-07-01T00:00:00.000Z',
-    to: '2026-07-29T00:00:00.000Z',
-  });
   const row = fixture().completions[0]!;
   const trend = completionTrend(
     [

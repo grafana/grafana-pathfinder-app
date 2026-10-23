@@ -45,7 +45,7 @@
       "path": "/a/grafana-pathfinder-app/learning-insights",
       "role": "Admin",
       "action": "grafana-pathfinder-app.docs:read",
-      "addToNav": true,
+      "addToNav": false,
       "defaultNav": false
     }
   ],
