@@ -85,7 +85,7 @@ Guide actions run in your current Grafana instance with your permissions. Read t
 
 Automatic detection is enabled by default for supported actions, so steps can complete when you perform them yourself. Your administrator can change this setting. Quizzes, inputs, and challenges have their own completion checks.
 
-The guide's progress indicator reflects completed steps. Use **Mark complete**, or **Mark complete and continue** in a learning path, when you want to mark the guide complete yourself. Merely opening the last milestone does not complete the whole path.
+The guide's progress indicator reflects completed steps. Use **Mark complete**, or **Complete milestone** in a learning path, when you want to mark the guide complete yourself. After completing a milestone, select **Continue** to open the next one. Merely opening the last milestone does not complete the whole path.
 
 ## Use learning paths and My learning
 

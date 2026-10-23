@@ -191,7 +191,7 @@ URL without credentials, query or fragment; private content omits it. Sidebar
 selection is intentional for discovery cards, including reading-only guides, and
 does not change the stored surface preference.
 
-With `pathfinder.completion-panel` enabled, the sidebar's `navigate_to_recommendations` event (`source: content_footer`) is replaced by `navigate_to_my_learning` (`source: content_completion_panel`). The flag-off footer retains its original event and destination. The controller guide-reader overlay keeps the legacy footer regardless of the flag.
+With `pathfinder.completion-panel` enabled, completed sidebar content replaces the `navigate_to_recommendations` event (`source: content_footer`) with `navigate_to_my_learning` (`source: content_completion_panel`). Non-completed content retains the quiet **Return to my learning** footer and its `navigate_to_recommendations` event (`source: content_footer`). The flag-off footer retains its original event and destination. The controller guide-reader overlay keeps the legacy footer regardless of the flag.
 
 `completion_panel_viewed` reports an actual viewport impression after confirmed completion, once per user/organization/content URL in the current page session. Its bounded in-memory deduplication stores no persistent state. The payload uses the existing completion identity helpers, including canonical private guide and path IDs under the identity policy above, without adding content titles or URLs. Both panel impressions and next-module clicks pass the containing path's privacy options to the reporter so private path IDs stay out of the Faro mirror. `completion_context` distinguishes guides from milestones.
 
