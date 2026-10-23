@@ -1,4 +1,4 @@
-import { catalogSearchTopic, reportCatalogInteraction } from './catalog-analytics';
+import { catalogSearchTopic, publicCatalogTopics, reportCatalogInteraction } from './catalog-analytics';
 import { reportAppInteraction, UserInteraction } from './analytics';
 
 jest.mock('./analytics', () => ({
@@ -38,6 +38,43 @@ it.each([
     interaction_location: 'package_browser',
     action: 'topic',
     topic,
+    control: 'filter',
+  });
+});
+
+const catalogItems = [
+  { id: 'play-intro', title: 'Play intro', category: 'play-demos', source: 'grafana' },
+  { id: 'cost-guide', title: 'Usage', category: 'Cost and usage', source: 'grafana' },
+  { id: 'internal', title: 'Internal runbook', category: 'customer-secret', source: 'organization' },
+] as const;
+
+it.each(['play-demos', 'cost-and-usage'])('reports public catalog topic %s', (topic) => {
+  reportCatalogInteraction({
+    action: 'topic',
+    topic,
+    control: 'filter',
+    publicTopics: publicCatalogTopics(catalogItems),
+  });
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    interaction_location: 'package_browser',
+    action: 'topic',
+    topic,
+    control: 'filter',
+  });
+});
+
+it('keeps organization-only topics bucketed', () => {
+  expect(publicCatalogTopics(catalogItems).has('customer-secret')).toBe(false);
+  reportCatalogInteraction({
+    action: 'topic',
+    topic: 'customer-secret',
+    control: 'filter',
+    publicTopics: publicCatalogTopics(catalogItems),
+  });
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    interaction_location: 'package_browser',
+    action: 'topic',
+    topic: 'other',
     control: 'filter',
   });
 });
