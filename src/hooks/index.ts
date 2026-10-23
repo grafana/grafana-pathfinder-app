@@ -1,4 +1,5 @@
 export { useGuideProgressState } from './useGuideProgressState';
+export { useLearningInsights } from './useLearningInsights';
 export {
   useAutoLaunchTutorial,
   type AutoLaunchTutorialDetail,

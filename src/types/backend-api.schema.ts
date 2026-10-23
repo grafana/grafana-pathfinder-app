@@ -119,6 +119,7 @@ export const AssignmentCapabilityWireSchema = z.strictObject({
  */
 export const AssignmentGuideEntryWireSchema = z.strictObject({
   guideId: z.string(),
+  guideSource: z.string(),
   completed: z.boolean(),
 });
 
@@ -282,6 +283,48 @@ export const PackageRecommendationsResponseWireSchema = z.strictObject({
   packages: z.array(PackageEntryWireSchema),
 });
 
+export const LearningInsightsPersonWireSchema = z.strictObject({
+  userId: z.string(),
+  userLogin: z.string(),
+  userDisplayName: z.string(),
+});
+
+export const LearningInsightsCompletionWireSchema = z.strictObject({
+  userId: z.string(),
+  guideId: z.string(),
+  guideSource: z.string(),
+  guideTitle: z.string(),
+  completedAt: z.string(),
+  source: z.string(),
+});
+
+export const LearningInsightsAssignmentWireSchema = z.strictObject({
+  name: z.string(),
+  userId: z.string(),
+  targetType: z.string(),
+  targetId: z.string(),
+  targetSource: z.string(),
+  trackId: z.string(),
+  ruleId: z.string(),
+  assignedAt: z.string(),
+  dueAt: z.string(),
+  status: z.enum(['complete', 'outstanding', 'overdue', 'unknown', 'withdrawn']),
+  reason: z.string(),
+  guides: z.array(AssignmentGuideEntryWireSchema),
+});
+
+export const LearningInsightsResponseWireSchema = z.strictObject({
+  asOf: z.string(),
+  from: z.string(),
+  to: z.string(),
+  capability: AssignmentCapabilityWireSchema,
+  completeness: z.enum(['complete', 'partial']),
+  warnings: z.array(z.string()),
+  people: z.array(LearningInsightsPersonWireSchema),
+  completions: z.array(LearningInsightsCompletionWireSchema),
+  assignments: z.array(LearningInsightsAssignmentWireSchema),
+});
+
 // ============ REGISTRY ============
 
 /**
@@ -311,6 +354,10 @@ export const GO_STRUCT_SCHEMAS = {
   assignmentCapability: AssignmentCapabilityWireSchema,
   assignmentEntry: AssignmentEntryWireSchema,
   assignmentGuideEntry: AssignmentGuideEntryWireSchema,
+  learningInsightsResponse: LearningInsightsResponseWireSchema,
+  learningInsightsPerson: LearningInsightsPersonWireSchema,
+  learningInsightsCompletion: LearningInsightsCompletionWireSchema,
+  learningInsightsAssignment: LearningInsightsAssignmentWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
@@ -328,6 +375,7 @@ export const BACKEND_RESPONSE_ENVELOPES = {
   'completion-records-my': 'myCompletionsResponse',
   'completion-records-capability': 'completionCapability',
   'assignments-my': 'myAssignmentsResponse',
+  'learning-insights': 'learningInsightsResponse',
 } as const satisfies Record<string, GoStructName>;
 
 export type BackendResponseEnvelopeKey = keyof typeof BACKEND_RESPONSE_ENVELOPES;
