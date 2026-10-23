@@ -21,7 +21,7 @@
  * of its own.
  */
 
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
@@ -83,6 +83,7 @@ export interface MarkCompleteFooterProps {
   /** Advance to the next milestone. Absent when there is nowhere to continue to. */
   onContinue?: () => void;
   renderCompleted?: (celebrating: boolean) => React.ReactNode;
+  onCompletionPanelVisibilityChange?: (visible: boolean) => void;
 }
 
 const CELEBRATION_MS = 1400;
@@ -104,6 +105,7 @@ export function MarkCompleteFooter({
   onMarkComplete,
   onContinue,
   renderCompleted,
+  onCompletionPanelVisibilityChange,
 }: MarkCompleteFooterProps) {
   const styles = useStyles2(getStyles);
   // Carries the resolved key alongside the mark and is tagged with the guide
@@ -134,6 +136,11 @@ export function MarkCompleteFooter({
   const activeGuide = contentKey ? getGuideIndex(contentKey) : undefined;
   const marked = storedMarked && (!activeGuide?.choiceModel || percentage === 100);
   const completed = marked || Boolean(renderCompleted && hydrated && percentage === 100);
+  const completionPanelVisible = Boolean(renderCompleted && completed);
+  useLayoutEffect(() => {
+    onCompletionPanelVisibilityChange?.(completionPanelVisible);
+    return () => onCompletionPanelVisibilityChange?.(false);
+  }, [completionPanelVisible, onCompletionPanelVisibilityChange]);
   const unansweredChoices =
     activeGuide?.choiceModel &&
     choicePathHasUnansweredRequiredInput(

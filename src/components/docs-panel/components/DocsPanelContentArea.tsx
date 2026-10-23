@@ -119,6 +119,17 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
   const completionPanelEnabled = useBooleanFlag('pathfinder.completion-panel', true);
   const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
+  const contentUrl = stableContent?.url;
+  const [completionPanel, setCompletionPanel] = React.useState<{ url?: string; visible: boolean } | null>(null);
+  const handleCompletionPanelVisibilityChange = React.useCallback(
+    (visible: boolean) => {
+      setCompletionPanel((previous) =>
+        previous?.url === contentUrl && previous.visible === visible ? previous : { url: contentUrl, visible }
+      );
+    },
+    [contentUrl]
+  );
+  const completionPanelVisible = completionPanel?.url === contentUrl && completionPanel?.visible === true;
 
   // A restored track must belong to this cover's manifest ID.
   const stableContentPathId = stableContent?.metadata.packageManifest?.id;
@@ -470,6 +481,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       }}
                       completion={{ kind: 'tracked', input: surfaceCompletionInput }}
                       completionPanelEnabled={completionPanelEnabled}
+                      onCompletionPanelVisibilityChange={handleCompletionPanelVisibilityChange}
                       completionSequence={completionPanelEnabled ? completionSequence : undefined}
                       onContinueToNextMilestone={
                         model.canNavigateNext()
@@ -492,12 +504,13 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </AlignmentPendingContext.Provider>
                 )}
 
-                {!completionPanelEnabled && (
+                {(!completionPanelEnabled || !completionPanelVisible) && (
                   <div className={styles.contentFooterAction}>
                     <Button
                       variant="secondary"
+                      fill={completionPanelEnabled ? 'text' : undefined}
                       icon="book-open"
-                      size="md"
+                      size={completionPanelEnabled ? 'sm' : 'md'}
                       onClick={() => {
                         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
                           action: 'navigate_to_recommendations',

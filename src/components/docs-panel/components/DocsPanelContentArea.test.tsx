@@ -50,6 +50,7 @@ const mockRenderedCompletions: unknown[] = [];
 const mockRenderedSequences: unknown[] = [];
 const mockRenderedCompletionFlags: boolean[] = [];
 let mockContinueToNextMilestone: (() => Promise<void> | void) | undefined;
+let mockCompletionPanelVisibilityChange: ((visible: boolean) => void) | undefined;
 jest.mock('../../content-renderer/content-renderer', () => ({
   ContentRenderer: ({
     completion,
@@ -58,10 +59,12 @@ jest.mock('../../content-renderer/content-renderer', () => ({
     completionSequence,
     completionPanelEnabled,
     onContinueToNextMilestone,
+    onCompletionPanelVisibilityChange,
   }: {
     completion: unknown;
     completionSequence?: unknown;
     completionPanelEnabled?: boolean;
+    onCompletionPanelVisibilityChange?: (visible: boolean) => void;
     onContinueToNextMilestone?: () => Promise<void> | void;
     onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
     initialActiveTrackId?: string | null;
@@ -70,6 +73,7 @@ jest.mock('../../content-renderer/content-renderer', () => ({
     mockRenderedSequences.push(completionSequence);
     mockRenderedCompletionFlags.push(completionPanelEnabled ?? false);
     mockContinueToNextMilestone = onContinueToNextMilestone;
+    mockCompletionPanelVisibilityChange = onCompletionPanelVisibilityChange;
     return (
       <>
         <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
@@ -204,6 +208,7 @@ describe('DocsPanelContentArea', () => {
     mockRenderedCompletionFlags.length = 0;
     mockCompletionPanelEnabled = true;
     mockContinueToNextMilestone = undefined;
+    mockCompletionPanelVisibilityChange = undefined;
   });
   it('uses the stable reset selector for docs-like guides', () => {
     const base = makeProps();
@@ -221,10 +226,60 @@ describe('DocsPanelContentArea', () => {
   });
 
   describe('Return to my learning footer button', () => {
-    beforeEach(() => {
-      mockCompletionPanelEnabled = false;
+    it.each(['docs', 'cover', 'preview', 'in-progress'] as const)(
+      'keeps quiet home navigation on %s content with the completion panel enabled',
+      (kind) => {
+        const props = makeProps({
+          isWysiwygPreview: kind === 'preview',
+          hasInteractiveProgress: kind === 'in-progress',
+        });
+        if (kind === 'cover') {
+          props.stableContent = {
+            ...props.stableContent!,
+            type: 'learning-journey',
+            metadata: { learningJourney: { currentMilestone: 0 } },
+          } as any;
+        }
+        render(<DocsPanelContentArea {...props} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Return to my learning' }));
+
+        expect(props.model.setActiveTab).toHaveBeenCalledWith('recommendations');
+        expect(reportAppInteraction).toHaveBeenCalledWith('docs_panel_interaction', {
+          action: 'navigate_to_recommendations',
+          source: 'content_footer',
+        });
+      }
+    );
+
+    it('leaves home navigation to the completed panel and restores the footer after reset', () => {
+      render(<DocsPanelContentArea {...makeProps()} />);
+      act(() => mockCompletionPanelVisibilityChange?.(true));
+      expect(screen.queryByRole('button', { name: 'Return to my learning' })).not.toBeInTheDocument();
+
+      act(() => mockCompletionPanelVisibilityChange?.(false));
+      expect(screen.getByRole('button', { name: 'Return to my learning' })).toBeInTheDocument();
     });
+
+    it('does not hide a newly opened guide behind the previous guide completion state', () => {
+      const props = makeProps();
+      const { rerender } = render(<DocsPanelContentArea {...props} />);
+      act(() => mockCompletionPanelVisibilityChange?.(true));
+      rerender(
+        <DocsPanelContentArea {...props} stableContent={{ ...props.stableContent!, url: 'https://example.com/next' }} />
+      );
+      expect(screen.getByRole('button', { name: 'Return to my learning' })).toBeInTheDocument();
+    });
+
+    it('preserves the footer when the completion panel flag is off', () => {
+      mockCompletionPanelEnabled = false;
+      render(<DocsPanelContentArea {...makeProps()} />);
+      act(() => mockCompletionPanelVisibilityChange?.(true));
+      expect(screen.getByRole('button', { name: 'Return to my learning' })).toBeInTheDocument();
+    });
+
     it('switches to the recommendations tab in place instead of navigating away', () => {
+      mockCompletionPanelEnabled = false;
       const props = makeProps();
       render(<DocsPanelContentArea {...props} />);
 
@@ -234,6 +289,7 @@ describe('DocsPanelContentArea', () => {
     });
 
     it('reports the return-to-recommendations interaction', () => {
+      mockCompletionPanelEnabled = false;
       render(<DocsPanelContentArea {...makeProps()} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Return to my learning' }));
@@ -908,5 +964,6 @@ describe('DocsPanelContentArea completion navigation', () => {
 it('omits the duplicate reader footer when the completion panel owns navigation', () => {
   mockCompletionPanelEnabled = true;
   render(<DocsPanelContentArea {...makeProps()} />);
+  act(() => mockCompletionPanelVisibilityChange?.(true));
   expect(screen.queryByRole('button', { name: 'Return to my learning' })).not.toBeInTheDocument();
 });

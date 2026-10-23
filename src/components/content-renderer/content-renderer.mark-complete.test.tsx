@@ -55,6 +55,41 @@ jest.mock('../completion-panel/ReaderCompletionPanel', () => ({
 }));
 
 describe('completion panel integration', () => {
+  it('forwards completed-panel visibility for a returning reader and clears it on unmount', async () => {
+    const content = makeContent();
+    await guideCompletionMarkStorage.set(content.url, true);
+    const onVisibility = jest.fn();
+    const { unmount } = render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled
+        onCompletionPanelVisibilityChange={onVisibility}
+      />
+    );
+    expect(await screen.findByTestId('completion-panel')).toBeInTheDocument();
+    expect(onVisibility).toHaveBeenLastCalledWith(true);
+    unmount();
+    expect(onVisibility).toHaveBeenLastCalledWith(false);
+  });
+
+  it.each(['preview', 'cover', 'flag-off'] as const)('does not announce a completed panel for %s', async (kind) => {
+    const content = kind === 'preview' ? makePreview() : kind === 'cover' ? makeMilestone(0) : makeContent();
+    const onVisibility = jest.fn();
+    await guideCompletionMarkStorage.set(content.url, true);
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled={kind !== 'flag-off'}
+        onCompletionPanelVisibilityChange={onVisibility}
+      />
+    );
+    await act(async () => {});
+    expect(screen.queryByTestId('completion-panel')).not.toBeInTheDocument();
+    expect(onVisibility).not.toHaveBeenCalledWith(true);
+  });
+
   it('restores guide labels and analytics for a flag-off track-only member', async () => {
     const content = makeContent({
       type: 'learning-journey',
@@ -81,11 +116,13 @@ describe('completion panel integration', () => {
   it('keeps the completed module visible until the reader chooses the next module', async () => {
     const content = makeMilestone();
     const onContinue = jest.fn();
+    const onVisibility = jest.fn();
     render(
       <ContentRenderer
         content={content}
         completion={trackedCompletion(content)}
         completionPanelEnabled
+        onCompletionPanelVisibilityChange={onVisibility}
         onContinueToNextMilestone={onContinue}
       />
     );
@@ -94,6 +131,7 @@ describe('completion panel integration', () => {
     fireEvent.click(complete);
     expect(await screen.findByTestId('completion-panel')).toBeInTheDocument();
     expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(onVisibility).toHaveBeenLastCalledWith(true);
     expect(onContinue).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Continue to next module' }));
     expect(onContinue).toHaveBeenCalledTimes(1);

@@ -101,6 +101,49 @@ beforeEach(() => {
 });
 
 describe('completion panel handoff', () => {
+  it.each(['mark', 'percentage'] as const)(
+    'reports hydrated %s completion, reset and unmount visibility',
+    async (source) => {
+      markStorage.get.mockResolvedValue(source === 'mark' ? true : null);
+      percentage = source === 'percentage' ? 100 : 25;
+      const onVisibility = jest.fn();
+      const { unmount } = render(
+        <MarkCompleteFooter
+          context="guide"
+          renderCompleted={() => <div>Next steps</div>}
+          onCompletionPanelVisibilityChange={onVisibility}
+        />
+      );
+      await waitFor(() => expect(onVisibility).toHaveBeenLastCalledWith(true));
+      expect(screen.getByText('Next steps')).toBeInTheDocument();
+
+      markStorage.get.mockResolvedValue(null);
+      percentage = 0;
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: '*' } })
+        );
+      });
+      expect(onVisibility).toHaveBeenLastCalledWith(false);
+      expect(screen.queryByText('Next steps')).not.toBeInTheDocument();
+
+      percentage = 100;
+      await act(async () => notifyProgress?.());
+      expect(onVisibility).toHaveBeenLastCalledWith(true);
+      unmount();
+      expect(onVisibility).toHaveBeenLastCalledWith(false);
+    }
+  );
+
+  it('does not report a completion panel when only the legacy completed control is rendered', async () => {
+    markStorage.get.mockResolvedValue(true);
+    const onVisibility = jest.fn();
+    render(<MarkCompleteFooter context="guide" onCompletionPanelVisibilityChange={onVisibility} />);
+    await screen.findByRole('status');
+    expect(onVisibility).toHaveBeenLastCalledWith(false);
+    expect(onVisibility).not.toHaveBeenCalledWith(true);
+  });
+
   it('notifies path readers again after a delayed completion write settles', async () => {
     let finish!: () => void;
     setCompletionPercentage.mockReturnValueOnce(

@@ -187,6 +187,7 @@ interface ContentRendererProps {
   onContinueToNextMilestone?: () => void | Promise<void>;
   completionSequence?: { currentMilestone: number; milestones: Milestone[]; baseUrl?: string };
   completionPanelEnabled?: boolean;
+  onCompletionPanelVisibilityChange?: (visible: boolean) => void;
   /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
   onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
   /** Forwarded to `LearningPathTableOfContents`'s own prop of the same name — see its doc. */
@@ -227,6 +228,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   onContinueToNextMilestone,
   completionSequence,
   completionPanelEnabled = false,
+  onCompletionPanelVisibilityChange,
   onActiveTrackChange,
   initialActiveTrackId,
   className,
@@ -630,6 +632,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         (completionPanelEnabled ? completionSequence?.milestones.length : undefined) ?? journey?.totalMilestones
       }
       onMarkComplete={triggerGuideCompleteFromMark}
+      onCompletionPanelVisibilityChange={onCompletionPanelVisibilityChange}
       onContinue={onContinueToNextMilestone}
       renderCompleted={
         completionPanelEnabled && completion.kind === 'tracked' && !isBlockEditorPreviewUrl(content.url)
