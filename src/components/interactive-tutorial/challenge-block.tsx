@@ -767,6 +767,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     try {
       const result = await checkPostconditions({
         requirements: [successCriteria],
+        allowCodaExecution: true,
         stepId,
         maxRetries: 0,
       });
@@ -938,6 +939,32 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           <Icon name="exclamation-triangle" />
           <div>{failureMessage || errorDetail || "The check didn't pass — adjust and try again."}</div>
         </div>
+      )}
+
+      {(setupScript || setupCommands.length > 0 || successCriteria.startsWith('coda-exit-zero:')) && (
+        <details>
+          <summary>Review challenge commands</summary>
+          <p>
+            Starting this challenge runs the setup commands. Check my work runs the verification command in your
+            sandbox.
+          </p>
+          {(setupScript || setupCommands.length > 0) && (
+            <>
+              <strong>Setup</strong>
+              <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                {setupScript?.trim() ? setupScript : setupCommands.join('\n')}
+              </pre>
+            </>
+          )}
+          {successCriteria.startsWith('coda-exit-zero:') && (
+            <>
+              <strong>Verification</strong>
+              <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                {successCriteria.slice('coda-exit-zero:'.length)}
+              </pre>
+            </>
+          )}
+        </details>
       )}
 
       <div className={styles.actions}>

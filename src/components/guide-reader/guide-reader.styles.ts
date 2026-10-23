@@ -53,6 +53,12 @@ export const getGuideReaderStyles = (theme: GrafanaTheme2) => ({
     flex: 1,
     minWidth: 0,
   }),
+  milestoneNavigation: css({
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+    marginBottom: theme.spacing(3),
+  }),
   message: css({
     padding: theme.spacing(4),
     textAlign: 'center',
@@ -139,6 +145,11 @@ export const getGuideReaderStyles = (theme: GrafanaTheme2) => ({
   }),
   controllerStatusWaiting: css({
     background: theme.colors.warning.text,
+  }),
+  controllerLinkAlert: css({
+    position: 'sticky',
+    top: theme.spacing(2),
+    zIndex: 1,
   }),
 });
 

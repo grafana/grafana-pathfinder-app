@@ -1,13 +1,17 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 
 const mockGetContextData = jest.fn();
+const mockFetchRecommendations = jest.fn(async () => ({ recommendations: [], featuredRecommendations: [] }));
 jest.mock('./context.service', () => ({
   ContextService: {
     getContextData: () => mockGetContextData(),
-    fetchRecommendations: jest.fn(async () => ({ recommendations: [], featuredRecommendations: [] })),
+    fetchRecommendations: () => mockFetchRecommendations(),
   },
 }));
-jest.mock('../hooks', () => ({ usePathfinderPluginConfig: () => ({ config: {} }) }));
+jest.mock('../hooks', () => {
+  const config = {};
+  return { usePathfinderPluginConfig: () => ({ config }) };
+});
 jest.mock('@grafana/runtime', () => ({
   locationService: {
     getLocation: () => ({ pathname: '/explore' }),
@@ -15,22 +19,42 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { useContextPanel } from './context.hook';
 import { setAutoOpenGuideEnrollment } from '../utils/experiments/auto-open-guide/state';
+
+beforeEach(() => {
+  jest.useFakeTimers();
+  jest.clearAllMocks();
+  setAutoOpenGuideEnrollment(null);
+});
+
+afterEach(() => {
+  setAutoOpenGuideEnrollment(null);
+  jest.useRealTimers();
+});
 
 it('refetches context and recommendations when the auto-open guide activation changes', async () => {
   mockGetContextData.mockResolvedValue({
     currentPath: '/explore',
     tags: [],
+    dataSources: [],
     isLoading: false,
     recommendations: [],
     featuredRecommendations: [],
   });
-  renderHook(() => useContextPanel());
-  await waitFor(() => expect(mockGetContextData).toHaveBeenCalledTimes(1));
+  const { unmount } = renderHook(() => useContextPanel());
+  const delay = INTERACTIVE_CONFIG.delays.debouncing.contextRefresh;
+  await act(async () => jest.advanceTimersByTimeAsync(delay));
+  expect(mockGetContextData).toHaveBeenCalledTimes(1);
+  expect(mockFetchRecommendations).toHaveBeenCalledTimes(1);
 
   act(() => setAutoOpenGuideEnrollment({ variant: 'treatment', experiences: [] }));
 
-  await waitFor(() => expect(mockGetContextData).toHaveBeenCalledTimes(2));
-  setAutoOpenGuideEnrollment(null);
+  await act(async () => jest.advanceTimersByTimeAsync(delay - 1));
+  expect(mockGetContextData).toHaveBeenCalledTimes(1);
+  await act(async () => jest.advanceTimersByTimeAsync(1));
+  expect(mockGetContextData).toHaveBeenCalledTimes(2);
+  expect(mockFetchRecommendations).toHaveBeenCalledTimes(2);
+  unmount();
 });

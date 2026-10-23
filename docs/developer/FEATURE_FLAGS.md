@@ -38,6 +38,20 @@ Controls the sidebar Browse entry and Browse all links. Set it to `false` to hid
 
 ---
 
+### `pathfinder.sidebar-hub`
+
+**Type**: Boolean
+
+**Default**: `false`
+
+Swaps the content of the sidebar's Recommended tab for the learning hub: a welcome header with a My learning button, the top recommendation, a resume card for the path in progress, three count tiles (assignments, in progress, completed) that open My learning, a "More recommended" list, an expandable "Other documentation" list of the remaining recommendations, and a compact help footer. Tabs and the tab bar are unchanged. With the flag off the existing Recommended tab renders as before.
+
+The hub is read in `ContextPanelRenderer`. A temporary Custom guides section lists the organization's published guides and paths (three rows, then Show all) so the hub keeps parity with the old tab. To remove it, delete `CustomGuides.tsx` and `custom-guides.tsx` in `SidebarHub/`, the `customGuides` props on `SidebarHub`, the `hubCustomGuides` memo in `context-panel.tsx`, the `organization` and `badges` fields on `HubGuide`, and the `customGuides*` test ids and `sidebarHub.showAll` key. The featured card and the More recommended rows expand like the old tab's cards, to the summary, prerequisites and modules (with the deferred-loading skeleton and the jump-into-module analytics). The "Recommended next" and "You might also like" links are not rebuilt in the hub yet.
+
+**Tracking key**: `sidebar_hub`
+
+---
+
 ### `pathfinder.enabled`
 
 **Type**: Boolean
@@ -192,6 +206,25 @@ The flag and the setting are a plain OR, applied once settings resolve in `src/m
 - In any other mode it lets the browser follow the link rather than swallow the click.
 
 **Tracking key**: `intercept_docs_links`
+
+---
+
+### `pathfinder.section-recovery`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill switch for implicit section recovery, which pauses a section the learner drifted out of and offers Restore (see `docs/design/AUTORECOVERY_DESIGN.md`).
+
+**Default**: `true`. OSS stacks have no flag provider, so recovery is always on there.
+
+**Behavior**:
+
+- **`true`**: active sections derive a recovery plan from their steps and may pause with Restore.
+- **`false`**: no plan is derived, nothing polls, and sections behave as before recovery existed.
+
+The flag is read once per page load (`src/utils/section-recovery-enablement.ts`), so a flip takes effect on the next reload. Registering it in MTFF needs both `flags/` and `flag-definitions.libsonnet` in `grafana/deployment_tools`, marked `Public()`, with the default kept `true` to match the registry.
+
+**Tracking key**: `section_recovery`
 
 ---
 

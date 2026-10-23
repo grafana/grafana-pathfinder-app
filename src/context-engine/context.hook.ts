@@ -11,6 +11,7 @@ import { StorageEvents } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
 import { subscribeToAutoOpenGuideEnrollment } from '../utils/experiments/auto-open-guide/state';
+import { recommendationsInputKey } from './recommendation-inputs';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
@@ -39,8 +40,9 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     platform: 'oss', // Default to oss, will be updated by getContextData
   });
 
-  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(true);
   const [hasFetchedRecommendations, setHasFetchedRecommendations] = useState(false);
+  const [contextVersion, setContextVersion] = useState(0);
   const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
 
   // Track location changes with more detail
@@ -61,18 +63,41 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   // Use centralized timeout manager instead of local refs
   const timeoutManager = useTimeoutManager();
 
-  // Fetch context data
+  const contextRequestRef = useRef(0);
+  const recommendationsRequestRef = useRef(0);
+  const lastRecommendationsInputRef = useRef<{ key: string; pluginConfig: unknown } | null>(null);
+  const forceRecommendationsRef = useRef(false);
+
   const fetchContextData = useCallback(async () => {
+    const requestId = ++contextRequestRef.current;
+    const isStale = () => requestId !== contextRequestRef.current;
     try {
       setContextData((prev) => ({ ...prev, isLoading: true }));
-      setHasFetchedRecommendations(false);
       const newContextData = await ContextService.getContextData();
-      setContextData(newContextData);
+      if (isStale()) {
+        return;
+      }
+      setContextData((prev) => ({
+        ...newContextData,
+        recommendations: prev.recommendations,
+        featuredRecommendations: prev.featuredRecommendations,
+        recommendationsError: prev.recommendationsError,
+        recommendationsErrorType: prev.recommendationsErrorType,
+        usingFallbackRecommendations: prev.usingFallbackRecommendations,
+      }));
+      setContextVersion((version) => version + 1);
     } catch (error) {
+      if (isStale()) {
+        return;
+      }
       logger.error('Failed to fetch context data', { error });
       setContextData((prev) => ({ ...prev, isLoading: false }));
+      if (recommendationsRequestRef.current === 0) {
+        setIsLoadingRecommendations(false);
+        setHasFetchedRecommendations(true);
+      }
     }
-  }, []); // Empty dependency array - setContextData is stable
+  }, []);
 
   // All context changes that trigger a refresh should share this debounce to prevent repeated API calls and changes to the UI.
   const debouncedRefresh = useCallback(
@@ -82,18 +107,25 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     [fetchContextData, timeoutManager]
   );
 
-  // Fetch recommendations
   const fetchRecommendations = useCallback(
     async (contextData: ContextData) => {
       if (!contextData.currentPath || contextData.isLoading) {
         return;
       }
 
+      const requestId = ++recommendationsRequestRef.current;
+      const isStale = () => requestId !== recommendationsRequestRef.current;
       setIsLoadingRecommendations(true);
       setHasFetchedRecommendations(false);
       try {
         const { recommendations, featuredRecommendations, error, errorType, usingFallbackRecommendations } =
           await ContextService.fetchRecommendations(contextData, pluginConfig);
+        if (isStale()) {
+          return;
+        }
+        if (error) {
+          lastRecommendationsInputRef.current = null;
+        }
 
         // Prepend external suggestions (if any) so they appear first in the featured zone
         const suggestions = suggestionState.getSuggestions();
@@ -113,6 +145,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
           usingFallbackRecommendations,
         }));
       } catch (error) {
+        if (isStale()) {
+          return;
+        }
+        lastRecommendationsInputRef.current = null;
         logger.error('Failed to fetch recommendations', { error });
         setContextData((prev) => ({
           ...prev,
@@ -121,12 +157,19 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
           usingFallbackRecommendations: true,
         }));
       } finally {
-        setIsLoadingRecommendations(false);
-        setHasFetchedRecommendations(true);
+        if (!isStale()) {
+          setIsLoadingRecommendations(false);
+          setHasFetchedRecommendations(true);
+        }
       }
     },
     [pluginConfig]
-  ); // Add pluginConfig as dependency
+  );
+
+  const forcedRefresh = useCallback(() => {
+    forceRecommendationsRef.current = true;
+    debouncedRefresh();
+  }, [debouncedRefresh]);
 
   // Simplified location-based change detection (EchoSrv handles datasource/viz changes)
   useEffect(() => {
@@ -195,6 +238,13 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   // Listen for EchoSrv-triggered context changes (datasource/viz changes)
   useEffect(() => {
     const unsubscribe = onContextChange(() => {
+      const vizType = getDetectedVisualizationType();
+      const selectedDatasource = getDetectedDatasourceType();
+      const last = lastLocationRef.current;
+      if (last.vizType === vizType && last.selectedDatasource === selectedDatasource) {
+        return;
+      }
+      lastLocationRef.current = { ...last, vizType, selectedDatasource };
       debouncedRefresh();
     });
 
@@ -202,20 +252,15 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [debouncedRefresh]);
 
   // The auto-open guide's Featured card depends on an activation that can land after the first fetch.
-  useEffect(() => subscribeToAutoOpenGuideEnrollment(debouncedRefresh), [debouncedRefresh]);
+  useEffect(() => subscribeToAutoOpenGuideEnrollment(forcedRefresh), [forcedRefresh]);
 
   // Listen for progress cleared events to refresh recommendations
   useEffect(() => {
-    const handleProgressCleared = () => {
-      // Refresh recommendations to update completion percentages
-      debouncedRefresh();
-    };
-
-    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, forcedRefresh);
     return () => {
-      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, forcedRefresh);
     };
-  }, [debouncedRefresh]);
+  }, [forcedRefresh]);
 
   // Merge external suggestions into featuredRecommendations
   const applySuggestions = useCallback(() => {
@@ -245,24 +290,25 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [applySuggestions]);
 
   // Fetch recommendations when context data changes (but not when loading)
-  const tagsString = contextData.tags?.join(',') || '';
   useEffect(() => {
-    if (!contextData.isLoading && contextData.currentPath) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch when the active context changes
-      fetchRecommendations(contextData);
+    if (contextData.isLoading || !contextData.currentPath) {
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop
-  }, [
-    contextData.isLoading,
-    contextData.currentPath,
-    tagsString, // Extracted to separate variable - includes datasource tags
-    contextData.visualizationType, // Direct viz type tracking
-    fetchRecommendations,
-  ]); // fetchRecommendations is stable due to useCallback with empty deps
+    const key = recommendationsInputKey(contextData);
+    const last = lastRecommendationsInputRef.current;
+    if (!forceRecommendationsRef.current && last?.key === key && last.pluginConfig === pluginConfig) {
+      return;
+    }
+    forceRecommendationsRef.current = false;
+    lastRecommendationsInputRef.current = { key, pluginConfig };
+    fetchRecommendations(contextData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextVersion marks each landed context; depending on contextData would refetch on every list update
+  }, [contextVersion, contextData.isLoading, fetchRecommendations]);
 
   // Actions
   const refreshContext = useCallback(() => {
     lastLocationRef.current = { path: '', url: '', vizType: null, selectedDatasource: null, searchParams: '' };
+    forceRecommendationsRef.current = true;
     fetchContextData();
   }, [fetchContextData]);
 

@@ -1083,12 +1083,19 @@
                     "urlPrefix": "/connections/datasources"
                   },
                   {
-                    "tag": "selected-datasource:graphite"
+                    "or": [
+                      {
+                        "tag": "selected-datasource:pyroscope"
+                      },
+                      {
+                        "tag": "selected-datasource:grafana-pyroscope-datasource"
+                      }
+                    ]
                   }
                 ]
               },
               {
-                "urlPrefix": "/connections/datasources/graphite"
+                "urlPrefix": "/connections/datasources/grafana-pyroscope-datasource"
               }
             ]
           },
@@ -1113,7 +1120,14 @@
                     "urlPrefix": "/connections/datasources"
                   },
                   {
-                    "tag": "selected-datasource:grafana-pyroscope-datasource"
+                    "or": [
+                      {
+                        "tag": "selected-datasource:pyroscope"
+                      },
+                      {
+                        "tag": "selected-datasource:grafana-pyroscope-datasource"
+                      }
+                    ]
                   }
                 ]
               },
@@ -1143,7 +1157,14 @@
                     "urlPrefix": "/connections/datasources"
                   },
                   {
-                    "tag": "selected-datasource:grafana-pyroscope-datasource"
+                    "or": [
+                      {
+                        "tag": "selected-datasource:pyroscope"
+                      },
+                      {
+                        "tag": "selected-datasource:grafana-pyroscope-datasource"
+                      }
+                    ]
                   }
                 ]
               },

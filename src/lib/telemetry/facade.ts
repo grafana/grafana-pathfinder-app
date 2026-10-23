@@ -325,6 +325,6 @@ export function recordProxyFailure(diagnostic: ProxyDiagnostics): void {
   });
 }
 
-export function recordKioskCatalogLoaded(tier: KioskCatalogTier, degraded: boolean): void {
-  pushFaroEvent(TELEMETRY_EVENTS.kioskCatalogLoaded, { tier, degraded });
+export function recordKioskCatalogLoaded(tier: KioskCatalogTier, degraded: boolean, rejectedRules: number): void {
+  pushFaroEvent(TELEMETRY_EVENTS.kioskCatalogLoaded, { tier, degraded, rejected_rules: rejectedRules });
 }

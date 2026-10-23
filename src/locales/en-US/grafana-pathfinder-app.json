@@ -80,6 +80,10 @@
     "beta": "Beta",
     "classicHelpMenuSettings": "Classic Help menu settings"
   },
+  "guideProgress": {
+    "label": "Guide progress: {{percent}}% complete",
+    "percentComplete": "{{percent}}% complete"
+  },
   "guideVersionNotice": {
     "body": "This guide is written for Grafana {{required}} or later, and this instance runs {{current}}. Some steps might not match what you see.",
     "title": "This guide needs a newer Grafana"
@@ -91,8 +95,7 @@
   "markComplete": {
     "completed": "Completed",
     "guideButton": "Mark complete",
-    "milestoneButton": "Mark complete and continue",
-    "percentComplete": "{{percent}}% complete"
+    "milestoneButton": "Mark complete and continue"
   },
   "myLearning": {
     "assignedBadge": "Assigned",
@@ -141,6 +144,25 @@
     "resetPathErrorMessage": "Some of this path's progress could not be cleared. Reload the page and try again.",
     "resetPathErrorTitle": "Reset incomplete",
     "subtitle": "Track your progress, earn badges, and master Grafana"
+  },
+  "sidebarHub": {
+    "actionLabel": "{{action}}: {{- title}}",
+    "assignments": "Assignments",
+    "continueLabel": "Continue learning",
+    "dueInDays_one": "Due in {{count}} day",
+    "dueInDays_other": "Due in {{count}} days",
+    "dueOn": "Due {{- date}}",
+    "dueToday": "Due today",
+    "dueTomorrow": "Due tomorrow",
+    "inProgress": "In progress",
+    "moduleOf": "Module {{current}} of {{total}}",
+    "moreRecommended": "More recommended",
+    "recommendedForYou": "Recommended for you",
+    "showAll": "Show all {{total}}",
+    "start": "Start",
+    "subtitle": "Learn Grafana at your own pace",
+    "welcomeBack": "Welcome back",
+    "welcomeBackName": "Welcome back, {{- name}}"
   },
   "userProfileBar": {
     "allComplete": "All paths complete!",

@@ -112,7 +112,7 @@ it('uses established progress for locked and selected-track sequences', async ()
   expect(screen.getByText('Path complete')).toBeInTheDocument();
 });
 
-it('reports visible private completion without names, URLs or identifiers and deduplicates it', () => {
+it('reports visible private completion with canonical identity and deduplicates it', () => {
   render(
     <ReaderCompletionPanel
       content={{ ...content, url: 'backend-guide:private-view' }}
@@ -123,15 +123,56 @@ it('reports visible private completion without names, URLs or identifiers and de
   fireEvent.click(screen.getByRole('button', { name: 'Show panel' }));
   fireEvent.click(screen.getByRole('button', { name: 'Show panel' }));
   expect(reportAppInteraction).toHaveBeenCalledTimes(1);
-  expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.CompletionPanelViewed, {
-    guide_source: 'app-platform',
-    guide_visibility: 'private',
-    interaction_location: 'content_completion_panel',
-    completion_context: 'guide',
-  });
+  expect(reportAppInteraction).toHaveBeenCalledWith(
+    UserInteraction.CompletionPanelViewed,
+    {
+      guide_source: 'app-platform',
+      guide_visibility: 'private',
+      guide_id: 'secret-id',
+      interaction_location: 'content_completion_panel',
+      completion_context: 'guide',
+    },
+    { privatePath: false }
+  );
 });
 
-it('skips locked modules and retains asynchronous navigation without private click metadata', async () => {
+it.each([
+  ['app-platform', true],
+  ['interactive-tutorials', false],
+] as const)(
+  'passes %s path identity and mirror privacy options to both panel events',
+  async (guideSource, privatePath) => {
+    const onContinue = jest.fn(async () => undefined);
+    render(
+      <ReaderCompletionPanel
+        content={{ ...content, url: `backend-guide:path-options-${guideSource}` }}
+        completionIdentity={{
+          guideId: 'public-guide',
+          guideSource: 'interactive-tutorials',
+          sourceConfirmed: true,
+          pathIdentity: { guideId: 'containing-path', guideSource, sourceConfirmed: true },
+        }}
+        celebrating={false}
+        sequence={{ currentMilestone: 1, milestones: modules }}
+        onContinue={onContinue}
+      />
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show panel' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Two' }));
+    });
+    for (const event of [UserInteraction.CompletionPanelViewed, UserInteraction.OpenResourceClick]) {
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        event,
+        expect.objectContaining({ guide_id: 'public-guide', path_id: 'containing-path' }),
+        { privatePath }
+      );
+    }
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('skips locked modules and retains asynchronous navigation with canonical identity', async () => {
   const onContinue = jest.fn(async () => undefined);
   const sequence = {
     currentMilestone: 1,
@@ -156,9 +197,10 @@ it('skips locked modules and retains asynchronous navigation without private cli
       guide_visibility: 'private',
       completion_action: 'next_module',
       interaction_location: 'content_completion_panel',
-    })
+    }),
+    { privatePath: false }
   );
   const payload = jest.mocked(reportAppInteraction).mock.calls[0]?.[1];
   expect(payload).not.toHaveProperty('content_url');
-  expect(payload).not.toHaveProperty('guide_id');
+  expect(payload).toHaveProperty('guide_id', 'secret-id');
 });

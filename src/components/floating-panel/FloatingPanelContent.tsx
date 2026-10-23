@@ -1,8 +1,9 @@
 import { useBooleanFlag } from '../../utils/openfeature';
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
-import { resolveActiveMilestoneSequence } from '../../docs-retrieval';
+import { isJourneyCoverPage, resolveActiveMilestoneSequence } from '../../docs-retrieval';
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { GuideProgressBar } from '../guide-progress';
 import { usePublishSurfaceContentKey } from '../../hooks';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -56,13 +57,6 @@ interface FloatingPanelContentProps {
   model: DocsPanelModelOperations;
 }
 
-/**
- * Renders guide content inside the floating panel.
- *
- * Uses the same full scrollable view as the sidebar — the guide renders
- * identically with all sections, auto-collapse on completion, and the
- * full interactive engine. No pagination or step slicing.
- */
 export function FloatingPanelContent({
   content,
   onGuideComplete,
@@ -83,14 +77,8 @@ export function FloatingPanelContent({
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
   const floatingStyles = useStyles2(getFloatingPanelStyles);
-  // `useTheme2()` is the canonical hook for grabbing the raw theme; the
-  // previous `useStyles2((t) => t)` pattern worked but mis-used the
-  // CSS-in-JS hook just for theme access.
   const theme = useTheme2();
 
-  // Install the same link click handler the sidebar uses so the
-  // "Ready to Begin" / "Get started" CTA, content links, side/related
-  // journey links, and the image lightbox all work in floating + fullscreen.
   useLinkClickHandler({
     contentRef,
     activeTab,
@@ -98,12 +86,6 @@ export function FloatingPanelContent({
     model,
   });
 
-  // STABILITY: Memoize the context value keyed on the two underlying
-  // primitives. React context uses referential equality, so an inline object
-  // literal would force every `useStepChecker` consumer (one per interactive
-  // section) to re-render on every parent render — re-evaluating eligibility
-  // and re-subscribing listeners. See the matching pattern in `docs-panel.tsx`.
-  // NOTE: Computed before any early return to keep hook order stable.
   const alignmentIsPending = !!pendingAlignment;
   const alignmentStartingLocation = pendingAlignment?.startingLocation ?? null;
   const alignmentPendingValue = useMemo(
@@ -156,7 +138,7 @@ export function FloatingPanelContent({
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
       <div ref={contentRef}>
-        {showEmbeddedToolbar && activeTab && (
+        {showEmbeddedToolbar && activeTab ? (
           <div className={floatingStyles.stickyToolbar}>
             <LearningJourneyMilestoneToolbar
               panel={model}
@@ -167,6 +149,11 @@ export function FloatingPanelContent({
               onResetGuide={onResetGuide!}
               compact
             />
+            <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
+          </div>
+        ) : (
+          <div className={floatingStyles.stickyProgressBar}>
+            <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
           </div>
         )}
         <GuideVersionNotice

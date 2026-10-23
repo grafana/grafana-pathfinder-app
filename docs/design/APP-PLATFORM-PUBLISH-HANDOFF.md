@@ -225,6 +225,8 @@ The CRD types a subset of the manifest, so the handoff projects rather than copi
 
 `id` is deliberately not emitted: `metadata.name` already carries it.
 
+**Author.** Finalize fills `manifest.author` before projecting, so the author appears in both `artifact.manifest` and `resource.spec.manifest`. A supplied author is kept. With none, it is `pathfinder-mcp` (git's `user.name` first on the stdio transport only). A fallback author (`pathfinder-mcp`, `pathfinder-block-editor`) is replaced only by a real identity, never by the other fallback. An artifact that carried no manifest gets the smallest valid one (`schemaVersion`, `id`, `type` taken from the content's own `type` when it is `guide`, `path`, or `journey` and `guide` otherwise, `author`). The fill happens after validation, so missing metadata never produces `status: "invalid"`. `startingLocation`, `minGrafanaVersion`, `targeting`, `category`, `description`, and `estimatedMinutes` are never invented.
+
 `spec.type` is likewise not emitted. `type` describes the package, not the guide content, and the CRD declares no `spec.type` — sending it earns a prune-with-`Warning` response from the API server.
 
 The projection lives in `src/cli/mcp/lib/crd-manifest.ts` and is exercised by `src/cli/mcp/lib/__tests__/crd-manifest.test.ts`.

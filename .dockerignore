@@ -49,6 +49,7 @@ scripts/copy-static.js
 scripts/sync-terms-and-conditions.js
 scripts/peerjs-server.js
 scripts/load-bigquery.bash
+scripts/bigquery
 scripts/manage-peerjs.sh
 
 docker-compose.yaml

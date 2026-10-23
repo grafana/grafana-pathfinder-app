@@ -27,7 +27,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
-import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from '../../completion-records';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../completion-records';
 import { useGuideResponsesOptional, type AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import {
   getGuideIndex,
@@ -64,6 +64,7 @@ export type MarkCompleteContext = 'guide' | 'milestone';
 export interface MarkCompleteFooterProps {
   context: MarkCompleteContext;
   completionIdentity?: AnalyticsCompletionIdentity;
+  guideTitle?: string;
   /**
    * The rendered content's URL. Not itself the storage key — a journey's
    * `content.url` carries a `/content.json` suffix the rest of the progress
@@ -97,6 +98,7 @@ export function MarkCompleteFooter({
   context,
   contentUrl,
   completionIdentity,
+  guideTitle,
   currentMilestone,
   totalMilestones,
   onMarkComplete,
@@ -227,9 +229,7 @@ export function MarkCompleteFooter({
     ) {
       return;
     }
-    // The button the reader just activated is about to unmount, and React
-    // would drop focus to `document.body`. A return visit that hydrates an
-    // existing mark must not steal focus, so only a click claims it.
+    // Only a click transfers focus when the button unmounts; hydration must not steal it.
     const active = getGuideIndex(contentKey);
     const choiceCompletionKeys =
       active?.choiceModel && responses
@@ -249,29 +249,28 @@ export function MarkCompleteFooter({
       refreshAndNotifyGuideProgress(contentKey);
     }
 
-    // A block-editor preview is an author iterating, not a reader: it records
-    // nothing, persists nothing and stays out of the click stream, because that
-    // stream exists to measure whether real readers use the control. The narrow
-    // URL predicate, not `isPreviewContentKey`: that one's `devtools` arm is a
-    // substring test, and this key is a URL.
+    // Editor previews must not persist completions or report learner activity.
     if (!isBlockEditorPreviewUrl(contentKey)) {
-      // The completion write must not wait on the celebration: a reader who
-      // navigates away mid-animation still completed the guide.
+      // Record before the celebration in case the reader navigates away.
       onMarkComplete?.();
 
-      reportAppInteraction(UserInteraction.MarkCompleteClicked, {
-        ...(completionIdentity && {
-          ...guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity }),
-          ...pathAnalyticsProperties(completionIdentity.pathIdentity),
-        }),
-        interaction_location: 'content_footer',
-        completion_context: context,
-        completion_percentage_before: percentage,
-        block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
-        ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
-        ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
-        ...getGuideBlockCountProperties(contentKey),
-      });
+      const path = pathAnalytics(completionIdentity?.pathIdentity);
+      reportAppInteraction(
+        UserInteraction.MarkCompleteClicked,
+        {
+          ...(completionIdentity &&
+            guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity, guideTitle })),
+          ...path.properties,
+          interaction_location: 'content_footer',
+          completion_context: context,
+          completion_percentage_before: percentage,
+          block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
+          ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
+          ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
+          ...getGuideBlockCountProperties(contentKey),
+        },
+        path.options
+      );
       void (
         choiceCompletionKeys === undefined
           ? guideCompletionMarkStorage.set(contentKey, true)
@@ -313,6 +312,7 @@ export function MarkCompleteFooter({
   }, [
     contentKey,
     completionIdentity,
+    guideTitle,
     completed,
     unansweredChoices,
     responses,
@@ -326,7 +326,6 @@ export function MarkCompleteFooter({
     renderCompleted,
   ]);
 
-  const displayPercentage = marked ? 100 : percentage;
   const label =
     context === 'milestone' && onContinue
       ? renderCompleted
@@ -338,21 +337,8 @@ export function MarkCompleteFooter({
     <div
       className={renderCompleted && completed ? styles.panelFooter : styles.footer}
       data-testid={testIds.markComplete.footer}
-      // Testing contract: `pending` until the stored mark has been read, while
-      // the percentage below still reads 0 for every guide.
       data-test-progress-state={hydrated ? 'ready' : 'pending'}
     >
-      {!(renderCompleted && completed) && (
-        <div className={styles.progress}>
-          <div className={styles.track}>
-            <div className={styles.fill} style={{ width: `${displayPercentage}%` }} />
-          </div>
-          <span className={styles.percentage} data-testid={testIds.markComplete.percentage}>
-            {t('markComplete.percentComplete', '{{percent}}% complete', { percent: displayPercentage })}
-          </span>
-        </div>
-      )}
-
       {completed ? (
         <div
           ref={completedRef}
@@ -417,40 +403,12 @@ function getStyles(theme: GrafanaTheme2) {
     footer: css({
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      justifyContent: 'flex-end',
       gap: theme.spacing(2),
       flexWrap: 'wrap',
       marginTop: theme.spacing(3),
       paddingTop: theme.spacing(2),
       borderTop: `1px solid ${theme.colors.border.weak}`,
-    }),
-    progress: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(1),
-      flex: '1 1 160px',
-      minWidth: 0,
-    }),
-    track: css({
-      flex: 1,
-      minWidth: 0,
-      height: '4px',
-      borderRadius: theme.shape.radius.pill,
-      backgroundColor: theme.colors.background.secondary,
-      overflow: 'hidden',
-    }),
-    fill: css({
-      height: '100%',
-      backgroundColor: theme.colors.success.main,
-      transition: 'width 600ms ease-out',
-      '@media (prefers-reduced-motion: reduce)': {
-        transition: 'none',
-      },
-    }),
-    percentage: css({
-      color: theme.colors.text.secondary,
-      fontSize: theme.typography.bodySmall.fontSize,
-      whiteSpace: 'nowrap',
     }),
     completed: css(completedBase, {
       '&:focus-visible': {

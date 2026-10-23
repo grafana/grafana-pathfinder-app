@@ -21,12 +21,14 @@ import {
   AnalyticsLinkType,
 } from '../../../lib/analytics';
 import {
+  isJourneyCoverPage,
   journeyProgressFromMilestones,
   resolveActiveMilestoneToolbarContext,
   resolveActiveMilestoneSequence,
 } from '../../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
+import { GuideProgressBar } from '../../guide-progress';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -433,6 +435,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 onResetGuide={handleResetGuide}
               />
               <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                {stableContent && (
+                  <GuideProgressBar contentUrl={stableContent.url} isCoverPage={isJourneyCoverPage(stableContent)} />
+                )}
                 {stableContent && surfaceCompletionInput && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
                     <GuideVersionNotice

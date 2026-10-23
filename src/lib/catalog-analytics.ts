@@ -1,9 +1,11 @@
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { catalogTopic } from './catalog-discovery';
+import type { CatalogPackage } from '../types/package-catalog.types';
 
 type CatalogInteraction =
   | { action: 'tab_click' }
   | { action: 'search'; topic: string }
-  | { action: 'topic'; topic: string; control: 'shortcut' | 'filter' }
+  | { action: 'topic'; topic: string; control: 'shortcut' | 'filter'; publicTopics?: ReadonlySet<string> }
   | { action: 'view'; view: 'explore' | 'all'; previousView: 'explore' | 'all' }
   | {
       action: 'source';
@@ -85,6 +87,21 @@ export function catalogSearchTopic(query: string): string {
   return SEARCH_ALIASES.get(keyword) ?? 'other';
 }
 
+/**
+ * Topics derived from official Grafana packages. Their categories are public, so
+ * they can be reported as-is; organization categories are customer-authored and
+ * stay bucketed as 'other' unless they're on the fixed list.
+ */
+export function publicCatalogTopics(
+  items: ReadonlyArray<Pick<CatalogPackage, 'id' | 'title' | 'category' | 'source'>>
+): ReadonlySet<string> {
+  return new Set(items.filter((item) => item.source === 'grafana').map(catalogTopic));
+}
+
+function reportableTopic(topic: string, publicTopics: ReadonlySet<string> | undefined): string {
+  return TOPICS.has(topic) || publicTopics?.has(topic) ? topic : 'other';
+}
+
 export function reportCatalogInteraction(interaction: CatalogInteraction): void {
   reportAppInteraction(UserInteraction.CatalogInteraction, {
     interaction_location: 'package_browser',
@@ -93,7 +110,7 @@ export function reportCatalogInteraction(interaction: CatalogInteraction): void 
       search_topic: Object.hasOwn(SEARCH_TOPICS, interaction.topic) ? interaction.topic : 'other',
     }),
     ...(interaction.action === 'topic' && {
-      topic: TOPICS.has(interaction.topic) ? interaction.topic : 'other',
+      topic: reportableTopic(interaction.topic, interaction.publicTopics),
       control: interaction.control,
     }),
     ...(interaction.action === 'view' && { view: interaction.view, previous_view: interaction.previousView }),

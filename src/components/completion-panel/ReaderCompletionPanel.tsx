@@ -4,7 +4,7 @@ import type { Milestone, RawContent } from '../../types/content.types';
 import { journeyProgressFromMilestones, type AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import { interactiveCompletionStorage } from '../../lib/user-storage';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../global-state/progress-events';
-import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from '../../completion-records';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../completion-records';
 import { AnalyticsContentType, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { CompletionPanel } from './CompletionPanel';
 
@@ -74,17 +74,18 @@ export default function ReaderCompletionPanel({
   const nextModule = onContinue
     ? sequence?.milestones.find((module) => module.number > sequence.currentMilestone && !module.isLocked)
     : undefined;
-  const analytics = useCallback(
-    () => ({
-      ...(completionIdentity && {
-        ...guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity }),
-        ...pathAnalyticsProperties(completionIdentity.pathIdentity),
-      }),
-      interaction_location: 'content_completion_panel',
-      completion_context: sequence ? 'milestone' : 'guide',
-    }),
-    [completionIdentity, sequence]
-  );
+  const analytics = useCallback(() => {
+    const path = pathAnalytics(completionIdentity?.pathIdentity);
+    return {
+      properties: {
+        ...(completionIdentity && guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity })),
+        ...path.properties,
+        interaction_location: 'content_completion_panel',
+        completion_context: sequence ? 'milestone' : 'guide',
+      },
+      options: path.options,
+    };
+  }, [completionIdentity, sequence]);
   const onView = useCallback(() => {
     if (viewed.has(identityKey)) {
       return;
@@ -96,14 +97,20 @@ export default function ReaderCompletionPanel({
       }
     }
     viewed.add(identityKey);
-    reportAppInteraction(UserInteraction.CompletionPanelViewed, analytics());
+    const { properties, options } = analytics();
+    reportAppInteraction(UserInteraction.CompletionPanelViewed, properties, options);
   }, [identityKey, analytics]);
   const continueModule = useCallback(async () => {
-    reportAppInteraction(UserInteraction.OpenResourceClick, {
-      ...analytics(),
-      content_type: AnalyticsContentType.LearningJourney,
-      completion_action: 'next_module',
-    });
+    const { properties, options } = analytics();
+    reportAppInteraction(
+      UserInteraction.OpenResourceClick,
+      {
+        ...properties,
+        content_type: AnalyticsContentType.LearningJourney,
+        completion_action: 'next_module',
+      },
+      options
+    );
     await onContinue?.();
   }, [analytics, onContinue]);
 

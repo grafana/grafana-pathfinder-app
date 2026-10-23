@@ -149,6 +149,25 @@
     "resetPathErrorTitle": "재설정 미완료",
     "subtitle": "진행 상황을 추적하고 배지를 획득하며 Grafana를 마스터하세요"
   },
+  "sidebarHub": {
+    "actionLabel": "",
+    "assignments": "",
+    "continueLabel": "",
+    "dueInDays_one": "",
+    "dueInDays_other": "",
+    "dueOn": "",
+    "dueToday": "",
+    "dueTomorrow": "",
+    "inProgress": "",
+    "moduleOf": "",
+    "moreRecommended": "",
+    "recommendedForYou": "",
+    "showAll": "",
+    "start": "",
+    "subtitle": "",
+    "welcomeBack": "",
+    "welcomeBackName": ""
+  },
   "userProfileBar": {
     "allComplete": "모든 경로 완료!",
     "allCompleteTooltip": "모든 학습 경로를 완료했습니다 — 수고하셨습니다!",

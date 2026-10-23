@@ -601,9 +601,31 @@ describe('tab-storage-restore', () => {
       expect(merged[0]!.pendingAlignment).toBeUndefined();
     });
 
+    it.each(['interactive', 'learning-journey'] as const)(
+      'keeps the loaded %s type when storage still describes a docs tab',
+      (type) => {
+        const content: RawContent = {
+          content: '# guide',
+          metadata: { title: 'guide' },
+          type,
+          url: 'https://grafana.com/docs/a/page/',
+          lastFetched: '2026-01-01T00:00:00.000Z',
+        };
+        const existing = [blank({ type, content })];
+        const restored = [blank({ title: 'Renamed elsewhere' })];
+
+        const [merged] = mergeRestoredTabsWithExisting(restored, existing);
+
+        expect(merged).toMatchObject({ type, title: 'Renamed elsewhere', isLoading: false, error: null });
+        expect(merged!.content).toBe(content);
+        expect(restored[0]!.type).toBe('docs');
+      }
+    );
+
     it('does not keep error or pendingAlignment without content', () => {
       const existing = [
         blank({
+          type: 'interactive',
           error: 'load failed',
           pendingAlignment: {
             startingLocation: '/x',
@@ -621,6 +643,7 @@ describe('tab-storage-restore', () => {
     it('does not keep content when currentUrl diverged', () => {
       const existing = [
         blank({
+          type: 'interactive',
           content: {
             content: '# old page',
             metadata: { title: 'old' },
@@ -633,6 +656,7 @@ describe('tab-storage-restore', () => {
       ];
       const restored = [blank({ currentUrl: 'https://grafana.com/docs/a/other/' })];
 
+      expect(mergeRestoredTabsWithExisting(restored, existing)[0]!.type).toBe('docs');
       expect(mergeRestoredTabsWithExisting(restored, existing)[0]!.content).toBeNull();
       expect(mergeRestoredTabsWithExisting(restored, existing)[0]!.currentUrl).toBe(
         'https://grafana.com/docs/a/other/'

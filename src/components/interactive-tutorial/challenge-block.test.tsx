@@ -126,6 +126,7 @@ function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest
     isExpanded: false,
     setIsExpanded: jest.fn(),
     _register: jest.fn(),
+    _unregister: jest.fn(),
   });
   return { openTerminal, disconnect };
 }
@@ -189,6 +190,16 @@ describe('ChallengeBlock', () => {
     render(<ChallengeBlock {...baseProps} />);
     expect(screen.getByRole('heading', { name: /fix the broken scrape/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+  });
+
+  it('offers the commands for review before starting and does not execute them on mount', () => {
+    mockTerminalCtx({ status: 'connected' });
+    render(<ChallengeBlock {...baseProps} setupScript="echo setup" />);
+    expect(screen.getByText('Review challenge commands')).toBeInTheDocument();
+    expect(screen.getByText('echo setup')).toBeInTheDocument();
+    expect(screen.getByText('curl -sf localhost:9090/-/healthy')).toBeInTheDocument();
+    expect(mockedExecInSession).not.toHaveBeenCalled();
+    expect(mockedCheckPostconditions).not.toHaveBeenCalled();
   });
 
   it('calls openTerminal with vm options on Start', async () => {
@@ -401,6 +412,7 @@ describe('ChallengeBlock', () => {
     await waitFor(() => {
       expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
     });
+    expect(mockedCheckPostconditions).toHaveBeenCalledWith(expect.objectContaining({ allowCodaExecution: true }));
     expect(eventSpy).toHaveBeenCalled();
     const dispatched = eventSpy.mock.calls[0]![0] as CustomEvent;
     expect(dispatched.detail).toMatchObject({ blockType: 'challenge', state: 'completed' });

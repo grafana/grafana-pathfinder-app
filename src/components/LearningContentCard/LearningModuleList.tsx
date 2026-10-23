@@ -11,12 +11,14 @@ export function LearningModuleList({
   progress,
   itemTestId,
   numbered = true,
+  compact = false,
 }: {
   modules: Milestone[];
   onOpen?: (member: Milestone) => void | Promise<unknown>;
   progress?: Record<string, number>;
   itemTestId?: (index: number) => string;
   numbered?: boolean;
+  compact?: boolean;
 }) {
   const styles = useStyles2(getLearningContentCardStyles);
   const [pending, setPending] = useState<number | null>(null);
@@ -51,13 +53,15 @@ export function LearningModuleList({
   };
   const List = numbered ? 'ol' : 'ul';
   return (
-    <List className={styles.modules}>
+    <List className={cx(styles.modules, compact && styles.modulesCompact)}>
       {modules.map((member, index) => {
         const percent = member.id ? progress?.[member.id] : undefined;
         const complete = percent === 100;
         const row = (
           <>
-            <span className={cx(styles.moduleNumber, complete && styles.completed)}>
+            <span
+              className={cx(styles.moduleNumber, compact && styles.moduleNumberCompact, complete && styles.completed)}
+            >
               {complete ? (
                 <Icon name="check" size="sm" />
               ) : numbered ? (
@@ -67,8 +71,8 @@ export function LearningModuleList({
               )}
             </span>
             <span className={styles.moduleContent}>
-              <span className={styles.moduleTitle}>{member.title}</span>
-              {member.description && <span className={styles.moduleDescription}>{member.description}</span>}
+              <span className={cx(styles.moduleTitle, compact && styles.moduleTitleCompact)}>{member.title}</span>
+              {member.description && !compact && <span className={styles.moduleDescription}>{member.description}</span>}
               <span className={styles.moduleMeta}>
                 {member.isLocked
                   ? t('learningCard.unavailable', 'Unavailable')
@@ -91,7 +95,7 @@ export function LearningModuleList({
           <li key={`${member.id || member.url || member.title}:${index}`}>
             {onOpen ? (
               <button
-                className={cx(styles.moduleRow, styles.moduleLink)}
+                className={cx(styles.moduleRow, compact && styles.moduleRowCompact, styles.moduleLink)}
                 disabled={member.isLocked || pending !== null}
                 data-testid={itemTestId?.(index)}
                 onClick={() => {
@@ -101,7 +105,7 @@ export function LearningModuleList({
                 {row}
               </button>
             ) : (
-              <div className={styles.moduleRow}>{row}</div>
+              <div className={cx(styles.moduleRow, compact && styles.moduleRowCompact)}>{row}</div>
             )}
             {pending === index && <span role="status">{t('learningCard.opening', 'Opening…')}</span>}
             {error === index && (

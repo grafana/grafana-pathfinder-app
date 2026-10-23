@@ -5,6 +5,14 @@ import { parseJsonGuide } from '../../docs-retrieval';
 import { BlockPreview } from './BlockPreview';
 import type { JsonGuide } from './types';
 
+const mockProgressUrls: Array<string | undefined> = [];
+jest.mock('../guide-progress', () => ({
+  GuideProgressBar: ({ contentUrl }: { contentUrl?: string }) => {
+    mockProgressUrls.push(contentUrl);
+    return <div data-testid="preview-progress-bar" />;
+  },
+}));
+
 const mockRenderedCompletions: unknown[] = [];
 jest.mock('../content-renderer/content-renderer', () => ({
   ContentRenderer: ({ completion }: { completion: unknown }) => {
@@ -65,6 +73,19 @@ describe('BlockPreview snippet handling', () => {
 });
 
 describe('BlockPreview completion', () => {
+  it('shows shared progress for the preview guide and follows guide changes', () => {
+    mockProgressUrls.length = 0;
+    const view = render(<BlockPreview guide={resolvedGuide} />);
+
+    expect(screen.getAllByTestId('preview-progress-bar')).toHaveLength(1);
+    expect(mockProgressUrls.at(-1)).toBe('block-editor://preview/preview-guide');
+
+    view.rerender(<BlockPreview guide={{ ...resolvedGuide, id: 'another-guide' }} />);
+
+    expect(screen.getAllByTestId('preview-progress-bar')).toHaveLength(1);
+    expect(mockProgressUrls.at(-1)).toBe('block-editor://preview/another-guide');
+  });
+
   it('mounts the renderer untracked, so a preview records nothing', () => {
     mockRenderedCompletions.length = 0;
 

@@ -20,6 +20,19 @@ import {
   type PathMemberJoinContext,
 } from './path-member-join';
 
+// Answers every id, so only the composite's resolver order decides an id collision.
+jest.mock('../package-engine/app-platform-resolver', () => ({
+  AppPlatformPackageResolver: jest.fn().mockImplementation(() => ({
+    resolve: async (packageId: string) => ({
+      ok: true,
+      id: packageId,
+      contentUrl: `backend-guide:${packageId}`,
+      manifestUrl: `app-platform:test/${packageId}`,
+      repository: 'app-platform',
+    }),
+  })),
+}));
+
 const EMPTY_CONTEXT: PathMemberJoinContext = {
   completedMemberIds: [],
   persistedPercentages: {},
@@ -180,14 +193,8 @@ describe('static path catalogues', () => {
 });
 
 describe('scheme precedence', () => {
-  // The join is tier 1 and cannot import package-engine at runtime, so its
-  // bundled-before-backend-guide group order is a mirror. Cross-check it
-  // against what the composite resolver actually answers for a bundled id: an
-  // App Platform tier moved ahead of bundled would answer a colliding id under
-  // `backend-guide:`, and this reddens instead of surfacing as a wrong member
-  // percentage. The composite's own collision rule is pinned in
-  // composite-resolver.test.ts.
-  it('consults the scheme createCompositeResolver resolves a bundled id to, first', async () => {
+  // The join cannot import package-engine, so its group order only mirrors the composite's.
+  it('consults first the scheme createCompositeResolver picks when bundled and App Platform both hold the id', async () => {
     const packageId = 'first-dashboard';
     const resolution = await createCompositeResolver({ acceptedTermsAndConditions: true }).resolve(packageId);
     if (!resolution.ok) {

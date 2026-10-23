@@ -96,6 +96,112 @@ it('offers Read more only when the rendered description is truncated', () => {
   }
 });
 
+it('lets a featured description that exceeds four lines expand and collapse', () => {
+  const measurement = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => 120);
+  const getStyle = window.getComputedStyle.bind(window);
+  const typography = jest.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = getStyle(element, pseudo);
+    if (element.tagName === 'P') {
+      style.lineHeight = '18px';
+      style.fontSize = '13px';
+    }
+    return style;
+  });
+  try {
+    render(
+      <LearningContentCard
+        title="A starter path"
+        kind="path"
+        variant="featured"
+        expandableDescription
+        onLaunch={jest.fn()}
+        description="A very long overview that runs well past the four lines the featured card shows."
+      />
+    );
+    const toggle = screen.getByRole('button', { name: 'Read more' });
+    expect(screen.getByText(/A very long overview/)).toHaveStyle({ WebkitLineClamp: '4' });
+    fireEvent.click(toggle);
+    expect(screen.getByText(/A very long overview/)).not.toHaveStyle({ WebkitLineClamp: '4' });
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(screen.getByRole('button', { name: 'Read more' })).toHaveAttribute('aria-expanded', 'false');
+  } finally {
+    measurement.mockRestore();
+    typography.mockRestore();
+  }
+});
+
+it('offers no summary toggle on a featured card unless it opts in to expanding', () => {
+  const measurement = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => 120);
+  const getStyle = window.getComputedStyle.bind(window);
+  const typography = jest.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = getStyle(element, pseudo);
+    if (element.tagName === 'P') {
+      style.lineHeight = '18px';
+      style.fontSize = '13px';
+    }
+    return style;
+  });
+  try {
+    render(
+      <LearningContentCard
+        title="A starter path"
+        kind="path"
+        variant="featured"
+        onLaunch={jest.fn()}
+        details={<p>Module link</p>}
+        description="A very long overview that runs well past the four lines the featured card shows."
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'Read more' })).not.toBeInTheDocument();
+    expect(screen.getByText(/A very long overview/)).not.toHaveStyle({ WebkitLineClamp: '4' });
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('Module link')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show less' })).not.toBeInTheDocument();
+  } finally {
+    measurement.mockRestore();
+    typography.mockRestore();
+  }
+});
+
+it('keeps the featured primary action last, after the toggle and the details, when it sits at the bottom', () => {
+  const { rerender } = render(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      actionAtBottom
+      expanded
+      onToggleDetails={jest.fn()}
+      details={<p>Module link</p>}
+      effort="3 modules"
+      onLaunch={jest.fn()}
+    />
+  );
+  const follows = (before: HTMLElement, after: HTMLElement) =>
+    Boolean(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const start = screen.getByRole('button', { name: 'Start path' });
+  expect(follows(screen.getByRole('button', { name: 'Hide details' }), screen.getByText('Module link'))).toBe(true);
+  expect(follows(screen.getByText('Module link'), start)).toBe(true);
+  expect(follows(screen.getByText('3 modules'), start)).toBe(true);
+
+  rerender(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      expanded
+      onToggleDetails={jest.fn()}
+      details={<p>Module link</p>}
+      effort="3 modules"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(
+    follows(screen.getByRole('button', { name: 'Start path' }), screen.getByRole('button', { name: 'Hide details' }))
+  ).toBe(true);
+});
+
 it('prevents duplicate launches and keeps failure recovery inside the card', async () => {
   let reject: (error: Error) => void = () => {};
   const onLaunch = jest.fn(
@@ -210,4 +316,21 @@ it('keeps visible completion verbs short while naming their destination accessib
     />
   );
   expect(screen.getByRole('button', { name: 'Start Next guide' })).toHaveTextContent('Start');
+});
+
+it('lets a featured card carry its own eyebrow and badges', () => {
+  render(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      eyebrow="Recommended for you"
+      badges={<span>Alerting</span>}
+      onLaunch={jest.fn()}
+    />
+  );
+
+  expect(screen.getByText('Recommended for you')).toBeInTheDocument();
+  expect(screen.queryByText('A good place to start')).not.toBeInTheDocument();
+  expect(screen.getByText('Alerting')).toBeInTheDocument();
 });

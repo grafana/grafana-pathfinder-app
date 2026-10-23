@@ -863,3 +863,53 @@ it('does not complete a formfill step from a field that assistance filled on ano
     jest.useRealTimers();
   }
 });
+
+it.each(['interactive', 'controller'] as const)(
+  'allows a manual command objective in %s mode, but never on mount',
+  async (mode) => {
+    const done = jest.fn();
+    mockCheck.mockImplementation(async ({ allowCodaExecution }) => ({
+      pass: allowCodaExecution === true,
+      verdict: allowCodaExecution === true ? 'satisfied' : 'unsatisfied',
+    }));
+    if (mode === 'controller') {
+      mockControllerChannel = {
+        post: jest.fn(),
+        onObservation: jest.fn(() => () => {}),
+        requestRequirementCheck: jest.fn(async (_id, _conditions, options) => mockCheck(options)),
+      };
+    }
+    render(
+      <InteractiveModeContext.Provider value={mode}>
+        <CompletionObservationProvider contentKey="guide">
+          <Step objectives={['coda-exit-zero:true']} onComplete={done} />
+        </CompletionObservationProvider>
+      </InteractiveModeContext.Provider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockCheck).not.toHaveBeenCalled();
+    expect(done).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Assist'));
+    await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+    expect(mockCheck).toHaveBeenCalledWith(expect.objectContaining({ allowCodaExecution: true }));
+    if (mode === 'controller') {
+      expect(mockControllerChannel?.requestRequirementCheck).toHaveBeenCalledWith(
+        'step',
+        ['coda-exit-zero:true'],
+        expect.objectContaining({ allowCodaExecution: true })
+      );
+    }
+  }
+);
+
+it('keeps automatic objective evaluation opted out of command execution', async () => {
+  render(
+    <CompletionObservationProvider contentKey="guide">
+      <Step objectives={['has-datasources']} onComplete={jest.fn()} />
+    </CompletionObservationProvider>
+  );
+  await waitFor(() => expect(mockCheck).toHaveBeenCalled());
+  expect(mockCheck).toHaveBeenCalledWith(expect.objectContaining({ allowCodaExecution: false }));
+});

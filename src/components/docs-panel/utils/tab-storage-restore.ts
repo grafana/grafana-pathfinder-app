@@ -223,17 +223,8 @@ export async function restoreTabsFromStorage(
 }
 
 /**
- * Reconcile a storage-built tab strip with the model's current in-memory tabs.
- *
- * `restoreTabsFromStorage` always emits `content: null`. A wholesale
- * `setState({ tabs })` on force restore would drop every loaded snapshot and
- * refetch — same cost as a reload, on every fullscreen/floating round trip.
- *
- * When a restored tab shares an id and `currentUrl` with an existing tab that
- * already has content, keep that content (and `pathContext`) and take the rest
- * from storage. Do not carry `pendingAlignment`, `error`, or a mid-flight
- * `isLoading`: those are surface-local, and preserving them would block the
- * normal retry / `browser_restore` paths that a blank restore used to hit.
+ * Loaded content and its resolved type must stay paired when storage contains an earlier snapshot.
+ * Loading, errors, and alignment remain surface-local and must not survive restoration.
  */
 export function mergeRestoredTabsWithExisting(
   restoredTabs: LearningJourneyTab[],
@@ -254,6 +245,7 @@ export function mergeRestoredTabsWithExisting(
     return {
       ...restored,
       content: existing.content,
+      type: existing.type,
       pathContext: existing.pathContext,
       isLoading: false,
       error: null,

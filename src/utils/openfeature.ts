@@ -60,6 +60,12 @@ const pathfinderFeatureFlags = {
     defaultValue: true,
     trackingKey: 'package_browser',
   },
+  'pathfinder.sidebar-hub': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'sidebar_hub',
+  },
   'pathfinder.help-button-nudge-experiment': {
     valueType: 'object',
     values: ['excluded', 'control', 'learn', 'learn_hint'].map((variant) => ({ variant })),
@@ -187,6 +193,16 @@ const pathfinderFeatureFlags = {
     values: [true, false],
     defaultValue: false,
     trackingKey: 'intercept_docs_links',
+  },
+  /**
+   * Kill switch for implicit section recovery: pausing a section the learner
+   * drifted out of and offering Restore. Read once per page load.
+   */
+  'pathfinder.section-recovery': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: true,
+    trackingKey: 'section_recovery',
   },
   /**
    * Kill switch for the `guide_progress` and `guide_completed` analytics

@@ -54,10 +54,16 @@ function spec(name: string): CommandSpec {
 describe('published content parameters have a destination', () => {
   // `create` seeds both files a package is made of, so either is a destination:
   // `title` reaches content.json, `description` the manifest, and `id` and `type`
-  // both. Its fields are hand-declared (see create.ts), so this is a real check —
-  // renaming a field there without updating either artifact schema would surface here.
+  // both. `authorName` and `authorTeam` land in `manifest.author`, the same flattened
+  // parameters `set-manifest` publishes. Its fields are hand-declared (see create.ts),
+  // so this is a real check — renaming a field there without updating either artifact
+  // schema would surface here.
   it('create publishes nothing neither file would hold', () => {
-    const destination = new Set([...shapeKeys(ContentJsonSchema), ...shapeKeys(ManifestJsonObjectSchema)]);
+    const destination = new Set([
+      ...shapeKeys(ContentJsonSchema),
+      ...shapeKeys(ManifestJsonObjectSchema),
+      ...FLATTENED_MANIFEST_PARAMS,
+    ]);
     const orphaned = publishedContentNames('create', spec('create')).filter((param) => !destination.has(param));
     expect(orphaned).toEqual([]);
   });

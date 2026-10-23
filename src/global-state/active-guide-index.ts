@@ -142,16 +142,40 @@ export function getGuideIndexEvictionRevision(): number {
   return evictionRevision;
 }
 
+/** Publication subscribers are notified on first insert for a content key. */
+const publicationListeners = new Set<() => void>();
+let publicationRevision = 0;
+
+function notifyPublished(): void {
+  publicationRevision += 1;
+  publicationListeners.forEach((listener) => listener());
+}
+
+/** Subscribe to index publications. Returns unsubscribe function. */
+export function subscribeGuideIndexPublications(listener: () => void): () => void {
+  publicationListeners.add(listener);
+  return () => {
+    publicationListeners.delete(listener);
+  };
+}
+
+/** Get current publication revision (for useSyncExternalStore). */
+export function getGuideIndexPublicationRevision(): number {
+  return publicationRevision;
+}
+
 /**
  * Publish the frozen index for a content key. Idempotent: a later call for
  * a content key that already has one is ignored rather than overwriting —
  * the index is frozen for the life of that key, not just at first publish.
+ * Notifies publication subscribers when a NEW index is actually inserted.
  */
 export function publishGuideIndex(entry: ActiveGuideIndex): void {
   if (activeIndexes.has(entry.contentKey)) {
     return;
   }
   activeIndexes.set(entry.contentKey, entry);
+  notifyPublished();
 }
 
 export function getGuideIndex(contentKey: string): ActiveGuideIndex | undefined {

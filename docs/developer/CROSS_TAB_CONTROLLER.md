@@ -85,7 +85,10 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 - `heartbeat` — `{ role: 'controller' | 'live' }`
 - `pairing-challenge` / `pairing-accept` — the authenticated launch handshake
   that binds the controller session to one live tab.
-- `sidebar-handoff` — `{ action: 'close' | 'reopen' }`, transfers ownership of
+- `navigate-link` — `{ url }`, a signed controller → live request for an ordinary guide hyperlink.
+  Only same-origin HTTP(S) destinations passing the internal navigation policy are opened in the main tab.
+  The link sends no explicit step-completion message. With passive completion enabled, its resulting navigation can complete an eligible pending navigate step whose destination matches. External links, fragment links, downloads, and modified clicks retain their normal behavior.
+- `sidebar-handoff` — `{ action: 'close' | 'reopen', position?: { doc, milestoneUrl, trackId? } }`, transfers ownership of
   the sidebar while the controller is active.
 - `check-requirements` / `requirement-result` — the requirement round-trip
   (controller → live → controller), correlated by `requestId`. `passive: true`
@@ -130,7 +133,7 @@ DOM sink and is **not** unconditionally safe to install — see the trust model.
 
 ## Entry gate and mount policy
 
-Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on two conditions: the `enableTwoTabController` admin setting (plugin config → Interactive features, default **off**), and `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. The admin setting ships the feature dark until an instance opts in; the kill-switch keeps it aligned with the rest of the plugin. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
+Both the controller overlay (`?controller=1` path) and the live-tab executor install are gated on two conditions: the `enableTwoTabController` admin setting (plugin config → Interactive features, default **on**), and `pathfinderEnabled` (the `pathfinder.enabled` kill-switch) — the same policy that controls whether the main Pathfinder sidebar mounts. Admins can turn the feature off; an explicitly saved off preference overrides the default. The kill-switch keeps it aligned with the rest of the plugin. Because the executor drives the user's authenticated Grafana DOM, it must follow the same mount gate as the rest of the plugin.
 
 ## Security / trust model
 
@@ -138,7 +141,7 @@ Both the controller overlay (`?controller=1` path) and the live-tab executor ins
 > [`docs/design/CONCERN_DETAILS.md`](../design/CONCERN_DETAILS.md) is the canonical review checklist
 > for these files. It fires on any single touch of the cross-tab files and enumerates
 > the trust invariants below — signed commands, gesture-to-accept pairing, the per-kind
-> validation gate, and the `enableTwoTabController` re-enable one-way door — that a
+> validation gate, and the `enableTwoTabController` default-on one-way door — that a
 > reviewer must confirm before merge.
 
 `BroadcastChannel` is shared by every script running on the same origin, so a
@@ -173,7 +176,7 @@ drive that Grafana. The controller→live command path is therefore
   cleared and both launches revoked); a rejected session stays suppressed; an
   expired pending challenge can be retried.
 - **Signed commands.** Every side-effecting message — `step-command`, `step-cancel`,
-  `check-requirements`, `fix-requirement`, `sidebar-handoff`, `observation-subscribe`,
+  `check-requirements`, `fix-requirement`, `sidebar-handoff`, `navigate-link`, `observation-subscribe`,
   `observation-cancel` — is ECDSA-signed
   and bound to `sessionId`, `liveTabId`, the command body, a fresh `sigNonce`,
   and a `sigTs`. The executor's auth gate (`verifySignedMessage`) checks the
@@ -191,8 +194,8 @@ Defense in depth on top of authentication:
   or unknown-kind messages are dropped before the auth gate is even consulted.
 - **Install/entry gating.** The executor is installed, and the controller
   overlay mounted, only when the `enableTwoTabController` admin setting is on
-  _and_ `pathfinderEnabled` is true — a disabled plugin, or an instance that
-  hasn't opted in, exposes neither the sink nor the driver.
+  _and_ `pathfinderEnabled` is true — a disabled plugin, or an instance whose
+  admin turned the setting off, exposes neither the sink nor the driver.
 - **Same-build / same-origin / one-session assumption.** Controller and live
   tabs are the same plugin build in the same browser profile and session; there
   is no protocol-version negotiation and cross-version compatibility is not a

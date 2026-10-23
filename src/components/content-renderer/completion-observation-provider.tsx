@@ -48,7 +48,7 @@ interface CheckSettings {
 function createObservationCheck() {
   let settings: CheckSettings | undefined;
   const inFlight = new Map<string, Promise<boolean | undefined>>();
-  const check: ObservationCheck = async (conditions, step, signal) => {
+  const check: ObservationCheck = async (conditions, step, signal, checkCommand = false) => {
     if (!settings) {
       return undefined;
     }
@@ -56,6 +56,7 @@ function createObservationCheck() {
     const action = step.actions[0];
     const options = {
       requirements: conditions,
+      allowCodaExecution: checkCommand,
       stepId: step.stepId,
       targetAction: action?.targetAction,
       refTarget: action?.refTarget,
@@ -84,7 +85,7 @@ function createObservationCheck() {
       const remote = await channel.requestRequirementCheck(step.stepId, remaining, { ...options, passive: true });
       return remote === null ? undefined : outcome(remote);
     };
-    const key = JSON.stringify([mode, conditions, step.actions[0]]);
+    const key = JSON.stringify([mode, conditions, step.actions[0], checkCommand]);
     let pending = inFlight.get(key);
     if (!pending) {
       if (inFlight.size >= 4) {
