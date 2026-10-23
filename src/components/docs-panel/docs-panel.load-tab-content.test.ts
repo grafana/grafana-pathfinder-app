@@ -326,6 +326,43 @@ describe.each([false, true])('milestone navigation failure with docs loader %s',
     expect(panel.getActiveTab()).toMatchObject({ content: preparedContent, isLoading: false, error: null });
   });
 
+  it.each(['success', 'error', 'rejection'] as const)(
+    'resolves a superseded rejectOnError load after a stale %s without changing newer content',
+    async (settlement) => {
+      const panel = makePanel();
+      const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;
+      let resolve!: (result: unknown) => void;
+      let reject!: (error: Error) => void;
+      fetch.mockReturnValueOnce(
+        new Promise((resolveLoad, rejectLoad) => {
+          resolve = resolveLoad;
+          reject = rejectLoad;
+        })
+      );
+
+      const staleNavigation = panel.navigateToNextMilestone({ rejectOnError: true });
+      const resolved = expect(staleNavigation).resolves.toBeUndefined();
+      const newerContent = { ...preparedContent, url: 'bundled:newer' };
+      fetch.mockResolvedValueOnce({ content: newerContent });
+      await panel.loadTab('journey-tab', newerContent.url);
+      const newerTab = panel.getActiveTab();
+      expect(newerTab).toMatchObject({ content: newerContent, currentUrl: newerContent.url, error: null });
+
+      if (settlement === 'rejection') {
+        reject(new Error('Stale fetch failed'));
+      } else {
+        resolve(
+          settlement === 'success'
+            ? { content: { ...preparedContent, url: 'bundled:next' } }
+            : { content: null, error: 'Stale fetch failed', errorType: 'other' }
+        );
+      }
+
+      await resolved;
+      expect(panel.getActiveTab()).toBe(newerTab);
+    }
+  );
+
   it('preserves non-rejecting tab-error behavior for existing navigation and load callers', async () => {
     const panel = makePanel();
     const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;

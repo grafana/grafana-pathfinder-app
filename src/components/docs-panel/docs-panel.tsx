@@ -50,7 +50,6 @@ import {
 } from '../../lib/analytics';
 import { rewriteGuideTrees } from '../../lib/guide-counting-source';
 import { logger } from '../../lib/logging';
-import type { GuideLoadOutcome } from '../../lib/telemetry';
 import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import {
@@ -150,6 +149,8 @@ import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../t
 import { getPackageRenderType } from '../../types/package.types';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
+
+type TabLoadOutcome = 'completed' | 'error' | 'superseded';
 
 /**
  * Newest in-flight `saveTabsToStorage`, shared across panel models.
@@ -531,7 +532,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const needsDocsLoader =
       isPackageContentUrl(url) || options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
     const keepContentVisible = options?.rejectOnError === true && tab?.content != null;
-    let outcome: GuideLoadOutcome;
+    let outcome: TabLoadOutcome;
     if (needsDocsLoader) {
       outcome = await this.loadDocsTabContent(
         tabId,
@@ -557,7 +558,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     prefetched?: RawContent,
     loadContext?: GuideLoadContext,
     keepContentVisible = false
-  ): Promise<GuideLoadOutcome> {
+  ): Promise<TabLoadOutcome> {
     if (!url || url.trim() === '') {
       logger.error(`loadTabContent called with an empty URL for tab ${tabId}`);
       finishGuideLoad(loadContext, 'error', { source: 'other', stage: 'resolve', reason: 'invalid-url' });
@@ -576,7 +577,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       const result = prefetched ? { content: prefetched } : await fetchContent(url, { loadContext });
 
       if (this.guideLoads.get(tabId) !== loadContext) {
-        return 'error';
+        return 'superseded';
       }
       if (result.content) {
         markGuideLoadStage(loadContext, 'render');
@@ -646,7 +647,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
     } catch (error) {
       if (this.guideLoads.get(tabId) !== loadContext) {
-        return 'error';
+        return 'superseded';
       }
       finishGuideLoad(loadContext, 'error', diagnoseGuideError(error, loadContext?.source ?? 'other', 'prepare'));
       logger.error('Failed to load journey content');
@@ -1007,7 +1008,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     explicitGuideId?: string,
     loadContext?: GuideLoadContext,
     keepContentVisible = false
-  ): Promise<GuideLoadOutcome> {
+  ): Promise<TabLoadOutcome> {
     // Outgoing content preserves track identity if this load's path resolution fails.
     const outgoingContent = this.state.tabs.find((t) => t.id === tabId)?.content;
     const knownBaseUrl =
@@ -1039,7 +1040,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           });
 
       if (this.guideLoads.get(tabId) !== loadContext) {
-        return 'error';
+        return 'superseded';
       }
       if (result.content) {
         markGuideLoadStage(loadContext, 'render');
@@ -1088,7 +1089,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       }
     } catch (error) {
       if (this.guideLoads.get(tabId) !== loadContext) {
-        return 'error';
+        return 'superseded';
       }
       finishGuideLoad(loadContext, 'error', diagnoseGuideError(error, loadContext?.source ?? 'other', 'prepare'));
       logger.error('Failed to load docs content');
