@@ -52,6 +52,29 @@ it.each(['dark', 'light'] as const)('uses semantic container and accent tokens f
   );
 });
 
+it.each([
+  ['dark', false],
+  ['light', false],
+  ['dark', true],
+  ['light', true],
+] as const)('uses host card surfaces in %s mode with visual refresh=%s', (mode, enabled) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.flags.visualDesignRefresh = enabled;
+  theme.colors.background.primary = '#123456';
+  theme.colors.background.secondary = '#654321';
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.card]).toContain(`background:${enabled ? '#123456' : '#654321'}`);
+  if (enabled) {
+    expect(cache.registered[styles.featured]).toContain('background:#123456');
+    expect(cache.registered[styles.featured]).not.toContain('linear-gradient');
+  } else {
+    expect(cache.registered[styles.featured]).toContain(
+      `background:linear-gradient(120deg, ${theme.colors.accent.background}, #654321)`
+    );
+  }
+  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.accent.border}`);
+});
+
 it.each(['dark', 'light'] as const)('renders featured cards without accent tokens in %s mode', (mode) => {
   const theme = createTheme({ colors: { mode } });
   Reflect.deleteProperty(theme.colors, 'accent');

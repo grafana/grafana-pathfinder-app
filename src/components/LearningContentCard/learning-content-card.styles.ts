@@ -13,7 +13,7 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       gridTemplateColumns: '38px minmax(0, 1fr)',
       alignItems: 'start',
       gap: theme.spacing(1.5),
-      background: theme.colors.background.secondary,
+      background: theme.flags.visualDesignRefresh ? theme.colors.background.primary : theme.colors.background.secondary,
       border: `1px solid ${theme.colors.border.weak}`,
       borderRadius: theme.shape.radius.lg,
       containerType: 'inline-size',
@@ -33,7 +33,9 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       padding: theme.spacing(2.5),
       borderRadius: theme.shape.radius.lg,
       borderColor: theme.colors.accent?.border ?? theme.colors.primary.border,
-      background: `linear-gradient(120deg, ${theme.colors.accent?.background ?? theme.colors.primary.transparent}, ${theme.colors.background.secondary})`,
+      background: theme.flags.visualDesignRefresh
+        ? theme.colors.background.primary
+        : `linear-gradient(120deg, ${theme.colors.accent?.background ?? theme.colors.primary.transparent}, ${theme.colors.background.secondary})`,
       '@container (max-width: 340px)': { padding: theme.spacing(2) },
     }),
     featuredHeader: css({ display: 'flex', alignItems: 'flex-start', gap: theme.spacing(1.75), minWidth: 0 }),
