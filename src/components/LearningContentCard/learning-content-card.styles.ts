@@ -84,7 +84,7 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
         overflowWrap: 'anywhere',
       },
     }),
-    action: css({ marginLeft: 'auto', flexShrink: 0, minHeight: theme.spacing(4) }),
+    action: css({ marginLeft: 'auto', flexShrink: 0 }),
     badges: css({
       display: 'flex',
       alignItems: 'center',
