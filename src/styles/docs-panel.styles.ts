@@ -115,11 +115,11 @@ export const addGlobalModalStyles = () => {
 export const getContainerStyles = (theme: GrafanaTheme2) => ({
   container: css({
     label: 'combined-journey-container',
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: '0',
+    backgroundColor: theme.flags.visualDesignRefresh ? theme.colors.background.page : theme.colors.background.primary,
+    borderRadius: 0,
     display: 'flex',
     flexDirection: 'column',
-    overflow: 'hidden', // Keep container contained
+    overflow: 'hidden',
     margin: 0,
     height: '100%',
     width: '100%',

@@ -1,6 +1,9 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LearningContentCard } from './LearningContentCard';
+import { cache } from '@emotion/css';
+import { createTheme } from '@grafana/data';
+import { getLearningContentCardStyles } from './learning-content-card.styles';
 
 jest.mock('@grafana/ui', () => {
   const actual = jest.requireActual('@grafana/ui');
@@ -33,6 +36,20 @@ jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
     fallback.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? '')),
 }));
+
+it.each(['dark', 'light'] as const)('uses semantic container and accent tokens for %s cards', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.shape.radius.lg = '11px';
+  theme.colors.accent.border = '#f59e4b';
+  theme.colors.accent.background = '#714015';
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.card]).toContain('border-radius:11px');
+  expect(cache.registered[styles.featured]).toContain('border-radius:11px');
+  expect(cache.registered[styles.featured]).toContain('border-color:#f59e4b');
+  expect(cache.registered[styles.featured]).toContain(
+    `background:linear-gradient(120deg, #714015, ${theme.colors.background.secondary})`
+  );
+});
 
 it('discloses details without launching, moving focus, or hiding the primary action', () => {
   const onLaunch = jest.fn();
