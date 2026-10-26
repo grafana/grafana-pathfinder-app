@@ -52,6 +52,18 @@ it.each(['dark', 'light'] as const)('uses semantic container and accent tokens f
   );
 });
 
+it.each(['dark', 'light'] as const)('renders featured cards without accent tokens in %s mode', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  Reflect.deleteProperty(theme.colors, 'accent');
+  Reflect.deleteProperty(theme.colors.primary, 'background');
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.primary.border}`);
+  expect(cache.registered[styles.featured]).toContain(
+    `background:linear-gradient(120deg, ${theme.colors.primary.transparent}, ${theme.colors.background.secondary})`
+  );
+  expect(cache.registered[styles.featured]).not.toContain('undefined');
+});
+
 it('leaves launch button height and padding to the Grafana Button component', () => {
   const styles = getLearningContentCardStyles(createTheme());
   expect(cache.registered[styles.action]).not.toMatch(/(?:height|padding):/);
