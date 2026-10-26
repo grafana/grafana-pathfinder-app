@@ -2,6 +2,33 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LearningContentCard } from './LearningContentCard';
 
+jest.mock('@grafana/ui', () => {
+  const actual = jest.requireActual('@grafana/ui');
+  return {
+    ...actual,
+    Button: React.forwardRef<HTMLButtonElement, React.ComponentProps<typeof actual.Button>>(
+      function Button(props, ref) {
+        return <actual.Button {...props} ref={ref} data-button-variant={props.variant ?? 'primary'} />;
+      }
+    ),
+  };
+});
+
+it('reserves primary emphasis for the featured launch rather than ordinary recommendations', () => {
+  render(
+    <>
+      <LearningContentCard title="Featured" variant="featured" kind="guide" onLaunch={jest.fn()} />
+      <LearningContentCard title="Another guide" kind="guide" onLaunch={jest.fn()} />
+      <LearningContentCard title="A path" kind="path" onLaunch={jest.fn()} />
+      <LearningContentCard title="Documentation" kind="docs" onLaunch={jest.fn()} />
+    </>
+  );
+  const launches = screen.getAllByRole('button');
+  expect(launches.filter((button) => button.dataset.buttonVariant === 'primary')).toHaveLength(1);
+  expect(launches[0]).toHaveAttribute('data-button-variant', 'primary');
+  launches.slice(1).forEach((button) => expect(button).toHaveAttribute('data-button-variant', 'secondary'));
+});
+
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
     fallback.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? '')),
