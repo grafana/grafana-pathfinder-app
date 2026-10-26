@@ -250,7 +250,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
       backgroundColor: theme.colors.action.hover,
     },
     '&:focus': {
-      outline: `2px solid ${theme.colors.accent.main}`,
+      outline: `2px solid ${theme.colors.accent?.main ?? theme.colors.primary.main}`,
       outlineOffset: '2px',
     },
     '&:active': {
@@ -722,7 +722,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-step-revealed': {
-    boxShadow: `0 0 0 2px ${theme.colors.accent.border}`,
+    boxShadow: `0 0 0 2px ${theme.colors.accent?.border ?? theme.colors.primary.border}`,
     transition: 'box-shadow 0.3s ease',
   },
 
@@ -936,7 +936,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     width: '14px',
     height: '14px',
     border: `2px solid ${theme.colors.border.weak}`,
-    borderTopColor: theme.colors.accent.main,
+    borderTopColor: theme.colors.accent?.main ?? theme.colors.primary.main,
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
@@ -1092,7 +1092,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     position: 'absolute',
     top: 0,
     height: '100%',
-    background: `linear-gradient(90deg, ${theme.colors.accent.main} 0%, ${theme.colors.accent.mainEmphasis} 100%)`,
+    background: `linear-gradient(90deg, ${theme.colors.accent?.main ?? theme.colors.primary.main} 0%, ${theme.colors.accent?.mainEmphasis ?? theme.colors.primary.shade} 100%)`,
     borderRadius: theme.shape.radius.sm,
     animation: 'progressPulse 1.2s ease-in-out infinite',
   },
