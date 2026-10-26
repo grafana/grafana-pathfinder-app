@@ -4,6 +4,7 @@ import { LearningContentCard } from './LearningContentCard';
 import { cache } from '@emotion/css';
 import { createTheme } from '@grafana/data';
 import { getLearningContentCardStyles } from './learning-content-card.styles';
+import { getLearningTopicVisual } from './learning-topic-visual';
 
 jest.mock('@grafana/ui', () => {
   const actual = jest.requireActual('@grafana/ui');
@@ -49,6 +50,22 @@ it.each(['dark', 'light'] as const)('uses semantic container and accent tokens f
   expect(cache.registered[styles.featured]).toContain(
     `background:linear-gradient(120deg, #714015, ${theme.colors.background.secondary})`
   );
+});
+
+it('leaves launch button height and padding to the Grafana Button component', () => {
+  const styles = getLearningContentCardStyles(createTheme());
+  expect(cache.registered[styles.action]).not.toMatch(/(?:height|padding):/);
+});
+
+it.each(['dark', 'light'] as const)('uses info tokens for unclassified card icons in %s mode', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.colors.info.text = '#346acc';
+  theme.colors.info.background = '#dae6ff';
+  theme.colors.info.border = '#96b9fa';
+  const visual = getLearningTopicVisual(undefined, theme);
+  expect(visual.color).toBe(theme.colors.info.text);
+  expect(visual.background).toBe(theme.colors.info.background);
+  expect(visual.border).toBe(theme.colors.info.border);
 });
 
 it('discloses details without launching, moving focus, or hiding the primary action', () => {

@@ -15,12 +15,17 @@ describe.each(['dark', 'light'] as const)('visual refresh in %s mode', (mode) =>
   theme.shape.radius.md = '7px';
   theme.shape.radius.lg = '11px';
 
-  it.each([contextContainer, docsContainer])('gates shell page backgrounds on the theme refresh flag', (getStyles) => {
-    theme.flags.visualDesignRefresh = false;
-    expect(rules(getStyles(theme).container)).toContain(`background-color:${theme.colors.background.primary}`);
-    theme.flags.visualDesignRefresh = true;
-    expect(rules(getStyles(theme).container)).toContain(`background-color:${theme.colors.background.page}`);
-  });
+  it.each([contextContainer, docsContainer])(
+    'lets Grafana own the shell background with either refresh flag state',
+    (getStyles) => {
+      for (const enabled of [false, true]) {
+        theme.flags.visualDesignRefresh = enabled;
+        const styles = rules(getStyles(theme).container);
+        expect(styles).not.toMatch(/background(?:-color)?:/);
+        expect(styles).not.toMatch(/(?:^|;)border:/);
+      }
+    }
+  );
 
   it('uses accent for guided progress and leaves the loading spinner circular', () => {
     const styles = rules(getInteractiveStyles(theme));
