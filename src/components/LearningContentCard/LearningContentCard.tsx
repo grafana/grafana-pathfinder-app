@@ -165,6 +165,7 @@ export function LearningContentCard({
     <Button
       ref={actionRef}
       aria-label={actionAriaLabel}
+      variant={featured ? 'primary' : 'secondary'}
       className={bottomAction ? undefined : styles.action}
       size={bottomAction ? 'md' : 'sm'}
       fullWidth={bottomAction}

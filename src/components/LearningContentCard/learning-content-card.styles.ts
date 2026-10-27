@@ -13,9 +13,9 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       gridTemplateColumns: '38px minmax(0, 1fr)',
       alignItems: 'start',
       gap: theme.spacing(1.5),
-      background: theme.colors.background.secondary,
+      background: theme.flags.visualDesignRefresh ? theme.colors.background.primary : theme.colors.background.secondary,
       border: `1px solid ${theme.colors.border.weak}`,
-      borderRadius: `calc(${theme.shape.radius.default} * 2)`,
+      borderRadius: theme.shape.radius.lg,
       containerType: 'inline-size',
       transition: 'border-color 150ms ease',
       '@container (max-width: 340px)': {
@@ -41,11 +41,11 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       flexDirection: 'column',
       gap: theme.spacing(1.5),
       padding: theme.spacing(2.5),
-      borderRadius: 12,
-      borderColor: theme.isDark ? 'rgba(139,143,238,0.25)' : 'rgba(82,95,180,0.25)',
-      background: theme.isDark
-        ? 'radial-gradient(ellipse at 103% -5%,rgba(255,153,0,0.18),transparent 44%),radial-gradient(ellipse at -5% 130%,rgba(102,94,243,0.2),transparent 52%),linear-gradient(120deg,#282553,#142d51)'
-        : 'radial-gradient(ellipse at 103% -5%,rgba(255,153,0,0.12),transparent 44%),linear-gradient(120deg,#eeebff,#e6f0ff)',
+      borderRadius: theme.shape.radius.lg,
+      borderColor: theme.colors.accent?.border ?? theme.colors.primary.border,
+      background: theme.flags.visualDesignRefresh
+        ? theme.colors.background.primary
+        : `linear-gradient(120deg, ${theme.colors.accent?.background ?? theme.colors.primary.transparent}, ${theme.colors.background.secondary})`,
       '@container (max-width: 340px)': { padding: theme.spacing(2) },
     }),
     featuredHeader: css({ display: 'flex', alignItems: 'flex-start', gap: theme.spacing(1.75), minWidth: 0 }),
@@ -96,7 +96,7 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
         overflowWrap: 'anywhere',
       },
     }),
-    action: css({ marginLeft: 'auto', flexShrink: 0, minHeight: theme.spacing(4) }),
+    action: css({ marginLeft: 'auto', flexShrink: 0 }),
     badges: css({
       display: 'flex',
       alignItems: 'center',
