@@ -228,6 +228,40 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
   return { id, dirName, entry, warnings, errors, info };
 }
 
+/**
+ * Give packages without `author.name` the name from the nearest enclosing
+ * path or journey directory that has one. Steps are nested inside their path
+ * directory but are not always listed in its `milestones`, so the directory
+ * tree is the link. A package's own `team` is kept; it inherits the path's team
+ * only when it has none. Returns the number of entries updated.
+ */
+function inheritPathAuthors(repository: RepositoryJson): number {
+  const containers = new Map<string, RepositoryEntry>();
+  for (const entry of Object.values(repository)) {
+    if ((entry.type === 'path' || entry.type === 'journey') && entry.author?.name) {
+      containers.set(entry.path, entry);
+    }
+  }
+
+  let inherited = 0;
+  for (const entry of Object.values(repository)) {
+    if (entry.author?.name) {
+      continue;
+    }
+    const segments = entry.path.split('/').filter(Boolean);
+    for (let depth = segments.length - 1; depth > 0; depth--) {
+      const container = containers.get(`${segments.slice(0, depth).join('/')}/`);
+      if (container?.author?.name) {
+        const team = entry.author?.team ?? container.author.team;
+        entry.author = { name: container.author.name, ...(team === undefined ? {} : { team }) };
+        inherited++;
+        break;
+      }
+    }
+  }
+  return inherited;
+}
+
 export function buildRepository(
   root: string,
   options?: { exclude?: string[] }
@@ -287,6 +321,11 @@ export function buildRepository(
         repository[result.id] = result.entry;
       }
     }
+  }
+
+  const inherited = inheritPathAuthors(repository);
+  if (inherited > 0) {
+    info.push(`${inherited} package(s) inherited author.name from their learning path`);
   }
 
   const repoValidation = RepositoryJsonSchema.safeParse(repository);

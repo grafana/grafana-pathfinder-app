@@ -5,29 +5,12 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { IconButton, ConfirmModal, useStyles2 } from '@grafana/ui';
-import { css } from '@emotion/css';
-import { GrafanaTheme2 } from '@grafana/data';
+import { IconButton, ConfirmModal } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
-
-const getStyles = (theme: GrafanaTheme2) => ({
-  deleteButton: css({
-    opacity: 0.7,
-    color: theme.colors.error.text,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      opacity: 1,
-      backgroundColor: theme.colors.error.transparent,
-    },
-  }),
-});
 
 export interface ConfirmDeleteButtonProps {
   /** Called when deletion is confirmed */
   onConfirm: () => void;
-  /** Optional class name for the button */
-  className?: string;
   /** Tooltip text (default: "Delete block") */
   tooltip?: string;
   /** Aria label (default: "Delete") */
@@ -41,12 +24,10 @@ export interface ConfirmDeleteButtonProps {
  */
 export function ConfirmDeleteButton({
   onConfirm,
-  className,
   tooltip = 'Delete block',
   ariaLabel = 'Delete',
   blockType = 'block',
 }: ConfirmDeleteButtonProps) {
-  const styles = useStyles2(getStyles);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -70,7 +51,7 @@ export function ConfirmDeleteButton({
         size="md"
         aria-label={ariaLabel}
         onClick={handleClick}
-        className={className ?? styles.deleteButton}
+        variant="destructive"
         tooltip={tooltip}
         data-testid={testIds.blockEditor.deleteButton}
       />

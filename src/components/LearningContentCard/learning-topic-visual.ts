@@ -79,12 +79,12 @@ export function getLearningTopicVisual(
   kind: 'guide' | 'path' | 'docs' = 'guide'
 ) {
   const { icon, label, darkColor, lightColor } = getLearningTopicMetadata(topic, kind);
-  const color = (theme.isDark ? darkColor : lightColor) ?? theme.colors.text.secondary;
+  const color = (theme.isDark ? darkColor : lightColor) ?? theme.colors.info.text;
   return {
     icon,
     color,
     label,
-    background: label ? `${color}20` : theme.colors.background.primary,
-    border: label ? `${color}38` : theme.colors.border.weak,
+    background: label ? `${color}20` : theme.colors.info.background,
+    border: label ? `${color}38` : theme.colors.info.border,
   };
 }
