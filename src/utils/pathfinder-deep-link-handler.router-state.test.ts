@@ -1,4 +1,3 @@
-import { createBrowserHistory } from 'history';
 import { HistoryWrapper, locationService, setLocationService } from '@grafana/runtime';
 
 import { autoLaunchChannel } from '../global-state/auto-launch';
@@ -21,8 +20,13 @@ jest.mock('../global-state/sidebar', () => ({
   },
 }));
 jest.mock('./find-doc-page', () => ({
-  findDocPage: () => ({ url: 'bundled:cheerlights', title: 'CheerLights', type: 'interactive' }),
+  findDocPage: (id: string) =>
+    id === 'invalid' ? null : { url: 'bundled:cheerlights', title: 'CheerLights', type: 'interactive' },
 }));
+
+const { createBrowserHistory } = jest.requireActual<{
+  createBrowserHistory: (options: { basename: string }) => NonNullable<ConstructorParameters<typeof HistoryWrapper>[0]>;
+}>('history');
 
 const doc = 'bundled:cheerlights';
 const flush = async () => {
@@ -78,6 +82,7 @@ describe('consumed deep links with Grafana browser history', () => {
       expect(new URLSearchParams(window.location.search).has('doc')).toBe(false);
       expect(locationService.getLocation().hash).toBe('#panel-3');
       expect(locationService.getLocation().state).toEqual({ draft: 'keep-me' });
+      expect(window.history.state.state).toEqual({ draft: 'keep-me' });
       expect(locationService.getSearchObject()).toMatchObject({ orgId: '1', from: 'now-6h', to: 'now' });
       expect(launch).toHaveBeenCalledTimes(1);
 
@@ -98,6 +103,41 @@ describe('consumed deep links with Grafana browser history', () => {
       expect(locationService.getSearch().has('doc')).toBe(false);
     }
   );
+
+  it('preserves fullscreen doc ownership while consuming panel mode under a subpath', async () => {
+    window.history.replaceState({}, '', '/grafana/a/grafana-pathfinder-app/fullscreen?doc=bundled%3Acheerlights');
+    setLocationService(new HistoryWrapper(createBrowserHistory({ basename: '/grafana' })));
+    installDeepLinkNavListener(deps);
+    expect(handlePathfinderDeepLink(deps)).toBe(false);
+    expect(locationService.getSearch().get('doc')).toBe(doc);
+    expect(launch).not.toHaveBeenCalled();
+
+    locationService.partial({ panelMode: 'floating' });
+    await flush();
+    expect(locationService.getLocation().pathname).toBe('/a/grafana-pathfinder-app/fullscreen');
+    expect(window.location.pathname).toBe('/grafana/a/grafana-pathfinder-app/fullscreen');
+    expect(locationService.getSearch().get('doc')).toBe(doc);
+    expect(locationService.getSearch().has('panelMode')).toBe(false);
+    expect(launch).not.toHaveBeenCalled();
+  });
+
+  it('cleans invalid doc arrivals and allows validated page redirects without replay', async () => {
+    arrive();
+    await flush();
+    launch.mockClear();
+    deps.attemptAutoOpen.mockClear();
+    locationService.partial({ doc: 'invalid', source: 'dashboard', panelMode: 'sidebar' });
+    await flush();
+    expect(locationService.getSearch().has('doc')).toBe(false);
+    expect(launch).not.toHaveBeenCalled();
+    expect(deps.attemptAutoOpen).toHaveBeenCalledTimes(1);
+
+    locationService.partial({ doc, page: '/explore' });
+    await flush();
+    expect(locationService.getLocation().pathname).toBe('/explore');
+    expect(locationService.getSearch().has('doc')).toBe(false);
+    expect(launch).toHaveBeenCalledTimes(1);
+  });
 
   it.each(['sidebar', 'floating'])(
     'consumes doc with panelMode=%s without a reentrant duplicate launch',

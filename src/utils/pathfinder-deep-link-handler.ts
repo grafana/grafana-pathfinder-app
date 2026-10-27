@@ -25,19 +25,24 @@ export interface DeepLinkHandlerDeps {
 
 // Dedup gate — prevents re-processing the same URL from multiple listener transports.
 let lastProcessedSearch: string | null = null;
+let rewritingUrl = false;
 
 /** Test-only escape hatch — resets dedup state between assertions. */
 export function __resetDeepLinkHandlerStateForTests(): void {
   lastProcessedSearch = null;
 }
 
-/** Mutate the current URL in place and invalidate the dedup gate — the
- *  stored search is pre-strip and would block re-arrivals at the same link. */
 function rewriteCurrentUrl(mutate: (url: URL) => void): void {
   const url = new URL(window.location.href);
   mutate(url);
-  window.history.replaceState({}, '', url.toString());
-  lastProcessedSearch = null;
+  // Router replacement notifies listeners synchronously, including during partial panelMode cleanup.
+  rewritingUrl = true;
+  try {
+    locationService.replace({ ...locationService.getLocation(), search: url.search, hash: url.hash });
+  } finally {
+    rewritingUrl = false;
+    lastProcessedSearch = null;
+  }
 }
 
 function isFullScreenRoute(pathname: string): boolean {
@@ -47,7 +52,7 @@ function isFullScreenRoute(pathname: string): boolean {
 /** Process Pathfinder deep-link params from the current URL. Idempotent. */
 export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   const search = window.location.search;
-  if (!hasAnyPathfinderParam(search)) {
+  if (rewritingUrl || !hasAnyPathfinderParam(search)) {
     return false;
   }
 
