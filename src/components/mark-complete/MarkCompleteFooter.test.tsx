@@ -180,6 +180,60 @@ describe('completion panel handoff', () => {
     expect(status).toContainElement(screen.getByRole('region', { name: 'Guide complete' }));
   });
 
+  it('keeps asynchronous cards and controls outside the concise completion announcement', async () => {
+    let resolvePanel!: (value: { default: React.ComponentType }) => void;
+    const Panel = React.lazy(
+      () =>
+        new Promise<{ default: React.ComponentType }>((resolve) => {
+          resolvePanel = resolve;
+        })
+    );
+    render(
+      <MarkCompleteFooter
+        context="guide"
+        renderCompleted={() => (
+          <React.Suspense fallback={<div>Loading next steps</div>}>
+            <Panel />
+          </React.Suspense>
+        )}
+      />
+    );
+    await clickWhenReady();
+    const target = screen.getByRole('group', { name: 'Completed' });
+    const announcement = screen.getByRole('status');
+    expect(target).toHaveFocus();
+    expect(announcement).toHaveTextContent(/^Completed$/);
+    expect(announcement).not.toContainElement(screen.getByText('Loading next steps'));
+    await act(async () => {
+      resolvePanel({ default: () => <button>Explore next guide</button> });
+    });
+    const action = screen.getByRole('button', { name: 'Explore next guide' });
+    expect(target).toContainElement(action);
+    expect(action.closest('[role="status"], [aria-live]')).toBeNull();
+    expect(announcement).toHaveTextContent(/^Completed$/);
+    expect(target).toHaveFocus();
+  });
+
+  it.each(['mark', 'percentage'] as const)(
+    'does not claim focus on a %s return visit or async panel update',
+    async (source) => {
+      markStorage.get.mockResolvedValue(source === 'mark' ? true : null);
+      percentage = source === 'percentage' ? 100 : 25;
+      const outside = document.createElement('button');
+      document.body.appendChild(outside);
+      outside.focus();
+      const { rerender } = render(
+        <MarkCompleteFooter context="guide" renderCompleted={() => <div>Loading cards</div>} />
+      );
+      await screen.findByText('Loading cards');
+      expect(outside).toHaveFocus();
+      rerender(<MarkCompleteFooter context="guide" renderCompleted={() => <button>New suggestion</button>} />);
+      expect(screen.getByRole('button', { name: 'New suggestion' }).closest('[role="status"], [aria-live]')).toBeNull();
+      expect(outside).toHaveFocus();
+      outside.remove();
+    }
+  );
+
   it('records completion immediately and waits for an explicit continuation', async () => {
     const onMarkComplete = jest.fn();
     const onContinue = jest.fn();
