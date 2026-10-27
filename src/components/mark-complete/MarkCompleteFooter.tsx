@@ -346,10 +346,15 @@ export function MarkCompleteFooter({
       data-testid={testIds.markComplete.footer}
       data-test-progress-state={hydrated ? 'ready' : 'pending'}
     >
+      {renderCompleted && completed && (
+        <span role="status" className={styles.announcement}>
+          {t('markComplete.completed', 'Completed')}
+        </span>
+      )}
       {completed ? (
         <div
           ref={completedRef}
-          role="status"
+          role={renderCompleted ? 'group' : 'status'}
           aria-label={renderCompleted ? t('markComplete.completed', 'Completed') : undefined}
           tabIndex={-1}
           className={renderCompleted ? styles.panelContent : celebrating ? styles.celebration : styles.completed}
@@ -401,6 +406,17 @@ function getStyles(theme: GrafanaTheme2) {
   } as const;
 
   return {
+    announcement: css({
+      position: 'absolute',
+      width: 1,
+      height: 1,
+      padding: 0,
+      margin: -1,
+      overflow: 'hidden',
+      clipPath: 'inset(50%)',
+      whiteSpace: 'nowrap',
+      border: 0,
+    }),
     panelFooter: css({ width: '100%', minWidth: 0 }),
     panelContent: css({
       width: '100%',

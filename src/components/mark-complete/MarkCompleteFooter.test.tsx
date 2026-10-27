@@ -167,7 +167,7 @@ describe('completion panel handoff', () => {
     });
   });
 
-  it('announces completion and focuses a named status after a click', async () => {
+  it('announces completion and focuses a named non-live group after a click', async () => {
     render(
       <MarkCompleteFooter
         context="guide"
@@ -175,9 +175,11 @@ describe('completion panel handoff', () => {
       />
     );
     await clickWhenReady();
-    const status = screen.getByRole('status', { name: 'Completed' });
-    expect(status).toHaveFocus();
-    expect(status).toContainElement(screen.getByRole('region', { name: 'Guide complete' }));
+    const group = screen.getByRole('group', { name: 'Completed' });
+    expect(group).toHaveFocus();
+    expect(group).toContainElement(screen.getByRole('region', { name: 'Guide complete' }));
+    expect(screen.getByRole('status')).toHaveTextContent(/^Completed$/);
+    expect(screen.getByRole('status')).not.toContainElement(group);
   });
 
   it('keeps asynchronous cards and controls outside the concise completion announcement', async () => {

@@ -9,7 +9,7 @@ import { useIsAlignmentPaused } from '../../global-state/alignment-pending-conte
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, useStyles2 } from '@grafana/ui';
+import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, Button, useStyles2 } from '@grafana/ui';
 import { getSelectionStyles } from './content-renderer.styles';
 
 import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
@@ -103,6 +103,7 @@ import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
 import { config } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
+import { openLearningHome } from '../docs-panel/utils/open-catalog-browser';
 import { MyLearningErrorBoundary } from '../docs-panel/components/MyLearningErrorBoundary';
 import { resolveFullScreenFallbackLocation, resolveFullScreenManifestLocation } from './full-screen-fallback-location';
 
@@ -639,6 +640,19 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
           ? (celebrating) => (
               <MyLearningErrorBoundary
                 fallbackMessage={t('completionPanel.unavailable', 'Completed. Next steps could not be loaded.')}
+                fallbackActions={
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() => openLearningHome({ source: 'content_completion_panel' })}
+                    >
+                      {t('completionPanel.myLearning', 'My learning')}
+                    </Button>
+                    <Button variant="secondary" onClick={() => window.location.reload()}>
+                      {t('completionPanel.reload', 'Reload page')}
+                    </Button>
+                  </>
+                }
               >
                 <React.Suspense fallback={<LoadingPlaceholder text={t('completionPanel.loading', 'Completed')} />}>
                   <ReaderCompletionPanel
