@@ -162,16 +162,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
       backgroundColor: theme.colors.action.hover,
     },
   }),
-  deleteButton: css({
-    opacity: 0.7,
-    color: theme.colors.error.text,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      opacity: 1,
-      backgroundColor: theme.colors.error.transparent,
-    },
-  }),
   emptyState: css({
     textAlign: 'center',
     padding: theme.spacing(3),
@@ -1067,7 +1057,7 @@ export function StepEditor({
                           size="md"
                           aria-label="Remove"
                           onClick={() => handleRemoveStep(index)}
-                          className={styles.deleteButton}
+                          variant="destructive"
                           tooltip="Remove step"
                         />
                       </div>
