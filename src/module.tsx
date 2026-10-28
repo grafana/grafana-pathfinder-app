@@ -27,7 +27,6 @@ import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
-import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-handler';
 import { parseControllerPairingHash, parsePathfinderDeepLink } from './utils/pathfinder-search-params';
 import {
   clearExtensionSidebarDocked,
@@ -313,8 +312,12 @@ plugin.init = function () {
     attemptAutoOpen,
   };
 
-  handlePathfinderDeepLink(deepLinkDeps);
-  installDeepLinkNavListener(deepLinkDeps);
+  void retryChunkImport(() => import('./utils/pathfinder-deep-link-handler'))
+    .then(({ handlePathfinderDeepLink, installDeepLinkNavListener }) => {
+      handlePathfinderDeepLink(deepLinkDeps);
+      installDeepLinkNavListener(deepLinkDeps);
+    })
+    .catch((err) => logger.error('[Pathfinder] Failed to load deep-link handler', { error: err }));
 
   // Lazy mounting avoids loading floating-panel chunks until the mode needs them.
   const mountFloatingPanel = () => {
