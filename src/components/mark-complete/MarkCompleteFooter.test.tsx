@@ -216,7 +216,7 @@ describe('MarkCompleteFooter', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(
       UserInteraction.MarkCompleteClicked,
       expect.objectContaining({
-        guide_source: 'app-platform',
+        guide_source: 'app_platform',
         guide_visibility: 'private',
         guide_id: 'workshop-step',
         guide_title: 'Customer workshop',

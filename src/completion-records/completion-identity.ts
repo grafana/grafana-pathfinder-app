@@ -16,6 +16,7 @@
 
 import { LOCAL_BUNDLED_GUIDE_IDS } from '../constants/local-bundled-guides';
 import type { CompletionFact, CompletionKey, PathAnalyticsIdentity } from './types';
+import { toAnalyticsValue } from '../lib/analytics-values';
 
 /**
  * The package launch shape appends this to a bundled guide's id (the package
@@ -201,6 +202,12 @@ export function isPublicGuideSource(guideSource: string, guideId: string): boole
   );
 }
 
+export function guideSourceAnalyticsValue(guideSource: string): string {
+  return PUBLIC_GUIDE_SOURCES.has(guideSource) || guideSource === 'app-platform'
+    ? toAnalyticsValue(guideSource)
+    : 'other';
+}
+
 export function guideIdentityAnalyticsProperties({
   kind,
   guideSource,
@@ -213,11 +220,11 @@ export function guideIdentityAnalyticsProperties({
   const [idProperty, titleProperty] =
     kind === 'journey' ? ['journey_id', 'journey_title'] : ['guide_id', 'guide_title'];
   if (guideSource === 'bundled' && LOCAL_BUNDLED_GUIDE_IDS.has(guideId)) {
-    return { guide_source: guideSource, guide_visibility: 'private', [idProperty]: guideId };
+    return { guide_source: toAnalyticsValue(guideSource), guide_visibility: 'private', [idProperty]: guideId };
   }
   const isPublic = Boolean(sourceConfirmed) && PUBLIC_GUIDE_SOURCES.has(guideSource);
   return {
-    guide_source: !sourceConfirmed ? 'unresolved' : isPublic || guideSource === 'app-platform' ? guideSource : 'other',
+    guide_source: sourceConfirmed ? guideSourceAnalyticsValue(guideSource) : 'unresolved',
     guide_visibility: isPublic ? 'public' : 'private',
     [idProperty]: guideId,
     ...(guideTitle !== undefined && { [titleProperty]: guideTitle }),

@@ -58,7 +58,7 @@ it('sends a private guide id but no section id', () => {
     { guideSource: 'app-platform', guideId: 'internal-runbook', sourceConfirmed: true }
   );
   expect(reportAppInteraction).toHaveBeenCalledWith('section_recovery_restore', {
-    guide_source: 'app-platform',
+    guide_source: 'app_platform',
     guide_visibility: 'private',
     guide_id: 'internal-runbook',
     step_action: 'button',
