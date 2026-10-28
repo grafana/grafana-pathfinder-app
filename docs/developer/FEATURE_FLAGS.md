@@ -26,6 +26,22 @@ Controls the sidebar Browse entry and Browse all links. Set it to `false` to hid
 
 ---
 
+### `pathfinder.learning-insights`
+
+**Type**: Boolean
+
+**Default**: `false`
+
+Controls the read-only Learning insights reporting UI. Both the flag and the current-organization Admin role are required to register the page and show its My learning link. The route renderer checks again before loading the page, and the page checks before mounting its reporting request hook. The static `src/plugin.json` include has `addToNav: false` so Grafana cannot expose an unconditional navigation item outside this gate; entry is through the flagged My learning link. When disabled, the UI makes no `/learning-insights` reporting requests; My learning and completion recording are unchanged.
+
+This is a stack-targeted rollout control, not an authorization boundary or a backend API kill switch. The reporting resource remains protected by its trusted current-org Admin and verified identity/OBO checks independently of this browser flag. Disabling it does not cancel in-flight reads or repair raw App Platform grants. Reload Grafana after a flag change; page registration is fixed at app mount.
+
+Production opt-in requires registration in both `flags/` and `flag-definitions.libsonnet` in `grafana/deployment_tools`, marked `Public()`, with the remote default also `false`. Enable only the chosen test stack's namespace, leave other stacks disabled, and reload. Set that target back to `false` and reload to remove the UI again. App-side registration here does not create or enable the remote flag. Deploy both frontend and backend before testing the real resource; a frontend-only development loader is insufficient. See [Learning insights](LEARNING_INSIGHTS.md) for the live smoke procedure.
+
+**Tracking key**: `learning_insights`
+
+---
+
 ### `pathfinder.sidebar-hub`
 
 **Type**: Boolean
