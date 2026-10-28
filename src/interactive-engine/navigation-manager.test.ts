@@ -294,6 +294,34 @@ describe('NavigationManager', () => {
           expect(settled).toBe(true);
         });
 
+        it('keeps waiting for the page when the wrapper scroll ends first', async () => {
+          tableWrapper.dispatchEvent(new Event('scroll'));
+          await jest.advanceTimersByTimeAsync(16);
+
+          tableWrapper.dispatchEvent(new Event('scrollend'));
+          await jest.advanceTimersByTimeAsync(0);
+          expect(settled).toBe(false);
+
+          document.dispatchEvent(new Event('scrollend'));
+          await visible;
+          expect(settled).toBe(true);
+        });
+
+        it('ignores scrolling elsewhere on the page', async () => {
+          const sidePanel = document.createElement('div');
+          document.body.appendChild(sidePanel);
+
+          sidePanel.dispatchEvent(new Event('scroll'));
+          sidePanel.dispatchEvent(new Event('scrollend'));
+          await jest.advanceTimersByTimeAsync(300);
+          expect(settled).toBe(false);
+
+          document.dispatchEvent(new Event('scrollend'));
+          await visible;
+          expect(settled).toBe(true);
+          document.body.removeChild(sidePanel);
+        });
+
         it('stops waiting when scrollend never fires', async () => {
           await jest.advanceTimersByTimeAsync(1500);
           expect(settled).toBe(true);

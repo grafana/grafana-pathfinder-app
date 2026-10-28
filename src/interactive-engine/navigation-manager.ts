@@ -608,7 +608,10 @@ export class NavigationManager {
     // scrollIntoView may scroll the page as well as the container, so both need the sticky-header padding
     const paddedContainers =
       scrollContainer === document.documentElement ? [scrollContainer] : [scrollContainer, document.documentElement];
-    const originalScrollPaddings = paddedContainers.map((container) => container.style.scrollPaddingTop);
+    const originalScrollPaddings = paddedContainers.map((container) => ({
+      container,
+      scrollPaddingTop: container.style.scrollPaddingTop,
+    }));
     if (stickyOffset > 0) {
       paddedContainers.forEach((container) => {
         container.style.scrollPaddingTop = `${stickyOffset + 10}px`;
@@ -621,19 +624,25 @@ export class NavigationManager {
       inline: 'nearest',
     });
 
-    await this.waitForScrollEnd(scrollContainer);
+    await this.waitForScrollEnd(element);
 
-    paddedContainers.forEach((container, i) => {
-      container.style.scrollPaddingTop = originalScrollPaddings[i];
+    originalScrollPaddings.forEach(({ container, scrollPaddingTop }) => {
+      container.style.scrollPaddingTop = scrollPaddingTop;
     });
   }
 
   /**
-   * Resolve on scrollend, after a short timeout when no scroll starts, or at a hard cap.
+   * Resolve once every scroller moving the element has fired scrollend, after a short timeout
+   * when no scroll starts, or at a hard cap.
    * Per MDN: "If scroll position did not change, then no scrollend event fires"
    */
-  private waitForScrollEnd(scrollContainer: HTMLElement): Promise<void> {
+  private waitForScrollEnd(element: HTMLElement): Promise<void> {
     return new Promise((resolve) => {
+      // scrollIntoView can move the container and the page in parallel; each ends on its own
+      const scrolling = new Set<EventTarget>();
+      // Ignore scrollers elsewhere on the page, e.g. a panel the user is scrolling
+      const movesElement = (target: EventTarget | null): target is EventTarget =>
+        target === document || (target instanceof Node && target.contains(element));
       let scrollDetected = false;
       let resolved = false;
       let timeoutId: NodeJS.Timeout;
@@ -643,11 +652,10 @@ export class NavigationManager {
         clearTimeout(timeoutId);
         clearTimeout(maxWaitId);
         document.removeEventListener('scroll', scrollHandler, { capture: true });
-        scrollContainer.removeEventListener('scrollend', scrollendHandler);
-        document.removeEventListener('scrollend', docScrollendHandler);
+        document.removeEventListener('scrollend', scrollendHandler, { capture: true });
       };
 
-      const handleScrollEnd = () => {
+      const finish = () => {
         if (resolved) {
           return;
         }
@@ -656,27 +664,30 @@ export class NavigationManager {
         resolve();
       };
 
-      const scrollHandler = () => {
-        scrollDetected = true;
+      const scrollHandler = (event: Event) => {
+        if (movesElement(event.target)) {
+          scrollDetected = true;
+          scrolling.add(event.target);
+        }
       };
 
-      const scrollendHandler = () => handleScrollEnd();
-      const docScrollendHandler = () => handleScrollEnd();
+      const scrollendHandler = (event: Event) => {
+        if (event.target && scrolling.delete(event.target) && scrolling.size === 0) {
+          finish();
+        }
+      };
 
-      // Capture on document so page scrolls count too, not only scrolls of the container
-      document.addEventListener('scroll', scrollHandler, { once: true, passive: true, capture: true });
-
-      // scrollIntoView may fire scrollend on the container or on the document
-      scrollContainer.addEventListener('scrollend', scrollendHandler, { once: true });
-      document.addEventListener('scrollend', docScrollendHandler, { once: true });
+      // Capture on document so scrolls and scrollends of the page and of any container both count
+      document.addEventListener('scroll', scrollHandler, { passive: true, capture: true });
+      document.addEventListener('scrollend', scrollendHandler, { capture: true });
 
       timeoutId = setTimeout(() => {
-        if (!scrollDetected && !resolved) {
-          handleScrollEnd();
+        if (!scrollDetected) {
+          finish();
         }
       }, INTERACTIVE_CONFIG.delays.navigation.scrollTimeout);
 
-      maxWaitId = setTimeout(handleScrollEnd, INTERACTIVE_CONFIG.delays.navigation.scrollFallbackTimeout);
+      maxWaitId = setTimeout(finish, INTERACTIVE_CONFIG.delays.navigation.scrollFallbackTimeout);
     });
   }
 
