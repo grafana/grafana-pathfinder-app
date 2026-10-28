@@ -64,7 +64,7 @@ it.each([
     lastFetched: '',
     metadata: {
       title: 'Current guide',
-      packageManifest: { id: 'current', type: 'guide', recommends: ['next'] },
+      packageManifest: { id: 'current', type: 'guide', suggests: ['next'] },
     },
   };
   render(

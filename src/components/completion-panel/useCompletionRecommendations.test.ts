@@ -62,7 +62,13 @@ beforeEach(() => {
 it('resolves authored public references missing from the index without private fallback', async () => {
   const { result } = renderHook(() =>
     useCompletionRecommendations(
-      guide({ id: 'current', type: 'guide', recommends: ['next'], depends: ['prerequisite'] }),
+      guide({
+        id: 'current',
+        type: 'guide',
+        suggests: ['next'],
+        depends: ['prerequisite'],
+        recommends: ['soft-prerequisite'],
+      }),
       publicIdentity
     )
   );
@@ -70,10 +76,12 @@ it('resolves authored public references missing from the index without private f
   expect(result.current.items).toEqual([
     expect.objectContaining({ id: 'next', title: 'Title next', description: 'Useful description', source: 'grafana' }),
   ]);
-  expect(result.current.context.recommends).toEqual(['next']);
+  expect(result.current.context.suggests).toEqual(['next']);
   expect(mockBundled).toHaveBeenCalledWith('next', { loadContent: 'metadata-only' });
   expect(mockPrivate).not.toHaveBeenCalled();
   expect(mockOnline).not.toHaveBeenCalledWith('prerequisite', expect.anything());
+  expect(mockBundled).not.toHaveBeenCalledWith('soft-prerequisite', expect.anything());
+  expect(mockOnline).not.toHaveBeenCalledWith('soft-prerequisite', expect.anything());
   expect(mockCatalog).toHaveBeenCalledWith({ enabled: true, publicOnly: true });
 });
 
@@ -109,7 +117,7 @@ it('does not expose a delayed private resolution after an organization changes',
         finish = resolve;
       })
   );
-  const content = guide({ id: 'current', type: 'guide', recommends: ['secret'] });
+  const content = guide({ id: 'current', type: 'guide', suggests: ['secret'] });
   const { result, rerender } = renderHook(() => useCompletionRecommendations(content, privateIdentity));
   await waitFor(() => expect(mockPrivate).toHaveBeenCalledTimes(1));
   config.bootData.user.orgId = 2;
@@ -128,20 +136,20 @@ it('loads the current CDN manifest instead of a same-ID bundled manifest and pre
     format: 'guide',
     source: 'grafana',
     url: 'bundled:current/content.json',
-    packageInfo: { repository: 'bundled', packageManifest: { id: 'current', type: 'guide', recommends: ['wrong'] } },
+    packageInfo: { repository: 'bundled', packageManifest: { id: 'current', type: 'guide', suggests: ['wrong'] } },
   });
   mockOnline.mockImplementation(async (id: string) =>
-    resolveResult(id, 'online-cdn', id === 'current' ? { recommends: ['member-next'] } : {})
+    resolveResult(id, 'online-cdn', id === 'current' ? { suggests: ['member-next'] } : {})
   );
   const { result } = renderHook(() =>
     useCompletionRecommendations(
-      guide({ id: 'parent', type: 'path', recommends: ['parent-next'] }),
+      guide({ id: 'parent', type: 'path', suggests: ['parent-next'] }),
       { ...publicIdentity, pathIdentity: { guideId: 'parent', guideSource: 'online-cdn', sourceConfirmed: true } },
       true
     )
   );
   await waitFor(() => expect(result.current.loading).toBe(false));
-  expect(result.current.context.recommends).toEqual(['parent-next', 'member-next']);
+  expect(result.current.context.suggests).toEqual(['parent-next', 'member-next']);
   expect(mockOnline).toHaveBeenCalledWith('current', { loadContent: 'metadata-only' });
   expect(mockBundled).not.toHaveBeenCalledWith('current', expect.anything());
   expect(mockOnline).not.toHaveBeenCalledWith('wrong', expect.anything());
@@ -149,20 +157,16 @@ it('loads the current CDN manifest instead of a same-ID bundled manifest and pre
 
 it('does not infer parent relationships without a confirmed parent identity', async () => {
   const { result } = renderHook(() =>
-    useCompletionRecommendations(
-      guide({ id: 'parent', type: 'path', recommends: ['parent-next'] }),
-      publicIdentity,
-      true
-    )
+    useCompletionRecommendations(guide({ id: 'parent', type: 'path', suggests: ['parent-next'] }), publicIdentity, true)
   );
   await waitFor(() => expect(result.current.loading).toBe(false));
-  expect(result.current.context.recommends).toEqual([]);
+  expect(result.current.context.suggests).toEqual([]);
 });
 
 it('bounds metadata requests to eight unique valid IDs', async () => {
   const { result } = renderHook(() =>
     useCompletionRecommendations(
-      guide({ id: 'current', type: 'guide', recommends: Array.from({ length: 15 }, (_, index) => `next-${index}`) }),
+      guide({ id: 'current', type: 'guide', suggests: Array.from({ length: 15 }, (_, index) => `next-${index}`) }),
       publicIdentity
     )
   );
@@ -173,10 +177,10 @@ it('bounds metadata requests to eight unique valid IDs', async () => {
 
 it('ignores malformed relationship data instead of fetching it', async () => {
   const { result } = renderHook(() =>
-    useCompletionRecommendations(guide({ id: 'current', type: 'guide', recommends: [null] }), publicIdentity)
+    useCompletionRecommendations(guide({ id: 'current', type: 'guide', suggests: [null] }), publicIdentity)
   );
   await waitFor(() => expect(result.current.loading).toBe(false));
-  expect(result.current.context.recommends).toEqual([]);
+  expect(result.current.context.suggests).toEqual([]);
   expect(mockOnline).not.toHaveBeenCalled();
 });
 
@@ -186,7 +190,7 @@ it.each([
   { repository: 'online-cdn', contentUrl: '/apis/private/next' },
 ])('rejects a public relationship resolving to private content (%j)', async (overrides) => {
   mockOnline.mockResolvedValue({ ...resolveResult('next'), ...overrides });
-  const content = guide({ id: 'current', type: 'guide', recommends: ['next'] });
+  const content = guide({ id: 'current', type: 'guide', suggests: ['next'] });
   const { result } = renderHook(() => useCompletionRecommendations(content, publicIdentity));
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.items).toEqual([]);
@@ -194,7 +198,7 @@ it.each([
 
 it('rejects a private reference with a locator belonging to another package', async () => {
   mockPrivate.mockResolvedValue({ ...resolveResult('next', 'app-platform'), contentUrl: 'backend-guide:other' });
-  const content = guide({ id: 'current', type: 'guide', recommends: ['next'] });
+  const content = guide({ id: 'current', type: 'guide', suggests: ['next'] });
   const { result } = renderHook(() => useCompletionRecommendations(content, privateIdentity));
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.items).toEqual([]);
@@ -202,7 +206,7 @@ it('rejects a private reference with a locator belonging to another package', as
 
 it('settles unavailable references without exposing invented cards', async () => {
   mockBundled.mockRejectedValue(new Error('unavailable'));
-  const content = guide({ id: 'current', type: 'guide', recommends: ['next'] });
+  const content = guide({ id: 'current', type: 'guide', suggests: ['next'] });
   const { result } = renderHook(() => useCompletionRecommendations(content, publicIdentity));
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.items).toEqual([]);
@@ -217,7 +221,7 @@ it('settles a hanging resolution and ignores its eventual result', async () => {
         finish = resolve;
       })
   );
-  const content = guide({ id: 'current', type: 'guide', recommends: ['next'] });
+  const content = guide({ id: 'current', type: 'guide', suggests: ['next'] });
   const { result, unmount } = renderHook(() => useCompletionRecommendations(content, privateIdentity));
   expect(result.current.loading).toBe(true);
   await act(async () => jest.advanceTimersByTime(4000));
@@ -230,8 +234,30 @@ it('settles a hanging resolution and ignores its eventual result', async () => {
 
 it('rejects references without a human title', async () => {
   mockOnline.mockResolvedValue({ ...resolveResult('next'), entryTitle: undefined });
-  const content = guide({ id: 'current', type: 'guide', recommends: ['next'] });
+  const content = guide({ id: 'current', type: 'guide', suggests: ['next'] });
   const { result } = renderHook(() => useCompletionRecommendations(content, publicIdentity));
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.items).toEqual([]);
 });
+
+it.each([publicIdentity, privateIdentity])(
+  'does not resolve prerequisites as next steps for $guideSource content',
+  async (identity) => {
+    const { result } = renderHook(() =>
+      useCompletionRecommendations(
+        guide({
+          id: 'current',
+          type: 'guide',
+          depends: ['required-first'],
+          recommends: ['recommended-first'],
+        }),
+        identity
+      )
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.items).toEqual([]);
+    expect(mockBundled).not.toHaveBeenCalled();
+    expect(mockOnline).not.toHaveBeenCalled();
+    expect(mockPrivate).not.toHaveBeenCalled();
+  }
+);

@@ -16,8 +16,8 @@ type Manifest = Record<string, unknown>;
 const RESOLUTION_LIMIT = 8;
 const RESOLUTION_TIMEOUT_MS = 4000;
 
-function relations(manifest: Manifest | undefined, field: 'recommends' | 'suggests'): DependencyList {
-  const parsed = DependencyListSchema.safeParse(manifest?.[field]);
+function relations(manifest: Manifest | undefined): DependencyList {
+  const parsed = DependencyListSchema.safeParse(manifest?.suggests);
   return parsed.success ? parsed.data : [];
 }
 
@@ -116,8 +116,7 @@ export function useCompletionRecommendations(
       pathUrl: content.metadata.learningJourney?.baseUrl ?? content.metadata.trackMemberBaseUrl,
       pathId: pathIdentity?.sourceConfirmed ? pathIdentity.guideId : undefined,
       category: typeof own?.category === 'string' ? own.category : undefined,
-      recommends: [...relations(parentManifest, 'recommends'), ...relations(own, 'recommends')],
-      suggests: [...relations(parentManifest, 'suggests'), ...relations(own, 'suggests')],
+      suggests: [...relations(parentManifest), ...relations(own)],
       platform: currentPlatform(),
     }),
     [content.url, content.metadata, identity?.guideId, isPublic, isPrivate, inPath, pathIdentity, own, parentManifest]
@@ -198,15 +197,10 @@ export function useCompletionRecommendations(
       context = {
         ...initialContext,
         category: typeof actualOwn?.category === 'string' ? actualOwn.category : undefined,
-        recommends: [...relations(parentManifest, 'recommends'), ...relations(actualOwn, 'recommends')],
-        suggests: [...relations(parentManifest, 'suggests'), ...relations(actualOwn, 'suggests')],
+        suggests: [...relations(parentManifest), ...relations(actualOwn)],
       };
       const ids = [
-        ...new Set(
-          [...(context.recommends ?? []), ...(context.suggests ?? [])].flatMap((clause) =>
-            typeof clause === 'string' ? [clause] : clause
-          )
-        ),
+        ...new Set((context.suggests ?? []).flatMap((clause) => (typeof clause === 'string' ? [clause] : clause))),
       ];
       for (const id of ids) {
         if (!valid() || count >= RESOLUTION_LIMIT) {

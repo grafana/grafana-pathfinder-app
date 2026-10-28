@@ -100,11 +100,9 @@ export function CompletionSuggestions({ content, completionIdentity, inPath = fa
             title={item.title}
             variant={index === 0 ? 'completion-primary' : 'completion-alternative'}
             eyebrow={
-              completionSuggestionReason(item, catalog.context) === 'recommended'
-                ? t('completionPanel.recommended', 'Recommended learning')
-                : completionSuggestionReason(item, catalog.context) === 'suggested'
-                  ? t('completionPanel.related', 'Related learning')
-                  : t('completionPanel.keepExploring', 'Keep exploring')
+              completionSuggestionReason(item, catalog.context) === 'suggested'
+                ? t('completionPanel.related', 'Related learning')
+                : t('completionPanel.keepExploring', 'Keep exploring')
             }
             actionLabel={
               (progress.get(item.key)?.percent ?? 0) > 0

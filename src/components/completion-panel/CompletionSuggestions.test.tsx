@@ -5,6 +5,7 @@ import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import type { DependencyList } from '../../types/package.types';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import { CompletionSuggestions } from './CompletionSuggestions';
+import { openLearningHome } from '../docs-panel/utils/open-catalog-browser';
 
 jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
 jest.mock('../docs-panel/utils/open-catalog-browser', () => ({
@@ -55,7 +56,6 @@ const useRecommendations = jest.fn((content: RawContent, identity?: AnalyticsCom
       public: source === 'grafana',
       source,
       inPath,
-      recommends: content.metadata.packageManifest?.recommends as DependencyList | undefined,
       suggests: content.metadata.packageManifest?.suggests as DependencyList | undefined,
     },
   };
@@ -90,7 +90,7 @@ jest.mock('../LearningContentCard/LearningContentCard', () => ({
 }));
 const content: RawContent = {
   content: '{}',
-  metadata: { title: 'First dashboard' },
+  metadata: { title: 'First dashboard', packageManifest: { suggests: [candidate.id, later.id] } },
   url: current.url,
   type: 'interactive',
   lastFetched: '',
@@ -106,7 +106,10 @@ beforeEach(() => {
 
 it('shows neutral fallback for private or unresolved identities without authored relationships', () => {
   const { rerender } = render(
-    <CompletionSuggestions content={content} completionIdentity={{ ...identity, guideSource: 'app-platform' }} />
+    <CompletionSuggestions
+      content={{ ...content, metadata: { title: 'First dashboard' } }}
+      completionIdentity={{ ...identity, guideSource: 'app-platform' }}
+    />
   );
   expect(screen.queryByRole('button', { name: candidate.title })).not.toBeInTheDocument();
   expect(screen.getByText('Keep your learning going')).toBeInTheDocument();
@@ -138,14 +141,17 @@ it('keeps a ready shortlist stable and launches using the existing helper', () =
   expect(screen.queryByRole('button', { name: later.title })).not.toBeInTheDocument();
 });
 
-it('honors authored recommendation order and makes that provenance visible', () => {
+it('honors authored suggestion order and ignores soft prerequisites', () => {
   items = [current, candidate, later];
   progress = new Map(items.map((item) => [item.key, { percent: 0 }]));
   render(
     <CompletionSuggestions
       content={{
         ...content,
-        metadata: { ...content.metadata, packageManifest: { recommends: [later.id], suggests: [candidate.id] } },
+        metadata: {
+          ...content.metadata,
+          packageManifest: { recommends: [current.id], suggests: [later.id, candidate.id] },
+        },
       }}
       completionIdentity={identity}
     />
@@ -153,8 +159,8 @@ it('honors authored recommendation order and makes that provenance visible', () 
   const buttons = screen.getAllByRole('button');
   expect(buttons[0]).toHaveTextContent(later.title);
   expect(buttons[1]).toHaveTextContent(candidate.title);
-  expect(screen.getByText('Recommended learning')).toBeInTheDocument();
-  expect(screen.getByText('Related learning')).toBeInTheDocument();
+  expect(screen.queryByText('Recommended learning')).not.toBeInTheDocument();
+  expect(screen.getAllByText('Related learning')).toHaveLength(2);
 });
 
 it('permits confirmed private authored relationships without mixing public candidates', () => {
@@ -165,12 +171,12 @@ it('permits confirmed private authored relationships without mixing public candi
     <CompletionSuggestions
       content={{
         ...content,
-        metadata: { ...content.metadata, packageManifest: { recommends: [privateCandidate.id] } },
+        metadata: { ...content.metadata, packageManifest: { suggests: [privateCandidate.id] } },
       }}
       completionIdentity={{ ...identity, guideSource: 'app-platform' }}
     />
   );
-  expect(screen.getByText('Recommended learning')).toBeInTheDocument();
+  expect(screen.getByText('Related learning')).toBeInTheDocument();
   const buttons = screen.getAllByRole('button', { name: candidate.title });
   expect(buttons).toHaveLength(1);
   fireEvent.click(buttons[0]!);
@@ -202,7 +208,7 @@ it('ignores legacy private completion percentages for both guide and path sugges
     <CompletionSuggestions
       content={{
         ...content,
-        metadata: { ...content.metadata, packageManifest: { recommends: [privateGuide.id, privatePath.id] } },
+        metadata: { ...content.metadata, packageManifest: { suggests: [privateGuide.id, privatePath.id] } },
       }}
       completionIdentity={{ ...identity, guideSource: 'app-platform' }}
     />
@@ -223,3 +229,19 @@ it('waits for matching progress keys even when a stale snapshot has the same siz
   rerender(<CompletionSuggestions content={content} completionIdentity={identity} />);
   expect(screen.getByRole('button', { name: candidate.title })).toBeInTheDocument();
 });
+
+it.each([{}, { recommends: [candidate.id] }])(
+  'offers My learning instead of a topic match or prerequisite (%j)',
+  (packageManifest) => {
+    render(
+      <CompletionSuggestions
+        content={{ ...content, metadata: { ...content.metadata, packageManifest } }}
+        completionIdentity={identity}
+      />
+    );
+    expect(screen.queryByRole('button', { name: candidate.title })).not.toBeInTheDocument();
+    expect(screen.getByText('Keep your learning going')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'My learning' }));
+    expect(openLearningHome).toHaveBeenCalledWith({ source: 'content_completion_panel' });
+  }
+);

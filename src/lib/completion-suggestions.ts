@@ -1,7 +1,6 @@
 import { normalizeGuideId } from '../completion-records/completion-identity';
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { DependencyList } from '../types/package.types';
-import { catalogTopic } from './catalog-discovery';
 
 export interface CompletionSuggestionContext {
   url: string;
@@ -12,7 +11,6 @@ export interface CompletionSuggestionContext {
   pathUrl?: string;
   pathId?: string;
   platform?: 'oss' | 'cloud';
-  recommends?: DependencyList;
   suggests?: DependencyList;
   source?: 'grafana' | 'organization';
 }
@@ -20,61 +18,6 @@ export interface CompletionSuggestionContext {
 interface SuggestionProgress {
   percent: number;
   nextId?: string;
-}
-
-const RELATED_TOPICS = new Set(['dashboards', 'data-sources', 'alerting', 'metrics', 'logs', 'k6', 'getting-started']);
-
-const DISCOVERY_STOP_WORDS = new Set([
-  'grafana',
-  'cloud',
-  'guide',
-  'learning',
-  'path',
-  'getting',
-  'started',
-  'with',
-  'your',
-  'first',
-  'and',
-  'the',
-  'for',
-  'how',
-  'use',
-  'using',
-  'to',
-  'in',
-  'of',
-  'a',
-  'an',
-  'this',
-  'that',
-]);
-
-function discoveryWords(item: CatalogPackage | undefined): Set<string> {
-  return new Set(
-    `${item?.title ?? ''} ${item?.id ?? ''}`
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((word) => word.length > 2 && !DISCOVERY_STOP_WORDS.has(word))
-  );
-}
-
-function rankCatalogFallback(
-  items: CatalogPackage[],
-  current: CatalogPackage | undefined,
-  topic: string
-): CatalogPackage[] {
-  const words = discoveryWords(current);
-  const relevance = (item: CatalogPackage) => [...discoveryWords(item)].filter((word) => words.has(word)).length;
-  const formatRank = (item: CatalogPackage) =>
-    topic === 'getting-started' ? Number(item.format === 'path') : Number(item.format === 'guide');
-  return [...items].sort(
-    (a, b) =>
-      formatRank(b) - formatRank(a) ||
-      relevance(b) - relevance(a) ||
-      (a.estimatedMinutes ?? Infinity) - (b.estimatedMinutes ?? Infinity) ||
-      a.key.localeCompare(b.key)
-  );
 }
 
 function contextSource(context: CompletionSuggestionContext): CatalogPackage['source'] | undefined {
@@ -90,11 +33,8 @@ function contextSource(context: CompletionSuggestionContext): CatalogPackage['so
 export function completionSuggestionReason(
   item: CatalogPackage,
   context: CompletionSuggestionContext
-): 'recommended' | 'suggested' | 'inferred' {
+): 'suggested' | 'inferred' {
   if (item.source === contextSource(context)) {
-    if (context.recommends?.some((clause) => (Array.isArray(clause) ? clause.includes(item.id) : clause === item.id))) {
-      return 'recommended';
-    }
     if (context.suggests?.some((clause) => (Array.isArray(clause) ? clause.includes(item.id) : clause === item.id))) {
       return 'suggested';
     }
@@ -160,11 +100,6 @@ export function selectCompletionSuggestions(
   const isCurrent = (item: CatalogPackage) =>
     normalizedUrl(item.url) === currentUrl || (currentId !== undefined && item.id === currentId);
   const current = items.find((item) => item.source === source && isCurrent(item));
-  const topic = catalogTopic({
-    id: '',
-    title: '',
-    category: context.category ?? (current ? catalogTopic(current) : undefined),
-  });
   const eligible = items.filter(
     (item) =>
       item.source === source &&
@@ -177,43 +112,29 @@ export function selectCompletionSuggestions(
   );
   const ordered = [...eligible].sort((a, b) => a.title.localeCompare(b.title) || a.key.localeCompare(b.key));
   const suggestions: CatalogPackage[] = [];
-  for (const relationships of [context.recommends, context.suggests]) {
-    for (const clause of relationships ?? []) {
-      const alternatives = Array.isArray(clause) ? clause : [clause];
-      if (
-        alternatives.some((id) =>
-          items.some(
-            (item) => item.source === source && item.id === id && (progress.get(item.key)?.percent ?? 0) >= 100
+  for (const clause of context.suggests ?? []) {
+    const alternatives = Array.isArray(clause) ? clause : [clause];
+    if (
+      alternatives.some((id) =>
+        items.some((item) => item.source === source && item.id === id && (progress.get(item.key)?.percent ?? 0) >= 100)
+      )
+    ) {
+      continue;
+    }
+    const next = alternatives
+      .flatMap((id) => ordered.filter((item) => item.id === id))
+      .find(
+        (item) =>
+          !suggestions.some(
+            (suggestion) => suggestion.id === item.id || normalizedUrl(suggestion.url) === normalizedUrl(item.url)
           )
-        )
-      ) {
-        continue;
-      }
-      const next = alternatives
-        .flatMap((id) => ordered.filter((item) => item.id === id))
-        .find(
-          (item) =>
-            !suggestions.some(
-              (suggestion) => suggestion.id === item.id || normalizedUrl(suggestion.url) === normalizedUrl(item.url)
-            )
-        );
-      if (next) {
-        suggestions.push(next);
-      }
+      );
+    if (next) {
+      suggestions.push(next);
     }
   }
   if (suggestions.length > 0) {
     return suggestions.slice(0, 2);
-  }
-  if (context.public && topic === 'getting-started') {
-    const introductoryPath = rankCatalogFallback(
-      ordered.filter((item) => item.format === 'path' && catalogTopic(item) === topic),
-      current,
-      topic
-    )[0];
-    if (introductoryPath) {
-      return [introductoryPath];
-    }
   }
   const memberId = bundledId(context.url);
   if (
@@ -227,8 +148,7 @@ export function selectCompletionSuggestions(
       (item) => item.curatedPath && !item.curatedPath.url && item.memberIds?.includes(memberId)
     );
     for (const path of containingPaths) {
-      const nextId = progress.get(path.key)?.nextId;
-      const memberIds = [...new Set([nextId, ...(path.memberIds ?? [])])];
+      const memberIds = path.memberIds?.slice(path.memberIds.indexOf(memberId) + 1) ?? [];
       const next = memberIds.flatMap((id) =>
         ordered.filter(
           (item) =>
@@ -236,33 +156,9 @@ export function selectCompletionSuggestions(
         )
       )[0];
       if (next) {
-        suggestions.push(next);
-        break;
+        return [next];
       }
     }
   }
-  if (context.public && RELATED_TOPICS.has(topic)) {
-    suggestions.push(
-      ...rankCatalogFallback(
-        ordered.filter((item) => catalogTopic(item) === topic),
-        current,
-        topic
-      )
-    );
-  }
-  const seenIds = new Set<string>();
-  const seenUrls = new Set<string>();
-  return suggestions
-    .filter((item) => {
-      const url = normalizedUrl(item.url);
-      if (seenIds.has(item.id) || (url && seenUrls.has(url))) {
-        return false;
-      }
-      seenIds.add(item.id);
-      if (url) {
-        seenUrls.add(url);
-      }
-      return true;
-    })
-    .slice(0, 1);
+  return [];
 }

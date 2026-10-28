@@ -1,4 +1,5 @@
 import type { CatalogPackage } from '../types/package-catalog.types';
+import bundledRepository from '../bundled-interactives/repository.json';
 import { completionSuggestionReason, selectCompletionSuggestions } from './completion-suggestions';
 
 const guide = (id: string, patch: Partial<CatalogPackage> = {}): CatalogPackage => ({
@@ -12,9 +13,10 @@ const guide = (id: string, patch: Partial<CatalogPackage> = {}): CatalogPackage 
   ...patch,
 });
 const context = { url: 'bundled:current', public: true, inPath: false };
+const authoredContext = { ...context, suggests: ['a-compatible', 'b-unspecified', 'c-unknown'] };
 
 describe('selectCompletionSuggestions', () => {
-  it('prioritizes authored recommendations then suggestions in declared order above topics', () => {
+  it('uses only authored suggestions in declared order, never soft prerequisites', () => {
     const items = [
       guide('current'),
       guide('alpha'),
@@ -22,23 +24,19 @@ describe('selectCompletionSuggestions', () => {
       guide('y-recommended'),
       guide('x-suggested'),
     ];
-    const authored = { ...context, recommends: ['z-recommended', 'y-recommended'], suggests: ['x-suggested'] };
+    const authored = { ...context, recommends: ['z-recommended', 'y-recommended'], suggests: ['x-suggested', 'alpha'] };
     const selected = selectCompletionSuggestions(items, new Map(), authored);
-    expect(selected.map((item) => item.id)).toEqual(['z-recommended', 'y-recommended']);
-    expect(completionSuggestionReason(selected[0]!, authored)).toBe('recommended');
+    expect(selected.map((item) => item.id)).toEqual(['x-suggested', 'alpha']);
+    expect(completionSuggestionReason(items[2]!, authored)).toBe('inferred');
     expect(completionSuggestionReason(items[4]!, authored)).toBe('suggested');
-    expect(completionSuggestionReason(items[1]!, authored)).toBe('inferred');
+    expect(completionSuggestionReason(items[1]!, authored)).toBe('suggested');
   });
 
   it('chooses eligible OR alternatives and skips groups satisfied by a completed alternative', () => {
     const items = [guide('current'), guide('done'), guide('alternative'), guide('suggested'), guide('topic')];
     const selected = selectCompletionSuggestions(items, new Map([['bundled:done', { percent: 100 }]]), {
       ...context,
-      recommends: [
-        ['missing', 'alternative'],
-        ['done', 'suggested'],
-      ],
-      suggests: ['topic'],
+      suggests: [['missing', 'alternative'], ['done', 'suggested'], 'topic'],
     });
     expect(selected.map((item) => item.id)).toEqual(['alternative', 'topic']);
   });
@@ -48,7 +46,6 @@ describe('selectCompletionSuggestions', () => {
     expect(
       selectCompletionSuggestions(items, new Map(), {
         ...context,
-        recommends: ['missing'],
         suggests: ['z-authored'],
       }).map((item) => item.id)
     ).toEqual(['z-authored']);
@@ -63,7 +60,7 @@ describe('selectCompletionSuggestions', () => {
     expect(
       selectCompletionSuggestions(items, progress, {
         ...context,
-        recommends: ['done', ['missing', 'partial']],
+        suggests: ['done', ['missing', 'partial']],
       }).map((item) => item.id)
     ).toEqual(['partial']);
   });
@@ -86,13 +83,13 @@ describe('selectCompletionSuggestions', () => {
       url: 'backend-guide:current',
       id: 'current',
       category: 'dashboards',
-      recommends: ['next', 'missing'],
+      suggests: ['next', 'missing'],
     };
     const selected = selectCompletionSuggestions(items, new Map([['bundled:next', { percent: 100 }]]), privateContext);
     expect(selected.map((item) => item.key)).toEqual(['app-platform:next']);
-    expect(completionSuggestionReason(selected[0]!, privateContext)).toBe('recommended');
+    expect(completionSuggestionReason(selected[0]!, privateContext)).toBe('suggested');
     expect(completionSuggestionReason(items[1]!, privateContext)).toBe('inferred');
-    expect(selectCompletionSuggestions(items, new Map(), { ...privateContext, recommends: [] })).toEqual([]);
+    expect(selectCompletionSuggestions(items, new Map(), { ...privateContext, suggests: [] })).toEqual([]);
     expect(selectCompletionSuggestions(items, new Map(), { ...privateContext, source: undefined })).toEqual([]);
   });
 
@@ -115,9 +112,9 @@ describe('selectCompletionSuggestions', () => {
         },
       }),
     ];
-    expect(selectCompletionSuggestions(items, new Map(), { ...context, platform }).map((item) => item.id)).toEqual([
-      'a-compatible',
-    ]);
+    expect(
+      selectCompletionSuggestions(items, new Map(), { ...authoredContext, platform }).map((item) => item.id)
+    ).toEqual(['a-compatible', 'b-unspecified']);
   });
 
   it('evaluates nested platform and/or while treating unrelated and unknown constraints as compatible', () => {
@@ -139,12 +136,13 @@ describe('selectCompletionSuggestions', () => {
       }),
     ];
     expect(
-      selectCompletionSuggestions(items, new Map(), { ...context, platform: 'oss' }).map((item) => item.id)
-    ).toEqual(['a-compatible']);
+      selectCompletionSuggestions(items, new Map(), { ...authoredContext, platform: 'oss' }).map((item) => item.id)
+    ).toEqual(['a-compatible', 'c-unknown']);
     expect(
-      selectCompletionSuggestions([items[0]!, items[3]!, items[4]!], new Map(), { ...context, platform: 'oss' }).map(
-        (item) => item.id
-      )
+      selectCompletionSuggestions([items[0]!, items[3]!, items[4]!], new Map(), {
+        ...authoredContext,
+        platform: 'oss',
+      }).map((item) => item.id)
     ).toEqual(['c-unknown']);
   });
 
@@ -160,10 +158,15 @@ describe('selectCompletionSuggestions', () => {
       ['bundled:done', { percent: 100 }],
       ['bundled:done-path', { percent: 100 }],
     ]);
-    expect(selectCompletionSuggestions(items, progress, context).map((item) => item.id)).toEqual(['next']);
+    expect(
+      selectCompletionSuggestions(items, progress, {
+        ...context,
+        suggests: ['current', 'private', 'done', 'done-path', 'next'],
+      }).map((item) => item.id)
+    ).toEqual(['next']);
   });
 
-  it('prioritizes the next unfinished bundled member of a containing curated path', () => {
+  it('offers the next unfinished bundled member of a containing curated path', () => {
     const path = guide('path', {
       key: 'curated:path',
       format: 'path',
@@ -174,9 +177,9 @@ describe('selectCompletionSuggestions', () => {
     const progress = new Map([['curated:path', { percent: 50, nextId: 'next' }]]);
     expect(selectCompletionSuggestions(items, progress, context).map((item) => item.id)).toEqual(['next']);
     expect(selectCompletionSuggestions(items, new Map(), context).map((item) => item.id)).toEqual(['next']);
-    expect(selectCompletionSuggestions(items, progress, { ...context, inPath: true }).map((item) => item.id)).toEqual([
-      'alpha',
-    ]);
+    expect(selectCompletionSuggestions(items, progress, { ...context, inPath: true }).map((item) => item.id)).toEqual(
+      []
+    );
   });
 
   it('does not infer curated membership from an online guide with a colliding bundled id', () => {
@@ -216,6 +219,7 @@ describe('selectCompletionSuggestions', () => {
       selectCompletionSuggestions(items, new Map(), {
         ...context,
         url: 'https://grafana.com/current/content.json?track=b#complete',
+        suggests: ['current', 'next'],
       }).map((item) => item.id)
     ).toEqual(['next']);
   });
@@ -228,9 +232,12 @@ describe('selectCompletionSuggestions', () => {
     ];
     for (const pathContext of [{ pathId: 'path' }, { pathUrl: 'https://grafana.com/path/?track=a#module' }]) {
       expect(
-        selectCompletionSuggestions(items, new Map(), { ...context, inPath: true, ...pathContext }).map(
-          (item) => item.id
-        )
+        selectCompletionSuggestions(items, new Map(), {
+          ...context,
+          inPath: true,
+          suggests: ['path', 'next'],
+          ...pathContext,
+        }).map((item) => item.id)
       ).toEqual(['next']);
     }
   });
@@ -258,68 +265,68 @@ describe('selectCompletionSuggestions', () => {
     }
   });
 
-  it('returns one stable fallback instead of filling a second slot', () => {
-    const items = [
-      guide('z'),
-      guide('a'),
-      guide('b'),
-      guide('a', { key: 'online:a', url: 'https://grafana.com/a' }),
-      guide('a-alias', { url: 'bundled:a' }),
-      guide('current'),
-    ];
-    expect(selectCompletionSuggestions(items, new Map(), context).map((item) => item.id)).toEqual(['a']);
-    expect(selectCompletionSuggestions([...items].reverse(), new Map(), context).map((item) => item.id)).toEqual(['a']);
-  });
-});
+  it.each(['getting-started', 'dashboards', 'data-sources', 'alerting', 'metrics', 'logs', 'k6'])(
+    'never fills a suggestion slot from the %s topic alone',
+    (category) => {
+      const items = [
+        guide('current', { category }),
+        guide('other', { category }),
+        guide('intro', { category, format: 'path' }),
+      ];
+      expect(selectCompletionSuggestions(items, new Map(), { ...context, category })).toEqual([]);
+    }
+  );
 
-it('offers a broad introductory path after onboarding before a specialist curated member', () => {
-  const welcome = guide('welcome', { category: 'getting-started' });
-  const specialist = guide('prometheus', { category: 'metrics' });
-  const broadPath = guide('concepts', { format: 'path', category: 'getting-started' });
-  const containingPath = guide('getting-started', {
-    format: 'path',
-    category: 'metrics',
-    memberIds: ['welcome', 'prometheus'],
-    curatedPath: {
-      id: 'getting-started',
-      title: 'Getting started',
-      description: '',
-      guides: ['welcome', 'prometheus'],
-      badgeId: 'badge',
-    },
+  it('does not fall back to topic matches when authored suggestions are missing or completed', () => {
+    const items = [guide('current'), guide('done'), guide('other')];
+    expect(
+      selectCompletionSuggestions(items, new Map([['bundled:done', { percent: 100 }]]), {
+        ...context,
+        suggests: ['missing', 'done'],
+      })
+    ).toEqual([]);
   });
-  const candidates = [welcome, specialist, broadPath, containingPath];
-  const completion = { ...context, url: welcome.url, id: welcome.id };
-  expect(selectCompletionSuggestions(candidates, new Map(), completion)).toEqual([broadPath]);
-  expect(selectCompletionSuggestions(candidates, new Map(), { ...completion, recommends: [specialist.id] })).toEqual([
-    specialist,
-  ]);
+
+  it('does not send a standalone reader backwards to an earlier unfinished path member', () => {
+    const path = guide('path', {
+      format: 'path',
+      memberIds: ['earlier', 'current', 'next'],
+      curatedPath: {
+        id: 'path',
+        title: 'Path',
+        description: '',
+        guides: ['earlier', 'current', 'next'],
+        badgeId: 'badge',
+      },
+    });
+    const items = [guide('current'), guide('earlier'), guide('next'), path];
+    const progress = new Map<string, { percent: number; nextId?: string }>([
+      ['bundled:path', { percent: 30, nextId: 'earlier' }],
+    ]);
+    expect(selectCompletionSuggestions(items, progress, context).map((item) => item.id)).toEqual(['next']);
+    expect(
+      selectCompletionSuggestions(items, new Map([...progress, ['bundled:next', { percent: 100 }]]), context)
+    ).toEqual([]);
+  });
 });
 
 it('deduplicates authored targets that share the same content URL', () => {
   const a = guide('a');
   const alias = guide('alias', { url: a.url });
   expect(
-    selectCompletionSuggestions([guide('current'), a, alias], new Map(), { ...context, recommends: ['a', 'alias'] })
+    selectCompletionSuggestions([guide('current'), a, alias], new Map(), { ...context, suggests: ['a', 'alias'] })
   ).toEqual([a]);
 });
 
-it('ranks specialist catalog matches by subject overlap before alphabetical order', () => {
-  const current = guide('loki-queries', { title: 'Query logs with Loki', category: 'logs' });
-  const generic = guide('aaa-logs', { title: 'A logs overview', category: 'logs' });
-  const relevant = guide('zzz-loki-queries', { title: 'Loki queries in depth', category: 'logs' });
-  expect(
-    selectCompletionSuggestions([current, generic, relevant], new Map(), {
-      ...context,
-      url: current.url,
-      id: current.id,
-    })
-  ).toEqual([relevant]);
-});
-
-it('uses known effort to break equal relevance and never fills a second inferred slot', () => {
-  const current = guide('current');
-  const long = guide('a-long', { estimatedMinutes: 30 });
-  const short = guide('z-short', { estimatedMinutes: 5 });
-  expect(selectCompletionSuggestions([current, long, short], new Map(), context)).toEqual([short]);
-});
+it.each(['prometheus-advanced-queries', 'first-dashboard'] as const)(
+  'does not recommend shipped prerequisites after completing %s directly',
+  (id) => {
+    const entry = bundledRepository[id];
+    const items = [
+      guide(id, { category: entry.category }),
+      ...entry.recommends.map((id) => guide(id, { category: entry.category })),
+    ];
+    const completion = { ...context, url: `bundled:${id}/content.json`, id, recommends: entry.recommends };
+    expect(selectCompletionSuggestions(items, new Map(), completion)).toEqual([]);
+  }
+);
