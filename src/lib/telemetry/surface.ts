@@ -24,6 +24,17 @@ let panelSessionId: string | null = null;
 // Cleared once sent: `session_started_at` rides on the first event of a session only.
 let panelSessionStartedAt: number | null = null;
 
+// Held by a kiosk launch across the gap before the sidebar opens (the launcher bounds it): a `closed`
+// report inside it must not end the session, and the release ends it if nothing opened.
+let handoffPending = false;
+
+export function setPathfinderHandoff(pending: boolean): void {
+  handoffPending = pending;
+  if (!pending && reportedSurface === 'closed') {
+    panelSessionId = null;
+  }
+}
+
 export function getPanelSessionId(): string | null {
   return reportedSurface === 'closed' ? null : panelSessionId;
 }
@@ -90,14 +101,19 @@ export function reportPathfinderSurface(surface: PathfinderSurface): void {
   latchedColdSurface = null;
   if (surface === 'closed') {
     // A mode change closes the old surface and opens the next in one task; only a close that outlives it ends the session.
-    queueMicrotask(() => {
-      if (reportedSurface === 'closed') {
-        panelSessionId = null;
-      }
-    });
-  } else if (panelSessionId === null) {
-    panelSessionId = newGuideLoadId();
-    panelSessionStartedAt = Date.now();
+    if (!handoffPending) {
+      queueMicrotask(() => {
+        if (reportedSurface === 'closed') {
+          panelSessionId = null;
+        }
+      });
+    }
+  } else {
+    handoffPending = false;
+    if (panelSessionId === null) {
+      panelSessionId = newGuideLoadId();
+      panelSessionStartedAt = Date.now();
+    }
   }
   for (const listener of listeners) {
     try {

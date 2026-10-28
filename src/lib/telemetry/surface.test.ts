@@ -234,6 +234,68 @@ describe('panel session', () => {
     });
   });
 
+  describe('kiosk-to-sidebar handoff', () => {
+    it('keeps the id and session_started_at when the sidebar opens after the kiosk cleanup', async () => {
+      const surface = freshSurface();
+      surface.reportPathfinderSurface('kiosk');
+      const launchEvent = surface.takePanelSessionProperties();
+      expect(launchEvent?.session_started_at).toEqual(expect.any(Number));
+
+      surface.setPathfinderHandoff(true);
+      surface.reportPathfinderSurfaceClosed('kiosk');
+      await Promise.resolve();
+      expect(surface.getPanelSessionId()).toBeNull();
+
+      surface.reportPathfinderSurface('sidebar');
+
+      expect(surface.takePanelSessionProperties()).toEqual({
+        pathfinder_session_id: launchEvent?.pathfinder_session_id,
+      });
+    });
+
+    it('ends the session when the handoff is released while still closed', async () => {
+      const surface = freshSurface();
+      surface.reportPathfinderSurface('kiosk');
+      const first = surface.getPanelSessionId();
+
+      surface.setPathfinderHandoff(true);
+      surface.reportPathfinderSurfaceClosed('kiosk');
+      await Promise.resolve();
+      surface.setPathfinderHandoff(false);
+
+      surface.reportPathfinderSurface('sidebar');
+      expect(surface.getPanelSessionId()).not.toBe(first);
+      expect(surface.takePanelSessionProperties()?.session_started_at).toEqual(expect.any(Number));
+    });
+
+    it('treats an explicit close after the handoff completes as a session boundary', async () => {
+      const surface = freshSurface();
+      surface.reportPathfinderSurface('kiosk');
+      const first = surface.getPanelSessionId();
+
+      surface.setPathfinderHandoff(true);
+      surface.reportPathfinderSurfaceClosed('kiosk');
+      surface.reportPathfinderSurface('sidebar');
+      surface.reportPathfinderSurfaceClosed('sidebar');
+      await Promise.resolve();
+
+      surface.reportPathfinderSurface('sidebar');
+      expect(surface.getPanelSessionId()).not.toBe(first);
+    });
+
+    it('treats an explicit close with no handoff as a session boundary', async () => {
+      const surface = freshSurface();
+      surface.reportPathfinderSurface('kiosk');
+      const first = surface.getPanelSessionId();
+
+      surface.reportPathfinderSurfaceClosed('kiosk');
+      await Promise.resolve();
+
+      surface.reportPathfinderSurface('sidebar');
+      expect(surface.getPanelSessionId()).not.toBe(first);
+    });
+  });
+
   it('never persists the id', () => {
     const surface = freshSurface();
     surface.reportPathfinderSurface('sidebar');

@@ -10,11 +10,22 @@ import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getKioskName, getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
+import { setPathfinderHandoff } from '../../lib/telemetry/surface';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
 
 import type { KioskMode } from '../../types/kiosk-page.schema';
+
+const HANDOFF_GRACE_MS = 5000;
+let handoffTimer: ReturnType<typeof setTimeout> | undefined;
+
+// The kiosk dismisses itself before the deep-link handler opens the sidebar on a 200/500 ms timer.
+function holdPanelSessionForHandoff(): void {
+  clearTimeout(handoffTimer);
+  setPathfinderHandoff(true);
+  handoffTimer = setTimeout(() => setPathfinderHandoff(false), HANDOFF_GRACE_MS);
+}
 
 export function launchKioskGuide(
   rule: KioskRule,
@@ -117,6 +128,7 @@ export function launchKioskGuide(
     url.searchParams.set('type', 'learning-journey');
   }
   if (mode === 'instance') {
+    holdPanelSessionForHandoff();
     window.__pathfinderKioskSessionId = sessionId;
     window.__pathfinderKioskName = kioskName;
     if (prepared && (panelModeManager.getMode() === 'floating' || isExtensionSidebarOwnedByOther(pluginJson.id))) {

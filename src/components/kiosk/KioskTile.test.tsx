@@ -12,6 +12,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { KioskTile } from './KioskTile';
 import type { KioskRule } from './kiosk-rules';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getPanelSessionId, reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
 
 const mockPush = jest.fn();
 const mockPublish = jest.fn();
@@ -287,6 +288,52 @@ describe('KioskTile', () => {
     launchKioskGuide(rule, 'instance', jest.fn(), prepared);
     expect(sidebarState.getIsSidebarMounted()).toBe(true);
     expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto-open' });
+  });
+
+  describe('panel session across a kiosk launch', () => {
+    beforeEach(() => jest.useFakeTimers({ doNotFake: ['queueMicrotask'] }));
+    afterEach(() => {
+      reportPathfinderSurfaceClosed('sidebar');
+      jest.useRealTimers();
+    });
+
+    it('keeps the session when the sidebar opens after the kiosk dismisses itself on launch', async () => {
+      reportPathfinderSurface('kiosk');
+      const session = getPanelSessionId();
+      expect(session).not.toBeNull();
+
+      launchKioskGuide(rule, 'instance', () => reportPathfinderSurfaceClosed('kiosk'));
+      await Promise.resolve();
+      jest.advanceTimersByTime(500);
+      reportPathfinderSurface('sidebar');
+
+      expect(getPanelSessionId()).toBe(session);
+    });
+
+    it('ends the session when the sidebar never opens after the kiosk dismisses itself', async () => {
+      reportPathfinderSurface('kiosk');
+      const session = getPanelSessionId();
+
+      launchKioskGuide(rule, 'instance', () => reportPathfinderSurfaceClosed('kiosk'));
+      await Promise.resolve();
+      jest.advanceTimersByTime(60_000);
+      reportPathfinderSurface('sidebar');
+
+      expect(getPanelSessionId()).not.toBe(session);
+    });
+
+    it('ends the session when the sidebar the launch opened is explicitly closed', async () => {
+      reportPathfinderSurface('kiosk');
+      const session = getPanelSessionId();
+
+      launchKioskGuide(rule, 'instance', () => reportPathfinderSurfaceClosed('kiosk'));
+      reportPathfinderSurface('sidebar');
+      reportPathfinderSurfaceClosed('sidebar');
+      await Promise.resolve();
+      reportPathfinderSurface('sidebar');
+
+      expect(getPanelSessionId()).not.toBe(session);
+    });
   });
 
   it('keeps the current route when no page is specified and forwards learning journeys', () => {
