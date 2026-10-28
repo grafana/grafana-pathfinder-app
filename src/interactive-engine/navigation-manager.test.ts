@@ -191,6 +191,7 @@ describe('NavigationManager', () => {
       mockHasFixedPosition.mockReturnValue(false);
       mockIsInViewport.mockReturnValue(false);
       mockGetScrollParent.mockReturnValue(customContainer);
+      mockGetStickyHeaderOffset.mockReturnValue(0);
 
       // Element is inside container viewport
       mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
@@ -205,8 +206,99 @@ describe('NavigationManager', () => {
       await navigationManager.ensureElementVisible(mockElement);
 
       expect(customContainer.scrollBy).not.toHaveBeenCalled();
+      expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
 
       document.body.removeChild(customContainer);
+    });
+
+    describe('scroll parent that only scrolls horizontally, below the fold', () => {
+      let tableWrapper: HTMLElement;
+
+      beforeEach(() => {
+        tableWrapper = document.createElement('div');
+        tableWrapper.style.overflowX = 'auto';
+        tableWrapper.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: window.innerHeight + 700,
+          left: 0,
+          bottom: window.innerHeight + 1000,
+          right: 400,
+          width: 400,
+          height: 300,
+        });
+        document.body.appendChild(tableWrapper);
+        tableWrapper.appendChild(mockElement);
+
+        mockGetScrollParent.mockReturnValue(tableWrapper);
+        mockGetStickyHeaderOffset.mockReturnValue(70);
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: window.innerHeight + 850,
+          left: 100,
+          bottom: window.innerHeight + 870,
+          right: 200,
+          width: 100,
+          height: 20,
+        });
+      });
+
+      afterEach(() => {
+        document.body.removeChild(tableWrapper);
+      });
+
+      it('scrolls the page when the target is inside the wrapper but outside the viewport', async () => {
+        await navigationManager.ensureElementVisible(mockElement);
+
+        expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest',
+        });
+      });
+
+      it('pads the page scroll below the sticky header while scrolling, then restores it', async () => {
+        let pagePaddingDuringScroll = '';
+        (mockElement.scrollIntoView as jest.Mock).mockImplementation(() => {
+          pagePaddingDuringScroll = document.documentElement.style.scrollPaddingTop;
+        });
+
+        await navigationManager.ensureElementVisible(mockElement);
+
+        expect(pagePaddingDuringScroll).toBe('80px');
+        expect(document.documentElement.style.scrollPaddingTop).toBe('');
+      });
+
+      describe('while the page scrolls', () => {
+        let settled: boolean;
+        let visible: Promise<void>;
+
+        beforeEach(() => {
+          jest.useFakeTimers();
+          (mockElement.scrollIntoView as jest.Mock).mockImplementation(() => {
+            setTimeout(() => document.dispatchEvent(new Event('scroll')), 16);
+          });
+          settled = false;
+          visible = navigationManager.ensureElementVisible(mockElement).then(() => {
+            settled = true;
+          });
+        });
+
+        afterEach(() => {
+          jest.useRealTimers();
+        });
+
+        it('resolves only after the page scroll ends', async () => {
+          await jest.advanceTimersByTimeAsync(300);
+          expect(settled).toBe(false);
+
+          document.dispatchEvent(new Event('scrollend'));
+          await visible;
+          expect(settled).toBe(true);
+        });
+
+        it('stops waiting when scrollend never fires', async () => {
+          await jest.advanceTimersByTimeAsync(1500);
+          expect(settled).toBe(true);
+        });
+      });
     });
   });
 
