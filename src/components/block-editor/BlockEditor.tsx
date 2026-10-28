@@ -26,7 +26,7 @@ import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuideDetails } from './hooks/useGuideDetails';
 import { authorNameToWrite, type DefaultedAuthor } from './utils/derive-manifest';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
-import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
+import { isBackendApiAvailable } from '../../utils/interactive-guides-api';
 import { currentUserAuthorName } from '../../utils/current-user-name';
 import { EDITOR_FALLBACK_AUTHOR } from '../../types/author-defaults';
 import { getBlockEditorStyles } from './block-editor.styles';

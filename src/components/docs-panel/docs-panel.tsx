@@ -85,7 +85,7 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { coerceLaunchSource, type LaunchSource } from '../../recovery';
-import { currentUserIsAdmin } from '../../utils/current-user-role';
+import { currentUserIsAdmin, useCurrentUserIsEditor } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { cancelCatalogActivation } from '../../global-state/package-browser';
@@ -114,7 +114,6 @@ import {
   EDITOR_TAB_ID,
   isNonContentTab,
   findCurrentMilestoneIndex,
-  isCurrentUserEditor,
   resolveTabGates,
   didGateClose,
   closeTabState,
@@ -1140,7 +1139,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const isDevMode = isDevModeEnabled(pluginConfig);
   const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
 
-  const isEditorUser = isCurrentUserEditor();
+  const isEditorUser = useCurrentUserIsEditor();
 
   const codaEnabled = isCodaTerminalEnabled(pluginConfig);
   const codaAvailable = useCodaPluginAvailable(codaEnabled);
@@ -1265,7 +1264,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // config in place rather than stripping tabs on a default-shaped read.
   React.useEffect(() => {
     model.syncPluginConfig(isPluginConfigResolved ? pluginConfig : null);
-  }, [isPluginConfigResolved, pluginConfig, model, tabs, browseEnabled]);
+  }, [isPluginConfigResolved, pluginConfig, model, tabs, isEditorUser, browseEnabled]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues

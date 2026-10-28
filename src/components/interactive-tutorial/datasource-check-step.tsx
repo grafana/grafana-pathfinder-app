@@ -27,6 +27,7 @@ import { filterDatasourcesByType, toDatasourceOptions } from './datasource-optio
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 import { useDataCheck } from './use-data-check';
+import { useDataSourceList } from './use-data-source-list';
 
 export interface DatasourceCheckStepProps {
   variableName: string;
@@ -131,7 +132,11 @@ export function DatasourceCheckStep({
   });
   const renderedStepId = stepId ?? generatedStepId;
 
-  const datasources = useMemo(() => filterDatasourcesByType(datasourceFilter), [datasourceFilter]);
+  const { dataSources, loading: datasourcesLoading } = useDataSourceList();
+  const datasources = useMemo(
+    () => filterDatasourcesByType(dataSources, datasourceFilter),
+    [dataSources, datasourceFilter]
+  );
   const datasourceOptions = useMemo(() => toDatasourceOptions(datasources), [datasources]);
 
   // The pick lives in the guide response and arrives asynchronously, so reading
@@ -382,7 +387,7 @@ export function DatasourceCheckStep({
         </div>
       )}
 
-      {isEnabled && !isCompleted && !hasDatasources && (
+      {isEnabled && !isCompleted && !datasourcesLoading && !hasDatasources && (
         <Alert title="No data sources available" severity="warning">
           No data sources{datasourceFilter ? ` of type "${datasourceFilter}"` : ''} are configured in this Grafana
           instance.

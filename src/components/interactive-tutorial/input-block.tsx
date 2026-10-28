@@ -20,6 +20,7 @@ import { testIds } from '../../constants/testIds';
 import { DataCheckControls } from './data-check-controls';
 import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
 import { useDataCheck } from './use-data-check';
+import { useDataSourceList } from './use-data-source-list';
 
 /** Props for the InputBlock component */
 export interface InputBlockProps {
@@ -161,9 +162,10 @@ export function InputBlock({
     });
   };
 
+  const { dataSources, loading: datasourcesLoading } = useDataSourceList(inputType === 'datasource');
   const datasources = useMemo(
-    () => (inputType === 'datasource' ? filterDatasourcesByType(datasourceFilter) : []),
-    [inputType, datasourceFilter]
+    () => filterDatasourcesByType(dataSources, datasourceFilter),
+    [dataSources, datasourceFilter]
   );
   const datasourceOptions = useMemo(() => toDatasourceOptions(datasources), [datasources]);
 
@@ -504,6 +506,9 @@ export function InputBlock({
         );
 
       case 'datasource':
+        if (datasourcesLoading) {
+          return null;
+        }
         if (datasourceOptions.length === 0) {
           const filterMsg = datasourceFilter ? ` of type "${datasourceFilter}"` : '';
           return (

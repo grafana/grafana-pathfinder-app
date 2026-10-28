@@ -11,21 +11,21 @@ jest.mock('./logging', () => ({
 }));
 
 jest.mock('../utils/interactive-guides-api', () => ({
-  isBackendApiAvailable: jest.fn(),
+  isBackendApiRuledOut: jest.fn(),
 }));
 
 import { getBackendSrv } from '@grafana/runtime';
 import { fetchMyAssignments } from './assignments-client';
 import { logger } from './logging';
 import { recordAssignmentsUnavailable } from './telemetry/facade';
-import { isBackendApiAvailable } from '../utils/interactive-guides-api';
+import { isBackendApiRuledOut } from '../utils/interactive-guides-api';
 
 const mockGet = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
   (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
-  (isBackendApiAvailable as jest.Mock).mockReturnValue(true);
+  (isBackendApiRuledOut as jest.Mock).mockReturnValue(false);
 });
 
 describe('fetchMyAssignments', () => {
@@ -59,7 +59,7 @@ describe('fetchMyAssignments', () => {
   });
 
   it('does not request when the aggregation toggle is off', async () => {
-    (isBackendApiAvailable as jest.Mock).mockReturnValue(false);
+    (isBackendApiRuledOut as jest.Mock).mockReturnValue(true);
 
     const result = await fetchMyAssignments('stacks-123');
 

@@ -1,16 +1,16 @@
 import { of, throwError } from 'rxjs';
 
 import { fetchBackendGuides } from './fetchBackendGuides';
-import { isBackendApiAvailable } from './interactive-guides-api';
+import { isBackendApiRuledOut } from './interactive-guides-api';
 import { PLUGIN_BACKEND_URL } from '../constants';
 
 const fetchMock = jest.fn();
 jest.mock('@grafana/runtime', () => ({ getBackendSrv: () => ({ fetch: fetchMock }) }));
-jest.mock('./interactive-guides-api', () => ({ isBackendApiAvailable: jest.fn(() => true) }));
+jest.mock('./interactive-guides-api', () => ({ isBackendApiRuledOut: jest.fn(() => false) }));
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.mocked(isBackendApiAvailable).mockReturnValue(true);
+  jest.mocked(isBackendApiRuledOut).mockReturnValue(false);
 });
 
 it('reads full resources through the plugin proxy without sending a namespace', async () => {
@@ -69,8 +69,8 @@ it('keeps network failures visible to the editor', async () => {
   await expect(fetchBackendGuides('stacks-123')).rejects.toBe(error);
 });
 
-it('does not fetch when the backend is disabled or the namespace is missing', async () => {
-  jest.mocked(isBackendApiAvailable).mockReturnValueOnce(false);
+it('does not fetch when the backend is ruled out or the namespace is missing', async () => {
+  jest.mocked(isBackendApiRuledOut).mockReturnValueOnce(true);
   await expect(fetchBackendGuides('stacks-123')).resolves.toEqual([]);
   await expect(fetchBackendGuides('')).resolves.toEqual([]);
   expect(fetchMock).not.toHaveBeenCalled();

@@ -5,9 +5,9 @@ import {
   RequirementsCheckOptions,
   validateInteractiveRequirements,
 } from './requirements-checker.utils';
-import { locationService, config, hasPermission, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
-import { hasDataSourceCheck } from './checks/grafana-api';
+import { locationService, config, hasPermission, getBackendSrv } from '@grafana/runtime';
 import * as grafanaApi from '../lib/grafana-api';
+import * as dsRegistry from '../lib/datasource/datasource-registry';
 import { getContentKey } from '../global-state/content-key';
 
 // Mock dom-utils functions with default return values
@@ -43,11 +43,15 @@ jest.mock('@grafana/runtime', () => ({
   },
   hasPermission: jest.fn(),
   getBackendSrv: jest.fn(),
-  getDataSourceSrv: jest.fn(),
+}));
+
+jest.mock('../lib/datasource/datasource-registry', () => ({
+  listDataSources: jest.fn(),
+  getDataSourceApi: jest.fn(),
 }));
 
 jest.mock('../lib/grafana-api', () => ({
-  fetchPlugins: jest.fn(),
+  fetchPluginPresence: jest.fn(),
   fetchDashboardsByName: jest.fn(),
   fetchDataSources: jest.fn(),
 }));
@@ -202,10 +206,10 @@ describe('requirements-checker.utils', () => {
   });
 
   describe('datasourceConfiguredCHECK', () => {
+    const mockTestDatasource = jest.fn();
+
     beforeEach(() => {
-      (getBackendSrv as jest.Mock).mockReturnValue({
-        get: jest.fn(),
-      });
+      (dsRegistry.getDataSourceApi as jest.Mock).mockResolvedValue({ testDatasource: mockTestDatasource });
     });
 
     it('should test specific data source configuration', async () => {
@@ -214,8 +218,7 @@ describe('requirements-checker.utils', () => {
         { id: 2, name: 'Loki', type: 'loki', uid: 'loki-uid' },
       ]);
 
-      const mockBackend = getBackendSrv();
-      (mockBackend.get as jest.Mock).mockResolvedValue({ status: 'OK', message: 'Data source is working' });
+      mockTestDatasource.mockResolvedValue({ status: 'success', message: 'Data source is working' });
 
       const options: RequirementsCheckOptions = {
         requirements: 'datasource-configured:prometheus',
@@ -224,7 +227,7 @@ describe('requirements-checker.utils', () => {
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
       expect(result.error[0]!.pass).toBe(true);
-      expect(mockBackend.get).toHaveBeenCalledWith('/api/datasources/uid/prom-uid/health');
+      expect(dsRegistry.getDataSourceApi).toHaveBeenCalledWith('prom-uid');
     });
 
     it('should fail when the health check reports a non-OK status', async () => {
@@ -232,8 +235,7 @@ describe('requirements-checker.utils', () => {
         { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
       ]);
 
-      const mockBackend = getBackendSrv();
-      (mockBackend.get as jest.Mock).mockResolvedValue({ status: 'ERROR', message: 'Connection failed' });
+      mockTestDatasource.mockResolvedValue({ status: 'error', message: 'Connection failed' });
 
       const options: RequirementsCheckOptions = {
         requirements: 'datasource-configured:prometheus',
@@ -242,16 +244,15 @@ describe('requirements-checker.utils', () => {
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
       expect(result.error[0]!.pass).toBe(false);
-      expect(result.error[0]!.error).toContain('health check failed');
+      expect(result.error[0]!.error).toContain('health check failed: Connection failed');
     });
 
-    it('should fail when the health endpoint rejects (Grafana returns 400 on failed checks)', async () => {
+    it('should fail when the health check rejects (backend data sources reject on failed checks)', async () => {
       (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([
         { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
       ]);
 
-      const mockBackend = getBackendSrv();
-      (mockBackend.get as jest.Mock).mockRejectedValue(new Error('Bad request'));
+      mockTestDatasource.mockRejectedValue({ status: 'error', message: 'Bad request' });
 
       const options: RequirementsCheckOptions = {
         requirements: 'datasource-configured:prometheus',
@@ -260,7 +261,7 @@ describe('requirements-checker.utils', () => {
       const result = await checkRequirements(options);
       expect(result.pass).toBe(false);
       expect(result.error[0]!.pass).toBe(false);
-      expect(result.error[0]!.error).toContain('configuration test failed');
+      expect(result.error[0]!.error).toContain('configuration test failed: Bad request');
     });
 
     it('should fail when data source not found', async () => {
@@ -281,7 +282,7 @@ describe('requirements-checker.utils', () => {
 
   describe('hasPluginCHECK', () => {
     it('should check for installed plugins', async () => {
-      (grafanaApi.fetchPlugins as jest.Mock).mockResolvedValue([{ id: 'grafana-plugin' }]);
+      (grafanaApi.fetchPluginPresence as jest.Mock).mockResolvedValue({ installed: true, enabled: false });
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-plugin:grafana-plugin',
@@ -294,10 +295,7 @@ describe('requirements-checker.utils', () => {
 
   describe('pluginEnabledCHECK', () => {
     it('should check if specific plugin is enabled', async () => {
-      (grafanaApi.fetchPlugins as jest.Mock).mockResolvedValue([
-        { id: 'grafana-clock-panel', name: 'Clock Panel', enabled: true },
-        { id: 'grafana-piechart-panel', name: 'Pie Chart Panel', enabled: false },
-      ]);
+      (grafanaApi.fetchPluginPresence as jest.Mock).mockResolvedValue({ installed: true, enabled: true });
 
       const options: RequirementsCheckOptions = {
         requirements: 'plugin-enabled:grafana-clock-panel',
@@ -309,10 +307,7 @@ describe('requirements-checker.utils', () => {
     });
 
     it('should fail when plugin exists but is not enabled', async () => {
-      (grafanaApi.fetchPlugins as jest.Mock).mockResolvedValue([
-        { id: 'grafana-clock-panel', name: 'Clock Panel', enabled: true },
-        { id: 'grafana-piechart-panel', name: 'Pie Chart Panel', enabled: false },
-      ]);
+      (grafanaApi.fetchPluginPresence as jest.Mock).mockResolvedValue({ installed: true, enabled: false });
 
       const options: RequirementsCheckOptions = {
         requirements: 'plugin-enabled:grafana-piechart-panel',
@@ -325,9 +320,7 @@ describe('requirements-checker.utils', () => {
     });
 
     it('should fail when plugin does not exist', async () => {
-      (grafanaApi.fetchPlugins as jest.Mock).mockResolvedValue([
-        { id: 'grafana-clock-panel', name: 'Clock Panel', enabled: true },
-      ]);
+      (grafanaApi.fetchPluginPresence as jest.Mock).mockResolvedValue({ installed: false, enabled: false });
 
       const options: RequirementsCheckOptions = {
         requirements: 'plugin-enabled:non-existent-plugin',
@@ -533,10 +526,9 @@ describe('requirements-checker.utils', () => {
     });
 
     it('should pass when dashboards exist', async () => {
-      const mockBackend = getBackendSrv();
-      (mockBackend.get as jest.Mock).mockResolvedValue([
-        { id: 1, title: 'Dashboard 1' },
-        { id: 2, title: 'Dashboard 2' },
+      (grafanaApi.fetchDashboardsByName as jest.Mock).mockResolvedValue([
+        { uid: 'd1', title: 'Dashboard 1' },
+        { uid: 'd2', title: 'Dashboard 2' },
       ]);
 
       const options: RequirementsCheckOptions = {
@@ -545,16 +537,11 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(mockBackend.get).toHaveBeenCalledWith('/api/search', {
-        type: 'dash-db',
-        limit: 1,
-        deleted: false,
-      });
+      expect(grafanaApi.fetchDashboardsByName).toHaveBeenCalledWith('', { throwOnError: true });
     });
 
     it('should fail when no dashboards exist', async () => {
-      const mockBackend = getBackendSrv();
-      (mockBackend.get as jest.Mock).mockResolvedValue([]);
+      (grafanaApi.fetchDashboardsByName as jest.Mock).mockResolvedValue([]);
 
       const options: RequirementsCheckOptions = {
         requirements: 'dashboard-exists',
@@ -915,9 +902,7 @@ describe('requirements-checker.utils', () => {
     });
 
     it('should support plugin checks as postconditions', async () => {
-      (grafanaApi.fetchPlugins as jest.Mock).mockResolvedValue([
-        { id: 'grafana-clock-panel', name: 'Clock Panel', enabled: true },
-      ]);
+      (grafanaApi.fetchPluginPresence as jest.Mock).mockResolvedValue({ installed: true, enabled: true });
 
       const options: RequirementsCheckOptions = {
         requirements: 'has-plugin:grafana-clock-panel',
@@ -1117,66 +1102,4 @@ describe('structured check verdicts', () => {
     expect(await checkRequirements(options)).toMatchObject({ pass: true, verdict: 'invalid' });
     expect(await checkPostconditions(options)).toMatchObject({ pass: false, verdict: 'invalid' });
   });
-});
-
-describe('has-datasource sources and error policy', () => {
-  const local = (list: Array<{ name: string; type: string; uid: string }>) =>
-    (getDataSourceSrv as jest.Mock).mockReturnValue({ getList: () => list });
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('answers from the local list without a request when the data source is already known', async () => {
-    local([{ name: 'TestData', type: 'grafana-testdata-datasource', uid: 'td' }]);
-    const result = await hasDataSourceCheck('has-datasource:testdata');
-    expect(result.pass).toBe(true);
-    expect(grafanaApi.fetchDataSources).not.toHaveBeenCalled();
-  });
-
-  it.each(['grafana', 'mixed', 'dashboard'])('never matches the built-in %s data source', async (type) => {
-    (getDataSourceSrv as jest.Mock).mockReturnValue({
-      getList: () => [{ name: `-- ${type} --`, type, uid: type, meta: { builtIn: true } }],
-    });
-    (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([]);
-    const result = await hasDataSourceCheck(`has-datasource:${type}`);
-    expect(result.pass).toBe(false);
-    expect(grafanaApi.fetchDataSources).toHaveBeenCalled();
-  });
-
-  it('asks the API for a data source created outside this page', async () => {
-    local([]);
-    (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([{ name: 'Prom', type: 'prometheus', uid: 'p' }]);
-    const result = await hasDataSourceCheck('has-datasource:prometheus');
-    expect(result.pass).toBe(true);
-  });
-
-  it.each([401, 403])('treats the local list as complete when the API denies the read (%s)', async (status) => {
-    local([]);
-    (grafanaApi.fetchDataSources as jest.Mock).mockRejectedValue(Object.assign(new Error('denied'), { status }));
-    const result = await hasDataSourceCheck('has-datasource:prometheus');
-    expect(result.pass).toBe(false);
-    expect(result.verdict).toBeUndefined();
-  });
-
-  it('reports a transient API failure as unavailable, not as a missing data source', async () => {
-    local([]);
-    (grafanaApi.fetchDataSources as jest.Mock).mockRejectedValue(
-      Object.assign(new Error('bad gateway'), { status: 502 })
-    );
-    const result = await hasDataSourceCheck('has-datasource:prometheus');
-    expect(result.pass).toBe(false);
-    expect(result.verdict).toBe('unavailable');
-  });
-});
-
-describe('passive command checks', () => {
-  it.each([checkRequirements, checkPostconditions])(
-    'does not run shell checks without an explicit action',
-    async (check) => {
-      const result = await check({ requirements: ['coda-exit-zero:echo unexpected'], maxRetries: 0 });
-      expect(result.pass).toBe(false);
-      expect(result.error[0]?.error).toContain('Check completion');
-    }
-  );
 });

@@ -4,13 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 
-	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
@@ -22,8 +18,8 @@ func (a *App) handlePathfinderSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, resource, name string, maxBytes int64) {
-	client, namespace := a.appPlatformReadClient(w, r, resource, "get")
-	if client == nil {
+	client, namespace, ok := a.appPlatformReadClient(w, r, resource, "get")
+	if !ok {
 		return
 	}
 	client.attempt = readAttempt(r)
@@ -45,74 +41,37 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 	a.writeJSON(w, body, http.StatusOK)
 }
 
-func (a *App) appPlatformReadClient(w http.ResponseWriter, r *http.Request, resource, operation string) (*appPlatformListClient, string) {
+func (a *App) appPlatformReadClient(w http.ResponseWriter, r *http.Request, resource, operation string) (*appPlatformListClient, string, bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
 		a.writeError(w, "method not allowed", http.StatusMethodNotAllowed)
-		return nil, ""
+		return nil, "", false
 	}
 	if status := a.validIDToken(r); status != identityVerified {
 		a.writeProxyError(w, status.capabilityReason(), http.StatusForbidden, proxyGateDiagnostic("identity-unavailable", resource, operation, "identity"))
-		return nil, ""
+		return nil, "", false
 	}
 	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
 	cfg := config.GrafanaConfigFromContext(r.Context())
 	if cfg == nil || namespace == "" || a.oboExchanger == nil {
 		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, operation, "configuration"))
-		return nil, ""
+		return nil, "", false
 	}
 	appURL, err := cfg.AppURL()
 	if err != nil || appURL == "" {
 		a.writeProxyError(w, "app platform proxy unavailable", http.StatusServiceUnavailable, proxyGateDiagnostic("proxy-unavailable", resource, operation, "configuration"))
-		return nil, ""
+		return nil, "", false
 	}
-	client := newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context()))
-	return client, namespace
+	return newAppPlatformListClient(appURL, a.oboExchanger, r.Header.Get(backend.GrafanaUserSignInTokenHeaderName), a.ctxLogger(r.Context())), namespace, true
 }
 
 func (c *appPlatformListClient) getSettings(ctx context.Context, namespace string) (json.RawMessage, error) {
 	return c.getItem(ctx, namespace, "pathfindersettings", "default", pathfinderSettingsMaxBytes)
 }
 
-func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource, name string, maxBytes int64) (body json.RawMessage, err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "get", c.attempt, err) }()
-	ctx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
-	defer cancel()
-	token, err := mintAccessToken(ctx, c.minter, namespace, c.idToken)
-	if err != nil {
-		return nil, err
-	}
-	endpoint := buildAppPlatformURL(c.appURL, appPlatformGroup+"/v1alpha1", namespace, resource) + "/" + url.PathEscape(name)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set(auth.AccessTokenHeader, token)
-	req.Header.Set("Accept", "application/json")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		errBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2049))
-		if readErr != nil || len(errBody) > 2048 {
-			errBody = nil
-		}
-		return nil, &appPlatformUpstreamError{status: resp.StatusCode, msg: fmt.Sprintf("app platform upstream status %d", resp.StatusCode), body: errBody}
-	}
-	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(body)) > maxBytes {
-		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "response-too-large", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
-	}
-	if !json.Valid(body) {
-		return nil, &guideProxyError{diagnostic: guideProxyDiagnostic{Outcome: "error", Reason: "invalid-json", UpstreamStatus: resp.StatusCode}, err: fmt.Errorf("invalid app platform upstream response")}
-	}
-	return json.RawMessage(body), nil
+func (c *appPlatformListClient) getItem(ctx context.Context, namespace, resource, name string, maxBytes int64) (json.RawMessage, error) {
+	return c.getPath(ctx, appPlatformGroup+"/v1alpha1", namespace, resource, name, nil, maxBytes)
 }
 
 func isSettingsNotConfigured(err error) bool {
