@@ -1,4 +1,5 @@
 import { reportAppInteraction, UserInteraction } from './analytics';
+import { setApprovedCatalogTopics } from './analytics-value-check';
 import { toAnalyticsValue } from './analytics-values';
 import { catalogTopic } from './catalog-discovery';
 import type { CatalogPackage } from '../types/package-catalog.types';
@@ -107,6 +108,9 @@ function reportableTopic(topic: string, publicTopics: ReadonlySet<string> | unde
 }
 
 export function reportCatalogInteraction(interaction: CatalogInteraction): void {
+  if (interaction.action === 'topic') {
+    setApprovedCatalogTopics(interaction.publicTopics);
+  }
   reportAppInteraction(UserInteraction.CatalogInteraction, {
     interaction_location: 'package_browser',
     action: interaction.action,

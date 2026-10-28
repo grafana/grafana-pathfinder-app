@@ -8,18 +8,33 @@ const KEBAB_CASE_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
 
 // Identifiers, titles, URLs and requirement expressions carry author- or
 // system-chosen text, not a fixed vocabulary, so they are exempt by property name.
-// Launch sources pass external values through verbatim (`toAnalyticsLaunchSource`).
+// Launch sources pass external values through verbatim (`toAnalyticsLaunchSource`),
+// as do Grafana datasource plugin types (`grafana-pyroscope-datasource`).
 const EXEMPT_PROPERTY =
-  /(?:^|_)(?:id|ids|title|name|url|path|slug|version|selector|query|reftarget|requirement|target|text)$|^(?:launch_)?source$/;
+  /(?:^|_)(?:id|ids|title|name|url|path|slug|version|selector|query|reftarget|requirement|target|text)$|^(?:launch_)?source$|^datasource_type$/;
 
 export function isExemptAnalyticsProperty(name: string): boolean {
   return EXEMPT_PROPERTY.test(name);
 }
 
+let approvedCatalogTopics: ReadonlySet<string> = new Set();
+
+// Official-catalog topics report verbatim (`publicCatalogTopics`), so the
+// catalog reporter hands over the set it is reporting against.
+export function setApprovedCatalogTopics(topics: ReadonlySet<string> | undefined): void {
+  approvedCatalogTopics = topics ?? new Set();
+}
+
+function isApprovedExternalValue(name: string, value: string): boolean {
+  return name === 'topic' && approvedCatalogTopics.has(value);
+}
+
 export function findKebabCaseValues(properties: Record<string, unknown>): string[] {
   return Object.entries(properties)
     .filter(([name, value]) => typeof value === 'string' && !isExemptAnalyticsProperty(name))
-    .filter(([, value]) => KEBAB_CASE_VALUE.test(value as string))
+    .filter(
+      ([name, value]) => KEBAB_CASE_VALUE.test(value as string) && !isApprovedExternalValue(name, value as string)
+    )
     .map(([name, value]) => `${name}=${value as string}`);
 }
 

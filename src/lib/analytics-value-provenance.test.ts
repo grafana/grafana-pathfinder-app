@@ -2,7 +2,7 @@ import { reportInteraction } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from './analytics';
 import { toAnalyticsLaunchSource } from '../recovery';
 import { drainValueCasingViolations } from './analytics-value-check';
-import { reportCatalogInteraction } from './catalog-analytics';
+import { publicCatalogTopics, reportCatalogInteraction } from './catalog-analytics';
 import { reportGuideProgress } from '../completion-records/progress-analytics';
 
 jest.mock('@grafana/runtime', () => ({
@@ -76,5 +76,47 @@ describe('catalog', () => {
       expect.objectContaining({ topic: 'getting_started' }),
     ]);
     expect(drainValueCasingViolations()).toEqual([]);
+  });
+
+  const catalogItems = [
+    { id: 'play-intro', title: 'Play intro', category: 'play-demos', source: 'grafana' },
+    { id: 'internal', title: 'Internal runbook', category: 'customer-secret', source: 'organization' },
+  ] as const;
+
+  it('reports an approved external catalog topic verbatim without a casing violation', () => {
+    reportCatalogInteraction({
+      action: 'topic',
+      topic: 'play-demos',
+      control: 'filter',
+      publicTopics: publicCatalogTopics(catalogItems),
+    });
+
+    expect(sent()).toEqual([expect.objectContaining({ topic: 'play-demos' })]);
+    expect(drainValueCasingViolations()).toEqual([]);
+  });
+
+  it('still flags a kebab-case topic that is not in the approved set', () => {
+    reportAppInteraction(UserInteraction.CatalogInteraction, { topic: 'customer-secret' });
+
+    expect(drainValueCasingViolations()).toEqual(['pathfinder_catalog_interaction: topic=customer-secret']);
+  });
+});
+
+describe('datasource types', () => {
+  it('reports a Grafana datasource plugin type verbatim without a casing violation', () => {
+    reportAppInteraction(UserInteraction.DataCheckRun, {
+      datasource_type: 'grafana-pyroscope-datasource',
+      variable_name: 'datasource',
+      blocking: false,
+    });
+
+    expect(sent()).toEqual([expect.objectContaining({ datasource_type: 'grafana-pyroscope-datasource' })]);
+    expect(drainValueCasingViolations()).toEqual([]);
+  });
+
+  it('still flags a kebab-case value on an internal property', () => {
+    reportAppInteraction(UserInteraction.DataCheckRun, { datasource_type: 'prometheus', outcome: 'not-run' });
+
+    expect(drainValueCasingViolations()).toEqual(['pathfinder_data_check_run: outcome=not-run']);
   });
 });
