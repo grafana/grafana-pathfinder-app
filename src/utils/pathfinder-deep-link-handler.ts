@@ -38,7 +38,14 @@ function rewriteCurrentUrl(mutate: (url: URL) => void): void {
   // Router replacement notifies listeners synchronously, including during partial panelMode cleanup.
   rewritingUrl = true;
   try {
-    locationService.replace({ ...locationService.getLocation(), search: url.search, hash: url.hash });
+    const location = locationService.getLocation();
+    locationService.replace({
+      pathname: location.pathname,
+      search: url.search,
+      hash: url.hash,
+      state: location.state,
+      key: location.key,
+    });
   } finally {
     rewritingUrl = false;
     lastProcessedSearch = null;
