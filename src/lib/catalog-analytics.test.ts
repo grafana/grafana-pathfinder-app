@@ -37,7 +37,7 @@ it.each([
   expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
     interaction_location: 'package_browser',
     action: 'topic',
-    topic,
+    topic: topic.replace(/-/g, '_'),
     control: 'filter',
   });
 });
@@ -119,7 +119,7 @@ it.each([
   expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
     interaction_location: 'package_browser',
     action: 'search',
-    search_topic: topic,
+    search_topic: topic.replace(/-/g, '_'),
   });
 });
 

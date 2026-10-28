@@ -157,7 +157,7 @@ describe('reportAppInteraction', () => {
 
   it('fully strips an App Platform guide completion from Faro', () => {
     reportAppInteraction(UserInteraction.GuideCompleted, {
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_id: 'customer-guide',
       guide_title: 'Customer guide',
@@ -230,9 +230,9 @@ describe('reportAppInteraction', () => {
   it('includes the kiosk name on the panel-open event in both pipelines', () => {
     window.__pathfinderKioskSessionId = 'current-session';
     window.__pathfinderKioskName = 'customer-onboarding';
-    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'auto-open', source: 'kiosk_session' });
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'auto_open', source: 'kiosk_session' });
     const expected = expect.objectContaining({
-      action: 'auto-open',
+      action: 'auto_open',
       source: 'kiosk_session',
       kiosk_session_id: 'current-session',
       kiosk_name: 'customer-onboarding',
@@ -265,13 +265,13 @@ describe('reportAppInteraction', () => {
 
     reportAppInteraction(UserInteraction.ShowMeButtonClick, {
       step_id: 'step-1',
-      content_type: 'interactive-guide',
+      content_type: 'interactive_guide',
     });
 
     const properties = mockReportInteraction.mock.calls[0][1];
     expect(properties.kiosk_session_id).toBe('kiosk-123');
     expect(properties.step_id).toBe('step-1');
-    expect(properties.content_type).toBe('interactive-guide');
+    expect(properties.content_type).toBe('interactive_guide');
     expect(properties.plugin_version).toBe('1.0.0-test');
   });
 });
@@ -463,12 +463,12 @@ describe('setupScrollTracking PanelScroll content_type', () => {
     fireScroll(el);
 
     const props = mockReportInteraction.mock.calls[0][1];
-    expect(props.page_type).toBe('learning-journey');
-    expect(props.content_type).toBe('learning-journey');
+    expect(props.page_type).toBe('learning_journey');
+    expect(props.content_type).toBe('learning_journey');
     cleanup();
   });
 
-  it('maps an interactive tab to the canonical interactive-guide content_type', () => {
+  it('maps an interactive tab to the canonical interactive_guide content_type', () => {
     const el = document.createElement('div');
     const activeTab = { type: 'interactive' as const, content: { url: 'https://example.com/guide' } };
 
@@ -477,7 +477,7 @@ describe('setupScrollTracking PanelScroll content_type', () => {
 
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props.page_type).toBe('interactive');
-    expect(props.content_type).toBe('interactive-guide');
+    expect(props.content_type).toBe('interactive_guide');
     cleanup();
   });
 

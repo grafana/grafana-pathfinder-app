@@ -485,6 +485,10 @@ func TestAppPlatformCreateClient_RedirectNeverFollowed(t *testing.T) {
 			var targetHits int
 			var targetSawCredential, targetSawBody bool
 			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Concurrently running test binaries can reach a reused loopback port.
+				if r.URL.Path != "/redirected" {
+					return
+				}
 				targetHits++
 				if r.Header.Get(auth.AccessTokenHeader) != "" ||
 					r.Header.Get("Authorization") != "" ||
@@ -536,6 +540,10 @@ func TestAppPlatformListClient_RedirectNeverFollowed(t *testing.T) {
 	var targetHits int
 	var targetSawCredential bool
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Concurrently running test binaries can reach a reused loopback port.
+		if r.URL.Path != "/redirected" {
+			return
+		}
 		targetHits++
 		if r.Header.Get(auth.AccessTokenHeader) != "" ||
 			r.Header.Get("Authorization") != "" ||

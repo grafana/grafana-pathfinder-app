@@ -97,7 +97,7 @@ test('correlates private and CDN failures with committed rendering without leaki
   await expect(page.getByText('Unable to load documentation')).toBeVisible();
   await expect.poll(() => outcomes().some((event) => event.attributes.http_status === '404')).toBe(true);
   await openGuide('backend-guide:private-invalid');
-  await expect.poll(() => outcomes().some((event) => event.attributes.reason === 'schema-invalid')).toBe(true);
+  await expect.poll(() => outcomes().some((event) => event.attributes.reason === 'schema_invalid')).toBe(true);
   await openGuide('backend-guide:private-valid');
   await expect(page.getByText('Private fixture rendered')).toBeVisible();
   await expect.poll(() => outcomes().some((event) => event.attributes.outcome === 'rendered')).toBe(true);

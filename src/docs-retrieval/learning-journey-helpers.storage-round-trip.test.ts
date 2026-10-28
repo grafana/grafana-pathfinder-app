@@ -170,7 +170,7 @@ describe('URL-path badge analytics', () => {
     expect(badgeUnlockedCalls()[0]![1]).toMatchObject({
       badge_id: 'penguin-wrangler',
       badge_title: 'Penguin Wrangler',
-      trigger_type: 'path-completed',
+      trigger_type: 'path_completed',
       path_id: 'linux-server-integration',
     });
     expect(badgeUnlockedCalls()[0]![1]).not.toHaveProperty('journey_id');

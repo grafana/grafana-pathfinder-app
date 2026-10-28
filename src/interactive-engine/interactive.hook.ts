@@ -29,6 +29,7 @@ import {
   PopoutHandler,
 } from './action-handlers';
 import type { UseInteractiveElementsOptions } from '../types/hooks.types';
+import { toAnalyticsValue } from '../lib/analytics-values';
 
 // Re-export CheckResult and InteractiveRequirementsCheck for backward compatibility
 export interface InteractiveRequirementsCheck {
@@ -329,7 +330,7 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
           isShowMode
             ? createInteractionName(UserInteraction.ShowMeButtonClick)
             : createInteractionName(UserInteraction.DoItButtonClick),
-          { target_action: targetAction, ref_target: refTarget },
+          { target_action: toAnalyticsValue(targetAction), ref_target: refTarget },
           async () => {
             try {
               run.controller.signal.throwIfAborted();

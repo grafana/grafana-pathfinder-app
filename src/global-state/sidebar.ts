@@ -24,7 +24,7 @@ export class CloseExtensionSidebarEvent extends BusEventBase {
 /**
  * Action types for sidebar open analytics
  */
-export type OpenAction = 'open' | 'auto-open' | 'restore';
+export type OpenAction = 'open' | 'auto_open' | 'restore';
 
 /**
  * Pending open info for analytics tracking
@@ -60,7 +60,7 @@ class GlobalSidebarState {
    * This is consumed by the sidebar mount analytics and cleared after use.
    *
    * @param source - The source identifier for analytics
-   * @param action - The action type: 'open' (user-initiated), 'auto-open' (programmatic), or 'restore' (browser cache)
+   * @param action - The action type: 'open' (user-initiated), 'auto_open' (programmatic), or 'restore' (browser cache)
    */
   public setPendingOpenSource(source: string, action: OpenAction = 'open'): void {
     this._pendingOpenInfo = { source, action };
@@ -111,7 +111,7 @@ class GlobalSidebarState {
    * @param guideId - The bundled guide ID (e.g. 'prometheus-grafana-101')
    */
   public openWithGuide(guideId: string): void {
-    this.setPendingOpenSource('mcp_launch', 'auto-open');
+    this.setPendingOpenSource('mcp_launch', 'auto_open');
 
     let dispatched = false;
     const dispatch = () => {

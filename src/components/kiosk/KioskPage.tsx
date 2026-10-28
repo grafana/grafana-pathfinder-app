@@ -221,7 +221,7 @@ function LaunchForm({
         if (request.current) {
           return;
         }
-        reportKioskInteraction(mode, blockIndex, { component: 'launch-form', action: 'submit' });
+        reportKioskInteraction(mode, blockIndex, { component: 'launch_form', action: 'submit' });
         const controller = new AbortController();
         request.current = controller;
         setBusy(true);
@@ -237,9 +237,9 @@ function LaunchForm({
                 reason: prepared.reason,
                 launch_mode: mode,
               });
-              reportKioskInteraction(mode, blockIndex, { component: 'launch-form', action: 'fallback' });
+              reportKioskInteraction(mode, blockIndex, { component: 'launch_form', action: 'fallback' });
             } else {
-              reportKioskInteraction(mode, blockIndex, { component: 'launch-form', action: 'ready' });
+              reportKioskInteraction(mode, blockIndex, { component: 'launch_form', action: 'ready' });
             }
             launchKioskGuide(rule, mode, onLaunch, prepared.launch);
           }
@@ -261,7 +261,7 @@ function LaunchForm({
               logger.error(`Kiosk guide launch failed: ${stage}/${reason}`, { stage, reason, launch_mode: mode });
             }
             reportKioskInteraction(mode, blockIndex, {
-              component: 'launch-form',
+              component: 'launch_form',
               action: 'error',
               reason: cause instanceof KioskFormError ? cause.reason : 'unavailable',
             });

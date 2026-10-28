@@ -129,7 +129,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
             '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...',
         });
         rewriteCurrentUrl(stripPathfinderParams);
-        sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+        sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
         deps.attemptAutoOpen(200);
         return;
       }
@@ -139,7 +139,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       const isFloatingMode = currentMode === 'floating';
       const isFullScreenMode = currentMode === 'fullscreen';
 
-      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
 
       if (needsRedirect) {
         locationService.replace(redirectTarget);
@@ -163,7 +163,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     })
     .catch((err) => {
       logger.error('[Pathfinder] Failed to load find-doc-page chunk', { error: err });
-      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
       deps.attemptAutoOpen(200);
       setTimeout(() => {
         locationService.replace('/');

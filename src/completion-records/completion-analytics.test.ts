@@ -40,7 +40,7 @@ describe('completion analytics — guide identity', () => {
 
   it.each(['bundled', 'interactive-tutorials', 'online-cdn'])('names a guide from %s', (guideSource) => {
     expect(identity({ guideSource })).toEqual({
-      guide_source: guideSource,
+      guide_source: guideSource.replace('-', '_'),
       guide_visibility: 'public',
       guide_id: 'prometheus-101',
       guide_title: 'Prometheus 101',
@@ -60,7 +60,7 @@ describe('completion analytics — guide identity', () => {
     expect(
       identity({ kind, guideSource: 'app-platform', guideId: 'acme-onboarding', guideTitle: 'Acme onboarding' })
     ).toEqual({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       [kind === 'guide' ? 'guide_id' : 'journey_id']: 'acme-onboarding',
       [kind === 'guide' ? 'guide_title' : 'journey_title']: 'Acme onboarding',
@@ -97,7 +97,7 @@ describe('completion analytics — guide identity', () => {
 
   it('treats a local guide id from another source by that source', () => {
     expect(identity({ guideSource: 'interactive-tutorials', guideId: 'e2e-test', guideTitle: 'E2E' })).toEqual({
-      guide_source: 'interactive-tutorials',
+      guide_source: 'interactive_tutorials',
       guide_visibility: 'public',
       guide_id: 'e2e-test',
       guide_title: 'E2E',
@@ -161,7 +161,7 @@ describe('completion analytics — event properties', () => {
 
   it.each(['interactive-tutorials', 'online-cdn'])('treats %s as a public source', (guideSource) => {
     expect(completionAnalytics(fact({ guideSource })).properties).toMatchObject({
-      guide_source: guideSource,
+      guide_source: guideSource.replace('-', '_'),
       guide_visibility: 'public',
       guide_id: 'prometheus-101',
     });
@@ -173,7 +173,7 @@ describe('completion analytics — event properties', () => {
     ).properties;
 
     expect(properties).toEqual({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_category: 'interactive',
       completion_source: 'objectives',

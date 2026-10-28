@@ -21,6 +21,7 @@ export {
   NEEDS_ALIGNMENT_CHECK_SOURCES,
   isAlignedByConstruction,
   coerceLaunchSource,
+  toAnalyticsLaunchSource,
   type LaunchSource,
 } from './launch-sources';
 

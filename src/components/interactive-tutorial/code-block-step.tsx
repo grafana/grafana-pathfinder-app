@@ -249,7 +249,7 @@ export const CodeBlockStep = forwardRef<
       reportAppInteraction(
         UserInteraction.ShowMeButtonClick,
         buildInteractiveStepProperties(
-          { target_action: 'code-block', ref_target: refTarget, interaction_location: 'code_block_step' },
+          { target_action: 'code_block', ref_target: refTarget, interaction_location: 'code_block_step' },
           analyticsStepMeta
         )
       );
@@ -279,7 +279,7 @@ export const CodeBlockStep = forwardRef<
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
         buildInteractiveStepProperties(
-          { target_action: 'code-block', ref_target: refTarget, interaction_location: 'code_block_step' },
+          { target_action: 'code_block', ref_target: refTarget, interaction_location: 'code_block_step' },
           analyticsStepMeta
         )
       );
