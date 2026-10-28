@@ -17,16 +17,16 @@ export function isExemptAnalyticsProperty(name: string): boolean {
   return EXEMPT_PROPERTY.test(name);
 }
 
-let approvedCatalogTopics: ReadonlySet<string> = new Set();
+let approvedCatalogTopics: ReadonlySet<string> | undefined;
 
 // Official-catalog topics report verbatim (`publicCatalogTopics`), so the
 // catalog reporter hands over the set it is reporting against.
 export function setApprovedCatalogTopics(topics: ReadonlySet<string> | undefined): void {
-  approvedCatalogTopics = topics ?? new Set();
+  approvedCatalogTopics = topics;
 }
 
 function isApprovedExternalValue(name: string, value: string): boolean {
-  return name === 'topic' && approvedCatalogTopics.has(value);
+  return name === 'topic' && approvedCatalogTopics?.has(value) === true;
 }
 
 export function findKebabCaseValues(properties: Record<string, unknown>): string[] {
