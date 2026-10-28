@@ -1,12 +1,10 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
-// Container and layout styles
 export const getContainerStyles = (theme: GrafanaTheme2) => ({
   container: css({
     label: 'context-container',
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: '0',
+    borderRadius: 0,
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',

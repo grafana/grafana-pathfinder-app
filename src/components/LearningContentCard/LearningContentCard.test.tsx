@@ -1,11 +1,107 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LearningContentCard } from './LearningContentCard';
+import { cache } from '@emotion/css';
+import { createTheme } from '@grafana/data';
+import { getLearningContentCardStyles } from './learning-content-card.styles';
+import { getLearningTopicVisual } from './learning-topic-visual';
+
+jest.mock('@grafana/ui', () => {
+  const actual = jest.requireActual('@grafana/ui');
+  return {
+    ...actual,
+    Button: React.forwardRef<HTMLButtonElement, React.ComponentProps<typeof actual.Button>>(
+      function Button(props, ref) {
+        return <actual.Button {...props} ref={ref} data-button-variant={props.variant ?? 'primary'} />;
+      }
+    ),
+  };
+});
+
+it('reserves primary emphasis for the featured launch rather than ordinary recommendations', () => {
+  render(
+    <>
+      <LearningContentCard title="Featured" variant="featured" kind="guide" onLaunch={jest.fn()} />
+      <LearningContentCard title="Another guide" kind="guide" onLaunch={jest.fn()} />
+      <LearningContentCard title="A path" kind="path" onLaunch={jest.fn()} />
+      <LearningContentCard title="Documentation" kind="docs" onLaunch={jest.fn()} />
+    </>
+  );
+  const launches = screen.getAllByRole('button');
+  expect(launches.filter((button) => button.dataset.buttonVariant === 'primary')).toHaveLength(1);
+  expect(launches[0]).toHaveAttribute('data-button-variant', 'primary');
+  launches.slice(1).forEach((button) => expect(button).toHaveAttribute('data-button-variant', 'secondary'));
+});
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
     fallback.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? '')),
 }));
+
+it.each(['dark', 'light'] as const)('uses semantic container and accent tokens for %s cards', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.shape.radius.lg = '11px';
+  theme.colors.accent.border = '#f59e4b';
+  theme.colors.accent.background = '#714015';
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.card]).toContain('border-radius:11px');
+  expect(cache.registered[styles.featured]).toContain('border-radius:11px');
+  expect(cache.registered[styles.featured]).toContain('border-color:#f59e4b');
+  expect(cache.registered[styles.featured]).toContain(
+    `background:linear-gradient(120deg, #714015, ${theme.colors.background.secondary})`
+  );
+});
+
+it.each([
+  ['dark', false],
+  ['light', false],
+  ['dark', true],
+  ['light', true],
+] as const)('uses host card surfaces in %s mode with visual refresh=%s', (mode, enabled) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.flags.visualDesignRefresh = enabled;
+  theme.colors.background.primary = '#123456';
+  theme.colors.background.secondary = '#654321';
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.card]).toContain(`background:${enabled ? '#123456' : '#654321'}`);
+  if (enabled) {
+    expect(cache.registered[styles.featured]).toContain('background:#123456');
+    expect(cache.registered[styles.featured]).not.toContain('linear-gradient');
+  } else {
+    expect(cache.registered[styles.featured]).toContain(
+      `background:linear-gradient(120deg, ${theme.colors.accent.background}, #654321)`
+    );
+  }
+  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.accent.border}`);
+});
+
+it.each(['dark', 'light'] as const)('renders featured cards without accent tokens in %s mode', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  Reflect.deleteProperty(theme.colors, 'accent');
+  Reflect.deleteProperty(theme.colors.primary, 'background');
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.primary.border}`);
+  expect(cache.registered[styles.featured]).toContain(
+    `background:linear-gradient(120deg, ${theme.colors.primary.transparent}, ${theme.colors.background.secondary})`
+  );
+  expect(cache.registered[styles.featured]).not.toContain('undefined');
+});
+
+it('leaves launch button height and padding to the Grafana Button component', () => {
+  const styles = getLearningContentCardStyles(createTheme());
+  expect(cache.registered[styles.action]).not.toMatch(/(?:height|padding):/);
+});
+
+it.each(['dark', 'light'] as const)('uses info tokens for unclassified card icons in %s mode', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.colors.info.text = '#346acc';
+  theme.colors.info.background = '#dae6ff';
+  theme.colors.info.border = '#96b9fa';
+  const visual = getLearningTopicVisual(undefined, theme);
+  expect(visual.color).toBe(theme.colors.info.text);
+  expect(visual.background).toBe(theme.colors.info.background);
+  expect(visual.border).toBe(theme.colors.info.border);
+});
 
 it('discloses details without launching, moving focus, or hiding the primary action', () => {
   const onLaunch = jest.fn();
