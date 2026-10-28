@@ -583,16 +583,12 @@ export class NavigationManager {
    * ```
    */
   async ensureElementVisible(element: HTMLElement): Promise<void> {
-    // 1. Check if element is visible in DOM (not hidden by CSS)
     if (!isElementVisible(element)) {
       logger.warn('Element is hidden or not visible', { element: describeElement(element) });
-      // Continue anyway - element might become visible during interaction
     }
 
-    // 2. Calculate sticky header offset to account for headers blocking view
     const stickyOffset = getStickyHeaderOffset(element);
 
-    // 3. Check if element is already visible - if so, skip scrolling!
     const rect = element.getBoundingClientRect();
     const scrollContainer = getScrollParent(element);
     const containerRect =
@@ -600,50 +596,53 @@ export class NavigationManager {
         ? { top: 0, bottom: window.innerHeight }
         : scrollContainer.getBoundingClientRect();
 
-    // Element is visible if it's within the container bounds (accounting for sticky offset)
-    const isVisible = rect.top >= containerRect.top + stickyOffset && rect.bottom <= containerRect.bottom;
+    // A container that only scrolls horizontally can itself sit below the fold, so clamp to the viewport too
+    const isVisible =
+      rect.top >= Math.max(containerRect.top, 0) + stickyOffset &&
+      rect.bottom <= Math.min(containerRect.bottom, window.innerHeight);
 
     if (isVisible) {
-      return; // Already visible, no need to scroll!
+      return;
     }
 
-    // 4. Set scroll-padding-top on container (modern CSS solution)
-    const originalScrollPadding = scrollContainer.style.scrollPaddingTop;
+    // scrollIntoView may scroll the page as well as the container, so both need the sticky-header padding
+    const paddedContainers =
+      scrollContainer === document.documentElement ? [scrollContainer] : [scrollContainer, document.documentElement];
+    const originalScrollPaddings = paddedContainers.map((container) => container.style.scrollPaddingTop);
     if (stickyOffset > 0) {
-      scrollContainer.style.scrollPaddingTop = `${stickyOffset + 10}px`; // +10px padding
+      paddedContainers.forEach((container) => {
+        container.style.scrollPaddingTop = `${stickyOffset + 10}px`;
+      });
     }
 
-    // 5. Scroll into view with smooth animation
     element.scrollIntoView({
-      behavior: 'smooth', // Smooth animation looks better
-      block: 'start', // Position at top (below sticky headers due to scroll-padding-top)
+      behavior: 'smooth',
+      block: 'start',
       inline: 'nearest',
     });
 
-    // Wait for browser to finish scrolling using modern scrollend event
     await this.waitForScrollEnd(scrollContainer);
 
-    // Restore original scroll padding after scroll completes
-    scrollContainer.style.scrollPaddingTop = originalScrollPadding;
+    paddedContainers.forEach((container, i) => {
+      container.style.scrollPaddingTop = originalScrollPaddings[i];
+    });
   }
 
   /**
-   * Wait for scroll animation to complete using modern scrollend event
-   * Browser-native event that fires when scrolling stops (no guessing!)
+   * Resolve on scrollend, after a short timeout when no scroll starts, or at a hard cap.
    * Per MDN: "If scroll position did not change, then no scrollend event fires"
-   *
-   * @param scrollContainer - The element that is scrolling
-   * @returns Promise that resolves when scrolling completes
    */
   private waitForScrollEnd(scrollContainer: HTMLElement): Promise<void> {
     return new Promise((resolve) => {
       let scrollDetected = false;
       let resolved = false;
       let timeoutId: NodeJS.Timeout;
+      let maxWaitId: NodeJS.Timeout;
 
       const cleanup = () => {
         clearTimeout(timeoutId);
-        scrollContainer.removeEventListener('scroll', scrollHandler);
+        clearTimeout(maxWaitId);
+        document.removeEventListener('scroll', scrollHandler, { capture: true });
         scrollContainer.removeEventListener('scrollend', scrollendHandler);
         document.removeEventListener('scrollend', docScrollendHandler);
       };
@@ -659,27 +658,25 @@ export class NavigationManager {
 
       const scrollHandler = () => {
         scrollDetected = true;
-        // Scroll started - now wait for scrollend
       };
 
       const scrollendHandler = () => handleScrollEnd();
       const docScrollendHandler = () => handleScrollEnd();
 
-      // Detect if scrolling actually happens
-      scrollContainer.addEventListener('scroll', scrollHandler, { once: true, passive: true });
+      // Capture on document so page scrolls count too, not only scrolls of the container
+      document.addEventListener('scroll', scrollHandler, { once: true, passive: true, capture: true });
 
-      // Listen for scrollend on both container and document
-      // Per Chrome blog: scrollIntoView may fire scrollend on different elements
+      // scrollIntoView may fire scrollend on the container or on the document
       scrollContainer.addEventListener('scrollend', scrollendHandler, { once: true });
       document.addEventListener('scrollend', docScrollendHandler, { once: true });
 
-      // Safety timeout: If no scroll detected, assume no scroll needed
-      // This handles edge cases where scrollIntoView is a no-op
       timeoutId = setTimeout(() => {
         if (!scrollDetected && !resolved) {
           handleScrollEnd();
         }
       }, INTERACTIVE_CONFIG.delays.navigation.scrollTimeout);
+
+      maxWaitId = setTimeout(handleScrollEnd, INTERACTIVE_CONFIG.delays.navigation.scrollFallbackTimeout);
     });
   }
 
