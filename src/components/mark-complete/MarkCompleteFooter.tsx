@@ -285,18 +285,15 @@ export function MarkCompleteFooter({
       ).catch((error) => {
         logger.warn('Failed to persist guide completion mark', { error });
       });
-      // Deliberate, not a placeholder: the percentage namespace is what
-      // recommendation cards and context read, and the reader's statement that
-      // they finished belongs there too. See COMPLETION-MODEL.md, "Rolling this
-      // back".
-      void Promise.resolve(interactiveCompletionStorage.set(contentKey, 100))
-        .then(() => {
-          dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
-        })
-        .catch((error) => {
+      // Publish after persistence so listeners can reread the saved percentage.
+      void (async () => {
+        try {
+          await interactiveCompletionStorage.set(contentKey, 100);
+        } catch (error) {
           logger.warn('Failed to persist guide completion percentage', { error });
-        });
-      dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+        }
+        dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+      })();
     }
 
     // Reduced motion means no dwell either — continuing is the reader's

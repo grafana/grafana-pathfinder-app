@@ -144,7 +144,7 @@ describe('completion panel handoff', () => {
     expect(onVisibility).not.toHaveBeenCalledWith(true);
   });
 
-  it('notifies path readers again after a delayed completion write settles', async () => {
+  it('shows completion immediately and notifies path readers only after a delayed completion write settles', async () => {
     let finish!: () => void;
     setCompletionPercentage.mockReturnValueOnce(
       new Promise<void>((resolve) => {
@@ -153,12 +153,12 @@ describe('completion panel handoff', () => {
     );
     render(<MarkCompleteFooter context="guide" renderCompleted={() => <div>Next steps</div>} />);
     await clickWhenReady();
-    const immediateNotifications = dispatchProgress.mock.calls.length;
-    expect(immediateNotifications).toBeGreaterThan(0);
+    expect(screen.getByText('Next steps')).toBeInTheDocument();
+    expect(dispatchProgress).not.toHaveBeenCalled();
     await act(async () => {
       finish();
     });
-    expect(dispatchProgress.mock.calls.length).toBe(immediateNotifications + 1);
+    expect(dispatchProgress).toHaveBeenCalledTimes(1);
     expect(dispatchProgress).toHaveBeenLastCalledWith({
       kind: 'guide',
       contentKey: 'guide-key',
@@ -523,6 +523,34 @@ describe('MarkCompleteFooter', () => {
     await clickWhenReady();
 
     expect(setCompletionPercentage).toHaveBeenCalledWith('guide-key', 100);
+    await waitFor(() =>
+      expect(dispatchProgress).toHaveBeenCalledWith({
+        kind: 'guide',
+        contentKey: 'guide-key',
+        percentage: 100,
+        hasProgress: true,
+      })
+    );
+  });
+
+  it('waits for the completion write before announcing progress', async () => {
+    let resolveWrite: (() => void) | undefined;
+    setCompletionPercentage.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveWrite = resolve;
+      })
+    );
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+
+    await clickWhenReady();
+
+    expect(setCompletionPercentage).toHaveBeenCalledWith('guide-key', 100);
+    expect(dispatchProgress).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveWrite!();
+    });
+
     expect(dispatchProgress).toHaveBeenCalledWith({
       kind: 'guide',
       contentKey: 'guide-key',
