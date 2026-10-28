@@ -337,6 +337,34 @@ describe('MarkCompleteFooter', () => {
     await clickWhenReady();
 
     expect(setCompletionPercentage).toHaveBeenCalledWith('guide-key', 100);
+    await waitFor(() =>
+      expect(dispatchProgress).toHaveBeenCalledWith({
+        kind: 'guide',
+        contentKey: 'guide-key',
+        percentage: 100,
+        hasProgress: true,
+      })
+    );
+  });
+
+  it('waits for the completion write before announcing progress', async () => {
+    let resolveWrite: (() => void) | undefined;
+    setCompletionPercentage.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveWrite = resolve;
+      })
+    );
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+
+    await clickWhenReady();
+
+    expect(setCompletionPercentage).toHaveBeenCalledWith('guide-key', 100);
+    expect(dispatchProgress).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveWrite!();
+    });
+
     expect(dispatchProgress).toHaveBeenCalledWith({
       kind: 'guide',
       contentKey: 'guide-key',
