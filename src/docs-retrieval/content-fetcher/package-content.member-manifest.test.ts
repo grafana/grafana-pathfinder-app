@@ -236,7 +236,7 @@ describe('member launch keeps the loader manifest reachable', () => {
     expect(
       guideIdentityAnalyticsProperties({ kind: 'guide', ...identity!, guideTitle: result.content!.metadata.title })
     ).toMatchObject({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_id: 'member-id',
       guide_title: 'Alerting module 1',

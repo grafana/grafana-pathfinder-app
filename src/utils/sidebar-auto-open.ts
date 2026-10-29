@@ -57,7 +57,7 @@ function openSidebarIfFree(delay = 200): void {
     console.log('[Pathfinder] Skipping auto-open: sidebar already in use by another plugin');
     return;
   }
-  sidebarState.setPendingOpenSource('auto_open', 'auto-open');
+  sidebarState.setPendingOpenSource('auto_open', 'auto_open');
   attemptAutoOpen(delay);
 }
 

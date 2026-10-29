@@ -1037,21 +1037,6 @@ function resolveMilestoneContentKey(url: string, expectedMilestoneUrls?: readonl
   return sanitizeContentKey(canonicalUrl ?? url);
 }
 
-/**
- * Marks a learning journey milestone as completed.
- * - Persists the milestone's own percentage (100) in
- *   `interactiveCompletionStorage`, keyed by the canonical (manifest-spelling)
- *   content key {@link resolveMilestoneContentKey} resolves — the same key
- *   `journeyMilestonePercentages`/`resolvePathMemberPercentages` read back, so
- *   the toolbar segment and My Learning's rollup never disagree with what
- *   this just recorded, regardless of which launch URL variant got here.
- * - Calls markGuideCompleted (learning-paths/badge-coordinator) to bridge to the badge/progress system
- * - When `expectedMilestoneUrls` is provided and EVERY one is present in stored
- *   progress, awards the path badge and fires the whole-journey record. Membership
- *   (not a bare count) is required so stale/renamed/removed milestone URLs left
- *   over from an earlier journey revision cannot satisfy the threshold and write
- *   a false durable journey record.
- */
 export async function markMilestoneDone(
   journeyBaseUrl: string,
   milestoneSlug: string,
@@ -1063,61 +1048,37 @@ export async function markMilestoneDone(
     return;
   }
   const contentKey = resolveMilestoneContentKey(milestoneUrl, expectedMilestoneUrls);
-  // Queued (not a bare `set`) so this write is ordered after any legacy
-  // backfill this journey's own render queued moments earlier — see
-  // {@link queueMilestoneCompletionWrite}. interactiveCompletionStorage
-  // itself also serializes every write it receives regardless of caller
-  // (bounded-record-storage.ts), so this can't race and lose either key even
-  // without this module's own queue.
+  // Order terminal writes after queued legacy backfills.
   await queueMilestoneCompletionWrite(contentKey, 100);
   dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
-  // Local-cache/UX duty (badges, streak) — unchanged.
   await markGuideCompleted(milestoneSlug);
 
-  // Completion-emission boundary for the milestone-as-guide path.
-  //
-  // Accepted for the MVP, not an oversight: the durable key is the bare final URL
-  // segment, unqualified by the owning journey, so two journeys under the same
-  // source that share a milestone slug produce the same key and conflate in the
-  // warehouse. Local progress is unaffected — milestone progress is stored per
-  // journey base URL — so a collision never grants unearned credit. Tracked for
-  // RFC reconciliation.
+  // Same-source milestone slugs still share a durable key across journeys.
   recordGuideCompletion({
     kind: 'guide',
     ...milestoneAnalyticsIdentity(journeyBaseUrl, milestoneSlug, context),
     guideTitle: context?.guideTitle ?? milestoneSlug,
     guideCategory: 'learning-journey',
-    pathId: context?.pathId,
+    pathId:
+      context?.pathId ??
+      ((context?.packageManifest?.type === 'journey' || context?.packageManifest?.type === 'path') &&
+      typeof context.packageManifest.id === 'string'
+        ? context.packageManifest.id
+        : undefined),
     completionPercent: 100,
     source: context?.source ?? 'objectives',
     ...(context?.guideStats && { guideStats: context.guideStats }),
     completedAt: new Date().toISOString(),
   });
 
-  // Whole-journey completion: award the path badge and fire the journey trigger
-  // only when every CURRENTLY-expected milestone URL is complete. URL-based paths
-  // have guides: [] in static data, so the normal badge flow cannot detect
-  // completion here. Membership (not a bare count) rejects stale, renamed, or
-  // removed milestone URLs left over from an earlier journey revision.
+  // Current membership prevents removed milestones from satisfying a journey.
   if (expectedMilestoneUrls && expectedMilestoneUrls.length > 0) {
     const completions = await interactiveCompletionStorage.getAll();
-    // A milestone completed before this journey's cover page or toolbar
-    // ever rendered — the only two callers of journeyMilestonePercentages,
-    // which is the usual place a legacy completion backfills into
-    // interactiveCompletionStorage (GuideReaderOverlay renders no toolbar
-    // and can still call markMilestoneDone) — would otherwise still be
-    // legacy-only here. Consult milestoneCompletionStorage directly as a
-    // fallback rather than assuming some other surface already converged
-    // it, and queue the same backfill write journeyMilestonePercentages
-    // would have made so later readers see it too.
+    // Overlay launches can reach this boundary before legacy progress is backfilled.
     const legacyCompletedSlugs = milestoneCompletionStorage.getCompletedSync(
       journeyBaseUrl,
       expectedMilestoneUrls as string[]
     );
-    // Same resolver as the write above: every expected URL is already the
-    // manifest's own canonical spelling, so this is normally a no-op pass
-    // through it, but sharing the function keeps both sides of the
-    // membership check provably aligned rather than independently correct.
     const allMilestonesDone = expectedMilestoneUrls.every((url) => {
       const key = resolveMilestoneContentKey(url, expectedMilestoneUrls);
       const persisted = completions[key];
@@ -1141,11 +1102,7 @@ export async function markMilestoneDone(
         await awardBadge(path.badgeId);
       }
 
-      // The `journey_completed` trigger, keyed on the journey identity and
-      // deduped exactly-once by the recorder so a re-crossed threshold does not
-      // re-emit. Fail closed when neither a manifest id nor a curated path id
-      // resolves: a loader URL is never an acceptable identity (types.ts
-      // contract), and a URL-keyed fact would become a permanently wrong durable key.
+      // Loader URLs are not durable identities; unresolved journeys cannot emit.
       const journeyIdentity = journeyAnalyticsIdentity(journeyBaseUrl, context);
       if (journeyIdentity) {
         recordJourneyCompletion({

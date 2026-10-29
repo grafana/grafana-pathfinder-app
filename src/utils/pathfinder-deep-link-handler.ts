@@ -5,7 +5,7 @@
  * plugin importer.
  *
  * `handlePathfinderDeepLink` is idempotent and deduplicated so it can be
- * called on every navigation; `installDeepLinkNavListener` wires it up to
+ * called on every navigation; `pathfinder-deep-link-loader.ts` wires it up to
  * `locationService.getHistory().listen()` for SPA navigations
  */
 
@@ -17,11 +17,7 @@ import { panelModeManager } from '../global-state/panel-mode';
 import { sidebarState } from '../global-state/sidebar';
 import { autoLaunchChannel } from '../global-state/auto-launch';
 import { validateRedirectPath } from '../security/url-validator';
-import {
-  parsePathfinderDeepLink,
-  PATHFINDER_ACTIVATION_PARAMS,
-  stripPathfinderParams,
-} from './pathfinder-search-params';
+import { hasAnyPathfinderParam, parsePathfinderDeepLink, stripPathfinderParams } from './pathfinder-search-params';
 
 export interface DeepLinkHandlerDeps {
   attemptAutoOpen: (delay?: number) => void;
@@ -129,7 +125,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
             '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...',
         });
         rewriteCurrentUrl(stripPathfinderParams);
-        sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+        sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
         deps.attemptAutoOpen(200);
         return;
       }
@@ -139,7 +135,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       const isFloatingMode = currentMode === 'floating';
       const isFullScreenMode = currentMode === 'fullscreen';
 
-      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
 
       if (needsRedirect) {
         locationService.replace(redirectTarget);
@@ -163,7 +159,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
     })
     .catch((err) => {
       logger.error('[Pathfinder] Failed to load find-doc-page chunk', { error: err });
-      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
       deps.attemptAutoOpen(200);
       setTimeout(() => {
         locationService.replace('/');
@@ -174,34 +170,6 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 }
 
 /** Register a location listener that re-runs the handler on every SPA navigation. */
-export function installDeepLinkNavListener(deps: DeepLinkHandlerDeps): void {
-  const handler = () => {
-    if (!hasAnyPathfinderParam(window.location.search)) {
-      return;
-    }
-    handlePathfinderDeepLink(deps);
-  };
-
-  try {
-    const history = locationService.getHistory();
-    if (history) {
-      const unlisten = history.listen(handler);
-      window.__pathfinderDeepLinkNavUnlisten = unlisten;
-    }
-  } catch {
-    window.addEventListener('popstate', handler);
-  }
-}
-
-function hasAnyPathfinderParam(search: string): boolean {
-  if (!search) {
-    return false;
-  }
-
-  const params = new URLSearchParams(search);
-  return PATHFINDER_ACTIVATION_PARAMS.some((p) => params.has(p));
-}
-
 /** Emit the auto-launch onto `autoLaunchChannel` once whichever panel surface mounts first. */
 function installAutoLaunchOnMount(detail: { url: string; title: string; type: string; source: string }): void {
   let autoLaunched = false;

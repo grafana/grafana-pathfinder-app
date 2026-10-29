@@ -1,4 +1,4 @@
-import type { Faro, LogLevel, UserActionInternalInterface } from '@grafana/faro-web-sdk';
+import type { Faro, LogLevel, Meta, UserActionInternalInterface } from '@grafana/faro-web-sdk';
 import { config } from '@grafana/runtime';
 import packageJson from '../../../package.json';
 import { TELEMETRY_EVENTS, type UserActionOutcome } from './types';
@@ -7,14 +7,17 @@ import {
   filterPathfinderTelemetry,
   LOG_PREFIX,
   markPathfinderActive,
+  PANEL_SESSION_META_KEY,
   passesActivityGate,
   redactPageUrl,
+  stampPanelSessionAttribute,
   resolveFaroEnvironment,
   EXPLICIT_REPORT_MARKER,
   TRACKED_RESOURCE_HOSTNAMES,
 } from './filtering';
 import { buildTelemetryIdentity } from './identity';
 import {
+  getPanelSessionId,
   getPathfinderSurface,
   hasReportedPathfinderSurface,
   isPathfinderOpen,
@@ -25,6 +28,7 @@ import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
 import { normalizeTelemetryUrl } from './url';
 import { retryChunkImport } from '../retry-chunk-import';
+import { checkValueCasing } from '../analytics-value-check';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const APP_NAME = packageJson.name;
@@ -108,9 +112,11 @@ async function initializeFaroInstance(options?: InitFaroOptions): Promise<void> 
         return null;
       }
       const kept = filterPathfinderTelemetry(item);
-      return kept === null ? null : redactPageUrl(kept);
+      return kept === null ? null : stampPanelSessionAttribute(redactPageUrl(kept));
     },
   });
+
+  trackPanelSession(faroInstance);
 
   void stampFaroUser();
   void stampSessionExperiments();
@@ -126,6 +132,13 @@ async function initializeFaroInstance(options?: InitFaroOptions): Promise<void> 
   if (options?.sessionReplay) {
     startSessionReplayOnFirstOpen(faroInstance, options.sessionReplaySamplingRate);
   }
+}
+
+// The session meta is mirrored to sessionStorage by Faro, so the panel session
+// id rides a per-item meta captured at push time and is moved into the
+// item's session attributes by stampPanelSessionAttribute.
+export function trackPanelSession(faro: Faro): void {
+  faro.metas.add(() => ({ [PANEL_SESSION_META_KEY]: getPanelSessionId() ?? '' }) as Partial<Meta>);
 }
 
 // Grafana core ships its own rrweb recorder behind a private-preview toggle.
@@ -303,6 +316,7 @@ let userActionSeq = 0;
 // built-in click instrumentation (UserActionController) does the exact same
 // cast internally, since UserActionsAPI has no top-level `endUserAction()`.
 export function pushFaroUserAction(name: string, attributes?: Record<string, unknown>): void {
+  checkValueCasing(name, attributes);
   guardTelemetry(() => {
     if (!faroInstance) {
       return;
@@ -356,6 +370,7 @@ export async function withFaroUserAction<T>(
   options?: WithFaroUserActionOptions<T>
 ): Promise<T> {
   let action: StampableUserAction | undefined;
+  checkValueCasing(name, attributes);
   guardTelemetry(() => {
     if (faroInstance && faroInstance.api.getActiveUserAction() === undefined) {
       action = faroInstance.api.startUserAction(
@@ -413,6 +428,7 @@ export function setFaroUserActionAttributes(attributes: Record<string, unknown>)
 // reportAppInteraction, nothing here reaches RudderStack. skipDedupe keeps
 // repeated identical failures countable.
 export function pushFaroEvent(name: string, attributes?: Record<string, unknown>): void {
+  checkValueCasing(name, attributes);
   guardTelemetry(() => {
     faroInstance?.api.pushEvent(name, attributes ? stringifyAttributes(attributes) : undefined, undefined, {
       skipDedupe: true,
@@ -429,6 +445,7 @@ export function pushFaroMeasurement(
   values: Record<string, number>,
   context?: Record<string, string>
 ): void {
+  checkValueCasing(type, context);
   guardTelemetry(() => {
     faroInstance?.api.pushMeasurement({ type, values }, context ? { context } : undefined);
   });

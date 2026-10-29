@@ -15,7 +15,10 @@ import { pushFaroUserAction } from './telemetry/bridge';
 // url.ts is a dependency-free redactor (no Faro SDK import), safe to import
 // directly even from this entry-eager module.
 import { normalizeTelemetryUrl } from './telemetry/url';
+import { takePanelSessionProperties } from './telemetry/surface';
 import { logger } from './logging';
+import { toAnalyticsValue } from './analytics-values';
+import { checkValueCasing } from './analytics-value-check';
 import { furthestEvidencedPosition } from './guide-stats/progress';
 import { GUIDE_STATS_VERSION } from './guide-stats/version';
 import type { GuideBlockIndex } from './guide-stats/block-index';
@@ -160,11 +163,11 @@ export enum UserInteraction {
 
 export enum AnalyticsContentType {
   Docs = 'docs',
-  LearningJourney = 'learning-journey',
-  InteractiveGuide = 'interactive-guide',
+  LearningJourney = 'learning_journey',
+  InteractiveGuide = 'interactive_guide',
   Editor = 'editor',
   Devtools = 'devtools',
-  PackageNavLink = 'package-nav-link',
+  PackageNavLink = 'package_nav_link',
 }
 
 export enum AnalyticsLinkType {
@@ -238,19 +241,19 @@ function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfi
  * Determines the appropriate content_type for analytics based on URL
  *
  * If the URL is from the interactive-learning CDN (interactive-learning.grafana.net
- * or interactive-learning.grafana-dev.net), returns 'interactive-guide'.
+ * or interactive-learning.grafana-dev.net), returns 'interactive_guide'.
  * Otherwise returns the provided fallback type.
  *
  * @param url - The content URL to check
  * @param fallbackType - The type to use if URL is not from interactive-learning CDN
- * @returns 'interactive-guide' for CDN content, otherwise the fallback type
+ * @returns 'interactive_guide' for CDN content, otherwise the fallback type
  *
  * @example
  * ```typescript
- * // Returns 'interactive-guide' for CDN URLs
+ * // Returns 'interactive_guide' for CDN URLs
  * getContentTypeForAnalytics('https://interactive-learning.grafana.net/guide/', AnalyticsContentType.Docs)
  *
- * // Returns 'learning-journey' for non-CDN URLs
+ * // Returns 'learning_journey' for non-CDN URLs
  * getContentTypeForAnalytics('https://grafana.com/docs/tutorial/', AnalyticsContentType.LearningJourney)
  * ```
  */
@@ -275,7 +278,7 @@ const TAB_TYPE_TO_CONTENT_TYPE: Record<string, AnalyticsContentType> = {
 /**
  * Maps a tab/content `type` string (e.g. `LearningJourneyTab.type`) onto the
  * canonical `AnalyticsContentType` used for the `content_type` property.
- * Centralizes the 'interactive' -> 'interactive-guide' mapping so every call
+ * Centralizes the 'interactive' -> 'interactive_guide' mapping so every call
  * site reports the same content_type for the same kind of tab.
  */
 export function tabTypeToContentType(tabType: string | undefined): AnalyticsContentType {
@@ -291,6 +294,10 @@ export function reportAppInteraction(
 ): void {
   try {
     const interactionName = createInteractionName(type);
+
+    if (process.env.NODE_ENV !== 'production') {
+      checkValueCasing(interactionName, properties);
+    }
 
     // Evaluating experiments while reporting their evaluation would recurse.
     const shouldEnrichWithExperiments = type !== UserInteraction.FeatureFlagEvaluated;
@@ -311,6 +318,7 @@ export function reportAppInteraction(
       ...properties,
       ...(variant && { variant }),
       ...(experiments && { experiments }),
+      ...takePanelSessionProperties(),
       ...(kioskSessionId && { kiosk_session_id: kioskSessionId, kiosk_name: kioskName }),
     };
 
@@ -327,12 +335,20 @@ export function reportAppInteraction(
       const privateGuide = Object.values(faroProperties).some(
         (value) =>
           typeof value === 'string' &&
-          (value.startsWith('backend-guide:') || value === 'app-platform' || value.includes('/interactiveguides/'))
+          (value.startsWith('backend-guide:') || value === 'app_platform' || value.includes('/interactiveguides/'))
       );
       if (privateGuide) {
         for (const key of Object.keys(faroProperties)) {
           if (
-            !['plugin_version', 'action', 'launch_source', 'content_type', 'variant'].includes(key) &&
+            ![
+              'plugin_version',
+              'action',
+              'launch_source',
+              'content_type',
+              'variant',
+              'pathfinder_session_id',
+              'session_started_at',
+            ].includes(key) &&
             !/url$/i.test(key)
           ) {
             delete faroProperties[key];
@@ -490,8 +506,8 @@ function buildScrollEventProperties(
 ): Record<string, string | number | boolean> {
   // Matches determinePageIdentifier's treatment of a missing type as a learning journey,
   // so page_type and content_type never diverge for the same tab.
-  const tabTypeFallback = activeTab?.type || AnalyticsContentType.LearningJourney;
-  const pageType = isRecommendationsTab ? 'recommendations' : tabTypeFallback;
+  const tabTypeFallback = activeTab?.type || 'learning-journey';
+  const pageType = isRecommendationsTab ? 'recommendations' : toAnalyticsValue(tabTypeFallback);
 
   const properties: Record<string, string | number | boolean> = {
     page_type: pageType,
@@ -706,6 +722,7 @@ export function buildInteractiveStepProperties(
   return {
     ...getSourceDocument(stepId),
     ...baseProperties,
+    ...(baseProperties.target_action && { target_action: toAnalyticsValue(String(baseProperties.target_action)) }),
     content_type: AnalyticsContentType.InteractiveGuide,
     ...(stepIndex !== undefined && { current_step: stepIndex + 1 }),
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),

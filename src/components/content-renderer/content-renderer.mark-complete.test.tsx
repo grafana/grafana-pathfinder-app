@@ -416,7 +416,7 @@ describe('mark-complete guide identity', () => {
       await clickWhenReady();
       expect(markCompleteEvents()[0]?.[1]).toMatchObject({
         guide_id: guideId,
-        guide_source: guideSource,
+        guide_source: guideSource.replace('-', '_'),
         guide_visibility: 'public',
         ...(guideSource === 'online-cdn' && { path_id: 'parent-path' }),
       });
@@ -444,7 +444,7 @@ describe('mark-complete guide identity', () => {
       />
     );
     await clickWhenReady();
-    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online-cdn' });
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online_cdn' });
   });
 
   it.each(['app-platform', 'remote-repo:private-company'])(

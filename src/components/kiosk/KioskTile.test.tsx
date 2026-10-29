@@ -12,6 +12,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { KioskTile } from './KioskTile';
 import type { KioskRule } from './kiosk-rules';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getPanelSessionId, reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
 
 const mockPush = jest.fn();
 const mockPublish = jest.fn();
@@ -55,6 +56,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9
 describe('KioskTile', () => {
   const mockOpen = jest.fn();
   const mockRandomUUID = jest.fn(() => '00000000-0000-4000-a000-000000000001');
+  const realCrypto = globalThis.crypto;
 
   const rule: KioskRule = {
     title: 'First Dashboard',
@@ -70,7 +72,7 @@ describe('KioskTile', () => {
     sidebarState.consumePendingOpenSource();
     window.open = mockOpen;
     Object.defineProperty(globalThis, 'crypto', {
-      value: { randomUUID: mockRandomUUID },
+      value: { randomUUID: mockRandomUUID, getRandomValues: realCrypto.getRandomValues.bind(realCrypto) },
       writable: true,
     });
   });
@@ -129,6 +131,19 @@ describe('KioskTile', () => {
     const analyticsCallOrder = (reportAppInteraction as jest.Mock).mock.invocationCallOrder[0]!;
     const openCallOrder = mockOpen.mock.invocationCallOrder[0]!;
     expect(analyticsCallOrder).toBeLessThan(openCallOrder);
+  });
+
+  it.each([
+    ['learning-journey', 'learning_journey'],
+    ['interactive', 'interactive'],
+  ])('reports guide_type %s as %s', (type, expected) => {
+    render(<KioskTile rule={{ ...rule, type }} index={0} />);
+    fireEvent.click(screen.getByTestId('kiosk-tile-0'));
+
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.KioskDemoStarted,
+      expect.objectContaining({ guide_type: expected })
+    );
   });
 
   it('falls back to window.location.origin when targetUrl is not set', () => {
@@ -285,7 +300,53 @@ describe('KioskTile', () => {
     };
     launchKioskGuide(rule, 'instance', jest.fn(), prepared);
     expect(sidebarState.getIsSidebarMounted()).toBe(true);
-    expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto-open' });
+    expect(sidebarState.consumePendingOpenSource()).toEqual({ source: 'kiosk_session', action: 'auto_open' });
+  });
+
+  describe('panel session across a kiosk launch', () => {
+    beforeEach(() => jest.useFakeTimers({ doNotFake: ['queueMicrotask'] }));
+    afterEach(() => {
+      reportPathfinderSurfaceClosed('sidebar');
+      jest.useRealTimers();
+    });
+
+    it('keeps the session when the sidebar opens after the kiosk dismisses itself on launch', async () => {
+      reportPathfinderSurface('kiosk');
+      const session = getPanelSessionId();
+      expect(session).not.toBeNull();
+
+      launchKioskGuide(rule, 'instance', () => reportPathfinderSurfaceClosed('kiosk'));
+      await Promise.resolve();
+      jest.advanceTimersByTime(500);
+      reportPathfinderSurface('sidebar');
+
+      expect(getPanelSessionId()).toBe(session);
+    });
+
+    it('ends the session when the sidebar never opens after the kiosk dismisses itself', async () => {
+      reportPathfinderSurface('kiosk');
+      const session = getPanelSessionId();
+
+      launchKioskGuide(rule, 'instance', () => reportPathfinderSurfaceClosed('kiosk'));
+      await Promise.resolve();
+      jest.advanceTimersByTime(60_000);
+      reportPathfinderSurface('sidebar');
+
+      expect(getPanelSessionId()).not.toBe(session);
+    });
+
+    it('ends the session when the sidebar the launch opened is explicitly closed', async () => {
+      reportPathfinderSurface('kiosk');
+      const session = getPanelSessionId();
+
+      launchKioskGuide(rule, 'instance', () => reportPathfinderSurfaceClosed('kiosk'));
+      reportPathfinderSurface('sidebar');
+      reportPathfinderSurfaceClosed('sidebar');
+      await Promise.resolve();
+      reportPathfinderSurface('sidebar');
+
+      expect(getPanelSessionId()).not.toBe(session);
+    });
   });
 
   it('keeps the current route when no page is specified and forwards learning journeys', () => {
@@ -328,7 +389,7 @@ describe('product navigation', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.KioskInteraction, {
       launch_mode: 'instance',
       block_index: 4,
-      component: 'guide-links',
+      component: 'guide_links',
       action: 'open_product',
       rule_id: 'synthetic',
     });
@@ -364,7 +425,7 @@ describe('product navigation', () => {
       kiosk_name: 'dem',
       launch_mode: mode,
       block_index: 2,
-      component: 'guide-links',
+      component: 'guide_links',
       action: 'open_product',
       rule_id: 'synthetic',
     });

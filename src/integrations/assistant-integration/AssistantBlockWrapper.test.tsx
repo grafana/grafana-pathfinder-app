@@ -5,6 +5,12 @@ import { useAssistantBlockValue } from './AssistantBlockValueContext';
 import { useAssistantGeneration } from './useAssistantGeneration.hook';
 import { InteractiveStep } from '../../components/interactive-tutorial/interactive-step';
 import { resetCompletionStoreForTests } from '../../global-state/completion-store';
+import { reportInteraction } from '@grafana/runtime';
+
+jest.mock('@grafana/runtime', () => ({
+  ...jest.requireActual('@grafana/runtime'),
+  reportInteraction: jest.fn(),
+}));
 
 jest.mock('./useAssistantGeneration.hook', () => ({
   ...jest.requireActual('./useAssistantGeneration.hook'),
@@ -140,4 +146,24 @@ it('passes the customized expression and reverted original to Do it', async () =
       expect.objectContaining({ targetValue: '@@CLEAR@@ up' })
     )
   );
+});
+
+it('reports a code block customization with a snake_case block type', async () => {
+  mockGenerate.mockImplementation(async ({ onComplete }) => onComplete('QUERY: sum(up)'));
+  render(
+    <AssistantBlockWrapper
+      assistantId="code-query"
+      assistantType="query"
+      defaultValue="up"
+      blockType="code-block"
+      contentKey="bundled:test"
+    >
+      <Query />
+    </AssistantBlockWrapper>
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Customize with Assistant' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Revert to original' }));
+
+  const blockTypes = jest.mocked(reportInteraction).mock.calls.map(([, properties]) => properties?.block_type);
+  expect(blockTypes).toEqual(['code_block', 'code_block', 'code_block']);
 });
