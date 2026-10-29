@@ -170,6 +170,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       });
     })
     .catch((err) => {
+      lastProcessedSearch = null;
       logger.error('[Pathfinder] Failed to load find-doc-page chunk', { error: err });
       sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
       deps.attemptAutoOpen(200);
