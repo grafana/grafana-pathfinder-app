@@ -452,6 +452,8 @@ Hides its nested blocks behind a toggle. Use it to gate solutions or example out
 
 > A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, `video`, `callout`, and `divider`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
 
+> A `section` cannot be nested inside another `section`, whether directly or through a `conditional` or `assistant` block. Validation rejects it and names the offending block. A `conditional` inside a section is allowed.
+
 #### Conditional Block
 
 Shows different content based on runtime condition evaluation. Conditions use the same syntax as requirements (e.g., `has-datasource:prometheus`, `is-admin`). When ALL conditions pass, the `whenTrue` branch is shown; otherwise, the `whenFalse` branch is shown.

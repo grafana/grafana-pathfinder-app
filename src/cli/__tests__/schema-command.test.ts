@@ -3,6 +3,8 @@ import {
   REQUIREMENT_TOKEN_CATALOGUE,
   type RequirementTokenDoc,
 } from '../../types/requirements.types';
+import { z } from 'zod';
+import { JsonSectionBlockSchema } from '../../types/json-guide.schema';
 import { SCHEMA_REGISTRY, listSchemas, exportSchema, exportAllSchemas } from '../commands/schema';
 
 const EXPECTED_SCHEMA_NAMES = [
@@ -153,5 +155,14 @@ describe('schema command', () => {
         expect(schema!['x-schema-version']).toBeTruthy();
       }
     });
+  });
+});
+
+describe('section children in the agent schema', () => {
+  it('does not advertise section as a valid child of a section', () => {
+    const json = z.toJSONSchema(JsonSectionBlockSchema, { unrepresentable: 'any', io: 'input' });
+    const items = JSON.stringify((json as any).properties.blocks.items);
+    expect(items).not.toContain('"const":"section"');
+    expect(items).toContain('"const":"conditional"');
   });
 });
