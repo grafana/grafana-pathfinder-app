@@ -34,6 +34,7 @@ import { STEP_STATES, type StepStateValue } from './step-states';
 import type { ProgressReason } from '../../global-state/progress-events';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
+import { toAnalyticsValue } from '../../lib/analytics-values';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;
@@ -242,7 +243,7 @@ export const TerminalConnectStep = forwardRef<
       reportAppInteraction(
         UserInteraction.GcxSetupSkipped,
         buildInteractiveStepProperties(
-          { state: gcxState, interaction_location: 'terminal_connect_step' },
+          { state: toAnalyticsValue(gcxState), interaction_location: 'terminal_connect_step' },
           analyticsStepMeta
         )
       );

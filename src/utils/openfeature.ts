@@ -54,6 +54,12 @@ const pathfinderFeatureFlags = {
     defaultValue: true,
     trackingKey: 'package_browser',
   },
+  'pathfinder.learning-insights': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'learning_insights',
+  },
   'pathfinder.sidebar-hub': {
     valueType: 'boolean',
     values: [true, false],

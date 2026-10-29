@@ -263,7 +263,7 @@ describe('restored private path analytics', () => {
     expect(
       guideIdentityAnalyticsProperties({ kind: 'guide', ...identity, guideTitle: result.content!.metadata.title })
     ).toMatchObject({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_id: 'member-one',
       guide_title: 'member-one',

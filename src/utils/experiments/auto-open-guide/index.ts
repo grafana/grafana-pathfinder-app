@@ -157,7 +157,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     const stillOnOffer = matchesExperience(targeting.experiences[offer.index]!, getCurrentPath());
     const opened = variant === 'treatment' && docPage !== null && stillOnOffer && canPopOut();
     if (opened) {
-      sidebarState.setPendingOpenSource('auto_open_guide_experiment', 'auto-open');
+      sidebarState.setPendingOpenSource('auto_open_guide_experiment', 'auto_open');
       installAutoLaunchOnMount(docPage);
       attemptAutoOpen();
     }

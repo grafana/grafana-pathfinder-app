@@ -40,8 +40,10 @@ const mockPushMeasurement = jest.fn();
 const mockInstrumentationsAdd = jest.fn();
 const mockReplayPause = jest.fn();
 const mockReplayResume = jest.fn();
+const mockMetasAdd = jest.fn();
 const mockFaroInstance = {
   instrumentations: { add: mockInstrumentationsAdd },
+  metas: { add: mockMetasAdd },
   api: {
     pushError: mockPushError,
     pushLog: mockPushLog,

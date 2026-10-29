@@ -9,6 +9,7 @@
 import { panelModeManager, requestSidebarHandoffAndWait, isGrafanaDrivingHandoffNeeded } from './panel-mode';
 import { StorageKeys } from '../lib/storage-keys';
 import { REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
+import { getPanelSessionId, getPathfinderSurface, reportPathfinderSurface } from '../lib/telemetry/surface';
 
 const publishMock = jest.fn();
 
@@ -499,6 +500,52 @@ describe('panelModeManager', () => {
       // may do that. See FullScreenPanel.tsx's handleSidebarHandoffRequest.
       void requestSidebarHandoffAndWait();
       expect(publishMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('panel session across surface handoffs', () => {
+    const flushMicrotasks = () => Promise.resolve();
+
+    beforeEach(async () => {
+      reportPathfinderSurface('closed');
+      await flushMicrotasks();
+    });
+
+    it('keeps the id when the sidebar pops out to floating', async () => {
+      reportPathfinderSurface('sidebar');
+      const id = getPanelSessionId();
+
+      panelModeManager.setModePersisted('floating');
+      await flushMicrotasks();
+
+      expect(getPathfinderSurface()).toBe('floating');
+      expect(getPanelSessionId()).toBe(id);
+    });
+
+    it('keeps the id when floating docks back to the sidebar', async () => {
+      panelModeManager.setModePersisted('floating');
+      reportPathfinderSurface('floating');
+      const id = getPanelSessionId();
+
+      panelModeManager.setModePersisted('sidebar');
+      reportPathfinderSurface('sidebar');
+      await flushMicrotasks();
+
+      expect(getPanelSessionId()).toBe(id);
+    });
+
+    it('ends the session when floating closes without another surface opening', async () => {
+      panelModeManager.setModePersisted('floating');
+      reportPathfinderSurface('floating');
+      const id = getPanelSessionId();
+
+      panelModeManager.setMode('sidebar');
+      expect(getPanelSessionId()).toBeNull();
+      await flushMicrotasks();
+
+      reportPathfinderSurface('sidebar');
+      expect(getPanelSessionId()).not.toBeNull();
+      expect(getPanelSessionId()).not.toBe(id);
     });
   });
 });

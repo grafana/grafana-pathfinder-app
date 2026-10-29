@@ -49,6 +49,7 @@ import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { logger } from '../../lib/logging';
 import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
 import { TELEMETRY_ACTIONS } from '../../lib/telemetry';
+import { toAnalyticsValue } from '../../lib/analytics-values';
 
 // The verbs the guided handler can actually drive — narrower than the receive
 // gate's KNOWN_TARGET_ACTIONS, so runGuided checks against this before casting.
@@ -318,7 +319,7 @@ export function installLiveTabExecutor(
     await withFaroUserAction(
       TELEMETRY_ACTIONS.remoteStep,
       {
-        target_action: command.action.targetAction,
+        target_action: toAnalyticsValue(command.action.targetAction),
         ref_target: command.action.refTarget ?? '',
         phase: command.phase,
         step_id: stepId,

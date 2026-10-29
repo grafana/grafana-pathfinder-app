@@ -17,12 +17,28 @@ import (
 	"github.com/grafana/grafana-pathfinder-app/src/learning-paths"
 )
 
-// pathGuideSource resolves a path target to its guide ids, or to one track's
-// guides when trackID is set (empty means the default milestones). found=false
-// means the source does not know the target and the next one is tried;
-// found=true stops resolution, with nil guides when the target could not be
-// resolved. err means the source failed, which says nothing about the target.
-type pathGuideSource func(ctx context.Context, targetID, trackID string) (guides []string, found bool, err error)
+// Source qualification prevents same-slug guides in other repositories from granting credit.
+type assignmentGuideIdentity struct {
+	GuideID         string
+	GuideSource     string
+	alternateSource string
+}
+
+func assignmentGuideMatchesCompletion(guide assignmentGuideIdentity, rec completionRecordSpec) bool {
+	return guide.GuideID == rec.GuideID && guide.matchesSource(rec.GuideSource)
+}
+
+func (guide assignmentGuideIdentity) matchesSource(source string) bool {
+	return source != "" && (guide.GuideSource == source || guide.alternateSource == source)
+}
+
+func onlineAssignmentGuide(id string) assignmentGuideIdentity {
+	// The CDN and recommender resolvers name the same public content differently.
+	return assignmentGuideIdentity{GuideID: id, GuideSource: "online-cdn", alternateSource: "interactive-tutorials"}
+}
+
+// A found target with no guides is unresolved; an error must never mean outstanding.
+type pathGuideSource func(ctx context.Context, targetID, trackID, targetSource string) (guides []assignmentGuideIdentity, found bool, err error)
 
 const pathIndexTimeout = 10 * time.Second
 
@@ -52,11 +68,11 @@ var pathIndexClient = &http.Client{
 	},
 }
 
-// bundledPathGuides resolves a target from the embedded catalogue. An entry
-// with a URL and no inline guides is resolved from that docs site's index.json.
-// Bundled paths declare no tracks.
 func bundledPathGuides(logger log.Logger) pathGuideSource {
-	return func(ctx context.Context, targetID, trackID string) ([]string, bool, error) {
+	return func(ctx context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+		if targetSource != "" && targetSource != "bundled" {
+			return nil, false, nil
+		}
 		paths, err := loadLocalCatalogue()
 		if err != nil {
 			logger.Info("bundled path catalogue unavailable", "error", err)
@@ -70,7 +86,7 @@ func bundledPathGuides(logger log.Logger) pathGuideSource {
 				return trackNotFound(logger, targetID, trackID)
 			}
 			if len(path.Guides) > 0 {
-				return path.Guides, true, nil
+				return guideIdentities(path.Guides, "bundled"), true, nil
 			}
 			guides, err := pathIndexFetch(ctx, path.URL)
 			if err != nil {
@@ -79,33 +95,37 @@ func bundledPathGuides(logger log.Logger) pathGuideSource {
 			if len(guides) == 0 {
 				return nil, true, nil
 			}
-			return guides, true, nil
+			return guideIdentities(guides, "bundled"), true, nil
 		}
 		return nil, false, nil
 	}
 }
 
-// trackNotFound is the result for a found target that declares no such track:
-// resolved, but with no guides to complete.
-func trackNotFound(logger log.Logger, targetID, trackID string) ([]string, bool, error) {
+func guideIdentities(ids []string, source string) []assignmentGuideIdentity {
+	var guides []assignmentGuideIdentity
+	for _, id := range ids {
+		guides = append(guides, assignmentGuideIdentity{GuideID: id, GuideSource: source})
+	}
+	return guides
+}
+
+func trackNotFound(logger log.Logger, targetID, trackID string) ([]assignmentGuideIdentity, bool, error) {
 	logger.Warn("assignment track not found", "targetId", targetID, "trackId", trackID)
 	return nil, true, nil
 }
 
-// customPathGuides resolves a target from the namespace's published custom
-// paths and journeys, keeping only guides that are themselves published. Only
-// a path can declare tracks.
+// Every required custom member must be published before the path can be evaluated.
 func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) pathGuideSource {
-	published := map[string]struct{}{}
+	published := map[string]bool{}
 	for i := range entries {
-		if entries[i].Status == "published" {
-			published[entries[i].ID] = struct{}{}
+		if entries[i].Status == "published" && entries[i].Manifest != nil {
+			published[entries[i].ID] = true
 		}
 	}
-	return func(_ context.Context, targetID, trackID string) ([]string, bool, error) {
+	return func(_ context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
 		for i := range entries {
 			entry := &entries[i]
-			if entry.ID != targetID || entry.Status != "published" || entry.Manifest == nil {
+			if entry.ID != targetID || entry.Status != "published" || entry.Manifest == nil || (targetSource != "" && targetSource != "app-platform") {
 				continue
 			}
 			if entry.Manifest.Type != "path" && entry.Manifest.Type != "journey" {
@@ -119,11 +139,12 @@ func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) p
 				}
 				ids = entry.Manifest.Tracks[track].Guides
 			}
-			var guides []string
+			var guides []assignmentGuideIdentity
 			for _, id := range ids {
-				if _, ok := published[id]; ok {
-					guides = append(guides, id)
+				if !published[id] || id == "" {
+					return nil, true, nil
 				}
+				guides = append(guides, assignmentGuideIdentity{GuideID: id, GuideSource: "app-platform"})
 			}
 			return guides, true, nil
 		}
@@ -131,52 +152,60 @@ func customPathGuides(entries []customGuideRepositoryEntry, logger log.Logger) p
 	}
 }
 
-// onlinePathGuides resolves a target from the public package index, fetching
-// the manifest on demand when the index entry was not enriched with one.
 func (a *App) onlinePathGuides(logger log.Logger) pathGuideSource {
-	return func(ctx context.Context, targetID, trackID string) ([]string, bool, error) {
+	return func(ctx context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+		if targetSource != "" && !onlineAssignmentGuide(targetID).matchesSource(targetSource) {
+			return nil, false, nil
+		}
 		resp, err := a.getCachedPackageRecommendations(ctx)
 		if err != nil {
 			return nil, false, err
 		}
-		for i := range resp.Packages {
-			entry := &resp.Packages[i]
-			if entry.ID != targetID {
-				continue
-			}
-			manifest := entry.Manifest
-			if manifest == nil {
-				manifestURL := buildPackageFileURL(resp.BaseURL, entry.Path, "manifest.json")
-				if manifestURL == "" || !isAllowedInteractiveLearningHost(manifestURL) {
-					return nil, true, nil
-				}
-				fetch := packageRepositoryFetcherOverride
-				if fetch == nil {
-					fetch = defaultPackageRepositoryFetcher
-				}
-				body, fetchErr := fetch(ctx, manifestURL, packageManifestMaxBytes)
-				if fetchErr != nil {
-					return nil, true, fetchErr
-				}
-				if jsonErr := json.Unmarshal(body, &manifest); jsonErr != nil {
-					return nil, true, fmt.Errorf("parse manifest: %w", jsonErr)
-				}
-			}
-			ids, _ := manifest["milestones"].([]interface{})
-			if trackID != "" {
-				var ok bool
-				if ids, ok = manifestTrackGuides(manifest, trackID); !ok {
-					return trackNotFound(logger, targetID, trackID)
-				}
-			}
-			return resolveGuideIDs(resp.Packages, ids), true, nil
-		}
-		return nil, false, nil
+		return a.resolveOnlinePathGuides(ctx, resp, logger, targetID, trackID, targetSource)
 	}
 }
 
-// manifestTrackGuides is the guide ids of the named track in a path manifest;
-// ok is false when the manifest is not a path or declares no such track.
+func (a *App) resolveOnlinePathGuides(ctx context.Context, resp *PackageRecommendationsResponse, logger log.Logger, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+	if targetSource != "" && !onlineAssignmentGuide(targetID).matchesSource(targetSource) {
+		return nil, false, nil
+	}
+	for i := range resp.Packages {
+		entry := &resp.Packages[i]
+		if entry.ID != targetID {
+			continue
+		}
+		manifest := entry.Manifest
+		if manifest == nil {
+			manifestURL := buildPackageFileURL(resp.BaseURL, entry.Path, "manifest.json")
+			if manifestURL == "" || !isAllowedInteractiveLearningHost(manifestURL) {
+				return nil, true, nil
+			}
+			fetch := packageRepositoryFetcherOverride
+			if fetch == nil {
+				fetch = defaultPackageRepositoryFetcher
+			}
+			body, fetchErr := fetch(ctx, manifestURL, packageManifestMaxBytes)
+			if fetchErr != nil {
+				return nil, true, fetchErr
+			}
+			if jsonErr := json.Unmarshal(body, &manifest); jsonErr != nil {
+				return nil, true, fmt.Errorf("parse manifest: %w", jsonErr)
+			}
+		}
+		ids, _ := manifest["milestones"].([]interface{})
+		if trackID != "" {
+			var ok bool
+			if ids, ok = manifestTrackGuides(manifest, trackID); !ok {
+				return trackNotFound(logger, targetID, trackID)
+			}
+		}
+		guides, err := a.resolveOnlineGuideIdentities(ctx, resp, ids)
+		return guides, true, err
+	}
+	return nil, false, nil
+}
+
+// Only path manifests may declare assignment tracks.
 func manifestTrackGuides(manifest map[string]interface{}, trackID string) (ids []interface{}, ok bool) {
 	if manifest["type"] != "path" {
 		return nil, false
@@ -192,15 +221,25 @@ func manifestTrackGuides(manifest map[string]interface{}, trackID string) (ids [
 	return nil, false
 }
 
-// resolveGuideIDs translates manifest guide ids into completion-record guide ids.
-func resolveGuideIDs(packages []PackageEntry, ids []interface{}) []string {
-	var guides []string
-	for _, id := range ids {
-		if s, ok := id.(string); ok {
-			guides = append(guides, resolveMilestoneGuideID(packages, s))
-		}
+func (a *App) resolveOnlineGuideIdentities(_ context.Context, resp *PackageRecommendationsResponse, ids []interface{}) ([]assignmentGuideIdentity, error) {
+	members := make(map[string]string, len(resp.Packages))
+	for _, entry := range resp.Packages {
+		members[entry.ID] = lastPathSegment(entry.Path)
 	}
-	return guides
+	var guides []assignmentGuideIdentity
+	for _, id := range ids {
+		memberID, ok := id.(string)
+		if !ok || memberID == "" {
+			return nil, nil
+		}
+		slug := members[memberID]
+		if slug == "" {
+			return nil, nil
+		}
+		// Recorders use the URL slug and resolver repository, never the member manifest's source.
+		guides = append(guides, onlineAssignmentGuide(slug))
+	}
+	return guides, nil
 }
 
 // loadLocalCatalogue decodes the embedded paths-cloud.json once per process.
