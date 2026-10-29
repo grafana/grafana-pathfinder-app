@@ -47,7 +47,8 @@ function rewriteCurrentUrl(mutate: (url: URL) => void): void {
     });
   } finally {
     rewritingUrl = false;
-    lastProcessedSearch = null;
+    // The async loader can deliver this cleanup notification after the synchronous guard clears.
+    lastProcessedSearch = url.search;
   }
 }
 
