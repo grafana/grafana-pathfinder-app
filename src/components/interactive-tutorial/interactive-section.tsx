@@ -557,7 +557,11 @@ export function InteractiveSection({
   const isCompletedByObjectives =
     observedObjectives !== false || restoredObjectives === true || objectivesChecker.completionReason === 'objectives';
   const objectivesOrigin: ProgressOrigin =
-    observedObjectives !== false ? observedObjectives : restoredObjectives === true ? 'load' : 'change';
+    observedObjectives !== false
+      ? observedObjectives
+      : restoredObjectives === true
+        ? 'load'
+        : objectivesChecker.objectivesOrigin;
   const gatesOnObjectives = completionCoordinator !== null && hasSectionObjectives;
 
   // Derive the high-level state kind from the reducer's ack bit + the
