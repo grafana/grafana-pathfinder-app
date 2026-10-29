@@ -25,7 +25,8 @@ jest.mock('../global-state/sidebar', () => ({
 jest.mock('./find-doc-page', () => ({
   __esModule: true,
   // Import promises assimilate this thenable, allowing real chunk latency without a production test seam.
-  then: (resolve: (module: unknown) => void) => mockChunkGate.then(() => resolve({ findDocPage: mockFindDocPage })),
+  then: (resolve: (module: unknown) => void, reject: (error: unknown) => void) =>
+    mockChunkGate.then(() => resolve({ findDocPage: mockFindDocPage }), reject),
 }));
 
 const { createBrowserHistory } = jest.requireActual<{
@@ -43,6 +44,7 @@ describe('deep-link arrivals while the document chunk is pending', () => {
   const doc = 'bundled:cheerlights';
   const deps = { attemptAutoOpen: jest.fn() };
   let releaseChunk: () => void;
+  let rejectChunk: (error: Error) => void;
   let unsubscribe: () => void;
   let launch: jest.Mock;
 
@@ -51,8 +53,9 @@ describe('deep-link arrivals while the document chunk is pending', () => {
     jest.clearAllMocks();
     __resetDeepLinkHandlerStateForTests();
     mockMode = 'sidebar';
-    mockChunkGate = new Promise<void>((resolve) => {
+    mockChunkGate = new Promise<void>((resolve, reject) => {
       releaseChunk = resolve;
+      rejectChunk = reject;
     });
     mockFindDocPage.mockReturnValue({ url: doc, title: 'CheerLights', type: 'interactive' });
     launch = jest.fn();
@@ -66,6 +69,29 @@ describe('deep-link arrivals while the document chunk is pending', () => {
     unsubscribe();
     setLocationService(originalService);
     jest.useRealTimers();
+  });
+
+  it('allows a fresh same-doc retry after the document chunk fails during panel-mode cleanup', async () => {
+    window.history.replaceState({}, '', `/d/cheerlights?doc=${encodeURIComponent(doc)}&panelMode=sidebar`);
+    setLocationService(new HistoryWrapper(createBrowserHistory({ basename: '' })));
+    installDeepLinkNavListener(deps);
+    handlePathfinderDeepLink(deps);
+    await drainMicrotasks();
+
+    rejectChunk(new Error('Transient chunk failure'));
+    await drainMicrotasks();
+    jest.advanceTimersByTime(300);
+    await drainMicrotasks();
+    expect(locationService.getLocation().pathname).toBe('/');
+    expect(mockFindDocPage).not.toHaveBeenCalled();
+
+    mockChunkGate = Promise.resolve();
+    locationService.replace(`/d/cheerlights?doc=${encodeURIComponent(doc)}`);
+    await drainMicrotasks();
+    jest.advanceTimersByTime(500);
+    expect(mockFindDocPage).toHaveBeenCalledTimes(1);
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(locationService.getSearch().has('doc')).toBe(false);
   });
 
   it.each([
