@@ -308,7 +308,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
           guideCompleteCalledRef.current = false;
           completedSectionsRef.current.clear();
         } else if (peekGuidePercentage(key) === 100) {
-          triggerGuideComplete();
+          triggerGuideComplete(undefined, { measured: !takeLoadCompletionCrossing(key) });
         }
       }),
     [content.url, triggerGuideComplete]

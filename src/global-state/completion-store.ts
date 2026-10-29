@@ -75,6 +75,7 @@ const IDLE_ENTRY: StepCompletionEntry = Object.freeze({
 const entries = new Map<string, Map<string, Map<string, StepCompletionEntry>>>();
 const hydratedSections = new Set<string>();
 const loadCompletionCrossings = new Set<string>();
+const pendingLoadBaselines = new Map<string, number>();
 const listenersByContent = new Map<string, Set<() => void>>();
 
 /**
@@ -456,6 +457,7 @@ function refreshGuidePercentage(contentKey: string, origin?: ProgressOrigin): vo
   if (progress === undefined) {
     return;
   }
+  settleLoadBaseline(contentKey, progress.percent, origin);
   // Preview content keys never persist (see `persistSection`) — writing here
   // would also crowd `interactiveCompletionStorage`'s capped namespace with
   // throwaway entries that displace real readers' progress. Nothing durable
@@ -465,6 +467,17 @@ function refreshGuidePercentage(contentKey: string, origin?: ProgressOrigin): vo
     return;
   }
   void persistAndAnnounceGuidePercentage(contentKey, progress, origin);
+}
+
+function settleLoadBaseline(contentKey: string, percent: number, origin?: ProgressOrigin): void {
+  const baseline = pendingLoadBaselines.get(contentKey);
+  if (baseline === undefined) {
+    return;
+  }
+  pendingLoadBaselines.delete(contentKey);
+  if (origin !== 'change' && baseline < 100 && percent === 100) {
+    loadCompletionCrossings.add(contentKey);
+  }
 }
 
 function announceGuidePercentage(contentKey: string, progress: GuidePercentage, origin?: ProgressOrigin): void {
@@ -531,17 +544,17 @@ export function refreshGuidePercentageOnLoad(contentKey: string): void {
   if (collectEvidence(contentKey).length === 0) {
     return;
   }
-  const persisted = interactiveCompletionStorage.peekAll()[contentKey] ?? 0;
-  refreshAndNotifyGuideProgress(contentKey, 'load');
-  if (persisted < 100 && peekGuidePercentage(contentKey) === 100) {
-    loadCompletionCrossings.add(contentKey);
+  if (!pendingLoadBaselines.has(contentKey)) {
+    pendingLoadBaselines.set(contentKey, interactiveCompletionStorage.peekAll()[contentKey] ?? 0);
   }
+  refreshAndNotifyGuideProgress(contentKey, 'load');
 }
 
 /**
- * Whether a load-time recompute is what first took this guide to 100%, read
- * from the synced percentage rather than this browser's emitted guard. True
- * at most once per crossing.
+ * Whether a load-time recompute is what first took this guide to 100%, judged
+ * against the percentage persisted before it. That percentage lives in the
+ * same per-browser record as the evidence that produces it. True at most once
+ * per crossing.
  */
 export function takeLoadCompletionCrossing(contentKey: string): boolean {
   return loadCompletionCrossings.delete(contentKey);
@@ -932,6 +945,7 @@ export function evictContentCache(contentKey: string): void {
   evictGuideIndex(contentKey);
   previewAcknowledgedSections.delete(contentKey);
   loadCompletionCrossings.delete(contentKey);
+  pendingLoadBaselines.delete(contentKey);
   entries.delete(contentKey);
   const prefix = `${contentKey}::`;
   for (const key of Array.from(hydratedSections)) {
@@ -1066,6 +1080,7 @@ export function evictAllContentCaches(): void {
   evictAllGuideIndexes();
   previewAcknowledgedSections.clear();
   loadCompletionCrossings.clear();
+  pendingLoadBaselines.clear();
   const contentKeys = Array.from(listenersByContent.keys());
   // Bump every existing hydration version BEFORE clearing the maps so
   // any in-flight hydration cycle drops its merge on resolve. Clearing
@@ -1096,6 +1111,7 @@ export function resetCompletionStoreForTests(): void {
   sectionVersions.clear();
   previewAcknowledgedSections.clear();
   loadCompletionCrossings.clear();
+  pendingLoadBaselines.clear();
   evictAllGuideIndexes();
 }
 

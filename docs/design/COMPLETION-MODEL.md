@@ -196,10 +196,13 @@ and recorded nothing. Reopening the guide recomputes the percentage
 (`refreshGuidePercentageOnLoad`), and the load backfill records the completion
 after the 200 ms settle window, without `duration_ms`. It does so only on the
 first crossing: the persisted percentage read before the recompute was below
-100 and the recomputed one is 100. The persisted percentage syncs through
-Grafana user storage, so a guide that already read 100, because it completed on
-this or another device or was click-marked, records nothing at load. The
-recorder's emitted guard is local to one browser and cannot carry that.
+100 and the recomputed one is 100. A choice guide computes no percentage until
+its saved responses arrive, so its crossing is judged at the first refresh that
+can compute one, against the same pre-load baseline. The persisted percentage
+lives in the same per-browser record as the evidence that produces it: neither
+the interactive completion record nor step evidence syncs down from Grafana
+storage. A guide that already read 100 in this browser, because it completed
+or was click-marked, records nothing at load.
 
 **Which tree the denominator is counted from.** A `snippet-ref` is one block
 however many it resolves to, so the count is the PRE-inlining one. Two opening

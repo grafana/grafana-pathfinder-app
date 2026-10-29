@@ -12,6 +12,7 @@ import { UserInteraction } from '../../lib/analytics';
 import { resetContentKeyForTests } from '../../global-state/content-key';
 import {
   guideCompletionMarkStorage,
+  guideResponseStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
 } from '../../lib/user-storage';
@@ -107,6 +108,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.restoreAllMocks();
   delete (global as unknown as { IntersectionObserver?: unknown }).IntersectionObserver;
   setVisibility('visible');
   evictAllContentCaches();
@@ -259,7 +261,40 @@ describe('a guide that opens at 100%', () => {
     expect(interactiveCompletionStorage.peekAll()[content.url]).toBe(100);
   });
 
-  it('records nothing when the synced percentage already read 100%, even with an empty local emitted guard', async () => {
+  it('records once when a choice guide crosses to 100% only after its responses arrive', async () => {
+    const content = makeJsonGuide(
+      [
+        {
+          type: 'input',
+          inputType: 'checkbox-group',
+          prompt: 'Signals?',
+          variableName: 'signals',
+          choices: [{ id: 'logs', text: 'Logs' }],
+        },
+        { type: 'interactive', id: 'open', action: 'noop', content: 'Open dashboards' },
+        markdown('outro'),
+        {
+          type: 'section',
+          id: 'logs',
+          requirements: ['var-signals:includes:logs'],
+          whenRequirementsUnmet: 'hide',
+          blocks: [markdown('logs-step')],
+        },
+      ],
+      'bundled:choice-opens-at-99'
+    );
+    jest.spyOn(guideResponseStorage, 'getForGuide').mockResolvedValue({ signals: 'logs' });
+    await seedFinishedLastStep(content.url, 99);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+
+    await waitFor(() => expect(recordCompletion).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(recordCompletion.mock.calls[0]![0].durationMs).toBeUndefined();
+    expect(peekGuidePercentage(content.url)).toBe(100);
+  });
+
+  it('records nothing when the persisted percentage already read 100%, even with an empty local emitted guard', async () => {
     const content = finishedGuide('bundled:opens-at-100');
     await seedFinishedLastStep(content.url, 100);
     render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
