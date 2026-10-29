@@ -964,15 +964,15 @@ describe('GuidedHandler', () => {
       expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
 
-    it('does NOT show 100% or delay for error results', async () => {
+    it('does not retain or paint a final box when completion persistence throws', async () => {
       mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
-        // Create progress bar
+        const box = document.createElement('div');
+        box.className = 'interactive-comment-box';
         progressBar = document.createElement('div');
         progressBar.className = 'interactive-comment-progress-bar';
         progressBar.style.width = '66%';
-        document.body.appendChild(progressBar);
-        // Throw an error
-        throw new Error('Test error');
+        box.appendChild(progressBar);
+        document.body.appendChild(box);
       });
 
       const completionPromise = guidedHandler.executeGuidedStep(
@@ -982,16 +982,18 @@ describe('GuidedHandler', () => {
           targetComment: 'Final step',
         },
         1, // Final step
-        2, // Total steps
-        5000
+        2,
+        5000,
+        () => {
+          throw new Error('Persistence failed');
+        }
       );
 
-      // Wait for async operations to complete
       await jest.advanceTimersByTimeAsync(0);
-
-      // Complete
-      const result = await completionPromise;
-      expect(result).toBe('error');
+      document.querySelector<HTMLButtonElement>('#target')!.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(await completionPromise).toBe('error');
+      expect(document.querySelector('[data-guided-state="completed"]')).toBeNull();
 
       // Verify progress bar was NOT set to 100% (error case)
       expect(progressBar.style.width).toBe('66%');
@@ -999,11 +1001,16 @@ describe('GuidedHandler', () => {
       expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
 
-    it('handles missing progress bar gracefully without crashing', async () => {
+    it('creates the done bar when the captured final box has no progress bar', async () => {
       const button = document.querySelector<HTMLButtonElement>('#target')!;
 
       mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
-        // Do NOT create a progress bar - simulate DOM missing the element
+        const box = document.createElement('div');
+        box.className = 'interactive-comment-box';
+        const content = document.createElement('div');
+        content.className = 'interactive-comment-content';
+        box.appendChild(content);
+        document.body.appendChild(box);
       });
 
       const completionPromise = guidedHandler.executeGuidedStep(
@@ -1025,9 +1032,30 @@ describe('GuidedHandler', () => {
 
       await jest.advanceTimersByTimeAsync(0);
 
-      const result = await completionPromise;
-      expect(result).toBe('completed');
-      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+      expect(await completionPromise).toBe('completed');
+      const box = document.querySelector('[data-guided-state="completed"]')!;
+      expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+      expect(box.querySelector('button')).toHaveTextContent('Close');
     });
+
+    it.each(['noop', 'button'] as const)(
+      "removes another handler's done box before starting a %s action",
+      async (targetAction) => {
+        const first = guidedHandler.executeGuidedStep({ targetAction: 'button', refTarget: '#target' }, 0, 1, 5000);
+        await jest.advanceTimersByTimeAsync(0);
+        document.querySelector<HTMLButtonElement>('#target')!.click();
+        await jest.advanceTimersByTimeAsync(0);
+        expect(await first).toBe('completed');
+        const oldBox = document.querySelector('[data-guided-state="completed"]')!;
+        expect(oldBox).toBeInTheDocument();
+        const second = new GuidedHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
+        const pending = second.executeGuidedStep({ targetAction, refTarget: '#target' }, 0, 1, 5000);
+        expect(oldBox).not.toBeInTheDocument();
+        await jest.advanceTimersByTimeAsync(0);
+        expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(1);
+        second.cancel();
+        expect(await pending).toBe('cancelled');
+      }
+    );
   });
 });

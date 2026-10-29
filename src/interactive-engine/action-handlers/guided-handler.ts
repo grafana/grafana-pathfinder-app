@@ -103,6 +103,7 @@ export class GuidedHandler {
     if (this.runController) {
       return 'error';
     }
+    document.querySelectorAll('.interactive-comment-box[data-guided-state="completed"]').forEach((box) => box.remove());
     if (stepIndex === 0) {
       this.resetProgress();
     }
@@ -324,6 +325,7 @@ export class GuidedHandler {
     if (completedBox) {
       document.body.appendChild(completedBox);
       this.completedCommentBox = completedBox;
+      completedBox.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
     }
     return result;
   }

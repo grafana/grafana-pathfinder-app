@@ -17,6 +17,7 @@
  */
 
 import { NavigationManager, type CommentBoxStepInfo } from './navigation-manager';
+import { GuidedHandler } from './action-handlers/guided-handler';
 import * as elementValidator from '../lib/dom';
 
 // Mock the element validator functions
@@ -847,6 +848,33 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
   });
 
+  it('marks a retained done box as completed and focuses its only dismiss control', async () => {
+    const handler = new GuidedHandler({} as any, navigationManager, async () => {});
+    try {
+      const pending = handler.executeGuidedStep({ targetAction: 'noop', targetComment: 'All done' }, 0, 1, 5000);
+      const box = document.querySelector<HTMLElement>('.interactive-comment-box')!;
+      expect(box).not.toHaveAttribute('data-guided-state');
+      const continueButton = Array.from(box.querySelectorAll('button')).find((button) =>
+        button.textContent?.startsWith('Continue')
+      )!;
+      continueButton.focus();
+      continueButton.click();
+      expect(await pending).toBe('completed');
+      expect(box).toHaveAttribute('data-guided-state', 'completed');
+      expect(box).toHaveAttribute('data-ready', 'true');
+      expect(box).toHaveAttribute('data-test-action', 'noop');
+      expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+      const buttons = box.querySelectorAll('button');
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]).toHaveTextContent('Close');
+      expect(buttons[0]).toHaveFocus();
+      buttons[0]!.click();
+      expect(box).not.toBeInTheDocument();
+    } finally {
+      handler.cancel();
+    }
+  });
+
   describe('progress bar', () => {
     const renderBar = async (stepInfo: CommentBoxStepInfo) => {
       await navigationManager.highlightWithComment(
@@ -875,24 +903,8 @@ describe('E2E Contract: Comment Box Attributes', () => {
       });
 
       it('reaches 100% only once every step in the block is done', async () => {
-        // Guards the formula path: progressBarPercent reaches 100% when completedSteps.length === total.
-        // This test verifies the arithmetic, not the live DOM paint—the live 100% paint comes from
-        // GuidedHandler's updateProgressBarTo100 direct write and is covered in guided-handler.test.ts.
+        // This guards arithmetic; the retained done-box case above covers the live completion paint.
         const bar = await renderBar({ current: 3, total: 4, completedSteps: [0, 1, 2, 3], progress: 'performed' });
-        expect(bar.style.width).toBe('100%');
-      });
-
-      it('reaches 100% on final step before cleanup', async () => {
-        // Guards the formula: verifies progressBarPercent computes 100% when completedSteps.length === total.
-        // The live DOM paint is handled by GuidedHandler.updateProgressBarTo100 (tested in guided-handler.test.ts).
-        const bar = await renderBar({ current: 2, total: 3, completedSteps: [0, 1, 2], progress: 'performed' });
-        expect(bar.style.width).toBe('100%');
-      });
-
-      it('single-step tour shows 100% on completion', async () => {
-        // Guards the formula for single-step tours: completedSteps=[0] with total=1 yields 100%.
-        // The live DOM paint is handled by GuidedHandler.updateProgressBarTo100 (tested in guided-handler.test.ts).
-        const bar = await renderBar({ current: 0, total: 1, completedSteps: [0], progress: 'performed' });
         expect(bar.style.width).toBe('100%');
       });
 
