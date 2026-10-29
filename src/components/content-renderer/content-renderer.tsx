@@ -78,6 +78,7 @@ import {
   markGuideEndViewed,
   refreshGuidePercentageOnLoad,
   refreshAndNotifyGuideProgress,
+  takeLoadCompletionCrossing,
 } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
@@ -584,13 +585,14 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   const tracked = completion.kind === 'tracked' && !isBlockEditorPreviewUrl(content.url);
 
   // A load-time recompute announces 100% inside the settle window, where every
-  // trigger above ignores it; evidence already earned must still record.
+  // trigger above ignores it; a load that first crosses to 100% must still record.
   useEffect(() => {
     if (isCoverPage) {
       return;
     }
     const timer = setTimeout(() => {
-      if (peekGuidePercentage(resolveGuideContentKey(content.url)) === 100) {
+      const key = resolveGuideContentKey(content.url);
+      if (takeLoadCompletionCrossing(key) && peekGuidePercentage(key) === 100) {
         triggerGuideComplete(undefined, { measured: false });
       }
     }, COMPLETION_SETTLE_MS);

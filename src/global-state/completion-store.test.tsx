@@ -110,6 +110,7 @@ jest.mock('../lib/user-storage', () => ({
     set: jest.fn(async (contentKey: string, percentage: number) => {
       guidePercentages.set(contentKey, percentage);
     }),
+    peekAll: jest.fn(() => Object.fromEntries(guidePercentages)),
   },
   guideCompletionMarkStorage: {
     isMarked: jest.fn((contentKey: string) => storedMarks.has(contentKey)),

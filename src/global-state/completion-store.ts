@@ -74,6 +74,7 @@ const IDLE_ENTRY: StepCompletionEntry = Object.freeze({
 
 const entries = new Map<string, Map<string, Map<string, StepCompletionEntry>>>();
 const hydratedSections = new Set<string>();
+const loadCompletionCrossings = new Set<string>();
 const listenersByContent = new Map<string, Set<() => void>>();
 
 /**
@@ -530,7 +531,20 @@ export function refreshGuidePercentageOnLoad(contentKey: string): void {
   if (collectEvidence(contentKey).length === 0) {
     return;
   }
+  const persisted = interactiveCompletionStorage.peekAll()[contentKey] ?? 0;
   refreshAndNotifyGuideProgress(contentKey, 'load');
+  if (persisted < 100 && peekGuidePercentage(contentKey) === 100) {
+    loadCompletionCrossings.add(contentKey);
+  }
+}
+
+/**
+ * Whether a load-time recompute is what first took this guide to 100%, read
+ * from the synced percentage rather than this browser's emitted guard. True
+ * at most once per crossing.
+ */
+export function takeLoadCompletionCrossing(contentKey: string): boolean {
+  return loadCompletionCrossings.delete(contentKey);
 }
 
 export interface UseStepCompletionResult {
@@ -917,6 +931,7 @@ export function evictContentCache(contentKey: string): void {
   // idempotent per content key), serving stale positions after a reset.
   evictGuideIndex(contentKey);
   previewAcknowledgedSections.delete(contentKey);
+  loadCompletionCrossings.delete(contentKey);
   entries.delete(contentKey);
   const prefix = `${contentKey}::`;
   for (const key of Array.from(hydratedSections)) {
@@ -1050,6 +1065,7 @@ export function markStepsCompleted(
 export function evictAllContentCaches(): void {
   evictAllGuideIndexes();
   previewAcknowledgedSections.clear();
+  loadCompletionCrossings.clear();
   const contentKeys = Array.from(listenersByContent.keys());
   // Bump every existing hydration version BEFORE clearing the maps so
   // any in-flight hydration cycle drops its merge on resolve. Clearing
@@ -1079,6 +1095,7 @@ export function resetCompletionStoreForTests(): void {
   listenersByContent.clear();
   sectionVersions.clear();
   previewAcknowledgedSections.clear();
+  loadCompletionCrossings.clear();
   evictAllGuideIndexes();
 }
 

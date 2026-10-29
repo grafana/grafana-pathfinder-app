@@ -10,8 +10,13 @@ import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
 import { resetContentKeyForTests } from '../../global-state/content-key';
-import { guideCompletionMarkStorage } from '../../lib/user-storage';
-import { evictAllContentCaches, peekGuidePercentage } from '../../global-state/completion-store';
+import {
+  guideCompletionMarkStorage,
+  interactiveCompletionStorage,
+  interactiveStepStorage,
+} from '../../lib/user-storage';
+import { StorageKeys } from '../../lib/storage-keys';
+import { STANDALONE_SECTION_ID, evictAllContentCaches, peekGuidePercentage } from '../../global-state/completion-store';
 import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { UNTRACKED_COMPLETION, trackedCompletion } from '../../test-utils/content-renderer-completion';
 import { ContentRenderer } from './content-renderer';
@@ -222,13 +227,54 @@ it('never watches the end of a block-editor preview', async () => {
   expect(guideCompletionMarkStorage.isMarked(content.url)).toBe(false);
 });
 
-it('records a completion already earned when the guide opens, without a duration', async () => {
-  const content = makeDocsPage();
-  await guideCompletionMarkStorage.set(URL, true);
-  render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+describe('a guide that opens at 100%', () => {
+  const finishedGuide = (url: string) =>
+    makeJsonGuide(
+      [{ type: 'interactive', id: 'open', action: 'noop', content: 'Open dashboards' }, markdown('outro')],
+      url
+    );
 
-  await waitFor(() => expect(recordCompletion).toHaveBeenCalledTimes(1));
-  const [input] = recordCompletion.mock.calls[0]!;
-  expect(input.source).toBe('manual');
-  expect(input.durationMs).toBeUndefined();
+  async function seedFinishedLastStep(url: string, persisted: number): Promise<void> {
+    await interactiveStepStorage.setCompleted(url, STANDALONE_SECTION_ID, new Set(['open']));
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ [url]: persisted }));
+  }
+
+  async function settle(): Promise<void> {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+  }
+
+  it('records once, without a duration, when this load first takes it to 100%', async () => {
+    const content = finishedGuide('bundled:opens-at-99');
+    await seedFinishedLastStep(content.url, 99);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+
+    await waitFor(() => expect(recordCompletion).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    const [input] = recordCompletion.mock.calls[0]!;
+    expect(input.source).toBe('objectives');
+    expect(input.durationMs).toBeUndefined();
+    expect(interactiveCompletionStorage.peekAll()[content.url]).toBe(100);
+  });
+
+  it('records nothing when the synced percentage already read 100%, even with an empty local emitted guard', async () => {
+    const content = finishedGuide('bundled:opens-at-100');
+    await seedFinishedLastStep(content.url, 100);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+
+    await settle();
+    expect(peekGuidePercentage(content.url)).toBe(100);
+    expect(recordCompletion).not.toHaveBeenCalled();
+  });
+
+  it('records nothing for a docs page already marked complete', async () => {
+    const content = makeDocsPage();
+    await guideCompletionMarkStorage.set(URL, true);
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+
+    await settle();
+    expect(recordCompletion).not.toHaveBeenCalled();
+  });
 });

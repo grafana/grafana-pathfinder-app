@@ -191,6 +191,16 @@ position is at or beyond `finalCompletablePosition`, and its percentage reads
 completable block no longer holds the guide below 100. The old rule is
 `block-position-v1`; the new one is `block-position-v2`.
 
+A reader who finished the last completable block under the old rule sat at 99%
+and recorded nothing. Reopening the guide recomputes the percentage
+(`refreshGuidePercentageOnLoad`), and the load backfill records the completion
+after the 200 ms settle window, without `duration_ms`. It does so only on the
+first crossing: the persisted percentage read before the recompute was below
+100 and the recomputed one is 100. The persisted percentage syncs through
+Grafana user storage, so a guide that already read 100, because it completed on
+this or another device or was click-marked, records nothing at load. The
+recorder's emitted guard is local to one browser and cannot carry that.
+
 **Which tree the denominator is counted from.** A `snippet-ref` is one block
 however many it resolves to, so the count is the PRE-inlining one. Two opening
 paths do not present the same tree: a direct open renders the pre-inlining tree
@@ -989,7 +999,8 @@ cost the exact-key cross-tab match the store's storage listener depends on.
   would flip a finished guide. After a reset it re-arms on the next mount.
 - **The trigger waits for settle.** It is armed only after `onContentReady`,
   after every image has loaded or errored, and while the tab is visible, and the
-  load backfill waits the 200 ms settle window. Arming earlier counts zero-height
+  load backfill waits the 200 ms settle window and records only a load that
+  first takes the persisted percentage to 100 (decision 1). Arming earlier counts zero-height
   images and the previous milestone's scroll position as the end of content.
 - **The nudge does not block navigation, and fires on any incomplete milestone
   rather than on a prose-only subset** (decision 8).
