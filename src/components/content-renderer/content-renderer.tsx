@@ -613,12 +613,11 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   }, [content.url]);
   const handleEndViewed = useCallback(() => {
     const contentKey = resolveGuideContentKey(content.url);
-    if (readyFor?.contentKey !== contentKey) {
-      return;
+    if (readyFor?.contentKey !== contentKey || !markGuideEndViewed(contentKey, isJsonGuideContent(content.content))) {
+      return false;
     }
-    if (markGuideEndViewed(contentKey, isJsonGuideContent(content.content))) {
-      triggerGuideComplete('objectives');
-    }
+    triggerGuideComplete('objectives');
+    return true;
   }, [content.url, content.content, readyFor, triggerGuideComplete]);
 
   const packageManifest = content.metadata.packageManifest;
@@ -668,6 +667,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
       <GuideEndSentinel
         armed={tracked && readyFor?.url === content.url}
         contentRootRef={activeRef}
+        contentKey={readyFor?.contentKey ?? content.url}
         onViewed={handleEndViewed}
       />
       <MarkCompleteFooter

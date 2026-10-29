@@ -262,7 +262,7 @@ describe('a prose-only guide with a required choice', () => {
     expect(recordCompletion).toHaveBeenCalledWith(expect.objectContaining({ source: 'objectives' }));
   });
 
-  it('requires a fresh visible end when answering reveals content below the viewport', async () => {
+  it('waits for the end to be visible again after a rejected sighting', async () => {
     const content = makeChoiceGuide();
     render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
     await seeEnd();
@@ -281,7 +281,7 @@ describe('a prose-only guide with a required choice', () => {
   });
 
   it('retries after saved responses load while the end stays visible', async () => {
-    let resolveResponses!: (responses: Record<string, unknown>) => void;
+    let resolveResponses!: (responses: Awaited<ReturnType<typeof guideResponseStorage.getForGuide>>) => void;
     jest.spyOn(guideResponseStorage, 'getForGuide').mockReturnValue(
       new Promise((resolve) => {
         resolveResponses = resolve;
