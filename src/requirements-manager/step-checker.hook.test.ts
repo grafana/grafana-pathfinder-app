@@ -6,7 +6,11 @@ import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 import { TERMINAL_STATUS_CHANGED_EVENT } from '../lib/event-names';
-import { dispatchProgress } from '../global-state/progress-events';
+import { dispatchProgress, subscribeProgressEvent } from '../global-state/progress-events';
+import { resetCompletionStoreForTests } from '../global-state/completion-store';
+import { getContentKey, resetContentKeyForTests } from '../global-state/content-key';
+import { publishGuideIndex } from '../global-state/active-guide-index';
+import { computeGuideBlockIndex } from '../lib/guide-stats';
 
 // Raise the per-test timeout from jest's 5000ms default. This file exercises
 // real timer-driven fix flows (`timeoutManager.setTimeout(fix-recheck-…)`,
@@ -1230,5 +1234,108 @@ describe('condition shape parity', () => {
         (INTERACTIVE_CONFIG as any).requirements.heartbeat = originalHeartbeat;
       }
     });
+  });
+});
+
+// The progress observer starts a guide attempt only for origin 'change', so an
+// objectives completion the reader did not cause must not announce one (#2102).
+describe('useStepChecker objectives completion origin', () => {
+  let objectivesMet = false;
+  let guideOrigins: unknown[] = [];
+  let unsubscribe: () => void = () => {};
+
+  beforeEach(() => {
+    resetCompletionStoreForTests();
+    resetContentKeyForTests();
+    publishGuideIndex({
+      contentKey: getContentKey(),
+      index: computeGuideBlockIndex([
+        { type: 'markdown', id: 'test-step' },
+        { type: 'markdown' },
+        { type: 'markdown' },
+        { type: 'markdown' },
+      ]),
+      denominatorSource: 'live-pre-inlining',
+    });
+    mockCheckRequirements.mockImplementation(({ requirements }) =>
+      Promise.resolve({
+        pass: objectivesMet,
+        requirements: conditionLabel(requirements),
+        error: objectivesMet ? [] : [failedRequirement({ requirement: conditionLabel(requirements) })],
+      })
+    );
+    guideOrigins = [];
+    unsubscribe = subscribeProgressEvent((detail) => {
+      if (detail.kind === 'guide') {
+        guideOrigins.push(detail.origin);
+      }
+    });
+  });
+
+  afterEach(() => {
+    unsubscribe();
+  });
+
+  async function checkNow(result: { current: UseStepCheckerReturn }): Promise<void> {
+    await act(async () => {
+      await result.current.checkStep();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  it('saves objectives already met on the first check as a load', async () => {
+    objectivesMet = true;
+    const { result } = await renderStepChecker({ objectives: 'has-datasources', sectionId: 'section-a' });
+    await checkNow(result);
+
+    expect(result.current.completionReason).toBe('objectives');
+    expect(guideOrigins).toEqual(['load']);
+  });
+
+  it('saves objectives met after an unmet check as a change', async () => {
+    objectivesMet = false;
+    const { result } = await renderStepChecker({ objectives: 'has-datasources', sectionId: 'section-a' });
+    await checkNow(result);
+    expect(result.current.isCompleted).toBe(false);
+
+    objectivesMet = true;
+    await checkNow(result);
+
+    expect(result.current.completionReason).toBe('objectives');
+    expect(guideOrigins).toEqual(['change']);
+  });
+
+  it('ignores an unmet check that settles after a reset', async () => {
+    objectivesMet = false;
+    const { result } = await renderStepChecker({ objectives: 'has-datasources', sectionId: 'section-a' });
+    let settleStaleCheck: () => void = () => {};
+    mockCheckRequirements.mockImplementationOnce(
+      ({ requirements }) =>
+        new Promise((resolve) => {
+          settleStaleCheck = () =>
+            resolve({
+              pass: false,
+              requirements: conditionLabel(requirements),
+              error: [failedRequirement({ requirement: conditionLabel(requirements) })],
+            });
+        })
+    );
+    let staleCheck: Promise<void> = Promise.resolve();
+    act(() => {
+      staleCheck = result.current.checkStep();
+    });
+    act(() => {
+      result.current.resetStep();
+    });
+    await act(async () => {
+      settleStaleCheck();
+      await staleCheck;
+    });
+
+    objectivesMet = true;
+    await checkNow(result);
+
+    expect(result.current.completionReason).toBe('objectives');
+    expect(guideOrigins).toEqual(['load']);
   });
 });
