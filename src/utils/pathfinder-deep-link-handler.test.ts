@@ -8,8 +8,7 @@
  *   - `handlePathfinderDeepLink` is a no-op when no Pathfinder params are
  *     present, dedupes same-search re-fires, and routes to the panelMode /
  *     control-group / find-doc-page branches.
- *   - `installDeepLinkNavListener` wires `history.listen` (primary) and
- *     falls back to `popstate` when `locationService.getHistory()` throws.
+ *   - Navigation-listener wiring is covered in `pathfinder-deep-link-loader.test.ts`.
  */
 
 jest.mock('../plugin.json', () => ({
@@ -17,14 +16,11 @@ jest.mock('../plugin.json', () => ({
 }));
 
 const mockLocationServiceReplace = jest.fn();
-const mockHistoryListen = jest.fn().mockReturnValue(() => {});
-let mockGetHistoryImpl: () => { listen: typeof mockHistoryListen } | null = () => ({ listen: mockHistoryListen });
 let mockRouterPathname = '/';
 
 jest.mock('@grafana/runtime', () => ({
   locationService: {
     replace: (path: string) => mockLocationServiceReplace(path),
-    getHistory: () => mockGetHistoryImpl(),
     getLocation: () => ({ pathname: mockRouterPathname }),
   },
 }));
@@ -59,11 +55,7 @@ jest.mock('./find-doc-page', () => ({
   findDocPage: (id: string) => mockFindDocPage(id),
 }));
 
-import {
-  __resetDeepLinkHandlerStateForTests,
-  handlePathfinderDeepLink,
-  installDeepLinkNavListener,
-} from './pathfinder-deep-link-handler';
+import { __resetDeepLinkHandlerStateForTests, handlePathfinderDeepLink } from './pathfinder-deep-link-handler';
 import { autoLaunchChannel, type AutoLaunchTutorialDetail } from '../global-state/auto-launch';
 
 type Deps = Parameters<typeof handlePathfinderDeepLink>[0];
@@ -109,7 +101,6 @@ describe('handlePathfinderDeepLink', () => {
       title: 'Foo',
       type: 'docs-page',
     });
-    mockGetHistoryImpl = () => ({ listen: mockHistoryListen });
   });
 
   it('keeps the route selected by kiosk without a page query that conflicts with app routing', async () => {
@@ -436,78 +427,5 @@ describe('handlePathfinderDeepLink', () => {
     expect(window.location.search).toBe('');
     expect(deps.attemptAutoOpen).toHaveBeenCalledWith(200);
     expect(mockSetPendingOpenSource).toHaveBeenCalledWith('url_param', 'auto_open');
-  });
-});
-
-describe('installDeepLinkNavListener', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    __resetDeepLinkHandlerStateForTests();
-    setPathname('/');
-    setSearch('');
-    mockGetHistoryImpl = () => ({ listen: mockHistoryListen });
-  });
-
-  it('registers history.listen', () => {
-    installDeepLinkNavListener(mkDeps());
-    expect(mockHistoryListen).toHaveBeenCalledTimes(1);
-  });
-
-  it('falls back to popstate only when locationService.getHistory throws', () => {
-    mockGetHistoryImpl = () => {
-      throw new Error('not available');
-    };
-    const popstateSpy = jest.spyOn(window, 'addEventListener');
-
-    installDeepLinkNavListener(mkDeps());
-
-    expect(popstateSpy).toHaveBeenCalledWith('popstate', expect.any(Function));
-    popstateSpy.mockRestore();
-  });
-
-  it('skips the parse + dedup machinery on URL changes that carry no Pathfinder params', () => {
-    installDeepLinkNavListener(mkDeps());
-    // Simulate a SPA navigation to a page without any pathfinder params.
-    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
-    setSearch('?tab=overview');
-    historyHandler();
-    expect(mockFindDocPage).not.toHaveBeenCalled();
-  });
-
-  it('re-runs the handler when the URL changes to include ?doc=', async () => {
-    installDeepLinkNavListener(mkDeps());
-    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
-
-    setSearch('?doc=bundled%3Afoo');
-    historyHandler();
-
-    await flushPromises();
-    expect(mockFindDocPage).toHaveBeenCalledWith('bundled:foo');
-  });
-
-  it('does not process a ?doc= navigation that lands on the full-screen route (issue #1351)', async () => {
-    installDeepLinkNavListener(mkDeps());
-    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
-
-    setPathname('/a/grafana-pathfinder-app/fullscreen');
-    setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
-    historyHandler();
-
-    await flushPromises();
-    expect(mockFindDocPage).not.toHaveBeenCalled();
-    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
-  });
-
-  it('does not process a full-screen navigation under a Grafana subpath', async () => {
-    installDeepLinkNavListener(mkDeps());
-    const historyHandler = mockHistoryListen.mock.calls[0][0] as () => void;
-
-    setPathname('/grafana/a/grafana-pathfinder-app/fullscreen', '/a/grafana-pathfinder-app/fullscreen');
-    setSearch('?doc=bundled%3Awelcome-to-grafana&type=docs');
-    historyHandler();
-
-    await flushPromises();
-    expect(mockFindDocPage).not.toHaveBeenCalled();
-    expect(mockLocationServiceReplace).not.toHaveBeenCalled();
   });
 });

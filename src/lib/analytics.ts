@@ -15,6 +15,7 @@ import { pushFaroUserAction } from './telemetry/bridge';
 // url.ts is a dependency-free redactor (no Faro SDK import), safe to import
 // directly even from this entry-eager module.
 import { normalizeTelemetryUrl } from './telemetry/url';
+import { takePanelSessionProperties } from './telemetry/surface';
 import { logger } from './logging';
 import { toAnalyticsValue } from './analytics-values';
 import { checkValueCasing } from './analytics-value-check';
@@ -317,6 +318,7 @@ export function reportAppInteraction(
       ...properties,
       ...(variant && { variant }),
       ...(experiments && { experiments }),
+      ...takePanelSessionProperties(),
       ...(kioskSessionId && { kiosk_session_id: kioskSessionId, kiosk_name: kioskName }),
     };
 
@@ -338,7 +340,15 @@ export function reportAppInteraction(
       if (privateGuide) {
         for (const key of Object.keys(faroProperties)) {
           if (
-            !['plugin_version', 'action', 'launch_source', 'content_type', 'variant'].includes(key) &&
+            ![
+              'plugin_version',
+              'action',
+              'launch_source',
+              'content_type',
+              'variant',
+              'pathfinder_session_id',
+              'session_started_at',
+            ].includes(key) &&
             !/url$/i.test(key)
           ) {
             delete faroProperties[key];
