@@ -1,10 +1,10 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
+import { isJourneyCoverPage, resolveActiveMilestoneSequence } from '../../docs-retrieval';
 import { ContentRenderer } from '../content-renderer/content-renderer';
 import { GuideProgressBar } from '../guide-progress';
 import { usePublishSurfaceContentKey } from '../../hooks';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
-import { isJourneyCoverPage } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
@@ -94,6 +94,18 @@ export function FloatingPanelContent({
     [alignmentIsPending, alignmentStartingLocation]
   );
 
+  const activeSequence = content
+    ? resolveActiveMilestoneSequence(content, activeTab?.activeTrackId, activeTab?.activeTrackMilestones)
+    : null;
+  const completionSequence = activeSequence
+    ? {
+        ...activeSequence,
+        baseUrl:
+          (content?.type === 'learning-journey' ? content.metadata.learningJourney?.baseUrl : undefined) ??
+          content?.metadata.trackMemberBaseUrl,
+      }
+    : undefined;
+
   const surfaceCompletionInput = content
     ? {
         baseUrl: activeTab?.baseUrl,
@@ -167,7 +179,11 @@ export function FloatingPanelContent({
           containerRef={contentRef}
           className={contentClassName}
           completion={{ kind: 'tracked', input: surfaceCompletionInput, onComplete: onGuideComplete }}
-          onContinueToNextMilestone={model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined}
+          completionPanelEnabled
+          completionSequence={completionSequence}
+          onContinueToNextMilestone={
+            model.canNavigateNext() ? () => model.navigateToNextMilestone({ rejectOnError: true }) : undefined
+          }
           onActiveTrackChange={
             activeTab
               ? (trackId, milestones) => model.setActiveTrackId(activeTab.id, trackId, milestones, coverPathId)

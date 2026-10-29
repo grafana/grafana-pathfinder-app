@@ -45,6 +45,23 @@ beforeEach(() => {
   mockFeatureToggles = { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true };
 });
 
+it.each(['metadata-only', true] as const)(
+  'preserves the resource title in resolver metadata for loadContent=%s',
+  async (loadContent) => {
+    mockFetch.mockReturnValue(of(okResource()));
+    const result = await new AppPlatformPackageResolver().resolve('fe-alerting-01', { loadContent });
+
+    expect(result).toEqual(expect.objectContaining({ ok: true, entryTitle: 'Alerting module 1' }));
+    if (result.ok) {
+      expect(result.manifest).toEqual(expect.objectContaining({ description: 'Alerting module 1' }));
+      expect(result.manifest).not.toHaveProperty('title');
+      if (loadContent === 'metadata-only') {
+        expect(result.content).toBeUndefined();
+      }
+    }
+  }
+);
+
 describe('AppPlatformPackageResolver — no loadContent', () => {
   it('resolves URLs without hitting the backend', async () => {
     const resolver = new AppPlatformPackageResolver();

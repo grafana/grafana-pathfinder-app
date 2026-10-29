@@ -9,7 +9,8 @@ import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/util
 import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 import { AnalyticsContentType, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
-type CatalogInteractionLocation = 'package_browser' | 'my_learning_discover_more' | 'my_learning_continue';
+type CatalogInteractionLocation =
+  'package_browser' | 'my_learning_discover_more' | 'my_learning_continue' | 'content_completion_panel';
 
 interface CatalogLaunchOptions {
   onOpenGuide?: (launch: PreparedGuideLaunch) => void;

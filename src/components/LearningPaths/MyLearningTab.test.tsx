@@ -813,8 +813,8 @@ describe('MyLearningTab launch flow', () => {
 
     const firstCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
     const secondCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-2'));
-    expect(firstCard).toHaveTextContent('1 modules');
-    expect(secondCard).toHaveTextContent('2 modules');
+    expect(firstCard).toHaveTextContent('1 milestone');
+    expect(secondCard).toHaveTextContent('2 milestones');
     expect(firstCard).not.toHaveTextContent('guide');
     expect(secondCard).not.toHaveTextContent('guide');
   });
@@ -935,7 +935,7 @@ describe('MyLearningTab launch flow', () => {
     ];
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     const card = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
-    const expand = within(card).getByRole('button', { name: /Show modules/ });
+    const expand = within(card).getByRole('button', { name: /Show milestones/ });
     expect(expand).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(expand);
     expect(expand).toHaveAttribute('aria-expanded', 'true');

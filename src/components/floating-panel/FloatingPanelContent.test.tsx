@@ -1,3 +1,4 @@
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
 /**
  * Surface-level completion-emission test for FloatingPanelContent, the content
  * owner shared by BOTH the floating and full-screen surfaces (FloatingPanelManager
@@ -17,18 +18,36 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { FloatingPanelContent } from './FloatingPanelContent';
 
+jest.mock('../../docs-retrieval', () => ({
+  resolveActiveMilestoneSequence: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneSequence,
+  isJourneyCoverPage: () => false,
+}));
+
 const mockRenderedCompletions: unknown[] = [];
+const mockRenderedSequences: unknown[] = [];
+const mockRenderedCompletionFlags: boolean[] = [];
+let mockContinueToNextMilestone: (() => Promise<void> | void) | undefined;
 jest.mock('../content-renderer/content-renderer', () => ({
   ContentRenderer: ({
     completion,
     onActiveTrackChange,
     initialActiveTrackId,
+    completionSequence,
+    completionPanelEnabled,
+    onContinueToNextMilestone,
   }: {
     completion: unknown;
+    completionSequence?: unknown;
+    completionPanelEnabled?: boolean;
+    onContinueToNextMilestone?: () => Promise<void> | void;
     onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
     initialActiveTrackId?: string | null;
   }) => {
     mockRenderedCompletions.push(completion);
+    mockRenderedSequences.push(completionSequence);
+    mockRenderedCompletionFlags.push(completionPanelEnabled ?? false);
+    mockContinueToNextMilestone = onContinueToNextMilestone;
     return (
       <>
         <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
@@ -38,9 +57,6 @@ jest.mock('../content-renderer/content-renderer', () => ({
   },
 }));
 
-jest.mock('../../docs-retrieval', () => ({
-  isJourneyCoverPage: () => false,
-}));
 jest.mock('../../hooks', () => ({
   usePublishSurfaceContentKey: jest.fn(),
 }));
@@ -139,6 +155,9 @@ function panelModel(): DocsPanelModelOperations {
 
 beforeEach(() => {
   mockRenderedCompletions.length = 0;
+  mockRenderedSequences.length = 0;
+  mockRenderedCompletionFlags.length = 0;
+  mockContinueToNextMilestone = undefined;
   useLinkClickHandler.mockClear();
   LearningJourneyMilestoneToolbar.mockClear();
   mockGuideIndex = null;
@@ -293,6 +312,88 @@ describe('FloatingPanelContent model forwarding', () => {
 
     expect(linkHandlerInput).toEqual(expect.objectContaining({ model, activeTab: tab }));
     expect(toolbarProps).toEqual(expect.objectContaining({ panel: model, activeTab: tab, surface: 'fullscreen' }));
+  });
+});
+
+describe('FloatingPanelContent completion navigation', () => {
+  const milestones = [
+    { number: 1, title: 'First track guide', url: 'https://example.com/track/first', isActive: true },
+    { number: 2, title: 'Next track guide', url: 'https://example.com/track/next', isActive: false },
+  ];
+
+  function renderTrack(canNavigate = true, trackOnly = false) {
+    const guide: any = {
+      url: milestones[0]!.url,
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        trackMemberBaseUrl: 'app-platform:private-path',
+        learningJourney: {
+          baseUrl: 'app-platform:private-path',
+          currentMilestone: 3,
+          totalMilestones: 3,
+          milestones: [{ number: 3, title: 'Base guide', url: milestones[0]!.url, isActive: true }],
+        },
+      },
+    };
+    if (trackOnly) {
+      delete guide.metadata.learningJourney;
+    }
+    const tab: any = {
+      id: 'tab-1',
+      title: 'Track guide',
+      type: 'learning-journey',
+      baseUrl: guide.url,
+      currentUrl: guide.url,
+      content: guide,
+      isLoading: false,
+      activeTrackId: 'builder',
+      activeTrackMilestones: milestones,
+    };
+    const model = panelModel();
+    (model.canNavigateNext as jest.Mock).mockReturnValue(canNavigate);
+    const navigation = Promise.resolve();
+    (model.navigateToNextMilestone as jest.Mock).mockReturnValue(navigation);
+    render(<FloatingPanelContent content={guide} activeTab={tab} model={model} />);
+    return { model, navigation };
+  }
+
+  it('uses the active track rather than the base path and retains its private path identity', () => {
+    renderTrack();
+    expect(mockRenderedSequences.at(-1)).toEqual({
+      currentMilestone: 1,
+      milestones,
+      baseUrl: 'app-platform:private-path',
+    });
+  });
+
+  it('retains the owning path context for a track-only guide with no learning journey metadata', () => {
+    renderTrack(true, true);
+    expect(mockRenderedSequences.at(-1)).toEqual({
+      currentMilestone: 1,
+      milestones,
+      baseUrl: 'app-platform:private-path',
+    });
+  });
+
+  it('always enables the completion panel in the reader', () => {
+    renderTrack();
+    expect(mockRenderedCompletionFlags.at(-1)).toBe(true);
+    expect(mockRenderedSequences.at(-1)).toBeDefined();
+  });
+
+  it('retains navigation promises and requests real load failures', () => {
+    const { model, navigation } = renderTrack();
+    expect(mockContinueToNextMilestone?.()).toBe(navigation);
+    expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(model.navigateToNextMilestone).mock.calls[0]).toEqual([{ rejectOnError: true }]);
+  });
+
+  it('does not offer continuation when the model cannot navigate', () => {
+    const { model } = renderTrack(false);
+    expect(mockContinueToNextMilestone).toBeUndefined();
+    expect(model.navigateToNextMilestone).not.toHaveBeenCalled();
   });
 });
 
