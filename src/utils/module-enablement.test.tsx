@@ -62,6 +62,7 @@ async function boot(
     setPendingOpenSource: jest.fn(),
     consumePendingOpenSource: jest.fn(() => ({ source: 'unset', action: 'open' })),
     setIsSidebarMounted: jest.fn(),
+    closeSidebar: jest.fn(),
     enrollInteractiveLearningBannerExperiment: jest.fn(),
     recordStartupSettings: jest.fn(),
     startHelpButtonExperiment: jest.fn().mockResolvedValue(jest.fn()),
@@ -120,7 +121,7 @@ async function boot(
     'global-state/sidebar': { sidebarState: effects },
     './global-state/panel-mode': { panelModeManager: { getMode: () => panelMode } },
     './global-state/suggestion': { suggestionState: {} },
-    './utils/pathfinder-deep-link-handler': effects,
+    './utils/pathfinder-deep-link-loader': effects,
     './utils/pathfinder-search-params': {
       parsePathfinderDeepLink: () => deepLink,
       parseControllerPairingHash: () => controllerPairing,

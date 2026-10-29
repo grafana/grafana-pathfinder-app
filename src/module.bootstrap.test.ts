@@ -134,17 +134,17 @@ describe('module bootstrap arms the durable completion-write hook', () => {
 describe('module bootstrap loads deep-link handling outside the entry bundle', () => {
   const handlerModule = './utils/pathfinder-deep-link-handler';
 
-  it('awaits the handler chunk at module scope before plugin.init can run', () => {
+  it('imports the lightweight loader without eagerly awaiting the handler chunk', () => {
     const staticImports = sourceFile.statements.filter(ts.isImportDeclaration);
     expect(
       staticImports.some((statement) => statement.moduleSpecifier.getText(sourceFile).includes(handlerModule))
     ).toBe(false);
-    const declaration = sourceFile.statements
-      .filter(ts.isVariableStatement)
-      .flatMap((statement) => [...statement.declarationList.declarations])
-      .find((item) => item.name.getText(sourceFile).includes('installDeepLinkNavListener'));
-    expect(declaration?.initializer && ts.isAwaitExpression(declaration.initializer)).toBe(true);
-    expect(declaration?.initializer?.getText(sourceFile)).toContain(`import('${handlerModule}')`);
+    expect(
+      staticImports.some((statement) =>
+        statement.moduleSpecifier.getText(sourceFile).includes('./utils/pathfinder-deep-link-loader')
+      )
+    ).toBe(true);
+    expect(sourceFile.getText()).not.toContain(`import('${handlerModule}')`);
   });
 
   it('still installs navigation listeners synchronously inside plugin.init', () => {
