@@ -848,6 +848,61 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
   });
 
+  it('does not capture a recovery notice when highlighting cannot create an instruction box', async () => {
+    navigationManager.showNoopComment('The page changed. Looking for this step again…');
+    jest.spyOn(navigationManager, 'ensureNavigationOpen').mockResolvedValue(undefined);
+    jest.spyOn(navigationManager, 'ensureElementVisible').mockResolvedValue(undefined);
+    mockElement.getBoundingClientRect = jest.fn().mockReturnValue({ top: 0, left: 0, width: 0, height: 0 });
+
+    await navigationManager.highlightWithComment(mockElement, 'Actual instruction', false);
+
+    expect(document.querySelector('[data-noop="true"]')).toBeInTheDocument();
+    expect(navigationManager.getOwnedCommentBox()).toBeNull();
+  });
+
+  it('retains the real highlighted action box and removes it before another handler starts', async () => {
+    jest.useFakeTimers();
+    mockElement.id = 'final-target';
+    (elementValidator.resolveSelector as jest.Mock).mockImplementation((selector: string) => selector);
+    (elementValidator.querySelectorAllEnhanced as jest.Mock).mockReturnValue({
+      elements: [mockElement],
+      usedFallback: false,
+    });
+    jest.spyOn(navigationManager, 'ensureNavigationOpen').mockResolvedValue(undefined);
+    jest.spyOn(navigationManager, 'ensureElementVisible').mockResolvedValue(undefined);
+    const handler = new GuidedHandler({} as any, navigationManager, async () => {});
+    const next = new GuidedHandler({} as any, new NavigationManager(), async () => {});
+    try {
+      const pending = handler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#final-target', targetComment: 'Final instruction' },
+        0,
+        1,
+        5000
+      );
+      await jest.advanceTimersByTimeAsync(1000);
+      const box = navigationManager.getOwnedCommentBox()!;
+      expect(box).toBeInTheDocument();
+      expect(box).toHaveAttribute('data-test-reftarget', '#final-target');
+      expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '0%' });
+      mockElement.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(await pending).toBe('completed');
+      expect(box).toHaveAttribute('data-guided-state', 'completed');
+      expect(box).toHaveTextContent('Final instruction');
+      expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+      expect(box.querySelectorAll('button')).toHaveLength(1);
+      expect(box.querySelector('button')).toHaveFocus();
+      const nextPending = next.executeGuidedStep({ targetAction: 'noop' }, 0, 1, 5000);
+      expect(box).not.toBeInTheDocument();
+      next.cancel();
+      expect(await nextPending).toBe('cancelled');
+    } finally {
+      handler.cancel();
+      next.cancel();
+      jest.useRealTimers();
+    }
+  });
+
   it('marks a retained done box as completed and focuses its only dismiss control', async () => {
     const handler = new GuidedHandler({} as any, navigationManager, async () => {});
     try {

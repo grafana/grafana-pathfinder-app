@@ -112,7 +112,9 @@ export class NavigationManager {
 
   getOwnedCommentBox(): HTMLElement | null {
     return (
-      Array.from(this.ownedHighlights).find((element) => element.classList.contains('interactive-comment-box')) ?? null
+      Array.from(this.ownedHighlights).find(
+        (element) => element.classList.contains('interactive-comment-box') && !element.hasAttribute('data-noop')
+      ) ?? null
     );
   }
 
