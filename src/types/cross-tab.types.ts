@@ -59,9 +59,10 @@ export type WireMirrors<A, B> = SetsEqual<A, B> &
   SetsEqual<RequiredKeysOf<A>, RequiredKeysOf<B>>;
 
 // Deliberate re-statement (not an alias) of CheckResultError /
-// RequirementsCheckResult: this is a wire contract, and the two tabs on a
-// channel may run different plugin versions, so the internal type must not be
-// able to reshape the wire silently. A compile-time guard in
+// RequirementsCheckResult: this is a wire contract, so the internal type must
+// not be able to reshape the wire silently. Both tabs run the same build (see
+// the same-build note below), so this guards against drift, not a peer on
+// another version. A compile-time guard in
 // cross-tab.types.test.ts forces a conscious update here when they diverge.
 export interface RemoteRequirementError {
   verdict?: 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
@@ -364,7 +365,8 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
         (sub) =>
           isRecord(sub) &&
           typeof sub.targetAction === 'string' &&
-          KNOWN_TARGET_ACTIONS.has(sub.targetAction) &&
+          (KNOWN_TARGET_ACTIONS.has(sub.targetAction) ||
+            (action.targetAction === 'guided' && sub.targetAction === 'noop')) &&
           isOptionalString(sub.refTarget) &&
           isOptionalString(sub.targetValue) &&
           isOptionalString(sub.targetComment) &&
