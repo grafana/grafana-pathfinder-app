@@ -2,6 +2,7 @@ import { getAppEvents } from '@grafana/runtime';
 import { BusEventBase, BusEventWithPayload } from '@grafana/data';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { clearExtensionSidebarDocked } from '../lib/storage/extension-sidebar';
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
 import pluginJson from '../plugin.json';
 import { panelModeManager } from './panel-mode';
 import { autoLaunchChannel } from './auto-launch';
@@ -90,6 +91,7 @@ class GlobalSidebarState {
     }
 
     this.setIsSidebarMounted(true);
+    reportPathfinderSurface('sidebar');
 
     getAppEvents().publish(
       new OpenExtensionSidebarEvent({
@@ -157,14 +159,17 @@ class GlobalSidebarState {
     clearExtensionSidebarDocked();
   }
 
+  // Only clears the mounted flag while the sidebar is still the active mode: during a
+  // sidebar -> floating/fullscreen handoff the incoming surface may already have set it.
   public closeSidebar(): void {
-    this.setIsSidebarMounted(false);
-
+    if (panelModeManager.getMode() === 'sidebar') {
+      this.setIsSidebarMounted(false);
+    }
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'close',
-      source: 'sidebar_unmount',
-      timestamp: Date.now(),
+      source: 'sidebar_toggle',
     });
+    reportPathfinderSurfaceClosed('sidebar');
   }
 }
 

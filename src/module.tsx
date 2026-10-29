@@ -27,7 +27,7 @@ import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
 import { suggestionState } from './global-state/suggestion';
-import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-handler';
+import { handlePathfinderDeepLink, installDeepLinkNavListener } from './utils/pathfinder-deep-link-loader';
 import { parseControllerPairingHash, parsePathfinderDeepLink } from './utils/pathfinder-search-params';
 import {
   clearExtensionSidebarDocked,
@@ -88,6 +88,7 @@ const pathfinderAvailability = await resolvePathfinderAvailability(
   readPathfinderStartupPreference
 );
 const pathfinderEnabled = pathfinderAvailability === 'enabled';
+const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
 
 // Telemetry chunk retries must never delay plugin registration.
 void (async () => {
@@ -136,7 +137,7 @@ void (async () => {
 
 createExperimentDebugger();
 
-if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, 'Interactive learning')) {
+if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, SIDEBAR_COMPONENT_TITLE)) {
   const persistedMode = panelModeManager.getMode();
   if (!pathfinderEnabled || persistedMode === 'floating' || persistedMode === 'fullscreen') {
     clearExtensionSidebarDocked();
@@ -350,7 +351,7 @@ export { plugin };
 if (pathfinderEnabled) {
   plugin.addComponent({
     targets: `grafana/extension-sidebar/v0-alpha`,
-    title: 'Interactive learning',
+    title: SIDEBAR_COMPONENT_TITLE,
     description: 'Opens Interactive learning',
     component: function ContextSidebar() {
       // Process queued docs links when sidebar mounts
@@ -381,25 +382,7 @@ if (pathfinderEnabled) {
         });
         window.dispatchEvent(mountEvent);
 
-        return () => {
-          // Only clear the shared mounted flag if the sidebar is still the
-          // active surface. During a sidebar → floating/fullscreen transition
-          // `setMode` has already committed the new mode and the incoming
-          // surface's mount effect (a separate React root) may have set the
-          // flag true before this cleanup runs; clobbering it would strand the
-          // link-interception and HomePanel gates thinking no Pathfinder
-          // surface is up. Mirrors FloatingPanelManager / FullScreenPanel.
-          if (panelModeManager.getMode() === 'sidebar') {
-            sidebarState.setIsSidebarMounted(false);
-          }
-          reportPathfinderSurfaceClosed('sidebar');
-
-          // Track sidebar close via component unmount
-          reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-            action: 'close',
-            source: 'sidebar_toggle',
-          });
-        };
+        return () => sidebarState.closeSidebar();
       }, []);
 
       return <LazyContextPanel />;
@@ -412,7 +395,7 @@ if (pathfinderEnabled) {
     targets: [PluginExtensionPoints.CommandPalette],
     onClick: () => {
       sidebarState.setPendingOpenSource('command_palette');
-      sidebarState.openSidebar('Interactive learning', {
+      sidebarState.openSidebar(SIDEBAR_COMPONENT_TITLE, {
         origin: 'command_palette',
         timestamp: Date.now(),
       });
@@ -425,7 +408,7 @@ if (pathfinderEnabled) {
     targets: [PluginExtensionPoints.CommandPalette],
     onClick: () => {
       sidebarState.setPendingOpenSource('command_palette_help');
-      sidebarState.openSidebar('Interactive learning', {
+      sidebarState.openSidebar(SIDEBAR_COMPONENT_TITLE, {
         origin: 'command_palette_help',
         timestamp: Date.now(),
       });
@@ -438,7 +421,7 @@ if (pathfinderEnabled) {
     targets: [PluginExtensionPoints.CommandPalette],
     onClick: () => {
       sidebarState.setPendingOpenSource('command_palette_learn');
-      sidebarState.openSidebar('Interactive learning', {
+      sidebarState.openSidebar(SIDEBAR_COMPONENT_TITLE, {
         origin: 'command_palette_learn',
         timestamp: Date.now(),
       });
@@ -453,7 +436,7 @@ if (pathfinderEnabled) {
       return {
         icon: 'question-circle',
         description: 'Opens Interactive learning',
-        title: 'Interactive learning',
+        title: SIDEBAR_COMPONENT_TITLE,
       };
     },
     onClick: () => {},
@@ -568,6 +551,6 @@ function handlePathfinderSuggest(event: CustomEvent): void {
     buffered,
   });
   sidebarState.setPendingOpenSource('external_suggestion', 'auto_open');
-  sidebarState.openSidebar('Interactive learning');
+  sidebarState.openSidebar(SIDEBAR_COMPONENT_TITLE);
   detail.status = 'accepted';
 }

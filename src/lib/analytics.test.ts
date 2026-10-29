@@ -12,6 +12,7 @@ import type { JsonBlock } from '../types/json-guide.types';
 import { createChoiceProgressModel } from './guide-stats/choice-progress';
 import { reportInteraction } from '@grafana/runtime';
 import { pushFaroUserAction } from './telemetry/bridge';
+import { reportPathfinderSurface } from './telemetry/surface';
 import { computeGuideBlockIndex, guideProgress, type CountableBlock } from './guide-stats';
 import { evictAllGuideIndexes, publishGuideIndex } from '../global-state/active-guide-index';
 import { resetContentKeyForTests, setActiveTabUrl } from '../global-state/content-key';
@@ -36,6 +37,47 @@ jest.mock('./telemetry/bridge', () => ({
 
 const mockReportInteraction = reportInteraction as jest.Mock;
 const mockPushFaroUserAction = pushFaroUserAction as jest.Mock;
+
+describe('reportAppInteraction panel session', () => {
+  beforeEach(() => {
+    mockReportInteraction.mockClear();
+    mockPushFaroUserAction.mockClear();
+    reportPathfinderSurface('closed');
+  });
+  afterAll(() => reportPathfinderSurface('closed'));
+
+  it('omits the session properties while no panel session is open', () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'open' });
+    const props = mockReportInteraction.mock.calls.at(-1)![1];
+    expect(props).not.toHaveProperty('pathfinder_session_id');
+    expect(props).not.toHaveProperty('session_started_at');
+  });
+
+  it('puts the id on every event, session_started_at on the first, and ignores spoofed values', () => {
+    reportPathfinderSurface('sidebar');
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'open', pathfinder_session_id: 'spoof' });
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'close' });
+    const [first, second] = mockReportInteraction.mock.calls.map((c) => c[1]);
+    expect(first.pathfinder_session_id).not.toBe('spoof');
+    expect(second.pathfinder_session_id).toBe(first.pathfinder_session_id);
+    expect(typeof first.session_started_at).toBe('number');
+    expect(second).not.toHaveProperty('session_started_at');
+  });
+
+  it('keeps the id in the Faro mirror, including for private guides', () => {
+    reportPathfinderSurface('sidebar');
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open',
+      guide_url: 'backend-guide:private-resource',
+      guide_id: 'private-resource',
+    });
+    const rudder = mockReportInteraction.mock.calls.at(-1)![1];
+    const faro = mockPushFaroUserAction.mock.calls.at(-1)![1];
+    expect(faro.pathfinder_session_id).toBe(rudder.pathfinder_session_id);
+    expect(faro.session_started_at).toBe(rudder.session_started_at);
+    expect(faro).not.toHaveProperty('guide_id');
+  });
+});
 
 describe('reportAppInteraction', () => {
   it('keeps the analytics outcome while the experiments SDK owns its Faro mirror', () => {
