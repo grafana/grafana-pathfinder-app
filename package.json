@@ -174,7 +174,7 @@
       "react-dom": "$react-dom"
     },
     "@istanbuljs/load-nyc-config": {
-      "js-yaml": "5.4.3"
+      "js-yaml": "5.5.0"
     }
   },
   "lint-staged": {
@@ -184,5 +184,5 @@
     ],
     "*.{json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
-  "packageManager": "npm@12.2.0"
+  "packageManager": "npm@12.2.1"
 }
