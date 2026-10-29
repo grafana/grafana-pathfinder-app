@@ -20,7 +20,15 @@ let mockRouterPathname = '/';
 
 jest.mock('@grafana/runtime', () => ({
   locationService: {
-    replace: (path: string) => mockLocationServiceReplace(path),
+    replace: (path: string | { search: string; hash: string }) => {
+      if (typeof path === 'string') {
+        return mockLocationServiceReplace(path);
+      }
+      const url = new URL(window.location.href);
+      url.search = path.search;
+      url.hash = path.hash;
+      window.history.replaceState(window.history.state, '', url);
+    },
     getLocation: () => ({ pathname: mockRouterPathname }),
   },
 }));
