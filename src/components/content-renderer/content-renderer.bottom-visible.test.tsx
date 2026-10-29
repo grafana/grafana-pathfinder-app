@@ -4,7 +4,7 @@
  * jsdom has no layout, so what is asserted is the gating around it.
  */
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
@@ -21,6 +21,7 @@ import { STANDALONE_SECTION_ID, evictAllContentCaches, peekGuidePercentage } fro
 import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { UNTRACKED_COMPLETION, trackedCompletion } from '../../test-utils/content-renderer-completion';
 import { ContentRenderer } from './content-renderer';
+import { resetGuideProgress } from '../docs-panel/hooks/resetGuideProgress';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -41,6 +42,7 @@ const recordCompletion = jest.mocked(recordGuideCompletionForSurface);
 
 class MockIntersectionObserver {
   static instances: MockIntersectionObserver[] = [];
+  static endVisible: boolean | undefined;
   observed: Element[] = [];
   disconnected = false;
   constructor(public callback: IntersectionObserverCallback) {
@@ -48,11 +50,22 @@ class MockIntersectionObserver {
   }
   observe(target: Element) {
     this.observed.push(target);
+    if (
+      target.getAttribute('data-testid') === 'guide-end-sentinel' &&
+      MockIntersectionObserver.endVisible !== undefined
+    ) {
+      queueMicrotask(() => {
+        if (!this.disconnected) {
+          this.intersect(MockIntersectionObserver.endVisible!);
+        }
+      });
+    }
   }
   disconnect() {
     this.disconnected = true;
   }
   intersect(isIntersecting: boolean) {
+    MockIntersectionObserver.endVisible = isIntersecting;
     this.callback([{ isIntersecting } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
   }
 }
@@ -104,6 +117,7 @@ beforeEach(() => {
   resetContentKeyForTests();
   setVisibility('visible');
   MockIntersectionObserver.instances = [];
+  MockIntersectionObserver.endVisible = undefined;
   (global as unknown as { IntersectionObserver: unknown }).IntersectionObserver = MockIntersectionObserver;
 });
 
@@ -215,6 +229,93 @@ describe('a JSON guide', () => {
 
     expect(guideCompletionMarkStorage.isMarked(content.url)).toBe(false);
     expect(recordCompletion).not.toHaveBeenCalled();
+  });
+});
+
+describe('a prose-only guide with a required choice', () => {
+  function makeChoiceGuide(): RawContent {
+    return makeJsonGuide([
+      markdown('intro'),
+      {
+        type: 'input',
+        inputType: 'checkbox-group',
+        prompt: 'Signals?',
+        variableName: 'signals',
+        required: true,
+        choices: [{ id: 'logs', text: 'Logs' }],
+      },
+      markdown('outro'),
+    ]);
+  }
+
+  it('retries a rejected visible end after the required choice is answered', async () => {
+    const content = makeChoiceGuide();
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+    await seeEnd();
+    expect(guideCompletionMarkStorage.isMarked(content.url)).toBe(false);
+    expect(recordCompletion).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Logs' }));
+
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(100));
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(recordCompletion).toHaveBeenCalledWith(expect.objectContaining({ source: 'objectives' }));
+  });
+
+  it('requires a fresh visible end when answering reveals content below the viewport', async () => {
+    const content = makeChoiceGuide();
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+    await seeEnd();
+    MockIntersectionObserver.endVisible = false;
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Logs' }));
+
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(33));
+    expect(guideCompletionMarkStorage.isMarked(content.url)).toBe(false);
+    expect(recordCompletion).not.toHaveBeenCalled();
+    await seeEnd(false);
+    expect(recordCompletion).not.toHaveBeenCalled();
+    await seeEnd();
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(100));
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries after saved responses load while the end stays visible', async () => {
+    let resolveResponses!: (responses: Record<string, unknown>) => void;
+    jest.spyOn(guideResponseStorage, 'getForGuide').mockReturnValue(
+      new Promise((resolve) => {
+        resolveResponses = resolve;
+      })
+    );
+    const content = makeChoiceGuide();
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+    await seeEnd();
+    expect(recordCompletion).not.toHaveBeenCalled();
+
+    await act(async () => resolveResponses({ signals: 'logs' }));
+
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(100));
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-complete after a reset and further choice changes in the same mount', async () => {
+    const content = makeChoiceGuide();
+    render(<ContentRenderer content={content} completion={trackedCompletion(content)} />);
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Logs' }));
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(33));
+    await seeEnd();
+    await waitFor(() => expect(peekGuidePercentage(content.url)).toBe(100));
+
+    await act(async () => resetGuideProgress(content.url));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Logs' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Logs' }));
+    await act(async () => {
+      await new Promise(requestAnimationFrame);
+    });
+
+    expect(peekGuidePercentage(content.url)).toBe(33);
+    expect(guideCompletionMarkStorage.isMarked(content.url)).toBe(false);
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
   });
 });
 
