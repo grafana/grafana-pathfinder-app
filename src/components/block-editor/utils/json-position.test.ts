@@ -190,13 +190,13 @@ describe('performance', () => {
     };
     const json = JSON.stringify(largeGuide, null, 2);
 
-    // Should parse in under 50ms (conservative threshold)
+    // Takes ~1ms locally; the bound only catches quadratic regressions and tolerates CI stalls (86ms seen at 50ms)
     const start = performance.now();
     const result = parseWithPositions(json);
     const elapsed = performance.now() - start;
 
     expect(result.parseError).toBeNull();
-    expect(elapsed).toBeLessThan(50);
+    expect(elapsed).toBeLessThan(500);
 
     // Also verify path mapping works
     const pos = result.pathToPosition(['blocks', 50, 'content']);
