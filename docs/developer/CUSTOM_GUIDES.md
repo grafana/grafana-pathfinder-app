@@ -45,7 +45,7 @@ Learning journeys and paths, including their cover pages and milestones, cannot 
 
 When Grafana Assistant is available, admins can also select **Customize with Assistant**. Describe the audience, what readers should learn or do, and any environment details to include. Assistant receives the full guide, with shared snippets expanded, and these answers. Select **Customize and open editor** to generate the copy, then review and edit it before saving or publishing. An existing editor draft is only replaced after confirmation; cancelling or a generation error leaves it intact. Declining replacement returns to the customization dialog with your answers and generated copy, so you can review it again without regenerating.
 
-Customization also sends the available data-source inventory (names, types and UIDs) and Grafana context to Assistant. Every request includes the current page path, which can contain a dashboard UID or slug. Its tools can also return live Prometheus, Loki, Tempo and Pyroscope metadata, including label values. UI inspection returns match counts for structural selectors and Grafana registry tokens; it rejects raw attribute selectors, pseudo-selectors, escapes and registry arguments other than the fixed Code radio option. Consider these data transfers when deciding what to include in a customization request. Usage telemetry records the attempt, success or failure with the fixed source `private-guide`; it does not include your answers, guide content, data-source metadata or generated output.
+Customization also sends the available data-source inventory (names, types and UIDs) and Grafana context to Assistant. Every request includes the current page path, which can contain a dashboard UID or slug. Its tools can also return live Prometheus, Loki, Tempo and Pyroscope metadata, including label values. UI inspection returns match counts for structural selectors and Grafana registry tokens; it rejects raw attribute selectors, pseudo-selectors, escapes and registry arguments other than the fixed Code radio option. Consider these data transfers when deciding what to include in a customization request. Usage telemetry records the attempt, success or failure with the fixed source `private_guide`; it does not include your answers, guide content, data-source metadata or generated output.
 
 The modal shows generation progress and elapsed time. If the response fails guide validation, Assistant makes one repair attempt using the validation errors. If it still fails, the modal shows the validation details and keeps your answers for another attempt.
 
@@ -74,6 +74,19 @@ The **•••** menu provides the alternative action:
 - When published → the menu offers **Unpublish** (revert to draft, removing it from the docs panel).
 
 Every save stamps a derived `spec.manifest`, so a guide authored here is a complete package rather than bare content. One consequence is worth knowing while authoring: when the first block that declares an `on-page:` requirement names an absolute path, and nothing navigates before it, that path is saved as the guide's starting location, and a reader who opens the guide somewhere else is prompted to navigate there first. Remove the requirement and the prompt goes with it. The prompt does not reach a guide opened from inside a learning path; [`EXTERNAL_API.md`](EXTERNAL_API.md#manifest) lists the launch routes it does reach. Which manifest fields the derivation owns, and which it inherits untouched, is under [external import](#external-import-ci--terraform--scripts).
+
+### Author attribution
+
+The editor fills `spec.manifest.author` so a saved guide says who to ask about it. Saving is never blocked on it.
+
+- **No author yet** → the signed-in user's `name`, falling back to `login`, then to the fixed placeholder `pathfinder-block-editor` when the environment offers neither. After the save the editor shows a notice with the name it used, a **Change author** button, and a dismiss control. Dismissing it changes nothing about the save.
+- **A real author is already stored** → left alone, so whoever edits a guide next never overwrites who wrote it.
+- **A placeholder author is stored** (`pathfinder-block-editor` or the MCP's `pathfinder-mcp`) → replaced by the signed-in user's name or login. One placeholder never replaces the other, so a guide saved with no usable identity keeps the placeholder it has.
+- **Set in Guide details** (**More actions** > **Guide details**) → always wins. The modal edits author name and team. Values are held in editor memory and written at the next backend save; nothing about them is kept in the local draft. A choice that differs from the stored author or team counts as an unsynced change, so **Save** appears. Clearing the name drops the choice, and the rules above apply again.
+
+Publish and unpublish from the library layer the same default onto the stored spec without re-deriving anything else. A guide with no manifest at all gets a minimal one (`type: guide`, `repository: app-platform`) to hold the author. A guide that already has a real author replays byte-identically, as before; a guide saved before this existed gets a one-time manifest diff on its next save.
+
+Only `name` and `team` are ever written. `email` and `gravatarUrl` never reach the manifest, and the author name is never sent to analytics or the logger. `category`, `description`, `minGrafanaVersion`, `testEnvironment` and `targeting` are not guessed, and neither are `estimatedMinutes` or `language`. Copy JSON, Download JSON and the GitHub PR handoff emit content only and carry no author.
 
 ### Collision detection
 

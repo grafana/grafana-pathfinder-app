@@ -1,5 +1,6 @@
 import {
   guidedStepWaitMs,
+  SIGNED_MESSAGE_KINDS,
   validateCrossTabMessage,
   type RemoteRequirementError,
   type WireMirrors,
@@ -11,6 +12,15 @@ function envelope(overrides: Record<string, unknown> = {}): Record<string, unkno
 }
 
 describe('validateCrossTabMessage', () => {
+  it('requires signed ordinary link navigation with a bounded URL', () => {
+    expect(SIGNED_MESSAGE_KINDS.has('navigate-link')).toBe(true);
+    const message = envelope({ kind: 'navigate-link', url: 'https://grafana.example/explore' });
+    expect(validateCrossTabMessage(message)).toBe(message);
+    for (const url of ['', undefined, 42, 'a'.repeat(8193)]) {
+      expect(validateCrossTabMessage(envelope({ kind: 'navigate-link', url }))).toBeNull();
+    }
+  });
+
   it('accepts a well-formed step-command', () => {
     const message = envelope({
       kind: 'step-command',
@@ -238,6 +248,16 @@ describe('validateCrossTabMessage', () => {
     expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff' }))).toBeNull();
   });
 
+  it.each([
+    null,
+    [],
+    {},
+    { doc: 7, milestoneUrl: 'backend-guide:one' },
+    { doc: 'backend-guide:path', milestoneUrl: 'backend-guide:one', trackId: false },
+  ])('rejects malformed reader positions (%j)', (position) => {
+    expect(validateCrossTabMessage(envelope({ kind: 'sidebar-handoff', action: 'reopen', position }))).toBeNull();
+  });
+
   it('accepts a well-formed step-complete', () => {
     const message = envelope({ kind: 'step-complete', stepId: 's1', runId: 'run-1', ok: true });
     expect(validateCrossTabMessage(message)).toBe(message);
@@ -407,6 +427,13 @@ describe('observation message validation', () => {
     expect(validateCrossTabMessage(envelope({ ...evidence, index: 0 }))).not.toBeNull();
     expect(validateCrossTabMessage(envelope({ ...evidence, index: 256 }))).toBeNull();
     expect(validateCrossTabMessage(envelope({ ...evidence, index: 1.5 }))).toBeNull();
+  });
+
+  it('accepts only a boolean command execution opt-in', () => {
+    const check = { kind: 'check-requirements', requestId: 'r1', stepId: 's1', requirements: ['coda-exit-zero:true'] };
+    expect(validateCrossTabMessage(envelope({ ...check, allowCodaExecution: true }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...check, allowCodaExecution: false }))).not.toBeNull();
+    expect(validateCrossTabMessage(envelope({ ...check, allowCodaExecution: 'true' }))).toBeNull();
   });
 
   it('accepts only a boolean passive flag on check-requirements', () => {

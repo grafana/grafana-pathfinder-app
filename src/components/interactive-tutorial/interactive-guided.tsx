@@ -46,6 +46,7 @@ import { useControllerChannel } from '../../global-state/controller-channel';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { guidedStepWaitMs, toCrossTabInternalAction } from '../../types/cross-tab.types';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
+import { useReportExecuting } from './hooks/use-report-executing';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -117,6 +118,7 @@ interface InteractiveGuidedProps {
   children?: React.ReactNode;
   className?: string;
   disabled?: boolean;
+  onExecutingChange?: (executing: boolean) => void;
   hints?: string;
   requirements?: ConditionInput;
   objectives?: ConditionInput;
@@ -194,6 +196,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       children,
       className,
       disabled = false,
+      onExecutingChange,
       hints,
       requirements,
       objectives,
@@ -827,6 +830,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepStatus,
       setWasCancelled,
     ]);
+
+    useReportExecuting(isExecuting, onExecutingChange);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 

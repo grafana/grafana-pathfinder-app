@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect, RefObject, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2 } from '@grafana/ui';
@@ -11,21 +11,9 @@ interface AssistantSelectionPopoverProps {
   selectedText: string;
   position: SelectionPosition | null;
   context: ChatContextItem[];
-  containerRef: RefObject<HTMLElement | null>;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  highlightBox: css({
-    position: 'absolute',
-    zIndex: theme.zIndex.portal - 1,
-    background: 'transparent',
-    border: '2px solid rgb(143, 67, 179)', // Purple to match assistant button
-    borderRadius: theme.shape.radius.default,
-    boxShadow: '0 0 8px rgba(143, 67, 179, 0.3)',
-    pointerEvents: 'none',
-    padding: '4px',
-    boxSizing: 'content-box',
-  }),
   buttonContainer: css({
     position: 'absolute',
     zIndex: theme.zIndex.portal,
@@ -41,42 +29,21 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-/**
- * Popover component that appears above selected text with "Ask Assistant" button
- */
 const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProps> = ({
   selectedText,
   position,
   context,
-  containerRef,
 }) => {
   const styles = useStyles2(getStyles);
 
-  // Store calculated positions in state to avoid accessing refs during render
-  const [relativePosition, setRelativePosition] = useState<{ top: number; left: number } | null>(null);
+  const trackedSelection = useRef<string | null>(null);
 
-  // Track if we've already reported this selection to avoid duplicates
-  const [hasTrackedSelection, setHasTrackedSelection] = useState(false);
-
-  // Calculate position in useLayoutEffect instead of during render
-  useLayoutEffect(() => {
-    if (!position || !containerRef.current) {
-      setRelativePosition(null);
-
-      setHasTrackedSelection(false); // Reset tracking when selection is cleared
+  useEffect(() => {
+    if (!selectedText || !position) {
+      trackedSelection.current = null;
       return;
     }
-
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const relativeTop = position.top - (containerRect.top + window.scrollY);
-    const relativeLeft = position.left - (containerRect.left + window.scrollX);
-
-    setRelativePosition({ top: relativeTop, left: relativeLeft });
-  }, [position, containerRef]);
-
-  // Track text selection when popover becomes visible
-  useLayoutEffect(() => {
-    if (selectedText && position && relativePosition && !hasTrackedSelection) {
+    if (trackedSelection.current !== selectedText) {
       reportAppInteraction(
         UserInteraction.AssistantTextSelectionMade,
         buildAssistantTextSelectionProperties({
@@ -85,12 +52,10 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
           buttonPlacement: position.buttonPlacement,
         })
       );
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setHasTrackedSelection(true);
+      trackedSelection.current = selectedText;
     }
-  }, [selectedText, position, relativePosition, hasTrackedSelection]);
+  }, [selectedText, position]);
 
-  // Handle "Ask Assistant" button click
   const handleAskAssistantClick = useCallback(() => {
     if (selectedText && position) {
       reportAppInteraction(
@@ -104,59 +69,42 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
     }
   }, [selectedText, position]);
 
-  // Don't render if no selection or position
-  if (!selectedText || !position || !relativePosition) {
+  if (!selectedText || !position) {
     return null;
   }
 
-  // Build the prompt from selected text
   const prompt = buildAssistantPrompt(selectedText);
 
   return (
-    <>
-      {/* Highlight box around the selected text - shown for all users */}
-      <div
-        className={styles.highlightBox}
-        style={{
-          top: `${relativePosition.top - 4}px`,
-          left: `${relativePosition.left - position.width / 2 - 4}px`,
-          width: `${position.width}px`,
-          height: `${position.height}px`,
-        }}
+    <div
+      className={`${styles.buttonContainer} ${
+        position.buttonPlacement === 'top' ? styles.buttonContainerTop : styles.buttonContainerBottom
+      }`}
+      style={{
+        top: `${position.buttonPlacement === 'top' ? position.top : position.top + position.height}px`,
+        left: `${position.left}px`,
+      }}
+      onMouseDown={(e) => {
+        // Keep the native selection intact until the assistant receives it.
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onMouseUp={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        handleAskAssistantClick();
+      }}
+    >
+      <OpenAssistantButton
+        prompt={prompt}
+        context={context}
+        origin="grafana-pathfinder-app/text-selection"
+        autoSend={true}
+        size="sm"
+        title="Ask Assistant"
       />
-
-      {/* Button positioned above or below - OpenAssistantButton handles availability check */}
-      <div
-        className={`${styles.buttonContainer} ${
-          position.buttonPlacement === 'top' ? styles.buttonContainerTop : styles.buttonContainerBottom
-        }`}
-        style={{
-          top: `${position.buttonPlacement === 'top' ? relativePosition.top : relativePosition.top + position.height}px`,
-          left: `${relativePosition.left}px`,
-        }}
-        onMouseDown={(e) => {
-          e.stopPropagation();
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          handleAskAssistantClick();
-        }}
-      >
-        <OpenAssistantButton
-          prompt={prompt}
-          context={context}
-          origin="grafana-pathfinder-app/text-selection"
-          autoSend={true}
-          size="sm"
-          title="Ask Assistant"
-        />
-      </div>
-    </>
+    </div>
   );
 };
 
-// Memoize the component - only re-render if selected text or container changes
-export const AssistantSelectionPopover = React.memo(
-  AssistantSelectionPopoverComponent,
-  (prev, next) => prev.selectedText === next.selectedText && prev.containerRef === next.containerRef
-);
+export const AssistantSelectionPopover = React.memo(AssistantSelectionPopoverComponent);

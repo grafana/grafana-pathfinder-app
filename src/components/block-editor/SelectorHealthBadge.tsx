@@ -14,6 +14,7 @@ import { resolveSelector } from '../../lib/dom/selector-resolver';
 import { analyzeSelectorString } from '../../lib/dom/selector-generator';
 import { findStatefulControl, readToggleState } from '../../lib/dom/toggle-state';
 import { useDebouncedValue } from './useDebouncedValue';
+import { looksLikeToggleTarget } from './lint/cross-block-checks';
 
 interface SelectorHealthBadgeProps {
   reftarget: string;
@@ -69,11 +70,15 @@ export function SelectorHealthBadge({ reftarget, checkTargetState, targetstate }
       allWarnings.push(`Selector matches ${matchCount} elements; consider making it more specific`);
     }
 
-    if (checkTargetState && !targetstate?.trim() && firstMatch) {
-      const state = readToggleState(findStatefulControl(firstMatch));
+    if (checkTargetState && !targetstate?.trim()) {
+      const state = firstMatch ? readToggleState(findStatefulControl(firstMatch)) : 'unknown';
       if (state !== 'unknown') {
         allWarnings.push(
           `This looks like a toggle (currently ${state === 'true' ? 'on' : 'off'}). Set "Target state" so the step drives it to the state you want instead of flipping whatever it finds`
+        );
+      } else if (looksLikeToggleTarget(debouncedTarget)) {
+        allWarnings.push(
+          'This looks like a toggle. Set "Target state" so section recovery can reopen it and the step drives it to the state you want'
         );
       }
     }

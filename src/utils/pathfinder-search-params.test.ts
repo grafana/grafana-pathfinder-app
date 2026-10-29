@@ -24,6 +24,8 @@ describe('PATHFINDER_PARAMS', () => {
     expect([...PATHFINDER_PARAMS].sort()).toEqual(
       [
         'controller',
+        'controllerMilestone',
+        'controllerTrack',
         'doc',
         'kiosk_session',
         'kiosk_name',
@@ -49,6 +51,8 @@ describe('parsePathfinderDeepLink', () => {
       kioskName: undefined,
       panelMode: undefined,
       controller: false,
+      controllerMilestone: undefined,
+      controllerTrack: undefined,
       pathfinderKiosk: false,
       kioskRulesUrl: undefined,
     });
@@ -66,9 +70,23 @@ describe('parsePathfinderDeepLink', () => {
       kioskName: undefined,
       panelMode: 'fullscreen',
       controller: true,
+      controllerMilestone: undefined,
+      controllerTrack: undefined,
       pathfinderKiosk: false,
       kioskRulesUrl: undefined,
     });
+  });
+
+  it('parses and strips the controller milestone and track handoff', () => {
+    const url = new URL(
+      'https://example.com/?doc=backend-guide:path&controllerMilestone=backend-guide:step-3&controllerTrack=advanced'
+    );
+    expect(parsePathfinderDeepLink(url.search)).toMatchObject({
+      controllerMilestone: 'backend-guide:step-3',
+      controllerTrack: 'advanced',
+    });
+    stripPathfinderParams(url);
+    expect(url.search).toBe('');
   });
 
   it('parses controller=1 as true and anything else as false', () => {

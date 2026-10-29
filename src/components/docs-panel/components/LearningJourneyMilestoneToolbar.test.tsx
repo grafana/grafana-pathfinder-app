@@ -22,6 +22,12 @@ import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
+jest.mock('@grafana/runtime', () => ({ config: { appSubUrl: '' } }));
+
+jest.mock('../../../hooks', () => ({
+  usePathfinderPluginConfig: () => ({ config: { enableTwoTabController: true } }),
+}));
+
 const reportAppInteractionMock = jest.fn();
 const markMilestoneDoneMock = jest.fn();
 const journeyMilestonePercentagesMock = jest.fn();
@@ -184,6 +190,18 @@ beforeEach(() => {
 });
 
 describe('LearningJourneyMilestoneToolbar', () => {
+  it('opens the owning path in a paired interactive window', () => {
+    const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+    renderToolbar();
+    fireEvent.click(screen.getByTestId(testIds.docsPanel.openControllerTabButton));
+    const url = new URL(String(open.mock.calls[0]?.[0]));
+    expect(url.searchParams.get('doc')).toBe('https://grafana.com/docs/learning-journeys/foo-canonical');
+    expect(url.searchParams.get('controller')).toBe('1');
+    expect(url.searchParams.get('controllerMilestone')).toBe('m1');
+    expect(url.hash).toContain('pairing_id=');
+    open.mockRestore();
+  });
+
   it('returns null when the active tab is not a learning-journey (consumer renders unconditionally)', () => {
     const docsTab = makeJourneyTab({ type: 'docs', content: null });
     const { container } = renderToolbar({ activeTab: docsTab });
@@ -255,6 +273,24 @@ describe('LearningJourneyMilestoneToolbar', () => {
     it('renders Open when an external URL is resolvable', () => {
       renderToolbar();
       expect(screen.getByLabelText('Open')).toBeInTheDocument();
+    });
+
+    it.each(['cover', 'milestone'])('hides the public Open action for a private path %s', (surface) => {
+      const tab = makeJourneyTab();
+      tab.baseUrl = 'backend-guide:private-path';
+      tab.content!.url = surface === 'cover' ? tab.baseUrl : 'backend-guide:private-step';
+      tab.content!.metadata.learningJourney!.baseUrl = tab.baseUrl;
+      tab.content!.metadata.learningJourney!.currentMilestone = surface === 'cover' ? 0 : 1;
+      renderToolbar({ activeTab: tab });
+      expect(screen.queryByLabelText('Open')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Open in interactive window')).toBeInTheDocument();
+    });
+
+    it('hides Open for App Platform paths even when their metadata carries a public URL', () => {
+      const tab = makeJourneyTab();
+      tab.content!.metadata.repository = 'app-platform';
+      renderToolbar({ activeTab: tab });
+      expect(screen.queryByLabelText('Open')).not.toBeInTheDocument();
     });
 
     it('shows Reset guide when interactive progress exists', () => {

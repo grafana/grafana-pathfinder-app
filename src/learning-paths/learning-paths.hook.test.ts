@@ -111,7 +111,7 @@ beforeEach(() => {
 
 /**
  * A URL-based path: its members are addressed by a docs URL fetched at
- * runtime, and `paths-cloud.json` ships six of them. Their member keys can
+ * runtime, and `paths-cloud.json` ships eight of them. Their member keys can
  * only be formed from that URL, which is what makes the rollup's join
  * different from the bundled/App Platform id schemes.
  */

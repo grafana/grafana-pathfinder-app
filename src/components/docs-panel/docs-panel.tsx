@@ -1,3 +1,5 @@
+import { isLearningJourneyUrl } from './utils/url-validation';
+import type { ReaderPosition } from '../../types/cross-tab.types';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import {
   beginGuideLoad,
@@ -59,6 +61,7 @@ import {
 } from '../../hooks';
 import {
   fetchContent,
+  resolveActiveMilestoneSequence,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
   getNextMilestoneIdFromContent,
@@ -81,7 +84,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { coerceLaunchSource, type LaunchSource } from '../../recovery';
+import { coerceLaunchSource, toAnalyticsLaunchSource, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -535,7 +538,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       this._pendingLaunchSource = options.source;
     }
     const tab = this.state.tabs.find((t) => t.id === tabId);
-    const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
+    const needsDocsLoader =
+      isPackageContentUrl(url) || options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
     if (needsDocsLoader) {
       await this.loadDocsTabContent(
         tabId,
@@ -667,7 +671,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     reportAppInteraction(UserInteraction.AlignmentPromptConfirmed, {
       guide_url: tab.baseUrl || tab.currentUrl || '',
       guide_title: tab.title,
-      launch_source: pending.launchSource,
+      launch_source: toAnalyticsLaunchSource(pending.launchSource),
       current_path: pending.currentPath,
       starting_location: pending.startingLocation,
       latency_ms: Date.now() - pending.decidedAt,
@@ -693,7 +697,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     reportAppInteraction(UserInteraction.AlignmentPromptDismissed, {
       guide_url: tab.baseUrl || tab.currentUrl || '',
       guide_title: tab.title,
-      launch_source: pending.launchSource,
+      launch_source: toAnalyticsLaunchSource(pending.launchSource),
       current_path: pending.currentPath,
       starting_location: pending.startingLocation,
       latency_ms: Date.now() - pending.decidedAt,
@@ -802,6 +806,44 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         });
       }
     }
+  }
+
+  public async restoreReaderPosition(position: ReaderPosition): Promise<void> {
+    await this.restoreTabsAsync();
+    let tab = this.state.tabs.find((candidate) => candidate.baseUrl === position.doc);
+    if (!tab) {
+      tab = {
+        id: this.generateTabId(),
+        title: 'Learning path',
+        baseUrl: position.doc,
+        currentUrl: position.doc,
+        content: null,
+        isLoading: true,
+        error: null,
+        type: isLearningJourneyUrl(position.doc) ? 'learning-journey' : 'docs',
+      };
+      this.setState({ tabs: [...this.state.tabs, tab] });
+    }
+    const tabId = tab.id;
+    this.setState({ activeTabId: tabId });
+    await this.loadTab(tabId, position.doc);
+    const cover = this.state.tabs.find((candidate) => candidate.id === tabId)?.content;
+    if (!cover) {
+      return;
+    }
+    const selectedTrack = cover.metadata?.learningJourney?.tracks?.find((track) => track.trackId === position.trackId);
+    this.setActiveTrackId(
+      tabId,
+      selectedTrack?.trackId ?? null,
+      selectedTrack?.milestones ?? null,
+      typeof cover.metadata?.packageManifest?.id === 'string' ? cover.metadata.packageManifest.id : undefined
+    );
+    const sequence = resolveActiveMilestoneSequence(cover, selectedTrack?.trackId, selectedTrack?.milestones);
+    const milestone = sequence?.milestones.find((item) => item.url === position.milestoneUrl && !item.isLocked);
+    if (milestone) {
+      await this.loadTab(tabId, milestone.url, { explicitGuideId: milestone.id });
+    }
+    await this.saveTabsToStorage();
   }
 
   public getActiveTab(): LearningJourneyTab | null {
@@ -1034,6 +1076,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           requestedUrl: url,
           packageManifest: packageInfo?.packageManifest,
           fetchedManifest: fetchedContent.metadata.packageManifest,
+          packageManifestIsFromEnclosingPath: fetchedContent.metadata.journeyManifest !== undefined,
           currentPath,
           launchSource,
           isAdmin: currentUserIsAdmin(),
@@ -1050,7 +1093,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           reportAppInteraction(UserInteraction.AlignmentPromptShown, {
             guide_url: url,
             guide_title: finalTab?.title ?? '',
-            launch_source: pendingAlignment.launchSource,
+            launch_source: toAnalyticsLaunchSource(pendingAlignment.launchSource),
             current_path: pendingAlignment.currentPath,
             starting_location: pendingAlignment.startingLocation,
           });

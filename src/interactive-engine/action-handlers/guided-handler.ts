@@ -28,6 +28,7 @@ import { matchFormValue } from '../auto-completion/action-matcher';
 import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
 import { commentForTargetState } from './toggle-click';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { toAnalyticsValue } from '../../lib/analytics-values';
 
 export type { CompletionResult };
 
@@ -117,7 +118,7 @@ export class GuidedHandler {
       return await withFaroUserAction(
         createInteractionName(UserInteraction.DoItButtonClick),
         {
-          target_action: action.targetAction,
+          target_action: toAnalyticsValue(action.targetAction),
           ref_target: action.refTarget ?? '',
           step_index: stepIndex,
           total_steps: totalSteps,

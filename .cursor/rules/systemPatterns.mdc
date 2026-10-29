@@ -117,7 +117,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 - `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `alignment-pending-context.ts`.
 - `utils/` — Business logic and utilities. Files: `dev-mode.ts`, `openfeature.ts`, `timeout-manager.ts`, `variable-substitution.ts`, `experiments.ts`, `find-doc-page.ts`. See `docs/developer/utils/README.md`.
 - `validation/` — Zod schemas + condition validators. Entry: `validate-guide.ts`. Architecture rules enforced by `architecture.test.ts`.
-- `recovery/` — Auto-recovery: decides whether the user is in the right place for a guide. Entry: `alignment-evaluator.ts` (`evaluateAlignment`).
+- `recovery/` — Auto-recovery: decides whether the user is in the right place for a guide (`alignment-evaluator.ts`, `evaluateAlignment`) and, for an in-progress section, derives and runs implicit recovery from its steps (`section-recovery-plan.ts` → `section-recovery.ts`, driven by `useSectionRecovery`).
 - `completion-records/` — The single completion-recorder boundary every terminal guide/journey completion flows through. Entry: `completion-recorder.ts` (`recordGuideCompletion`, `recordJourneyCompletion`, `onCompletionRecorded`). A completion not already durably recorded also reports the RFC's Track 1 `guide_completed` / `journey_completed` analytics event (`completion-analytics.ts`) once, under its own persisted guard (`completionReportedStorage`) that only a progress reset lifts — a dropped queued write lifts the durable guard alone (`liftDurableCompletionGuard`). It reports before the pre-arm startup buffer, so it never waits on the write hook or durable acceptance and a buffered fact's replay does not report again; only a confirmed Grafana-published source reports a guide identifier, title or containing `path_id`, and `mark_complete_clicked` derives the same identity through `resolveSurfaceCompletionIdentity`, and the localStorage harness guides (`constants/local-bundled-guides.ts`) never report a title (`docs/developer/TELEMETRY.md` → Completion events). Emission is once per `(kind, guideSource, guideId)` for the current app load; `guideSource` is the recommendation-level `repository` (a sibling of the manifest in the V1 wire shape, threaded through package/tab metadata) and `guideId` is `manifest.id`, else a stable slug — never a loader URL. `completion-write-hook.ts`, armed once from the universal plugin bootstrap (`module.tsx` `plugin.init`, behind a dynamic `import()` so this background stack stays out of the entry bundle — pinned by `entry-bundle-boundary.test.ts` and `module.bootstrap.test.ts`) so every entry surface (sidebar, floating, full-screen, controller) arms it, subscribes immediately and enqueues each emitted fact off the completion-emission stack: enqueue is an O(1) persist with no storage enumeration, and the async drain does the cross-tab reconciliation. Surface-neutral emission is owned by `recordGuideCompletionForSurface` in `learning-journey-helpers` — each content-owning surface delegates to it so completing a guide in any surface records. `completion-write-queue.ts` stores bounded (per-tab 100-item, eventually-global), per-event retries under a user/org-scoped localStorage prefix, dropped past a 30-day retention horizon matching the backend; tabs coordinate drains with a recoverable lease (capped items per pass, released between passes), the request is bounded below the lease TTL, and each POST carries the event's stable id as a REQUIRED idempotency key so a retried send cannot mint a duplicate durable record. Retry backoff is jitter-then-clamped to a true `maxBackoffMs` ceiling. Write outcomes: `created` durable; `terminal` (4xx other than 401/403/408/429) dropped; `transient` (401/408/429/5xx/network) retried; a structural 404 (`route-missing`) and a 403 (`forbidden`) share one disarm-and-keep path — both are conditions of the environment rather than defects in the record, so they suppress network drains for the session while later facts keep persisting and drain on the next load once the route exists or the grant lands, never a per-item drop. They report distinct reasons (`route-missing` vs `forbidden-hold`) so a stack whose grant never arrives is discoverable rather than accumulating silently. Degradation (route-missing, forbidden-hold, terminal/expired/eviction drop, enqueue/drain failure) surfaces as a Faro-visible `logger.warn` plus one typed low-cardinality telemetry event (`recordCompletionWriteDegradation`). Contract shared with the write proxy (#1433/#1434). Partial progress (attempts), the surface identity registry, `origin` semantics, and the extension checklists for new blocks, surfaces and record readers: `docs/developer/COMPLETION_RECORDING.md`.
 
 **Tier 2 — engines & hooks:**
@@ -138,7 +138,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 **Tier 4 — UI:**
 
 - `components/` — React + Scenes UI. Major panels: `App/App.tsx` (root), `docs-panel/docs-panel.tsx` (the panel hub), `Home/`, `interactive-tutorial/`, `LearningPaths/`, `LiveSession/`, `block-editor/`, `floating-panel/`, `full-screen/`, `kiosk/`, `PrTester/`.
-- `pages/` — Grafana Scenes routing. Entries: `homePage.ts`, `docsPage.ts`. Both registered by `App.tsx`.
+- `pages/` — Grafana Scenes routing. Entries: `homePage.ts`, `docsPage.ts`, and `learningInsightsPage.tsx` (current-org admin reporting at `/a/grafana-pathfinder-app/learning-insights`). Learning insights consumes `hooks/useLearningInsights.ts` and source-qualified reporting types; see `docs/developer/LEARNING_INSIGHTS.md` for metric and access semantics.
 
 **Excluded from tier analysis** (not subject to import-graph rules):
 
@@ -167,6 +167,7 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `security` (`parseUrlSafely`, `validateTutorialUrl`) | All subsystems handling URLs | Boundary validation for any URL crossing trust zones           |
 | `learning-paths` (`useGuideCompletion`) | `components/docs-panel`, `interactive-engine` | Progress events + badge unlock                          |
 | `recovery` (`evaluateAlignment`)       | `components/docs-panel`                  | One-shot alignment evaluation at guide launch                  |
+| `recovery` (`deriveSectionRecoveryPlan`, `restoreRecovery`) | `components/interactive-tutorial` | Implicit section recovery for the active section |
 | `completion-records` (`recordGuideCompletion`, `recordJourneyCompletion`) | `docs-retrieval` (`learning-journey-helpers`) | Single completion-emission boundary; exactly-once per `(kind, guideSource, guideId)` |
 | `completion-records` (`armCompletionWriteHook`) | `module.tsx` (`plugin.init`) | Universal plugin bootstrap arms the durable-write subscriber once for every entry surface — nothing is armed and a warn is logged when no user/org identity resolves, so an anonymous session is distinguishable from a broken one and a later identity can still arm |
 | `utils/resolve-tenant-settings.ts` (`resolveTenantSettings`) | `hooks/usePathfinderPluginConfig`, `components/AppConfig/save-settings.ts` | The single resolve order for tenant settings — `PathfinderSettings` App Platform resource over plugin `jsonData` over defaults. Reads and writes must share it: a form seeded from a store its save does not touch renders pre-migration values and writes them back. It also carries the `resourceVersion` and raw spec the write needs to be a compare-and-swap that preserves unknown newer fields. |
@@ -187,6 +188,13 @@ token itself. Completion records add the write half of that shape: a POST create
 coordinate, with identity stamped server-side and a deterministic idempotent name. The canonical
 pattern — including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
 
+Learning insights (`learning_insights.go`) is a deliberate reporting exception: `GET /learning-insights`
+requires the trusted current-org Admin role plus verified namespace-bound identity, reads as the caller
+via OBO, and never mutates assignment status. Every request makes fresh bounded reads; there is no
+reporting cache or stale replay (`Cache-Control: no-store`). Partial reads and unresolved assignments
+remain explicit, not false zero/outstanding. Broad raw GAP grants remain a known separate issue.
+For the full contract and read-only smoke procedure, see `docs/developer/LEARNING_INSIGHTS.md`.
+
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
 
@@ -200,7 +208,8 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `main.go`                           | Plugin entrypoint. Calls `app.Manage("grafana-pathfinder-app", plugin.NewApp, ...)`                                |
 | `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the per-user rate limiter (completion writes and `GET /assignments/my`). |
-| `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`.                      |
+| `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`; includes admin-only `GET /learning-insights`. |
+| `plugin/learning_insights.go`        | Read-only current-org reporting: fresh bounded namespace LISTs, terminal evidence deduplication in [from, to), recorded people union, and current assignment snapshot independent of chart period. No reporting cache. |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory). Owns `timeNow`. |
 | `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`): per-user collation of a namespace LIST behind a single-flight TTL cache with stale-serve. Backend proxy pattern §4-§7. |
 | `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform client for `completionrecords`: supplies group/version + resource, decodes each `items[].spec` for LISTs, and issues the create (POST) for the write path. |
@@ -221,7 +230,8 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 **Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
 
 `/package-recommendations`, `/completion-records` (POST create), `/completion-records/my`,
-`/completion-records/capability`, `/assignments/my`, `/custom-guide-repository`, `/health`.
+`/completion-records/capability`, `/assignments/my`, `/learning-insights` (GET, current-org Admin),
+`/custom-guide-repository`, `/health`.
 
 **Security boundaries:**
 

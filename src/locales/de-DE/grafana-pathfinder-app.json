@@ -97,6 +97,25 @@
     "milestoneButton": "",
     "percentComplete": ""
   },
+  "sidebarHub": {
+    "actionLabel": "",
+    "assignments": "",
+    "continueLabel": "",
+    "dueInDays_one": "",
+    "dueInDays_other": "",
+    "dueOn": "",
+    "dueToday": "",
+    "dueTomorrow": "",
+    "inProgress": "",
+    "moduleOf": "",
+    "moreRecommended": "",
+    "recommendedForYou": "",
+    "showAll": "",
+    "start": "",
+    "subtitle": "",
+    "welcomeBack": "",
+    "welcomeBackName": ""
+  },
   "userProfileBar": {
     "allComplete": "Alle Lernpfade abgeschlossen!",
     "allCompleteTooltip": "Sie haben alle Lernpfade abgeschlossen – gut gemacht!",

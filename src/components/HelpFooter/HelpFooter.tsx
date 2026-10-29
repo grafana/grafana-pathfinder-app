@@ -6,9 +6,10 @@ import { testIds } from '../../constants/testIds';
 
 interface HelpFooterProps {
   className?: string;
+  variant?: 'default' | 'compact';
 }
 
-export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
+export const HelpFooter: React.FC<HelpFooterProps> = ({ className, variant = 'default' }) => {
   const theme = useTheme2();
   const styles = getHelpFooterStyles(theme);
   const helpNode = useHelpNavItem();
@@ -39,17 +40,26 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
     return null;
   }
 
+  const compact = variant === 'compact';
+
   return (
-    <div className={`${styles.helpFooter} ${className || ''}`} data-testid={testIds.helpFooter.container}>
-      <div className={styles.helpButtons}>
+    <div
+      className={`${compact ? styles.compactFooter : styles.helpFooter} ${className || ''}`}
+      data-testid={testIds.helpFooter.container}
+    >
+      <div className={compact ? styles.compactLinks : styles.helpButtons}>
         {helpButtons.map((button: any, index: number) => {
+          const common = {
+            variant: 'secondary' as const,
+            size: 'sm' as const,
+            icon: compact ? undefined : button.icon,
+            className: compact ? styles.compactLink : undefined,
+          };
           if (button.href) {
             return (
               <LinkButton
                 key={button.key}
-                variant="secondary"
-                size="sm"
-                icon={button.icon}
+                {...common}
                 href={button.href}
                 target={button.target || '_blank'}
                 data-testid={testIds.helpFooter.link(index)}
@@ -60,25 +70,21 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
           }
 
           return (
-            <Button
-              key={button.key}
-              variant="secondary"
-              size="sm"
-              icon={button.icon}
-              onClick={button.onClick}
-              data-testid={testIds.helpFooter.link(index)}
-            >
+            <Button key={button.key} {...common} onClick={button.onClick} data-testid={testIds.helpFooter.link(index)}>
               {button.label}
             </Button>
           );
         })}
       </div>
 
-      {versionInfo && (
-        <div className={styles.versionInfo}>
-          <div className={styles.versionText}>{versionInfo}</div>
-        </div>
-      )}
+      {versionInfo &&
+        (compact ? (
+          <div className={styles.compactVersion}>{versionInfo}</div>
+        ) : (
+          <div className={styles.versionInfo}>
+            <div className={styles.versionText}>{versionInfo}</div>
+          </div>
+        ))}
     </div>
   );
 };

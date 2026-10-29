@@ -132,15 +132,30 @@ export interface HeartbeatMessage extends CrossTabEnvelope {
   role: CrossTabRole;
 }
 
+export interface ReaderPosition {
+  doc: string;
+  milestoneUrl: string;
+  trackId?: string;
+}
+
+export interface NavigateLinkMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  kind: 'navigate-link';
+  url: string;
+}
+
 export interface SidebarHandoffMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'sidebar-handoff';
   action: 'close' | 'reopen';
+  position?: ReaderPosition;
 }
 
 // Requirement round-trip (controller → live → controller); requestId correlates
 // each reply to its request since several steps may be in flight.
 export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
+  /** Use postcondition probes without scrolling or retries. */
   passive?: boolean;
+  /** Explicit user-requested command evaluation; defaults to false. */
+  allowCodaExecution?: boolean;
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
@@ -233,6 +248,7 @@ export type CrossTabMessage =
   | StepCancelMessage
   | HeartbeatMessage
   | SidebarHandoffMessage
+  | NavigateLinkMessage
   | CheckRequirementsMessage
   | RequirementResultMessage
   | FixRequirementMessage
@@ -263,6 +279,7 @@ export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Se
   'check-requirements',
   'fix-requirement',
   'sidebar-handoff',
+  'navigate-link',
 ]);
 
 // Same-build assumption: the controller and live tabs are the same plugin
@@ -366,7 +383,25 @@ function isValidHeartbeat(message: Record<string, unknown>): boolean {
 }
 
 function isValidSidebarHandoff(message: Record<string, unknown>): boolean {
-  return message.action === 'close' || message.action === 'reopen';
+  if (message.action !== 'close' && message.action !== 'reopen') {
+    return false;
+  }
+  if (message.position === undefined) {
+    return true;
+  }
+  if (!message.position || typeof message.position !== 'object' || Array.isArray(message.position)) {
+    return false;
+  }
+  const position = message.position as Record<string, unknown>;
+  return (
+    typeof position.doc === 'string' &&
+    position.doc.length > 0 &&
+    position.doc.length <= 8192 &&
+    typeof position.milestoneUrl === 'string' &&
+    position.milestoneUrl.length > 0 &&
+    position.milestoneUrl.length <= 8192 &&
+    (position.trackId === undefined || (typeof position.trackId === 'string' && position.trackId.length <= 256))
+  );
 }
 
 function isOptionalString(value: unknown): boolean {
@@ -410,6 +445,7 @@ function isValidCheckRequirements(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
     (message.passive === undefined || typeof message.passive === 'boolean') &&
+    (message.allowCodaExecution === undefined || typeof message.allowCodaExecution === 'boolean') &&
     typeof message.stepId === 'string' &&
     isBoundedConditionInput(message.requirements) &&
     isOptionalString(message.targetAction) &&
@@ -566,6 +602,7 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
     (m.index as number) < 256,
   heartbeat: isValidHeartbeat,
   'sidebar-handoff': isValidSidebarHandoff,
+  'navigate-link': (message) => isBoundedString(message.url, 8192) && (message.url as string).length > 0,
   'check-requirements': isValidCheckRequirements,
   'requirement-result': isValidRequirementResult,
   'fix-requirement': isValidFixRequirement,

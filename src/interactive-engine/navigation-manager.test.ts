@@ -191,6 +191,7 @@ describe('NavigationManager', () => {
       mockHasFixedPosition.mockReturnValue(false);
       mockIsInViewport.mockReturnValue(false);
       mockGetScrollParent.mockReturnValue(customContainer);
+      mockGetStickyHeaderOffset.mockReturnValue(0);
 
       // Element is inside container viewport
       mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
@@ -205,8 +206,127 @@ describe('NavigationManager', () => {
       await navigationManager.ensureElementVisible(mockElement);
 
       expect(customContainer.scrollBy).not.toHaveBeenCalled();
+      expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
 
       document.body.removeChild(customContainer);
+    });
+
+    describe('scroll parent that only scrolls horizontally, below the fold', () => {
+      let tableWrapper: HTMLElement;
+
+      beforeEach(() => {
+        tableWrapper = document.createElement('div');
+        tableWrapper.style.overflowX = 'auto';
+        tableWrapper.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: window.innerHeight + 700,
+          left: 0,
+          bottom: window.innerHeight + 1000,
+          right: 400,
+          width: 400,
+          height: 300,
+        });
+        document.body.appendChild(tableWrapper);
+        tableWrapper.appendChild(mockElement);
+
+        mockGetScrollParent.mockReturnValue(tableWrapper);
+        mockGetStickyHeaderOffset.mockReturnValue(70);
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: window.innerHeight + 850,
+          left: 100,
+          bottom: window.innerHeight + 870,
+          right: 200,
+          width: 100,
+          height: 20,
+        });
+      });
+
+      afterEach(() => {
+        document.body.removeChild(tableWrapper);
+      });
+
+      it('scrolls the page when the target is inside the wrapper but outside the viewport', async () => {
+        await navigationManager.ensureElementVisible(mockElement);
+
+        expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest',
+        });
+      });
+
+      it('pads the page scroll below the sticky header while scrolling, then restores it', async () => {
+        let pagePaddingDuringScroll = '';
+        (mockElement.scrollIntoView as jest.Mock).mockImplementation(() => {
+          pagePaddingDuringScroll = document.documentElement.style.scrollPaddingTop;
+        });
+
+        await navigationManager.ensureElementVisible(mockElement);
+
+        expect(pagePaddingDuringScroll).toBe('80px');
+        expect(document.documentElement.style.scrollPaddingTop).toBe('');
+      });
+
+      describe('while the page scrolls', () => {
+        let settled: boolean;
+        let visible: Promise<void>;
+
+        beforeEach(() => {
+          jest.useFakeTimers();
+          (mockElement.scrollIntoView as jest.Mock).mockImplementation(() => {
+            setTimeout(() => document.dispatchEvent(new Event('scroll')), 16);
+          });
+          settled = false;
+          visible = navigationManager.ensureElementVisible(mockElement).then(() => {
+            settled = true;
+          });
+        });
+
+        afterEach(() => {
+          jest.useRealTimers();
+        });
+
+        it('resolves only after the page scroll ends', async () => {
+          await jest.advanceTimersByTimeAsync(300);
+          expect(settled).toBe(false);
+
+          document.dispatchEvent(new Event('scrollend'));
+          await visible;
+          expect(settled).toBe(true);
+        });
+
+        it('keeps waiting for the page when the wrapper scroll ends first', async () => {
+          tableWrapper.dispatchEvent(new Event('scroll'));
+          await jest.advanceTimersByTimeAsync(16);
+
+          tableWrapper.dispatchEvent(new Event('scrollend'));
+          await jest.advanceTimersByTimeAsync(0);
+          expect(settled).toBe(false);
+
+          document.dispatchEvent(new Event('scrollend'));
+          await visible;
+          expect(settled).toBe(true);
+        });
+
+        it('ignores scrolling elsewhere on the page', async () => {
+          const sidePanel = document.createElement('div');
+          document.body.appendChild(sidePanel);
+
+          sidePanel.dispatchEvent(new Event('scroll'));
+          sidePanel.dispatchEvent(new Event('scrollend'));
+          await jest.advanceTimersByTimeAsync(300);
+          expect(settled).toBe(false);
+
+          document.dispatchEvent(new Event('scrollend'));
+          await visible;
+          expect(settled).toBe(true);
+          document.body.removeChild(sidePanel);
+        });
+
+        it('stops waiting when scrollend never fires', async () => {
+          await jest.advanceTimersByTimeAsync(1500);
+          expect(settled).toBe(true);
+        });
+      });
     });
   });
 
@@ -419,6 +539,27 @@ describe('NavigationManager', () => {
     });
 
     describe('hidden elements', () => {
+      it.each([undefined, '', '   '])('shows the visibility note without a tooltip (%p)', async (comment) => {
+        mockIsElementVisible.mockReturnValue(false);
+        mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+          top: 100,
+          left: 100,
+          bottom: 200,
+          right: 200,
+          width: 100,
+          height: 100,
+        });
+
+        await navigationManager.highlightWithComment(mockElement, comment);
+
+        const commentBox = document.querySelector('.interactive-comment-box');
+        expect(commentBox).not.toBeNull();
+        expect(commentBox?.querySelector('.interactive-comment-description')).toBeNull();
+        expect(commentBox?.querySelector('.interactive-comment-visibility-note')?.textContent).toBe(
+          'This item may be hidden until you open its menu or panel.'
+        );
+      });
+
       it('keeps a wide hidden target comment inside the viewport initially and after movement', async () => {
         mockIsElementVisible.mockReturnValue(false);
         const rect = { top: 100, left: 20, bottom: 200, right: 920, width: 900, height: 100 };
@@ -466,7 +607,7 @@ describe('NavigationManager', () => {
         expect(commentBox?.textContent).toContain('hidden');
       });
 
-      it('should prepend hidden warning even for normal-sized hidden elements', async () => {
+      it('should keep the original tooltip separate from the hidden item note', async () => {
         mockIsElementVisible.mockReturnValue(false);
         mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
           top: 100,
@@ -480,8 +621,11 @@ describe('NavigationManager', () => {
         await navigationManager.highlightWithComment(mockElement, 'Original comment');
 
         const commentBox = document.querySelector('.interactive-comment-box');
-        expect(commentBox?.textContent).toContain('Item may be hidden');
-        expect(commentBox?.textContent).toContain('Original comment');
+        const description = commentBox?.querySelector('.interactive-comment-description');
+        const note = commentBox?.querySelector('.interactive-comment-visibility-note');
+        expect(description?.textContent).toBe('Original comment');
+        expect(note?.textContent).toBe('This item may be hidden until you open its menu or panel.');
+        expect(description?.nextElementSibling).toBe(note);
       });
 
       it('should check visibility on highlightTarget, not original element (dropdown input fix)', async () => {
@@ -516,7 +660,7 @@ describe('NavigationManager', () => {
 
         // Should NOT show hidden warning since highlightTarget is visible
         const commentBox = document.querySelector('.interactive-comment-box');
-        expect(commentBox?.textContent).not.toContain('Item may be hidden');
+        expect(commentBox?.querySelector('.interactive-comment-visibility-note')).toBeNull();
         expect(commentBox?.textContent).toContain('Test comment');
 
         // Clean up

@@ -7,6 +7,7 @@ export interface DocsLoadAlignmentInput {
   requestedUrl: string;
   packageManifest?: Record<string, unknown>;
   fetchedManifest?: Record<string, unknown>;
+  packageManifestIsFromEnclosingPath?: boolean;
   currentPath: string;
   launchSource: LaunchSource | null;
   isAdmin: boolean;
@@ -31,17 +32,26 @@ export interface PendingAlignmentDecision {
  * declares a value and only falls back where it previously resolved to null —
  * so a guide opened from inside a learning path gets the same prompt as the
  * same guide opened standalone.
+ *
+ * A path member (fetched content carries `journeyManifest`) inverts that
+ * order: `packageManifest` is then the enclosing path's, and the guide on
+ * screen is closer to the reader, so its own declaration narrows the path's.
  */
 export function resolveDocsLoadAlignment({
   requestedUrl,
   packageManifest,
   fetchedManifest,
+  packageManifestIsFromEnclosingPath,
   currentPath,
   launchSource,
   isAdmin,
   isFullScreen,
 }: DocsLoadAlignmentInput): PendingAlignmentDecision | undefined {
-  const startingLocation = resolveStartingLocation(requestedUrl, [packageManifest, fetchedManifest], { isAdmin });
+  const startingLocation = resolveStartingLocation(
+    requestedUrl,
+    packageManifestIsFromEnclosingPath ? [fetchedManifest, packageManifest] : [packageManifest, fetchedManifest],
+    { isAdmin }
+  );
   const evaluation = evaluateAlignment({
     currentPath,
     startingLocation,

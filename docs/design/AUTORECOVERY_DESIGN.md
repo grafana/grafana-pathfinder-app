@@ -1,5 +1,49 @@
 # Auto-recovery system design
 
+## Implicit section recovery (implemented)
+
+When a learner drifts out of the state a section's steps set up, for example by leaving the page or collapsing a control an earlier step opened, the section pauses with a single **Restore** action. Restoring puts the state back and never touches completion. Authors write nothing for this: recovery is derived from each section's own steps.
+
+### Why derived rather than authored
+
+A scan of the 724 tracked `content.json` guides in `interactive-tutorials` (October 2026) found that steps already declare where they run and what they need on screen: 1,009 steps carry `on-page:`, 1,698 `exists-reftarget` and 140 `navmenu-open`. What steps rarely declare is the state of the controls they toggle. None of the 249 `button` steps sets `targetstate`, and only 45 `highlight` steps do. An earlier pilot asked authors to restate the section's state in a `checkpoint` block, which duplicated what the steps imply and was too much to ask; it was removed before release.
+
+### Derivation
+
+For the section's cursor step (the first incomplete step), the plan contains, in order:
+
+1. The cursor step's `on-page:` requirements, repaired with the existing location fix.
+2. A target check on the cursor step's `refTarget` (button, highlight, formfill and hover steps; not lazy-render steps), with a recipe of:
+   - returning to the URL where the cursor step was last ready, minus Pathfinder's own launch parameters, so Explore queries and dashboard variables survive;
+   - replaying earlier toggles: completed `button` or `highlight` steps with a `targetstate`, walking back from the cursor.
+
+The walk stops at anything that may have changed the page in a way recovery cannot repeat: a `navigate`, a click without a `targetstate`, a multistep or guided block, a challenge, a data source check, a lazy-render toggle, or an inline conditional between steps. Challenges and data source checks stop it because the learner may have done anything to satisfy them. Form fills, hovers, noops, popouts, quizzes, terminal and code blocks pass through, because replay never re-types values; skipped steps pass through because they never ran. Only the latest toggle of a given control and attribute is kept.
+
+A toggle is replayed only if its target resolves to exactly one visible control that `isReplaySafeControl` accepts and whose state can be read; an unreadable state is never clicked blind. `navmenu-open` and `dashboard-*` requirements stay with the step's own **Fix this**, so the learner never sees two fixes for the same thing.
+
+### When a section pauses
+
+- **Active section only.** The flag is on, the section is incomplete and reached (every earlier section is done, or the learner has done a step here), its requirements pass, alignment is not paused, and it is not the two-tab controller.
+- **Armed first.** A plan only takes effect after it has passed once for the current cursor step, so a step that has never been ready, a reload, or a section that was never set up is left to the step's own messaging.
+- **Something to do.** A failing check pauses only if Restore can act: the page differs from the armed URL, or the first unmet recipe step can be replayed now. Otherwise the step explains itself as before.
+- **Confirmed.** Drift must be seen twice at least 700 ms apart, which absorbs renders that briefly remove a control.
+- **Never mid-step.** Background checks are suspended while Do Section or a guided interaction is running, and one check runs as soon as it ends.
+
+While paused, the step's own notices are hidden and its actions wait. After a Restore that does not verify, the section stops offering Restore for that check until it passes or a different check fails, and the step's own messaging returns.
+
+When the walk stopped at a step recovery cannot repeat (a click such as Save or Create, a navigation, a multistep or guided block) and the check fails without a Restore on offer, the cursor step's requirement message adds **Set up in step N**. The link scrolls to and briefly highlights that step; it never resets or completes anything. The number is left out ("Set up in an earlier step") when an inline conditional before that step may have taken its number.
+
+Checks run every five seconds, on window focus, and on every in-app navigation (with one follow-up check once the page has rendered). All checks are local URL and DOM reads with no network calls. Only the active section polls.
+
+### Limits
+
+- Recipes never cross sections, and multistep and guided blocks are opaque.
+- After a reload nothing is restored until the plan has passed again.
+- `on-page:` keeps its substring match, and a target is satisfied by any one matching element, so a loose selector can make recovery report success on the wrong panel.
+- Authors get the most from recovery by giving toggle steps a `targetstate`.
+
+The kill switch is `pathfinder.section-recovery` (see `docs/developer/FEATURE_FLAGS.md`). Telemetry is described under "Section recovery events" in `docs/developer/TELEMETRY.md`. Recovery state is memory-only; nothing is persisted, so OSS, bundled, CDN and App Platform guides behave the same.
+
 ## Vision
 
 A generalized "Fix this" capability that detects when users diverge from the tutorial happy path, diagnoses what went wrong, and either automatically recovers or guides users back on track - going far beyond the current navigation-only fixes.

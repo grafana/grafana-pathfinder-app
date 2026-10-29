@@ -1,11 +1,107 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LearningContentCard } from './LearningContentCard';
+import { cache } from '@emotion/css';
+import { createTheme } from '@grafana/data';
+import { getLearningContentCardStyles } from './learning-content-card.styles';
+import { getLearningTopicVisual } from './learning-topic-visual';
+
+jest.mock('@grafana/ui', () => {
+  const actual = jest.requireActual('@grafana/ui');
+  return {
+    ...actual,
+    Button: React.forwardRef<HTMLButtonElement, React.ComponentProps<typeof actual.Button>>(
+      function Button(props, ref) {
+        return <actual.Button {...props} ref={ref} data-button-variant={props.variant ?? 'primary'} />;
+      }
+    ),
+  };
+});
+
+it('reserves primary emphasis for the featured launch rather than ordinary recommendations', () => {
+  render(
+    <>
+      <LearningContentCard title="Featured" variant="featured" kind="guide" onLaunch={jest.fn()} />
+      <LearningContentCard title="Another guide" kind="guide" onLaunch={jest.fn()} />
+      <LearningContentCard title="A path" kind="path" onLaunch={jest.fn()} />
+      <LearningContentCard title="Documentation" kind="docs" onLaunch={jest.fn()} />
+    </>
+  );
+  const launches = screen.getAllByRole('button');
+  expect(launches.filter((button) => button.dataset.buttonVariant === 'primary')).toHaveLength(1);
+  expect(launches[0]).toHaveAttribute('data-button-variant', 'primary');
+  launches.slice(1).forEach((button) => expect(button).toHaveAttribute('data-button-variant', 'secondary'));
+});
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
     fallback.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? '')),
 }));
+
+it.each(['dark', 'light'] as const)('uses semantic container and accent tokens for %s cards', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.shape.radius.lg = '11px';
+  theme.colors.accent.border = '#f59e4b';
+  theme.colors.accent.background = '#714015';
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.card]).toContain('border-radius:11px');
+  expect(cache.registered[styles.featured]).toContain('border-radius:11px');
+  expect(cache.registered[styles.featured]).toContain('border-color:#f59e4b');
+  expect(cache.registered[styles.featured]).toContain(
+    `background:linear-gradient(120deg, #714015, ${theme.colors.background.secondary})`
+  );
+});
+
+it.each([
+  ['dark', false],
+  ['light', false],
+  ['dark', true],
+  ['light', true],
+] as const)('uses host card surfaces in %s mode with visual refresh=%s', (mode, enabled) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.flags.visualDesignRefresh = enabled;
+  theme.colors.background.primary = '#123456';
+  theme.colors.background.secondary = '#654321';
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.card]).toContain(`background:${enabled ? '#123456' : '#654321'}`);
+  if (enabled) {
+    expect(cache.registered[styles.featured]).toContain('background:#123456');
+    expect(cache.registered[styles.featured]).not.toContain('linear-gradient');
+  } else {
+    expect(cache.registered[styles.featured]).toContain(
+      `background:linear-gradient(120deg, ${theme.colors.accent.background}, #654321)`
+    );
+  }
+  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.accent.border}`);
+});
+
+it.each(['dark', 'light'] as const)('renders featured cards without accent tokens in %s mode', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  Reflect.deleteProperty(theme.colors, 'accent');
+  Reflect.deleteProperty(theme.colors.primary, 'background');
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.primary.border}`);
+  expect(cache.registered[styles.featured]).toContain(
+    `background:linear-gradient(120deg, ${theme.colors.primary.transparent}, ${theme.colors.background.secondary})`
+  );
+  expect(cache.registered[styles.featured]).not.toContain('undefined');
+});
+
+it('leaves launch button height and padding to the Grafana Button component', () => {
+  const styles = getLearningContentCardStyles(createTheme());
+  expect(cache.registered[styles.action]).not.toMatch(/(?:height|padding):/);
+});
+
+it.each(['dark', 'light'] as const)('uses info tokens for unclassified card icons in %s mode', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  theme.colors.info.text = '#346acc';
+  theme.colors.info.background = '#dae6ff';
+  theme.colors.info.border = '#96b9fa';
+  const visual = getLearningTopicVisual(undefined, theme);
+  expect(visual.color).toBe(theme.colors.info.text);
+  expect(visual.background).toBe(theme.colors.info.background);
+  expect(visual.border).toBe(theme.colors.info.border);
+});
 
 it('discloses details without launching, moving focus, or hiding the primary action', () => {
   const onLaunch = jest.fn();
@@ -96,6 +192,112 @@ it('offers Read more only when the rendered description is truncated', () => {
   }
 });
 
+it('lets a featured description that exceeds four lines expand and collapse', () => {
+  const measurement = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => 120);
+  const getStyle = window.getComputedStyle.bind(window);
+  const typography = jest.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = getStyle(element, pseudo);
+    if (element.tagName === 'P') {
+      style.lineHeight = '18px';
+      style.fontSize = '13px';
+    }
+    return style;
+  });
+  try {
+    render(
+      <LearningContentCard
+        title="A starter path"
+        kind="path"
+        variant="featured"
+        expandableDescription
+        onLaunch={jest.fn()}
+        description="A very long overview that runs well past the four lines the featured card shows."
+      />
+    );
+    const toggle = screen.getByRole('button', { name: 'Read more' });
+    expect(screen.getByText(/A very long overview/)).toHaveStyle({ WebkitLineClamp: '4' });
+    fireEvent.click(toggle);
+    expect(screen.getByText(/A very long overview/)).not.toHaveStyle({ WebkitLineClamp: '4' });
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(screen.getByRole('button', { name: 'Read more' })).toHaveAttribute('aria-expanded', 'false');
+  } finally {
+    measurement.mockRestore();
+    typography.mockRestore();
+  }
+});
+
+it('offers no summary toggle on a featured card unless it opts in to expanding', () => {
+  const measurement = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(() => 120);
+  const getStyle = window.getComputedStyle.bind(window);
+  const typography = jest.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = getStyle(element, pseudo);
+    if (element.tagName === 'P') {
+      style.lineHeight = '18px';
+      style.fontSize = '13px';
+    }
+    return style;
+  });
+  try {
+    render(
+      <LearningContentCard
+        title="A starter path"
+        kind="path"
+        variant="featured"
+        onLaunch={jest.fn()}
+        details={<p>Module link</p>}
+        description="A very long overview that runs well past the four lines the featured card shows."
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'Read more' })).not.toBeInTheDocument();
+    expect(screen.getByText(/A very long overview/)).not.toHaveStyle({ WebkitLineClamp: '4' });
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('Module link')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show less' })).not.toBeInTheDocument();
+  } finally {
+    measurement.mockRestore();
+    typography.mockRestore();
+  }
+});
+
+it('keeps the featured primary action last, after the toggle and the details, when it sits at the bottom', () => {
+  const { rerender } = render(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      actionAtBottom
+      expanded
+      onToggleDetails={jest.fn()}
+      details={<p>Module link</p>}
+      effort="3 modules"
+      onLaunch={jest.fn()}
+    />
+  );
+  const follows = (before: HTMLElement, after: HTMLElement) =>
+    Boolean(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const start = screen.getByRole('button', { name: 'Start path' });
+  expect(follows(screen.getByRole('button', { name: 'Hide details' }), screen.getByText('Module link'))).toBe(true);
+  expect(follows(screen.getByText('Module link'), start)).toBe(true);
+  expect(follows(screen.getByText('3 modules'), start)).toBe(true);
+
+  rerender(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      expanded
+      onToggleDetails={jest.fn()}
+      details={<p>Module link</p>}
+      effort="3 modules"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(
+    follows(screen.getByRole('button', { name: 'Start path' }), screen.getByRole('button', { name: 'Hide details' }))
+  ).toBe(true);
+});
+
 it('prevents duplicate launches and keeps failure recovery inside the card', async () => {
   let reject: (error: Error) => void = () => {};
   const onLaunch = jest.fn(
@@ -154,4 +356,21 @@ it('labels known topics and keeps the leading icon decorative without inventing 
   expect(screen.queryByText('my-private-category')).not.toBeInTheDocument();
   expect(screen.queryByText('Other topics')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Start guide' })).toBeInTheDocument();
+});
+
+it('lets a featured card carry its own eyebrow and badges', () => {
+  render(
+    <LearningContentCard
+      title="A starter path"
+      kind="path"
+      variant="featured"
+      eyebrow="Recommended for you"
+      badges={<span>Alerting</span>}
+      onLaunch={jest.fn()}
+    />
+  );
+
+  expect(screen.getByText('Recommended for you')).toBeInTheDocument();
+  expect(screen.queryByText('A good place to start')).not.toBeInTheDocument();
+  expect(screen.getByText('Alerting')).toBeInTheDocument();
 });

@@ -43,14 +43,15 @@ const (
 var completionRecordsAggregationToggle = aggregationToggle(appPlatformGroup)
 
 // completionRecordSpec mirrors the fields of the CompletionRecord `spec` that
-// this read proxy consumes. Unlisted spec fields (userLogin, orgId, …) are
-// ignored by encoding/json. Field names track
+// this read proxy consumes. Field names track
 // kinds/completionrecord.cue.
 //
 // CompletedAt is empty on an in-progress attempt record (the CRD makes it
 // optional): only a record at 100% is a completion.
 type completionRecordSpec struct {
 	UserID            string `json:"userId"`
+	UserLogin         string `json:"userLogin"`
+	UserDisplayName   string `json:"userDisplayName"`
 	GuideID           string `json:"guideId"`
 	GuideSource       string `json:"guideSource"`
 	GuideTitle        string `json:"guideTitle"`

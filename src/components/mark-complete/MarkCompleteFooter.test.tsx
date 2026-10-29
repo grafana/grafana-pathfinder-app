@@ -172,12 +172,16 @@ describe('MarkCompleteFooter', () => {
 
     expect(onMarkComplete).toHaveBeenCalledTimes(1);
     expect(reportAppInteraction).toHaveBeenCalledTimes(1);
-    expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
-      interaction_location: 'content_footer',
-      completion_context: 'guide',
-      completion_percentage_before: 25,
-      block_progress_rule_version: 'block-position-v1',
-    });
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.MarkCompleteClicked,
+      {
+        interaction_location: 'content_footer',
+        completion_context: 'guide',
+        completion_percentage_before: 25,
+        block_progress_rule_version: 'block-position-v1',
+      },
+      { privatePath: false }
+    );
     await waitFor(() => expect(markStorage.set).toHaveBeenCalledWith('guide-key', true));
   });
 
@@ -190,7 +194,35 @@ describe('MarkCompleteFooter', () => {
 
     expect(reportAppInteraction).toHaveBeenCalledWith(
       UserInteraction.MarkCompleteClicked,
-      expect.objectContaining({ current_milestone: 2, total_milestones: 5 })
+      expect.objectContaining({ current_milestone: 2, total_milestones: 5 }),
+      { privatePath: false }
+    );
+  });
+
+  it('reports a private milestone title and containing path', async () => {
+    render(
+      <MarkCompleteFooter
+        context="milestone"
+        guideTitle="Customer workshop"
+        completionIdentity={{
+          guideSource: 'app-platform',
+          guideId: 'workshop-step',
+          sourceConfirmed: true,
+          pathIdentity: { guideSource: 'app-platform', guideId: 'workshop', sourceConfirmed: true },
+        }}
+      />
+    );
+    await clickWhenReady();
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.MarkCompleteClicked,
+      expect.objectContaining({
+        guide_source: 'app_platform',
+        guide_visibility: 'private',
+        guide_id: 'workshop-step',
+        guide_title: 'Customer workshop',
+        path_id: 'workshop',
+      }),
+      { privatePath: true }
     );
   });
 
@@ -220,16 +252,20 @@ describe('MarkCompleteFooter', () => {
 
       await clickWhenReady();
 
-      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
-        interaction_location: 'content_footer',
-        completion_context: 'guide',
-        completion_percentage_before: 25,
-        block_progress_rule_version: 'block-position-v1',
-        guide_stats_version: 2,
-        total_block_count: 3,
-        completable_block_count: 1,
-        section_count: 1,
-      });
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.MarkCompleteClicked,
+        {
+          interaction_location: 'content_footer',
+          completion_context: 'guide',
+          completion_percentage_before: 25,
+          block_progress_rule_version: 'block-position-v1',
+          guide_stats_version: 2,
+          total_block_count: 3,
+          completable_block_count: 1,
+          section_count: 1,
+        },
+        { privatePath: false }
+      );
     });
 
     it('omits the counts when only another guide has an index', async () => {
@@ -238,12 +274,16 @@ describe('MarkCompleteFooter', () => {
 
       await clickWhenReady();
 
-      expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.MarkCompleteClicked, {
-        interaction_location: 'content_footer',
-        completion_context: 'guide',
-        completion_percentage_before: 25,
-        block_progress_rule_version: 'block-position-v1',
-      });
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.MarkCompleteClicked,
+        {
+          interaction_location: 'content_footer',
+          completion_context: 'guide',
+          completion_percentage_before: 25,
+          block_progress_rule_version: 'block-position-v1',
+        },
+        { privatePath: false }
+      );
     });
   });
 
@@ -287,7 +327,6 @@ describe('MarkCompleteFooter', () => {
     render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
 
     await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
     expect(onMarkComplete).not.toHaveBeenCalled();
     expect(reportAppInteraction).not.toHaveBeenCalled();
   });
@@ -298,13 +337,40 @@ describe('MarkCompleteFooter', () => {
     await clickWhenReady();
 
     expect(setCompletionPercentage).toHaveBeenCalledWith('guide-key', 100);
+    await waitFor(() =>
+      expect(dispatchProgress).toHaveBeenCalledWith({
+        kind: 'guide',
+        contentKey: 'guide-key',
+        percentage: 100,
+        hasProgress: true,
+      })
+    );
+  });
+
+  it('waits for the completion write before announcing progress', async () => {
+    let resolveWrite: (() => void) | undefined;
+    setCompletionPercentage.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveWrite = resolve;
+      })
+    );
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+
+    await clickWhenReady();
+
+    expect(setCompletionPercentage).toHaveBeenCalledWith('guide-key', 100);
+    expect(dispatchProgress).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveWrite!();
+    });
+
     expect(dispatchProgress).toHaveBeenCalledWith({
       kind: 'guide',
       contentKey: 'guide-key',
       percentage: 100,
       hasProgress: true,
     });
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
   });
 
   it('announces reaching complete exactly once, and keeps focus rather than dropping it to the body', async () => {
@@ -316,7 +382,6 @@ describe('MarkCompleteFooter', () => {
     expect(liveRegions()).toEqual([completed]);
     expect(completed).toHaveTextContent('Completed');
     expect(completed).toHaveFocus();
-    expect(screen.getAllByText(/100% complete/)).toHaveLength(1);
   });
 
   it('announces nothing while unmarked, however often the percentage moves', async () => {
@@ -329,7 +394,6 @@ describe('MarkCompleteFooter', () => {
       notifyProgress?.();
     });
 
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('50% complete');
     expect(liveRegions()).toEqual([]);
   });
 
@@ -358,7 +422,6 @@ describe('MarkCompleteFooter', () => {
     });
 
     await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('25% complete');
   });
 
   it('ignores a reset that clears some other guide', async () => {

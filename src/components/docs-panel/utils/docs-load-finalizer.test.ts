@@ -46,6 +46,28 @@ describe('resolveDocsLoadAlignment', () => {
     ).toEqual({ startingLocation: '/connections', currentPath: '/explore', launchSource: 'home_page' });
   });
 
+  it('prefers the fetched manifest when the package manifest comes from the enclosing path', () => {
+    expect(
+      resolveDocsLoadAlignment({
+        ...alignmentInput,
+        packageManifest: { startingLocation: '/connections' },
+        fetchedManifest: { startingLocation: '/alerting' },
+        packageManifestIsFromEnclosingPath: true,
+      })
+    ).toEqual({ startingLocation: '/alerting', currentPath: '/explore', launchSource: 'home_page' });
+  });
+
+  it('falls back to the enclosing path manifest when the fetched manifest declares none', () => {
+    expect(
+      resolveDocsLoadAlignment({
+        ...alignmentInput,
+        packageManifest: { startingLocation: '/connections' },
+        fetchedManifest: { id: 'guide-1' },
+        packageManifestIsFromEnclosingPath: true,
+      })
+    ).toEqual({ startingLocation: '/connections', currentPath: '/explore', launchSource: 'home_page' });
+  });
+
   it('falls back to the fetched manifest', () => {
     expect(
       resolveDocsLoadAlignment({

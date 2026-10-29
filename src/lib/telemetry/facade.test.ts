@@ -9,6 +9,11 @@ import {
   recordSettingsStoreResolved,
   recordStartupSettings,
   recordPanelReady,
+  recordAssignmentsUnavailable,
+  recordGcxCredentialDegradation,
+  recordPackageIndex,
+  recordProxyFailure,
+  recordSandboxUnavailable,
   recordRecommendCompletions,
   recordRecommenderFallback,
   recordRecommenderRequest,
@@ -57,9 +62,9 @@ describe('measurement and event domain operations', () => {
     const calls = mockPushFaroEvent.mock.calls.filter(([name]) => name === 'pathfinder_recommend_completions');
     expect(calls.map(([, attrs]) => attrs)).toEqual([
       { outcome: 'ok', item_bucket: '0', truncated: 'false' },
-      { outcome: 'ok', item_bucket: '1-10', truncated: 'false' },
-      { outcome: 'ok', item_bucket: '11-50', truncated: 'false' },
-      { outcome: 'ok', item_bucket: '51-249', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '1_10', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '11_50', truncated: 'false' },
+      { outcome: 'ok', item_bucket: '51_249', truncated: 'false' },
       { outcome: 'ok', item_bucket: '250', truncated: 'true' },
       { outcome: 'timeout' },
     ]);
@@ -93,12 +98,12 @@ describe('measurement and event domain operations', () => {
     expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
       'pathfinder_content_fetch',
       { content_fetch_ms: 42 },
-      { tier: 'content-json', outcome: 'ok', content_url: 'grafana.com/docs/x/' }
+      { tier: 'content_json', outcome: 'ok', content_url: 'grafana.com/docs/x/' }
     );
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_content_fetch_fallback', {
       content_url: 'grafana.com/docs/x/',
-      tier_used: 'unstyled-html',
-      error_type: 'content-json-null',
+      tier_used: 'unstyled_html',
+      error_type: 'content_json_null',
     });
   });
 
@@ -138,21 +143,21 @@ describe('measurement and event domain operations', () => {
   it('recordCustomGuideCatalogueUnavailable emits the capability event with the reason', () => {
     recordCustomGuideCatalogueUnavailable('obo-unavailable');
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_custom_guide_catalogue_unavailable', {
-      reason: 'obo-unavailable',
+      reason: 'obo_unavailable',
     });
   });
 
   it('recordSettingsStoreResolved emits the rung the settings read landed on', () => {
     recordSettingsStoreResolved('kind-not-served');
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_settings_store_resolved', {
-      outcome: 'kind-not-served',
+      outcome: 'kind_not_served',
     });
   });
 
   it('recordAssignmentTargetsUnresolved emits the count of unresolvable targets', () => {
     recordAssignmentTargetsUnresolved(2);
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_assignment_target_unresolved', {
-      reason: 'unresolvable-target',
+      reason: 'unresolvable_target',
       count: 2,
     });
   });
@@ -187,10 +192,11 @@ it('emits private guide diagnostics without private identifiers, bodies or messa
 });
 
 it('records the served kiosk tier and degradation without catalog content', () => {
-  recordKioskCatalogLoaded('bundled', true);
+  recordKioskCatalogLoaded('configured', false, 2);
   expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_kiosk_catalog_loaded', {
-    tier: 'bundled',
-    degraded: true,
+    tier: 'configured',
+    degraded: false,
+    rejected_rules: 2,
   });
 });
 
@@ -201,4 +207,50 @@ it('records bounded startup settings latency and fail-open outcome without ident
     { startup_settings_ms: 3000 },
     { outcome: 'timeout' }
   );
+});
+
+describe('snake_case conversion of kebab-case vocabularies', () => {
+  it('recordSandboxUnavailable converts the reason and block type', () => {
+    recordSandboxUnavailable('plugin-missing', 'terminal-connect');
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_sandbox_unavailable', {
+      reason: 'plugin_missing',
+      blockType: 'terminal_connect',
+    });
+  });
+
+  it('recordGcxCredentialDegradation converts the reason', () => {
+    recordGcxCredentialDegradation('account-outranks-caller');
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_gcx_credential_degraded', {
+      reason: 'account_outranks_caller',
+    });
+  });
+
+  it('recordAssignmentsUnavailable converts capability and http reasons', () => {
+    recordAssignmentsUnavailable('http-503');
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_assignments_unavailable', { reason: 'http_503' });
+  });
+
+  it('recordPackageIndex converts the reason and passes other attributes through', () => {
+    recordPackageIndex({ outcome: 'degraded', reason: 'upstream-timeout', http_status: 504 });
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_package_index', {
+      outcome: 'degraded',
+      reason: 'upstream_timeout',
+      http_status: 504,
+    });
+  });
+
+  it('recordProxyFailure converts stage and reason, including the defaults', () => {
+    recordProxyFailure({ outcome: 'error', stage: 'upstream-fetch', reason: 'bad-gateway' } as never);
+    recordProxyFailure({ outcome: 'error' } as never);
+    expect(mockPushFaroEvent).toHaveBeenNthCalledWith(
+      1,
+      'pathfinder_proxy_failure',
+      expect.objectContaining({ stage: 'upstream_fetch', reason: 'bad_gateway' })
+    );
+    expect(mockPushFaroEvent).toHaveBeenNthCalledWith(
+      2,
+      'pathfinder_proxy_failure',
+      expect.objectContaining({ stage: 'unknown', reason: 'unexpected_error' })
+    );
+  });
 });

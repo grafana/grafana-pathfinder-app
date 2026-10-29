@@ -1,10 +1,4 @@
-/**
- * One gcx credential per sandbox session, shared by every surface that offers
- * to install it. Module-scoped rather than per-component: the guide step and
- * the terminal toolbar both offer the same install, and a second mint for a
- * session Grafana already holds a `coda-<sessionId>` token for is rejected on
- * the token name.
- */
+/** Shared GCX install state, retained across sessions only for a verified same-VM recovery. */
 
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
@@ -28,7 +22,7 @@ import {
 export type GcxState = 'idle' | 'provisioning' | 'ready' | 'needs-token' | 'failed';
 
 export interface GcxSnapshot {
-  /** The session the state describes, so a new VM cannot inherit it. */
+  /** The active session that may use this install. */
   sessionId: string | null;
   /** The step that started this run; null for toolbar and other session-level runs. */
   requesterId: string | null;
@@ -40,6 +34,9 @@ export interface GcxSnapshot {
 const IDLE: GcxSnapshot = { sessionId: null, requesterId: null, state: 'idle', credential: null, error: null };
 
 let snapshot: GcxSnapshot = IDLE;
+let snapshotVmId: string | null = null;
+let connectedSessionId: string | null = null;
+let connectedVmId: string | null = null;
 const listeners = new Set<() => void>();
 
 /**
@@ -80,6 +77,7 @@ export function getGcxCredentialSnapshot(): GcxSnapshot {
  */
 export function resetGcxCredential(): void {
   generation += 1;
+  snapshotVmId = null;
   publish(IDLE);
 }
 
@@ -87,20 +85,25 @@ export function resetGcxCredential(): void {
 export function resetGcxCredentialStore(): void {
   mintSession = null;
   mintAttempts = 0;
+  connectedSessionId = null;
+  connectedVmId = null;
   resetGcxCredential();
 }
 
-/**
- * Forget a credential the session it was written to can no longer hold. A
- * reconnect provisions a fresh VM, so keeping the old state would report gcx as
- * ready for a box that no longer exists — and offer no way back to the form.
- *
- * A `null` id is a disconnect, which may still reconnect to the same session,
- * so it is not enough on its own to discard the state.
- */
-export function invalidateGcxCredentialForSession(sessionId: string | null): void {
+/** Carry a completed install across sessions only when the VM identity matches. */
+export function invalidateGcxCredentialForSession(sessionId: string | null, vmId: string | null = null): void {
+  connectedSessionId = sessionId;
+  connectedVmId = vmId;
+  if (sessionId && sessionId === snapshot.sessionId && vmId) {
+    snapshotVmId ??= vmId;
+  }
   if (sessionId && snapshot.sessionId && sessionId !== snapshot.sessionId) {
-    resetGcxCredential();
+    if (snapshot.state === 'ready' && snapshotVmId && snapshotVmId === vmId) {
+      generation += 1;
+      publish({ ...snapshot, sessionId });
+    } else {
+      resetGcxCredential();
+    }
   }
 }
 
@@ -146,17 +149,16 @@ export async function runGcxCredential(
   if (snapshot.state === 'provisioning') {
     return;
   }
+  if (!token && snapshot.state === 'ready' && snapshot.sessionId === sessionId) {
+    return;
+  }
 
   generation += 1;
   const run = generation;
+  snapshotVmId = connectedSessionId === sessionId ? connectedVmId : null;
   publish({ sessionId, requesterId, state: 'provisioning', credential: null, error: null });
 
-  /**
-   * Publish only while this run is still the one the UI is waiting for. A
-   * reconnect resets the store and starts a new session, and an install that
-   * was already in flight would otherwise report ready for a VM that never
-   * received a credential.
-   */
+  // A late install must not publish over a replacement session or requester.
   const settle = (next: GcxSnapshot): boolean => {
     if (run !== generation || snapshot.sessionId !== sessionId || snapshot.requesterId !== requesterId) {
       logger.warn('[gcx] discarding a settled install for a session or requester that has moved on');

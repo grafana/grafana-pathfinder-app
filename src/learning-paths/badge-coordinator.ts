@@ -28,13 +28,14 @@ import { logger } from '../lib/logging';
 import { getBadgeById, getBadgesToAward } from './badges';
 import { getPathsData } from './paths-data';
 import { calculateUpdatedStreak } from './streak-tracker';
+import { toAnalyticsValue } from '../lib/analytics-values';
 
 function reportBadgeUnlocked(badgeId: string): void {
   const badge = getBadgeById(badgeId);
   reportAppInteraction(UserInteraction.BadgeUnlocked, {
     badge_id: badgeId,
     badge_title: badge?.title || badgeId,
-    trigger_type: badge?.trigger?.type || 'unknown',
+    trigger_type: toAnalyticsValue(badge?.trigger?.type || 'unknown'),
     ...(badge?.trigger?.type === 'path-completed' && { path_id: badge.trigger.pathId }),
   });
 }

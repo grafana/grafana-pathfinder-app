@@ -239,7 +239,7 @@ describe('handlePathfinderDeepLink', () => {
       setSearch(`?doc=bundled:welcome&kiosk_session=session-new&kiosk_name=${name}`);
       handlePathfinderDeepLink(mkDeps());
       await flushPromises();
-      expect(mockSetPendingOpenSource).toHaveBeenCalledWith('kiosk_session', 'auto-open');
+      expect(mockSetPendingOpenSource).toHaveBeenCalledWith('kiosk_session', 'auto_open');
       expect(window.__pathfinderKioskSessionId).toBe('session-new');
       expect(window.__pathfinderKioskName).toBe(name);
     }
@@ -251,7 +251,7 @@ describe('handlePathfinderDeepLink', () => {
     handlePathfinderDeepLink(mkDeps());
     await flushPromises();
     expect(window.__pathfinderKioskName).toBe('unknown');
-    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('kiosk_session', 'auto-open');
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('kiosk_session', 'auto_open');
   });
 
   it('preserves ordinary open attribution after a kiosk session', async () => {
@@ -259,7 +259,7 @@ describe('handlePathfinderDeepLink', () => {
     setSearch('?doc=bundled:welcome&source=shared_link');
     handlePathfinderDeepLink(mkDeps());
     await flushPromises();
-    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('shared_link', 'auto-open');
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('shared_link', 'auto_open');
   });
 
   it('leaves kiosk launch links to the kiosk handler even when panelMode is supplied', () => {
@@ -435,7 +435,7 @@ describe('handlePathfinderDeepLink', () => {
 
     expect(window.location.search).toBe('');
     expect(deps.attemptAutoOpen).toHaveBeenCalledWith(200);
-    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('url_param', 'auto-open');
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('url_param', 'auto_open');
   });
 });
 

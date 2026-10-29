@@ -131,6 +131,10 @@ describe('openfeature', () => {
         // The experiments SDK owns this exposure; a trackingKey would double-count it.
         expect(pathfinderFeatureFlags['pathfinder.auto-open-guide-experiment']).not.toHaveProperty('trackingKey');
         expect(pathfinderFeatureFlags['pathfinder.frontend-telemetry'].trackingKey).toBe('frontend_telemetry');
+        expect(pathfinderFeatureFlags['pathfinder.section-recovery']).toMatchObject({
+          trackingKey: 'section_recovery',
+          defaultValue: true,
+        });
         expect(pathfinderFeatureFlags['pathfinder.session-replay'].trackingKey).toBe('session_replay');
         expect(pathfinderFeatureFlags['pathfinder.session-replay-sampling-rate'].trackingKey).toBe(
           'session_replay_sampling_rate'
@@ -156,6 +160,21 @@ describe('openfeature', () => {
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].valueType).toBe('boolean');
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].defaultValue).toBe(false);
+      });
+    });
+
+    it('pathfinder.learning-insights is a default-off boolean rollout flag', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => createMockReactSdk());
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.learning-insights']).toEqual({
+          valueType: 'boolean',
+          values: [true, false],
+          defaultValue: false,
+          trackingKey: 'learning_insights',
+        });
       });
     });
 

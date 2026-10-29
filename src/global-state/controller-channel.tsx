@@ -19,6 +19,7 @@ import {
   type ObservationChangeMessage,
   type CrossTabMessage,
   type CrossTabPayload,
+  type ReaderPosition,
   type FixRequirementMessage,
   type RemoteRequirementResult,
 } from '../types/cross-tab.types';
@@ -54,7 +55,13 @@ interface ControllerChannel {
   requestRequirementCheck: (
     stepId: string,
     requirements: ConditionInput,
-    opts?: { targetAction?: string; refTarget?: string; targetValue?: string; passive?: boolean }
+    opts?: {
+      targetAction?: string;
+      refTarget?: string;
+      targetValue?: string;
+      passive?: boolean;
+      allowCodaExecution?: boolean;
+    }
   ) => Promise<RemoteRequirementResult | null>;
   requestFix: (
     stepId: string,
@@ -87,8 +94,10 @@ export function ControllerChannelProvider({
   children,
   transport,
   pairing,
+  position,
 }: {
   children: React.ReactNode;
+  position?: ReaderPosition;
   transport?: ChannelTransport;
   pairing?: ControllerPairingLaunch | null;
 }) {
@@ -97,6 +106,7 @@ export function ControllerChannelProvider({
     return [sid, transport ?? new CrossTabTransport(sid)];
   });
   const [connected, setConnected] = useState(false);
+  const positionRef = useRef(position);
   const privateKeyRef = useRef<CryptoKey | null>(null);
   const pairingChallengeRef = useRef<CrossTabPayload | null>(null);
   const preparedHandBackRef = useRef<CrossTabPayload | null>(null);
@@ -136,11 +146,17 @@ export function ControllerChannelProvider({
   );
 
   const refreshPreparedHandBack = useCallback(async (): Promise<void> => {
-    const signed = await signForLive({ kind: 'sidebar-handoff', action: 'reopen' });
-    if (signed) {
+    const currentPosition = positionRef.current;
+    const signed = await signForLive({ kind: 'sidebar-handoff', action: 'reopen', position: currentPosition });
+    if (signed && positionRef.current === currentPosition) {
       preparedHandBackRef.current = signed;
     }
   }, [signForLive]);
+
+  useEffect(() => {
+    positionRef.current = position;
+    void refreshPreparedHandBack();
+  }, [position, refreshPreparedHandBack]);
 
   const postPreparedHandBack = useCallback((): boolean => {
     document.dispatchEvent(new Event(OBSERVATION_HANDOFF_EVENT));
@@ -320,7 +336,7 @@ export function ControllerChannelProvider({
       const postedPreparedHandBack = postPreparedHandBack();
       const handBackPromise = postedPreparedHandBack
         ? Promise.resolve()
-        : postPayload({ kind: 'sidebar-handoff', action: 'reopen' });
+        : postPayload({ kind: 'sidebar-handoff', action: 'reopen', position: positionRef.current });
       clearInterval(intervalId);
       unsubscribe();
       failAllPending();
@@ -362,6 +378,7 @@ export function ControllerChannelProvider({
           refTarget: opts?.refTarget,
           targetValue: opts?.targetValue,
           passive: opts?.passive,
+          allowCodaExecution: opts?.allowCodaExecution,
         },
         null
       ),

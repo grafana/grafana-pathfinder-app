@@ -26,6 +26,36 @@ Controls the sidebar Browse entry and Browse all links. Set it to `false` to hid
 
 ---
 
+### `pathfinder.learning-insights`
+
+**Type**: Boolean
+
+**Default**: `false`
+
+Controls the read-only Learning insights reporting UI. Both the flag and the current-organization Admin role are required to register the page and show its My learning link. The route renderer checks again before loading the page, and the page checks before mounting its reporting request hook. The static `src/plugin.json` include has `addToNav: false` so Grafana cannot expose an unconditional navigation item outside this gate; entry is through the flagged My learning link. When disabled, the UI makes no `/learning-insights` reporting requests; My learning and completion recording are unchanged.
+
+This is a stack-targeted rollout control, not an authorization boundary or a backend API kill switch. The reporting resource remains protected by its trusted current-org Admin and verified identity/OBO checks independently of this browser flag. Disabling it does not cancel in-flight reads or repair raw App Platform grants. Reload Grafana after a flag change; page registration is fixed at app mount.
+
+Production opt-in requires registration in both `flags/` and `flag-definitions.libsonnet` in `grafana/deployment_tools`, marked `Public()`, with the remote default also `false`. Enable only the chosen test stack's namespace, leave other stacks disabled, and reload. Set that target back to `false` and reload to remove the UI again. App-side registration here does not create or enable the remote flag. Deploy both frontend and backend before testing the real resource; a frontend-only development loader is insufficient. See [Learning insights](LEARNING_INSIGHTS.md) for the live smoke procedure.
+
+**Tracking key**: `learning_insights`
+
+---
+
+### `pathfinder.sidebar-hub`
+
+**Type**: Boolean
+
+**Default**: `false`
+
+Swaps the content of the sidebar's Recommended tab for the learning hub: a welcome header with a My learning button, the top recommendation, a resume card for the path in progress, three count tiles (assignments, in progress, completed) that open My learning, a "More recommended" list, an expandable "Other documentation" list of the remaining recommendations, and a compact help footer. Tabs and the tab bar are unchanged. With the flag off the existing Recommended tab renders as before.
+
+The hub is read in `ContextPanelRenderer`. A temporary Custom guides section lists the organization's published guides and paths (three rows, then Show all) so the hub keeps parity with the old tab. To remove it, delete `CustomGuides.tsx` and `custom-guides.tsx` in `SidebarHub/`, the `customGuides` props on `SidebarHub`, the `hubCustomGuides` memo in `context-panel.tsx`, the `organization` and `badges` fields on `HubGuide`, and the `customGuides*` test ids and `sidebarHub.showAll` key. The featured card and the More recommended rows expand like the old tab's cards, to the summary, prerequisites and modules (with the deferred-loading skeleton and the jump-into-module analytics). The "Recommended next" and "You might also like" links are not rebuilt in the hub yet.
+
+**Tracking key**: `sidebar_hub`
+
+---
+
 ### `pathfinder.enabled`
 
 **Type**: Boolean
@@ -180,6 +210,25 @@ The flag and the setting are a plain OR, applied once settings resolve in `src/m
 - In any other mode it lets the browser follow the link rather than swallow the click.
 
 **Tracking key**: `intercept_docs_links`
+
+---
+
+### `pathfinder.section-recovery`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill switch for implicit section recovery, which pauses a section the learner drifted out of and offers Restore (see `docs/design/AUTORECOVERY_DESIGN.md`).
+
+**Default**: `true`. OSS stacks have no flag provider, so recovery is always on there.
+
+**Behavior**:
+
+- **`true`**: active sections derive a recovery plan from their steps and may pause with Restore.
+- **`false`**: no plan is derived, nothing polls, and sections behave as before recovery existed.
+
+The flag is read once per page load (`src/utils/section-recovery-enablement.ts`), so a flip takes effect on the next reload. Registering it in MTFF needs both `flags/` and `flag-definitions.libsonnet` in `grafana/deployment_tools`, marked `Public()`, with the default kept `true` to match the registry.
+
+**Tracking key**: `section_recovery`
 
 ---
 

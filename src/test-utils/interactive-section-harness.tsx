@@ -330,6 +330,8 @@ export function createInteractiveEngineMock() {
 /** Factory for `jest.mock('../../requirements-manager', ...)`. */
 export function createRequirementsManagerMock() {
   return {
+    useGuideRequirements: require('../requirements-manager/guide-requirements-context').useGuideRequirements,
+    createRecoveryAdapter: require('../requirements-manager/section-recovery-adapter').createRecoveryAdapter,
     getPostVerifyExplanation: (token: string) => `Needs ${token}`,
     useStepChecker: () => ({
       isEnabled: true,
@@ -394,14 +396,17 @@ export function createAnalyticsMock() {
       ShowMeButtonClick: 'show_me_button_click',
       DoItButtonClick: 'do_it_button_click',
       StepAutoCompleted: 'step_auto_completed',
+      SectionRecoveryPaused: 'section_recovery_paused',
+      SectionRecoveryRestore: 'section_recovery_restore',
+      SectionRecoveryResolved: 'section_recovery_resolved',
     },
     AnalyticsContentType: {
       Docs: 'docs',
-      LearningJourney: 'learning-journey',
-      InteractiveGuide: 'interactive-guide',
+      LearningJourney: 'learning_journey',
+      InteractiveGuide: 'interactive_guide',
       Editor: 'editor',
       Devtools: 'devtools',
-      PackageNavLink: 'package-nav-link',
+      PackageNavLink: 'package_nav_link',
     },
     getSourceDocument: jest.fn(() => ({})),
     calculateStepCompletion: jest.fn(() => undefined),

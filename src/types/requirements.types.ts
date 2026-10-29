@@ -63,6 +63,14 @@ export const isValidRequirement = (req: string): req is ValidRequirement => {
   return isFixedRequirement(req) || isParameterizedRequirement(req);
 };
 
+export const LIVE_PAGE_REQUIREMENTS = [
+  ParameterizedRequirementPrefix.ON_PAGE,
+  FixedRequirementType.NAVMENU_OPEN,
+] as const;
+
+export const isLivePageRequirement = (req: string): boolean =>
+  LIVE_PAGE_REQUIREMENTS.some((id) => (id.endsWith(':') ? req.startsWith(id) : req === id));
+
 /**
  * Result of a single requirement check. Lives here (Tier 0) so
  * `requirements-manager/checks/*` and the check router can share it without

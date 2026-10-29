@@ -85,7 +85,7 @@ message. Several distinct failures share a status.
 
 ## gcx credentials
 
-`terminal-connect` with `gcx: true` installs a Grafana credential into the VM after the terminal
+`terminal-connect` with `credentials: [{ "tool": "gcx" }]` installs a Grafana credential into the VM after the terminal
 connects, so the `gcx` CLI in every sandbox image can talk to this Grafana as the learner.
 `provisionGcx(sessionId, { token? })` in `coda-api.ts` wraps the SDK call, because this module owns the
 only `CodaClient` instance.
@@ -130,15 +130,17 @@ arithmetic on `pluginVersion` instead.
 move them up; add consumers instead. The hook takes `onReady` rather than calling `markComplete` itself —
 step semantics do not belong in it.
 
-**The credential state is module-scoped and keyed to the session.** `gcx-credential-store.ts`, not
-component state: the guide step and the toolbar offer the same install, and Grafana rejects a second
-`coda-<sessionId>` token on the name, so two independent copies would let one surface mint over the
-other. Readiness is shared, but completion is requester-scoped: the snapshot carries the stable step
-id that started the run, and `onReady` fires only for that step. A toolbar run carries no requester and
-completes no step. `TerminalProvider` calls
-`invalidateGcxCredentialForSession` when the registered session id changes, because a reconnect
-provisions a fresh VM that holds no credential — reporting the old one would name a box that is gone. A
-`null` id is only a disconnect and does not discard it.
+**Credential install state is shared and follows VM identity.** `gcx-credential-store.ts`
+is shared by the guide step and toolbar. `TerminalProvider` registers both session and VM ids;
+a same-VM reconnect retains a completed install, while a different VM invalidates it. A null
+session id is an interruption, not proof that the VM changed. An interrupted install still
+fails so the user can retry it explicitly. Step completion remains requester-scoped.
+
+**Recovery belongs to the SDK.** `CodaTerminalLink` in SDK 1.13.2 owns bounded retries and
+the absolute five-minute outage deadline, including in-flight reservation and provisioning.
+The terminal hook fails initial connection errors immediately, rejects stale callbacks,
+and temporarily intercepts `vm_unreachable` to keep replacement an explicit user action.
+Do not add a second deadline timer or replay input after reconnecting.
 
 **Never answer OSC 10/11/12.** xterm replies through `onData`, `onData` goes to the PTY, and a late reply
 is echoed by the shell as text. `TerminalPanel` registers suppressing handlers after `open()`; keep them.
@@ -230,9 +232,9 @@ on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 | File | Purpose |
 |------|---------|
 | `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `provisionGcx`, `sessionChannelAddress` |
-| `src/integrations/coda/gcx-credential-store.ts` | One gcx credential per session, shared by the step and the toolbar; session-keyed invalidation |
+| `src/integrations/coda/gcx-credential-store.ts` | Shared gcx install state, retained across same-VM reconnects |
 | `src/integrations/coda/gcx-service-account.ts` | Names the mint account on the numeric user id, and the fail-closed role preflight before a mint |
-| `src/integrations/coda/useTerminalLive.hook.ts` | Live subscription, publish, animated provision progress bar, 35 s handshake timeout |
+| `src/integrations/coda/useTerminalLive.hook.ts` | SDK recovery coordinator, input gating and provisioning progress |
 | `src/integrations/coda/TerminalContext.tsx` | Shared context (`isTerminalRegistered`, `error`) + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
 | `src/integrations/coda/useCodaAvailability.hook.ts` | Runtime plugin detection and `useCodaTerminalGate()` |
@@ -240,6 +242,8 @@ on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 | `src/requirements-manager/checks/coda.ts` | `coda-exit-zero:` check (always gated on `PATHFINDER_READY_FILE`) |
 | `src/components/AppConfig/CodaBackendStatus.tsx` | Reports backend availability; links to the Coda plugin's own config page |
 | `src/components/interactive-tutorial/challenge-block.tsx` | CTF-style block: setup script, sentinel write, check-my-work |
+
+`coda-exit-zero` executes only when the caller passes `allowCodaExecution: true` for an explicit user check; passive evaluations leave it false. The command also remains gated on `PATHFINDER_READY_FILE`.
 
 ## Configuration
 
@@ -272,7 +276,7 @@ migrated across plugins**, so operators must re-enter their enrollment key there
 | `vmTemplate` | `""` (→ `vm-aws`) | VM template to provision |
 | `vmApp` | `""` | App name for `vm-aws-sample-app` |
 | `vmScenario` | `""` | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
-| `gcx` | `false` | Also install a gcx credential — see above |
+| `credentials` | omitted | Also install a gcx credential — see above |
 
 ## Constraints
 

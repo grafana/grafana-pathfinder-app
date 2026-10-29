@@ -2,15 +2,20 @@ import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 import type { CompletionFact } from './types';
 import { completionAttemptAnalyticsProperties } from './progress-analytics';
-import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from './completion-identity';
-export { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from './completion-identity';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from './completion-identity';
+import { toAnalyticsValue } from '../lib/analytics-values';
+export { guideIdentityAnalyticsProperties } from './completion-identity';
 
-export function completionAnalyticsProperties(fact: CompletionFact): Record<string, string | number> {
-  return {
+export function completionAnalytics(fact: CompletionFact): {
+  properties: Record<string, string | number>;
+  options: { privatePath: boolean };
+} {
+  const path = pathAnalytics(fact.pathIdentity);
+  const properties = {
     ...guideIdentityAnalyticsProperties(fact),
     ...completionAttemptAnalyticsProperties(fact),
-    ...pathAnalyticsProperties(fact.pathIdentity),
-    guide_category: fact.guideCategory,
+    ...path.properties,
+    guide_category: toAnalyticsValue(fact.guideCategory),
     completion_source: fact.source,
     completion_percentage: fact.completionPercent,
     ...(fact.guideStats && {
@@ -22,11 +27,14 @@ export function completionAnalyticsProperties(fact: CompletionFact): Record<stri
     }),
     ...(fact.durationMs !== undefined && { duration_ms: fact.durationMs }),
   };
+  return { properties, options: path.options };
 }
 
 export function reportCompletionAnalytics(fact: CompletionFact): void {
+  const { properties, options } = completionAnalytics(fact);
   reportAppInteraction(
     fact.kind === 'journey' ? UserInteraction.JourneyCompleted : UserInteraction.GuideCompleted,
-    completionAnalyticsProperties(fact)
+    properties,
+    options
   );
 }

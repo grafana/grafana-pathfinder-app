@@ -16,6 +16,7 @@
 
 import { LOCAL_BUNDLED_GUIDE_IDS } from '../constants/local-bundled-guides';
 import type { CompletionFact, CompletionKey, PathAnalyticsIdentity } from './types';
+import { toAnalyticsValue } from '../lib/analytics-values';
 
 /**
  * The package launch shape appends this to a bundled guide's id (the package
@@ -192,7 +193,6 @@ export function resolveJourneyCompletionIdentity(input: ResolveGuideCompletionId
   });
 }
 
-// Privacy boundary: only these sources may send a guide identifier or title to RudderStack.
 const PUBLIC_GUIDE_SOURCES = new Set(['bundled', 'interactive-tutorials', 'online-cdn']);
 
 export function isPublicGuideSource(guideSource: string, guideId: string): boolean {
@@ -200,6 +200,12 @@ export function isPublicGuideSource(guideSource: string, guideId: string): boole
     PUBLIC_GUIDE_SOURCES.has(guideSource) &&
     !(guideSource === 'bundled' && LOCAL_BUNDLED_GUIDE_IDS.has(normalizeGuideId(guideId)))
   );
+}
+
+export function guideSourceAnalyticsValue(guideSource: string): string {
+  return PUBLIC_GUIDE_SOURCES.has(guideSource) || guideSource === 'app-platform'
+    ? toAnalyticsValue(guideSource)
+    : 'other';
 }
 
 export function guideIdentityAnalyticsProperties({
@@ -214,25 +220,26 @@ export function guideIdentityAnalyticsProperties({
   const [idProperty, titleProperty] =
     kind === 'journey' ? ['journey_id', 'journey_title'] : ['guide_id', 'guide_title'];
   if (guideSource === 'bundled' && LOCAL_BUNDLED_GUIDE_IDS.has(guideId)) {
-    return { guide_source: guideSource, guide_visibility: 'private', [idProperty]: guideId };
+    return { guide_source: toAnalyticsValue(guideSource), guide_visibility: 'private', [idProperty]: guideId };
   }
-  if (!sourceConfirmed) {
-    return { guide_source: 'unresolved', guide_visibility: 'private' };
-  }
-  if (!PUBLIC_GUIDE_SOURCES.has(guideSource)) {
-    return {
-      guide_source: guideSource === 'app-platform' ? guideSource : 'other',
-      guide_visibility: 'private',
-    };
-  }
+  const isPublic = Boolean(sourceConfirmed) && PUBLIC_GUIDE_SOURCES.has(guideSource);
   return {
-    guide_source: guideSource,
-    guide_visibility: 'public',
+    guide_source: sourceConfirmed ? guideSourceAnalyticsValue(guideSource) : 'unresolved',
+    guide_visibility: isPublic ? 'public' : 'private',
     [idProperty]: guideId,
     ...(guideTitle !== undefined && { [titleProperty]: guideTitle }),
   };
 }
 
-export function pathAnalyticsProperties(path: PathAnalyticsIdentity | undefined): Record<string, string> {
-  return path?.sourceConfirmed && PUBLIC_GUIDE_SOURCES.has(path.guideSource) ? { path_id: path.guideId } : {};
+export function pathAnalytics(path: PathAnalyticsIdentity | undefined): {
+  properties: Record<string, string>;
+  options: { privatePath: boolean };
+} {
+  if (!path) {
+    return { properties: {}, options: { privatePath: false } };
+  }
+  return {
+    properties: { path_id: path.guideId },
+    options: { privatePath: !path.sourceConfirmed || !isPublicGuideSource(path.guideSource, path.guideId) },
+  };
 }

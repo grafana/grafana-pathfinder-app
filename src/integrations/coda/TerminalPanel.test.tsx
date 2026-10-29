@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { TerminalProvider, useTerminalContext, type TerminalContextValue } from './TerminalContext';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -8,7 +9,7 @@ import { lifetimeClient, type LifetimeVM } from './coda-api';
 import { testIds } from '../../constants/testIds';
 
 jest.mock('./useTerminalLive.hook', () => ({ useTerminalLive: jest.fn() }));
-jest.mock('./TerminalContext', () => ({ useTerminalContext: () => null }));
+
 jest.mock('./useGcxCredential.hook', () => ({ useGcxCredential: () => ({}) }));
 jest.mock('./GcxSetupPanel', () => ({ GcxReadyLine: () => null, GcxSetupPanel: () => null }));
 jest.mock('./WorkspaceLink', () => ({ WorkspaceLink: () => null }));
@@ -293,4 +294,72 @@ describe('terminal geometry', () => {
     expect(observer.disconnect).toHaveBeenCalled();
     expect(current.resize).not.toHaveBeenCalled();
   });
+});
+
+it('settles a pending openTerminal when the panel unmounts but its provider remains', async () => {
+  live.mockReturnValue({
+    ...live({ terminalRef: { current: null } }),
+    status: 'connecting',
+    sessionId: null,
+    connect: jest.fn(),
+    disconnect,
+    sendCommand: jest.fn(),
+    error: null,
+  } as ReturnType<typeof useTerminalLive>);
+  let context!: TerminalContextValue;
+  function Capture() {
+    const value = useTerminalContext()!;
+    useEffect(() => {
+      context = value;
+    }, [value]);
+    return null;
+  }
+  const tree = (show: boolean) => (
+    <TerminalProvider>
+      {show && <TerminalPanel onClose={jest.fn()} />}
+      <Capture />
+    </TerminalProvider>
+  );
+  const view = render(tree(true));
+  let pending!: Promise<string | null>;
+  act(() => {
+    pending = context.openTerminal();
+  });
+  const settled = jest.fn();
+  void pending.then(settled);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(settled).not.toHaveBeenCalled();
+  view.rerender(tree(false));
+  await expect(pending).resolves.toBeNull();
+  expect(context.isTerminalRegistered).toBe(false);
+  expect(context.sessionId).toBeNull();
+});
+
+it('shows recovery only after two seconds and clears the delay between blips', () => {
+  jest.useFakeTimers();
+  try {
+    const current = live({ terminalRef: { current: null } });
+    const view = render(<TerminalPanel onClose={jest.fn()} />);
+    const setStatus = (status: 'connected' | 'connecting') => {
+      live.mockReturnValue({ ...current, status });
+      view.rerender(<TerminalPanel onClose={jest.fn()} />);
+    };
+    setStatus('connecting');
+    act(() => jest.advanceTimersByTime(1999));
+    expect(screen.getByRole('status')).toHaveAttribute('aria-label', 'Connected');
+    setStatus('connected');
+    act(() => jest.advanceTimersByTime(2000));
+    expect(screen.queryByText('Reconnecting...')).not.toBeInTheDocument();
+    setStatus('connecting');
+    act(() => jest.advanceTimersByTime(1999));
+    expect(screen.queryByText('Reconnecting...')).not.toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(1));
+    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting...');
+    setStatus('connected');
+    expect(screen.queryByText('Reconnecting...')).not.toBeInTheDocument();
+  } finally {
+    jest.useRealTimers();
+  }
 });
