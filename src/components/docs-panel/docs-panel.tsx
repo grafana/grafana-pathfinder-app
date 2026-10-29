@@ -84,7 +84,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { coerceLaunchSource, type LaunchSource } from '../../recovery';
+import { coerceLaunchSource, toAnalyticsLaunchSource, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -671,7 +671,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     reportAppInteraction(UserInteraction.AlignmentPromptConfirmed, {
       guide_url: tab.baseUrl || tab.currentUrl || '',
       guide_title: tab.title,
-      launch_source: pending.launchSource,
+      launch_source: toAnalyticsLaunchSource(pending.launchSource),
       current_path: pending.currentPath,
       starting_location: pending.startingLocation,
       latency_ms: Date.now() - pending.decidedAt,
@@ -697,7 +697,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     reportAppInteraction(UserInteraction.AlignmentPromptDismissed, {
       guide_url: tab.baseUrl || tab.currentUrl || '',
       guide_title: tab.title,
-      launch_source: pending.launchSource,
+      launch_source: toAnalyticsLaunchSource(pending.launchSource),
       current_path: pending.currentPath,
       starting_location: pending.startingLocation,
       latency_ms: Date.now() - pending.decidedAt,
@@ -1093,7 +1093,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           reportAppInteraction(UserInteraction.AlignmentPromptShown, {
             guide_url: url,
             guide_title: finalTab?.title ?? '',
-            launch_source: pendingAlignment.launchSource,
+            launch_source: toAnalyticsLaunchSource(pendingAlignment.launchSource),
             current_path: pendingAlignment.currentPath,
             starting_location: pendingAlignment.startingLocation,
           });

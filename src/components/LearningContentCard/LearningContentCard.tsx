@@ -156,6 +156,7 @@ export function LearningContentCard({
   const launchButton = (
     <Button
       ref={actionRef}
+      variant={featured ? 'primary' : 'secondary'}
       className={bottomAction ? undefined : styles.action}
       size={bottomAction ? 'md' : 'sm'}
       fullWidth={bottomAction}

@@ -214,7 +214,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
       content_title: 'Title top',
       content_url: 'https://cdn.example.com/top/content.json',
-      content_type: 'interactive-guide',
+      content_type: 'interactive_guide',
       interaction_location: 'hub_featured_card',
       match_accuracy: 0,
       total_milestones: 0,
@@ -304,7 +304,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
         content_title: 'Title five',
         content_url: 'https://cdn.example.com/five/content.json',
-        content_type: 'interactive-guide',
+        content_type: 'interactive_guide',
         interaction_location: 'hub_other_docs',
         match_accuracy: 0.4,
         total_milestones: 0,
@@ -368,7 +368,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
       content_title: 'Getting started',
       content_url: 'bundled:b',
-      content_type: 'learning-journey',
+      content_type: 'learning_journey',
       interaction_location: 'hub_resume_card',
       completion_percentage: 50,
       launch_target: 'current_guide',
@@ -399,7 +399,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
       content_title: 'Getting started',
       content_url: 'https://cdn/cover',
-      content_type: 'learning-journey',
+      content_type: 'learning_journey',
       interaction_location: 'hub_resume_card',
       completion_percentage: 50,
       launch_target: 'cover_page',
@@ -432,7 +432,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
 
     await waitFor(() => expect(openDocsPage).toHaveBeenCalledTimes(1));
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
-      content_type: 'learning-journey',
+      content_type: 'learning_journey',
       interaction_location: 'hub_resume_card',
       completion_percentage: 50,
       launch_target: 'cover_page',
@@ -591,7 +591,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.SummaryClick, {
         content_title: 'Title top',
         content_url: 'https://cdn.example.com/top/content.json',
-        content_type: 'learning-journey',
+        content_type: 'learning_journey',
         action: 'expand',
         match_accuracy: 0,
         total_milestones: 2,

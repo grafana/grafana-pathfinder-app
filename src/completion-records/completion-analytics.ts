@@ -3,6 +3,7 @@ import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import type { CompletionFact } from './types';
 import { completionAttemptAnalyticsProperties } from './progress-analytics';
 import { guideIdentityAnalyticsProperties, pathAnalytics } from './completion-identity';
+import { toAnalyticsValue } from '../lib/analytics-values';
 export { guideIdentityAnalyticsProperties } from './completion-identity';
 
 export function completionAnalytics(fact: CompletionFact): {
@@ -14,7 +15,7 @@ export function completionAnalytics(fact: CompletionFact): {
     ...guideIdentityAnalyticsProperties(fact),
     ...completionAttemptAnalyticsProperties(fact),
     ...path.properties,
-    guide_category: fact.guideCategory,
+    guide_category: toAnalyticsValue(fact.guideCategory),
     completion_source: fact.source,
     completion_percentage: fact.completionPercent,
     ...(fact.guideStats && {
