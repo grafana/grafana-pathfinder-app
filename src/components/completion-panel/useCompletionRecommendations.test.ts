@@ -212,6 +212,30 @@ it('settles unavailable references without exposing invented cards', async () =>
   expect(result.current.items).toEqual([]);
 });
 
+it('resolves a healthy authored suggestion even when the first lookup hangs', async () => {
+  jest.useFakeTimers();
+  mockPrivate.mockImplementation((id: string) =>
+    id === 'slow' ? new Promise(() => {}) : Promise.resolve(resolveResult(id, 'app-platform'))
+  );
+  const content = guide({ id: 'current', type: 'guide', suggests: ['slow', 'healthy'] });
+  const { result, unmount } = renderHook(() => useCompletionRecommendations(content, privateIdentity));
+  await act(async () => {});
+  expect(mockPrivate).toHaveBeenCalledWith('healthy', expect.anything());
+  await act(async () => jest.advanceTimersByTime(4000));
+  expect(result.current.loading).toBe(false);
+  expect(result.current.items.map((item) => item.id)).toEqual(['healthy']);
+  unmount();
+  jest.useRealTimers();
+});
+
+it('rejects a public fallback resolving a different package identity', async () => {
+  mockOnline.mockResolvedValue(resolveResult('other'));
+  const content = guide({ id: 'current', type: 'guide', suggests: ['next'] });
+  const { result } = renderHook(() => useCompletionRecommendations(content, publicIdentity));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.items).toEqual([]);
+});
+
 it('settles a hanging resolution and ignores its eventual result', async () => {
   jest.useFakeTimers();
   let finish: (value: unknown) => void = () => {};

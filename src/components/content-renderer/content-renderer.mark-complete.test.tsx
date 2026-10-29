@@ -73,7 +73,7 @@ describe('completion panel integration', () => {
     expect(onVisibility).toHaveBeenLastCalledWith(false);
   });
 
-  it.each(['preview', 'cover', 'flag-off'] as const)('does not announce a completed panel for %s', async (kind) => {
+  it.each(['preview', 'cover', 'opt-out'] as const)('does not announce a completed panel for %s', async (kind) => {
     const content = kind === 'preview' ? makePreview() : kind === 'cover' ? makeMilestone(0) : makeContent();
     const onVisibility = jest.fn();
     await guideCompletionMarkStorage.set(content.url, true);
@@ -81,7 +81,7 @@ describe('completion panel integration', () => {
       <ContentRenderer
         content={content}
         completion={trackedCompletion(content)}
-        completionPanelEnabled={kind !== 'flag-off'}
+        completionPanelEnabled={kind !== 'opt-out'}
         onCompletionPanelVisibilityChange={onVisibility}
       />
     );

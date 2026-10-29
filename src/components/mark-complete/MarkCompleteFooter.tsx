@@ -80,7 +80,6 @@ export interface MarkCompleteFooterProps {
    * marked guide that later auto-completes still records once.
    */
   onMarkComplete?: () => void;
-  /** Advance to the next milestone. Absent when there is nowhere to continue to. */
   onContinue?: () => void;
   renderCompleted?: (celebrating: boolean) => React.ReactNode;
   onCompletionPanelVisibilityChange?: (visible: boolean) => void;
@@ -296,9 +295,6 @@ export function MarkCompleteFooter({
       })();
     }
 
-    // Reduced motion means no dwell either — continuing is the reader's
-    // intent, and holding them for an animation they asked not to see is the
-    // same delay with none of the reward.
     if (prefersReducedMotion()) {
       if (!renderCompleted) {
         onContinue?.();

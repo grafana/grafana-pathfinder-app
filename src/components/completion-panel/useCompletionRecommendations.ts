@@ -142,7 +142,7 @@ export function useCompletionRecommendations(
     const finish = () => {
       if (valid()) {
         setResolved((previous) =>
-          previous?.key === requestKey ? previous : { key: requestKey, items: [...extra], context }
+          previous?.key === requestKey ? previous : { key: requestKey, items: extra.filter(Boolean), context }
         );
       }
     };
@@ -178,7 +178,7 @@ export function useCompletionRecommendations(
           return undefined;
         }
         const online = await new OnlineCdnPackageResolver().resolve(id, { loadContent: 'metadata-only' });
-        return valid() && online.ok ? online : undefined;
+        return valid() && online.ok && online.id === id && online.repository === 'online-cdn' ? online : undefined;
       } catch {
         return undefined;
       }
@@ -202,19 +202,19 @@ export function useCompletionRecommendations(
       const ids = [
         ...new Set((context.suggests ?? []).flatMap((clause) => (typeof clause === 'string' ? [clause] : clause))),
       ];
-      for (const id of ids) {
-        if (!valid() || count >= RESOLUTION_LIMIT) {
-          break;
-        }
-        if (catalog.items.some((item) => item.id === id && item.source === 'grafana')) {
-          continue;
-        }
-        const result = await resolve(id);
-        const item = result ? catalogItem(result, isPrivate ? 'organization' : 'grafana') : null;
-        if (valid() && item) {
-          extra.push(item);
-        }
-      }
+      const pending = ids
+        .filter((id) => packageIdSchema.safeParse(id).success)
+        .filter((id) => !catalog.items.some((item) => item.id === id && item.source === 'grafana'))
+        .slice(0, RESOLUTION_LIMIT - count);
+      await Promise.all(
+        pending.map(async (id, index) => {
+          const result = await resolve(id);
+          const item = result ? catalogItem(result, isPrivate ? 'organization' : 'grafana') : null;
+          if (valid() && item) {
+            extra[index] = item;
+          }
+        })
+      );
       finish();
       clearTimeout(timer);
     })();

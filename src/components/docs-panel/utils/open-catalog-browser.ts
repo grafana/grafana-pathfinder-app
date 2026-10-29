@@ -35,7 +35,7 @@ export function openLearningHome(options?: { source?: string }): void {
   panelModeManager.setModeTransient('sidebar');
   getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
   if (getPathfinderSurface() === 'controller') {
-    window.location.assign(new URL(PLUGIN_BASE_URL, window.location.origin).href);
+    window.location.assign(new URL(`${config.appSubUrl ?? ''}${PLUGIN_BASE_URL}`, window.location.origin).href);
   } else {
     locationService.push(PLUGIN_BASE_URL);
   }
