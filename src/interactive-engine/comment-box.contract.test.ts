@@ -17,6 +17,7 @@
  */
 
 import { NavigationManager, type CommentBoxStepInfo } from './navigation-manager';
+import { GuidedHandler } from './action-handlers/guided-handler';
 import * as elementValidator from '../lib/dom';
 
 // Mock the element validator functions
@@ -847,6 +848,88 @@ describe('E2E Contract: Comment Box Attributes', () => {
     });
   });
 
+  it('does not capture a recovery notice when highlighting cannot create an instruction box', async () => {
+    navigationManager.showNoopComment('The page changed. Looking for this step again…');
+    jest.spyOn(navigationManager, 'ensureNavigationOpen').mockResolvedValue(undefined);
+    jest.spyOn(navigationManager, 'ensureElementVisible').mockResolvedValue(undefined);
+    mockElement.getBoundingClientRect = jest.fn().mockReturnValue({ top: 0, left: 0, width: 0, height: 0 });
+
+    await navigationManager.highlightWithComment(mockElement, 'Actual instruction', false);
+
+    expect(document.querySelector('[data-noop="true"]')).toBeInTheDocument();
+    expect(navigationManager.getOwnedCommentBox()).toBeNull();
+  });
+
+  it('retains the real highlighted action box and removes it before another handler starts', async () => {
+    jest.useFakeTimers();
+    mockElement.id = 'final-target';
+    (elementValidator.resolveSelector as jest.Mock).mockImplementation((selector: string) => selector);
+    (elementValidator.querySelectorAllEnhanced as jest.Mock).mockReturnValue({
+      elements: [mockElement],
+      usedFallback: false,
+    });
+    jest.spyOn(navigationManager, 'ensureNavigationOpen').mockResolvedValue(undefined);
+    jest.spyOn(navigationManager, 'ensureElementVisible').mockResolvedValue(undefined);
+    const handler = new GuidedHandler({} as any, navigationManager, async () => {});
+    const next = new GuidedHandler({} as any, new NavigationManager(), async () => {});
+    try {
+      const pending = handler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#final-target', targetComment: 'Final instruction' },
+        0,
+        1,
+        5000
+      );
+      await jest.advanceTimersByTimeAsync(1000);
+      const box = navigationManager.getOwnedCommentBox()!;
+      expect(box).toBeInTheDocument();
+      expect(box).toHaveAttribute('data-test-reftarget', '#final-target');
+      expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '0%' });
+      mockElement.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(await pending).toBe('completed');
+      expect(box).toHaveAttribute('data-guided-state', 'completed');
+      expect(box).toHaveTextContent('Final instruction');
+      expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+      expect(box.querySelectorAll('button')).toHaveLength(1);
+      expect(box.querySelector('button')).toHaveFocus();
+      const nextPending = next.executeGuidedStep({ targetAction: 'noop' }, 0, 1, 5000);
+      expect(box).not.toBeInTheDocument();
+      next.cancel();
+      expect(await nextPending).toBe('cancelled');
+    } finally {
+      handler.cancel();
+      next.cancel();
+      jest.useRealTimers();
+    }
+  });
+
+  it('marks a retained done box as completed and focuses its only dismiss control', async () => {
+    const handler = new GuidedHandler({} as any, navigationManager, async () => {});
+    try {
+      const pending = handler.executeGuidedStep({ targetAction: 'noop', targetComment: 'All done' }, 0, 1, 5000);
+      const box = document.querySelector<HTMLElement>('.interactive-comment-box')!;
+      expect(box).not.toHaveAttribute('data-guided-state');
+      const continueButton = Array.from(box.querySelectorAll('button')).find((button) =>
+        button.textContent?.startsWith('Continue')
+      )!;
+      continueButton.focus();
+      continueButton.click();
+      expect(await pending).toBe('completed');
+      expect(box).toHaveAttribute('data-guided-state', 'completed');
+      expect(box).toHaveAttribute('data-ready', 'true');
+      expect(box).toHaveAttribute('data-test-action', 'noop');
+      expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+      const buttons = box.querySelectorAll('button');
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]).toHaveTextContent('Close');
+      expect(buttons[0]).toHaveFocus();
+      buttons[0]!.click();
+      expect(box).not.toBeInTheDocument();
+    } finally {
+      handler.cancel();
+    }
+  });
+
   describe('progress bar', () => {
     const renderBar = async (stepInfo: CommentBoxStepInfo) => {
       await navigationManager.highlightWithComment(
@@ -875,9 +958,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
       });
 
       it('reaches 100% only once every step in the block is done', async () => {
-        // Guard on the formula, NOT a state a live guided tour can paint: the box for
-        // step N is created before N is performed and destroyed when it settles, so the
-        // overlay bar tops out at (total-1)/total. See the interactive-engine anchor.
+        // This guards arithmetic; the retained done-box case above covers the live completion paint.
         const bar = await renderBar({ current: 3, total: 4, completedSteps: [0, 1, 2, 3], progress: 'performed' });
         expect(bar.style.width).toBe('100%');
       });

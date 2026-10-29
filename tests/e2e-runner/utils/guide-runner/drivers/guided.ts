@@ -344,7 +344,7 @@ export async function runGuidedSubstepLoop(
       return { completed: false };
     }
 
-    const commentBox = page.locator('.interactive-comment-box').first();
+    const commentBox = page.locator('.interactive-comment-box:not([data-guided-state="completed"])').first();
     let commentBoxOutcome: GuidedCommentBoxWaitOutcome;
     try {
       commentBoxOutcome = await waitForGuidedCommentBoxReady(

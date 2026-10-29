@@ -607,6 +607,38 @@ describe('waitForGuidedCommentBoxReady', () => {
 });
 
 describe('runGuidedSubstepLoop', () => {
+  it('ignores a retained completed box while the next guided action is starting', async () => {
+    const stepLocator = createLocator({
+      count: jest.fn().mockResolvedValue(1),
+      getAttribute: jest
+        .fn()
+        .mockResolvedValueOnce('executing')
+        .mockResolvedValueOnce('0')
+        .mockResolvedValue('completed'),
+    });
+    const retainedBox = createLocator({
+      count: jest.fn().mockResolvedValue(1),
+      isVisible: jest.fn().mockResolvedValue(true),
+      getAttribute: jest.fn().mockRejectedValue(new Error('Read the previous action')),
+    });
+    const noActiveBox = createLocator({ count: jest.fn().mockResolvedValue(0) });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      locator: jest.fn((selector: string) => ({
+        first: () =>
+          selector === '.interactive-comment-box:not([data-guided-state="completed"])' ? noActiveBox : retainedBox,
+      })),
+    } as unknown as Page;
+
+    await expect(
+      runGuidedSubstepLoop(page, createTestableStep(), {
+        stepLocator,
+        perSubstepTimeoutMs: 1000,
+      })
+    ).resolves.toEqual({ completed: true });
+    expect(retainedBox.getAttribute).not.toHaveBeenCalled();
+  });
+
   it('treats a successfully-confirmed detached step as completion (e.g. after a completeEarly navigation)', async () => {
     const stepLocator = createLocator({ count: jest.fn().mockResolvedValue(0) });
     const page = {

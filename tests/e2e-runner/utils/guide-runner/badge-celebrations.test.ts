@@ -377,7 +377,9 @@ describe('dismissBadgeCelebrations', () => {
         return getBadgeLocator(testId);
       }),
       locator: jest.fn((selector: string) => {
-        return selector === '.interactive-comment-box' ? commentBoxLocator : target;
+        return selector === '.interactive-comment-box:not([data-guided-state="completed"])'
+          ? commentBoxLocator
+          : target;
       }),
       waitForTimeout: badgePage.waitForTimeout.bind(badgePage),
     } as unknown as Page;
