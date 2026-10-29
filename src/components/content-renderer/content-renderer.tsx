@@ -101,7 +101,7 @@ import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
-import { config } from '@grafana/runtime';
+import { getUserScope } from '../../lib/user-scope';
 import { t } from '@grafana/i18n';
 import { openLearningHome } from '../docs-panel/utils/open-catalog-browser';
 import { MyLearningErrorBoundary } from '../docs-panel/components/MyLearningErrorBoundary';
@@ -237,7 +237,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
 }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
-  const scope = `${config?.namespace ?? ''}:${config?.bootData?.user?.orgId ?? ''}:${config?.bootData?.user?.id ?? ''}`;
+  const scope = getUserScope();
   const guideCompleteCalledRef = useRef(false);
   const resolveOwnerContentKey = useCallback(() => resolveGuideContentKey(content.url), [content.url]);
 

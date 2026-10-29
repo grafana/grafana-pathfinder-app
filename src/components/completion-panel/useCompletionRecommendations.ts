@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { currentPlatform } from '../../lib/platform';
-import { config } from '@grafana/runtime';
+import { getUserScope } from '../../lib/user-scope';
 import type { RawContent } from '../../types/content.types';
 import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import type { CatalogPackage } from '../../types/package-catalog.types';
@@ -134,9 +134,7 @@ export function useCompletionRecommendations(
     }
     let cancelled = false;
     let count = 0;
-    const currentScope = () =>
-      `${config.namespace || ''}:${config.bootData?.user?.orgId ?? ''}:${config.bootData?.user?.id ?? ''}`;
-    const valid = () => !cancelled && currentScope() === scope;
+    const valid = () => !cancelled && getUserScope() === scope;
     const extra: CatalogPackage[] = [];
     let context = initialContext;
     const finish = () => {

@@ -1,5 +1,5 @@
-import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import React from 'react';
+import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import { t } from '@grafana/i18n';
 import { testIds } from '../../constants/testIds';
 import type { DiscoverMoreItem, CatalogProgress } from '../../learning-paths';

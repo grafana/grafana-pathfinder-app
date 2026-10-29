@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { config } from '@grafana/runtime';
+import { getUserScope } from '../../lib/user-scope';
 import type { Milestone, RawContent } from '../../types/content.types';
 import { journeyProgressFromMilestones, type AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import { interactiveCompletionStorage } from '../../lib/user-storage';
@@ -25,7 +25,7 @@ export default function ReaderCompletionPanel({
   onContinue,
   celebrating,
 }: Props) {
-  const scope = `${config?.namespace ?? ''}:${config?.bootData?.user?.orgId ?? ''}:${config?.bootData?.user?.id ?? ''}`;
+  const scope = getUserScope();
   const identityKey = `${scope}:${content.url}`;
   const revision = useSyncExternalStore(
     subscribeGuideProgressRevision,
