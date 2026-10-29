@@ -1,11 +1,8 @@
 import { HistoryWrapper, locationService, setLocationService } from '@grafana/runtime';
 
 import { autoLaunchChannel } from '../global-state/auto-launch';
-import {
-  __resetDeepLinkHandlerStateForTests,
-  handlePathfinderDeepLink,
-  installDeepLinkNavListener,
-} from './pathfinder-deep-link-handler';
+import { __resetDeepLinkHandlerStateForTests, handlePathfinderDeepLink } from './pathfinder-deep-link-handler';
+import { installDeepLinkNavListener } from './pathfinder-deep-link-loader';
 
 jest.mock('../global-state/panel-mode', () => ({
   panelModeManager: {
@@ -119,6 +116,22 @@ describe('consumed deep links with Grafana browser history', () => {
     expect(locationService.getSearch().get('doc')).toBe(doc);
     expect(locationService.getSearch().has('panelMode')).toBe(false);
     expect(launch).not.toHaveBeenCalled();
+  });
+
+  it.each(['', '/grafana'])('routes a fullscreen doc arrival under basename %s without replay', async (basename) => {
+    arrive(basename, '&panelMode=fullscreen&type=learning-journey');
+    await flush();
+
+    expect(locationService.getLocation().pathname).toBe('/a/grafana-pathfinder-app/fullscreen');
+    expect(window.location.pathname).toBe(`${basename}/a/grafana-pathfinder-app/fullscreen`);
+    expect(locationService.getSearch().has('panelMode')).toBe(false);
+    expect(locationService.getSearch().has('doc')).toBe(false);
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ url: doc, type: 'learning-journey' }));
+
+    locationService.partial({ from: 'now-1h' });
+    await flush();
+    expect(launch).toHaveBeenCalledTimes(1);
   });
 
   it('cleans invalid doc arrivals and allows validated page redirects without replay', async () => {
