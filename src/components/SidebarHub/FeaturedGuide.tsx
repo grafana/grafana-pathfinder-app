@@ -39,8 +39,8 @@ export function FeaturedGuide({
       onLaunch={onLaunch}
       expanded={expansion?.expanded}
       onToggleDetails={expansion?.onToggle}
-      disclosureLabel={expansion?.hasModules ? t('learningCard.showModules', 'Show modules') : undefined}
-      collapseLabel={expansion?.hasModules ? t('learningCard.hideModules', 'Hide modules') : undefined}
+      disclosureLabel={expansion?.hasModules ? t('learningCard.showModules', 'Show milestones') : undefined}
+      collapseLabel={expansion?.hasModules ? t('learningCard.hideModules', 'Hide milestones') : undefined}
       details={
         expansion?.hasDetails ? (
           <GuideDetails

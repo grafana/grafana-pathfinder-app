@@ -317,8 +317,6 @@ export class AppPlatformPackageResolver implements PackageResolver {
       if (!probe.ok) {
         return probe.failure;
       }
-      // Hand the fetched resource back so the caller's content load can reuse
-      // it instead of re-issuing the identical GET.
       resolution.probedResource = probe.resource;
       return resolution;
     }
@@ -332,6 +330,7 @@ export class AppPlatformPackageResolver implements PackageResolver {
     }
     const resource = probe.resource;
 
+    resolution.entryTitle = resource.spec?.title;
     resolution.manifest = buildManifest(packageId, resource.spec, options?.loadContext);
 
     if (!metadataOnly) {

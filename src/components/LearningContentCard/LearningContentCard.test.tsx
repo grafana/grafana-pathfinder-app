@@ -5,6 +5,7 @@ import { cache } from '@emotion/css';
 import { createTheme } from '@grafana/data';
 import { getLearningContentCardStyles } from './learning-content-card.styles';
 import { getLearningTopicVisual } from './learning-topic-visual';
+import { getCompletionPanelStyles } from '../completion-panel/completion-panel.styles';
 
 jest.mock('@grafana/ui', () => {
   const actual = jest.requireActual('@grafana/ui');
@@ -38,53 +39,66 @@ jest.mock('@grafana/i18n', () => ({
     fallback.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? '')),
 }));
 
-it.each(['dark', 'light'] as const)('uses semantic container and accent tokens for %s cards', (mode) => {
-  const theme = createTheme({ colors: { mode } });
-  theme.shape.radius.lg = '11px';
-  theme.colors.accent.border = '#f59e4b';
-  theme.colors.accent.background = '#714015';
-  const styles = getLearningContentCardStyles(theme);
-  expect(cache.registered[styles.card]).toContain('border-radius:11px');
-  expect(cache.registered[styles.featured]).toContain('border-radius:11px');
-  expect(cache.registered[styles.featured]).toContain('border-color:#f59e4b');
-  expect(cache.registered[styles.featured]).toContain(
-    `background:linear-gradient(120deg, #714015, ${theme.colors.background.secondary})`
-  );
+describe.each([getLearningContentCardStyles, getCompletionPanelStyles])('featured surfaces', (getStyles) => {
+  it.each(['dark', 'light'] as const)('uses semantic container and accent tokens for %s cards', (mode) => {
+    const theme = createTheme({ colors: { mode } });
+    theme.shape.radius.lg = '11px';
+    theme.colors.accent.border = '#f59e4b';
+    theme.colors.accent.background = '#714015';
+    const styles = getStyles(theme);
+    expect(cache.registered[styles.featured]).toContain('border-radius:11px');
+    expect(cache.registered[styles.featured]).toContain('#f59e4b');
+    expect(cache.registered[styles.featured]).toContain(
+      `background:linear-gradient(120deg, #714015, ${theme.colors.background.secondary})`
+    );
+  });
+
+  it.each([
+    ['dark', false],
+    ['light', false],
+    ['dark', true],
+    ['light', true],
+  ] as const)('uses host card surfaces in %s mode with visual refresh=%s', (mode, enabled) => {
+    const theme = createTheme({ colors: { mode } });
+    theme.flags.visualDesignRefresh = enabled;
+    theme.colors.background.primary = '#123456';
+    theme.colors.background.secondary = '#654321';
+    const styles = getStyles(theme);
+    if (enabled) {
+      expect(cache.registered[styles.featured]).toContain('background:#123456');
+      expect(cache.registered[styles.featured]).not.toContain('linear-gradient');
+    } else {
+      expect(cache.registered[styles.featured]).toContain(
+        `background:linear-gradient(120deg, ${theme.colors.accent.background}, #654321)`
+      );
+    }
+    expect(cache.registered[styles.featured]).toContain(theme.colors.accent.border);
+  });
+
+  it.each(['dark', 'light'] as const)('renders featured cards without accent tokens in %s mode', (mode) => {
+    const theme = createTheme({ colors: { mode } });
+    Reflect.deleteProperty(theme.colors, 'accent');
+    Reflect.deleteProperty(theme.colors.primary, 'background');
+    const styles = getStyles(theme);
+    expect(cache.registered[styles.featured]).toContain(theme.colors.primary.border);
+    expect(cache.registered[styles.featured]).toContain(
+      `background:linear-gradient(120deg, ${theme.colors.primary.transparent}, ${theme.colors.background.secondary})`
+    );
+    expect(cache.registered[styles.featured]).not.toContain('undefined');
+  });
 });
 
-it.each([
-  ['dark', false],
-  ['light', false],
-  ['dark', true],
-  ['light', true],
-] as const)('uses host card surfaces in %s mode with visual refresh=%s', (mode, enabled) => {
-  const theme = createTheme({ colors: { mode } });
-  theme.flags.visualDesignRefresh = enabled;
-  theme.colors.background.primary = '#123456';
-  theme.colors.background.secondary = '#654321';
-  const styles = getLearningContentCardStyles(theme);
-  expect(cache.registered[styles.card]).toContain(`background:${enabled ? '#123456' : '#654321'}`);
-  if (enabled) {
-    expect(cache.registered[styles.featured]).toContain('background:#123456');
-    expect(cache.registered[styles.featured]).not.toContain('linear-gradient');
-  } else {
-    expect(cache.registered[styles.featured]).toContain(
-      `background:linear-gradient(120deg, ${theme.colors.accent.background}, #654321)`
+it('uses host card surfaces and radius for ordinary cards', () => {
+  const theme = createTheme();
+  theme.shape.radius.lg = '11px';
+  for (const enabled of [false, true]) {
+    theme.flags.visualDesignRefresh = enabled;
+    const styles = getLearningContentCardStyles(theme);
+    expect(cache.registered[styles.card]).toContain('border-radius:11px');
+    expect(cache.registered[styles.card]).toContain(
+      `background:${enabled ? theme.colors.background.primary : theme.colors.background.secondary}`
     );
   }
-  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.accent.border}`);
-});
-
-it.each(['dark', 'light'] as const)('renders featured cards without accent tokens in %s mode', (mode) => {
-  const theme = createTheme({ colors: { mode } });
-  Reflect.deleteProperty(theme.colors, 'accent');
-  Reflect.deleteProperty(theme.colors.primary, 'background');
-  const styles = getLearningContentCardStyles(theme);
-  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.primary.border}`);
-  expect(cache.registered[styles.featured]).toContain(
-    `background:linear-gradient(120deg, ${theme.colors.primary.transparent}, ${theme.colors.background.secondary})`
-  );
-  expect(cache.registered[styles.featured]).not.toContain('undefined');
 });
 
 it('leaves launch button height and padding to the Grafana Button component', () => {
@@ -328,21 +342,21 @@ it('keeps actual module disclosure, effort and Resume available on the featured 
       kind="path"
       variant="featured"
       description="Learn the Grafana essentials."
-      effort="3 modules · About 25 min"
+      effort="3 milestones · About 25 min"
       progress={40}
       onLaunch={onLaunch}
       actionRef={actionRef}
       details={<p>Connect your first data source</p>}
-      disclosureLabel="Show modules"
-      collapseLabel="Hide modules"
+      disclosureLabel="Show milestones"
+      collapseLabel="Hide milestones"
     />
   );
   expect(screen.getByRole('heading', { name: 'Getting started' })).toBeInTheDocument();
-  expect(screen.getByText('3 modules · About 25 min')).toBeInTheDocument();
+  expect(screen.getByText('3 milestones · About 25 min')).toBeInTheDocument();
   expect(actionRef.current).toBe(screen.getByRole('button', { name: 'Resume' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Show modules' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show milestones' }));
   expect(screen.getByText('Connect your first data source')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Hide milestones' })).toHaveAttribute('aria-expanded', 'true');
   expect(onLaunch).not.toHaveBeenCalled();
 });
 
@@ -356,6 +370,62 @@ it('labels known topics and keeps the leading icon decorative without inventing 
   expect(screen.queryByText('my-private-category')).not.toBeInTheDocument();
   expect(screen.queryByText('Other topics')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Start guide' })).toBeInTheDocument();
+});
+
+it('uses contextual featured copy without changing the default starter wording', () => {
+  const { rerender } = render(
+    <LearningContentCard
+      title="Next dashboard"
+      kind="guide"
+      variant="featured"
+      eyebrow="More on dashboards"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(screen.getByText('More on dashboards')).toBeInTheDocument();
+  expect(screen.queryByText('A good place to start')).not.toBeInTheDocument();
+  rerender(<LearningContentCard title="Starter path" kind="path" variant="featured" onLaunch={jest.fn()} />);
+  expect(screen.getByText('A good place to start')).toBeInTheDocument();
+});
+
+it.each(['completion-primary', 'completion-alternative'] as const)(
+  'shows the full completion description and a footer launch action in %s',
+  (variant) => {
+    const measurement = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1000);
+    try {
+      render(
+        <LearningContentCard
+          title="Next path"
+          kind="path"
+          variant={variant}
+          eyebrow="Recommended learning"
+          description="Understand Grafana concepts, then connect data and build a dashboard."
+          effort="Learning path · 6 milestones"
+          onLaunch={jest.fn()}
+        />
+      );
+      expect(screen.getByText('Recommended learning')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Read more' })).not.toBeInTheDocument();
+      const action = screen.getByRole('button', { name: 'Start path' });
+      expect(action.parentElement).toContainElement(screen.getByText('Learning path · 6 milestones'));
+    } finally {
+      measurement.mockRestore();
+    }
+  }
+);
+
+it('keeps visible completion verbs short while naming their destination accessibly', () => {
+  render(
+    <LearningContentCard
+      title="Next guide"
+      kind="guide"
+      variant="completion-primary"
+      actionLabel="Start"
+      actionAriaLabel="Start Next guide"
+      onLaunch={jest.fn()}
+    />
+  );
+  expect(screen.getByRole('button', { name: 'Start Next guide' })).toHaveTextContent('Start');
 });
 
 it('lets a featured card carry its own eyebrow and badges', () => {

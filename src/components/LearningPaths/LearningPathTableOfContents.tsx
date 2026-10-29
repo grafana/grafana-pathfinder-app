@@ -1,3 +1,4 @@
+import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useStyles2, Icon, TabsBar, Tab } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -198,7 +199,7 @@ export function LearningPathTableOfContents({
           <div className={styles.heroMeta}>
             <span className={styles.heroMetaItem}>
               <Icon name="list-ul" size="sm" />
-              {t('coverPage.moduleCount', '{{count}} modules', { count: activeMilestones.length })}
+              {milestoneCountText(activeMilestones.length)}
             </span>
             {totalEstimatedMinutes != null && (
               <span className={styles.heroMetaItem}>

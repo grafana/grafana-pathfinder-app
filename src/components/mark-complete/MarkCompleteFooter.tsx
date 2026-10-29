@@ -21,7 +21,7 @@
  * of its own.
  */
 
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
@@ -80,8 +80,9 @@ export interface MarkCompleteFooterProps {
    * marked guide that later auto-completes still records once.
    */
   onMarkComplete?: () => void;
-  /** Advance to the next milestone. Absent when there is nowhere to continue to. */
   onContinue?: () => void;
+  renderCompleted?: (celebrating: boolean) => React.ReactNode;
+  onCompletionPanelVisibilityChange?: (visible: boolean) => void;
 }
 
 const CELEBRATION_MS = 1400;
@@ -102,6 +103,8 @@ export function MarkCompleteFooter({
   totalMilestones,
   onMarkComplete,
   onContinue,
+  renderCompleted,
+  onCompletionPanelVisibilityChange,
 }: MarkCompleteFooterProps) {
   const styles = useStyles2(getStyles);
   // Carries the resolved key alongside the mark and is tagged with the guide
@@ -129,9 +132,14 @@ export function MarkCompleteFooter({
     ),
     useCallback(() => (contentKey === undefined ? 0 : peekGuidePercentage(contentKey)), [contentKey])
   );
-
   const activeGuide = contentKey ? getGuideIndex(contentKey) : undefined;
   const marked = storedMarked && (!activeGuide?.choiceModel || percentage === 100);
+  const completed = marked || Boolean(renderCompleted && hydrated && percentage === 100);
+  const completionPanelVisible = Boolean(renderCompleted && completed);
+  useLayoutEffect(() => {
+    onCompletionPanelVisibilityChange?.(completionPanelVisible);
+    return () => onCompletionPanelVisibilityChange?.(false);
+  }, [completionPanelVisible, onCompletionPanelVisibilityChange]);
   const unansweredChoices =
     activeGuide?.choiceModel &&
     choicePathHasUnansweredRequiredInput(
@@ -220,7 +228,7 @@ export function MarkCompleteFooter({
   const handleClick = useCallback(() => {
     if (
       contentKey === undefined ||
-      marked ||
+      completed ||
       unansweredChoices ||
       responses?.isLoading ||
       !isGuideChoiceProgressReady(contentKey)
@@ -276,11 +284,7 @@ export function MarkCompleteFooter({
       ).catch((error) => {
         logger.warn('Failed to persist guide completion mark', { error });
       });
-      // Deliberate, not a placeholder: the percentage namespace is what
-      // recommendation cards and context read, and the reader's statement that
-      // they finished belongs there too. See COMPLETION-MODEL.md, "Rolling this
-      // back". Announce only after the write settles so listeners that reread
-      // storage do not observe the previous percentage.
+      // Publish after persistence so listeners can reread the saved percentage.
       void (async () => {
         try {
           await interactiveCompletionStorage.set(contentKey, 100);
@@ -291,24 +295,25 @@ export function MarkCompleteFooter({
       })();
     }
 
-    // Reduced motion means no dwell either — continuing is the reader's
-    // intent, and holding them for an animation they asked not to see is the
-    // same delay with none of the reward.
     if (prefersReducedMotion()) {
-      onContinue?.();
+      if (!renderCompleted) {
+        onContinue?.();
+      }
       return;
     }
 
     setCelebrating(true);
     celebrationTimer.current = setTimeout(() => {
       setCelebrating(false);
-      onContinue?.();
+      if (!renderCompleted) {
+        onContinue?.();
+      }
     }, CELEBRATION_MS);
   }, [
     contentKey,
     completionIdentity,
     guideTitle,
-    marked,
+    completed,
     unansweredChoices,
     responses,
     context,
@@ -318,32 +323,44 @@ export function MarkCompleteFooter({
     totalMilestones,
     onMarkComplete,
     onContinue,
+    renderCompleted,
   ]);
 
   const label =
     context === 'milestone' && onContinue
-      ? t('markComplete.milestoneButton', 'Mark complete and continue')
+      ? renderCompleted
+        ? t('markComplete.completeMilestone', 'Complete milestone')
+        : t('markComplete.milestoneButton', 'Mark complete and continue')
       : t('markComplete.guideButton', 'Mark complete');
 
   return (
     <div
-      className={styles.footer}
+      className={renderCompleted && completed ? styles.panelFooter : styles.footer}
       data-testid={testIds.markComplete.footer}
-      // Testing contract: `pending` until the stored mark has been read. The
-      // completion percentage itself is shown by the sticky GuideProgressBar at
-      // the top of the panel; this footer only owns the Mark complete control.
       data-test-progress-state={hydrated ? 'ready' : 'pending'}
     >
-      {marked ? (
+      {renderCompleted && completed && (
+        <span role="status" className={styles.announcement}>
+          {t('markComplete.completed', 'Completed')}
+        </span>
+      )}
+      {completed ? (
         <div
           ref={completedRef}
-          role="status"
+          role={renderCompleted ? 'group' : 'status'}
+          aria-label={renderCompleted ? t('markComplete.completed', 'Completed') : undefined}
           tabIndex={-1}
-          className={celebrating ? styles.celebration : styles.completed}
+          className={renderCompleted ? styles.panelContent : celebrating ? styles.celebration : styles.completed}
           data-testid={testIds.markComplete.completed}
         >
-          <Icon name="check-circle" />
-          <span>{t('markComplete.completed', 'Completed')}</span>
+          {renderCompleted ? (
+            renderCompleted(celebrating)
+          ) : (
+            <>
+              <Icon name="check-circle" />
+              <span>{t('markComplete.completed', 'Completed')}</span>
+            </>
+          )}
         </div>
       ) : (
         <Button
@@ -382,6 +399,23 @@ function getStyles(theme: GrafanaTheme2) {
   } as const;
 
   return {
+    announcement: css({
+      position: 'absolute',
+      width: 1,
+      height: 1,
+      padding: 0,
+      margin: -1,
+      overflow: 'hidden',
+      clipPath: 'inset(50%)',
+      whiteSpace: 'nowrap',
+      border: 0,
+    }),
+    panelFooter: css({ width: '100%', minWidth: 0 }),
+    panelContent: css({
+      width: '100%',
+      minWidth: 0,
+      '&:focus-visible': { outline: `2px solid ${theme.colors.primary.border}`, outlineOffset: theme.spacing(0.5) },
+    }),
     footer: css({
       display: 'flex',
       alignItems: 'center',

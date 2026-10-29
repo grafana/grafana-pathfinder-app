@@ -112,7 +112,7 @@ export function LearningModuleList({
               <div className={styles.error} role="alert">
                 <p>
                   {numbered
-                    ? t('learningCard.moduleError', 'Could not open this module.')
+                    ? t('learningCard.moduleError', 'Could not open this milestone.')
                     : t('learningCard.linkError', 'Could not open this content.')}
                 </p>
                 <Button
