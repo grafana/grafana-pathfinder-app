@@ -26,6 +26,7 @@ import {
   BUNDLED_GUIDE_TITLE,
   BUNDLED_REPOSITORY,
   FIXTURE_REPOSITORY,
+  LONG_PROSE_GUIDE,
   NO_REPOSITORY_PATH,
   PATH_FIXTURE,
   PATH_MILESTONES,
@@ -49,6 +50,7 @@ import {
   readStoredProgress,
   seedRestoredTab,
   stubAppPlatformGuide,
+  waitForFooterHydrated,
   waitForQueuedFacts,
   waitForWriteAttemptAfter,
 } from './helpers/completion.helpers';
@@ -157,6 +159,40 @@ test.describe('completion tracking', () => {
         timeout: TIMEOUTS.UI_READY,
       })
       .toBe(expectedPercent);
+  });
+
+  /**
+   * Decision 3: a prose-only guide completes when the end of its content is
+   * seen (#2258). jsdom has no layout, so only a browser can show the end is
+   * judged against the panel's scroll container: a guide whose end starts out
+   * of view must stay incomplete until the reader scrolls to it.
+   */
+  test('a long prose-only guide completes only once its end is scrolled into view', async ({ page }) => {
+    await primeCompletionSession(page);
+    await launchDoc(page, fixtureContentUrl(LONG_PROSE_GUIDE));
+    const contentUrl = fixtureContentUrl(LONG_PROSE_GUIDE);
+    const sentinel = page.getByTestId('guide-end-sentinel');
+
+    await waitForFooterHydrated(page);
+    // Guard the fixture itself: an end already on screen would complete on
+    // arrival and make the negative half below measure nothing.
+    await expect(sentinel).not.toBeInViewport();
+    // A negative cannot be polled for; give the sentinel time to arm and misfire.
+    await page.waitForTimeout(1_000);
+    expect((await readStoredProgress(page)).interactiveCompletion[contentUrl] ?? 0).toBe(0);
+    expect(await readQueuedFacts(page)).toHaveLength(0);
+
+    await page.getByTestId(testIds.markComplete.footer).first().scrollIntoViewIfNeeded();
+
+    await expect
+      .poll(async () => (await readStoredProgress(page)).interactiveCompletion[contentUrl], {
+        message: 'guide persisted at 100% once its end was seen',
+        timeout: TIMEOUTS.UI_READY,
+      })
+      .toBe(100);
+    const facts = factsFor(await waitForQueuedFacts(page, 1), FIXTURE_REPOSITORY, LONG_PROSE_GUIDE.id);
+    expect(facts).toHaveLength(1);
+    expect(facts[0]!.body.source).toBe('objectives');
   });
 
   /**
