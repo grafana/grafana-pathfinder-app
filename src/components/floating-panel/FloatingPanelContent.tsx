@@ -1,4 +1,3 @@
-import { useBooleanFlag } from '../../utils/openfeature';
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { isJourneyCoverPage, resolveActiveMilestoneSequence } from '../../docs-retrieval';
@@ -70,7 +69,6 @@ export function FloatingPanelContent({
   onResetGuide,
   surface = 'floating',
 }: FloatingPanelContentProps) {
-  const completionPanelEnabled = useBooleanFlag('pathfinder.completion-panel', true);
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
@@ -181,15 +179,10 @@ export function FloatingPanelContent({
           containerRef={contentRef}
           className={contentClassName}
           completion={{ kind: 'tracked', input: surfaceCompletionInput, onComplete: onGuideComplete }}
-          completionPanelEnabled={completionPanelEnabled}
-          completionSequence={completionPanelEnabled ? completionSequence : undefined}
+          completionPanelEnabled
+          completionSequence={completionSequence}
           onContinueToNextMilestone={
-            model.canNavigateNext()
-              ? () =>
-                  completionPanelEnabled
-                    ? model.navigateToNextMilestone({ rejectOnError: true })
-                    : model.navigateToNextMilestone()
-              : undefined
+            model.canNavigateNext() ? () => model.navigateToNextMilestone({ rejectOnError: true }) : undefined
           }
           onActiveTrackChange={
             activeTab

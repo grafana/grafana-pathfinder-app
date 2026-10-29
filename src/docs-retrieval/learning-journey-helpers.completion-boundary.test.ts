@@ -173,6 +173,26 @@ afterEach(() => {
   unsubscribe();
 });
 
+test('milestone records retain an explicitly typed parent manifest when pathId was not supplied', async () => {
+  await markMilestoneDone('base', 'm1', milestoneUrl('base', 'm1'), undefined, {
+    packageManifest: { id: 'linux-journey', type: 'journey' },
+    repository: 'app-platform',
+  });
+  expect(emitted[0]).toMatchObject({
+    kind: 'guide',
+    guideId: 'm1',
+    guideSource: 'app-platform',
+    pathId: 'linux-journey',
+  });
+});
+
+test('milestone manifests are not mistaken for their own parent journey', async () => {
+  await markMilestoneDone('base', 'm1', milestoneUrl('base', 'm1'), undefined, {
+    packageManifest: { id: 'm1', type: 'guide', repository: 'app-platform' },
+  });
+  expect(emitted[0]?.pathId).toBeUndefined();
+});
+
 describe('bundled guide reaching 100% (trigger class A)', () => {
   it('routes through the recorder as an interactive guide keyed on the bundled slug', () => {
     setJourneyCompletionPercentage('bundled:first-dashboard', 100);
@@ -611,13 +631,13 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     const guide = completionAnalytics(emitted.find((f) => f.kind === 'guide')!).properties;
     const journey = completionAnalytics(emitted.find((f) => f.kind === 'journey')!).properties;
     expect(guide).toMatchObject({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_id: 'm3',
       path_id: 'linux-path',
     });
     expect(journey).toMatchObject({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       journey_id: 'linux-path',
     });
@@ -1128,7 +1148,7 @@ describe('standalone private guide opened straight off the backend-guide: scheme
       completionPercent: 100,
     });
     expect(completionAnalytics(emitted[0]!).properties).toMatchObject({
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_id: 'fe-solo-01',
       guide_title: 'Solo guide',

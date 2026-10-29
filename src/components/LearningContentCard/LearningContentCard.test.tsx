@@ -5,6 +5,7 @@ import { cache } from '@emotion/css';
 import { createTheme } from '@grafana/data';
 import { getLearningContentCardStyles } from './learning-content-card.styles';
 import { getLearningTopicVisual } from './learning-topic-visual';
+import { getCompletionPanelStyles } from '../completion-panel/completion-panel.styles';
 
 jest.mock('@grafana/ui', () => {
   const actual = jest.requireActual('@grafana/ui');
@@ -38,53 +39,66 @@ jest.mock('@grafana/i18n', () => ({
     fallback.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? '')),
 }));
 
-it.each(['dark', 'light'] as const)('uses semantic container and accent tokens for %s cards', (mode) => {
-  const theme = createTheme({ colors: { mode } });
-  theme.shape.radius.lg = '11px';
-  theme.colors.accent.border = '#f59e4b';
-  theme.colors.accent.background = '#714015';
-  const styles = getLearningContentCardStyles(theme);
-  expect(cache.registered[styles.card]).toContain('border-radius:11px');
-  expect(cache.registered[styles.featured]).toContain('border-radius:11px');
-  expect(cache.registered[styles.featured]).toContain('border-color:#f59e4b');
-  expect(cache.registered[styles.featured]).toContain(
-    `background:linear-gradient(120deg, #714015, ${theme.colors.background.secondary})`
-  );
+describe.each([getLearningContentCardStyles, getCompletionPanelStyles])('featured surfaces', (getStyles) => {
+  it.each(['dark', 'light'] as const)('uses semantic container and accent tokens for %s cards', (mode) => {
+    const theme = createTheme({ colors: { mode } });
+    theme.shape.radius.lg = '11px';
+    theme.colors.accent.border = '#f59e4b';
+    theme.colors.accent.background = '#714015';
+    const styles = getStyles(theme);
+    expect(cache.registered[styles.featured]).toContain('border-radius:11px');
+    expect(cache.registered[styles.featured]).toContain('#f59e4b');
+    expect(cache.registered[styles.featured]).toContain(
+      `background:linear-gradient(120deg, #714015, ${theme.colors.background.secondary})`
+    );
+  });
+
+  it.each([
+    ['dark', false],
+    ['light', false],
+    ['dark', true],
+    ['light', true],
+  ] as const)('uses host card surfaces in %s mode with visual refresh=%s', (mode, enabled) => {
+    const theme = createTheme({ colors: { mode } });
+    theme.flags.visualDesignRefresh = enabled;
+    theme.colors.background.primary = '#123456';
+    theme.colors.background.secondary = '#654321';
+    const styles = getStyles(theme);
+    if (enabled) {
+      expect(cache.registered[styles.featured]).toContain('background:#123456');
+      expect(cache.registered[styles.featured]).not.toContain('linear-gradient');
+    } else {
+      expect(cache.registered[styles.featured]).toContain(
+        `background:linear-gradient(120deg, ${theme.colors.accent.background}, #654321)`
+      );
+    }
+    expect(cache.registered[styles.featured]).toContain(theme.colors.accent.border);
+  });
+
+  it.each(['dark', 'light'] as const)('renders featured cards without accent tokens in %s mode', (mode) => {
+    const theme = createTheme({ colors: { mode } });
+    Reflect.deleteProperty(theme.colors, 'accent');
+    Reflect.deleteProperty(theme.colors.primary, 'background');
+    const styles = getStyles(theme);
+    expect(cache.registered[styles.featured]).toContain(theme.colors.primary.border);
+    expect(cache.registered[styles.featured]).toContain(
+      `background:linear-gradient(120deg, ${theme.colors.primary.transparent}, ${theme.colors.background.secondary})`
+    );
+    expect(cache.registered[styles.featured]).not.toContain('undefined');
+  });
 });
 
-it.each([
-  ['dark', false],
-  ['light', false],
-  ['dark', true],
-  ['light', true],
-] as const)('uses host card surfaces in %s mode with visual refresh=%s', (mode, enabled) => {
-  const theme = createTheme({ colors: { mode } });
-  theme.flags.visualDesignRefresh = enabled;
-  theme.colors.background.primary = '#123456';
-  theme.colors.background.secondary = '#654321';
-  const styles = getLearningContentCardStyles(theme);
-  expect(cache.registered[styles.card]).toContain(`background:${enabled ? '#123456' : '#654321'}`);
-  if (enabled) {
-    expect(cache.registered[styles.featured]).toContain('background:#123456');
-    expect(cache.registered[styles.featured]).not.toContain('linear-gradient');
-  } else {
-    expect(cache.registered[styles.featured]).toContain(
-      `background:linear-gradient(120deg, ${theme.colors.accent.background}, #654321)`
+it('uses host card surfaces and radius for ordinary cards', () => {
+  const theme = createTheme();
+  theme.shape.radius.lg = '11px';
+  for (const enabled of [false, true]) {
+    theme.flags.visualDesignRefresh = enabled;
+    const styles = getLearningContentCardStyles(theme);
+    expect(cache.registered[styles.card]).toContain('border-radius:11px');
+    expect(cache.registered[styles.card]).toContain(
+      `background:${enabled ? theme.colors.background.primary : theme.colors.background.secondary}`
     );
   }
-  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.accent.border}`);
-});
-
-it.each(['dark', 'light'] as const)('renders featured cards without accent tokens in %s mode', (mode) => {
-  const theme = createTheme({ colors: { mode } });
-  Reflect.deleteProperty(theme.colors, 'accent');
-  Reflect.deleteProperty(theme.colors.primary, 'background');
-  const styles = getLearningContentCardStyles(theme);
-  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.primary.border}`);
-  expect(cache.registered[styles.featured]).toContain(
-    `background:linear-gradient(120deg, ${theme.colors.primary.transparent}, ${theme.colors.background.secondary})`
-  );
-  expect(cache.registered[styles.featured]).not.toContain('undefined');
 });
 
 it('leaves launch button height and padding to the Grafana Button component', () => {

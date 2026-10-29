@@ -1,7 +1,4 @@
-let mockCompletionPanelEnabled = true;
-jest.mock('../../../utils/openfeature', () => ({
-  useBooleanFlag: (flag: string) => (flag === 'pathfinder.completion-panel' ? mockCompletionPanelEnabled : true),
-}));
+jest.mock('../../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
 
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
@@ -206,7 +203,6 @@ describe('DocsPanelContentArea', () => {
     mockRenderedCompletions.length = 0;
     mockRenderedSequences.length = 0;
     mockRenderedCompletionFlags.length = 0;
-    mockCompletionPanelEnabled = true;
     mockContinueToNextMilestone = undefined;
     mockCompletionPanelVisibilityChange = undefined;
   });
@@ -271,15 +267,7 @@ describe('DocsPanelContentArea', () => {
       expect(screen.getByRole('button', { name: 'Return to my learning' })).toBeInTheDocument();
     });
 
-    it('preserves the footer when the completion panel flag is off', () => {
-      mockCompletionPanelEnabled = false;
-      render(<DocsPanelContentArea {...makeProps()} />);
-      act(() => mockCompletionPanelVisibilityChange?.(true));
-      expect(screen.getByRole('button', { name: 'Return to my learning' })).toBeInTheDocument();
-    });
-
     it('switches to the recommendations tab in place instead of navigating away', () => {
-      mockCompletionPanelEnabled = false;
       const props = makeProps();
       render(<DocsPanelContentArea {...props} />);
 
@@ -289,7 +277,6 @@ describe('DocsPanelContentArea', () => {
     });
 
     it('reports the return-to-recommendations interaction', () => {
-      mockCompletionPanelEnabled = false;
       render(<DocsPanelContentArea {...makeProps()} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Return to my learning' }));
@@ -869,7 +856,6 @@ describe('guide warning impression lifecycle', () => {
 describe('DocsPanelContentArea completion navigation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockCompletionPanelEnabled = true;
   });
   const milestones = [
     { number: 1, title: 'First track guide', url: 'https://example.com/track/first', isActive: true },
@@ -932,27 +918,18 @@ describe('DocsPanelContentArea completion navigation', () => {
     });
   });
 
-  it.each([true, false])('passes the completion panel flag to the reader (%s)', (enabled) => {
-    mockCompletionPanelEnabled = enabled;
+  it('always enables the completion panel in the reader', () => {
     renderTrack();
-    expect(mockRenderedCompletionFlags.at(-1)).toBe(enabled);
-    if (!enabled) {
-      expect(mockRenderedSequences.at(-1)).toBeUndefined();
-    }
+    expect(mockRenderedCompletionFlags.at(-1)).toBe(true);
+    expect(mockRenderedSequences.at(-1)).toBeDefined();
   });
 
-  it.each([true, false])(
-    'retains navigation promises and requests rejection only for the enabled panel (%s)',
-    (enabled) => {
-      mockCompletionPanelEnabled = enabled;
-      const { model, navigation } = renderTrack();
-      expect(mockContinueToNextMilestone?.()).toBe(navigation);
-      expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
-      expect(jest.mocked(model.navigateToNextMilestone).mock.calls[0]).toEqual(
-        enabled ? [{ rejectOnError: true }] : []
-      );
-    }
-  );
+  it('retains navigation promises and requests real load failures', () => {
+    const { model, navigation } = renderTrack();
+    expect(mockContinueToNextMilestone?.()).toBe(navigation);
+    expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(model.navigateToNextMilestone).mock.calls[0]).toEqual([{ rejectOnError: true }]);
+  });
 
   it('does not offer continuation when the model cannot navigate', () => {
     const { model } = renderTrack(false);
@@ -962,7 +939,6 @@ describe('DocsPanelContentArea completion navigation', () => {
 });
 
 it('omits the duplicate reader footer when the completion panel owns navigation', () => {
-  mockCompletionPanelEnabled = true;
   render(<DocsPanelContentArea {...makeProps()} />);
   act(() => mockCompletionPanelVisibilityChange?.(true));
   expect(screen.queryByRole('button', { name: 'Return to my learning' })).not.toBeInTheDocument();

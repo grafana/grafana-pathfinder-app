@@ -63,8 +63,8 @@ it('counts input engagement once, then submission and readiness without authored
         input_index: 0,
       },
     ],
-    ['kiosk_interaction', { launch_mode: 'instance', block_index: 0, component: 'launch-form', action: 'submit' }],
-    ['kiosk_interaction', { launch_mode: 'instance', block_index: 0, component: 'launch-form', action: 'ready' }],
+    ['kiosk_interaction', { launch_mode: 'instance', block_index: 0, component: 'launch_form', action: 'submit' }],
+    ['kiosk_interaction', { launch_mode: 'instance', block_index: 0, component: 'launch_form', action: 'ready' }],
   ]);
 });
 
@@ -81,7 +81,7 @@ it.each([
   expect(report).toHaveBeenLastCalledWith('kiosk_interaction', {
     launch_mode: 'instance',
     block_index: 0,
-    component: 'launch-form',
+    component: 'launch_form',
     action: 'error',
     reason,
   });

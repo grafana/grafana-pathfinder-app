@@ -215,7 +215,7 @@ describe('awardBadge', () => {
     expect(reportAppInteractionMock).toHaveBeenCalledWith('badge-unlocked', {
       badge_id: 'penguin-wrangler',
       badge_title: 'penguin-wrangler-title',
-      trigger_type: 'path-completed',
+      trigger_type: 'path_completed',
       path_id: 'linux-server-integration',
     });
   });

@@ -1,7 +1,4 @@
-let mockCompletionPanelEnabled = true;
-jest.mock('../../utils/openfeature', () => ({
-  useBooleanFlag: (flag: string) => (flag === 'pathfinder.completion-panel' ? mockCompletionPanelEnabled : true),
-}));
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
 /**
  * Surface-level completion-emission test for FloatingPanelContent, the content
  * owner shared by BOTH the floating and full-screen surfaces (FloatingPanelManager
@@ -160,7 +157,6 @@ beforeEach(() => {
   mockRenderedCompletions.length = 0;
   mockRenderedSequences.length = 0;
   mockRenderedCompletionFlags.length = 0;
-  mockCompletionPanelEnabled = true;
   mockContinueToNextMilestone = undefined;
   useLinkClickHandler.mockClear();
   LearningJourneyMilestoneToolbar.mockClear();
@@ -381,27 +377,18 @@ describe('FloatingPanelContent completion navigation', () => {
     });
   });
 
-  it.each([true, false])('passes the completion panel flag to the reader (%s)', (enabled) => {
-    mockCompletionPanelEnabled = enabled;
+  it('always enables the completion panel in the reader', () => {
     renderTrack();
-    expect(mockRenderedCompletionFlags.at(-1)).toBe(enabled);
-    if (!enabled) {
-      expect(mockRenderedSequences.at(-1)).toBeUndefined();
-    }
+    expect(mockRenderedCompletionFlags.at(-1)).toBe(true);
+    expect(mockRenderedSequences.at(-1)).toBeDefined();
   });
 
-  it.each([true, false])(
-    'retains navigation promises and requests rejection only for the enabled panel (%s)',
-    (enabled) => {
-      mockCompletionPanelEnabled = enabled;
-      const { model, navigation } = renderTrack();
-      expect(mockContinueToNextMilestone?.()).toBe(navigation);
-      expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
-      expect(jest.mocked(model.navigateToNextMilestone).mock.calls[0]).toEqual(
-        enabled ? [{ rejectOnError: true }] : []
-      );
-    }
-  );
+  it('retains navigation promises and requests real load failures', () => {
+    const { model, navigation } = renderTrack();
+    expect(mockContinueToNextMilestone?.()).toBe(navigation);
+    expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(model.navigateToNextMilestone).mock.calls[0]).toEqual([{ rejectOnError: true }]);
+  });
 
   it('does not offer continuation when the model cannot navigate', () => {
     const { model } = renderTrack(false);

@@ -117,7 +117,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
   const { config: pluginConfig } = usePathfinderPluginConfig();
   const twoTabControllerEnabled = pluginConfig.enableTwoTabController;
-  const completionPanelEnabled = useBooleanFlag('pathfinder.completion-panel', true);
   const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
   const contentUrl = stableContent?.url;
   const [completionPanel, setCompletionPanel] = React.useState<{ url?: string; visible: boolean } | null>(null);
@@ -480,15 +479,12 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         restoreScrollPosition();
                       }}
                       completion={{ kind: 'tracked', input: surfaceCompletionInput }}
-                      completionPanelEnabled={completionPanelEnabled}
+                      completionPanelEnabled
                       onCompletionPanelVisibilityChange={handleCompletionPanelVisibilityChange}
-                      completionSequence={completionPanelEnabled ? completionSequence : undefined}
+                      completionSequence={completionSequence}
                       onContinueToNextMilestone={
                         model.canNavigateNext()
-                          ? () =>
-                              completionPanelEnabled
-                                ? model.navigateToNextMilestone({ rejectOnError: true })
-                                : model.navigateToNextMilestone()
+                          ? () => model.navigateToNextMilestone({ rejectOnError: true })
                           : undefined
                       }
                       onActiveTrackChange={
@@ -504,13 +500,13 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </AlignmentPendingContext.Provider>
                 )}
 
-                {(!completionPanelEnabled || !completionPanelVisible) && (
+                {!completionPanelVisible && (
                   <div className={styles.contentFooterAction}>
                     <Button
                       variant="secondary"
-                      fill={completionPanelEnabled ? 'text' : undefined}
+                      fill="text"
                       icon="book-open"
-                      size={completionPanelEnabled ? 'sm' : 'md'}
+                      size="sm"
                       onClick={() => {
                         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
                           action: 'navigate_to_recommendations',

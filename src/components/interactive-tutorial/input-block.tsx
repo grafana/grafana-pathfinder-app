@@ -20,6 +20,7 @@ import { testIds } from '../../constants/testIds';
 import { DataCheckControls } from './data-check-controls';
 import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
 import { useDataCheck } from './use-data-check';
+import { toAnalyticsValue } from '../../lib/analytics-values';
 
 /** Props for the InputBlock component */
 export interface InputBlockProps {
@@ -155,7 +156,7 @@ export function InputBlock({
       responseContext?.deleteResponse(variableName);
     }
     reportAppInteraction(UserInteraction.InputBlockSubmit, {
-      input_type: 'checkbox-group',
+      input_type: 'checkbox_group',
       variable_name: variableName,
       is_update: responseContext?.hasResponse(variableName) ?? false,
     });
@@ -338,7 +339,7 @@ export function InputBlock({
         setIsSaved(true);
 
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
-          input_type: inputType,
+          input_type: toAnalyticsValue(inputType),
           variable_name: variableName,
           is_update: wasAlreadySaved,
         });
@@ -350,7 +351,7 @@ export function InputBlock({
         setIsSaved(true);
 
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
-          input_type: inputType,
+          input_type: toAnalyticsValue(inputType),
           variable_name: variableName,
           is_update: wasAlreadySaved,
         });
@@ -365,7 +366,7 @@ export function InputBlock({
         setIsSaved(true);
 
         reportAppInteraction(UserInteraction.InputBlockSubmit, {
-          input_type: inputType,
+          input_type: toAnalyticsValue(inputType),
           variable_name: variableName,
           is_update: wasAlreadySaved,
         });

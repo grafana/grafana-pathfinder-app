@@ -38,9 +38,11 @@ export const getCompletionPanelStyles = (theme: GrafanaTheme2) => ({
   }),
   featured: css({
     padding: theme.spacing(2.5),
-    borderRadius: 12,
-    border: `1px solid ${theme.colors.primary.border}`,
-    background: theme.isDark ? 'linear-gradient(120deg,#282553,#142d51)' : 'linear-gradient(120deg,#eeebff,#e6f0ff)',
+    borderRadius: theme.shape.radius.lg,
+    border: `1px solid ${theme.colors.accent?.border ?? theme.colors.primary.border}`,
+    background: theme.flags.visualDesignRefresh
+      ? theme.colors.background.primary
+      : `linear-gradient(120deg, ${theme.colors.accent?.background ?? theme.colors.primary.transparent}, ${theme.colors.background.secondary})`,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',

@@ -142,7 +142,7 @@ describe('SidebarHub', () => {
       const details = screen.getByTestId(testIds.sidebarHub.rowDetails(0));
       expect(screen.getByRole('button', { name: 'Hide milestones' })).toHaveAttribute('aria-expanded', 'true');
       expect(within(details).getByText('About Second')).toBeInTheDocument();
-      expect(within(details).getByRole('heading', { name: 'Modules' })).toBeInTheDocument();
+      expect(within(details).getByRole('heading', { name: 'Milestones' })).toBeInTheDocument();
 
       fireEvent.click(screen.getByTestId(testIds.sidebarHub.rowModule(0, 0)));
       await waitFor(() => expect(open.onOpenModule).toHaveBeenCalledWith(open.modules[0]));

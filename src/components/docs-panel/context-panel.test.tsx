@@ -171,7 +171,7 @@ describe('RecommendationsSection', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
       content_title: 'Alerting 101',
       content_url: recommendation.contentUrl,
-      content_type: 'interactive-guide',
+      content_type: 'interactive_guide',
       interaction_location: interactionLocation,
       match_accuracy: 0.9,
       total_milestones: 4,

@@ -126,7 +126,7 @@ it('reports visible private completion with canonical identity and deduplicates 
   expect(reportAppInteraction).toHaveBeenCalledWith(
     UserInteraction.CompletionPanelViewed,
     {
-      guide_source: 'app-platform',
+      guide_source: 'app_platform',
       guide_visibility: 'private',
       guide_id: 'secret-id',
       interaction_location: 'content_completion_panel',

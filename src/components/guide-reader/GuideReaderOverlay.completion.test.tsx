@@ -33,7 +33,7 @@ jest.mock('../completion-panel/useCompletionRecommendations', () => ({
   useCompletionRecommendations: () => ({
     scope: 'test:1',
     loading: false,
-    context: { url: 'bundled:current', public: true, source: 'grafana', recommends: ['next'] },
+    context: { url: 'bundled:current', public: true, source: 'grafana' },
     items: [
       {
         key: 'bundled:next',
@@ -72,14 +72,7 @@ it('keeps completion in the controller reader without offering launches behind i
   await waitFor(() => expect(recordGuideCompletionForSurface).toHaveBeenCalledTimes(1));
   await act(async () => {});
 
-  const hiddenLaunch = screen.queryByRole('button', { name: 'Start Next guide' });
-  if (hiddenLaunch) {
-    await act(async () => {
-      fireEvent.click(hiddenLaunch);
-    });
-    expect(openGuideInSidebar).toHaveBeenCalledWith({ url: 'bundled:next' });
-    expect(screen.getByTestId(testIds.guideReader.overlay)).toBeInTheDocument();
-  }
+  expect(screen.getByTestId(testIds.guideReader.overlay)).toBeInTheDocument();
   expect(screen.queryByTestId('completion-panel')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /^(Start|Resume|Explore)/ })).not.toBeInTheDocument();
   expect(screen.getByText('Completed')).toBeInTheDocument();

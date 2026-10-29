@@ -225,7 +225,7 @@ func TestMyAssignments_GuideSourceFailureRule(t *testing.T) {
 				if strings.HasSuffix(rawURL, "manifest.json") {
 					return tc.manifest()
 				}
-				return []byte(`{"online-path": {"path": "online-path/v1", "type": "path"}}`), nil
+				return []byte(`{"online-path": {"path": "online-path/v1", "type": "path"}, "online-step": {"path":"guides/online-step","type":"guide"}}`), nil
 			})
 			withPathIndexFetch(t, func(context.Context, string) ([]string, error) { return nil, tc.docsIndex })
 			guides := singlePageGuideLister()

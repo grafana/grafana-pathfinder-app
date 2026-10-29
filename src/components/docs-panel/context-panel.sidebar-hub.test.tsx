@@ -214,7 +214,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
       content_title: 'Title top',
       content_url: 'https://cdn.example.com/top/content.json',
-      content_type: 'interactive-guide',
+      content_type: 'interactive_guide',
       interaction_location: 'hub_featured_card',
       match_accuracy: 0,
       total_milestones: 0,
@@ -304,7 +304,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
         content_title: 'Title five',
         content_url: 'https://cdn.example.com/five/content.json',
-        content_type: 'interactive-guide',
+        content_type: 'interactive_guide',
         interaction_location: 'hub_other_docs',
         match_accuracy: 0.4,
         total_milestones: 0,
@@ -368,7 +368,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
       content_title: 'Getting started',
       content_url: 'bundled:b',
-      content_type: 'learning-journey',
+      content_type: 'learning_journey',
       interaction_location: 'hub_resume_card',
       completion_percentage: 50,
       launch_target: 'current_guide',
@@ -399,7 +399,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
       content_title: 'Getting started',
       content_url: 'https://cdn/cover',
-      content_type: 'learning-journey',
+      content_type: 'learning_journey',
       interaction_location: 'hub_resume_card',
       completion_percentage: 50,
       launch_target: 'cover_page',
@@ -432,7 +432,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
 
     await waitFor(() => expect(openDocsPage).toHaveBeenCalledTimes(1));
     expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
-      content_type: 'learning-journey',
+      content_type: 'learning_journey',
       interaction_location: 'hub_resume_card',
       completion_percentage: 50,
       launch_target: 'cover_page',
@@ -591,7 +591,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.SummaryClick, {
         content_title: 'Title top',
         content_url: 'https://cdn.example.com/top/content.json',
-        content_type: 'learning-journey',
+        content_type: 'learning_journey',
         action: 'expand',
         match_accuracy: 0,
         total_milestones: 2,
@@ -606,7 +606,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       const details = screen.getByTestId(testIds.sidebarHub.featuredDetails);
       expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveTextContent('Hide milestones');
       expect(within(details).getByText('Have a data source')).toBeInTheDocument();
-      expect(within(details).getByRole('heading', { name: 'Modules' })).toBeInTheDocument();
+      expect(within(details).getByRole('heading', { name: 'Milestones' })).toBeInTheDocument();
 
       await click(screen.getByTestId(testIds.sidebarHub.featuredModule(1)));
 
@@ -705,7 +705,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       expect(
         within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).getByText('Have a data source')
       ).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Milestones' })).not.toBeInTheDocument();
     });
 
     it('never lists modules for a docs page or shows a skeleton once modules are in', async () => {
@@ -725,7 +725,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       });
 
       expect(
-        within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).queryByText('Modules')
+        within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).queryByText('Milestones')
       ).not.toBeInTheDocument();
       expect(screen.queryByTestId(testIds.sidebarHub.rowModule(0, 0))).not.toBeInTheDocument();
       expect(screen.getByTestId(testIds.sidebarHub.rowModule(1, 0))).toBeInTheDocument();
@@ -765,7 +765,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
 
       expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide milestones');
       expect(screen.getByTestId(testIds.sidebarHub.rowDetailsLoading(0))).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Milestones' })).not.toBeInTheDocument();
     });
 
     it('lets a docs row expand to its summary without a modules list', async () => {

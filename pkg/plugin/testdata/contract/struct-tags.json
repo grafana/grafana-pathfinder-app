@@ -193,6 +193,13 @@
       "omitempty": false
     },
     {
+      "field": "GuideSource",
+      "json": "guideSource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
       "field": "Completed",
       "json": "completed",
       "type": "bool",
@@ -670,6 +677,224 @@
       "type": "string",
       "wire": "string",
       "omitempty": true
+    }
+  ],
+  "learningInsightsAssignment": [
+    {
+      "field": "Name",
+      "json": "name",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "UserID",
+      "json": "userId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "TargetType",
+      "json": "targetType",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "TargetID",
+      "json": "targetId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "TargetSource",
+      "json": "targetSource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "TrackID",
+      "json": "trackId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "RuleID",
+      "json": "ruleId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "AssignedAt",
+      "json": "assignedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "DueAt",
+      "json": "dueAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Status",
+      "json": "status",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Guides",
+      "json": "guides",
+      "type": "[]plugin.assignmentGuideEntry",
+      "wire": "array<object>",
+      "omitempty": false
+    }
+  ],
+  "learningInsightsCompletion": [
+    {
+      "field": "UserID",
+      "json": "userId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideID",
+      "json": "guideId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideSource",
+      "json": "guideSource",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideTitle",
+      "json": "guideTitle",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "CompletedAt",
+      "json": "completedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Source",
+      "json": "source",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    }
+  ],
+  "learningInsightsPerson": [
+    {
+      "field": "UserID",
+      "json": "userId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "UserLogin",
+      "json": "userLogin",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "UserDisplayName",
+      "json": "userDisplayName",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    }
+  ],
+  "learningInsightsResponse": [
+    {
+      "field": "AsOf",
+      "json": "asOf",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "From",
+      "json": "from",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "To",
+      "json": "to",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "plugin.assignmentCapability",
+      "wire": "object",
+      "omitempty": false
+    },
+    {
+      "field": "Completeness",
+      "json": "completeness",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Warnings",
+      "json": "warnings",
+      "type": "[]string",
+      "wire": "array<string>",
+      "omitempty": false
+    },
+    {
+      "field": "People",
+      "json": "people",
+      "type": "[]plugin.learningInsightsPerson",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "Completions",
+      "json": "completions",
+      "type": "[]plugin.learningInsightsCompletion",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "Assignments",
+      "json": "assignments",
+      "type": "[]plugin.learningInsightsAssignment",
+      "wire": "array<object>",
+      "omitempty": false
     }
   ],
   "myAssignmentsResponse": [

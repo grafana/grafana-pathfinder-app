@@ -77,8 +77,8 @@ it('sends the full guide only on submission and hands validated output to the ed
   await act(async () => options.onComplete?.(JSON.stringify(revised)));
   expect(onReview).toHaveBeenCalledWith(revised);
   expect(jest.mocked(reportAppInteraction).mock.calls).toEqual([
-    [UserInteraction.AssistantCustomizeClick, { source: 'private-guide' }],
-    [UserInteraction.AssistantCustomizeSuccess, { source: 'private-guide' }],
+    [UserInteraction.AssistantCustomizeClick, { source: 'private_guide' }],
+    [UserInteraction.AssistantCustomizeSuccess, { source: 'private_guide' }],
   ]);
 });
 
@@ -94,8 +94,8 @@ it('retains the answers and existing draft when validation fails, and allows ret
   await act(async () => options.onComplete?.('still invalid'));
   expect(onReview).not.toHaveBeenCalled();
   expect(jest.mocked(reportAppInteraction).mock.calls).toEqual([
-    [UserInteraction.AssistantCustomizeClick, { source: 'private-guide' }],
-    [UserInteraction.AssistantCustomizeError, { source: 'private-guide' }],
+    [UserInteraction.AssistantCustomizeClick, { source: 'private_guide' }],
+    [UserInteraction.AssistantCustomizeError, { source: 'private_guide' }],
   ]);
   expect(screen.getByRole('alert')).toHaveTextContent('The response is incomplete or is not valid JSON');
   expect(screen.getByLabelText(/What should they learn/)).toHaveValue('Use our team conventions');
@@ -208,8 +208,8 @@ it('preserves the draft and avoids generation when the request exceeds the conte
   expect(generate).not.toHaveBeenCalled();
   expect(onReview).not.toHaveBeenCalled();
   expect(jest.mocked(reportAppInteraction).mock.calls).toEqual([
-    [UserInteraction.AssistantCustomizeClick, { source: 'private-guide' }],
-    [UserInteraction.AssistantCustomizeError, { source: 'private-guide' }],
+    [UserInteraction.AssistantCustomizeClick, { source: 'private_guide' }],
+    [UserInteraction.AssistantCustomizeError, { source: 'private_guide' }],
   ]);
 });
 

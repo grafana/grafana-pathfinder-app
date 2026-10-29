@@ -18,3 +18,15 @@ if (!globalThis.crypto.subtle) {
     writable: false,
   });
 }
+
+// Analytics values are snake_case (#2067); fail any test whose code path
+// reported a kebab-case value so a new emitter cannot drift unnoticed.
+import { drainValueCasingViolations } from './src/lib/analytics-value-check';
+afterEach(() => {
+  const violations = drainValueCasingViolations();
+  if (violations.length > 0) {
+    throw new Error(
+      `Analytics values must be snake_case (see docs/developer/TELEMETRY.md, "Value conventions"):\n${violations.join('\n')}`
+    );
+  }
+});

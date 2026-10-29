@@ -90,7 +90,33 @@ describe('completion panel integration', () => {
     expect(onVisibility).not.toHaveBeenCalledWith(true);
   });
 
-  it('restores guide labels and analytics for a flag-off track-only member', async () => {
+  it('reports milestone analytics for a track-only member in the completion panel', async () => {
+    const content = makeContent({
+      type: 'learning-journey',
+      metadata: { title: 'Track guide', trackMemberBaseUrl: baseUrl },
+    });
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled
+        completionSequence={{ currentMilestone: 1, milestones, baseUrl }}
+        onContinueToNextMilestone={jest.fn()}
+      />
+    );
+    expect(await screen.findByRole('button', { name: 'Complete milestone' })).toBeInTheDocument();
+    await clickWhenReady();
+    expect(markCompleteEvents().at(-1)?.[1]).toEqual(
+      expect.objectContaining({
+        completion_context: 'milestone',
+        current_milestone: 1,
+        total_milestones: milestones.length,
+      })
+    );
+    expect(await screen.findByTestId('completion-panel')).toBeInTheDocument();
+  });
+
+  it('retains guide labels and analytics for an explicitly opted-out track-only reader', async () => {
     const content = makeContent({
       type: 'learning-journey',
       metadata: { title: 'Track guide', trackMemberBaseUrl: baseUrl },
@@ -517,7 +543,7 @@ describe('mark-complete guide identity', () => {
       await clickWhenReady();
       expect(markCompleteEvents()[0]?.[1]).toMatchObject({
         guide_id: guideId,
-        guide_source: guideSource,
+        guide_source: guideSource.replace('-', '_'),
         guide_visibility: 'public',
         ...(guideSource === 'online-cdn' && { path_id: 'parent-path' }),
       });
@@ -545,7 +571,7 @@ describe('mark-complete guide identity', () => {
       />
     );
     await clickWhenReady();
-    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online-cdn' });
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online_cdn' });
   });
 
   it.each(['app-platform', 'remote-repo:private-company'])(
