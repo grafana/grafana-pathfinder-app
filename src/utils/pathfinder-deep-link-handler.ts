@@ -44,7 +44,6 @@ function rewriteCurrentUrl(mutate: (url: URL) => void): void {
       search: url.search,
       hash: url.hash,
       state: location.state,
-      key: location.key,
     });
   } finally {
     rewritingUrl = false;
