@@ -64,7 +64,16 @@ const standaloneFixture: FixturePackage = {
     { id: 'standalone-docs', label: `[Open standalone docs](${DESTINATION_ORIGIN}/standalone)`, format: 'markdown' },
     { id: 'standalone-literal', label: PLAIN_LABEL },
   ],
-  blocks: [{ type: 'markdown', content: 'Standalone guide body.' }],
+  // An interactive step keeps a guide that fits on screen from completing on open.
+  blocks: [
+    { type: 'markdown', content: 'Standalone guide body.' },
+    {
+      type: 'interactive',
+      action: 'highlight',
+      reftarget: "[data-testid='data-testid Command palette trigger']",
+      content: 'Standalone interactive step.',
+    },
+  ],
 };
 
 const summaryFixture: FixturePackage = {

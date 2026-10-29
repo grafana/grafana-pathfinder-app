@@ -136,11 +136,22 @@ Readers' selections save immediately. Option IDs stay unchanged after label edit
 
 Choice-driven progress excludes hidden content. Completion evidence remains after deselection, so a completed section remains complete after reselection. A newly selected, unfinished section lowers progress. Required groups with no selection prevent guide completion. Optional groups permit an empty selection.
 
-The **Mark complete** button records the current selected path, not future selections. Existing guides without checkbox groups or visibility controls retain position-based progress. Conditional blocks retain their existing one-block counting model.
+The **Mark complete** button records the current selected path, not future selections. A choice-driven guide completes when no required choice is unanswered and the final completable block on the active path is completed. Existing guides without checkbox groups or visibility controls retain position-based progress. Conditional blocks retain their existing one-block counting model.
 
 Import [the signals example](interactive-examples/choice-driven-guide.json) to try three independent sections in preview. Use the same pattern for other topics.
 
 App Platform saves use compatibility markers and conditional wrappers because the current CRD does not preserve the visibility field. Raw JSON uploads must use the compatibility encoding to preserve these settings.
+
+## Where a guide completes
+
+Completion is a bookmark, not a competence claim. It records how far a reader got through the material. It drives resume, what's next, path progress and badges. It does not say the reader understood anything.
+
+- A guide completes at its **last interactive block**. Content after that block does not hold the guide below 100%, and a reader who never scrolls it still completes the guide.
+- Put anything the reader must still do before the last interactive block, or in an interactive block of its own. Trailing instructions that are plain prose are not tracked.
+- The most accurate completion signal is a useful interactive step last: an action in product-led content, a knowledge check (quiz or input) in enablement content.
+- A guide with no interactive blocks completes when the reader scrolls to its end. A guide that fits on screen completes when it opens.
+- Keep the final interactive block outside conditionals and `snippet-ref` blocks. A conditional counts as one non-completable block, so an interactive block inside a branch never sets the completion target; a guide whose only interactive blocks are in conditionals completes by being viewed. A final interactive block that follows an id-less `snippet-ref` cannot be tracked, so only **Mark complete** brings that guide to 100%.
+- **Mark complete** still works as an optional shortcut. Section **Mark section as complete** buttons still check off and collapse a section.
 
 ## Viewing guides in the docs panel
 

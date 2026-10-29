@@ -49,23 +49,24 @@ describe('guideProgressAtPosition', () => {
     expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 100, fraction: 1, complete: true });
   });
 
-  it('stops short of 100% when prose follows the final interactive block', () => {
+  it('completes at the final interactive block even when prose follows it', () => {
     const index = computeGuideBlockIndex([markdown(), interactive('doit'), markdown(), markdown()]);
 
     expect(index.totalBlockCount).toBe(4);
     expect(index.finalCompletablePosition).toBe(2);
-    expect(guideProgressAtPosition(index, 2)).toMatchObject({ percent: 50, complete: false });
+    expect(guideProgressAtPosition(index, 1)).toMatchObject({ percent: 25, complete: false });
+    expect(guideProgressAtPosition(index, 2)).toMatchObject({ percent: 100, complete: true });
   });
 
-  it('does not shortcut an earlier interactive block to 100%', () => {
+  it('does not complete at an earlier interactive block', () => {
     const index = computeGuideBlockIndex([interactive('first'), markdown(), interactive('last'), markdown()]);
 
     expect(guideProgressAtPosition(index, 1)).toMatchObject({ percent: 25, complete: false });
-    expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 75, complete: false });
-    expect(guideProgressAtPosition(index, 4)).toMatchObject({ percent: 100, complete: true });
+    expect(guideProgressAtPosition(index, 2)).toMatchObject({ percent: 50, complete: false });
+    expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 100, complete: true });
   });
 
-  it('treats a guide with no interactive block the same as any other', () => {
+  it('needs the whole guide for a guide with no interactive block', () => {
     const index = computeGuideBlockIndex([markdown(), markdown(), markdown(), markdown()]);
 
     expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 75, complete: false });
@@ -145,7 +146,7 @@ describe('guideProgress', () => {
     });
   });
 
-  it('reaches 100% only on "Mark as complete" for a guide whose last block is prose', () => {
+  it('completes on the final "Do it" without the closing prose being read', () => {
     const index = computeGuideBlockIndex([
       { type: 'section', blocks: [markdown('brief'), interactive('run')] },
       markdown('well-done'),
@@ -153,13 +154,50 @@ describe('guideProgress', () => {
 
     expect(guideProgress(index, [{ kind: 'do-it', blockId: 'run' }])).toMatchObject({
       position: 2,
-      percent: 66,
-      complete: false,
+      percent: 100,
+      complete: true,
     });
     expect(guideProgress(index, [{ kind: 'mark-guide-complete' }])).toMatchObject({ percent: 100, complete: true });
   });
 
-  it('leaves a guide with no interactive block at 0% until it is marked complete', () => {
+  it('completes when the section holding the final interactive block is acknowledged', () => {
+    const index = computeGuideBlockIndex([
+      markdown('intro'),
+      { type: 'section', id: 'setup', blocks: [markdown('brief'), interactive('run')] },
+      markdown('outro'),
+    ]);
+
+    expect(guideProgress(index, [{ kind: 'mark-section-complete', blockId: 'section-setup' }])).toMatchObject({
+      percent: 100,
+      complete: true,
+    });
+  });
+
+  it('does not let an interactive block inside a conditional set the completion target', () => {
+    const index = computeGuideBlockIndex([
+      interactive('first'),
+      { type: 'conditional', whenTrue: [interactive('branch')], whenFalse: [] },
+      markdown('outro'),
+    ]);
+
+    expect(index.finalCompletablePosition).toBe(1);
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'first' }])).toMatchObject({ complete: true });
+  });
+
+  it('cannot reach a final interactive block after an id-less snippet-ref sibling', () => {
+    // Runtime step ids shift once the snippet inlines, so the index cannot key
+    // this block; Mark complete is its only route to 100% (#2259 must handle it).
+    const index = computeGuideBlockIndex(
+      [{ type: 'section', id: 's', blocks: [{ type: 'snippet-ref' }, interactive()] }],
+      { resolveStepId: (block, context) => (block.type === 'interactive' ? `step-${context.index}` : undefined) }
+    );
+
+    expect(index.finalCompletablePosition).toBe(2);
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'step-1' }])).toMatchObject({ complete: false });
+    expect(guideProgress(index, [{ kind: 'mark-guide-complete' }])).toMatchObject({ complete: true });
+  });
+
+  it('leaves a guide with no interactive block at 0% until it is marked complete or viewed', () => {
     const index = computeGuideBlockIndex([markdown('a'), markdown('b'), markdown('c'), markdown('d')]);
 
     expect(guideProgress(index, [])).toMatchObject({ percent: 0, complete: false });

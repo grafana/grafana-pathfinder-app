@@ -1,10 +1,10 @@
 /**
- * Completion percentage from an evidenced position, per the 2026-08-19 rule.
+ * Completion percentage from an evidenced position (docs/design/COMPLETION-MODEL.md).
  *
  * Progress is the furthest block reached that we have clear evidence the user
- * completed. Evidence is exactly one of: the user clicked "Do it", or clicked
- * "Mark as complete" (on a section or on the whole guide). Anything softer —
- * scroll position, time on page — is deliberately not evidence.
+ * completed. A guide is complete once that reaches its final completable
+ * block; a guide with none completes when its end has been seen on screen,
+ * which arrives here as a guide-level mark.
  */
 
 import type { GuideBlockIndex } from './block-index';
@@ -39,15 +39,9 @@ export interface GuideProgress {
 /**
  * Completion for a guide whose furthest evidenced position is `position`.
  *
- * The formula is `position / totalBlockCount`, with no special cases. A guide
- * whose final counted block is completable reaches 100% by clicking it, since
- * that block is position `n` of `n`; a guide with trailing prose after its
- * last "Do it" reaches 100% only through the "Mark as complete" button, which
- * every guide carries unconditionally.
- *
- * `percent` is reserved: it reads 100 only when `complete`, so a large
- * denominator one block short of the end rounds down to 99 rather than
- * publishing a completion the flag denies.
+ * `percent` is `position / totalBlockCount`, reserved: it reads 100 only when
+ * `complete`, so trailing prose after the final completable block never shows
+ * a partial figure for a finished guide.
  */
 export function guideProgressAtPosition(index: GuideBlockIndex, position: number): GuideProgress {
   const total = index.totalBlockCount;
@@ -55,7 +49,8 @@ export function guideProgressAtPosition(index: GuideBlockIndex, position: number
   // a non-finite position outright: `percent` feeds a durable record.
   const clamped = Number.isFinite(position) ? Math.max(0, Math.min(Math.floor(position), total)) : 0;
 
-  const complete = total > 0 && clamped >= total;
+  const target = index.completableBlockCount > 0 ? index.finalCompletablePosition : total;
+  const complete = total > 0 && clamped >= target;
   const fraction = total === 0 ? 0 : clamped / total;
   const percent = complete ? 100 : Math.min(99, Math.floor(fraction * 100));
 

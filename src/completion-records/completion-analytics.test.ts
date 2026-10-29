@@ -231,7 +231,7 @@ describe('completion analytics — event properties', () => {
       completable_block_count: 0,
       section_count: 0,
       guide_stats_version: 1,
-      block_progress_rule_version: 'block-position-v1',
+      block_progress_rule_version: 'block-position-v2',
     });
     expect(properties).toMatchObject({ guide_id: 'private-name', guide_title: 'Private title' });
   });

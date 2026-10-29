@@ -40,7 +40,12 @@ import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey 
 import { logger } from '../lib/logging';
 import { furthestEvidencedPosition, guideProgress, type CompletionEvidence } from '../lib/guide-stats';
 
-import { choiceGuideProgress, CHOICE_COMPLETION_VARIABLE } from '../lib/guide-stats/choice-progress';
+import {
+  choiceGuideProgress,
+  choicePathCompletionKeys,
+  choicePathHasUnansweredRequiredInput,
+  CHOICE_COMPLETION_VARIABLE,
+} from '../lib/guide-stats/choice-progress';
 import {
   evictAllGuideIndexes,
   evictGuideIndex,
@@ -619,7 +624,43 @@ export function peekGuidePercentage(contentKey: string): number {
   return computeGuideProgress(contentKey)?.percent ?? 0;
 }
 
+/**
+ * Bottom-visible evidence: the end of a guide with no completable block was
+ * seen on screen. Content with no block index (a docs page) counts as such a
+ * guide unless `expectsBlockIndex` says its index has simply not published.
+ * Returns whether the mark was written; it is readable synchronously on return.
+ */
+export function markGuideEndViewed(contentKey: string, expectsBlockIndex: boolean): boolean {
+  if (isPreviewContentKey(contentKey) || guideCompletionMarkStorage.isMarked(contentKey)) {
+    return false;
+  }
+  const active = getGuideIndex(contentKey);
+  if (active ? active.index.completableBlockCount > 0 : expectsBlockIndex) {
+    return false;
+  }
+  let choiceCompletionKeys: string[] | undefined;
+  if (active?.choiceModel) {
+    const hidden = getHiddenGuideSections(contentKey);
+    if (
+      !isGuideChoiceProgressReady(contentKey) ||
+      active.responses === undefined ||
+      choicePathHasUnansweredRequiredInput(active.choiceModel, active.responses, hidden)
+    ) {
+      return false;
+    }
+    choiceCompletionKeys = choicePathCompletionKeys(active.choiceModel, active.responses, hidden);
+  }
+  void guideCompletionMarkStorage
+    .setViewed(contentKey, choiceCompletionKeys)
+    .then(() => refreshAndNotifyGuideProgress(contentKey));
+  return true;
+}
+
 export function getGuideCompletionSource(contentKey: string): 'manual' | 'skipped' | 'objectives' {
+  // Seeing the end is the completion criterion of a guide with no completable block.
+  if (guideCompletionMarkStorage.isViewed(contentKey)) {
+    return 'objectives';
+  }
   if (guideCompletionMarkStorage.isMarked(contentKey)) {
     return 'manual';
   }

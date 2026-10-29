@@ -344,10 +344,11 @@ test.describe('completion tracking', () => {
       await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
       await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
 
+      // Each milestone is prose-only and fits on screen, so it completes on
+      // arrival, with no click: the end of its content is visible (#2258).
       const milestoneIds = NO_REPOSITORY_PATH.milestones!;
       for (let index = 0; index < milestoneIds.length; index++) {
         await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
-        await markComplete(page);
         const milestone = ALL_FIXTURES.find((fixture) => fixture.id === milestoneIds[index])!;
         await expect
           .poll(async () => (await readStoredProgress(page)).interactiveCompletion[fixtureContentUrl(milestone)], {
@@ -356,7 +357,9 @@ test.describe('completion tracking', () => {
           })
           .toBe(100);
         const milestoneFacts = await waitForQueuedFacts(page, index + 1);
-        expect(factsFor(milestoneFacts, DEFAULT_GUIDE_SOURCE, milestoneIds[index]!)).toHaveLength(1);
+        const milestoneFact = factsFor(milestoneFacts, DEFAULT_GUIDE_SOURCE, milestoneIds[index]!);
+        expect(milestoneFact).toHaveLength(1);
+        expect(milestoneFact[0]!.body.source).toBe('objectives');
         const completionPanel = page.getByTestId('completion-panel');
         await expect(completionPanel).toBeVisible({ timeout: TIMEOUTS.UI_READY });
 
@@ -366,11 +369,6 @@ test.describe('completion tracking', () => {
           await completionPanel
             .getByRole('button', { name: `Continue to ${nextMilestone.title}`, exact: true })
             .click();
-          await expect(page.getByTestId(testIds.markComplete.button).first()).toBeVisible({
-            timeout: TIMEOUTS.UI_READY,
-          });
-          expect(await footerPercentage(page)).toBe(0);
-          expect(await readQueuedFacts(page)).toHaveLength(index + 1);
         } else {
           await expect(completionPanel.getByRole('heading', { name: 'Path complete', exact: true })).toBeVisible();
           await expect(completionPanel.getByRole('button', { name: /^Continue to / })).toHaveCount(0);
