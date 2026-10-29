@@ -58,6 +58,7 @@ jest.mock('../../docs-retrieval', () => ({
   getNextMilestoneIdFromContent: jest.fn(),
   getPreviousMilestoneIdFromContent: jest.fn(),
   getJourneyProgress: jest.fn(),
+  journeyProgressFromMilestones: jest.fn(() => 0),
   setJourneyCompletionPercentage: jest.fn(),
   getMilestoneSlug: jest.fn(),
   markMilestoneDone: jest.fn(),
@@ -72,7 +73,15 @@ jest.mock('../../package-engine', () => ({
   createCompositeResolver: jest.fn(),
 }));
 
+jest.mock('../completion-panel/CompletionPanel', () => ({
+  CompletionPanel: ({ nextModule, onContinue }: import('../completion-panel/CompletionPanel').CompletionPanelProps) =>
+    nextModule
+      ? require('react').createElement('button', { onClick: onContinue }, `Continue to ${nextModule.title}`)
+      : null,
+}));
+
 jest.mock('../../lib/user-storage', () => ({
+  interactiveCompletionStorage: { getAll: jest.fn(async () => ({})) },
   tabStorage: {
     getTabs: jest.fn(),
     setTabs: jest.fn(),
@@ -88,7 +97,8 @@ jest.mock('../../lib/analytics', () => ({
   setupScrollTracking: jest.fn(),
   reportAppInteraction: jest.fn(),
   createInteractionName: jest.fn((type: string) => `pathfinder_${type}`),
-  UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction' },
+  UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction', OpenResourceClick: 'open_resource_click' },
+  AnalyticsContentType: { LearningJourney: 'learning-journey' },
   getContentTypeForAnalytics: jest.fn(),
 }));
 
@@ -221,6 +231,9 @@ jest.mock('../../hooks', () => ({}));
 // Import under test
 // ---------------------------------------------------------------------------
 
+import React from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import ReaderCompletionPanel from '../completion-panel/ReaderCompletionPanel';
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
 import {
@@ -263,6 +276,181 @@ const preparedContent: PreparedRawContent = {
 // Tests
 // ---------------------------------------------------------------------------
 
+describe.each([false, true])('milestone navigation failure with docs loader %s', (useDocsLoader) => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(useDocsLoader);
+    (getNextMilestoneUrlFromContent as jest.Mock).mockReturnValue('bundled:next');
+  });
+
+  const makePanel = () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [{ ...makeTab('journey-tab'), content: preparedContent }],
+      activeTabId: 'journey-tab',
+    });
+    return panel;
+  };
+
+  it('rejects a failed next-module load while keeping the panel mounted, then allows retry', async () => {
+    const panel = makePanel();
+    const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;
+    let finish!: (result: unknown) => void;
+    fetch.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+
+    const navigation = panel.navigateToNextMilestone({ rejectOnError: true });
+    const rejected = expect(navigation).rejects.toThrow('Failed to load');
+    expect(panel.getActiveTab()).toMatchObject({ content: preparedContent, isLoading: false, error: null });
+
+    finish({ content: null, error: 'Network unavailable', errorType: 'other' });
+    await rejected;
+    expect(panel.getActiveTab()).toMatchObject({ content: preparedContent, isLoading: false, error: null });
+
+    const nextContent = { ...preparedContent, url: 'bundled:next' };
+    fetch.mockResolvedValueOnce({ content: nextContent });
+    await expect(panel.navigateToNextMilestone({ rejectOnError: true })).resolves.toBeUndefined();
+    expect(panel.getActiveTab()).toMatchObject({
+      content: nextContent,
+      currentUrl: 'bundled:next',
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  it('rejects thrown fetch failures without replacing the current content with a tab error', async () => {
+    const panel = makePanel();
+    const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;
+    fetch.mockRejectedValueOnce(new Error('Offline'));
+
+    await expect(panel.navigateToNextMilestone({ rejectOnError: true })).rejects.toThrow('Failed to load');
+    expect(panel.getActiveTab()).toMatchObject({ content: preparedContent, isLoading: false, error: null });
+  });
+
+  it.each(['success', 'error', 'rejection'] as const)(
+    'resolves a superseded rejectOnError load after a stale %s without changing newer content',
+    async (settlement) => {
+      const panel = makePanel();
+      const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;
+      let resolve!: (result: unknown) => void;
+      let reject!: (error: Error) => void;
+      fetch.mockReturnValueOnce(
+        new Promise((resolveLoad, rejectLoad) => {
+          resolve = resolveLoad;
+          reject = rejectLoad;
+        })
+      );
+
+      const staleNavigation = panel.navigateToNextMilestone({ rejectOnError: true });
+      const resolved = expect(staleNavigation).resolves.toBeUndefined();
+      const newerContent = { ...preparedContent, url: 'bundled:newer' };
+      fetch.mockResolvedValueOnce({ content: newerContent });
+      await panel.loadTab('journey-tab', newerContent.url);
+      const newerTab = panel.getActiveTab();
+      expect(newerTab).toMatchObject({ content: newerContent, currentUrl: newerContent.url, error: null });
+
+      if (settlement === 'rejection') {
+        reject(new Error('Stale fetch failed'));
+      } else {
+        resolve(
+          settlement === 'success'
+            ? { content: { ...preparedContent, url: 'bundled:next' } }
+            : { content: null, error: 'Stale fetch failed', errorType: 'other' }
+        );
+      }
+
+      await resolved;
+      expect(panel.getActiveTab()).toBe(newerTab);
+    }
+  );
+
+  it('preserves non-rejecting tab-error behavior for existing navigation and load callers', async () => {
+    const panel = makePanel();
+    const fetch = useDocsLoader ? (loadDocsTabContentResult as jest.Mock) : mockFetchContent;
+    fetch.mockResolvedValue({ content: null, error: 'Network unavailable', errorType: 'other' });
+
+    await expect(panel.navigateToNextMilestone()).resolves.toBeUndefined();
+    expect(panel.getActiveTab()).toMatchObject({ error: 'Network unavailable', isLoading: false });
+    await expect(panel.loadTab('journey-tab', 'bundled:next')).resolves.toBeUndefined();
+    expect(panel.getActiveTab()).toMatchObject({ error: 'Network unavailable', isLoading: false });
+  });
+});
+
+describe('completion card destination agrees with real milestone navigation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(false);
+    const helpers = jest.requireActual('../../docs-retrieval/learning-journey-helpers');
+    (getNextMilestoneUrlFromContent as jest.Mock).mockImplementation(helpers.getNextMilestoneUrl);
+    (getNextMilestoneIdFromContent as jest.Mock).mockImplementation(helpers.getNextMilestoneId);
+  });
+
+  afterEach(() => {
+    (getNextMilestoneUrlFromContent as jest.Mock).mockReset();
+    (getNextMilestoneIdFromContent as jest.Mock).mockReset();
+  });
+
+  it.each([false, true])(
+    'loads the advertised unlocked destination after consecutive placeholders (track-only %s)',
+    async (trackOnly) => {
+      const milestones = [
+        { id: 'one', title: 'One', url: 'bundled:one', number: 1, isActive: true },
+        { title: 'Two', url: '', number: 2, isActive: false, isLocked: true },
+        { title: 'Three', url: '', number: 3, isActive: false, isLocked: true },
+        { id: 'four', title: 'Four', url: 'bundled:four', number: 4, isActive: false },
+      ];
+      const content: PreparedRawContent = {
+        ...preparedContent,
+        type: trackOnly ? 'interactive' : 'learning-journey',
+        url: 'bundled:one',
+        metadata: trackOnly
+          ? { title: 'One', trackMemberBaseUrl: 'bundled:path' }
+          : {
+              title: 'One',
+              learningJourney: {
+                baseUrl: 'bundled:path',
+                currentMilestone: 1,
+                totalMilestones: milestones.length,
+                milestones,
+              },
+            },
+      };
+      const panel = new CombinedLearningJourneyPanel();
+      panel.setState({
+        tabs: [
+          {
+            ...makeTab('journey-tab'),
+            content,
+            ...(trackOnly && { activeTrackId: 'selected', activeTrackMilestones: milestones }),
+          },
+        ],
+        activeTabId: 'journey-tab',
+      });
+      const nextContent = { ...preparedContent, url: 'bundled:four' };
+      mockFetchContent.mockResolvedValueOnce({ content: nextContent });
+      const load = jest.spyOn(panel, 'loadTab');
+      render(
+        React.createElement(ReaderCompletionPanel, {
+          content,
+          sequence: { currentMilestone: 1, milestones },
+          celebrating: false,
+          onContinue: () => panel.navigateToNextMilestone({ rejectOnError: true }),
+        })
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Continue to Four' }));
+      });
+
+      expect(load).toHaveBeenCalledWith('journey-tab', 'bundled:four', {
+        rejectOnError: true,
+        explicitGuideId: 'four',
+      });
+      expect(mockFetchContent).toHaveBeenCalledWith('bundled:four', expect.anything());
+      expect(panel.getActiveTab()).toMatchObject({ content: nextContent, currentUrl: 'bundled:four' });
+    }
+  );
+});
+
 describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -298,6 +486,30 @@ describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
 describe('CombinedLearningJourneyPanel — milestone toolbar navigation threads explicitGuideId', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('keeps next-module navigation pending until the loader settles', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const content = { url: 'bundled:one', metadata: {} };
+    jest
+      .spyOn(panel, 'getActiveTab')
+      .mockReturnValue({ id: 'guide', content } as ReturnType<typeof panel.getActiveTab>);
+    jest.requireMock('../../docs-retrieval').getNextMilestoneUrlFromContent.mockReturnValue('bundled:two');
+    let finish!: () => void;
+    jest.spyOn(panel, 'loadTab').mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+    );
+    let settled = false;
+    const navigation = panel.navigateToNextMilestone().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+    await navigation;
+    expect(settled).toBe(true);
   });
 
   it('navigateToNextMilestone passes the next milestone id as explicitGuideId', async () => {

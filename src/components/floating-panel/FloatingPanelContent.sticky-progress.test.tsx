@@ -22,7 +22,10 @@ jest.mock('../../lib/analytics', () => ({
   ...jest.requireActual('../../lib/analytics'),
   reportAppInteraction: jest.fn(),
 }));
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
 jest.mock('../../docs-retrieval', () => ({
+  resolveActiveMilestoneSequence: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneSequence,
   useGuideResponsesOptional: () => null,
   isJourneyCoverPage: (content: RawContent) =>
     content.type === 'learning-journey' && content.metadata.learningJourney?.currentMilestone === 0,

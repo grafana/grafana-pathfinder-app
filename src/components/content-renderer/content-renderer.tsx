@@ -9,7 +9,7 @@ import { useIsAlignmentPaused } from '../../global-state/alignment-pending-conte
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, useStyles2 } from '@grafana/ui';
+import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, Button, useStyles2 } from '@grafana/ui';
 import { getSelectionStyles } from './content-renderer.styles';
 
 import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
@@ -101,7 +101,13 @@ import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
+import { getUserScope } from '../../lib/user-scope';
+import { t } from '@grafana/i18n';
+import { openLearningHome } from '../docs-panel/utils/open-catalog-browser';
+import { MyLearningErrorBoundary } from '../docs-panel/components/MyLearningErrorBoundary';
 import { resolveFullScreenFallbackLocation, resolveFullScreenManifestLocation } from './full-screen-fallback-location';
+
+const ReaderCompletionPanel = React.lazy(() => import('../completion-panel/ReaderCompletionPanel'));
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -179,7 +185,10 @@ interface ContentRendererProps {
    * — leave it unset, which downgrades the label to "Mark complete"; the
    * control itself is never conditional.
    */
-  onContinueToNextMilestone?: () => void;
+  onContinueToNextMilestone?: () => void | Promise<void>;
+  completionSequence?: { currentMilestone: number; milestones: Milestone[]; baseUrl?: string };
+  completionPanelEnabled?: boolean;
+  onCompletionPanelVisibilityChange?: (visible: boolean) => void;
   /** Forwards the cover page's own track-tab selection — see `LearningPathTableOfContents`'s prop doc. */
   onActiveTrackChange?: (trackId: string | null, milestones: Milestone[] | null) => void;
   /** Forwarded to `LearningPathTableOfContents`'s own prop of the same name — see its doc. */
@@ -218,6 +227,9 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   onContentReady,
   completion,
   onContinueToNextMilestone,
+  completionSequence,
+  completionPanelEnabled = false,
+  onCompletionPanelVisibilityChange,
   onActiveTrackChange,
   initialActiveTrackId,
   className,
@@ -225,6 +237,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
 }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
+  const scope = getUserScope();
   const guideCompleteCalledRef = useRef(false);
   const resolveOwnerContentKey = useCallback(() => resolveGuideContentKey(content.url), [content.url]);
 
@@ -602,16 +615,58 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   );
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
-      context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
+      key={completionPanelEnabled ? `${scope}:${content.url}` : undefined}
+      context={
+        (completionPanelEnabled && completionSequence) || (content.type === 'learning-journey' && journey)
+          ? 'milestone'
+          : 'guide'
+      }
       contentUrl={content.url}
       completionIdentity={completionIdentity}
       guideTitle={
         completion.kind === 'tracked' ? (completion.input.guideTitle ?? content.metadata.title) : content.metadata.title
       }
-      currentMilestone={journey?.currentMilestone}
-      totalMilestones={journey?.totalMilestones}
+      currentMilestone={
+        (completionPanelEnabled ? completionSequence?.currentMilestone : undefined) ?? journey?.currentMilestone
+      }
+      totalMilestones={
+        (completionPanelEnabled ? completionSequence?.milestones.length : undefined) ?? journey?.totalMilestones
+      }
       onMarkComplete={triggerGuideCompleteFromMark}
+      onCompletionPanelVisibilityChange={onCompletionPanelVisibilityChange}
       onContinue={onContinueToNextMilestone}
+      renderCompleted={
+        completionPanelEnabled && completion.kind === 'tracked' && !isBlockEditorPreviewUrl(content.url)
+          ? (celebrating) => (
+              <MyLearningErrorBoundary
+                fallbackMessage={t('completionPanel.unavailable', 'Completed. Next steps could not be loaded.')}
+                fallbackActions={
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() => openLearningHome({ source: 'content_completion_panel' })}
+                    >
+                      {t('completionPanel.myLearning', 'My learning')}
+                    </Button>
+                    <Button variant="secondary" onClick={() => window.location.reload()}>
+                      {t('completionPanel.reload', 'Reload page')}
+                    </Button>
+                  </>
+                }
+              >
+                <React.Suspense fallback={<LoadingPlaceholder text={t('completionPanel.loading', 'Completed')} />}>
+                  <ReaderCompletionPanel
+                    content={content}
+                    completionIdentity={completionIdentity}
+                    sequence={completionSequence ?? journey}
+                    onContinue={onContinueToNextMilestone}
+                    celebrating={celebrating}
+                  />
+                </React.Suspense>
+              </MyLearningErrorBoundary>
+            )
+          : undefined
+      }
     />
   );
 

@@ -100,6 +100,192 @@ beforeEach(() => {
   markStorage.set.mockResolvedValue(undefined);
 });
 
+describe('completion panel handoff', () => {
+  it.each(['mark', 'percentage'] as const)(
+    'reports hydrated %s completion, reset and unmount visibility',
+    async (source) => {
+      markStorage.get.mockResolvedValue(source === 'mark' ? true : null);
+      percentage = source === 'percentage' ? 100 : 25;
+      const onVisibility = jest.fn();
+      const { unmount } = render(
+        <MarkCompleteFooter
+          context="guide"
+          renderCompleted={() => <div>Next steps</div>}
+          onCompletionPanelVisibilityChange={onVisibility}
+        />
+      );
+      await waitFor(() => expect(onVisibility).toHaveBeenLastCalledWith(true));
+      expect(screen.getByText('Next steps')).toBeInTheDocument();
+
+      markStorage.get.mockResolvedValue(null);
+      percentage = 0;
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: '*' } })
+        );
+      });
+      expect(onVisibility).toHaveBeenLastCalledWith(false);
+      expect(screen.queryByText('Next steps')).not.toBeInTheDocument();
+
+      percentage = 100;
+      await act(async () => notifyProgress?.());
+      expect(onVisibility).toHaveBeenLastCalledWith(true);
+      unmount();
+      expect(onVisibility).toHaveBeenLastCalledWith(false);
+    }
+  );
+
+  it('does not report a completion panel when only the legacy completed control is rendered', async () => {
+    markStorage.get.mockResolvedValue(true);
+    const onVisibility = jest.fn();
+    render(<MarkCompleteFooter context="guide" onCompletionPanelVisibilityChange={onVisibility} />);
+    await screen.findByRole('status');
+    expect(onVisibility).toHaveBeenLastCalledWith(false);
+    expect(onVisibility).not.toHaveBeenCalledWith(true);
+  });
+
+  it('shows completion immediately and notifies path readers only after a delayed completion write settles', async () => {
+    let finish!: () => void;
+    setCompletionPercentage.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+    );
+    render(<MarkCompleteFooter context="guide" renderCompleted={() => <div>Next steps</div>} />);
+    await clickWhenReady();
+    expect(screen.getByText('Next steps')).toBeInTheDocument();
+    expect(dispatchProgress).not.toHaveBeenCalled();
+    await act(async () => {
+      finish();
+    });
+    expect(dispatchProgress).toHaveBeenCalledTimes(1);
+    expect(dispatchProgress).toHaveBeenLastCalledWith({
+      kind: 'guide',
+      contentKey: 'guide-key',
+      percentage: 100,
+      hasProgress: true,
+    });
+  });
+
+  it('announces completion and focuses a named non-live group after a click', async () => {
+    render(
+      <MarkCompleteFooter
+        context="guide"
+        renderCompleted={() => <section aria-label="Guide complete">Next steps</section>}
+      />
+    );
+    await clickWhenReady();
+    const group = screen.getByRole('group', { name: 'Completed' });
+    expect(group).toHaveFocus();
+    expect(group).toContainElement(screen.getByRole('region', { name: 'Guide complete' }));
+    expect(screen.getByRole('status')).toHaveTextContent(/^Completed$/);
+    expect(screen.getByRole('status')).not.toContainElement(group);
+  });
+
+  it('keeps asynchronous cards and controls outside the concise completion announcement', async () => {
+    let resolvePanel!: (value: { default: React.ComponentType }) => void;
+    const Panel = React.lazy(
+      () =>
+        new Promise<{ default: React.ComponentType }>((resolve) => {
+          resolvePanel = resolve;
+        })
+    );
+    render(
+      <MarkCompleteFooter
+        context="guide"
+        renderCompleted={() => (
+          <React.Suspense fallback={<div>Loading next steps</div>}>
+            <Panel />
+          </React.Suspense>
+        )}
+      />
+    );
+    await clickWhenReady();
+    const target = screen.getByRole('group', { name: 'Completed' });
+    const announcement = screen.getByRole('status');
+    expect(target).toHaveFocus();
+    expect(announcement).toHaveTextContent(/^Completed$/);
+    expect(announcement).not.toContainElement(screen.getByText('Loading next steps'));
+    await act(async () => {
+      resolvePanel({ default: () => <button>Explore next guide</button> });
+    });
+    const action = screen.getByRole('button', { name: 'Explore next guide' });
+    expect(target).toContainElement(action);
+    expect(action.closest('[role="status"], [aria-live]')).toBeNull();
+    expect(announcement).toHaveTextContent(/^Completed$/);
+    expect(target).toHaveFocus();
+  });
+
+  it.each(['mark', 'percentage'] as const)(
+    'does not claim focus on a %s return visit or async panel update',
+    async (source) => {
+      markStorage.get.mockResolvedValue(source === 'mark' ? true : null);
+      percentage = source === 'percentage' ? 100 : 25;
+      const outside = document.createElement('button');
+      document.body.appendChild(outside);
+      outside.focus();
+      const { rerender } = render(
+        <MarkCompleteFooter context="guide" renderCompleted={() => <div>Loading cards</div>} />
+      );
+      await screen.findByText('Loading cards');
+      expect(outside).toHaveFocus();
+      rerender(<MarkCompleteFooter context="guide" renderCompleted={() => <button>New suggestion</button>} />);
+      expect(screen.getByRole('button', { name: 'New suggestion' }).closest('[role="status"], [aria-live]')).toBeNull();
+      expect(outside).toHaveFocus();
+      outside.remove();
+    }
+  );
+
+  it('records completion immediately and waits for an explicit continuation', async () => {
+    const onMarkComplete = jest.fn();
+    const onContinue = jest.fn();
+    render(
+      <MarkCompleteFooter
+        context="milestone"
+        onMarkComplete={onMarkComplete}
+        onContinue={onContinue}
+        renderCompleted={() => <button onClick={onContinue}>Continue to next module</button>}
+      />
+    );
+    const complete = await screen.findByRole('button', { name: 'Complete milestone' });
+    await waitFor(() => expect(complete).toBeEnabled());
+    fireEvent.click(complete);
+    expect(onMarkComplete).toHaveBeenCalledTimes(1);
+    expect(onContinue).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Continue to next module' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to next module' }));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses existing automatic completion without recording another completion', async () => {
+    percentage = 100;
+    const onMarkComplete = jest.fn();
+    render(
+      <MarkCompleteFooter
+        context="guide"
+        onMarkComplete={onMarkComplete}
+        renderCompleted={() => <div>Guide complete panel</div>}
+      />
+    );
+    expect(await screen.findByText('Guide complete panel')).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument();
+    expect(onMarkComplete).not.toHaveBeenCalled();
+    expect(markStorage.set).not.toHaveBeenCalled();
+  });
+
+  it('removes the panel when completed progress is reset', async () => {
+    percentage = 100;
+    render(<MarkCompleteFooter context="guide" renderCompleted={() => <div>Guide complete panel</div>} />);
+    expect(await screen.findByText('Guide complete panel')).toBeInTheDocument();
+    act(() => {
+      percentage = 0;
+      notifyProgress?.();
+    });
+    expect(await screen.findByRole('button', { name: 'Mark complete' })).toBeInTheDocument();
+    expect(screen.queryByText('Guide complete panel')).not.toBeInTheDocument();
+  });
+});
+
 /** The control is clickable only once the stored mark has been read. */
 async function clickWhenReady(): Promise<void> {
   const button = await screen.findByTestId(testIds.markComplete.button);
