@@ -4,11 +4,11 @@
  * This is a different question from "which blocks render interactively", and
  * conflating the two leaves a guide stranded short of 100% on its own
  * interactive path: a block counted as completable that emits no evidence can
- * become the guide's final counted block, so the furthest evidenced position
- * can never reach the denominator and the reader is left with only the "Mark as
- * complete" button. It also makes `finalCompletablePosition` misreport the tail
- * it is the authoring signal for. `content-renderer.tsx` excludes `input-block`
- * from its step count for exactly this reason.
+ * become the guide's final completable block, so the furthest evidenced
+ * position can never reach `finalCompletablePosition`, the completion target,
+ * and the reader is left with only the "Mark as complete" button.
+ * `content-renderer.tsx` excludes `input-block` from its step count for exactly
+ * this reason.
  *
  * The runtime authority is `STEP_TYPE_PARSE_KEYS` in
  * `src/components/interactive-tutorial/step-type-registry.ts`. That is tier 4,

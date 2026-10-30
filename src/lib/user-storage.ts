@@ -1501,10 +1501,29 @@ export const sectionDoneStorage = {
  *
  * Ordinary guides store `true`. Choice guides store the marked block keys
  * in the same entry. All reset paths therefore remove both the mark and its
- * path evidence, without removing the reader's saved input selections.
+ * path evidence, without removing the reader's saved input selections. A
+ * mark earned by seeing the end of a guide with no completable block also
+ * carries `method: 'viewed'`, so its source is not reported as a click.
  */
 function guideCompletionMarkKey(contentKey: string): string {
   return buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, contentKey);
+}
+
+type StoredGuideCompletionMark = true | { choiceCompletionKeys?: string[]; method?: 'viewed' };
+
+function isGuideCompletionMark(value: unknown): value is StoredGuideCompletionMark {
+  if (value === true) {
+    return true;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const mark = value as { choiceCompletionKeys?: unknown; method?: unknown };
+  return Array.isArray(mark.choiceCompletionKeys) || mark.method === 'viewed';
+}
+
+function readGuideCompletionMark(contentKey: string): unknown {
+  return JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
 }
 
 export const guideCompletionMarkStorage = {
@@ -1512,10 +1531,8 @@ export const guideCompletionMarkStorage = {
   async get(contentKey: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const marked = await storage.getItem<true | { choiceCompletionKeys: string[] }>(
-        guideCompletionMarkKey(contentKey)
-      );
-      return marked === true || (marked && Array.isArray(marked.choiceCompletionKeys)) ? true : null;
+      const marked = await storage.getItem<unknown>(guideCompletionMarkKey(contentKey));
+      return isGuideCompletionMark(marked) ? true : null;
     } catch {
       return null;
     }
@@ -1530,8 +1547,17 @@ export const guideCompletionMarkStorage = {
    */
   isMarked(contentKey: string): boolean {
     try {
-      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
-      return marked === true || Array.isArray(marked?.choiceCompletionKeys);
+      return isGuideCompletionMark(readGuideCompletionMark(contentKey));
+    } catch {
+      return false;
+    }
+  },
+
+  /** Synchronous: the mark was earned by seeing the guide's end, not by a click. */
+  isViewed(contentKey: string): boolean {
+    try {
+      const marked = readGuideCompletionMark(contentKey);
+      return isGuideCompletionMark(marked) && marked !== true && marked.method === 'viewed';
     } catch {
       return false;
     }
@@ -1540,8 +1566,8 @@ export const guideCompletionMarkStorage = {
   /** Read only content-keyed completion evidence, never saved input responses. */
   getChoiceCompletionKeys(contentKey: string): string[] {
     try {
-      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
-      return Array.isArray(marked?.choiceCompletionKeys)
+      const marked = readGuideCompletionMark(contentKey);
+      return isGuideCompletionMark(marked) && marked !== true && Array.isArray(marked.choiceCompletionKeys)
         ? marked.choiceCompletionKeys.filter((key: unknown): key is string => typeof key === 'string')
         : [];
     } catch {
@@ -1557,6 +1583,18 @@ export const guideCompletionMarkStorage = {
         guideCompletionMarkKey(contentKey),
         choiceCompletionKeys === undefined ? isMarked : { choiceCompletionKeys }
       );
+    } catch (error) {
+      logger.warn('Failed to save guide completion mark', { error });
+    }
+  },
+
+  async setViewed(contentKey: string, choiceCompletionKeys?: string[]): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(guideCompletionMarkKey(contentKey), {
+        method: 'viewed',
+        ...(choiceCompletionKeys !== undefined && { choiceCompletionKeys }),
+      });
     } catch (error) {
       logger.warn('Failed to save guide completion mark', { error });
     }

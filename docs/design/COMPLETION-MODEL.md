@@ -41,12 +41,14 @@ argument.
 
 ## The model on one page
 
-| Level     | Progress is                                                    | Reaches 100% by                                                     |
-| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**     |
-| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Complete milestone** or the legacy combined control |
-| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                                |
-| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be)  |
+| Level     | Progress is                                                    | Reaches 100% by                                                                                                          |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Guide     | completed interactive steps over the guide's total block count | reaching the final completable block, seeing the end of a guide with no completable block, or clicking **Mark complete** |
+| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Complete milestone** or the legacy combined control                                                      |
+| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                                                                                     |
+| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be)                                                       |
+
+Since 2026-10-29 a guide is complete at its **final completable block**, not at its final block, and a guide with no completable block is complete when the end of its content is visible. A guide's percentage reads 100 when complete, and otherwise `position / totalBlockCount`, capped at 99. **Mark complete** stays as an optional shortcut. See [issue #2258](https://github.com/grafana/grafana-pathfinder-app/issues/2258) and the dated notes under decisions 1 to 3, 6 and 7.
 
 In the sidebar, floating and full-screen readers, completion and continuation are separate actions. The shared reader records completion immediately and presents a named next milestone or authored follow-up content. It advances only after the reader chooses Continue. The controller overlay keeps the legacy footer because sidebar destinations would open behind its opaque overlay.
 
@@ -75,7 +77,8 @@ of the design pressure comes from them:
 
 - **Prose is unmeasurable.** A paragraph emits no signal. A guide with more prose
   than interactive steps therefore has a coarse percentage, and a guide with no
-  interactive steps at all has only two values.
+  interactive steps at all has only two values. (Since 2026-10-29, seeing the end
+  of such a guide is its evidence; see decision 3.)
 - **Nothing above a guide needs a total.** Because a path consumes its
   milestones' _percentages_ and not their block counts, no path-wide step total
   or block total is ever computed, stamped, or reconciled.
@@ -98,11 +101,18 @@ Guides with checkbox groups or section visibility controls use a selected-path e
 
 Within each section, completion evidence credits preceding blocks in that section. It does not credit an independent, unfinished section. Section acknowledgements credit that section's content. Saved choices credit their input block, but an unanswered required group prevents completion.
 
-The universal completion button remains visible. It is disabled for unanswered required groups. A guide mark records the active path, so a later selection cannot complete new content automatically. Completed-step evidence and marked-block snapshots survive deselection and reselection.
+The universal completion button remains visible. It is disabled for unanswered required groups. Since 2026-10-29 a choice guide applies the final-completable-block rule to its active path: it is complete when no required choice is unanswered and the final completable block on the active path is completed. With no completable block on the active path, every active position must be completed. A choice guide with no completable block anywhere can also complete by being viewed, once its required choices are answered. A guide mark records the active path, so a later selection cannot complete new content automatically. Completed-step evidence and marked-block snapshots survive deselection and reselection.
 
-Guides without these features retain the legacy model. Conditional blocks retain their one-block counting rule. Analytics distinguish the selected-path rule with `choice-path-v1` and report `active_block_count` alongside authored counts.
+Guides without these features retain the legacy model. Conditional blocks retain their one-block counting rule. Analytics distinguish the selected-path rule with `choice-path-v2` (`choice-path-v1` before 2026-10-29) and report `active_block_count` alongside authored counts.
 
 ## What the library actually looks like
+
+These numbers describe the library as measured on 2026-08-28, under the old rule
+where only a click could finish a guide with no completable block. They are
+still the authoring statistics, and still the reason the button exists. Since
+2026-10-29 the 308 no longer need the button to reach 100%: they complete when
+read to the end (decision 3). The "no evidence source possible" wording below is
+the pre-2026-10-29 reading.
 
 Two investigations measured the published library before these decisions were
 taken. Their numbers are the strongest justification for
@@ -138,6 +148,13 @@ The 308 are why the completion button cannot be conditional. The 281 are why
 awarding 100% at the last completable block would have been wrong. And the 51.5%
 is why the worry about an understated KPI is not hypothetical.
 
+> **Reopened 2026-10-29.** Awarding 100% at the last completable block is now the
+> rule, because the click-only alternative failed (bet 1). The 32% of tails that
+> carry instruction the reader must still perform are the cost; authors handle
+> them by putting that instruction before the last interactive block or in a
+> block of its own (see `docs/developer/CUSTOM_GUIDES.md`, "Where a guide completes").
+> Completion is a bookmark, not a competence claim.
+
 ## Decision records
 
 ### Decision 1 — guide progress is completed interactive steps over total block count
@@ -161,6 +178,31 @@ which means either instrumenting it (an authoring change, see
 [bet 4](#bet-4--authors-will-instrument-their-content-once-the-percentage-makes-the-gap-visible))
 or inferring engagement from scroll and dwell, which we rejected as softer than
 evidence.
+
+**Reopened 2026-10-29: the guide completes at its final completable block.**
+Visibility is now an evidence source for guides with no completable block (and
+for docs pages and HTML milestones, which publish no block index at all), so the
+sentence above that rejects inferring engagement from scroll is amended, not
+withdrawn: the rejection stands for partial progress. The denominator and the
+numerator are unchanged. What changed is when the numerator counts as done: a
+guide with `completableBlockCount > 0` is complete when the furthest evidenced
+position is at or beyond `finalCompletablePosition`, and its percentage reads
+100 then, instead of stopping at 99 until a click. Trailing prose after the last
+completable block no longer holds the guide below 100. The old rule is
+`block-position-v1`; the new one is `block-position-v2`.
+
+A reader who finished the last completable block under the old rule sat at 99%
+and recorded nothing. Reopening the guide recomputes the percentage
+(`refreshGuidePercentageOnLoad`), and the load backfill records the completion
+after the 200 ms settle window, without `duration_ms`. It does so only on the
+first crossing: the persisted percentage read before the recompute was below
+100 and the recomputed one is 100. A choice guide computes no percentage until
+its saved responses arrive, so its crossing is judged at the first refresh that
+can compute one, against the same pre-load baseline. The persisted percentage
+lives in the same per-browser record as the evidence that produces it: neither
+the interactive completion record nor step evidence syncs down from Grafana
+storage. A guide that already read 100 in this browser, because it completed
+or was click-marked, records nothing at load.
 
 **Which tree the denominator is counted from.** A `snippet-ref` is one block
 however many it resolves to, so the count is the PRE-inlining one. Two opening
@@ -204,6 +246,15 @@ what makes a path or journey able to read complete off a member that has not
 actually recomputed.
 
 ### Decision 2 — every guide and every milestone ends in a Mark complete button
+
+> **Reopened 2026-10-29 (issue #2258).** The button stays, unconditional, on every
+> guide and milestone. It is no longer the only path to 100%: a guide now
+> completes at its last completable block, or when its end is visible if it has
+> none. The button is an optional shortcut. Removing it is follow-up
+> [#2259](https://github.com/grafana/grafana-pathfinder-app/issues/2259), which
+> must first handle a final completable block after an id-less `snippet-ref`
+> sibling (the index cannot key it, so the button is its only route to 100%).
+> The reasoning below is the original argument for the button.
 
 **Decision.** Every guide and every milestone ends in a button that takes the
 reader to 100%. No predicate. No special cases. Labels differ by context only:
@@ -274,6 +325,17 @@ none.
 **Decision.** Accepted as a direct consequence of decisions 1 and 2. A guide with
 no completable block has one evidence source, the Mark complete button, so its
 only reachable values are 0% and 100%.
+
+> **Amended 2026-10-29.** Still 0% or 100%, and still intended. What changed is
+> the evidence: a guide with `completableBlockCount === 0` (or a docs page or
+> HTML milestone, which publishes no index) reaches 100% when the end of its
+> content is within 50px of the bottom of the visible area, as well as by
+> clicking the button. A guide that fits on screen completes when it opens. The
+> trigger is `GuideEndSentinel`, armed only after content is ready, images have
+> settled and the tab is visible, and it latches once per mount. It records as
+> source `objectives`, with no new completion source (see decision 7 and
+> "Rolling this back"). A docs page still produces no durable completion record
+> or `pathfinder_guide_completed` event, as before.
 
 **Why record a consequence as a decision.** Because it was stated explicitly and
 accepted, rather than discovered later. It is the sharpest edge of decision 1's
@@ -353,6 +415,11 @@ in twenty seconds has demonstrated nothing about the eight milestones, and a
 model that credited them would report a path as complete on the strength of a
 reader looking for its last page.
 
+> **Clarified 2026-10-29.** Navigation still earns nothing. Clicking **Next**
+> completes a prose-only milestone only because its end was visible on arrival,
+> and nothing else. A milestone with a completable block still needs evidence at
+> that block. Very fast completions are an analytics signal, not a gate.
+
 **What this changes.** Learning-path completion used to be
 milestone-click-based: the path rollup in
 `src/learning-paths/learning-paths.hook.ts` counted milestones present in a
@@ -372,6 +439,13 @@ for a one-time backfill into `interactiveCompletionStorage` and still cleared,
 never written, by the reset flows.
 
 ### Decision 7 — a separate `markCompleteClicked` event ships alongside the completion event
+
+> **Note 2026-10-29.** `markCompleteClicked` stays click-only. A bottom-visible
+> completion never emits it, which is what keeps "completion without clicks"
+> readable: completions with no click are now expected, and the gap between the
+> two events measures how many readers finish without the button. A viewed
+> completion is reported as an `objectives` completion with
+> `completable_block_count` 0 and `block_progress_rule_version` `block-position-v2`.
 
 **Decision.** Clicking the button emits its own analytics event, distinct from the
 completion event it causes. It joins the `UserInteraction` enum in
@@ -408,6 +482,13 @@ was heard and not taken: firing on every incomplete milestone needs no predicate
 and is the same shape as decision 2. A prose-only milestone remains the
 population where the tip does most of its teaching, which is where bet 2 measures
 it, but that is an evidence population and not a firing condition.
+
+> **Note 2026-10-29.** No conflict, but the premise shrank. The nudge's reason was
+> that a prose milestone has exactly one way to earn something; it now has two,
+> and a reader who clicks **Next** from a prose-only milestone whose end was
+> visible has already completed it, so the nudge does not fire there. It still
+> fires on any milestone that is incomplete when the reader leaves, and still
+> must not block navigation.
 
 **Its frequency and per-reader state are open.** See
 [open questions](#open-questions).
@@ -663,6 +744,14 @@ is back on the table.
 
 ### Bet 1 — readers will click the button often enough for completion to mean something
 
+> **FALSIFIED 2026-10-29** ([#2258](https://github.com/grafana/grafana-pathfinder-app/issues/2258)).
+> Only 34% of ObsCon workshop attendees clicked every Mark complete button, and
+> workshop attendees used the milestone arrows without recording completion.
+> In product analytics, counting scroll-to-bottom alone moves auto-opened guides
+> from 2.2% to 10.0% completion and clicked-into guides from 27% to 48%. The gap
+> is readers who finished and never did the paperwork. Decision 2 is reopened as
+> a result (see its note). The rest of this section is the original bet.
+
 **We are betting** that an unconditional, always-visible completion button gets
 used, so that a reported completion percentage reflects readers finishing rather
 than readers happening to end on a completable block.
@@ -751,7 +840,10 @@ stamped `GuideStatsSummary`, aggregated over the published library — the same
 counter, `computeGuideBlockIndex`, that produced the numbers above, run again over
 a later snapshot. `src/cli/commands/build-stats.ts` is the stamping path.
 
-**Baseline, 2026-08-28, over 598 published guides:**
+**Baseline, 2026-08-28, over 598 published guides** (these count authoring shape.
+Since 2026-10-29 the 308 no longer "cannot register progress": they complete when
+read to the end, so this bet now measures instrumentation, not whether completion
+is possible):
 
 | Measure                                            | Baseline    |
 | -------------------------------------------------- | ----------- |
@@ -858,6 +950,18 @@ paths a prose-only guide never takes. A reader who wants it gone after a rollbac
 has "Reset all learning progress" and nothing narrower, because the per-guide
 reset affordance is itself gated on the mark counting as progress.
 
+**A bottom-visible completion also writes a 100 that survives a revert** (added
+2026-10-29). Seeing the end of a guide with no completable block writes the same
+mark and the same 100 as a Mark complete click, with `{ method: 'viewed' }` in
+the mark. The durable completion record carries source `objectives`, which the
+backend already accepts (the `CompletionRecord` schema allows `objectives`,
+`manual` and `skipped`), so the backend needs nothing and nothing has to be
+rolled back there. A reverted build does not recognise a `{ method: 'viewed' }`
+mark and reads the guide as unmarked: its footer recomputes 0% and offers the
+button again, while path progress and My learning keep reading the persisted 100
+from `interactiveCompletionStorage` until the reader resets it. The same three reset scopes sweep these marks while
+the code is present.
+
 **The mark keys are swept by all three reset scopes, and only while the code is
 present.** Resetting one guide clears its mark
 (`docs-panel/hooks/resetGuideProgress.ts`); resetting a path clears its members'
@@ -886,8 +990,21 @@ cost the exact-key cross-tab match the store's storage listener depends on.
 
 **Load-bearing — changing these re-opens a decision:**
 
-- **The button is unconditional** (decision 2). Any predicate on whether it
-  renders reintroduces the failure the measurements above document.
+- **The button renders unconditionally** (decision 2). It is no longer the only
+  path to 100% (2026-10-29), but any predicate on whether it renders still
+  reintroduces the failure the measurements above document. Removal is #2259.
+- **Viewed only applies at `completableBlockCount === 0`, or when there is no
+  block index.** The producer guard in `markGuideEndViewed`
+  (`src/global-state/completion-store.ts`) enforces it. Without it, a reader
+  who scrolls past a guide's interactive steps completes it without doing them.
+- **The bottom-visible trigger latches once per mount.** The completion panel
+  replaces the footer and is taller, which moves the sentinel; re-evaluating
+  would flip a finished guide. After a reset it re-arms on the next mount.
+- **The trigger waits for settle.** It is armed only after `onContentReady`,
+  after every image has loaded or errored, and while the tab is visible, and the
+  load backfill waits the 200 ms settle window and records only a load that
+  first takes the persisted percentage to 100 (decision 1). Arming earlier counts zero-height
+  images and the previous milestone's scroll position as the end of content.
 - **The nudge does not block navigation, and fires on any incomplete milestone
   rather than on a prose-only subset** (decision 8).
 - **Navigation credits nothing** (decision 6).

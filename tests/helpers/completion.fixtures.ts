@@ -60,10 +60,10 @@ function highlightStep(label: string, ordinal: number): FixtureBlock {
 }
 
 /**
- * Five counted blocks, the second and third completable. Completing the first
- * step evidences position 2 of 5; the trailing prose is what keeps 100%
- * reachable only through Mark complete, which is the shape most of the real
- * library has (COMPLETION-MODEL.md, decision 2).
+ * Five counted blocks, the second and third completable, then trailing prose:
+ * the shape most of the real library has. Completing the first step evidences
+ * position 2 of 5; completing the second completes the guide, and having
+ * completable blocks keeps the end of the content from completing it.
  */
 function guideBlocks(label: string): FixtureBlock[] {
   return [prose(label, 1), highlightStep(label, 1), highlightStep(label, 2), prose(label, 2), prose(label, 3)];
@@ -105,7 +105,8 @@ export const PATH_MILESTONES: PackageFixture[] = PATH_MILESTONE_IDS.map((id, ind
 
 /**
  * A path whose manifest declares an id and NO repository — the shape the
- * whole-path record's identity derivation is sensitive to.
+ * whole-path record's identity derivation is sensitive to. Its milestones are
+ * prose-only, so each completes once its end is on screen.
  */
 const NO_REPOSITORY_MILESTONE_COUNT = 4;
 
@@ -134,6 +135,18 @@ const NO_REPOSITORY_MILESTONES: PackageFixture[] = NO_REPOSITORY_MILESTONE_IDS.m
 }));
 
 /**
+ * A prose-only guide far taller than the docs panel, so its end starts out of
+ * view and only scrolling to it completes the guide.
+ */
+export const LONG_PROSE_GUIDE: PackageFixture = {
+  id: 'e2e-long-prose-guide',
+  type: 'guide',
+  title: 'E2E long prose guide',
+  description: 'Prose-only guide fixture longer than the docs panel.',
+  blocks: Array.from({ length: 80 }, (_unused, index) => prose('Long', index + 1)),
+};
+
+/**
  * A private App Platform guide, reached through a `?doc=api:<id>` share link.
  * Its id deliberately stays out of {@link ALL_FIXTURES}: the composite package
  * resolver consults the CDN tier before the App Platform one, so an id present
@@ -153,6 +166,7 @@ export const APP_PLATFORM_REPOSITORY = 'app-platform';
 
 export const ALL_FIXTURES: PackageFixture[] = [
   STANDALONE_GUIDE,
+  LONG_PROSE_GUIDE,
   PATH_FIXTURE,
   ...PATH_MILESTONES,
   NO_REPOSITORY_PATH,
@@ -196,11 +210,13 @@ export function fixtureCompletablePosition(fixture: PackageFixture, ordinal: num
 /**
  * The percentage the completion model says a guide reads at an evidenced
  * position: `position / totalBlockCount`, with 100 reserved for a guide that
- * actually reached its last block (`guideProgressAtPosition`, decision 1).
+ * reached its final completable block (`guideProgressAtPosition`, decision 1).
  */
 export function expectedPercentAtPosition(fixture: PackageFixture, position: number): number {
-  const total = fixtureBlockCount(fixture);
-  if (position >= total) {
+  const index = computeGuideBlockIndex(fixture.blocks);
+  const total = index.totalBlockCount;
+  const target = index.completableBlockCount > 0 ? index.finalCompletablePosition : total;
+  if (position >= target) {
     return 100;
   }
   return Math.min(99, Math.floor((position / total) * 100));

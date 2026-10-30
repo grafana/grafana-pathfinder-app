@@ -26,9 +26,9 @@ export { GUIDE_STATS_VERSION } from './version';
  * - `sectionCount` — section containers. Authoring insight; not in the denominator.
  * - `completableBlockCount` — counted blocks carrying a completion affordance.
  * - `finalCompletablePosition` — position of the last completable block, 0 when
- *   there is none. Equal to `blockCount` when the final counted block is
- *   completable. An authoring signal only; the foot-of-guide "Mark as complete"
- *   button is unconditional, so this is not a rendering predicate.
+ *   there is none. The completion target: a guide is complete once its furthest
+ *   evidenced position reaches it. A guide with 0 completes when its end is
+ *   viewed, recorded as `objectives`.
  */
 export type { GuideStatsSummary };
 
