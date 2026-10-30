@@ -98,6 +98,8 @@
     "milestoneButton": "Mark complete and continue"
   },
   "myLearning": {
+    "welcome": "Welcome",
+    "welcomeName": "Welcome, {{- name}}",
     "assignedBadge": "Assigned",
     "assignedBy": "Assigned by",
     "assignedTrack": "Track",

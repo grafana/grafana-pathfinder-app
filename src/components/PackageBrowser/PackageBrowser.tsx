@@ -1,8 +1,22 @@
-import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { CATALOG_BATCH_SIZE, type CatalogPackage, type CatalogViewState } from '../../types/package-catalog.types';
+import {
+  CATALOG_BATCH_SIZE,
+  EMPTY_CATALOG_VIEW,
+  type CatalogPackage,
+  type CatalogViewState,
+} from '../../types/package-catalog.types';
 import { catalogSearchTopic, publicCatalogTopics, reportCatalogInteraction } from '../../lib/catalog-analytics';
 import { filterCatalog, withoutPathMembers } from '../../lib/package-catalog';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
@@ -19,6 +33,7 @@ import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
 const SEARCH_REPORT_COOLDOWN_MS = 5000;
 
 export interface PackageBrowserProps {
+  page?: boolean;
   onOpenGuide: (launch: PreparedGuideLaunch) => void;
 }
 
@@ -45,11 +60,32 @@ function topicLabel(topic: string): string {
   }
 }
 
-export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
+export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProps) {
   const styles = useStyles2(getPackageBrowserStyles);
   const catalog = usePackageCatalog();
+  const viewScope = page ? `${catalog.scope}:homepage-explore` : catalog.scope;
   const snapshot = useCallback(() => getCatalogView(catalog.scope), [catalog.scope]);
-  const view = useSyncExternalStore(subscribeCatalogView, snapshot, snapshot);
+  const sidebarView = useSyncExternalStore(subscribeCatalogView, snapshot, snapshot);
+  const [pageView, setPageView] = useState<CatalogViewState>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const topic = params.get('topic');
+    return {
+      ...EMPTY_CATALOG_VIEW,
+      ...(page ? { mode: 'all' as const } : {}),
+      ...(page && (topic || params.get('view') === 'all') ? { mode: 'all' as const, category: topic || 'all' } : {}),
+    };
+  });
+  const view = page ? pageView : sidebarView;
+  const writeView = useCallback(
+    (patch: Partial<CatalogViewState>, notify = true) => {
+      if (page) {
+        setPageView((current) => ({ ...current, ...patch }));
+      } else {
+        updateCatalogView(catalog.scope, patch, notify);
+      }
+    },
+    [page, catalog.scope]
+  );
   const container = useRef<HTMLDivElement>(null);
   const editedSearchScope = useRef<string | null>(null);
   const searchReportTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -60,7 +96,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
     searchReportTimer.current = undefined;
   }, []);
   const reportSearch = useCallback(() => {
-    if (editedSearchScope.current !== catalog.scope) {
+    if (editedSearchScope.current !== viewScope) {
       return;
     }
     editedSearchScope.current = null;
@@ -84,13 +120,13 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
     } else {
       emit();
     }
-  }, [cancelPendingSearch, catalog.scope, view.query]);
+  }, [cancelPendingSearch, viewScope, view.query]);
   useEffect(() => {
     editedSearchScope.current = null;
     lastSearchTopic.current = null;
     lastSearchReportedAt.current = undefined;
     return cancelPendingSearch;
-  }, [catalog.scope, cancelPendingSearch]);
+  }, [viewScope, cancelPendingSearch]);
   const update = useCallback(
     (patch: Partial<CatalogViewState>) => {
       if ('query' in patch && !patch.query?.trim()) {
@@ -100,7 +136,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
       }
       const filtersChanged = 'query' in patch || 'format' in patch || 'source' in patch || 'category' in patch;
       const navigationChanged = filtersChanged || 'mode' in patch;
-      updateCatalogView(catalog.scope, {
+      writeView({
         ...(navigationChanged ? { focusKey: null, visibleCount: CATALOG_BATCH_SIZE } : {}),
         ...(filtersChanged ? { mode: 'all' as const } : {}),
         ...patch,
@@ -109,7 +145,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
         container.current.scrollTop = 0;
       }
     },
-    [catalog.scope, cancelPendingSearch]
+    [writeView, cancelPendingSearch]
   );
   const selectView = (mode: CatalogViewState['mode']) => {
     if (mode !== view.mode) {
@@ -176,6 +212,8 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
     <LearningContentCard
       key={`${catalog.scope}:${item.key}`}
       title={item.title}
+      tile={page}
+      onViewPath={page ? () => launch(item) : undefined}
       kind={item.format}
       variant={variant}
       topic={catalogTopic(item)}
@@ -221,14 +259,18 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
   return (
     <div
       ref={container}
-      className={styles.container}
+      className={page ? styles.pageContainer : styles.container}
       data-testid="package-browser"
-      onScroll={(event) => updateCatalogView(catalog.scope, { scrollTop: event.currentTarget.scrollTop }, false)}
+      onScroll={(event) => writeView({ scrollTop: event.currentTarget.scrollTop }, false)}
     >
       <div className={styles.inner}>
         <div className={styles.header}>
           <div>
-            <h2>{t('packageBrowser.title', 'Explore learning')}</h2>
+            {page ? (
+              <h1>{t('packageBrowser.title', 'Explore learning')}</h1>
+            ) : (
+              <h2>{t('packageBrowser.title', 'Explore learning')}</h2>
+            )}
             <p className={styles.description}>
               {t('packageBrowser.description', 'Find something to learn or build in Grafana.')}
             </p>
@@ -248,7 +290,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
           onChange={(event) => {
             const query = event.currentTarget.value;
             cancelPendingSearch();
-            editedSearchScope.current = catalog.scope;
+            editedSearchScope.current = viewScope;
             update({ query, scrollTop: 0 });
           }}
           onBlur={reportSearch}
@@ -258,24 +300,26 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             }
           }}
         />
-        <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>
-          <button
-            type="button"
-            className={styles.viewTab}
-            aria-pressed={view.mode === 'explore'}
-            onClick={() => selectView('explore')}
-          >
-            {t('packageBrowser.explore', 'Explore')}
-          </button>
-          <button
-            type="button"
-            className={styles.viewTab}
-            aria-pressed={view.mode === 'all'}
-            onClick={() => selectView('all')}
-          >
-            {t('packageBrowser.allContent', 'All content')}
-          </button>
-        </div>
+        {!page && (
+          <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>
+            <button
+              type="button"
+              className={styles.viewTab}
+              aria-pressed={view.mode === 'explore'}
+              onClick={() => selectView('explore')}
+            >
+              {t('packageBrowser.explore', 'Explore')}
+            </button>
+            <button
+              type="button"
+              className={styles.viewTab}
+              aria-pressed={view.mode === 'all'}
+              onClick={() => selectView('all')}
+            >
+              {t('packageBrowser.allContent', 'All content')}
+            </button>
+          </div>
+        )}
         {view.mode === 'all' && (
           <div className={styles.filters}>
             <label htmlFor={`${searchId}-format`}>
@@ -353,7 +397,7 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
             </Button>
           </Alert>
         )}
-        {view.mode === 'explore' && (
+        {!page && view.mode === 'explore' && (
           <>
             {starters.length > 0 && (
               <section className={styles.section} aria-labelledby={`${searchId}-starters`}>
@@ -363,10 +407,10 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                   </h3>
                   <span>{t('packageBrowser.guidedIntroductions', 'Guided introductions')}</span>
                 </div>
-                <div className={styles.grid}>
+                <div className={page ? styles.pageGrid : styles.grid}>
                   {starters.map((item, index) => (
                     <React.Fragment key={item.key}>
-                      {index > 0 && item.format === 'guide' && (
+                      {!page && index > 0 && item.format === 'guide' && (
                         <p className={styles.starterNote}>
                           {t('packageBrowser.singleGuide', 'Prefer a single guide?')}
                         </p>
@@ -425,7 +469,9 @@ export function PackageBrowser({ onOpenGuide }: PackageBrowserProps) {
                 {t('packageBrowser.clear', 'Clear filters')}
               </Button>
             </div>
-            <div className={styles.grid}>{items.slice(0, view.visibleCount).map((item) => renderCard(item))}</div>
+            <div className={page ? styles.pageGrid : styles.grid}>
+              {items.slice(0, view.visibleCount).map((item) => renderCard(item))}
+            </div>
             {items.length > view.visibleCount && (
               <div className={`${styles.resultRow} ${styles.pagination}`}>
                 <span>

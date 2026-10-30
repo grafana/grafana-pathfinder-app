@@ -9,11 +9,15 @@ export function LearningTopicIcon({
   kind = 'guide',
   size = 'md',
   className,
+  bordered = false,
+  surface = 'secondary',
 }: {
   topic?: string;
   kind?: 'guide' | 'path' | 'docs';
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  bordered?: boolean;
+  surface?: 'hover' | 'page' | 'canvas' | 'secondary';
 }) {
   const getStyles = useCallback(
     (theme: GrafanaTheme2) => {
@@ -26,10 +30,16 @@ export function LearningTopicIcon({
           flexShrink: 0,
           width: dimension,
           height: dimension,
-          color: visual.color,
-          background: visual.background,
-          border: `1px solid ${visual.border}`,
-          borderRadius: size === 'lg' ? 15 : 10,
+          color: bordered ? theme.colors.text.secondary : visual.color,
+          background: bordered
+            ? surface === 'hover'
+              ? theme.colors.action.hover
+              : theme.colors.background[surface]
+            : visual.background,
+          border: `1px solid ${bordered ? theme.colors.border.weak : visual.border}`,
+          outline: bordered ? `1px solid ${theme.colors.border.weak}` : undefined,
+          outlineOffset: bordered ? theme.spacing(0.25) : undefined,
+          borderRadius: bordered ? theme.shape.radius.sm : size === 'lg' ? 15 : 10,
           '& svg': {
             width: size === 'lg' ? 28 : size === 'sm' ? 18 : 21,
             height: size === 'lg' ? 28 : size === 'sm' ? 18 : 21,
@@ -39,7 +49,7 @@ export function LearningTopicIcon({
         }),
       };
     },
-    [topic, kind, size]
+    [topic, kind, size, bordered, surface]
   );
   const styles = useStyles2(getStyles);
   return (

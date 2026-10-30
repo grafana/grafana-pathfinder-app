@@ -1,13 +1,6 @@
-/**
- * Hero Stats
- *
- * The My Learning hero: a subtitle plus a compact stats row. The streak is
- * always shown (even at zero), and a static "learning altitude" reflects the
- * fixed Fundamentals stage.
- */
-
 import React from 'react';
 import { t } from '@grafana/i18n';
+import { Icon } from '@grafana/ui';
 
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
@@ -21,34 +14,42 @@ interface HeroStatsProps {
 export function HeroStats({ guidesCompleted, badgesEarned, streakDays, styles }: HeroStatsProps) {
   return (
     <div className={styles.heroSection}>
-      <div className={styles.heroContent}>
-        <p className={styles.heroSubtitle}>
-          {t('myLearning.subtitle', 'Track your progress, earn badges, and master Grafana')}
-        </p>
-      </div>
-
       <div className={styles.statsRow}>
         <div className={styles.statItem}>
-          <div className={styles.statValue}>{guidesCompleted}</div>
-          <div className={styles.statLabel}>{t('myLearning.guidesCompleted', 'Guides completed')}</div>
-        </div>
-        <div className={styles.statDivider} />
-        <div className={styles.statItem}>
-          <div className={styles.statValueBadges}>{badgesEarned}</div>
-          <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
-        </div>
-        <div className={styles.statDivider} />
-        <div className={styles.statItem}>
-          <div className={styles.statValueStreak}>
-            <span className={styles.fireEmoji}>🔥</span>
-            {streakDays}
+          <span className={styles.statIconCompleted}>
+            <Icon name="check-circle" size="lg" />
+          </span>
+          <div className={styles.statContent}>
+            <div className={styles.statLabel}>{t('myLearning.guidesCompleted', 'Guides completed')}</div>
+            <div className={styles.statValue}>{guidesCompleted}</div>
           </div>
-          <div className={styles.statLabel}>{t('myLearning.dayStreak', 'Day streak')}</div>
         </div>
-        <div className={styles.statDivider} />
         <div className={styles.statItem}>
-          <div className={styles.statValueAltitude}>{t('myLearning.fundamentals', 'Fundamentals')}</div>
-          <div className={styles.statLabel}>{t('myLearning.learningAltitude', 'Learning altitude')}</div>
+          <span className={styles.statIconBadges}>
+            <Icon name="star" size="lg" />
+          </span>
+          <div className={styles.statContent}>
+            <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
+            <div className={styles.statValueBadges}>{badgesEarned}</div>
+          </div>
+        </div>
+        <div className={styles.statItem}>
+          <span className={styles.statIconStreak}>
+            <Icon name="fire" size="lg" />
+          </span>
+          <div className={styles.statContent}>
+            <div className={styles.statLabel}>{t('myLearning.dayStreak', 'Day streak')}</div>
+            <div className={styles.statValueStreak}>{streakDays}</div>
+          </div>
+        </div>
+        <div className={styles.statItem}>
+          <span className={styles.statIconAltitude}>
+            <Icon name="layer-group" size="lg" />
+          </span>
+          <div className={styles.statContent}>
+            <div className={styles.statLabel}>{t('myLearning.learningAltitude', 'Learning altitude')}</div>
+            <div className={styles.statValueAltitude}>{t('myLearning.fundamentals', 'Fundamentals')}</div>
+          </div>
         </div>
       </div>
     </div>

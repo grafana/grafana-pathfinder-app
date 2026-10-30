@@ -3,7 +3,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import { PackageBrowser } from './PackageBrowser';
-import { updateCatalogView } from '../../global-state/package-browser';
+import { getCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { AppPlatformPackageResolver } from '../../package-engine';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
@@ -639,4 +639,31 @@ it('reports official catalog topics as-is and organization-only topics as other'
     control: 'filter',
     interaction_location: 'package_browser',
   });
+});
+
+it('page exploration keeps its filters separate from the sidebar', () => {
+  updateCatalogView(mockScope, { query: 'team', mode: 'all' });
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and paths' }), {
+    target: { value: 'dashboard' },
+  });
+  expect(screen.getByRole('textbox', { name: 'Search guides and paths' })).toHaveValue('dashboard');
+  expect(getCatalogView(mockScope).query).toBe('team');
+  expect(screen.getByRole('heading', { name: 'Explore learning', level: 1 })).toBeInTheDocument();
+});
+
+it('opens a topic link directly in the page catalogue', () => {
+  window.history.replaceState({}, '', '/?topic=dashboards');
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  expect(screen.queryByRole('group', { name: 'Browse view' })).not.toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Topic' })).toHaveValue('Dashboards');
+  window.history.replaceState({}, '', '/');
+});
+
+it('page catalogue shows filters immediately without the extra landing tabs', () => {
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('combobox', { name: 'Format' })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Source' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Browse view' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Start with the essentials' })).not.toBeInTheDocument();
 });

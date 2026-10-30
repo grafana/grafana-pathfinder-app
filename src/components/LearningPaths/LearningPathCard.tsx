@@ -1,3 +1,4 @@
+import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
 /**
  * Learning Path Card Component
  *
@@ -32,9 +33,19 @@ export function LearningPathCard({
   isLaunching = false,
   launchDisabled = false,
   assignment,
-}: LearningPathCardProps & { defaultExpanded?: boolean }) {
+  tile = false,
+  onViewPath,
+  showOrganization = false,
+  topic,
+}: LearningPathCardProps & {
+  defaultExpanded?: boolean;
+  tile?: boolean;
+  onViewPath?: () => void;
+  showOrganization?: boolean;
+  topic?: string;
+}) {
   const styles = useStyles2(getLearningPathCardStyles);
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [isExpanded, setIsExpanded] = useState(tile ? false : defaultExpanded);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
   const [isConfirmingAssignmentReset, setIsConfirmingAssignmentReset] = useState(false);
   const detailsId = useId();
@@ -125,140 +136,179 @@ export function LearningPathCard({
     <div
       className={cx(
         styles.card,
+        tile && styles.tile,
         isCompleted && styles.cardCompleted,
         dueStatus?.tone === 'today' && styles.cardUpcoming,
         dueStatus?.tone === 'overdue' && styles.cardOverdue
       )}
+      onClick={
+        tile
+          ? (event) => {
+              if (!(event.target as HTMLElement).closest('button, a, input')) {
+                onViewPath?.();
+              }
+            }
+          : undefined
+      }
       data-testid={testIds.learningPaths.card(path.id)}
     >
-      {/*
-       * Deliberately not `role="button"`: that role is Children Presentational,
-       * so it would hide the nested Continue / Restart / chevron controls from
-       * assistive tech. The chevron owns the disclosure semantics; this click
-       * handler is only a mouse convenience.
-       */}
-      <div className={styles.header} onClick={handleToggleExpand}>
-        <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
+      <div className={styles.header} onClick={tile ? undefined : handleToggleExpand}>
+        {!tile && (
+          <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
+        )}
 
         <div className={styles.content}>
-          <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>{path.title}</h3>
-
-          <div className={styles.meta}>
-            {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
-            {isLoadingGuides ? (
-              <span>Loading guides...</span>
+          {tile && (
+            <div className={styles.tileTopic}>
+              <LearningTopicIcon topic={topic} kind="path" size="sm" bordered surface="secondary" />
+            </div>
+          )}
+          <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>
+            {tile ? (
+              <button type="button" className={styles.titleButton} onClick={onViewPath}>
+                {path.title}
+              </button>
             ) : (
-              <span>
-                {completedCount}/{guides.length} guides
-              </span>
+              path.title
             )}
+          </h3>
+
+          {tile && path.description && <p className={styles.tileDescription}>{path.description}</p>}
+          <div className={styles.meta}>
+            {!tile && !isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
+            {!tile &&
+              (isLoadingGuides ? (
+                <span>Loading guides...</span>
+              ) : (
+                <span>
+                  {completedCount}/{guides.length} guides
+                </span>
+              ))}
           </div>
         </div>
 
-        {/* Actions - fixed position at end */}
-        <div className={styles.actions}>
-          {!isCompleted && (
-            <button
-              className={styles.actionButton}
-              onClick={handleContinue}
-              disabled={launchDisabled}
-              data-testid={testIds.learningPaths.continueButton(path.id)}
-            >
-              <Icon name={isLaunching ? 'fa fa-spinner' : 'play'} size="sm" />
-              {isLaunching ? 'Opening…' : getButtonText()}
-            </button>
-          )}
-          {isCompleted && onReset && !isConfirmingReset && (
-            <button
-              className={styles.resetButton}
-              onClick={handleResetClick}
-              data-testid={testIds.learningPaths.resetButton(path.id)}
-            >
-              <Icon name="history" size="sm" />
-              Restart
-            </button>
-          )}
-          {isCompleted && onReset && isConfirmingReset && (
-            <>
+        {tile && (
+          <div className={styles.tileProgress}>
+            <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage />
+            <span className={styles.tileGuideCount}>
+              {isLoadingGuides ? 'Loading guides…' : `${completedCount}/${guides.length} guides`}
+              {path.estimatedMinutes ? ` · About ${path.estimatedMinutes} min` : ''}
+              {showOrganization && path.isPrivate ? ' · Your organisation' : ''}
+            </span>
+            {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
+          </div>
+        )}
+        {(!tile || isCompleted) && (
+          <div className={styles.actions}>
+            {!tile && !isCompleted && (
               <button
-                className={styles.confirmResetButton}
-                onClick={handleConfirmReset}
-                data-testid={testIds.learningPaths.confirmResetButton(path.id)}
+                className={styles.actionButton}
+                onClick={handleContinue}
+                disabled={launchDisabled}
+                data-testid={testIds.learningPaths.continueButton(path.id)}
               >
-                Confirm
+                <Icon name={isLaunching ? 'fa fa-spinner' : 'play'} size="sm" />
+                {isLaunching ? 'Opening…' : getButtonText()}
               </button>
-              <button
-                className={styles.cancelResetButton}
-                onClick={handleCancelReset}
-                data-testid={testIds.learningPaths.cancelResetButton(path.id)}
-              >
-                Cancel
-              </button>
-            </>
-          )}
-          <button
-            className={cx(styles.expandChevron, isExpanded && styles.expandChevronRotated)}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleToggleExpand();
-            }}
-            aria-label={isExpanded ? 'Collapse' : 'Expand'}
-            aria-expanded={isExpanded}
-            aria-controls={detailsId}
-            data-testid={testIds.learningPaths.expandButton(path.id)}
-          >
-            <Icon name="angle-down" size="lg" />
-          </button>
-        </div>
-      </div>
-
-      {/* Only visually hidden when collapsed, so aria-hidden keeps a screen
-          reader from reading the guide list the toggle reports as collapsed. */}
-      <div
-        id={detailsId}
-        className={cx(styles.expandable, isExpanded && styles.expandableOpen)}
-        aria-hidden={!isExpanded}
-      >
-        {assignment && !isCompleted && (
-          <div className={cx(styles.expandMeta, !path.description && styles.expandMetaBordered)}>
-            <div className={styles.expandMetaRow}>
-              <Icon name="user" size="sm" />
-              <span>
-                {t('myLearning.assignedBy', 'Assigned by')}
-                {assignment.assignedBy ? (
-                  <>
-                    {' '}
-                    <strong>{assignment.assignedBy}</strong>
-                  </>
-                ) : null}
-              </span>
-            </div>
-            {assignment.trackLabel && (
-              <div className={styles.expandMetaRow}>
-                <Icon name="layer-group" size="sm" />
-                <span>
-                  {t('myLearning.assignedTrack', 'Track')}{' '}
-                  <strong className={styles.trackHighlight}>{assignment.trackLabel}</strong>
-                </span>
-              </div>
             )}
-            {dueStatus && (
-              <div className={styles.expandMetaRow}>
-                <Icon name="clock-nine" size="sm" />
-                <span>
-                  {t('myLearning.dueDetail', 'Due {{date}} — {{relative}}{{left}}', {
-                    date: formatDueDate(assignment.dueAt!),
-                    relative: dueLabel(dueStatus),
-                    left: dueStatus.days > 0 ? t('myLearning.dueLeft', ' left') : '',
-                  })}
-                </span>
-              </div>
+            {isCompleted && onReset && !isConfirmingReset && (
+              <button
+                className={styles.resetButton}
+                onClick={handleResetClick}
+                data-testid={testIds.learningPaths.resetButton(path.id)}
+              >
+                <Icon name="history" size="sm" />
+                Restart
+              </button>
+            )}
+            {isCompleted && onReset && isConfirmingReset && (
+              <>
+                <button
+                  className={styles.confirmResetButton}
+                  onClick={handleConfirmReset}
+                  data-testid={testIds.learningPaths.confirmResetButton(path.id)}
+                >
+                  Confirm
+                </button>
+                <button
+                  className={styles.cancelResetButton}
+                  onClick={handleCancelReset}
+                  data-testid={testIds.learningPaths.cancelResetButton(path.id)}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+            {!tile && (
+              <button
+                className={cx(styles.expandChevron, isExpanded && styles.expandChevronRotated)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (tile) {
+                    onViewPath?.();
+                  } else {
+                    handleToggleExpand();
+                  }
+                }}
+                aria-label={tile ? `View path: ${path.title}` : isExpanded ? 'Collapse' : 'Expand'}
+                aria-expanded={tile ? undefined : isExpanded}
+                aria-controls={tile ? undefined : detailsId}
+                data-testid={testIds.learningPaths.expandButton(path.id)}
+              >
+                {tile ? 'View path' : <Icon name="angle-down" size="lg" />}
+              </button>
             )}
           </div>
         )}
-        {path.description && <p className={styles.description}>{path.description}</p>}
-        <GuideList guides={effectiveGuides} isLoading={isLoadingGuides} className={styles.guideList} />
       </div>
+
+      {!tile && (
+        <div
+          id={detailsId}
+          className={cx(styles.expandable, isExpanded && styles.expandableOpen)}
+          aria-hidden={!isExpanded}
+        >
+          {assignment && !isCompleted && (
+            <div className={cx(styles.expandMeta, !path.description && styles.expandMetaBordered)}>
+              <div className={styles.expandMetaRow}>
+                <Icon name="user" size="sm" />
+                <span>
+                  {t('myLearning.assignedBy', 'Assigned by')}
+                  {assignment.assignedBy ? (
+                    <>
+                      {' '}
+                      <strong>{assignment.assignedBy}</strong>
+                    </>
+                  ) : null}
+                </span>
+              </div>
+              {assignment.trackLabel && (
+                <div className={styles.expandMetaRow}>
+                  <Icon name="layer-group" size="sm" />
+                  <span>
+                    {t('myLearning.assignedTrack', 'Track')}{' '}
+                    <strong className={styles.trackHighlight}>{assignment.trackLabel}</strong>
+                  </span>
+                </div>
+              )}
+              {dueStatus && (
+                <div className={styles.expandMetaRow}>
+                  <Icon name="clock-nine" size="sm" />
+                  <span>
+                    {t('myLearning.dueDetail', 'Due {{date}} — {{relative}}{{left}}', {
+                      date: formatDueDate(assignment.dueAt!),
+                      relative: dueLabel(dueStatus),
+                      left: dueStatus.days > 0 ? t('myLearning.dueLeft', ' left') : '',
+                    })}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {!tile && path.description && <p className={styles.description}>{path.description}</p>}
+          <GuideList guides={effectiveGuides} isLoading={isLoadingGuides} className={styles.guideList} />
+        </div>
+      )}
 
       {onResetGuides && (
         <ConfirmModal

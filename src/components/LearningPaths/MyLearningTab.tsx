@@ -1,3 +1,14 @@
+import type { GrafanaTheme2 } from '@grafana/data';
+import { HomeLearningPathsSection, type HomePathEntry } from './sections/HomeLearningPathsSection';
+import { catalogIdentity } from '../../learning-paths/catalog-learning-core';
+import { withoutPathMembers } from '../../lib/package-catalog';
+import { catalogTopic, catalogTopicShortcuts } from '../../lib/catalog-discovery';
+import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
+import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-visual';
+import { getPackageBrowserStyles } from '../PackageBrowser/package-browser.styles';
+import { prefixRoute } from '../../utils/utils.routing';
+import { ROUTES } from '../../constants';
+import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 /**
  * My Learning Tab Component
  *
@@ -60,6 +71,7 @@ import { ContinueLearningSection } from './sections/ContinueLearningSection';
 import { CompletedSection } from './sections/CompletedSection';
 
 interface MyLearningTabProps {
+  homepage?: boolean;
   /**
    * Called once the guide has been fetched, snippet-expanded, and classified,
    * so the host can choose the display surface (full-screen for reading-only
@@ -69,8 +81,10 @@ interface MyLearningTabProps {
   onOpenGuide: (launch: PreparedGuideLaunch) => void;
 }
 
-export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
-  const styles = useStyles2(getMyLearningStyles);
+export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabProps) {
+  const getStyles = useCallback((theme: GrafanaTheme2) => getMyLearningStyles(theme, homepage), [homepage]);
+  const styles = useStyles2(getStyles);
+  const exploreStyles = useStyles2(getPackageBrowserStyles);
   // Guards against a second launch while the first is still fetching/classifying.
   const launchInFlightRef = useRef(false);
   // Drives the pending affordance on the launching card while the ref above
@@ -150,11 +164,79 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     isLoading: discoverLoading,
     catalog,
   } = useDiscoverMore({ excludeIdentities, count: Number.MAX_SAFE_INTEGER });
+  const homeTopics = useMemo(() => catalogTopicShortcuts(withoutPathMembers(catalog.items)), [catalog.items]);
   const catalogProgress = useCatalogProgress(catalog.items, catalog.scope);
+  const homePathEntries = useMemo(() => {
+    const entries = new Map<string, HomePathEntry>();
+    const knownPaths = [...paths, ...onlinePaths];
+    for (const path of knownPaths) {
+      const key = `${path.isPrivate ? 'organization' : 'grafana'}:${path.id}`;
+      const assignment = assignmentByTargetId.get(path.id);
+      const item = catalog.items.find((candidate) => candidate.format === 'path' && catalogIdentity(candidate) === key);
+      const percent =
+        assignment?.progress ??
+        Math.max(getPathProgress(path.id), item ? (catalogProgress.get(item.key)?.percent ?? 0) : 0);
+      if (percent >= 100 && !(assignment && !assignment.satisfied)) {
+        continue;
+      }
+      entries.set(key, {
+        key,
+        path: { ...path, estimatedMinutes: path.estimatedMinutes ?? item?.estimatedMinutes },
+        guides: getPathGuides(path.id),
+        percent,
+        assignment,
+        topic: item ? catalogTopic(item) : undefined,
+      });
+    }
+    for (const item of catalog.items) {
+      if (item.format !== 'path') {
+        continue;
+      }
+      const key = catalogIdentity(item);
+      const percent = catalogProgress.get(item.key)?.percent ?? 0;
+      if (entries.has(key) || percent <= 0 || percent >= 100) {
+        continue;
+      }
+      const members = item.memberIds ?? [];
+      entries.set(key, {
+        key,
+        percent,
+        topic: catalogTopic(item),
+        path: item.curatedPath ?? {
+          id: item.id,
+          title: item.title,
+          description: item.description ?? '',
+          estimatedMinutes: item.estimatedMinutes,
+          guides: members,
+          badgeId: '',
+          url: item.url,
+          isPrivate: item.source === 'organization',
+          manifest: item.packageInfo?.packageManifest,
+        },
+        guides: members.map((id) => {
+          const member = catalog.items.find((candidate) => candidate.id === id && candidate.source === item.source);
+          return {
+            id,
+            title: member?.title ?? id,
+            completed: (catalogProgress.get(member?.key ?? '')?.percent ?? 0) >= 100,
+            isCurrent: false,
+          };
+        }),
+      });
+    }
+    return [...entries.values()];
+  }, [paths, onlinePaths, assignmentByTargetId, catalog.items, catalogProgress, getPathProgress, getPathGuides]);
+  const homeContinuePaths = homePathEntries.filter((entry) => entry.percent > 0 && entry.percent < 100);
+  const homeAvailablePaths = homePathEntries.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
   const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress);
   const continueItems = useMemo(
-    () => selectContinueLearning(catalog.items, catalogProgress, excludeIdentities),
-    [catalog.items, catalogProgress, excludeIdentities]
+    () =>
+      selectContinueLearning(
+        catalog.items,
+        catalogProgress,
+        homepage ? pathCatalogIdentities(completedPaths) : excludeIdentities
+      ),
+    [catalog.items, catalogProgress, excludeIdentities, homepage, completedPaths]
   );
   const discoverItems = useMemo(
     () => discoverCandidates.filter((item) => (catalogProgress.get(item.key ?? '')?.percent ?? 0) === 0).slice(0, 5),
@@ -162,7 +244,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   );
 
   const performLaunch = useCallback(
-    async (url: string, title: string, packageInfo?: PackageOpenInfo) => {
+    async (url: string, title: string, packageInfo?: PackageOpenInfo, inSidebar = false) => {
       if (!mountedRef.current) {
         return;
       }
@@ -174,7 +256,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       }
       preparingLoadRef.current = undefined;
       if (result.ok) {
-        onOpenGuide(result.launch);
+        (inSidebar ? openGuideInSidebar : onOpenGuide)(result.launch);
       } else {
         // Fetched error messages can contain private guide content.
         logger.error('[MyLearning] Guide launch preparation failed', {
@@ -194,14 +276,14 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   );
 
   const launch = useCallback(
-    async (url: string, title: string, launchId: string, packageInfo?: PackageOpenInfo) => {
+    async (url: string, title: string, launchId: string, packageInfo?: PackageOpenInfo, inSidebar = false) => {
       if (launchInFlightRef.current) {
         return;
       }
       launchInFlightRef.current = true;
       setLaunchingId(launchId);
       try {
-        await performLaunch(url, title, packageInfo);
+        await performLaunch(url, title, packageInfo, inSidebar);
       } finally {
         launchInFlightRef.current = false;
         if (mountedRef.current) {
@@ -224,7 +306,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   // potentially open a different path) before the first one ever reaches
   // `launch`'s own lock.
   const openPathCover = useCallback(
-    async (path: LearningPath) => {
+    async (path: LearningPath, inSidebar = false) => {
       if (launchInFlightRef.current) {
         return;
       }
@@ -267,7 +349,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           return;
         }
 
-        await performLaunch(coverUrl, path.title, packageInfo);
+        await performLaunch(coverUrl, path.title, packageInfo, inSidebar);
       } finally {
         launchInFlightRef.current = false;
         if (mountedRef.current) {
@@ -361,6 +443,31 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     },
     [launch, allPaths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
+
+  const handleViewPath = (path: LearningPath) => {
+    if (path.manifest && !path.url) {
+      void openPathCover(path, true);
+    } else if (path.url) {
+      void launch(path.url, path.title, path.id, undefined, true);
+    } else {
+      handleOpenGuide(path.guides[0] ?? '', path.id);
+    }
+  };
+
+  const handleHomePathView = (entry: HomePathEntry) => {
+    const item = catalog.items.find(
+      (candidate) => candidate.format === 'path' && catalogIdentity(candidate) === entry.key
+    );
+    if (
+      item &&
+      !paths.some((path) => path.id === entry.path.id && Boolean(path.isPrivate) === Boolean(entry.path.isPrivate)) &&
+      !onlinePaths.some((path) => path.id === entry.path.id)
+    ) {
+      void catalogLaunch.launch(item);
+    } else {
+      handleViewPath(entry.path);
+    }
+  };
 
   const handleDiscoverStart = (item: DiscoverMoreItem) => {
     const entry = item.catalogPackage ?? {
@@ -487,32 +594,113 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         styles={styles}
       />
 
-      <PrivatePathsSection
-        paths={privatePaths}
-        getPathGuides={getPathGuides}
-        getPathProgress={getPathProgress}
-        onContinue={handleOpenGuide}
-        onReset={resetPath}
-        launchingPathId={launchingId}
-        launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
-        styles={styles}
-      />
+      {!homepage && (
+        <ContinueLearningSection
+          items={continueItems}
+          catalogItems={catalog.items}
+          scope={catalog.scope}
+          progress={catalogProgress}
+          onContinue={catalogLaunch.launch}
+          launchingKey={catalogLaunch.launchingKey}
+          launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
+          launchError={catalogLaunch.launchError}
+          styles={styles}
+        />
+      )}
+      {homepage && (
+        <HomeLearningPathsSection
+          title="Continue learning"
+          description="Pick up learning paths you have started."
+          icon="play"
+          entries={homeContinuePaths}
+          onView={handleHomePathView}
+          styles={styles}
+        />
+      )}
 
-      {/* My Courses ∥ Badges — collapses to stacked on narrow panels */}
+      {!homepage && (
+        <PrivatePathsSection
+          paths={privatePaths}
+          getPathGuides={getPathGuides}
+          getPathProgress={getPathProgress}
+          onContinue={handleOpenGuide}
+          onViewPath={handleViewPath}
+          onReset={resetPath}
+          launchingPathId={launchingId}
+          launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
+          styles={styles}
+        />
+      )}
+
       <div className={styles.columnsContainer}>
         <div className={styles.columnsRow}>
-          <MyCoursesSection
-            courses={courses}
-            assignmentByTargetId={assignmentByTargetId}
-            getPathGuides={getPathGuides}
-            getPathProgress={getPathProgress}
-            onContinue={handleOpenGuide}
-            onReset={resetPath}
-            onResetGuides={resetPathGuides}
-            launchingPathId={launchingId}
-            launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
-            styles={styles}
-          />
+          {!homepage && (
+            <MyCoursesSection
+              courses={courses}
+              assignmentByTargetId={assignmentByTargetId}
+              getPathGuides={getPathGuides}
+              getPathProgress={getPathProgress}
+              onContinue={handleOpenGuide}
+              onViewPath={handleViewPath}
+              onReset={resetPath}
+              onResetGuides={resetPathGuides}
+              launchingPathId={launchingId}
+              launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
+              styles={styles}
+            />
+          )}
+          {homepage && (
+            <HomeLearningPathsSection
+              title="Your learning paths"
+              description="Learning paths available to you, including assignments."
+              icon="book-open"
+              entries={homeAvailablePaths}
+              onView={handleHomePathView}
+              styles={styles}
+            />
+          )}
+
+          {homepage && (
+            <section className={styles.openSection}>
+              <div className={styles.sectionHeader}>
+                <span className={styles.sectionIcon}>
+                  <Icon name="compass" size="lg" />
+                </span>
+                <div className={styles.sectionHeadingText}>
+                  <h2 className={styles.sectionTitle}>Explore learning</h2>
+                  <p className={styles.sectionDescription}>Find your next guide or learning path by topic.</p>
+                </div>
+              </div>
+              <div className={exploreStyles.topics}>
+                {homeTopics.map((topic) => (
+                  <a
+                    key={topic.id}
+                    className={exploreStyles.homeTopicCard}
+                    href={`${prefixRoute(ROUTES.Browse)}?${new URLSearchParams({ topic: topic.id })}`}
+                  >
+                    <LearningTopicIcon topic={topic.id} size="sm" bordered />
+                    <span className={exploreStyles.topicContent}>
+                      <strong>{getLearningTopicMetadata(topic.id).label ?? topic.id}</strong>
+                      <small>{topic.count} guides and paths</small>
+                    </span>
+                    <Icon name="arrow-right" size="sm" />
+                  </a>
+                ))}
+                <a
+                  className={exploreStyles.homeTopicCard}
+                  href={`${prefixRoute(ROUTES.Browse)}?${new URLSearchParams({ view: 'all' })}`}
+                >
+                  <LearningTopicIcon kind="path" size="sm" bordered />
+                  <span className={exploreStyles.topicContent}>
+                    <strong>Explore all</strong>
+                    <small>Browse all guides and learning paths</small>
+                  </span>
+                  <Icon name="arrow-right" size="sm" />
+                </a>
+              </div>
+              {catalog.loading && homeTopics.length === 0 && <SkeletonLoader type="recommendations" />}
+            </section>
+          )}
 
           <BadgesSection
             badges={sortedBadges}
@@ -525,30 +713,20 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         </div>
       </div>
 
-      <ContinueLearningSection
-        items={continueItems}
-        catalogItems={catalog.items}
-        scope={catalog.scope}
-        progress={catalogProgress}
-        onContinue={catalogLaunch.launch}
-        launchingKey={catalogLaunch.launchingKey}
-        launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
-        launchError={catalogLaunch.launchError}
-        styles={styles}
-      />
-
-      <DiscoverMoreSection
-        items={discoverItems}
-        isLoading={discoverLoading}
-        onStart={handleDiscoverStart}
-        startingId={catalogLaunch.launchingKey}
-        startDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
-        catalogItems={catalog.items}
-        scope={catalog.scope}
-        progress={catalogProgress}
-        launchError={catalogLaunch.launchError}
-        styles={styles}
-      />
+      {!homepage && (
+        <DiscoverMoreSection
+          items={discoverItems}
+          isLoading={discoverLoading}
+          onStart={handleDiscoverStart}
+          startingId={catalogLaunch.launchingKey}
+          startDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
+          catalogItems={catalog.items}
+          scope={catalog.scope}
+          progress={catalogProgress}
+          launchError={catalogLaunch.launchError}
+          styles={styles}
+        />
+      )}
 
       <CompletedSection completed={completedPaths} styles={styles} />
 

@@ -28,7 +28,7 @@ export function HomePanelRenderer() {
         </nav>
       )}
       <MyLearningErrorBoundary>
-        <MyLearningTab onOpenGuide={openPreparedGuide} />
+        <MyLearningTab homepage onOpenGuide={openPreparedGuide} />
       </MyLearningErrorBoundary>
     </div>
   );

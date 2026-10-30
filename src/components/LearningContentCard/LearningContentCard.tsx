@@ -1,3 +1,4 @@
+import { ProgressRing } from '../LearningPaths/ProgressRing';
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -10,6 +11,8 @@ import { getLearningContentCardStyles } from './learning-content-card.styles';
 
 export interface LearningContentCardProps {
   title: string;
+  tile?: boolean;
+  onViewPath?: () => void;
   variant?: 'compact' | 'featured' | 'completion-primary' | 'completion-alternative';
   eyebrow?: string;
   expandableDescription?: boolean;
@@ -44,6 +47,8 @@ const FEATURED_DESCRIPTION_LINES = 4;
 
 export function LearningContentCard({
   title,
+  tile = false,
+  onViewPath,
   variant = 'compact',
   eyebrow,
   expandableDescription = false,
@@ -77,7 +82,8 @@ export function LearningContentCard({
   const completion = variant === 'completion-primary' || variant === 'completion-alternative';
   const featured = variant === 'featured' || variant === 'completion-primary';
   const spacious = featured || completion;
-  const topicLabel = getLearningTopicMetadata(topic, kind).label;
+  const topicMetadata = getLearningTopicMetadata(topic, kind);
+  const topicLabel = topicMetadata.label;
   const detailsId = useId();
   const [localExpanded, setLocalExpanded] = useState(false);
   const [pending, setPending] = useState(false);
@@ -116,7 +122,7 @@ export function LearningContentCard({
     };
   }, []);
   const isExpanded = expanded ?? localExpanded;
-  const canExpand = Boolean(!completion && (details || truncated));
+  const canExpand = tile ? Boolean(onViewPath) : Boolean(!completion && (details || truncated));
   const percent = typeof progress === 'number' && Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
   const action = getLearningAction(kind, percent);
   const label =
@@ -160,7 +166,7 @@ export function LearningContentCard({
     }
   };
 
-  const bottomAction = featured && actionAtBottom;
+  const bottomAction = tile || (featured && actionAtBottom);
   const launchButton = (
     <Button
       ref={actionRef}
@@ -168,7 +174,7 @@ export function LearningContentCard({
       variant={featured ? 'primary' : 'secondary'}
       className={bottomAction ? undefined : styles.action}
       size={bottomAction ? 'md' : 'sm'}
-      fullWidth={bottomAction}
+      fullWidth={bottomAction && !tile}
       icon={kind === 'docs' ? 'file-alt' : 'play'}
       disabled={launchDisabled || launching || pending}
       onClick={launch}
@@ -177,7 +183,9 @@ export function LearningContentCard({
       {launching || pending ? t('learningCard.opening', 'Opening…') : (actionLabel ?? label)}
     </Button>
   );
-  const toggle = canExpand && (
+  const viewDetails = () =>
+    tile ? onViewPath?.() : onToggleDetails ? onToggleDetails() : setLocalExpanded((value) => !value);
+  const toggle = canExpand && !tile && (
     <LearningDetailsToggle
       expanded={isExpanded}
       hasDetails={Boolean(details)}
@@ -186,7 +194,7 @@ export function LearningContentCard({
       controls={detailsId}
       subtle={bottomAction}
       testId={disclosureTestId}
-      onToggle={() => (onToggleDetails ? onToggleDetails() : setLocalExpanded((value) => !value))}
+      onToggle={viewDetails}
     />
   );
   const progressLabel = percent > 0 && (
@@ -197,9 +205,58 @@ export function LearningContentCard({
     </span>
   );
 
+  if (tile) {
+    return (
+      <article
+        className={cx(styles.card, styles.tile)}
+        data-testid={testId}
+        onClick={(event) => {
+          if (!(event.target as HTMLElement).closest('button, a, input')) {
+            onViewPath?.();
+          }
+        }}
+      >
+        <div className={styles.tileBody}>
+          <div className={styles.tileTopic}>
+            <LearningTopicIcon topic={topic} kind={kind} size="sm" bordered surface="secondary" />
+          </div>
+          <div className={styles.tileHeading}>
+            <h3 data-testid={titleTestId}>
+              <button type="button" className={styles.titleButton} onClick={onViewPath}>
+                {title}
+              </button>
+            </h3>
+          </div>
+          {description && <p className={styles.tileDescription}>{description}</p>}
+          {badges && <div className={styles.badges}>{badges}</div>}
+        </div>
+        <div className={styles.tileProgress}>
+          {kind !== 'docs' && (
+            <ProgressRing progress={percent} size={40} strokeWidth={3} isCompleted={percent === 100} showPercentage />
+          )}
+          <span className={styles.tileMetadata}>
+            {effort}
+            {organization && (
+              <>
+                {effort ? ' · ' : ''}
+                {t('learningCard.organization', 'Your organization')}
+              </>
+            )}
+          </span>
+        </div>
+        <div className={styles.tileActions}>{launchButton}</div>
+        {(launchError || error) && (
+          <p role="alert" className={styles.error}>
+            {launchError || t('learningCard.launchError', 'Could not open this content. Try again.')}
+          </p>
+        )}
+      </article>
+    );
+  }
+
   return (
     <article
-      className={cx(styles.card, completion && styles.completion, featured && styles.featured)}
+      className={cx(styles.card, tile && styles.tile, completion && styles.completion, featured && styles.featured)}
       data-testid={testId}
     >
       {!spacious && <LearningTopicIcon topic={topic} kind={kind} />}
@@ -211,7 +268,15 @@ export function LearningContentCard({
               <div className={styles.eyebrow}>
                 {eyebrow ?? t('learningCard.starterEyebrow', 'A good place to start')}
               </div>
-              <h3 data-testid={titleTestId}>{title}</h3>
+              <h3 data-testid={titleTestId}>
+                {tile && canExpand ? (
+                  <button type="button" className={styles.titleButton} onClick={viewDetails}>
+                    {title}
+                  </button>
+                ) : (
+                  title
+                )}
+              </h3>
               {badges && <div className={styles.badges}>{badges}</div>}
             </div>
           </div>
@@ -219,9 +284,17 @@ export function LearningContentCard({
           <>
             <div className={styles.header}>
               <div className={styles.heading}>
-                <h3 data-testid={titleTestId}>{title}</h3>
+                <h3 data-testid={titleTestId}>
+                  {tile && canExpand ? (
+                    <button type="button" className={styles.titleButton} onClick={viewDetails}>
+                      {title}
+                    </button>
+                  ) : (
+                    title
+                  )}
+                </h3>
               </div>
-              {launchButton}
+              {!tile && launchButton}
             </div>
             <div className={styles.badges}>
               <span
@@ -278,7 +351,7 @@ export function LearningContentCard({
             </div>
           )
         ) : (
-          effort && <div className={styles.metadata}>{effort}</div>
+          !bottomAction && effort && <div className={styles.metadata}>{effort}</div>
         )}
         {bottomAction
           ? (effort || canExpand || percent > 0) && (
@@ -294,7 +367,7 @@ export function LearningContentCard({
                 {progressLabel}
               </div>
             )}
-        {details && isExpanded && (
+        {details && isExpanded && !tile && (
           <div id={detailsId} className={styles.details} data-testid={detailsTestId}>
             {details}
           </div>

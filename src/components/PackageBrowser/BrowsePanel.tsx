@@ -1,31 +1,36 @@
-import React, { useEffect } from 'react';
+import { getHomePageStyles } from '../Home/home.styles';
+import React from 'react';
 import { SceneObjectBase, type SceneObjectState } from '@grafana/scenes';
+import { LinkButton, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
-import { locationService } from '@grafana/runtime';
-import { Button } from '@grafana/ui';
 import { useBooleanFlag } from '../../utils/openfeature';
-import { openCatalogBrowser } from '../docs-panel/utils/open-catalog-browser';
 import { prefixRoute } from '../../utils/utils.routing';
 import { ROUTES } from '../../constants';
+import { PackageBrowser } from './PackageBrowser';
+import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 
 export class BrowsePanel extends SceneObjectBase<SceneObjectState> {
   public static Component = BrowsePanelRenderer;
 }
 
 function BrowsePanelRenderer() {
+  const styles = useStyles2(getHomePageStyles);
   const enabled = useBooleanFlag('pathfinder.package-browser', true);
-  useEffect(() => {
-    if (enabled) {
-      openCatalogBrowser();
-      locationService.replace(prefixRoute(ROUTES.Home));
-    }
-  }, [enabled]);
-  if (!enabled) {
-    return <p>{t('packageBrowser.disabled', 'Learning exploration is currently unavailable.')}</p>;
-  }
   return (
-    <Button variant="secondary" onClick={() => openCatalogBrowser()}>
-      {t('packageBrowser.openInSidebar', 'Explore learning')}
-    </Button>
+    <div className={styles.browseLayout}>
+      <nav aria-label="Learning pages" className={styles.browseNavigation}>
+        <LinkButton href={prefixRoute(ROUTES.Home)} variant="secondary">
+          Home
+        </LinkButton>{' '}
+        <LinkButton href={prefixRoute(ROUTES.Browse)} variant="secondary" icon="compass">
+          Explore
+        </LinkButton>
+      </nav>
+      {enabled ? (
+        <PackageBrowser page onOpenGuide={openGuideInSidebar} />
+      ) : (
+        <p>{t('packageBrowser.disabled', 'Learning exploration is currently unavailable.')}</p>
+      )}
+    </div>
   );
 }
