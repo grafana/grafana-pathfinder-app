@@ -44,6 +44,8 @@ const moduleUrl = 'https://grafana.com/docs/learning-paths/path-1/guide-1/';
 let pathProgress = 0;
 
 jest.mock('../../learning-paths', () => ({
+  catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   BADGES: [],
   pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
   selectContinueLearning: jest.requireActual('../../learning-paths/catalog-learning-core').selectContinueLearning,

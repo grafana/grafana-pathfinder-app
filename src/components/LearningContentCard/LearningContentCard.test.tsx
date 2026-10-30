@@ -95,9 +95,7 @@ it('uses host card surfaces and radius for ordinary cards', () => {
     theme.flags.visualDesignRefresh = enabled;
     const styles = getLearningContentCardStyles(theme);
     expect(cache.registered[styles.card]).toContain('border-radius:11px');
-    expect(cache.registered[styles.card]).toContain(
-      `background:${enabled ? theme.colors.background.primary : theme.colors.background.secondary}`
-    );
+    expect(cache.registered[styles.card]).toContain(`background:${theme.colors.background.primary}`);
   }
 });
 
@@ -443,4 +441,65 @@ it('lets a featured card carry its own eyebrow and badges', () => {
   expect(screen.getByText('Recommended for you')).toBeInTheDocument();
   expect(screen.queryByText('A good place to start')).not.toBeInTheDocument();
   expect(screen.getByText('Alerting')).toBeInTheDocument();
+});
+
+it('opens tile path details by clicking the card without a separate launch button', () => {
+  const launch = jest.fn();
+  const view = jest.fn();
+  render(
+    <LearningContentCard
+      tile
+      title="Explore metrics"
+      kind="path"
+      onLaunch={launch}
+      onViewPath={view}
+      details={<p>Guide sequence</p>}
+    />
+  );
+  expect(screen.queryByRole('button', { name: 'Start path' })).not.toBeInTheDocument();
+  expect(launch).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('article'));
+  expect(view).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Explore metrics' }));
+  expect(view).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText('Guide sequence')).not.toBeInTheDocument();
+  expect(launch).not.toHaveBeenCalled();
+});
+
+it('keeps zero-percent radial progress and metadata on unstarted catalogue path tiles', () => {
+  render(
+    <LearningContentCard
+      tile
+      title="A new path"
+      kind="path"
+      topic="dashboards"
+      description="Path description"
+      effort="7 guides · About 20 min"
+      progress={0}
+      onLaunch={jest.fn()}
+      onViewPath={jest.fn()}
+    />
+  );
+  expect(screen.getByText('0%')).toBeInTheDocument();
+  expect(screen.getByText(/Learning path · 7 guides/)).toBeInTheDocument();
+  expect(screen.queryByText('Dashboards')).not.toBeInTheDocument();
+  expect(screen.getByText(/7 guides · About 20 min/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Start path' })).not.toBeInTheDocument();
+});
+
+it('shows partial guide completion with the same radial used by path tiles', () => {
+  render(
+    <LearningContentCard
+      tile
+      title="A started guide"
+      kind="guide"
+      progress={16}
+      effort="About 10 min"
+      onLaunch={jest.fn()}
+      onViewPath={jest.fn()}
+    />
+  );
+  expect(screen.getByText('16%')).toBeInTheDocument();
+  expect(screen.queryByText('16% complete')).not.toBeInTheDocument();
+  expect(screen.getByText(/About 10 min/)).toBeInTheDocument();
 });

@@ -13,6 +13,7 @@ type CatalogInteractionLocation =
   'package_browser' | 'my_learning_discover_more' | 'my_learning_continue' | 'content_completion_panel';
 
 interface CatalogLaunchOptions {
+  loadInSidebar?: boolean;
   onOpenGuide?: (launch: PreparedGuideLaunch) => void;
   onAcceptedLaunch?: (item: CatalogPackage) => void;
   interactionLocation?: CatalogInteractionLocation;
@@ -82,6 +83,10 @@ export function useCatalogLaunch(
         packageInfo = member.packageInfo;
       }
       if (!stillCurrent()) {
+        return;
+      }
+      if (options.loadInSidebar) {
+        openGuideInSidebar({ url, title, source: 'package_browser', packageInfo });
         return;
       }
       const loadContext = beginGuideLoad(url);

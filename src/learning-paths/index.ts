@@ -82,3 +82,6 @@ export { useCatalogProgress } from './catalog-progress.hook';
 export type { CatalogProgress } from './catalog-progress.hook';
 
 export { catalogIdentity, pathCatalogIdentities, selectContinueLearning } from './catalog-learning-core';
+
+export { selectLearningPathEntries } from './learning-path-entries';
+export type { LearningPathEntry } from './learning-path-entries';

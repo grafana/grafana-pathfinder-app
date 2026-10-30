@@ -1,9 +1,10 @@
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { LearningPath } from '../../types/learning-paths.types';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import { PackageBrowser } from './PackageBrowser';
-import { updateCatalogView } from '../../global-state/package-browser';
+import { getCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { AppPlatformPackageResolver } from '../../package-engine';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
@@ -32,6 +33,9 @@ const mockItems: CatalogPackage[] = [
   },
 ];
 let mockScope = 'test';
+let mockProgress = new Map<string, { percent: number }>();
+let mockLocalPaths: LearningPath[] = [];
+let mockLocalPercent = 0;
 const mockRetry = jest.fn();
 const mockResolve = jest.fn();
 const originalObserver = global.IntersectionObserver;
@@ -57,7 +61,16 @@ jest.mock('../../lib/analytics', () => ({
 }));
 
 jest.mock('../../learning-paths', () => ({
-  useCatalogProgress: () => new Map(),
+  catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
+  useCatalogProgress: () => mockProgress,
+  useLearningPaths: () => ({
+    paths: mockLocalPaths,
+    getPathProgress: () => mockLocalPercent,
+    getPathGuides: () => [],
+    progress: { completedGuides: [] },
+  }),
+  useMyAssignments: () => ({ onlinePaths: [], assignmentByTargetId: new Map(), getPathGuides: () => [] }),
   usePackageCatalog: () => ({
     scope: mockScope,
     items: mockItems,
@@ -87,6 +100,9 @@ jest.mock('@grafana/i18n', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockScope = 'test';
+  mockProgress = new Map();
+  mockLocalPaths = [];
+  mockLocalPercent = 0;
   mockItems.splice(2);
   updateCatalogView('test', {
     mode: 'all',
@@ -639,4 +655,78 @@ it('reports official catalog topics as-is and organization-only topics as other'
     control: 'filter',
     interaction_location: 'package_browser',
   });
+});
+
+it('page exploration keeps its filters separate from the sidebar', () => {
+  updateCatalogView(mockScope, { query: 'team', mode: 'all' });
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and paths' }), {
+    target: { value: 'dashboard' },
+  });
+  expect(screen.getByRole('textbox', { name: 'Search guides and paths' })).toHaveValue('dashboard');
+  expect(getCatalogView(mockScope).query).toBe('team');
+  expect(screen.getByRole('heading', { name: 'Explore learning', level: 1 })).toBeInTheDocument();
+});
+
+it('opens a topic link directly in the page catalogue', () => {
+  window.history.replaceState({}, '', '/?topic=dashboards');
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  expect(screen.queryByRole('group', { name: 'Browse view' })).not.toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Topic' })).toHaveValue('Dashboards');
+  window.history.replaceState({}, '', '/');
+});
+
+it('page catalogue shows filters immediately without the extra landing tabs', () => {
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('combobox', { name: 'Format' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Source' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Browse view' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Start with the essentials' })).not.toBeInTheDocument();
+});
+
+it('filters the page by recorded progress without affecting the sidebar', () => {
+  mockProgress = new Map([
+    ['bundled:dashboard', { percent: 25 }],
+    ['app-platform:team', { percent: 100 }],
+  ]);
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Team guide' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
+  expect(screen.getByRole('heading', { name: 'Team guide' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
+  expect(screen.getByRole('article')).toHaveTextContent('Completed · Guide');
+});
+
+it('includes started and completed path-member guides in the page status views', () => {
+  mockItems.push({
+    key: 'bundled:parent',
+    id: 'parent',
+    title: 'Parent path',
+    format: 'path',
+    source: 'grafana',
+    url: 'bundled:parent',
+    memberIds: ['dashboard'],
+  });
+  mockProgress = new Map([['bundled:dashboard', { percent: 25 }]]);
+  const { rerender } = render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+  mockProgress = new Map([['bundled:dashboard', { percent: 100 }]]);
+  rerender(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+});
+
+it('uses the same local path progress as the homepage even when catalogue progress is missing', () => {
+  mockLocalPaths = [
+    { id: 'local-path', title: 'Started local path', description: 'A local path', guides: ['dashboard'], badgeId: '' },
+  ];
+  mockLocalPercent = 28;
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
+  expect(screen.getByRole('heading', { name: 'Started local path' })).toBeInTheDocument();
+  expect(screen.getByText('28%')).toBeInTheDocument();
 });

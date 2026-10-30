@@ -29,14 +29,18 @@ export function BadgesSection({ badges, completedGuides, streakDays, paths, onSe
   const [gridRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
 
   return (
-    <div className={cx(styles.section, styles.columnSection)} data-testid={testIds.learningPaths.badgesSection}>
+    <div className={cx(styles.openSection, styles.columnSection)} data-testid={testIds.learningPaths.badgesSection}>
       <div className={styles.sectionHeader}>
-        <Icon name="star" size="md" className={styles.sectionIcon} />
-        <h2 className={styles.sectionTitle}>{t('myLearning.badges', 'Badges')}</h2>
+        <span className={styles.sectionIcon}>
+          <Icon name="star" size="lg" />
+        </span>
+        <div className={styles.sectionHeadingText}>
+          <h2 className={styles.sectionTitle}>{t('myLearning.badges', 'Badges')}</h2>
+          <p className={styles.sectionDescription}>
+            {t('myLearning.badgesDescription', 'Earn badges by completing paths and maintaining streaks')}
+          </p>
+        </div>
       </div>
-      <p className={styles.sectionDescription}>
-        {t('myLearning.badgesDescription', 'Earn badges by completing paths and maintaining streaks')}
-      </p>
 
       <div
         ref={gridRef}

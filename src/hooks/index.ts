@@ -18,3 +18,5 @@ export {
   type PathfinderPluginConfigState,
   type ResolvedPathfinderConfig,
 } from './usePathfinderPluginConfig';
+
+export { useLearningPageScroll } from './useLearningPageScroll';

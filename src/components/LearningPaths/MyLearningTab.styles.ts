@@ -12,18 +12,43 @@ const SCROLL_FADE_HEIGHT = 40;
 // legible once fully scrolled, while the uncovered remainder lets the next item
 // peek through the gradient so "there is more below" stays visible.
 const SCROLL_FADE_PADDING = 12;
-// Height cap for the My paths / Badges columns, and for the Discover more list.
-const COLUMN_MAX_HEIGHT = 440;
-const DISCOVER_LIST_MAX_HEIGHT = 352;
+// Height cap for the Discover more list.
 
-export const getMyLearningStyles = (theme: GrafanaTheme2) => {
+export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = false) => {
   const isDark = theme.isDark;
   const accentColor = isDark ? '#8B7CF6' : '#6C63FF';
-  const accentLight = isDark ? 'rgba(139, 124, 246, 0.15)' : 'rgba(108, 99, 255, 0.12)';
 
   // Vibrant success green for earned badges
   const successGreen = '#22C55E';
   const successGreenGlow = isDark ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)';
+
+  const iconCallout = (size: number, tint?: string) =>
+    css({
+      position: 'relative',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: theme.spacing(size),
+      height: theme.spacing(size),
+      flexShrink: 0,
+      color: tint ?? theme.colors.text.primary,
+      border: tint ? '1px solid transparent' : `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.md,
+      boxSizing: 'border-box',
+      isolation: 'isolate',
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        inset: theme.spacing(0.25),
+        backgroundColor: theme.colors.background.secondary,
+        backgroundImage: tint
+          ? `linear-gradient(oklch(from ${tint} l c h / 12%), oklch(from ${tint} l c h / 12%))`
+          : undefined,
+        borderRadius: `calc(${theme.shape.radius.md} - 1px - ${theme.spacing(0.25)})`,
+        zIndex: -1,
+        pointerEvents: 'none',
+      },
+    });
 
   const badgeFadeIn = keyframes`
     from {
@@ -45,32 +70,16 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
     container: css({
       display: 'flex',
       flexDirection: 'column',
-      gap: theme.spacing(2),
-      padding: theme.spacing(1), // Match recommendations tab horizontal padding
+      gap: theme.spacing(hideSectionIcons ? 6 : 4),
       height: '100%',
       overflowY: 'auto',
     }),
 
-    // Query context for the two-column row. Deliberately scoped to this wrapper
-    // rather than the page container: `container-type` implies layout
-    // containment, which would make the container a containing block for
-    // `position: fixed` descendants and trap the BadgeDetailCard overlay inside
-    // the panel instead of covering the viewport.
-    columnsContainer: css({
-      containerType: 'inline-size',
-    }),
-
-    // 7:5 of the design's 12-column grid. The query resolves against the
-    // wrapper's own width, not the viewport, so the row stacks in the docked
-    // sidebar and splits when floating.
+    columnsContainer: css({}),
     columnsRow: css({
-      display: 'grid',
-      gridTemplateColumns: '1fr',
-      gap: theme.spacing(2),
-      alignItems: 'stretch',
-      '@container (min-width: 640px)': {
-        gridTemplateColumns: '7fr 5fr',
-      },
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(hideSectionIcons ? 6 : 4),
     }),
 
     // Fills the leftover height of its section so the region's bottom edge is
@@ -98,16 +107,24 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       maskImage: `linear-gradient(to bottom, #000 calc(100% - ${SCROLL_FADE_HEIGHT}px), transparent 100%)`,
     }),
 
-    // Hero Section
-    heroSection: css({
-      background: `linear-gradient(135deg, ${accentLight} 0%, ${theme.colors.background.primary} 100%)`,
-      borderRadius: theme.shape.radius.default,
-      padding: theme.spacing(2.5),
-      border: `1px solid ${theme.colors.border.weak}`,
+    learningSummary: css({
+      ...theme.typography.base,
+      fontSize: 18,
+      fontWeight: theme.typography.fontWeightMedium,
+      lineHeight: 1.6,
+      color: theme.colors.text.secondary,
+      maxWidth: 880,
+      margin: 0,
+      '& strong': {
+        color: theme.colors.text.primary,
+        fontWeight: theme.typography.fontWeightMedium,
+        whiteSpace: 'nowrap',
+      },
     }),
-    heroContent: css({
-      textAlign: 'center',
-      marginBottom: theme.spacing(2),
+    heroSection: css({
+      containerType: 'inline-size',
+      paddingBottom: theme.spacing(1),
+      flexShrink: 0,
     }),
     previewNotice: css({
       display: 'flex',
@@ -116,7 +133,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(0.75),
       marginTop: theme.spacing(1.5),
       padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
-      borderRadius: theme.shape.radius.default,
+      borderRadius: theme.shape.radius.md,
       backgroundColor: isDark ? 'rgba(140, 140, 140, 0.1)' : 'rgba(0, 0, 0, 0.04)',
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
@@ -125,76 +142,58 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
         flexShrink: 0,
       },
     }),
-    heroTitle: css({
-      margin: 0,
-      fontSize: theme.typography.h4.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      background: `linear-gradient(90deg, ${accentColor}, ${theme.colors.primary.main})`,
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
-    }),
-    heroSubtitle: css({
-      margin: 0,
-      fontSize: theme.typography.body.fontSize,
-      color: theme.colors.text.secondary,
-    }),
-
-    // Stats Row - compact to fit on single line at narrow widths
     statsRow: css({
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      gap: theme.spacing(1.5),
-      flexWrap: 'wrap',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: theme.spacing(2),
+      '@container (min-width: 960px)': {
+        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+      },
+      '@container (max-width: 399px)': {
+        gridTemplateColumns: '1fr',
+      },
     }),
     statItem: css({
-      textAlign: 'center',
-      minWidth: 70,
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(2),
+      padding: theme.spacing(1.5),
+      minWidth: 0,
+      backgroundColor: theme.colors.background.primary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.md,
+    }),
+    statIcon: iconCallout(5),
+    statIconCompleted: iconCallout(5, theme.colors.success.text),
+    statIconBadges: iconCallout(5, theme.colors.info.text),
+    statIconStreak: iconCallout(5, theme.visualization.getColorByName('red')),
+    statIconAltitude: iconCallout(5, theme.visualization.getColorByName('purple')),
+    statContent: css({
+      minWidth: 0,
     }),
     statValue: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
+      ...theme.typography.lg,
       color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
     }),
     statValueBadges: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      color: accentColor,
+      ...theme.typography.lg,
+      color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
     }),
     statValueStreak: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      color: isDark ? '#FF8C5A' : '#FF6B35',
+      ...theme.typography.lg,
+      color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: theme.spacing(0.5),
     }),
-    // The static "learning altitude" value — a gradient accent word, matching
-    // the hero title treatment so it reads as a status rather than a metric.
     statValueAltitude: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      background: `linear-gradient(90deg, ${accentColor}, ${theme.colors.primary.main})`,
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
-    }),
-    fireEmoji: css({
-      fontSize: '1.1em',
+      ...theme.typography.md,
+      color: theme.colors.text.primary,
+      overflowWrap: 'anywhere',
     }),
     statLabel: css({
-      fontSize: '11px',
+      ...theme.typography.sm,
       color: theme.colors.text.secondary,
-    }),
-    statDivider: css({
-      width: 1,
-      height: 28,
-      backgroundColor: theme.colors.border.weak,
     }),
 
     // Sections
@@ -202,41 +201,34 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       flexDirection: 'column',
       minWidth: 0,
-      backgroundColor: theme.colors.background.secondary,
-      borderRadius: theme.shape.radius.default,
-      padding: theme.spacing(2),
-      border: `1px solid ${theme.colors.border.weak}`,
+      paddingTop: theme.spacing(1),
     }),
-    // Caps the two side-by-side columns so a long list scrolls in place instead
-    // of stretching the row. Both columns hit the same cap, so their bottom
-    // edges — and their fades — line up. Only while side by side: stacked in the
-    // docked sidebar, capping would nest a scroller inside the scrolling page
-    // for no alignment benefit.
-    columnSection: css({
-      '@container (min-width: 640px)': {
-        maxHeight: COLUMN_MAX_HEIGHT,
-      },
+    columnSection: css({}),
+    openSection: css({
+      display: 'flex',
+      flexDirection: 'column',
+      minWidth: 0,
+      paddingTop: theme.spacing(1),
     }),
     sectionHeader: css({
       display: 'flex',
       alignItems: 'center',
-      gap: theme.spacing(1),
-      marginBottom: theme.spacing(0.5),
+      gap: theme.spacing(1.5),
+      marginBottom: theme.spacing(2),
+      minHeight: theme.spacing(4.5),
     }),
-    sectionIcon: css({
-      color: accentColor,
-    }),
+    sectionIcon: hideSectionIcons ? css({ display: 'none' }) : iconCallout(5),
+    sectionHeadingText: css({ flex: 1, minWidth: 0 }),
     sectionTitle: css({
       margin: 0,
-      fontSize: theme.typography.h6.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
+      ...(hideSectionIcons ? theme.typography.h3 : theme.typography.md),
       color: theme.colors.text.primary,
       flex: 1,
     }),
     sectionDescription: css({
       margin: 0,
-      marginBottom: theme.spacing(1.5),
-      fontSize: theme.typography.bodySmall.fontSize,
+      marginTop: theme.spacing(0.5),
+      ...(hideSectionIcons ? theme.typography.base : theme.typography.sm),
       color: theme.colors.text.secondary,
     }),
     // Empty-state message shared by sections with no items yet
@@ -257,8 +249,9 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
 
     // Paths Grid
     pathsGrid: css({
-      display: 'flex',
-      flexDirection: 'column',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
+      alignItems: 'stretch',
       gap: theme.spacing(1.5),
     }),
 
@@ -268,7 +261,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
     // intrinsic size and clamp two-line badge names to one line.
     badgesGrid: css({
       display: 'grid',
-      gridTemplateColumns: 'repeat(3, 1fr)',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
       gridAutoRows: 'min-content',
       gap: theme.spacing(1),
     }),
@@ -280,7 +273,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(0.75),
       padding: theme.spacing(1),
       minHeight: 104,
-      borderRadius: theme.shape.radius.default,
+      borderRadius: theme.shape.radius.md,
       backgroundColor: theme.colors.background.primary,
       border: `1px solid ${theme.colors.border.weak}`,
       cursor: 'pointer',
@@ -417,10 +410,10 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
 
     // Discover More list
     discoverList: css({
-      display: 'flex',
-      flexDirection: 'column',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
+      alignItems: 'start',
       gap: theme.spacing(1.5),
-      maxHeight: DISCOVER_LIST_MAX_HEIGHT,
     }),
 
     // Completed list
@@ -434,7 +427,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       gap: theme.spacing(1.5),
       padding: theme.spacing(1.5),
-      borderRadius: theme.shape.radius.default,
+      borderRadius: theme.shape.radius.md,
       backgroundColor: theme.colors.background.primary,
       border: `1px solid ${theme.colors.border.weak}`,
     }),
@@ -483,7 +476,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
     }),
     resetButton: css({
       padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      borderRadius: theme.shape.radius.default,
+      borderRadius: theme.shape.radius.md,
       backgroundColor: 'transparent',
       color: theme.colors.text.secondary,
       fontSize: theme.typography.bodySmall.fontSize,

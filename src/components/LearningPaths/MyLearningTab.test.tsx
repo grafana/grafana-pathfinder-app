@@ -75,6 +75,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 jest.mock('@grafana/i18n', () => ({
+  Trans: jest.fn(({ children }: { children: React.ReactNode }) => <>{children}</>),
   t: (key: string, fallback: string, vars?: Record<string, unknown>) => {
     const one =
       vars?.count === 1
@@ -87,6 +88,8 @@ jest.mock('@grafana/i18n', () => ({
 
 // Style keys come back as their own names so tests can assert on composition.
 jest.mock('@grafana/ui', () => ({
+  Badge: ({ text }: any) => <span>{text}</span>,
+  LinkButton: ({ children, href }: any) => <a href={href}>{children}</a>,
   Button: ({ children, icon: _icon, size: _size, variant: _variant, ...props }: any) => (
     <button {...props}>{children}</button>
   ),
@@ -143,6 +146,8 @@ let mockAssignedCompleted: MockAssignment[] = [];
 let mockOnlinePaths: any[] = [];
 
 jest.mock('../../learning-paths', () => ({
+  catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   BADGES: [],
   pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
   selectContinueLearning: jest.requireActual('../../learning-paths/catalog-learning-core').selectContinueLearning,
@@ -1464,4 +1469,172 @@ describe('MyLearningTab — reset all learning progress', () => {
     expect(resetEvents()).toHaveLength(0);
     confirmSpy.mockRestore();
   });
+});
+
+it('homepage separates started paths from the restored available path list', () => {
+  mockPaths.push({ id: 'private-new', title: 'Private new', guides: [], isPrivate: true });
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('heading', { name: 'Your learning paths' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Started path' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'New path' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Private new' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Private paths' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Discover more' })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /^Explore all/ })).toHaveAttribute(
+    'href',
+    expect.stringContaining('view=all')
+  );
+});
+
+it('homepage shows topic cards above badges and links to filtered Explore', () => {
+  mockCatalogItems = [
+    {
+      key: 'bundled:topic-guide',
+      id: 'topic-guide',
+      title: 'Dashboard guide',
+      format: 'guide',
+      source: 'grafana',
+      category: 'dashboards',
+      url: 'bundled:topic-guide',
+    },
+  ];
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const topic = screen.getByRole('link', { name: /Dashboards 1 guides and paths/ });
+  expect(topic).toHaveAttribute('href', expect.stringContaining('topic=dashboards'));
+  const explore = screen.getByRole('heading', { name: 'Explore learning' });
+  const badges = screen.getByRole('heading', { name: 'Badges' });
+  expect(explore.compareDocumentPosition(badges) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it('homepage retains an unstarted assigned path alongside started paths', () => {
+  mockAssignments = [
+    { targetType: 'path', targetId: 'path-new', title: 'New path', overdue: false, satisfied: false, progress: 0 },
+  ];
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('heading', { name: 'Started path' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'New path' })).toBeInTheDocument();
+  expect(screen.getByTestId(testIds.learningPaths.card('path-new'))).toHaveTextContent('Assigned');
+});
+
+it('homepage puts started catalogue paths from both sources in Continue without duplicates', () => {
+  mockCatalogItems = [
+    {
+      key: 'cdn:remote',
+      id: 'remote',
+      title: 'Started public catalogue path',
+      format: 'path',
+      source: 'grafana',
+      url: 'https://example.com/path',
+      memberIds: ['remote-guide'],
+    },
+    {
+      key: 'org:remote',
+      id: 'remote',
+      title: 'Started organisation catalogue path',
+      format: 'path',
+      source: 'organization',
+      url: 'backend-guide:remote',
+      memberIds: ['org-guide'],
+    },
+    {
+      key: 'curated:path-1',
+      id: 'path-1',
+      title: 'Started path',
+      format: 'path',
+      source: 'grafana',
+      url: 'https://grafana.com/docs/learning-paths/path-1/',
+    },
+  ];
+  mockCatalogProgress = new Map([
+    ['cdn:remote', { percent: 14 }],
+    ['org:remote', { percent: 20 }],
+    ['curated:path-1', { percent: 50 }],
+  ]);
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const continued = screen.getByRole('heading', { name: 'Continue learning' }).closest('section')!;
+  expect(within(continued).getByRole('heading', { name: 'Started public catalogue path' })).toBeInTheDocument();
+  expect(within(continued).getByRole('heading', { name: 'Started organisation catalogue path' })).toBeInTheDocument();
+  expect(screen.getAllByRole('heading', { name: 'Started path' })).toHaveLength(1);
+  const available = screen.getByRole('heading', { name: 'Your learning paths' }).closest('section')!;
+  expect(within(available).queryByRole('heading', { name: 'Started public catalogue path' })).not.toBeInTheDocument();
+  expect(within(available).getByRole('heading', { name: 'New path' })).toBeInTheDocument();
+});
+
+it('homepage includes in-progress guides from both sources in Continue learning', () => {
+  mockCatalogItems = ['grafana', 'organization'].map((source) => ({
+    key: `${source}:guide`,
+    id: `${source}-guide`,
+    title: `${source} guide in progress`,
+    format: 'guide',
+    source: source as 'grafana' | 'organization',
+    url: 'bundled:guide',
+  }));
+  mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 16 }]));
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const continued = screen.getByRole('heading', { name: 'Continue learning' }).closest('section')!;
+  for (const item of mockCatalogItems) {
+    expect(within(continued).getByRole('heading', { name: item.title })).toBeInTheDocument();
+  }
+});
+
+it('homepage counts completed catalogue guides without duplicating legacy completions', () => {
+  mockCompletedGuides = ['guide-2'];
+  mockCatalogItems = [
+    {
+      key: 'bundled:guide-2',
+      id: 'guide-2',
+      title: 'Existing completion',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:guide-2',
+    },
+    {
+      key: 'cdn:another',
+      id: 'another',
+      title: 'Catalogue completion',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:another',
+    },
+    {
+      key: 'org:another',
+      id: 'another',
+      title: 'Organisation completion',
+      format: 'guide',
+      source: 'organization',
+      url: 'backend-guide:another',
+    },
+  ];
+  mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 100 }]));
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const calls = jest.requireMock('@grafana/i18n').Trans.mock.calls;
+  expect(calls[calls.length - 1][0].values.guidesCompleted).toBe(3);
+});
+
+it('homepage reports completed learning paths separately without duplicate catalogue entries', () => {
+  mockPaths = [];
+  mockCatalogItems = [
+    {
+      key: 'cdn:path',
+      id: 'finished-path',
+      title: 'Completed path',
+      format: 'path',
+      source: 'grafana',
+      url: 'bundled:finished-path',
+      memberIds: [],
+    },
+    {
+      key: 'curated:path',
+      id: 'finished-path',
+      title: 'Completed path',
+      format: 'path',
+      source: 'grafana',
+      url: 'bundled:finished-path',
+      memberIds: [],
+    },
+  ];
+  mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 100 }]));
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const calls = jest.requireMock('@grafana/i18n').Trans.mock.calls;
+  expect(calls[calls.length - 1][0].values.pathsCompleted).toBe(1);
 });

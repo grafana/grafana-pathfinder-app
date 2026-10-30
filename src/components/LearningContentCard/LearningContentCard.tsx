@@ -2,6 +2,8 @@ import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'reac
 import { Button, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
+
+import { ProgressRing } from '../LearningPaths/ProgressRing';
 import { LearningDetailsToggle } from './LearningDetailsToggle';
 import { LearningTopicIcon } from './LearningTopicIcon';
 import { getLearningAction } from './learning-action';
@@ -10,6 +12,8 @@ import { getLearningContentCardStyles } from './learning-content-card.styles';
 
 export interface LearningContentCardProps {
   title: string;
+  tile?: boolean;
+  onViewPath?: () => void;
   variant?: 'compact' | 'featured' | 'completion-primary' | 'completion-alternative';
   eyebrow?: string;
   expandableDescription?: boolean;
@@ -44,6 +48,8 @@ const FEATURED_DESCRIPTION_LINES = 4;
 
 export function LearningContentCard({
   title,
+  tile = false,
+  onViewPath,
   variant = 'compact',
   eyebrow,
   expandableDescription = false,
@@ -77,7 +83,8 @@ export function LearningContentCard({
   const completion = variant === 'completion-primary' || variant === 'completion-alternative';
   const featured = variant === 'featured' || variant === 'completion-primary';
   const spacious = featured || completion;
-  const topicLabel = getLearningTopicMetadata(topic, kind).label;
+  const topicMetadata = getLearningTopicMetadata(topic, kind);
+  const topicLabel = topicMetadata.label;
   const detailsId = useId();
   const [localExpanded, setLocalExpanded] = useState(false);
   const [pending, setPending] = useState(false);
@@ -177,7 +184,8 @@ export function LearningContentCard({
       {launching || pending ? t('learningCard.opening', 'Opening…') : (actionLabel ?? label)}
     </Button>
   );
-  const toggle = canExpand && (
+  const viewDetails = () => (onToggleDetails ? onToggleDetails() : setLocalExpanded((value) => !value));
+  const toggle = canExpand && !tile && (
     <LearningDetailsToggle
       expanded={isExpanded}
       hasDetails={Boolean(details)}
@@ -186,7 +194,7 @@ export function LearningContentCard({
       controls={detailsId}
       subtle={bottomAction}
       testId={disclosureTestId}
-      onToggle={() => (onToggleDetails ? onToggleDetails() : setLocalExpanded((value) => !value))}
+      onToggle={viewDetails}
     />
   );
   const progressLabel = percent > 0 && (
@@ -196,6 +204,75 @@ export function LearningContentCard({
         : t('learningCard.progress', '{{percent}}% complete', { percent })}
     </span>
   );
+
+  if (tile) {
+    return (
+      <article
+        className={cx(styles.card, styles.tile)}
+        data-testid={testId}
+        onClick={(event) => {
+          if (!(event.target as HTMLElement).closest('button, a, input')) {
+            onViewPath?.();
+          }
+        }}
+      >
+        <div className={styles.tileBody}>
+          <div className={styles.tileTopic}>
+            <LearningTopicIcon topic={topic} kind={kind} size="sm" bordered surface="secondary" />
+          </div>
+          <div className={styles.tileHeading}>
+            <h3 data-testid={titleTestId}>
+              <button type="button" className={styles.titleButton} onClick={onViewPath}>
+                {title}
+              </button>
+            </h3>
+          </div>
+          {description && <p className={styles.tileDescription}>{description}</p>}
+
+          {badges && <div className={styles.badges}>{badges}</div>}
+        </div>
+        <div className={styles.tileFooter}>
+          <div className={styles.tileProgress}>
+            {kind !== 'docs' && (
+              <ProgressRing
+                progress={percent}
+                size={percent === 100 ? 30 : 32}
+                strokeWidth={2}
+                isCompleted={percent === 100}
+                showPercentage
+              />
+            )}
+            <span className={styles.tileMetadata}>
+              {percent === 100 && (
+                <>
+                  <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
+                  {' · '}
+                </>
+              )}
+              {kind === 'path'
+                ? t('learningCard.path', 'Learning path')
+                : kind === 'guide'
+                  ? t('learningCard.guide', 'Guide')
+                  : ''}
+              {kind !== 'docs' && (effort || organization) ? ' · ' : ''}
+              {effort}
+              {organization && (
+                <>
+                  {effort ? ' · ' : ''}
+                  {t('learningCard.organization', 'Your organization')}
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+        {(launchError || error) && (
+          <p role="alert" className={styles.error}>
+            {launchError || t('learningCard.launchError', 'Could not open this content. Try again.')}
+          </p>
+        )}
+      </article>
+    );
+  }
 
   return (
     <article
@@ -278,7 +355,7 @@ export function LearningContentCard({
             </div>
           )
         ) : (
-          effort && <div className={styles.metadata}>{effort}</div>
+          !bottomAction && effort && <div className={styles.metadata}>{effort}</div>
         )}
         {bottomAction
           ? (effort || canExpand || percent > 0) && (
