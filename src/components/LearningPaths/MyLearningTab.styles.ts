@@ -113,7 +113,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       fontWeight: theme.typography.fontWeightMedium,
       lineHeight: 1.6,
       color: theme.colors.text.secondary,
-      maxWidth: 800,
+      maxWidth: 880,
       margin: 0,
       '& strong': {
         color: theme.colors.text.primary,
