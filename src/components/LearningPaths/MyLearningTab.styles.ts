@@ -113,9 +113,13 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       fontWeight: theme.typography.fontWeightMedium,
       lineHeight: 1.6,
       color: theme.colors.text.secondary,
-      maxWidth: 920,
+      maxWidth: 800,
       margin: 0,
-      '& strong': { color: theme.colors.text.primary, fontWeight: theme.typography.fontWeightMedium },
+      '& strong': {
+        color: theme.colors.text.primary,
+        fontWeight: theme.typography.fontWeightMedium,
+        whiteSpace: 'nowrap',
+      },
     }),
     heroSection: css({
       containerType: 'inline-size',

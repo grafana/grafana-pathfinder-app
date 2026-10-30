@@ -41,11 +41,9 @@ export function HeroStats({
           values={{ guidesCompleted, pathsCompleted, badgesEarned, streakDays, guidesLabel, pathsLabel, badgesLabel }}
         >
           You’re learning on the <strong>Fundamentals track</strong>. You’ve completed{' '}
-          <strong>
-            {'{{guidesLabel}}'} and {'{{pathsLabel}}'}
-          </strong>
-          , earned <strong>{'{{badgesLabel}}'}</strong>, and have a <strong>{'{{streakDays}}'}-day streak</strong>. Pick
-          up where you left off, or explore something new below.
+          <strong>{'{{guidesLabel}}'}</strong> and <strong>{'{{pathsLabel}}'}</strong>, earned{' '}
+          <strong>{'{{badgesLabel}}'}</strong>, and have a <strong>{'{{streakDays}}'}-day streak</strong>. Pick up where
+          you left off, or explore something new below.
         </Trans>
       </p>
     );
