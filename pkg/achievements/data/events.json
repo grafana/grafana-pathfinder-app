@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "entities": {
+    "guides": {
+      "actions": {
+        "completed": {
+          "context": {
+            "guideSource": { "type": "string" },
+            "guideId": { "type": "string" },
+            "guideCategory": { "type": "string", "enum": ["interactive", "documentation", "learning-journey"] },
+            "completionSource": { "type": "string", "enum": ["objectives", "manual", "skipped"] },
+            "pathSource": { "type": "string" },
+            "pathId": { "type": "string" }
+          },
+          "resources": [
+            { "unit": "guide", "id": ["guideSource", "guideId"] },
+            { "unit": "guide-category", "id": ["guideCategory"] }
+          ]
+        }
+      }
+    }
+  }
+}
