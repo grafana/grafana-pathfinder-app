@@ -44,6 +44,11 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       background: theme.colors.background.primary,
       gap: theme.spacing(2),
       '&:hover': {
+        '& [data-learning-topic-icon]': {
+          backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
+          borderColor: theme.colors.border.medium,
+          outlineColor: theme.colors.border.medium,
+        },
         backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
         borderColor: theme.colors.border.medium,
       },
@@ -74,11 +79,27 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
     }),
     tileMetadata: css({
       ...theme.typography.sm,
+      display: 'block',
       fontWeight: theme.typography.fontWeightRegular,
       color: theme.colors.text.secondary,
       overflowWrap: 'anywhere',
     }),
-    tileProgress: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(1), flexWrap: 'wrap' }),
+    completedLabel: css({ color: theme.colors.success.text }),
+    tileFooter: css({
+      display: 'flex',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+    }),
+    tileProgress: css({
+      display: 'flex',
+      flex: '1 1 0',
+      minWidth: 0,
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      flexWrap: 'nowrap',
+    }),
     content: css({ minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', gap: theme.spacing(1) }),
     completion: css({
       '&& h3': { margin: 0, fontSize: 22, lineHeight: 1.35 },

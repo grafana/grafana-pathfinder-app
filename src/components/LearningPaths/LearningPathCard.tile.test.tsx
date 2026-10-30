@@ -27,7 +27,7 @@ it('opens the tile overview, keeps radial progress, and has no competing start a
   );
   expect(screen.queryByText('In progress')).not.toBeInTheDocument();
   expect(screen.getByText('50%')).toBeInTheDocument();
-  expect(screen.getByText('1/2 guides')).toBeInTheDocument();
+  expect(screen.getByText(/1\/2 guides/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Start|Continue|View path/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByText('A path description'));
   expect(view).toHaveBeenCalledTimes(1);

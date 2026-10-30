@@ -1,15 +1,9 @@
-import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
-/**
- * Learning Path Card Component
- *
- * Collapsible learning path card with balanced compact design.
- */
-
 import React, { useId, useMemo, useState } from 'react';
-import { Badge, useStyles2, Icon, ConfirmModal } from '@grafana/ui';
+import { useStyles2, Icon, ConfirmModal } from '@grafana/ui';
 import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
+import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
 import { formatDueDate, getDueStatus, markCurrentGuide } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
@@ -161,7 +155,6 @@ export function LearningPathCard({
           {tile && (
             <div className={styles.tileTopic}>
               <LearningTopicIcon topic={topic} kind="path" size="sm" bordered surface="secondary" />
-              <Badge text={t('learningCard.path', 'Learning path')} color="purple" />
             </div>
           )}
           <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>
@@ -175,27 +168,43 @@ export function LearningPathCard({
           </h3>
 
           {tile && path.description && <p className={styles.tileDescription}>{path.description}</p>}
-          <div className={styles.meta}>
-            {!tile && !isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
-            {!tile &&
-              (isLoadingGuides ? (
+
+          {!tile && (
+            <div className={styles.meta}>
+              {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
+              {isLoadingGuides ? (
                 <span>Loading guides...</span>
               ) : (
                 <span>
                   {completedCount}/{guides.length} guides
                 </span>
-              ))}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {tile && (
-          <div className={styles.tileProgress}>
-            <ProgressRing progress={progress} size={32} strokeWidth={2} isCompleted={isCompleted} showPercentage />
-            <span className={styles.tileGuideCount}>
-              {isLoadingGuides ? 'Loading guides…' : `${completedCount}/${guides.length} guides`}
-              {path.estimatedMinutes ? ` · About ${path.estimatedMinutes} min` : ''}
-              {showOrganization && path.isPrivate ? ' · Your organisation' : ''}
-            </span>
+          <div className={styles.tileFooter}>
+            <div className={styles.tileProgress}>
+              <ProgressRing
+                progress={progress}
+                size={isCompleted ? 30 : 32}
+                strokeWidth={2}
+                isCompleted={isCompleted}
+                showPercentage
+              />
+              <span className={styles.tileGuideCount}>
+                {isCompleted && (
+                  <>
+                    <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
+                    {' · '}
+                  </>
+                )}
+                {t('learningCard.path', 'Learning path')} ·{' '}
+                {isLoadingGuides ? 'Loading guides…' : `${completedCount}/${guides.length} guides`}
+                {showOrganization && path.isPrivate ? ' · Your organisation' : ''}
+              </span>
+            </div>
             {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
           </div>
         )}
@@ -245,18 +254,14 @@ export function LearningPathCard({
                 className={cx(styles.expandChevron, isExpanded && styles.expandChevronRotated)}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (tile) {
-                    onViewPath?.();
-                  } else {
-                    handleToggleExpand();
-                  }
+                  handleToggleExpand();
                 }}
-                aria-label={tile ? `View path: ${path.title}` : isExpanded ? 'Collapse' : 'Expand'}
-                aria-expanded={tile ? undefined : isExpanded}
-                aria-controls={tile ? undefined : detailsId}
+                aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                aria-expanded={isExpanded}
+                aria-controls={detailsId}
                 data-testid={testIds.learningPaths.expandButton(path.id)}
               >
-                {tile ? 'View path' : <Icon name="angle-down" size="lg" />}
+                <Icon name="angle-down" size="lg" />
               </button>
             )}
           </div>

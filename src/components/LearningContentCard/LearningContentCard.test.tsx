@@ -481,9 +481,9 @@ it('keeps zero-percent radial progress and metadata on unstarted catalogue path 
     />
   );
   expect(screen.getByText('0%')).toBeInTheDocument();
-  expect(screen.getByText('Learning path')).toBeInTheDocument();
+  expect(screen.getByText(/Learning path · 7 guides/)).toBeInTheDocument();
   expect(screen.queryByText('Dashboards')).not.toBeInTheDocument();
-  expect(screen.getByText('7 guides · About 20 min')).toBeInTheDocument();
+  expect(screen.getByText(/7 guides · About 20 min/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Start path' })).not.toBeInTheDocument();
 });
 
@@ -501,5 +501,5 @@ it('shows partial guide completion with the same radial used by path tiles', () 
   );
   expect(screen.getByText('16%')).toBeInTheDocument();
   expect(screen.queryByText('16% complete')).not.toBeInTheDocument();
-  expect(screen.getByText('About 10 min')).toBeInTheDocument();
+  expect(screen.getByText(/About 10 min/)).toBeInTheDocument();
 });

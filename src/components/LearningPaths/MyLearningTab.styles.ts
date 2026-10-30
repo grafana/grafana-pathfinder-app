@@ -107,6 +107,16 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       maskImage: `linear-gradient(to bottom, #000 calc(100% - ${SCROLL_FADE_HEIGHT}px), transparent 100%)`,
     }),
 
+    learningSummary: css({
+      ...theme.typography.base,
+      fontSize: 18,
+      fontWeight: theme.typography.fontWeightMedium,
+      lineHeight: 1.6,
+      color: theme.colors.text.secondary,
+      maxWidth: 920,
+      margin: 0,
+      '& strong': { color: theme.colors.text.primary, fontWeight: theme.typography.fontWeightMedium },
+    }),
     heroSection: css({
       containerType: 'inline-size',
       paddingBottom: theme.spacing(1),
@@ -238,7 +248,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
       alignItems: 'stretch',
-      gap: theme.spacing(2),
+      gap: theme.spacing(1.5),
     }),
 
     // Badges Grid - centered-icon tiles.
@@ -399,7 +409,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
       alignItems: 'start',
-      gap: theme.spacing(2),
+      gap: theme.spacing(1.5),
     }),
 
     // Completed list

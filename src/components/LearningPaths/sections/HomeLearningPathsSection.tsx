@@ -1,18 +1,12 @@
 import React from 'react';
 import { Icon } from '@grafana/ui';
 import type { IconName } from '@grafana/data';
-import type { LearningPath, PathGuide, ResolvedAssignment } from '../../../types/learning-paths.types';
+
 import { LearningPathCard } from '../LearningPathCard';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
+import type { LearningPathEntry as HomePathEntry } from '../../../learning-paths';
 
-export interface HomePathEntry {
-  key: string;
-  path: LearningPath;
-  guides: PathGuide[];
-  percent: number;
-  topic?: string;
-  assignment?: ResolvedAssignment;
-}
+export type { LearningPathEntry as HomePathEntry } from '../../../learning-paths';
 
 export function HomeLearningPathsSection({
   title,

@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { Icon, useStyles2 } from '@grafana/ui';
 import type { GrafanaTheme2 } from '@grafana/data';
 import { css, cx } from '@emotion/css';
+
 import { getLearningTopicMetadata, getLearningTopicVisual } from './learning-topic-visual';
 
 export function LearningTopicIcon({
@@ -30,7 +31,7 @@ export function LearningTopicIcon({
           flexShrink: 0,
           width: dimension,
           height: dimension,
-          color: bordered ? theme.colors.text.primary : visual.color,
+          color: visual.color,
           background: bordered
             ? surface === 'hover'
               ? theme.colors.action.hover
@@ -53,7 +54,7 @@ export function LearningTopicIcon({
   );
   const styles = useStyles2(getStyles);
   return (
-    <span className={cx(styles.tile, className)} aria-hidden="true">
+    <span className={cx(styles.tile, className)} data-learning-topic-icon aria-hidden="true">
       <Icon name={getLearningTopicMetadata(topic, kind).icon} />
     </span>
   );

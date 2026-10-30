@@ -8,9 +8,11 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import { Alert, Button, Icon, Input, Combobox, RadioButtonGroup, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
+
+import { resolvePackageNavLinks } from '../../docs-retrieval';
+import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import {
   CATALOG_BATCH_SIZE,
   EMPTY_CATALOG_VIEW,
@@ -20,7 +22,14 @@ import {
 import { catalogSearchTopic, publicCatalogTopics, reportCatalogInteraction } from '../../lib/catalog-analytics';
 import { filterCatalog, withoutPathMembers } from '../../lib/package-catalog';
 import { getCatalogView, subscribeCatalogView, updateCatalogView } from '../../global-state/package-browser';
-import { usePackageCatalog, useCatalogProgress } from '../../learning-paths';
+import {
+  catalogIdentity,
+  selectLearningPathEntries,
+  usePackageCatalog,
+  useCatalogProgress,
+  useLearningPaths,
+  useMyAssignments,
+} from '../../learning-paths';
 import { catalogStarters, catalogTopic, catalogTopicCounts, catalogTopicShortcuts } from '../../lib/catalog-discovery';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { useCatalogLaunch } from '../LearningPaths/useCatalogLaunch';
@@ -60,7 +69,29 @@ function topicLabel(topic: string): string {
   }
 }
 
-export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProps) {
+export function PackageBrowser({ page = false, ...props }: PackageBrowserProps) {
+  return page ? <PagePackageBrowser {...props} /> : <PackageBrowserContent {...props} />;
+}
+
+function PagePackageBrowser(props: Omit<PackageBrowserProps, 'page'>) {
+  const learning = useLearningPaths();
+  const assignments = useMyAssignments({
+    paths: learning.paths,
+    getPathProgress: learning.getPathProgress,
+    getPathGuides: learning.getPathGuides,
+    completedGuides: learning.progress.completedGuides,
+    resolveNavLinks: resolvePackageNavLinks,
+  });
+  return <PackageBrowserContent {...props} page pageLearning={{ learning, assignments }} />;
+}
+
+function PackageBrowserContent({
+  onOpenGuide,
+  page = false,
+  pageLearning,
+}: PackageBrowserProps & {
+  pageLearning?: { learning: ReturnType<typeof useLearningPaths>; assignments: ReturnType<typeof useMyAssignments> };
+}) {
   const styles = useStyles2(getPackageBrowserStyles);
   const catalog = usePackageCatalog();
   const viewScope = page ? `${catalog.scope}:homepage-explore` : catalog.scope;
@@ -75,6 +106,7 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
       ...(page && (topic || params.get('view') === 'all') ? { mode: 'all' as const, category: topic || 'all' } : {}),
     };
   });
+  const [completionFilter, setCompletionFilter] = useState<'all' | 'in-progress' | 'completed'>('all');
   const view = page ? pageView : sidebarView;
   const writeView = useCallback(
     (patch: Partial<CatalogViewState>, notify = true) => {
@@ -166,22 +198,102 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
         : { category: topic, scrollTop: 0 }
     );
   };
-  const progress = useCatalogProgress(catalog.items, catalog.scope);
-  const browsable = useMemo(() => withoutPathMembers(catalog.items), [catalog.items]);
+  const catalogProgress = useCatalogProgress(catalog.items, catalog.scope);
+  const pathEntries = useMemo(
+    () =>
+      pageLearning
+        ? selectLearningPathEntries({
+            paths: pageLearning.learning.paths,
+            onlinePaths: pageLearning.assignments.onlinePaths,
+            assignmentByTargetId: pageLearning.assignments.assignmentByTargetId,
+            catalogItems: catalog.items,
+            catalogProgress,
+            getPathProgress: pageLearning.learning.getPathProgress,
+            getPathGuides: pageLearning.assignments.getPathGuides,
+            includeCompleted: true,
+          })
+        : [],
+    [pageLearning, catalog.items, catalogProgress]
+  );
+  const pageItems = useMemo(() => {
+    if (!page) {
+      return catalog.items;
+    }
+    const merged = new Map(catalog.items.map((item) => [catalogIdentity(item), item]));
+    for (const entry of pathEntries) {
+      if (!merged.has(entry.key)) {
+        merged.set(entry.key, {
+          key: `assigned:${entry.key}`,
+          id: entry.path.id,
+          title: entry.path.title,
+          description: entry.path.description,
+          format: 'path',
+          source: entry.path.isPrivate ? 'organization' : 'grafana',
+          url: entry.path.url ?? '',
+          category: entry.topic,
+          memberIds: entry.path.guides,
+          curatedPath: entry.path,
+          packageInfo: entry.path.isPrivate
+            ? { packageId: entry.path.id, repository: 'app-platform', packageManifest: entry.path.manifest }
+            : undefined,
+        });
+      }
+    }
+    return [...merged.values()];
+  }, [page, catalog.items, pathEntries]);
+  const progress = useMemo(() => {
+    if (!page) {
+      return catalogProgress;
+    }
+    const merged = new Map(catalogProgress);
+    for (const entry of pathEntries) {
+      const item = pageItems.find(
+        (candidate) => candidate.format === 'path' && catalogIdentity(candidate) === entry.key
+      );
+      if (item) {
+        merged.set(item.key, { ...merged.get(item.key), percent: entry.percent });
+      }
+    }
+    return merged;
+  }, [page, catalogProgress, pathEntries, pageItems]);
+  const browsable = useMemo(
+    () =>
+      page
+        ? completionFilter !== 'all'
+          ? pageItems
+          : withoutPathMembers(pageItems)
+        : withoutPathMembers(catalog.items),
+    [catalog.items, pageItems, page, completionFilter]
+  );
   const normalizedItems = useMemo(
     () => browsable.map((item) => ({ ...item, category: catalogTopic(item) })),
     [browsable]
   );
-  const items = useMemo(() => filterCatalog(normalizedItems, view), [normalizedItems, view]);
+  const items = useMemo(
+    () =>
+      filterCatalog(normalizedItems, view).filter((item) => {
+        if (!page || completionFilter === 'all') {
+          return true;
+        }
+        const percent = progress.get(item.key)?.percent ?? 0;
+        return completionFilter === 'completed' ? percent >= 100 : percent > 0 && percent < 100;
+      }),
+    [normalizedItems, view, page, completionFilter, progress]
+  );
   const categories = useMemo(() => catalogTopicCounts(browsable), [browsable]);
   const starters = useMemo(() => catalogStarters(catalog.items), [catalog.items]);
   const shortcuts = useMemo(() => catalogTopicShortcuts(browsable), [browsable]);
   const cardButtons = useRef(new Map<string, HTMLButtonElement>());
-  const { launch, launchingKey, launchError } = useCatalogLaunch(catalog.items, catalog.scope, progress, {
-    onOpenGuide,
-    onAcceptedLaunch: (item) => update({ focusKey: item.key }),
-    interactionLocation: 'package_browser',
-  });
+  const { launch, launchingKey, launchError } = useCatalogLaunch(
+    page ? pageItems : catalog.items,
+    catalog.scope,
+    progress,
+    {
+      onOpenGuide,
+      onAcceptedLaunch: (item) => update({ focusKey: item.key }),
+      interactionLocation: 'package_browser',
+    }
+  );
   const searchId = useId();
 
   useLayoutEffect(() => {
@@ -201,7 +313,7 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
         : item.format === 'guide' && item.activityCount !== undefined
           ? t('packageBrowser.activities', '{{count}} activities', { count: item.activityCount })
           : null,
-      item.estimatedMinutes
+      !page && item.estimatedMinutes
         ? t('packageBrowser.time', 'About {{minutes}} min', { minutes: item.estimatedMinutes })
         : null,
     ]
@@ -265,7 +377,11 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
         id={searchId}
         value={view.query}
         prefix={<Icon name="search" />}
-        placeholder={t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')}
+        placeholder={
+          page
+            ? t('packageBrowser.pageSearchPlaceholder', 'Search guides or paths')
+            : t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')
+        }
         onChange={(event) => {
           const query = event.currentTarget.value;
           cancelPendingSearch();
@@ -330,31 +446,36 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
         )}
         {view.mode === 'all' && (
           <div className={page ? styles.pageFilters : styles.filters}>
-            <label htmlFor={`${searchId}-format`} className={page ? styles.formatToggle : undefined}>
+            {page && (
+              <fieldset className={styles.completionFilter}>
+                <legend>{t('packageBrowser.status', 'Status')}</legend>
+                <RadioButtonGroup<'all' | 'in-progress' | 'completed'>
+                  options={[
+                    { value: 'all', label: t('packageBrowser.allStatus', 'All') },
+                    { value: 'in-progress', label: t('packageBrowser.inProgress', 'In progress') },
+                    { value: 'completed', label: t('packageBrowser.completed', 'Completed') },
+                  ]}
+                  value={completionFilter}
+                  onChange={(value) => {
+                    setCompletionFilter(value);
+                    update({ scrollTop: 0, visibleCount: CATALOG_BATCH_SIZE });
+                  }}
+                />
+              </fieldset>
+            )}
+            <label htmlFor={`${searchId}-format`}>
               {t('packageBrowser.format', 'Format')}
-              {page ? (
-                <RadioButtonGroup<CatalogViewState['format']>
-                  options={[
-                    { value: 'all', label: t('packageBrowser.allFormats', 'All formats') },
-                    { value: 'guide', label: t('packageBrowser.guides', 'Guides') },
-                    { value: 'path', label: t('packageBrowser.paths', 'Learning paths') },
-                  ]}
-                  value={view.format}
-                  onChange={(format) => update({ format, scrollTop: 0 })}
-                />
-              ) : (
-                <Combobox
-                  id={`${searchId}-format`}
-                  aria-label={t('packageBrowser.format', 'Format')}
-                  value={view.format}
-                  options={[
-                    { value: 'all', label: t('packageBrowser.allFormats', 'All formats') },
-                    { value: 'guide', label: t('packageBrowser.guides', 'Guides') },
-                    { value: 'path', label: t('packageBrowser.paths', 'Learning paths') },
-                  ]}
-                  onChange={(option) => update({ format: option.value as CatalogViewState['format'], scrollTop: 0 })}
-                />
-              )}
+              <Combobox
+                id={`${searchId}-format`}
+                aria-label={t('packageBrowser.format', 'Format')}
+                value={view.format}
+                options={[
+                  { value: 'all', label: t('packageBrowser.allFormats', 'All formats') },
+                  { value: 'guide', label: t('packageBrowser.guides', 'Guides') },
+                  { value: 'path', label: t('packageBrowser.paths', 'Learning paths') },
+                ]}
+                onChange={(option) => update({ format: option.value as CatalogViewState['format'], scrollTop: 0 })}
+              />
             </label>
             <label htmlFor={`${searchId}-topic`}>
               {t('packageBrowser.topic', 'Topic')}
@@ -496,12 +617,12 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
         )}
         {view.mode === 'all' && (
           <>
-            <div className={styles.resultRow}>
-              <span role="status" aria-live="polite">
-                {t('packageBrowser.results', '{{count}} results', { count: items.length })}
-                {catalog.loading && ` · ${t('packageBrowser.loading', 'Loading more content…')}`}
-              </span>
-              {!page && (
+            {!page && (
+              <div className={styles.resultRow}>
+                <span role="status" aria-live="polite">
+                  {t('packageBrowser.results', '{{count}} results', { count: items.length })}
+                  {catalog.loading && ` · ${t('packageBrowser.loading', 'Loading more content…')}`}
+                </span>
                 <Button
                   size="sm"
                   variant="secondary"
@@ -509,8 +630,8 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
                 >
                   {t('packageBrowser.clear', 'Clear filters')}
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
             <div className={page ? styles.pageGrid : styles.grid}>
               {items.slice(0, view.visibleCount).map((item) => renderCard(item))}
             </div>

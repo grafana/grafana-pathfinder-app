@@ -75,6 +75,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 jest.mock('@grafana/i18n', () => ({
+  Trans: jest.fn(({ children }: { children: React.ReactNode }) => <>{children}</>),
   t: (key: string, fallback: string, vars?: Record<string, unknown>) => {
     const one =
       vars?.count === 1
@@ -145,6 +146,8 @@ let mockAssignedCompleted: MockAssignment[] = [];
 let mockOnlinePaths: any[] = [];
 
 jest.mock('../../learning-paths', () => ({
+  catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   BADGES: [],
   pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
   selectContinueLearning: jest.requireActual('../../learning-paths/catalog-learning-core').selectContinueLearning,
@@ -1572,4 +1575,66 @@ it('homepage includes in-progress guides from both sources in Continue learning'
   for (const item of mockCatalogItems) {
     expect(within(continued).getByRole('heading', { name: item.title })).toBeInTheDocument();
   }
+});
+
+it('homepage counts completed catalogue guides without duplicating legacy completions', () => {
+  mockCompletedGuides = ['guide-2'];
+  mockCatalogItems = [
+    {
+      key: 'bundled:guide-2',
+      id: 'guide-2',
+      title: 'Existing completion',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:guide-2',
+    },
+    {
+      key: 'cdn:another',
+      id: 'another',
+      title: 'Catalogue completion',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:another',
+    },
+    {
+      key: 'org:another',
+      id: 'another',
+      title: 'Organisation completion',
+      format: 'guide',
+      source: 'organization',
+      url: 'backend-guide:another',
+    },
+  ];
+  mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 100 }]));
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const calls = jest.requireMock('@grafana/i18n').Trans.mock.calls;
+  expect(calls[calls.length - 1][0].values.guidesCompleted).toBe(3);
+});
+
+it('homepage reports completed learning paths separately without duplicate catalogue entries', () => {
+  mockPaths = [];
+  mockCatalogItems = [
+    {
+      key: 'cdn:path',
+      id: 'finished-path',
+      title: 'Completed path',
+      format: 'path',
+      source: 'grafana',
+      url: 'bundled:finished-path',
+      memberIds: [],
+    },
+    {
+      key: 'curated:path',
+      id: 'finished-path',
+      title: 'Completed path',
+      format: 'path',
+      source: 'grafana',
+      url: 'bundled:finished-path',
+      memberIds: [],
+    },
+  ];
+  mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 100 }]));
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const calls = jest.requireMock('@grafana/i18n').Trans.mock.calls;
+  expect(calls[calls.length - 1][0].values.pathsCompleted).toBe(1);
 });

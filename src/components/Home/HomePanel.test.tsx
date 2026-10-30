@@ -56,6 +56,8 @@ const mockTheme = {
     error: { text: '#f00' },
   },
   typography: {
+    h1: { fontFamily: 'Inter' },
+    pxToRem: (px: number) => `${px / 16}rem`,
     h3: { fontSize: '24px' },
     h5: { fontSize: '16px' },
     body: { fontSize: '14px' },

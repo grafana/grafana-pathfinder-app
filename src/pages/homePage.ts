@@ -32,11 +32,6 @@ function HomePageHeading() {
         'h1',
         { className: styles.title },
         name ? t('myLearning.welcomeName', 'Welcome, {{- name}}', { name }) : t('myLearning.welcome', 'Welcome')
-      ),
-      createElement(
-        'p',
-        { className: styles.subtitle },
-        t('myLearning.subtitle', 'Track your progress, earn badges, and master Grafana')
       )
     )
   );

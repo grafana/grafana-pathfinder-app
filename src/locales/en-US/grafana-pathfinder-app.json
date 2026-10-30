@@ -145,7 +145,13 @@
     "privatePathsDescription": "Paths published for your organization",
     "resetPathErrorMessage": "Some of this path's progress could not be cleared. Reload the page and try again.",
     "resetPathErrorTitle": "Reset incomplete",
-    "subtitle": "Track your progress, earn badges, and master Grafana"
+    "subtitle": "Track your progress, earn badges, and master Grafana",
+    "summaryOneGuide": "1 guide",
+    "summaryGuides": "{{count}} guides",
+    "summaryOnePath": "1 learning path",
+    "summaryPaths": "{{count}} learning paths",
+    "summaryOneBadge": "1 badge",
+    "summaryBadges": "{{count}} badges"
   },
   "sidebarHub": {
     "actionLabel": "{{action}}: {{- title}}",

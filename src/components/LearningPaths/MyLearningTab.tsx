@@ -1,7 +1,11 @@
-import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import type { GrafanaTheme2 } from '@grafana/data';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { LinkButton, useStyles2, Icon } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
+import { t } from '@grafana/i18n';
+
+import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import { HomeLearningPathsSection, type HomePathEntry } from './sections/HomeLearningPathsSection';
-import { catalogIdentity } from '../../learning-paths/catalog-learning-core';
 import { withoutPathMembers } from '../../lib/package-catalog';
 import { catalogTopic, catalogTopicShortcuts } from '../../lib/catalog-discovery';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
@@ -10,19 +14,6 @@ import { getPackageBrowserStyles } from '../PackageBrowser/package-browser.style
 import { prefixRoute } from '../../utils/utils.routing';
 import { ROUTES } from '../../constants';
 import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
-/**
- * My Learning Tab Component
- *
- * A dedicated gamified tab for courses, badges, and progress tracking.
- * Composes the hero, My Courses / Badges columns, Discover More, and
- * Completed sections into a single learning surface.
- */
-
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useStyles2, Icon } from '@grafana/ui';
-import { getAppEvents } from '@grafana/runtime';
-import { t } from '@grafana/i18n';
-
 import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
@@ -30,6 +21,8 @@ import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import type { LearningPath } from '../../types/learning-paths.types';
 import {
+  catalogIdentity,
+  selectLearningPathEntries,
   useLearningPaths,
   useDiscoverMore,
   useCatalogProgress,
@@ -58,7 +51,6 @@ import {
 import { evictAllContentCaches } from '../../global-state/completion-store';
 import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
 import type { EarnedBadge } from '../../types';
-
 import { getBadgeProgress } from './badge-utils';
 import { getMyLearningStyles } from './MyLearningTab.styles';
 import { BadgeDetailCard } from './BadgeDetailCard';
@@ -167,66 +159,23 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   } = useDiscoverMore({ excludeIdentities, count: Number.MAX_SAFE_INTEGER });
   const homeTopics = useMemo(() => catalogTopicShortcuts(withoutPathMembers(catalog.items)), [catalog.items]);
   const catalogProgress = useCatalogProgress(catalog.items, catalog.scope);
-  const homePathEntries = useMemo(() => {
-    const entries = new Map<string, HomePathEntry>();
-    const knownPaths = [...paths, ...onlinePaths];
-    for (const path of knownPaths) {
-      const key = `${path.isPrivate ? 'organization' : 'grafana'}:${path.id}`;
-      const assignment = assignmentByTargetId.get(path.id);
-      const item = catalog.items.find((candidate) => candidate.format === 'path' && catalogIdentity(candidate) === key);
-      const percent =
-        assignment?.progress ??
-        Math.max(getPathProgress(path.id), item ? (catalogProgress.get(item.key)?.percent ?? 0) : 0);
-      if (percent >= 100 && !(assignment && !assignment.satisfied)) {
-        continue;
-      }
-      entries.set(key, {
-        key,
-        path: { ...path, estimatedMinutes: path.estimatedMinutes ?? item?.estimatedMinutes },
-        guides: getPathGuides(path.id),
-        percent,
-        assignment,
-        topic: item ? catalogTopic(item) : undefined,
-      });
-    }
-    for (const item of catalog.items) {
-      if (item.format !== 'path') {
-        continue;
-      }
-      const key = catalogIdentity(item);
-      const percent = catalogProgress.get(item.key)?.percent ?? 0;
-      if (entries.has(key) || percent <= 0 || percent >= 100) {
-        continue;
-      }
-      const members = item.memberIds ?? [];
-      entries.set(key, {
-        key,
-        percent,
-        topic: catalogTopic(item),
-        path: item.curatedPath ?? {
-          id: item.id,
-          title: item.title,
-          description: item.description ?? '',
-          estimatedMinutes: item.estimatedMinutes,
-          guides: members,
-          badgeId: '',
-          url: item.url,
-          isPrivate: item.source === 'organization',
-          manifest: item.packageInfo?.packageManifest,
-        },
-        guides: members.map((id) => {
-          const member = catalog.items.find((candidate) => candidate.id === id && candidate.source === item.source);
-          return {
-            id,
-            title: member?.title ?? id,
-            completed: (catalogProgress.get(member?.key ?? '')?.percent ?? 0) >= 100,
-            isCurrent: false,
-          };
-        }),
-      });
-    }
-    return [...entries.values()];
-  }, [paths, onlinePaths, assignmentByTargetId, catalog.items, catalogProgress, getPathProgress, getPathGuides]);
+  const allHomePathEntries = useMemo(
+    () =>
+      selectLearningPathEntries({
+        paths,
+        onlinePaths,
+        assignmentByTargetId,
+        catalogItems: catalog.items,
+        catalogProgress,
+        getPathProgress,
+        getPathGuides,
+        includeCompleted: true,
+      }),
+    [paths, onlinePaths, assignmentByTargetId, catalog.items, catalogProgress, getPathProgress, getPathGuides]
+  );
+  const homePathEntries = allHomePathEntries.filter(
+    (entry) => entry.percent < 100 || (entry.assignment && !entry.assignment.satisfied)
+  );
   const homeContinuePaths = homePathEntries.filter((entry) => entry.percent > 0 && entry.percent < 100);
   const homeContinueGuides = catalog.items.filter((item) => {
     const percent = catalogProgress.get(item.key)?.percent ?? 0;
@@ -538,7 +487,19 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     }
   }, []);
 
-  const totalGuidesCompleted = progress.completedGuides.length;
+  const totalGuidesCompleted = useMemo(() => {
+    if (!homepage) {
+      return progress.completedGuides.length;
+    }
+    const completed = new Set(progress.completedGuides.map((id) => `grafana:${id}`));
+    for (const item of catalog.items) {
+      if (item.format === 'guide' && (catalogProgress.get(item.key)?.percent ?? 0) >= 100) {
+        completed.add(catalogIdentity(item));
+      }
+    }
+    return completed.size;
+  }, [homepage, progress.completedGuides, catalog.items, catalogProgress]);
+  const totalPathsCompleted = allHomePathEntries.filter((entry) => entry.percent >= 100).length;
   const totalBadgesEarned = progress.earnedBadges.length;
 
   const pathsForProgress = useMemo(() => paths.map((p) => ({ id: p.id, guides: p.guides })), [paths]);
@@ -593,7 +554,9 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   return (
     <div className={styles.container}>
       <HeroStats
+        narrative={homepage}
         guidesCompleted={totalGuidesCompleted}
+        pathsCompleted={totalPathsCompleted}
         badgesEarned={totalBadgesEarned}
         streakDays={streakInfo.days}
         styles={styles}
@@ -631,16 +594,12 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
               topic={catalogTopic(item)}
               organization={item.source === 'organization'}
               progress={catalogProgress.get(item.key)?.percent}
-              effort={[
-                item.activityCount !== undefined ? `${item.activityCount} activities` : undefined,
-                item.estimatedMinutes ? `About ${item.estimatedMinutes} min` : undefined,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+              effort={item.activityCount !== undefined ? `${item.activityCount} activities` : undefined}
               onViewPath={() => {
                 void catalogLaunch.launch(item);
               }}
               onLaunch={() => catalogLaunch.launch(item)}
+              launchError={catalogLaunch.launchError?.key === item.key ? catalogLaunch.launchError.message : undefined}
             />
           ))}
         </HomeLearningPathsSection>
@@ -698,8 +657,11 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
                   <h2 className={styles.sectionTitle}>Explore learning</h2>
                   <p className={styles.sectionDescription}>Find your next guide or learning path by topic.</p>
                 </div>
+                <LinkButton href={`${prefixRoute(ROUTES.Browse)}?view=all`} variant="primary" size="md">
+                  Explore all <Icon name="arrow-right" />
+                </LinkButton>
               </div>
-              <div className={exploreStyles.topics}>
+              <div className={`${exploreStyles.topics} ${exploreStyles.homeTopics}`}>
                 {homeTopics.map((topic) => (
                   <a
                     key={topic.id}
@@ -711,20 +673,8 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
                       <strong>{getLearningTopicMetadata(topic.id).label ?? topic.id}</strong>
                       <small>{topic.count} guides and paths</small>
                     </span>
-                    <Icon name="arrow-right" size="sm" />
                   </a>
                 ))}
-                <a
-                  className={exploreStyles.homeTopicCard}
-                  href={`${prefixRoute(ROUTES.Browse)}?${new URLSearchParams({ view: 'all' })}`}
-                >
-                  <LearningTopicIcon kind="path" size="sm" bordered />
-                  <span className={exploreStyles.topicContent}>
-                    <strong>Explore all</strong>
-                    <small>Browse all guides and learning paths</small>
-                  </span>
-                  <Icon name="arrow-right" size="sm" />
-                </a>
               </div>
               {catalog.loading && homeTopics.length === 0 && <SkeletonLoader type="recommendations" />}
             </section>
@@ -756,7 +706,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
         />
       )}
 
-      <CompletedSection completed={completedPaths} styles={styles} />
+      {!homepage && <CompletedSection completed={completedPaths} styles={styles} />}
 
       {/* Preview Notice - at bottom to not distract from main content */}
       <div className={styles.previewNotice}>

@@ -6,6 +6,8 @@ import { fetchCustomGuideCatalogue } from '../../lib/custom-guide-repository-cli
 import { fetchOnlinePackageRecommendations } from '../../lib/package-recommendations-client';
 
 jest.mock('../../learning-paths', () => ({
+  catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   usePackageCatalog: jest.requireActual('../../learning-paths/package-catalog.hook').usePackageCatalog,
   useCatalogProgress: () => new Map(),
 }));

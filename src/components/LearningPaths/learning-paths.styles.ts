@@ -45,6 +45,7 @@ export function getColorPalette(theme: GrafanaTheme2) {
     progressTrack: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
 
     // Vibrant success colors for badges and completion
+    ringSuccess: theme.colors.success.text,
     success: successGreen,
     successDark: successGreenDark,
     successLight: isDark ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.15)',
@@ -110,6 +111,7 @@ export const getProgressRingStyles = (theme: GrafanaTheme2) => {
     container: css({
       position: 'relative',
       display: 'inline-flex',
+      flexShrink: 0,
       alignItems: 'center',
       justifyContent: 'center',
     }),
@@ -131,9 +133,6 @@ export const getProgressRingStyles = (theme: GrafanaTheme2) => {
       fontWeight: theme.typography.fontWeightMedium,
       color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
-    }),
-    completed: css({
-      // No animation - the gradient on the stroke is enough
     }),
   };
 };
@@ -173,20 +172,36 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       '&& h3': { ...theme.typography.h4, fontWeight: theme.typography.fontWeightMedium },
       transition: 'background-color 150ms ease, border-color 150ms ease',
       '&:hover': {
+        '& [data-learning-topic-icon]': {
+          backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
+          borderColor: theme.colors.border.medium,
+          outlineColor: theme.colors.border.medium,
+        },
         backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
         borderColor: theme.colors.border.medium,
       },
       '&:focus-within': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
       '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
     }),
-    tileProgress: css({
+    completedLabel: css({ color: theme.colors.success.text }),
+    tileFooter: css({
       display: 'flex',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
       alignItems: 'center',
       gap: theme.spacing(1),
-      flexWrap: 'wrap',
+    }),
+    tileProgress: css({
+      display: 'flex',
+      flex: '1 1 0',
+      minWidth: 0,
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      flexWrap: 'nowrap',
     }),
     tileGuideCount: css({
       ...theme.typography.sm,
+      display: 'block',
       fontWeight: theme.typography.fontWeightRegular,
       color: theme.colors.text.secondary,
     }),

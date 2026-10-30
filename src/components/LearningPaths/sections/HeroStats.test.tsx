@@ -20,7 +20,7 @@ describe('HeroStats', () => {
     render(<HeroStats guidesCompleted={4} badgesEarned={2} streakDays={3} styles={styles} />);
 
     const badgesStat = screen.getByText('Badges earned').parentElement!;
-    expect(badgesStat).toHaveTextContent(/^2Badges earned$/);
+    expect(badgesStat).toHaveTextContent(/^Badges earned2$/);
   });
 
   it('gives the badge count its own accent treatment, distinct from guides completed', () => {
