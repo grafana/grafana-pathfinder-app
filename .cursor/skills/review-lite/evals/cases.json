@@ -48,7 +48,7 @@
         }
       ],
       "expected": {
-        "headline": "No blocking findings",
+        "headline": "Approve",
         "must_find": "Nothing blocking. A denylist that misses embedded control characters (for example java\\tscript:) is acceptable as a follow-up, since base opened every href unchecked.",
         "must_not": "Claim the PR widens a trust boundary, or require an allowlist rewrite as a merge condition."
       }
@@ -80,7 +80,7 @@
       "expected": {
         "round_1_headline": "Changes requested",
         "round_1_must_find": "The interval is never cleared, so every Show me leaks a timer that keeps toggling a class on the element after the step ends.",
-        "round_2_headline": "No blocking findings",
+        "round_2_headline": "Approve",
         "round_2_must_find": "The round 1 blocker is resolved with head evidence; any round 1 follow-up (for example reduced-motion handling) is carried, not re-raised as a requirement.",
         "must_not": "Introduce a new round 2 merge requirement that round 1 could have raised, or ask again for an accepted follow-up."
       }
@@ -103,7 +103,7 @@
         }
       ],
       "expected": {
-        "headline": "No blocking findings",
+        "headline": "Approve",
         "must_find": "Nothing blocking.",
         "must_not": "Raise any blocker."
       }
