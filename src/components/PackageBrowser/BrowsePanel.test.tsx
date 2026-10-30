@@ -36,7 +36,7 @@ it('renders Explore in the page instead of opening the sidebar or redirecting ho
   const Component = BrowsePanel.Component;
   render(<Component />);
   expect(screen.getByTestId('explore-page')).toHaveTextContent('Page catalogue');
-  expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Back' })).toBeInTheDocument();
   expect(openCatalogBrowser).not.toHaveBeenCalled();
   expect(locationService.replace).not.toHaveBeenCalled();
 });

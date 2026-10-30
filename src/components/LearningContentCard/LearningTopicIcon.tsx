@@ -30,7 +30,7 @@ export function LearningTopicIcon({
           flexShrink: 0,
           width: dimension,
           height: dimension,
-          color: bordered ? theme.colors.text.secondary : visual.color,
+          color: bordered ? theme.colors.text.primary : visual.color,
           background: bordered
             ? surface === 'hover'
               ? theme.colors.action.hover

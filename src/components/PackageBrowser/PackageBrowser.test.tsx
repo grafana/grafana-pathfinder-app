@@ -662,8 +662,8 @@ it('opens a topic link directly in the page catalogue', () => {
 
 it('page catalogue shows filters immediately without the extra landing tabs', () => {
   render(<PackageBrowser page onOpenGuide={jest.fn()} />);
-  expect(screen.getByRole('combobox', { name: 'Format' })).toBeInTheDocument();
-  expect(screen.getByRole('group', { name: 'Source' })).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'All formats' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Source' })).toBeInTheDocument();
   expect(screen.queryByRole('group', { name: 'Browse view' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Start with the essentials' })).not.toBeInTheDocument();
 });

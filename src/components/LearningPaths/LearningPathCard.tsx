@@ -6,7 +6,7 @@ import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
  */
 
 import React, { useId, useMemo, useState } from 'react';
-import { useStyles2, Icon, ConfirmModal } from '@grafana/ui';
+import { Badge, useStyles2, Icon, ConfirmModal } from '@grafana/ui';
 import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
@@ -161,6 +161,7 @@ export function LearningPathCard({
           {tile && (
             <div className={styles.tileTopic}>
               <LearningTopicIcon topic={topic} kind="path" size="sm" bordered surface="secondary" />
+              <Badge text={t('learningCard.path', 'Learning path')} color="purple" />
             </div>
           )}
           <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>
@@ -189,7 +190,7 @@ export function LearningPathCard({
 
         {tile && (
           <div className={styles.tileProgress}>
-            <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage />
+            <ProgressRing progress={progress} size={32} strokeWidth={2} isCompleted={isCompleted} showPercentage />
             <span className={styles.tileGuideCount}>
               {isLoadingGuides ? 'Loading guides…' : `${completedCount}/${guides.length} guides`}
               {path.estimatedMinutes ? ` · About ${path.estimatedMinutes} min` : ''}

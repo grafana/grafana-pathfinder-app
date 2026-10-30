@@ -19,11 +19,8 @@ function BrowsePanelRenderer() {
   return (
     <div className={styles.browseLayout}>
       <nav aria-label="Learning pages" className={styles.browseNavigation}>
-        <LinkButton href={prefixRoute(ROUTES.Home)} variant="secondary">
-          Home
-        </LinkButton>{' '}
-        <LinkButton href={prefixRoute(ROUTES.Browse)} variant="secondary" icon="compass">
-          Explore
+        <LinkButton href={prefixRoute(ROUTES.Home)} variant="secondary" fill="text" size="md" icon="arrow-left">
+          Back
         </LinkButton>
       </nav>
       {enabled ? (

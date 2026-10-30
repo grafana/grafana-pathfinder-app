@@ -1,6 +1,6 @@
 import { ProgressRing } from '../LearningPaths/ProgressRing';
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Button, useStyles2 } from '@grafana/ui';
+import { Badge, Button, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
 import { LearningDetailsToggle } from './LearningDetailsToggle';
@@ -219,6 +219,12 @@ export function LearningContentCard({
         <div className={styles.tileBody}>
           <div className={styles.tileTopic}>
             <LearningTopicIcon topic={topic} kind={kind} size="sm" bordered surface="secondary" />
+            {kind !== 'docs' && (
+              <Badge
+                text={kind === 'path' ? t('learningCard.path', 'Learning path') : t('learningCard.guide', 'Guide')}
+                color={kind === 'path' ? 'purple' : 'orange'}
+              />
+            )}
           </div>
           <div className={styles.tileHeading}>
             <h3 data-testid={titleTestId}>
@@ -232,7 +238,7 @@ export function LearningContentCard({
         </div>
         <div className={styles.tileProgress}>
           {kind !== 'docs' && (
-            <ProgressRing progress={percent} size={40} strokeWidth={3} isCompleted={percent === 100} showPercentage />
+            <ProgressRing progress={percent} size={32} strokeWidth={2} isCompleted={percent === 100} showPercentage />
           )}
           <span className={styles.tileMetadata}>
             {effort}
@@ -244,7 +250,6 @@ export function LearningContentCard({
             )}
           </span>
         </div>
-        <div className={styles.tileActions}>{launchButton}</div>
         {(launchError || error) && (
           <p role="alert" className={styles.error}>
             {launchError || t('learningCard.launchError', 'Could not open this content. Try again.')}

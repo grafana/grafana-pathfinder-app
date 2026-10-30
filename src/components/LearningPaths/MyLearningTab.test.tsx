@@ -1556,3 +1556,20 @@ it('homepage puts started catalogue paths from both sources in Continue without 
   expect(within(available).queryByRole('heading', { name: 'Started public catalogue path' })).not.toBeInTheDocument();
   expect(within(available).getByRole('heading', { name: 'New path' })).toBeInTheDocument();
 });
+
+it('homepage includes in-progress guides from both sources in Continue learning', () => {
+  mockCatalogItems = ['grafana', 'organization'].map((source) => ({
+    key: `${source}:guide`,
+    id: `${source}-guide`,
+    title: `${source} guide in progress`,
+    format: 'guide',
+    source: source as 'grafana' | 'organization',
+    url: 'bundled:guide',
+  }));
+  mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 16 }]));
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const continued = screen.getByRole('heading', { name: 'Continue learning' }).closest('section')!;
+  for (const item of mockCatalogItems) {
+    expect(within(continued).getByRole('heading', { name: item.title })).toBeInTheDocument();
+  }
+});

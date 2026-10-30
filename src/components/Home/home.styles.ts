@@ -3,12 +3,19 @@ import { GrafanaTheme2 } from '@grafana/data';
 
 export const getHomePageStyles = (theme: GrafanaTheme2) => {
   return {
-    browseLayout: css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }),
+    browseLayout: css({
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      minHeight: 0,
+      backgroundColor: theme.colors.background.page,
+      backgroundImage: `radial-gradient(ellipse 1500px 1000px at 15% -120px, ${theme.colors.background.primary} 0%, ${theme.colors.background.primary} 25%, ${theme.colors.background.page} 100%)`,
+    }),
     browseNavigation: css({
       width: '100%',
       maxWidth: `calc(1200px + ${theme.spacing(6)})`,
       marginInline: 'auto',
-      padding: theme.spacing(2, 3, 0),
+      padding: theme.spacing(2, 2, 0),
     }),
     heading: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(2) }),
     headingText: css({ minWidth: 0 }),
@@ -28,7 +35,7 @@ export const getHomePageStyles = (theme: GrafanaTheme2) => {
         width: '100%',
         maxWidth: `calc(1200px + ${theme.spacing(6)})`,
         marginInline: 'auto',
-        paddingInline: theme.spacing(3),
+        paddingInline: theme.spacing(2),
         paddingTop: theme.spacing(6),
         boxSizing: 'border-box',
       },

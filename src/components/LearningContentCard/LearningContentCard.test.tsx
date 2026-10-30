@@ -443,7 +443,7 @@ it('lets a featured card carry its own eyebrow and badges', () => {
   expect(screen.getByText('Alerting')).toBeInTheDocument();
 });
 
-it('opens tile path details independently from launch without expanding the card', () => {
+it('opens tile path details by clicking the card without a separate launch button', () => {
   const launch = jest.fn();
   const view = jest.fn();
   render(
@@ -456,15 +456,14 @@ it('opens tile path details independently from launch without expanding the card
       details={<p>Guide sequence</p>}
     />
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Start path' }));
-  expect(launch).toHaveBeenCalledTimes(1);
-  expect(view).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Start path' })).not.toBeInTheDocument();
+  expect(launch).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('article'));
   expect(view).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Explore metrics' }));
   expect(view).toHaveBeenCalledTimes(2);
   expect(screen.queryByText('Guide sequence')).not.toBeInTheDocument();
-  expect(launch).toHaveBeenCalledTimes(1);
+  expect(launch).not.toHaveBeenCalled();
 });
 
 it('keeps zero-percent radial progress and metadata on unstarted catalogue path tiles', () => {
@@ -482,10 +481,10 @@ it('keeps zero-percent radial progress and metadata on unstarted catalogue path 
     />
   );
   expect(screen.getByText('0%')).toBeInTheDocument();
-  expect(screen.queryByText('Learning path')).not.toBeInTheDocument();
+  expect(screen.getByText('Learning path')).toBeInTheDocument();
   expect(screen.queryByText('Dashboards')).not.toBeInTheDocument();
   expect(screen.getByText('7 guides · About 20 min')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Start path' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Start path' })).not.toBeInTheDocument();
 });
 
 it('shows partial guide completion with the same radial used by path tiles', () => {

@@ -96,7 +96,9 @@ export function ProgressRing({
             <Icon name="check" size="lg" />
           </span>
         ) : (
-          <span className={styles.percentage}>{Math.round(progress)}%</span>
+          <span className={cx(styles.percentage, size <= 32 && checkmarkStyles.compactPercentage)}>
+            {Math.round(progress)}%
+          </span>
         ))}
     </div>
   );
@@ -106,6 +108,7 @@ export function ProgressRing({
 const getCheckmarkStyles = (theme: GrafanaTheme2) => {
   const colors = getColorPalette(theme);
   return {
+    compactPercentage: css({ fontSize: 10 }),
     checkmark: css({
       position: 'absolute',
       display: 'flex',

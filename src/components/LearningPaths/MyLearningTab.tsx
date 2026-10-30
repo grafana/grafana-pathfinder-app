@@ -1,3 +1,4 @@
+import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
 import type { GrafanaTheme2 } from '@grafana/data';
 import { HomeLearningPathsSection, type HomePathEntry } from './sections/HomeLearningPathsSection';
 import { catalogIdentity } from '../../learning-paths/catalog-learning-core';
@@ -227,6 +228,10 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     return [...entries.values()];
   }, [paths, onlinePaths, assignmentByTargetId, catalog.items, catalogProgress, getPathProgress, getPathGuides]);
   const homeContinuePaths = homePathEntries.filter((entry) => entry.percent > 0 && entry.percent < 100);
+  const homeContinueGuides = catalog.items.filter((item) => {
+    const percent = catalogProgress.get(item.key)?.percent ?? 0;
+    return item.format === 'guide' && Number.isFinite(percent) && percent > 0 && percent < 100;
+  });
   const homeAvailablePaths = homePathEntries.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
   const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress);
   const continueItems = useMemo(
@@ -610,12 +615,35 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
       {homepage && (
         <HomeLearningPathsSection
           title="Continue learning"
-          description="Pick up learning paths you have started."
+          description="Pick up guides and paths you have started."
           icon="play"
           entries={homeContinuePaths}
           onView={handleHomePathView}
           styles={styles}
-        />
+        >
+          {homeContinueGuides.map((item) => (
+            <LearningContentCard
+              key={item.key}
+              tile
+              title={item.title}
+              description={item.description}
+              kind="guide"
+              topic={catalogTopic(item)}
+              organization={item.source === 'organization'}
+              progress={catalogProgress.get(item.key)?.percent}
+              effort={[
+                item.activityCount !== undefined ? `${item.activityCount} activities` : undefined,
+                item.estimatedMinutes ? `About ${item.estimatedMinutes} min` : undefined,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              onViewPath={() => {
+                void catalogLaunch.launch(item);
+              }}
+              onLaunch={() => catalogLaunch.launch(item)}
+            />
+          ))}
+        </HomeLearningPathsSection>
       )}
 
       {!homepage && (

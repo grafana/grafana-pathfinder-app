@@ -19,6 +19,7 @@ export function HomeLearningPathsSection({
   description,
   icon,
   entries,
+  children,
   onView,
   styles,
 }: {
@@ -26,10 +27,11 @@ export function HomeLearningPathsSection({
   description: string;
   icon: IconName;
   entries: HomePathEntry[];
+  children?: React.ReactNode;
   onView: (entry: HomePathEntry) => void;
   styles: ReturnType<typeof getMyLearningStyles>;
 }) {
-  if (!entries.length) {
+  if (!entries.length && !React.Children.count(children)) {
     return null;
   }
   return (
@@ -59,6 +61,7 @@ export function HomeLearningPathsSection({
             onViewPath={() => onView(entry)}
           />
         ))}
+        {children}
       </div>
     </section>
   );

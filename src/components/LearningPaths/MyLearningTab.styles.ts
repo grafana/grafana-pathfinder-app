@@ -152,7 +152,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
     statIcon: iconCallout(5),
     statIconCompleted: iconCallout(5, theme.colors.success.text),
     statIconBadges: iconCallout(5, theme.colors.info.text),
-    statIconStreak: iconCallout(5, theme.colors.warning.text),
+    statIconStreak: iconCallout(5, theme.visualization.getColorByName('red')),
     statIconAltitude: iconCallout(5, theme.visualization.getColorByName('purple')),
     statContent: css({
       minWidth: 0,

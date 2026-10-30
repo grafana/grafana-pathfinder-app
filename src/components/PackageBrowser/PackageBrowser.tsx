@@ -9,7 +9,7 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import { milestoneCountText } from '../LearningContentCard/learning-effort';
-import { Alert, Button, Icon, Input, Combobox, useStyles2 } from '@grafana/ui';
+import { Alert, Button, Icon, Input, Combobox, RadioButtonGroup, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import {
   CATALOG_BATCH_SIZE,
@@ -256,6 +256,32 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
     />
   );
 
+  const searchControl = (
+    <>
+      <label htmlFor={searchId} className={styles.searchLabel}>
+        {t('packageBrowser.searchLabel', 'Search guides and paths')}
+      </label>
+      <Input
+        id={searchId}
+        value={view.query}
+        prefix={<Icon name="search" />}
+        placeholder={t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')}
+        onChange={(event) => {
+          const query = event.currentTarget.value;
+          cancelPendingSearch();
+          editedSearchScope.current = viewScope;
+          update({ query, scrollTop: 0 });
+        }}
+        onBlur={reportSearch}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            reportSearch();
+          }
+        }}
+      />
+    </>
+  );
+
   return (
     <div
       ref={container}
@@ -275,31 +301,13 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
               {t('packageBrowser.description', 'Find something to learn or build in Grafana.')}
             </p>
           </div>
-          <span className={styles.catalogCount}>
-            {t('packageBrowser.catalogCount', '{{count}} to explore', { count: browsable.length })}
-          </span>
+          {!page && (
+            <span className={styles.catalogCount}>
+              {t('packageBrowser.catalogCount', '{{count}} to explore', { count: browsable.length })}
+            </span>
+          )}
         </div>
-        <label htmlFor={searchId} className={styles.searchLabel}>
-          {t('packageBrowser.searchLabel', 'Search guides and paths')}
-        </label>
-        <Input
-          id={searchId}
-          value={view.query}
-          prefix={<Icon name="search" />}
-          placeholder={t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')}
-          onChange={(event) => {
-            const query = event.currentTarget.value;
-            cancelPendingSearch();
-            editedSearchScope.current = viewScope;
-            update({ query, scrollTop: 0 });
-          }}
-          onBlur={reportSearch}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-              reportSearch();
-            }
-          }}
-        />
+        {!page && searchControl}
         {!page && (
           <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>
             <button
@@ -321,20 +329,32 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
           </div>
         )}
         {view.mode === 'all' && (
-          <div className={styles.filters}>
-            <label htmlFor={`${searchId}-format`}>
+          <div className={page ? styles.pageFilters : styles.filters}>
+            <label htmlFor={`${searchId}-format`} className={page ? styles.formatToggle : undefined}>
               {t('packageBrowser.format', 'Format')}
-              <Combobox
-                id={`${searchId}-format`}
-                aria-label={t('packageBrowser.format', 'Format')}
-                value={view.format}
-                options={[
-                  { value: 'all', label: t('packageBrowser.allFormats', 'All formats') },
-                  { value: 'guide', label: t('packageBrowser.guides', 'Guides') },
-                  { value: 'path', label: t('packageBrowser.paths', 'Learning paths') },
-                ]}
-                onChange={(option) => update({ format: option.value as CatalogViewState['format'], scrollTop: 0 })}
-              />
+              {page ? (
+                <RadioButtonGroup<CatalogViewState['format']>
+                  options={[
+                    { value: 'all', label: t('packageBrowser.allFormats', 'All formats') },
+                    { value: 'guide', label: t('packageBrowser.guides', 'Guides') },
+                    { value: 'path', label: t('packageBrowser.paths', 'Learning paths') },
+                  ]}
+                  value={view.format}
+                  onChange={(format) => update({ format, scrollTop: 0 })}
+                />
+              ) : (
+                <Combobox
+                  id={`${searchId}-format`}
+                  aria-label={t('packageBrowser.format', 'Format')}
+                  value={view.format}
+                  options={[
+                    { value: 'all', label: t('packageBrowser.allFormats', 'All formats') },
+                    { value: 'guide', label: t('packageBrowser.guides', 'Guides') },
+                    { value: 'path', label: t('packageBrowser.paths', 'Learning paths') },
+                  ]}
+                  onChange={(option) => update({ format: option.value as CatalogViewState['format'], scrollTop: 0 })}
+                />
+              )}
             </label>
             <label htmlFor={`${searchId}-topic`}>
               {t('packageBrowser.topic', 'Topic')}
@@ -351,35 +371,55 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
             </label>
             <fieldset className={styles.sourceFilter}>
               <legend>{t('packageBrowser.source', 'Source')}</legend>
-              <div className={styles.sourceSegments}>
-                {(
-                  [
+              {page ? (
+                <Combobox<CatalogViewState['source']>
+                  aria-label={t('packageBrowser.source', 'Source')}
+                  options={[
                     { value: 'all', label: t('packageBrowser.allSourcesPill', 'All') },
                     { value: 'grafana', label: t('packageBrowser.official', 'Official') },
                     { value: 'organization', label: t('packageBrowser.organization', 'Your organization') },
-                  ] as const
-                ).map((source) => (
-                  <button
-                    key={source.value}
-                    type="button"
-                    className={styles.sourceSegment}
-                    aria-pressed={view.source === source.value}
-                    onClick={() => {
-                      if (source.value !== view.source) {
-                        reportCatalogInteraction({
-                          action: 'source',
-                          source: source.value,
-                          previousSource: view.source,
-                        });
-                      }
-                      update({ source: source.value, scrollTop: 0 });
-                    }}
-                  >
-                    {source.label}
-                  </button>
-                ))}
-              </div>
+                  ]}
+                  value={view.source}
+                  onChange={(option) => {
+                    const source = option.value;
+                    if (source !== view.source) {
+                      reportCatalogInteraction({ action: 'source', source, previousSource: view.source });
+                    }
+                    update({ source, scrollTop: 0 });
+                  }}
+                />
+              ) : (
+                <div className={styles.sourceSegments}>
+                  {(
+                    [
+                      { value: 'all', label: t('packageBrowser.allSourcesPill', 'All') },
+                      { value: 'grafana', label: t('packageBrowser.official', 'Official') },
+                      { value: 'organization', label: t('packageBrowser.organization', 'Your organization') },
+                    ] as const
+                  ).map((source) => (
+                    <button
+                      key={source.value}
+                      type="button"
+                      className={styles.sourceSegment}
+                      aria-pressed={view.source === source.value}
+                      onClick={() => {
+                        if (source.value !== view.source) {
+                          reportCatalogInteraction({
+                            action: 'source',
+                            source: source.value,
+                            previousSource: view.source,
+                          });
+                        }
+                        update({ source: source.value, scrollTop: 0 });
+                      }}
+                    >
+                      {source.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </fieldset>
+            {page && <div className={styles.pageSearch}>{searchControl}</div>}
           </div>
         )}
         {(catalog.publicUnavailable || catalog.privateUnavailable) && (
@@ -461,13 +501,15 @@ export function PackageBrowser({ onOpenGuide, page = false }: PackageBrowserProp
                 {t('packageBrowser.results', '{{count}} results', { count: items.length })}
                 {catalog.loading && ` · ${t('packageBrowser.loading', 'Loading more content…')}`}
               </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => update({ query: '', format: 'all', source: 'all', category: 'all', scrollTop: 0 })}
-              >
-                {t('packageBrowser.clear', 'Clear filters')}
-              </Button>
+              {!page && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => update({ query: '', format: 'all', source: 'all', category: 'all', scrollTop: 0 })}
+                >
+                  {t('packageBrowser.clear', 'Clear filters')}
+                </Button>
+              )}
             </div>
             <div className={page ? styles.pageGrid : styles.grid}>
               {items.slice(0, view.visibleCount).map((item) => renderCard(item))}
