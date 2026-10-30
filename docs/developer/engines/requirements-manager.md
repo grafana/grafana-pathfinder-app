@@ -68,6 +68,7 @@ The hook returns a comprehensive state object including:
 - `isRetrying` - Currently in retry cycle
 - `retryCount` / `maxRetries` - Retry progress
 - `completionReason` - How step was completed ('objectives', 'manual', 'skipped')
+- `objectivesOrigin` - Progress origin of an objectives completion: 'load' when met on the first answered check, else 'change'
 - `explanation` - User-friendly message about requirement status
 - `error` - Error message from failed requirement check
 - `canFixRequirement` - Requirement can be automatically fixed

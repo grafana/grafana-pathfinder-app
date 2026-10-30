@@ -724,8 +724,15 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
     expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
   });
 
-  it('keeps announcing an objectives-completed section as a change (decision pending in #2102)', async () => {
-    setStepCheckerCompletionReason('objectives');
+  it.each([
+    [
+      'announces objectives met after an unmet check as a change, hydrated false',
+      'change',
+      [[NON_PREVIEW_KEY, 'change']],
+    ],
+    ['does not announce objectives met on the first check as a change, and marks it hydrated', 'load', []],
+  ] as const)('%s', async (_name, objectivesOrigin, expectedChanges) => {
+    setStepCheckerCompletionReason('objectives', objectivesOrigin);
     const { events, unsubscribe } = collectSectionEvents();
     try {
       renderNoGateSection();
@@ -734,8 +741,8 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
       );
       await settle();
 
-      expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
-      expect(events.map((e) => e.hydrated)).toEqual([false]);
+      expect(announcedAsChange()).toEqual(expectedChanges);
+      expect(events.map((e) => e.hydrated)).toEqual([objectivesOrigin === 'load']);
     } finally {
       unsubscribe();
     }
