@@ -180,7 +180,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
         backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
         borderColor: theme.colors.border.medium,
       },
-      '&:focus-within': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
+      '&:focus-within': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: -2 },
       '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
     }),
     completedLabel: css({ color: theme.colors.success.text }),

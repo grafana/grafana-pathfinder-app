@@ -189,3 +189,25 @@ it('hides old scope errors and ignores late failures after identity changes', as
   expect(result.current.launchError).toBeNull();
   expect(result.current.launchingKey).toBeNull();
 });
+
+it('opens page launches immediately and lets the reader load the content', async () => {
+  prepareMock.mockReturnValue(new Promise(() => {}));
+  const { result } = renderHook(() => useCatalogLaunch([entry], 'org:1', progress, { loadInSidebar: true }));
+  await act(async () => {
+    await result.current.launch(entry);
+  });
+  expect(openGuideInSidebar).toHaveBeenCalledWith({ ...launch, packageInfo: undefined });
+  expect(prepareMock).not.toHaveBeenCalled();
+});
+
+it('still checks private package availability before an immediate page launch', async () => {
+  mockResolve.mockResolvedValue({ ok: false });
+  const privateEntry = { ...entry, source: 'organization' as const, url: 'backend-guide:guide' };
+  const { result } = renderHook(() => useCatalogLaunch([privateEntry], 'org:1', progress, { loadInSidebar: true }));
+  await act(async () => {
+    await result.current.launch(privateEntry);
+  });
+  expect(mockResolve).toHaveBeenCalledWith('guide', { loadContent: 'metadata-only' });
+  expect(openGuideInSidebar).not.toHaveBeenCalled();
+  expect(prepareMock).not.toHaveBeenCalled();
+});

@@ -182,7 +182,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     return item.format === 'guide' && Number.isFinite(percent) && percent > 0 && percent < 100;
   });
   const homeAvailablePaths = homePathEntries.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
-  const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress);
+  const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress, { loadInSidebar: homepage });
   const continueItems = useMemo(
     () =>
       selectContinueLearning(
@@ -202,6 +202,10 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
       if (!mountedRef.current) {
         return;
       }
+      if (inSidebar) {
+        openGuideInSidebar({ url, title, source: 'home_page', packageInfo });
+        return;
+      }
       const loadContext = beginGuideLoad(url);
       preparingLoadRef.current = loadContext;
       const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo, loadContext });
@@ -210,7 +214,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
       }
       preparingLoadRef.current = undefined;
       if (result.ok) {
-        (inSidebar ? openGuideInSidebar : onOpenGuide)(result.launch);
+        onOpenGuide(result.launch);
       } else {
         // Fetched error messages can contain private guide content.
         logger.error('[MyLearning] Guide launch preparation failed', {

@@ -11,6 +11,7 @@ import React, {
 import { Alert, Button, Icon, Input, Combobox, RadioButtonGroup, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
+import { useLearningPageScroll } from '../../hooks';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
 import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import {
@@ -119,6 +120,7 @@ function PackageBrowserContent({
     [page, catalog.scope]
   );
   const container = useRef<HTMLDivElement>(null);
+  useLearningPageScroll(container, page);
   const editedSearchScope = useRef<string | null>(null);
   const searchReportTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastSearchTopic = useRef<string | null>(null);
@@ -290,6 +292,7 @@ function PackageBrowserContent({
     progress,
     {
       onOpenGuide,
+      loadInSidebar: page,
       onAcceptedLaunch: (item) => update({ focusKey: item.key }),
       interactionLocation: 'package_browser',
     }

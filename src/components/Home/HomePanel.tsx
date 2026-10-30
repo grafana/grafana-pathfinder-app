@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { SceneObjectBase, type SceneObjectState } from '@grafana/scenes';
 import { LinkButton, useStyles2 } from '@grafana/ui';
 import { config } from '@grafana/runtime';
 import { prefixRoute } from '../../utils/utils.routing';
+import { useLearningPageScroll } from '../../hooks';
 import { MyLearningTab } from '../LearningPaths';
 import { MyLearningErrorBoundary } from '../docs-panel/components';
 import { openPreparedGuide } from '../docs-panel/utils/open-prepared-guide';
@@ -18,8 +19,10 @@ export class HomePanel extends SceneObjectBase<HomePanelState> {
 
 export function HomePanelRenderer() {
   const styles = useStyles2(getHomePageStyles);
+  const container = useRef<HTMLDivElement>(null);
+  useLearningPageScroll(container);
   return (
-    <div className={styles.container} data-testid={testIds.homePage.container}>
+    <div ref={container} className={styles.container} data-testid={testIds.homePage.container}>
       {config.bootData?.user?.orgRole === 'Admin' && getFeatureFlagValue('pathfinder.learning-insights', false) && (
         <nav aria-label="Learning administration">
           <LinkButton href={prefixRoute('learning-insights')} variant="secondary" icon="chart-line">
