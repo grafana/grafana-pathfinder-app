@@ -840,6 +840,16 @@ function testUniqueness(
   }
 }
 
+// Cleaning can drop the part of a selector that made it unique (#404).
+function cleanIfStillUnique(selector: string, element: HTMLElement, method: string, inOverlay: boolean): string {
+  const cleaned = cleanDynamicAttributes(selector);
+  if (cleaned === selector) {
+    return selector;
+  }
+  const { matchCount, containsTarget } = testUniqueness(cleaned, element, method, inOverlay);
+  return matchCount === 1 && containsTarget ? cleaned : selector;
+}
+
 type AncestorScopeType = 'grafana' | 'testid' | 'id' | 'data-attr';
 
 interface AncestorScope {
@@ -931,7 +941,7 @@ function disambiguate(
     const { matchCount, containsTarget } = testUniqueness(scoped, element, candidate.method, inOverlay);
     if (matchCount === 1 && containsTarget) {
       results.push({
-        selector: cleanDynamicAttributes(scoped),
+        selector: cleanIfStillUnique(scoped, element, candidate.method, inOverlay),
         score: candidate.score + scopePenalty(scope),
         method: candidate.method,
       });
@@ -954,7 +964,7 @@ function disambiguate(
         const nthResult = testUniqueness(nthChildScoped, element, candidate.method, inOverlay);
         if (nthResult.matchCount === 1 && nthResult.containsTarget) {
           results.push({
-            selector: cleanDynamicAttributes(nthChildScoped),
+            selector: cleanIfStillUnique(nthChildScoped, element, candidate.method, inOverlay),
             score: candidate.score + scopePenalty(scope),
             method: candidate.method,
           });
@@ -973,7 +983,7 @@ function disambiguate(
         const { matchCount, containsTarget } = testUniqueness(overlayScoped, element, candidate.method, true);
         if (matchCount === 1 && containsTarget) {
           results.push({
-            selector: cleanDynamicAttributes(overlayScoped),
+            selector: cleanIfStillUnique(overlayScoped, element, candidate.method, true),
             score: candidate.score + DISAMBIGUATION_PENALTIES.overlayScope,
             method: candidate.method,
           });
@@ -990,7 +1000,12 @@ function disambiguate(
       const idx = allMatches.elements.indexOf(element);
       if (idx >= 0) {
         results.push({
-          selector: cleanDynamicAttributes(`${candidate.selector}:nth-match(${idx + 1})`),
+          selector: cleanIfStillUnique(
+            `${candidate.selector}:nth-match(${idx + 1})`,
+            element,
+            candidate.method,
+            inOverlay
+          ),
           score: candidate.score + DISAMBIGUATION_PENALTIES.nthMatch,
           method: candidate.method,
         });
@@ -1040,7 +1055,7 @@ function admitCandidate(
       if (scopedResult.matchCount === 1 && scopedResult.containsTarget) {
         return [
           {
-            selector: cleanDynamicAttributes(scoped),
+            selector: cleanIfStillUnique(scoped, element, candidate.method, inOverlay),
             score: candidate.score,
             method: candidate.method,
             matchCount: 1,
@@ -1310,14 +1325,21 @@ function candidateHasDescendant(element: HTMLElement): Candidate | null {
  * 2. Generate all candidate selectors with stability scores
  * 3. Disambiguate non-unique candidates and return the best one
  */
-export function generateBestSelector(
-  element: HTMLElement,
-  _options?: { clickX?: number; clickY?: number; hoveredElement?: HTMLElement }
-): string {
+export function generateBestSelector(element: HTMLElement): string {
   const target = retargetElement(element);
   const candidates = generateCandidates(target);
   const winner = rankAndSelect(candidates, target);
   return winner.selector;
+}
+
+/**
+ * Whether `selector` matches `element`'s retarget and nothing else, counted the
+ * way the generator counts a selector found by `method`.
+ */
+export function selectorMatchesOnly(selector: string, element: HTMLElement, method: string): boolean {
+  const target = retargetElement(element);
+  const { matchCount, containsTarget } = testUniqueness(selector, target, method, findOverlayContext(target) !== null);
+  return matchCount === 1 && containsTarget;
 }
 
 /**

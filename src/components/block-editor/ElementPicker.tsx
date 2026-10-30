@@ -5,12 +5,12 @@
  * Shows DOM path tooltip on hover and returns the selector when clicked.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { generateSelectorFromEvent, generateFullDomPath } from '../../utils/devtools';
+import { generateSelectorFromEvent, generateSelectorForElement } from '../../utils/devtools';
 import { DomPathTooltip } from '../DomPathTooltip';
 import { logger } from '../../lib/logging';
 
@@ -205,7 +205,10 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     };
   }, [handleClick, handleMouseMove, handleKeyDown]);
 
-  const domPath = hoveredElement ? generateFullDomPath(hoveredElement) : '';
+  const hoveredSelector = useMemo(
+    () => (hoveredElement ? generateSelectorForElement(hoveredElement) : ''),
+    [hoveredElement]
+  );
 
   return createPortal(
     <>
@@ -232,7 +235,9 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
         </button>
       </div>
 
-      {cursorPosition && <DomPathTooltip domPath={domPath} position={cursorPosition} visible={!!domPath} />}
+      {cursorPosition && (
+        <DomPathTooltip domPath={hoveredSelector} position={cursorPosition} visible={!!hoveredSelector} />
+      )}
     </>,
     document.body
   );
