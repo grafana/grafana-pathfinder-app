@@ -373,6 +373,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           return {
             requirements: conditionLabel(requirements),
             pass: false,
+            verdict: 'unavailable',
             error: [
               {
                 requirement: conditionLabel(requirements) || 'unknown',

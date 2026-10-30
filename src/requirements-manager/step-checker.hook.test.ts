@@ -1305,6 +1305,23 @@ describe('useStepChecker objectives completion origin', () => {
     expect(guideOrigins).toEqual(['change']);
   });
 
+  it.each<[string, typeof checkRequirements]>([
+    [
+      'an unavailable',
+      ({ requirements }) =>
+        Promise.resolve({ pass: false, verdict: 'unavailable', requirements: conditionLabel(requirements), error: [] }),
+    ],
+    ['a thrown', () => Promise.reject(new Error('check failed'))],
+  ])('saves objectives met after %s first check as a load', async (_label, firstCheck) => {
+    objectivesMet = true;
+    mockCheckRequirements.mockImplementationOnce(firstCheck);
+    const { result } = await renderStepChecker({ objectives: 'has-datasources', sectionId: 'section-a' });
+    await checkNow(result);
+
+    expect(result.current.completionReason).toBe('objectives');
+    expect(guideOrigins).toEqual(['load']);
+  });
+
   it('ignores an unmet check that settles after a reset', async () => {
     objectivesMet = false;
     const { result } = await renderStepChecker({ objectives: 'has-datasources', sectionId: 'section-a' });
