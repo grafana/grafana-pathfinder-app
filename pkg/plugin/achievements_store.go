@@ -145,6 +145,9 @@ func (s *achievementStore) CreateProgress(ctx context.Context, person achievemen
 }
 
 func (s *achievementStore) SaveProgress(ctx context.Context, person achievements.Person, p achievements.Progress) (achievements.Progress, error) {
+	if p.Version == "" {
+		return achievements.Progress{}, achievements.ErrConflict
+	}
 	obj := s.progressObject(person, p)
 	obj.Metadata.ResourceVersion = p.Version
 	payload, err := json.Marshal(obj)

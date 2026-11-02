@@ -66,6 +66,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"save at a stale version is ErrConflict and changes nothing", saveStale},
 		{"a reload after a conflict saves at the new version", saveAfterReload},
 		{"save of a missing row is ErrConflict", saveMissing},
+		{"save without a version is ErrConflict and changes nothing", saveUnversioned},
 		{"racing saves at one version have exactly one winner", saveRace},
 		{"units come back sorted and distinct", unitsNormalised},
 		{"people never see each other's rows", peopleIsolated},
@@ -198,6 +199,18 @@ func saveMissing(t *testing.T, s achievements.Store) {
 	}
 	if rows, _ := s.LoadProgress(context.Background(), alice, []string{"a"}); len(rows) != 0 {
 		t.Fatalf("a refused save created %v", rows)
+	}
+}
+
+func saveUnversioned(t *testing.T, s achievements.Store) {
+	row := mustCreate(t, s, alice, "a")
+	p := withUnits(row, 1, "u1")
+	p.Version = ""
+	if _, err := s.SaveProgress(context.Background(), alice, p); !errors.Is(err, achievements.ErrConflict) {
+		t.Fatalf("save without a version err = %v, want ErrConflict", err)
+	}
+	if got := mustLoad(t, s, alice, "a"); got.Version != row.Version || len(got.Units) != 0 {
+		t.Fatalf("a refused save changed the row to %+v", got)
 	}
 }
 
