@@ -69,3 +69,21 @@ it('never displays an old organization response after the scope changes', async 
   expect(result.current.items.some((item) => item.id === 'old-private-guide')).toBe(false);
   expect(result.current.scope).toMatch(/^org-b:/);
 });
+
+it('does not fetch or expose catalog items when disabled', () => {
+  jest.clearAllMocks();
+  const { result } = renderHook(() => usePackageCatalog({ enabled: false }));
+  expect(result.current.items).toEqual([]);
+  expect(result.current.loading).toBe(false);
+  expect(fetchOnlinePackageRecommendations).not.toHaveBeenCalled();
+  expect(fetchCustomGuideCatalogue).not.toHaveBeenCalled();
+});
+
+it('fetches only public packages in public-only mode', async () => {
+  jest.clearAllMocks();
+  const { result } = renderHook(() => usePackageCatalog({ publicOnly: true }));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(fetchOnlinePackageRecommendations).toHaveBeenCalledTimes(1);
+  expect(fetchCustomGuideCatalogue).not.toHaveBeenCalled();
+  expect(result.current.items.every((item) => item.source === 'grafana')).toBe(true);
+});

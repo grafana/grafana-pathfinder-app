@@ -210,9 +210,8 @@ export function BlockList({
    */
   const handleDropOnSectionInsert = useCallback(
     (activeId: string, activeData: DragData, sectionId: string, insertIndex: number) => {
-      // Sections cannot nest because the JSON guide schema doesn't model recursive
-      // sections — every section is a flat container of leaf blocks. Conditionals
-      // ARE allowed inside sections because their branches render leaf blocks too.
+      // Sections cannot nest; the guide schema rejects a section beneath another.
+      // Conditionals ARE allowed inside sections.
       if (activeData.blockType === 'section') {
         return;
       }

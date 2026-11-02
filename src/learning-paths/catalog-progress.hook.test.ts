@@ -37,6 +37,15 @@ beforeEach(() => {
   jest.mocked(learningProgressStorage.get).mockResolvedValue(emptyProgress);
 });
 
+it('settles with unknown progress when storage fails so suggestions can still load', async () => {
+  jest.mocked(interactiveCompletionStorage.getAll).mockRejectedValue(new Error('Unavailable'));
+  const items = [item('bundled:dashboard', 'bundled:dashboard')];
+  const { result } = renderHook(() => useCatalogProgress(items, 'org:user'));
+  await waitFor(() => expect(result.current.size).toBe(1));
+  expect(result.current.get('bundled:dashboard')?.percent).toBe(0);
+  expect(getOrMintAttempt).not.toHaveBeenCalled();
+});
+
 it('keeps progress distinct for public and private packages with the same ID', async () => {
   const publicUrl = 'https://grafana.com/developer-resources/interactive-tutorials/dashboard/content.json';
   const items = [

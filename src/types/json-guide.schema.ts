@@ -1077,26 +1077,30 @@ const ConditionalProps = {
 const MAX_NESTING_DEPTH = 5;
 
 // Helper to create depth-limited block schema
-function createBlockSchemaWithDepth(currentDepth: number): z.ZodType {
+function createBlockSchemaWithDepth(currentDepth: number, insideSection = false): z.ZodType {
   if (currentDepth >= MAX_NESTING_DEPTH) {
     // At max depth, only allow non-recursive blocks
     return NonRecursiveBlockSchema;
   }
 
-  const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepth(currentDepth + 1));
+  const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepth(currentDepth + 1, insideSection));
+  const sectionChildSchema = z.lazy(() => createBlockSchemaWithDepth(currentDepth + 1, true));
+  // A section cannot sit beneath another section, directly or through a
+  // conditional or assistant block (the editor enforces the same rule).
+  const sectionArm = z
+    .object({
+      ...SectionProps,
+      blocks: z.array(sectionChildSchema),
+      ...AuthorAnnotatedSchema.shape,
+    })
+    .refine(hasStableVisibilityId, visibilityIdIssue);
 
   // Each container arm spreads AuthorAnnotatedSchema.shape so `authorNote`
   // survives validation (Zod's default strip would otherwise drop it — leaf
   // block schemas already include it, so containers must too).
   return z.union([
     NonRecursiveBlockSchema,
-    z
-      .object({
-        ...SectionProps,
-        blocks: z.array(nestedBlockSchema),
-        ...AuthorAnnotatedSchema.shape,
-      })
-      .refine(hasStableVisibilityId, visibilityIdIssue),
+    ...(insideSection ? [] : [sectionArm]),
     // Collapsible is presentational: it holds only content blocks (no
     // interactive/step types, no containers). See PresentationalBlockSchema.
     z.object({
@@ -1127,24 +1131,26 @@ export const JsonBlockSchema = createBlockSchemaWithDepth(0);
 // Variant that excludes snippet-ref at every nesting level. Used by the
 // snippet root schema (json-snippet.schema.ts) so a snippet cannot
 // contain a ref to another snippet.
-function createBlockSchemaWithDepthNoRef(currentDepth: number): z.ZodType {
+function createBlockSchemaWithDepthNoRef(currentDepth: number, insideSection = false): z.ZodType {
   if (currentDepth >= MAX_NESTING_DEPTH) {
     return NonRecursiveBlockSchemaNoRef;
   }
 
-  const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepthNoRef(currentDepth + 1));
+  const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepthNoRef(currentDepth + 1, insideSection));
+  const sectionChildSchema = z.lazy(() => createBlockSchemaWithDepthNoRef(currentDepth + 1, true));
+  const sectionArm = z
+    .object({
+      ...SectionProps,
+      blocks: z.array(sectionChildSchema),
+      ...AuthorAnnotatedSchema.shape,
+    })
+    .refine(hasStableVisibilityId, visibilityIdIssue);
 
   // See createBlockSchemaWithDepth: container arms spread
   // AuthorAnnotatedSchema.shape so `authorNote` is preserved, not stripped.
   return z.union([
     NonRecursiveBlockSchemaNoRef,
-    z
-      .object({
-        ...SectionProps,
-        blocks: z.array(nestedBlockSchema),
-        ...AuthorAnnotatedSchema.shape,
-      })
-      .refine(hasStableVisibilityId, visibilityIdIssue),
+    ...(insideSection ? [] : [sectionArm]),
     // Collapsible holds only content blocks (PresentationalBlockSchema has no
     // snippet-ref, so the NoRef variant needs no separate union here).
     z.object({
@@ -1180,7 +1186,7 @@ export const JsonBlockSchemaNoRef = createBlockSchemaWithDepthNoRef(0);
 export const JsonSectionBlockSchema = z
   .object({
     ...SectionProps,
-    blocks: z.lazy(() => z.array(JsonBlockSchema)),
+    blocks: z.lazy(() => z.array(createBlockSchemaWithDepth(1, true))),
     ...AuthorAnnotatedSchema.shape,
   })
   .refine(hasStableVisibilityId, visibilityIdIssue);

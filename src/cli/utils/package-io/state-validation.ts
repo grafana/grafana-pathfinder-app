@@ -24,6 +24,7 @@ import {
 import { ContentJsonSchema, ManifestJsonSchema } from '../../../types/package.schema';
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
 import { validateGuide } from '../../../validation/validate-guide';
+import { findNestedSections, isPathAtOrAbove } from '../../../validation/nested-sections';
 import type { PackageIOErrorCode, PackageIOIssue } from './errors';
 
 export interface ValidationOutcome {
@@ -65,8 +66,19 @@ export function validatePackageState(
 
   const contentParsed = ContentJsonSchema.safeParse(content);
   if (!contentParsed.success) {
+    const nested = findNestedSections(content.blocks);
+    for (const n of nested) {
+      issues.push({
+        code: 'SCHEMA_VALIDATION',
+        message: `content.json: ${n.message}`,
+        path: ['content.json', ...n.path.map(String)],
+      });
+    }
     for (const issue of contentParsed.error.issues) {
       if (isEmptyContainerCompletenessMessage(issue.message)) {
+        continue;
+      }
+      if (nested.some((n) => isPathAtOrAbove(issue.path, n.path))) {
         continue;
       }
       issues.push({

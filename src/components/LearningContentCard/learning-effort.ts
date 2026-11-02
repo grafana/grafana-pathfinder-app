@@ -7,7 +7,7 @@ export function learningEffort(manifest: Record<string, unknown> | undefined, ki
   const minutes = manifest?.estimatedMinutes;
   return [
     kind === 'path' && Array.isArray(manifest?.milestones)
-      ? t('learningCard.modules', '{{count}} modules', { count: manifest.milestones.length })
+      ? milestoneCountText(manifest.milestones.length)
       : kind === 'guide' && stats.success && stats.data.version === GUIDE_STATS_VERSION
         ? t('learningCard.activities', '{{count}} activities', { count: stats.data.completableBlockCount })
         : undefined,
@@ -17,4 +17,10 @@ export function learningEffort(manifest: Record<string, unknown> | undefined, ki
   ]
     .filter(Boolean)
     .join(' · ');
+}
+
+export function milestoneCountText(count: number): string {
+  return count === 1
+    ? t('learningCard.oneMilestone', '1 milestone')
+    : t('learningCard.milestones', '{{count}} milestones', { count });
 }

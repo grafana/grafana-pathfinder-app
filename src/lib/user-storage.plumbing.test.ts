@@ -18,6 +18,8 @@ import {
   __resetSyncedForTests,
   createHybridStorage,
   createLocalStorage,
+  sectionDoneStorage,
+  setGlobalStorage,
   syncFromGrafanaStorage,
   unwrapEnvelope,
   wrapEnvelope,
@@ -78,13 +80,31 @@ describe('createHybridStorage — debounced write queue', () => {
     const grafana = makeGrafanaStorage();
     const hybrid = createHybridStorage(grafana);
 
-    await hybrid.setItem('k', 'immediate');
+    const write = hybrid.setItem('k', 'immediate');
+
+    expect(localStorage.getItem('k')).toBe(JSON.stringify('immediate'));
+    await write;
 
     // localStorage holds the value immediately (survives page refresh)…
     expect(localStorage.getItem('k')).toBe(JSON.stringify('immediate'));
     expect(localStorage.getItem(tsKey('k'))).not.toBeNull();
     // …but Grafana has not been touched yet (still debouncing).
     expect(grafana.setItem).not.toHaveBeenCalled();
+  });
+
+  it('reads section completion without awaiting its write or the Grafana debounce', async () => {
+    const grafana = makeGrafanaStorage();
+    setGlobalStorage(createHybridStorage(grafana));
+    try {
+      const write = sectionDoneStorage.set('completion-order-test', 'section-intro', true);
+      expect(await sectionDoneStorage.get('completion-order-test', 'section-intro')).toBe(true);
+      expect(grafana.setItem).not.toHaveBeenCalled();
+      await write;
+      await jest.advanceTimersByTimeAsync(500);
+      expect(grafana.setItem).toHaveBeenCalled();
+    } finally {
+      setGlobalStorage(createLocalStorage());
+    }
   });
 
   it('debounces rapid writes to the same key into a single deduped Grafana write (last-write-wins)', async () => {

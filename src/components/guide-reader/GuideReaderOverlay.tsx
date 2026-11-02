@@ -197,9 +197,7 @@ function GuideReaderInner({
   };
   const handleClose = useCallback(() => {
     window.close();
-    // window.close() only closes tabs the script itself opened; for a bookmarked
-    // or directly-navigated ?doc= URL it is a silent no-op. If the tab is still
-    // here a moment later, surface an in-overlay hint instead of failing silently.
+    // Browsers silently refuse window.close() for tabs the script did not open.
     closeTimerRef.current = window.setTimeout(() => {
       if (!window.closed) {
         setCloseBlocked(true);
@@ -369,6 +367,7 @@ function GuideReaderInner({
           initialActiveTrackId={track.id}
           onContinueToNextMilestone={nextUrl ? navigateNext : undefined}
           completion={{ kind: 'tracked', input: surfaceCompletionInput }}
+          completionPanelEnabled={false}
         />
       </div>
     ) : null;

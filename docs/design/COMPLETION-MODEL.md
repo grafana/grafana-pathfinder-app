@@ -41,12 +41,24 @@ argument.
 
 ## The model on one page
 
-| Level     | Progress is                                                    | Reaches 100% by                                                    |
-| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**    |
-| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                       |
-| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                               |
-| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be) |
+| Level     | Progress is                                                    | Reaches 100% by                                                     |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**     |
+| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Complete milestone** or the legacy combined control |
+| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9)                                |
+| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be)  |
+
+In the sidebar, floating and full-screen readers, completion and continuation are separate actions. The shared reader records completion immediately and presents a named next milestone or authored follow-up content. It advances only after the reader chooses Continue. The controller overlay keeps the legacy footer because sidebar destinations would open behind its opaque overlay.
+
+The completion panel has no rollout flag: it is a bounded UI change using existing completion evidence and storage, with no migration or irreversible writes. Reverting the UI change does not require a data rollback. The package-browser flag still controls catalog suggestions and Explore links.
+
+The panel uses established completed state, not scroll position. Path completion follows the existing best-of-sequences calculation in decision 4, including selected tracks and exclusion of locked entries. Reaching the last milestone alone does not establish completion. Related suggestions do not create enrollment or progress, and author previews retain the existing footer.
+
+After path navigation, authored `suggests` can offer related content. Their order is preserved, alternative groups offer one eligible member, and completed groups are skipped. `depends` and `recommends` remain hard and soft prerequisite metadata, respectively; neither is used or resolved as next-content selection. A milestone's manifest and its owning path's manifest remain distinct; terminal path recommendations can use both without treating the parent's metadata as the milestone's own.
+
+Completion cards share a layout with full descriptions and bottom-aligned launch actions. The panel has one Explore and My learning navigation row. Completion actions use Start, Resume, or Continue, with destination-specific accessible names. My learning opens the learning page, not the recommendations tab. Authored suggestions can offer two distinct destinations. A standalone bundled guide can offer one unfinished member after it in an existing curated path, never an earlier member. Topic, title overlap, effort, and onboarding category alone do not establish a useful next step, so the panel does not use them to fill suggestion slots. With no eligible suggestion, My learning is the primary action. Returning to completed content does not replay the completion animation or move focus.
+
+Missing catalog references resolve through bounded metadata-only requests. Official references stay in official repositories, and organization references stay in the current organization. Private content without explicit authored suggestions makes My learning the primary action rather than inferring suggestions. Legacy private percentages cannot establish organization provenance, so private suggestion cards do not infer completion from them.
 
 **A vocabulary warning before you read further.** "Journey" in decision 5 means a
 level _above_ paths — a path of paths. That is not what "journey" means in the
@@ -196,10 +208,10 @@ actually recomputed.
 **Decision.** Every guide and every milestone ends in a button that takes the
 reader to 100%. No predicate. No special cases. Labels differ by context only:
 
-| Context   | Label                          |
-| --------- | ------------------------------ |
-| Guide     | **Mark complete**              |
-| Milestone | **Mark complete and continue** |
+| Context   | Label                                                                                                      |
+| --------- | ---------------------------------------------------------------------------------------------------------- |
+| Guide     | **Mark complete**                                                                                          |
+| Milestone | **Complete milestone** with the completion panel; **Mark complete and continue** in the controller overlay |
 
 (Written in sentence case per the Grafana Writers' Toolkit, as AGENTS.md requires;
 the decision is that the label differs by context, not how it is capitalised.)

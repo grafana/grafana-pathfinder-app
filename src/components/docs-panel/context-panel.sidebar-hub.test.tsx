@@ -582,7 +582,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       setup({ featured: [detailed('top')], recommendations: [pkg('two')] });
 
       const toggle = screen.getByTestId(testIds.sidebarHub.featuredToggle);
-      expect(toggle).toHaveTextContent('Show modules');
+      expect(toggle).toHaveTextContent('Show milestones');
       expect(toggle).toHaveAttribute('aria-expanded', 'false');
       expect(screen.queryByTestId(testIds.sidebarHub.featuredDetails)).not.toBeInTheDocument();
       await click(toggle);
@@ -604,9 +604,9 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       setup({ featured: [detailed('top', { summaryExpanded: true })], recommendations: [pkg('two')] });
 
       const details = screen.getByTestId(testIds.sidebarHub.featuredDetails);
-      expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveTextContent('Hide modules');
+      expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveTextContent('Hide milestones');
       expect(within(details).getByText('Have a data source')).toBeInTheDocument();
-      expect(within(details).getByRole('heading', { name: 'Modules' })).toBeInTheDocument();
+      expect(within(details).getByRole('heading', { name: 'Milestones' })).toBeInTheDocument();
 
       await click(screen.getByTestId(testIds.sidebarHub.featuredModule(1)));
 
@@ -705,7 +705,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       expect(
         within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).getByText('Have a data source')
       ).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Milestones' })).not.toBeInTheDocument();
     });
 
     it('never lists modules for a docs page or shows a skeleton once modules are in', async () => {
@@ -725,7 +725,7 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       });
 
       expect(
-        within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).queryByText('Modules')
+        within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).queryByText('Milestones')
       ).not.toBeInTheDocument();
       expect(screen.queryByTestId(testIds.sidebarHub.rowModule(0, 0))).not.toBeInTheDocument();
       expect(screen.getByTestId(testIds.sidebarHub.rowModule(1, 0))).toBeInTheDocument();
@@ -763,9 +763,9 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
         ],
       });
 
-      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide modules');
+      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide milestones');
       expect(screen.getByTestId(testIds.sidebarHub.rowDetailsLoading(0))).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Milestones' })).not.toBeInTheDocument();
     });
 
     it('lets a docs row expand to its summary without a modules list', async () => {

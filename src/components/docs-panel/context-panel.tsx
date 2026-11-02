@@ -507,14 +507,14 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         detailsTestId={!featured ? testIds.contextPanel.recommendationSummaryContent(index) : undefined}
         disclosureLabel={
           recommendation.pendingMilestoneIds?.length || recommendation.milestones?.length
-            ? t('learningCard.showModules', 'Show modules')
+            ? t('learningCard.showModules', 'Show milestones')
             : hasExpandableDetails(recommendation)
               ? t('learningCard.showRelated', 'Related content')
               : undefined
         }
         collapseLabel={
           recommendation.pendingMilestoneIds?.length || recommendation.milestones?.length
-            ? t('learningCard.hideModules', 'Hide modules')
+            ? t('learningCard.hideModules', 'Hide milestones')
             : hasExpandableDetails(recommendation)
               ? t('learningCard.hideRelated', 'Hide related content')
               : undefined
@@ -558,7 +558,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
               {!isDocsOnlyRecommendation(displayType) && (recommendation.milestones?.length ?? 0) > 0 && (
                 <div data-testid={!featured ? testIds.contextPanel.recommendationMilestones(index) : undefined}>
-                  <h4>{t('learningCard.modulesTitle', 'Modules')}</h4>
+                  <h4>{t('learningCard.modulesTitle', 'Milestones')}</h4>
                   <LearningModuleList
                     modules={recommendation.milestones ?? []}
                     itemTestId={

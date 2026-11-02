@@ -26,6 +26,16 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       '&:hover': { borderColor: theme.colors.border.medium },
     }),
     content: css({ minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', gap: theme.spacing(1) }),
+    completion: css({
+      '&& h3': { margin: 0, fontSize: 22, lineHeight: 1.35 },
+      '&& p': { margin: 0, fontSize: 13, lineHeight: 1.6 },
+      '& button': { maxWidth: '100%', whiteSpace: 'normal', height: 'auto', minHeight: 36 },
+      display: 'flex',
+      flexDirection: 'column',
+      padding: theme.spacing(2.5),
+      borderRadius: 12,
+      '@container (max-width: 340px)': { padding: theme.spacing(2) },
+    }),
     featured: css({
       display: 'flex',
       flexDirection: 'column',

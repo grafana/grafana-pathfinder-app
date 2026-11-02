@@ -542,6 +542,16 @@ await page.waitForSelector('[data-test-form-state="valid"]', { timeout: 3000 });
 
 Applied to comment box elements created by `NavigationManager` and `GuidedHandler`.
 
+#### `data-guided-state`
+
+**Value**: `completed`, present only on a retained final guided box after success or Skip. Active boxes omit it.
+
+The final box stays at 100% with only a focused Close button until dismissed, another guided action starts, or its session is cancelled. Action listeners, timers, highlights, and target tracking are already cleaned up; completion and persistence do not wait for Close. Cancelled, timed-out, and failed actions do not retain a box. A final noop receives the same done state.
+
+The retained box keeps its instructional content and original `data-test-*` metadata, but those attributes no longer describe a live action. Runners must not treat `[data-guided-state="completed"]` as ready for another substep. Starting a guided action removes completed boxes from previous handlers synchronously, before target resolution or a new noop box.
+
+**Contract test**: `comment-box.contract.test.ts` exercises the live noop-to-completed transition, progress paint, keyboard focus, and dismissal.
+
 #### `data-test-action`
 
 **Purpose**: Action type being performed (on comment boxes during guided execution)
@@ -769,7 +779,7 @@ Guided steps run a substep loop driven by the comment box. The runner uses only 
 
 1. **Wait for execution to start**: After clicking "Do it", wait for the step element to have `data-test-step-state="executing"`.
 2. **Read substep bounds**: From the step element, read `data-test-substep-index` (current substep, 0-based) and `data-test-substep-total` (total substeps).
-3. **Locate the comment box**: Use `.interactive-comment-box` (visible while the guided step is executing).
+3. **Locate the comment box**: Use `.interactive-comment-box:not([data-guided-state="completed"])`. A completed box can remain visible after execution, but is not a live substep.
 4. **Read the comment box contract**: From the comment box, read `data-test-action` (e.g. `button`, `highlight`, `formfill`, `hover`, `noop`), `data-test-reftarget` (selector for the current target; see [Comment Boxes](#comment-boxes) — absent for noop), and `data-test-target-value` (for formfill).
 5. **Perform the substep**: For noop, click the Continue button; for button/highlight, resolve the target from `data-test-reftarget` and click; for hover, resolve and hover; for formfill, resolve and fill with `data-test-target-value`.
 6. **Wait for advance**: Poll the step element until `data-test-substep-index` increases or `data-test-step-state` becomes `"completed"`. If the step becomes `"error"` or `"cancelled"`, fail.
@@ -792,7 +802,7 @@ const totalStr = await stepElement.getAttribute('data-test-substep-total');
 const total = parseInt(totalStr ?? '1', 10);
 
 // Each substep: read comment box, perform action, wait for advance
-const commentBox = page.locator('.interactive-comment-box').first();
+const commentBox = page.locator('.interactive-comment-box:not([data-guided-state="completed"])').first();
 const action = await commentBox.getAttribute('data-test-action');
 const reftarget = await commentBox.getAttribute('data-test-reftarget');
 const targetValue = await commentBox.getAttribute('data-test-target-value');

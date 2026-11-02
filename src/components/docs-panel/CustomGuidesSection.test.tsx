@@ -151,7 +151,7 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /modules/i }));
+    fireEvent.click(screen.getByRole('button', { name: /milestones/i }));
 
     await waitFor(() => expect(screen.getByText('Alerting module 1')).toBeInTheDocument());
     expect(mockResolvePackageMilestones).toHaveBeenCalledWith(['fe-alerting-01', 'fe-alerting-02']);
@@ -192,9 +192,9 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
       />
     );
 
-    const drillIn = screen.getByRole('button', { name: /modules/i });
+    const drillIn = screen.getByRole('button', { name: /milestones/i });
     fireEvent.click(drillIn); // expand -> loading
-    expect(screen.getByText('Loading modules…')).toBeInTheDocument();
+    expect(screen.getByText('Loading milestones…')).toBeInTheDocument();
     fireEvent.click(drillIn); // collapse while the resolve is still in flight
 
     // Late resolve must not resurrect the panel.
@@ -211,7 +211,7 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
     });
 
     expect(screen.queryByText('Alerting module 1')).not.toBeInTheDocument();
-    expect(screen.queryByText('Loading modules…')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading milestones…')).not.toBeInTheDocument();
   });
 });
 
@@ -287,7 +287,7 @@ describe('CustomGuidesSection — member starting location', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /modules/i }));
+    fireEvent.click(screen.getByRole('button', { name: /milestones/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Alerting module 1/i }));
 
     expect(openDocsPage).toHaveBeenCalledTimes(1);

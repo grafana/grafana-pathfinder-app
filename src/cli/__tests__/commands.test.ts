@@ -12,11 +12,13 @@ import { runAddStep } from '../commands/add-step';
 import { runCreate } from '../commands/create';
 import { editBlockSpec, runEditBlock } from '../commands/edit-block';
 import { runInspect } from '../commands/inspect';
+import { runMoveBlock } from '../commands/move-block';
 import { runRemoveBlock } from '../commands/remove-block';
 import { runSetManifest, setManifestSpec } from '../commands/set-manifest';
 import { runValidate, runValidateCli } from '../commands/validate';
 import { collectCommanderInput, mountCommander, parseCommandInput } from '../contracts';
 import { readPackage } from '../utils/package-io';
+import { validateGuide } from '../../validation/validate-guide';
 import type { ContentJson } from '../../types/package.types';
 
 // `runX` functions return CommandOutcome objects. We assert on `status`,
@@ -955,5 +957,105 @@ describe('runCreate author', () => {
 
   it('falls back to pathfinder-mcp when the local identity is unavailable', async () => {
     expect(await createdAuthor({}, { localAuthorName: () => undefined })).toEqual({ name: 'pathfinder-mcp' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sections cannot nest
+// ---------------------------------------------------------------------------
+
+describe('nested sections', () => {
+  async function withOuterSection(): Promise<string> {
+    const dir = await bootstrap();
+    const r = await runAddBlock({ dir, type: 'section', id: 'outer', fields: {} });
+    expect(r.status).toBe('ok');
+    return dir;
+  }
+
+  function expectNamedRejection(result: { status: string; message?: string }, id: string) {
+    expect(result.status).toBe('error');
+    expect(result.message).toContain(`section "${id}"`);
+    expect(result.message).toContain('nested inside section "outer"');
+  }
+
+  it('rejects add-block of a section inside a section and leaves the package unchanged', async () => {
+    const dir = await withOuterSection();
+    const before = JSON.stringify(readContent(dir));
+    const result = await runAddBlock({ dir, type: 'section', id: 'inner', parent: 'outer', fields: {} });
+    expectNamedRejection(result, 'inner');
+    expect(JSON.stringify(readContent(dir))).toBe(before);
+  });
+
+  it('rejects move-block --into a section and leaves the package unchanged', async () => {
+    const dir = await withOuterSection();
+    await runAddBlock({ dir, type: 'section', id: 'top2', fields: {} });
+    const before = JSON.stringify(readContent(dir));
+    const result = await runMoveBlock({ dir, id: 'top2', into: 'outer' });
+    expectNamedRejection(result, 'top2');
+    expect(JSON.stringify(readContent(dir))).toBe(before);
+  });
+
+  it('rejects a section reached through a conditional branch inside a section', async () => {
+    const dir = await withOuterSection();
+    await runAddBlock({
+      dir,
+      type: 'conditional',
+      id: 'cond',
+      parent: 'outer',
+      fields: { conditions: ['is-admin'] },
+    });
+    const before = JSON.stringify(readContent(dir));
+    const result = await runAddBlock({ dir, type: 'section', id: 'deep', parent: 'cond', branch: 'true', fields: {} });
+    expectNamedRejection(result, 'deep');
+    expect(JSON.stringify(readContent(dir))).toBe(before);
+  });
+
+  it('validate names a nested section in an existing content.json', async () => {
+    const guide = {
+      id: 'nested-validate',
+      title: 'Nested',
+      blocks: [
+        {
+          type: 'section',
+          id: 'outer',
+          blocks: [
+            {
+              type: 'assistant',
+              id: 'asst',
+              blocks: [{ type: 'section', id: 'inner', blocks: [] }],
+            },
+          ],
+        },
+      ],
+    };
+    const result = validateGuide(guide);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.map((e) => e.message).join('\n')).toContain(
+      'section "inner" is nested inside section "outer"'
+    );
+  });
+
+  it('still allows a conditional inside a section, and sections at the top level or in a top-level conditional', async () => {
+    const dir = await withOuterSection();
+    const cond = await runAddBlock({
+      dir,
+      type: 'conditional',
+      id: 'cond-in-section',
+      parent: 'outer',
+      fields: { conditions: ['is-admin'] },
+    });
+    expect(cond.status).toBe('ok');
+    const top = await runAddBlock({ dir, type: 'section', id: 'top2', fields: {} });
+    expect(top.status).toBe('ok');
+    await runAddBlock({ dir, type: 'conditional', id: 'top-cond', fields: { conditions: ['is-admin'] } });
+    const inCond = await runAddBlock({
+      dir,
+      type: 'section',
+      id: 'in-top-cond',
+      parent: 'top-cond',
+      branch: 'true',
+      fields: {},
+    });
+    expect(inCond.status).toBe('ok');
   });
 });

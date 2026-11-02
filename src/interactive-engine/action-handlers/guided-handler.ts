@@ -2,6 +2,7 @@ import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { sleep } from '../../lib/async-utils';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager, type CommentBoxStepInfo } from '../navigation-manager';
+import { INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS } from '../constants';
 import { InteractiveElementData } from '../../types/interactive.types';
 import {
   describeElement,
@@ -40,7 +41,7 @@ interface ActiveListener {
 
 interface GuidedStepArbiter {
   promise: Promise<CompletionResult>;
-  settle: (result: CompletionResult, beforeSettle?: () => void) => CompletionResult;
+  settle: (result: CompletionResult, beforeSettle?: () => void) => Promise<CompletionResult>;
   getResult: () => CompletionResult | null;
 }
 
@@ -56,6 +57,8 @@ export class GuidedHandler {
   private highlightedTarget: HTMLElement | null = null;
   private currentAbortController: AbortController | null = null;
   private completedSteps: number[] = [];
+  private currentCommentBox: HTMLElement | null = null;
+  private completedCommentBox: HTMLElement | null = null;
 
   constructor(
     private stateManager: InteractiveStateManager,
@@ -100,6 +103,7 @@ export class GuidedHandler {
     if (this.runController) {
       return 'error';
     }
+    document.querySelectorAll('.interactive-comment-box[data-guided-state="completed"]').forEach((box) => box.remove());
     if (stepIndex === 0) {
       this.resetProgress();
     }
@@ -142,7 +146,7 @@ export class GuidedHandler {
 
     return {
       promise,
-      settle: (nextResult, beforeSettle) => {
+      settle: async (nextResult, beforeSettle) => {
         if (result !== null) {
           return result;
         }
@@ -154,6 +158,7 @@ export class GuidedHandler {
           logger.error('Guided completion callback failed', { error });
           result = 'error';
         }
+
         resolvePromise(result);
         return result;
       },
@@ -175,20 +180,23 @@ export class GuidedHandler {
     let arbiter = this.createGuidedStepArbiter();
     try {
       this.cleanupListeners();
+      this.completedCommentBox?.remove();
+      this.completedCommentBox = null;
+      this.currentCommentBox = null;
       signal.throwIfAborted();
       if (action.targetAction === 'noop') {
         if (revalidate && !(await revalidate())) {
-          return this.finishGuidedStep('error', stepIndex);
+          return this.finishGuidedStep('error', stepIndex, totalSteps);
         }
         signal.throwIfAborted();
         return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
       }
       if (!isGuidedDomActionType(action.targetAction)) {
         logger.warn('Guided handler cannot drive this action', { targetAction: action.targetAction });
-        return this.finishGuidedStep(action.isSkippable ? 'skipped' : 'error', stepIndex);
+        return this.finishGuidedStep(action.isSkippable ? 'skipped' : 'error', stepIndex, totalSteps);
       }
       if (!action.refTarget) {
-        return this.finishGuidedStep('error', stepIndex);
+        return this.finishGuidedStep('error', stepIndex, totalSteps);
       }
       await this.expandNavigationParentIfNeeded(action.refTarget);
       if (action.lazyRender) {
@@ -203,7 +211,7 @@ export class GuidedHandler {
         arbiter = this.createGuidedStepArbiter();
         const remaining = Math.min(deadline, recoveryDeadline ?? deadline) - Date.now();
         if (remaining <= 0) {
-          return this.finishGuidedStep(recoveryDeadline ? 'error' : 'timeout', stepIndex);
+          return this.finishGuidedStep(recoveryDeadline ? 'error' : 'timeout', stepIndex, totalSteps);
         }
         let target: HTMLElement;
         try {
@@ -219,15 +227,19 @@ export class GuidedHandler {
           );
         } catch (_error) {
           if (signal.aborted) {
-            return this.finishGuidedStep('cancelled', stepIndex);
+            return this.finishGuidedStep('cancelled', stepIndex, totalSteps);
           }
-          return this.finishGuidedStep(!recoveryDeadline && action.isSkippable ? 'skipped' : 'error', stepIndex);
+          return this.finishGuidedStep(
+            !recoveryDeadline && action.isSkippable ? 'skipped' : 'error',
+            stepIndex,
+            totalSteps
+          );
         }
         signal.throwIfAborted();
         await this.prepareElement(target);
         signal.throwIfAborted();
         if (revalidate && !(await revalidate())) {
-          return this.finishGuidedStep('error', stepIndex);
+          return this.finishGuidedStep('error', stepIndex, totalSteps);
         }
         signal.throwIfAborted();
         recoveryDeadline = undefined;
@@ -275,27 +287,32 @@ export class GuidedHandler {
         }
         signal.throwIfAborted();
         const result = await arbiter.promise;
-        this.finishGuidedStep(result, stepIndex);
+        this.finishGuidedStep(result, stepIndex, totalSteps);
         if (!lostTarget || signal.aborted) {
           return signal.aborted && result !== 'completed' ? 'cancelled' : result;
         }
         recoveryDeadline = Math.min(deadline, Date.now() + 5000);
         this.navigationManager.showNoopComment('The page changed. Looking for this step again…', () => this.cancel());
       }
-      return this.finishGuidedStep('cancelled', stepIndex);
+      return this.finishGuidedStep('cancelled', stepIndex, totalSteps);
     } catch (error) {
       const settled = arbiter.getResult();
       if (settled === 'completed' || settled === 'skipped') {
-        return this.finishGuidedStep(settled, stepIndex);
+        return this.finishGuidedStep(settled, stepIndex, totalSteps);
       }
       if (!signal.aborted) {
         logger.error('Guided setup failed', { error });
       }
-      return this.finishGuidedStep(signal.aborted ? 'cancelled' : 'error', stepIndex);
+      return this.finishGuidedStep(signal.aborted ? 'cancelled' : 'error', stepIndex, totalSteps);
     }
   }
 
-  private finishGuidedStep(result: CompletionResult, stepIndex: number): CompletionResult {
+  private finishGuidedStep(result: CompletionResult, stepIndex: number, totalSteps: number): CompletionResult {
+    const successful = result === 'completed' || result === 'skipped';
+    if (successful && !this.completedSteps.includes(stepIndex)) {
+      this.completedSteps.push(stepIndex);
+    }
+    const completedBox = successful && stepIndex === totalSteps - 1 ? this.prepareCompletedBox() : null;
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
@@ -305,8 +322,10 @@ export class GuidedHandler {
     } catch (error) {
       logger.error('Guided cleanup failed', { error });
     }
-    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
-      this.completedSteps.push(stepIndex);
+    if (completedBox) {
+      document.body.appendChild(completedBox);
+      this.completedCommentBox = completedBox;
+      completedBox.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
     }
     return result;
   }
@@ -330,9 +349,9 @@ export class GuidedHandler {
     }
     this.createCancelListener(stepIndex, arbiter);
     const completionPromise = this.createNoopCompletionListener(stepIndex, timeout);
-    void completionPromise.then((result) => arbiter.settle(result));
+    void completionPromise.then((result) => void arbiter.settle(result));
     const handleAbort = () => {
-      arbiter.settle('cancelled');
+      void arbiter.settle('cancelled');
     };
     signal.addEventListener('abort', handleAbort, { once: true });
     this.activeListeners.push({
@@ -347,7 +366,7 @@ export class GuidedHandler {
       action.targetComment || 'Complete this step to continue',
       action.isSkippable
     );
-    return this.finishGuidedStep(await arbiter.promise, stepIndex);
+    return this.finishGuidedStep(await arbiter.promise, stepIndex, totalSteps);
   }
 
   /**
@@ -470,6 +489,7 @@ export class GuidedHandler {
     commentBox.appendChild(content);
 
     document.body.appendChild(commentBox);
+    this.currentCommentBox = commentBox;
     this.noopComment = commentBox;
   }
 
@@ -725,6 +745,8 @@ export class GuidedHandler {
       }
     );
 
+    this.currentCommentBox = this.navigationManager.getOwnedCommentBox();
+
     // Add a persistent highlight class that won't auto-remove
     this.runController?.signal.throwIfAborted();
     element.classList.add('interactive-guided-active');
@@ -764,7 +786,7 @@ export class GuidedHandler {
     if (actionType === 'button' || actionType === 'highlight') {
       const target = parseTargetState(action.targetState);
       if (target && satisfiesTargetState(resolveStateSource(targetElement, target), target) === true) {
-        arbiter.settle('completed');
+        void arbiter.settle('completed');
         return;
       }
     }
@@ -780,17 +802,17 @@ export class GuidedHandler {
       onActionCompleted
     );
     void completionPromise.then(
-      (result) => arbiter.settle(result),
+      (result) => void arbiter.settle(result),
       (error) => {
         logger.error('Guided completion listener failed', { error });
-        arbiter.settle('error');
+        void arbiter.settle('error');
       }
     );
 
-    const timeoutId = setTimeout(() => arbiter.settle('timeout'), timeout);
+    const timeoutId = setTimeout(() => void arbiter.settle('timeout'), timeout);
     this.pendingTimeouts.push(timeoutId);
     const handleAbort = () => {
-      arbiter.settle('cancelled');
+      void arbiter.settle('cancelled');
     };
     signal.addEventListener('abort', handleAbort, { once: true });
     this.activeListeners.push({
@@ -809,7 +831,7 @@ export class GuidedHandler {
         (customEvent.detail.runId === undefined || customEvent.detail.runId === runId) &&
         customEvent.detail.stepIndex === stepIndex
       ) {
-        arbiter.settle('skipped');
+        void arbiter.settle('skipped');
       }
     };
 
@@ -829,12 +851,12 @@ export class GuidedHandler {
         (customEvent.detail.runId === undefined || customEvent.detail.runId === runId) &&
         customEvent.detail.stepIndex === stepIndex
       ) {
-        arbiter.settle('cancelled');
+        void arbiter.settle('cancelled');
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        arbiter.settle('cancelled');
+        void arbiter.settle('cancelled');
       }
     };
 
@@ -949,15 +971,22 @@ export class GuidedHandler {
         isResolved = true;
         resolve(result);
       };
-      const complete = () => {
-        if (isResolved) {
+      let completing = false;
+      const complete = async () => {
+        if (isResolved || completing) {
           return;
         }
-        cleanup(arbiter.settle('completed', onActionCompleted));
+        completing = true;
+        try {
+          cleanup(await arbiter.settle('completed', onActionCompleted));
+        } catch (error) {
+          logger.error('Guided completion failed', { error });
+          cleanup('error');
+        }
       };
 
       const handleClick = (event: Event) => {
-        if (isResolved) {
+        if (isResolved || completing || arbiter.getResult() !== null) {
           return;
         }
 
@@ -967,7 +996,7 @@ export class GuidedHandler {
         const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
 
         if (isTargetOrChild) {
-          complete();
+          void complete();
           return;
         }
 
@@ -986,7 +1015,7 @@ export class GuidedHandler {
           if (element.isConnected) {
             element.click();
           }
-          complete();
+          void complete();
         }
       };
 
@@ -1246,6 +1275,8 @@ export class GuidedHandler {
     });
     this.activeListeners = [];
     if (clearHighlights) {
+      this.completedCommentBox?.remove();
+      this.completedCommentBox = null;
       this.highlightedTarget?.classList.remove('interactive-guided-active');
       this.highlightedTarget = null;
       this.noopComment?.remove();
@@ -1253,6 +1284,49 @@ export class GuidedHandler {
       this.navigationManager.clearOwnedHighlights();
     }
   }
+  private prepareCompletedBox(): HTMLElement | null {
+    const box = this.currentCommentBox;
+    if (!box?.isConnected) {
+      return null;
+    }
+    // Detach before highlight cleanup so the done box no longer tracks the action target.
+    box.remove();
+    box.setAttribute('data-guided-state', 'completed');
+    box.setAttribute('data-ready', 'true');
+    box.querySelectorAll('button').forEach((button) => button.remove());
+    box.querySelector('.interactive-comment-buttons')?.remove();
+    let progressBar = box.querySelector<HTMLElement>(`.${INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS}`);
+    if (!progressBar) {
+      const container = document.createElement('div');
+      container.className = 'interactive-comment-progress-container';
+      progressBar = document.createElement('div');
+      progressBar.className = INTERACTIVE_COMMENT_PROGRESS_BAR_CLASS;
+      container.appendChild(progressBar);
+      box.querySelector('.interactive-comment-content')?.prepend(container);
+    }
+    progressBar.style.width = '100%';
+    box.querySelectorAll('.interactive-comment-dot').forEach((dot) => {
+      dot.classList.remove('interactive-comment-dot--current');
+      dot.classList.add('interactive-comment-dot--completed');
+    });
+    box.querySelectorAll('.interactive-comment-step-item').forEach((step) => {
+      step.classList.remove('interactive-comment-step-current');
+      step.classList.add('interactive-comment-step-completed');
+    });
+    const close = document.createElement('button');
+    close.className = 'interactive-comment-nav-btn';
+    close.textContent = 'Close';
+    close.onclick = (event) => {
+      event.stopPropagation();
+      box.remove();
+    };
+    const buttons = document.createElement('div');
+    buttons.className = 'interactive-comment-buttons';
+    buttons.appendChild(close);
+    (box.querySelector('.interactive-comment-content') ?? box).appendChild(buttons);
+    return box;
+  }
+
   cancel(): void {
     this.runController?.abort();
     if (this.currentAbortController) {

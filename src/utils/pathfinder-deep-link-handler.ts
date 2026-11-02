@@ -25,19 +25,31 @@ export interface DeepLinkHandlerDeps {
 
 // Dedup gate — prevents re-processing the same URL from multiple listener transports.
 let lastProcessedSearch: string | null = null;
+let rewritingUrl = false;
 
 /** Test-only escape hatch — resets dedup state between assertions. */
 export function __resetDeepLinkHandlerStateForTests(): void {
   lastProcessedSearch = null;
 }
 
-/** Mutate the current URL in place and invalidate the dedup gate — the
- *  stored search is pre-strip and would block re-arrivals at the same link. */
 function rewriteCurrentUrl(mutate: (url: URL) => void): void {
   const url = new URL(window.location.href);
   mutate(url);
-  window.history.replaceState({}, '', url.toString());
-  lastProcessedSearch = null;
+  // Router replacement notifies listeners synchronously, including during partial panelMode cleanup.
+  rewritingUrl = true;
+  try {
+    const location = locationService.getLocation();
+    locationService.replace({
+      pathname: location.pathname,
+      search: url.search,
+      hash: url.hash,
+      state: location.state,
+    });
+  } finally {
+    rewritingUrl = false;
+    // The async loader can deliver this cleanup notification after the synchronous guard clears.
+    lastProcessedSearch = url.search;
+  }
 }
 
 function isFullScreenRoute(pathname: string): boolean {
@@ -47,7 +59,7 @@ function isFullScreenRoute(pathname: string): boolean {
 /** Process Pathfinder deep-link params from the current URL. Idempotent. */
 export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   const search = window.location.search;
-  if (!hasAnyPathfinderParam(search)) {
+  if (rewritingUrl || !hasAnyPathfinderParam(search)) {
     return false;
   }
 
@@ -158,6 +170,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       });
     })
     .catch((err) => {
+      lastProcessedSearch = null;
       logger.error('[Pathfinder] Failed to load find-doc-page chunk', { error: err });
       sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
       deps.attemptAutoOpen(200);

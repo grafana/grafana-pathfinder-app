@@ -420,19 +420,6 @@ export async function completeInteractiveStep(page: Page, stepIndex = 0): Promis
     .waitFor({ state: 'attached', timeout: 30_000 });
 }
 
-/**
- * Click "Mark complete and continue" on a milestone and wait for the NEXT
- * milestone to render unmarked.
- *
- * The control dwells on a short celebration before continuing, so the real
- * condition for "the reader has moved on" is an unmarked footer again — never
- * a fixed wait on the animation's duration.
- */
-export async function markMilestoneCompleteAndContinue(page: Page): Promise<void> {
-  await markComplete(page);
-  await page.getByTestId(testIds.markComplete.button).first().waitFor({ state: 'visible', timeout: 30_000 });
-}
-
 /** Click Mark complete and wait for the footer to settle on its completed state. */
 export async function markComplete(page: Page): Promise<void> {
   const button = page.getByTestId(testIds.markComplete.button).first();

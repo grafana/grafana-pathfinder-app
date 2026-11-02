@@ -19,6 +19,7 @@ import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { TIMEOUTS } from './constants';
 import {
+  ALL_FIXTURES,
   APP_PLATFORM_GUIDE,
   APP_PLATFORM_REPOSITORY,
   BUNDLED_GUIDE_ID,
@@ -41,7 +42,6 @@ import {
   footerPercentage,
   launchDoc,
   markComplete,
-  markMilestoneCompleteAndContinue,
   openDocsPanel,
   pathPercentage,
   primeCompletionSession,
@@ -177,12 +177,27 @@ test.describe('completion tracking', () => {
     await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
     expect(await pathPercentage(page)).toBe(0);
 
-    // Milestone 1 all the way, which continues to milestone 2.
     await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
     await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
-    await markMilestoneCompleteAndContinue(page);
+    await markComplete(page);
+    await expect
+      .poll(
+        async () => (await readStoredProgress(page)).interactiveCompletion[fixtureContentUrl(PATH_MILESTONES[0]!)],
+        { message: 'completed milestone persisted at 100%', timeout: TIMEOUTS.UI_READY }
+      )
+      .toBe(100);
+    const completedFacts = await waitForQueuedFacts(page, 1);
+    expect(factsFor(completedFacts, FIXTURE_REPOSITORY, PATH_MILESTONES[0]!.id)).toHaveLength(1);
 
-    // Milestone 2 one step's worth, derived from its own counted blocks.
+    const completionPanel = page.getByTestId('completion-panel');
+    await expect(completionPanel).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+    await completionPanel
+      .getByRole('button', { name: `Continue to ${PATH_MILESTONES[1]!.title}`, exact: true })
+      .click();
+    await expect(page.getByTestId(testIds.markComplete.button).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+    expect(await footerPercentage(page)).toBe(0);
+    expect(await readQueuedFacts(page)).toHaveLength(1);
+
     const partialMilestone = PATH_MILESTONES[1]!;
     const partialPercent = expectedPercentAtPosition(partialMilestone, fixtureCompletablePosition(partialMilestone, 1));
     await completeInteractiveStep(page, 0);
@@ -333,12 +348,33 @@ test.describe('completion tracking', () => {
       for (let index = 0; index < milestoneIds.length; index++) {
         await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
         await markComplete(page);
+        const milestone = ALL_FIXTURES.find((fixture) => fixture.id === milestoneIds[index])!;
         await expect
-          .poll(async () => (await readQueuedFacts(page)).length, {
-            message: 'facts after each milestone',
+          .poll(async () => (await readStoredProgress(page)).interactiveCompletion[fixtureContentUrl(milestone)], {
+            message: `milestone ${index + 1} persisted at 100%`,
             timeout: TIMEOUTS.UI_READY,
           })
-          .toBeGreaterThan(index);
+          .toBe(100);
+        const milestoneFacts = await waitForQueuedFacts(page, index + 1);
+        expect(factsFor(milestoneFacts, DEFAULT_GUIDE_SOURCE, milestoneIds[index]!)).toHaveLength(1);
+        const completionPanel = page.getByTestId('completion-panel');
+        await expect(completionPanel).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+
+        const nextMilestoneId = milestoneIds[index + 1];
+        if (nextMilestoneId) {
+          const nextMilestone = ALL_FIXTURES.find((fixture) => fixture.id === nextMilestoneId)!;
+          await completionPanel
+            .getByRole('button', { name: `Continue to ${nextMilestone.title}`, exact: true })
+            .click();
+          await expect(page.getByTestId(testIds.markComplete.button).first()).toBeVisible({
+            timeout: TIMEOUTS.UI_READY,
+          });
+          expect(await footerPercentage(page)).toBe(0);
+          expect(await readQueuedFacts(page)).toHaveLength(index + 1);
+        } else {
+          await expect(completionPanel.getByRole('heading', { name: 'Path complete', exact: true })).toBeVisible();
+          await expect(completionPanel.getByRole('button', { name: /^Continue to / })).toHaveCount(0);
+        }
       }
 
       // One fact per milestone, plus the whole-path record, and nothing else.

@@ -9,14 +9,6 @@ import { createTranslatedComponent } from './components/App/TranslatedComponent'
 import { ensurePluginTranslations } from './lib/plugin-translations';
 import pluginJson from './plugin.json';
 import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
-// Direct file import, not the ./hooks barrel: the barrel would pull every hook
-// (and zod, via user-storage) into module.js.
-import { readPathfinderStartupPreference, waitForPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
-import {
-  resolvePathfinderAvailability,
-  getPathfinderStartupDecision,
-  isImageRendererSession,
-} from './utils/pathfinder-enablement';
 // Direct file import, not the ./docs-retrieval barrel: the barrel statically
 // imports the whole content-fetcher orchestrator (zod, dompurify, the bundled
 // guide index), which would land in module.js. createCompositeResolver is
@@ -60,6 +52,13 @@ if (startupLink.pathfinderKiosk && !startupLink.doc && !startupLink.controller) 
     .catch((error: unknown) => logger.exception(error, { source: 'Kiosk preload' }));
 }
 
+// The settings stack behind the enablement decision stays out of module.js;
+// started before the OpenFeature wait so both chunks download in parallel.
+const enablementModules = Promise.all([
+  import('./hooks/usePathfinderPluginConfig'),
+  import('./utils/pathfinder-enablement'),
+]);
+
 // Initialize OpenFeature provider for dynamic feature flag evaluation
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
 // Uses dynamic import so the SDK stays out of the entry-point bundle
@@ -82,6 +81,11 @@ const { createExperimentDebugger, enrollInteractiveLearningBannerExperiment, sub
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
+
+const [
+  { readPathfinderStartupPreference, waitForPathfinderPluginConfig },
+  { resolvePathfinderAvailability, getPathfinderStartupDecision, isImageRendererSession },
+] = await enablementModules;
 
 const pathfinderAvailability = await resolvePathfinderAvailability(
   getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(config.bootData.user?.authenticatedBy),

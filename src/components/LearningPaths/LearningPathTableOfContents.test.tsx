@@ -239,7 +239,7 @@ describe('LearningPathTableOfContents', () => {
     expect(screen.getByTestId('learning-paths-cover-hero')).toBeInTheDocument();
     expect(screen.getByText('Connect your first data source')).toBeInTheDocument();
     expect(screen.getByText('Learn how Grafana connects to data.')).toBeInTheDocument();
-    expect(screen.getByText('2 modules')).toBeInTheDocument();
+    expect(screen.getByText('2 milestones')).toBeInTheDocument();
   });
 
   it('shows the hero card from title alone, with no description and no badge', () => {
@@ -556,10 +556,10 @@ describe('LearningPathTableOfContents', () => {
         />
       );
 
-      expect(screen.getByText('2 modules')).toBeInTheDocument();
+      expect(screen.getByText('2 milestones')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
-      expect(screen.getByText('1 modules')).toBeInTheDocument();
+      expect(screen.getByText('1 milestone')).toBeInTheDocument();
     });
 
     // A track is a presentation ordering only, never a second completion

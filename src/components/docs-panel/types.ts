@@ -108,8 +108,7 @@ export interface DocsPanelModelOperations {
   /** Set the active tab by ID */
   setActiveTab(tabId: string): void;
 
-  /** Navigate to the next milestone in the current learning path */
-  navigateToNextMilestone(): Promise<void>;
+  navigateToNextMilestone(options?: { rejectOnError?: boolean }): Promise<void>;
 
   /** Navigate to the previous milestone in the current learning path */
   navigateToPreviousMilestone(): Promise<void>;

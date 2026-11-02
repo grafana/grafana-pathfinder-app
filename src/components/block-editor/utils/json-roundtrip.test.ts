@@ -241,7 +241,7 @@ describe('JSON Round-trip Conversion', () => {
       expect(section.objectives).toEqual(['section-completed:intro']);
     });
 
-    test('deeply nested sections', () => {
+    test('rejects a section nested inside a section', () => {
       const guide: JsonGuide = {
         ...baseGuide,
         blocks: [
@@ -259,11 +259,8 @@ describe('JSON Round-trip Conversion', () => {
         ],
       };
       const { result } = roundTrip(guide);
-      expect(result.isValid).toBe(true);
-      const outer = result.guide?.blocks[0] as JsonSectionBlock;
-      const inner = outer.blocks[0] as JsonSectionBlock;
-      expect(inner.title).toBe('Inner Section');
-      expect((inner.blocks[0] as JsonMarkdownBlock).content).toBe('Deeply nested');
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some((e) => e.path.join('.') === 'blocks.0.blocks.0')).toBe(true);
     });
   });
 

@@ -54,7 +54,7 @@ export function GuideDetails({ expansion, loadingTestId, moduleTestId, onOpenMod
       )}
       {modules.length > 0 && (
         <div>
-          <h4 className={hubStyles.detailsHeading}>{t('learningCard.modulesTitle', 'Modules')}</h4>
+          <h4 className={hubStyles.detailsHeading}>{t('learningCard.modulesTitle', 'Milestones')}</h4>
           <LearningModuleList compact modules={modules} itemTestId={moduleTestId} onOpen={onOpenModule} />
         </div>
       )}
