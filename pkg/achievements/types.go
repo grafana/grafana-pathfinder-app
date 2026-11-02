@@ -32,7 +32,10 @@ type Progress struct {
 	AchievementID string
 	// Tier is the highest awarded tier, 0 for none.
 	Tier int
-	// Units is the sorted, distinct ledger of counted units.
+	// Units is the ledger of counted units. A unit counted by resource is its id
+	// fields, each as byte length, ":" and the field ("7:bundled4:tour"); a unit
+	// counted by occurrence is the event id. Stores must return Units sorted
+	// ascending and distinct, which the evaluator binary-searches.
 	Units         []string
 	Revision      int
 	SchemaVersion int
@@ -50,7 +53,8 @@ type Award struct {
 
 // Store is the persistence port. Implementations write as the caller.
 type Store interface {
-	// LoadProgress returns the rows that exist; a missing row is absent from the map.
+	// LoadProgress returns the rows that exist; a missing row is absent from the
+	// map. Each row's Units must be sorted ascending and distinct.
 	LoadProgress(ctx context.Context, person Person, achievementIDs []string) (map[string]Progress, error)
 	// CreateProgress returns ErrExists when the row exists.
 	CreateProgress(ctx context.Context, person Person, p Progress) (Progress, error)
