@@ -197,7 +197,9 @@ For the full contract and read-only smoke procedure, see `docs/developer/LEARNIN
 
 `pkg/achievements` is a pure library with no I/O and no caller yet: the achievements evaluator, catalog and
 registry loaders, and baseline check from the Achievements RFC (pathfinder-rfcs#24, §6). The store and the
-admission policy are ports the future App Platform adapter implements. Its bundled catalog and registry live in
+admission policy are ports. `pkg/plugin/achievements_store.go` is the unwired App Platform `Store` adapter
+(compare-and-swap on progress, 409 on a repeated award) and `pkg/achievements/storetest` holds the contract
+every `Store` must pass, with an in-memory implementation. The bundled catalog and registry live in
 `pkg/achievements/data/`. Earn windows (RFC §6.2) are not supported and the loader rejects a `window` key.
 
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
