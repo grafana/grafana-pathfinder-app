@@ -6,7 +6,8 @@ import (
 	"strings"
 )
 
-const maxUnitIDBytes = 128
+// Two recorder ids of 256 bytes each, with a four-byte length prefix apiece.
+const maxUnitIDBytes = 2 * (256 + len("256:"))
 
 type outcome struct {
 	decision Decision
@@ -137,15 +138,17 @@ func (m *Matcher) unitID(ev Event) (string, bool) {
 	if m.CountBy.occurrence {
 		unit = ev.ID
 	} else {
-		parts := make([]string, 0, len(m.idFields))
+		var key strings.Builder
 		for _, name := range m.idFields {
 			part, ok := scalarString(ev.Context[name])
 			if !ok {
 				return "", false
 			}
-			parts = append(parts, part)
+			key.WriteString(strconv.Itoa(len(part)))
+			key.WriteByte(':')
+			key.WriteString(part)
 		}
-		unit = strings.Join(parts, ":")
+		unit = key.String()
 	}
 	if unit == "" || len(unit) > maxUnitIDBytes {
 		return "", false

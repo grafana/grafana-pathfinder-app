@@ -97,7 +97,7 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 }
 
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {
-	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, Revision: d.Revision})
+	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, Revision: d.Revision, SchemaVersion: SchemaVersion})
 	switch {
 	case err == nil:
 		return created, true

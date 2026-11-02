@@ -2,6 +2,7 @@ package achievements
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -41,7 +42,7 @@ func TestBundledDefinitionCountsDistinctGuides(t *testing.T) {
 		t.Helper()
 		decisions, err := ev.Evaluate(context.Background(), testPerson, Event{
 			ID: source + id, Entity: "guides", Action: "completed",
-			Context: map[string]any{"guideSource": source, "guideId": id, "guideCategory": "interactive", "completionSource": "objectives"},
+			Context: map[string]any{"guideSource": source, "guideId": id, "guideCategory": "interactive"},
 		})
 		if err != nil || len(decisions) != 1 {
 			t.Fatalf("decisions = %+v err = %v", decisions, err)
@@ -57,5 +58,76 @@ func TestBundledDefinitionCountsDistinctGuides(t *testing.T) {
 	}
 	if d := finish("interactive-tutorials", "first-dashboard"); d.Decision != KindIncrement || d.Units != 2 {
 		t.Errorf("same id from another source = %+v, want a distinct guide", d)
+	}
+}
+
+func TestBundledDefinitionReachesEveryShippedTier(t *testing.T) {
+	_, catalog, err := LoadBundled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newFakeStore()
+	ev := NewEvaluator(catalog, store, &fakePolicy{}, func() time.Time { return fixedNow })
+	finish := func(n int) Decision {
+		t.Helper()
+		id := fmt.Sprintf("guide-%02d", n)
+		decisions, err := ev.Evaluate(context.Background(), testPerson, Event{
+			ID: id, Entity: "guides", Action: "completed",
+			Context: map[string]any{"guideSource": "bundled", "guideId": id, "guideCategory": "interactive"},
+		})
+		if err != nil || len(decisions) != 1 {
+			t.Fatalf("guide %d: decisions = %+v err = %v", n, decisions, err)
+		}
+		return decisions[0]
+	}
+
+	steps := []struct {
+		guides   int
+		kind     Kind
+		reason   Reason
+		from, to int
+		final    bool
+		next     *int
+	}{
+		{1, KindAward, "", 0, 1, false, intp(5)},
+		{4, KindIncrement, "", 1, 1, false, intp(5)},
+		{5, KindTierUp, "", 1, 2, false, intp(15)},
+		{14, KindIncrement, "", 2, 2, false, intp(15)},
+		{15, KindAward, "", 2, 3, true, nil},
+		{16, KindIgnored, ReasonComplete, 3, 3, true, nil},
+	}
+	n := 0
+	for _, step := range steps {
+		var d Decision
+		for n < step.guides {
+			n++
+			d = finish(n)
+		}
+		if d.Decision != step.kind || d.Reason != step.reason || d.From != step.from || d.To != step.to || d.Final != step.final {
+			t.Errorf("guide %d = %+v, want %s %q %d->%d final=%v", n, d, step.kind, step.reason, step.from, step.to, step.final)
+		}
+		if (d.Next == nil) != (step.next == nil) || (d.Next != nil && *d.Next != *step.next) {
+			t.Errorf("guide %d next = %v, want %v", n, d.Next, step.next)
+		}
+	}
+	for tier := 1; tier <= 3; tier++ {
+		if _, ok := store.awards[fmt.Sprintf("guides-finished/%d", tier)]; !ok {
+			t.Errorf("no award for tier %d", tier)
+		}
+	}
+}
+
+func TestBundledDefinitionCountsTheRecordersLongestGuideID(t *testing.T) {
+	_, catalog, err := LoadBundled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := NewEvaluator(catalog, newFakeStore(), &fakePolicy{}, func() time.Time { return fixedNow })
+	decisions, err := ev.Evaluate(context.Background(), testPerson, Event{
+		ID: "long", Entity: "guides", Action: "completed",
+		Context: map[string]any{"guideSource": string(repeatByte('s', 256)), "guideId": string(repeatByte('i', 256)), "guideCategory": "interactive"},
+	})
+	if err != nil || len(decisions) != 1 || decisions[0].Decision != KindAward || decisions[0].Units != 1 {
+		t.Errorf("decisions = %+v err = %v, want one counted guide", decisions, err)
 	}
 }

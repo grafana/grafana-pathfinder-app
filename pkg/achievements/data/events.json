@@ -8,8 +8,6 @@
             "guideSource": { "type": "string" },
             "guideId": { "type": "string" },
             "guideCategory": { "type": "string", "enum": ["interactive", "documentation", "learning-journey"] },
-            "completionSource": { "type": "string", "enum": ["objectives", "manual", "skipped"] },
-            "pathSource": { "type": "string" },
             "pathId": { "type": "string" }
           },
           "resources": [

@@ -25,25 +25,25 @@ func TestEvaluateGolden(t *testing.T) {
 			name: "first unit awards tier 1",
 			id:   "dash-builder", stored: Progress{Revision: 1}, event: dashboardCreated("a", 2),
 			want:        `{"achievementId":"dash-builder","decision":"award","from":0,"to":1,"final":false,"units":1,"next":5,"revision":1}`,
-			wantChanged: true, wantUnits: []string{"a"},
+			wantChanged: true, wantUnits: []string{unitKey("a")},
 		},
 		{
 			name: "new unit below the next threshold increments",
-			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{"a"}, Revision: 1}, event: dashboardCreated("b", 1),
+			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{unitKey("a")}, Revision: 1}, event: dashboardCreated("b", 1),
 			want:        `{"achievementId":"dash-builder","decision":"increment","from":1,"to":1,"final":false,"units":2,"next":5,"revision":1}`,
-			wantChanged: true, wantUnits: []string{"a", "b"},
+			wantChanged: true, wantUnits: []string{unitKey("a"), unitKey("b")},
 		},
 		{
 			name: "reaching a threshold above tier 0 is a tier_up",
-			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{"a", "b", "c", "d"}, Revision: 1}, event: dashboardCreated("e", 1),
+			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{unitKey("a"), unitKey("b"), unitKey("c"), unitKey("d")}, Revision: 1}, event: dashboardCreated("e", 1),
 			want:        `{"achievementId":"dash-builder","decision":"tier_up","from":1,"to":2,"final":false,"units":5,"next":25,"revision":1}`,
-			wantChanged: true, wantUnits: []string{"a", "b", "c", "d", "e"},
+			wantChanged: true, wantUnits: []string{unitKey("a"), unitKey("b"), unitKey("c"), unitKey("d"), unitKey("e")},
 		},
 		{
 			name: "reaching the last tier is an award, final, with no next",
-			id:   "well-rounded", stored: Progress{Tier: 1, Units: []string{"documentation", "interactive"}, Revision: 1}, event: guideCompleted("x", "learning-journey"),
+			id:   "well-rounded", stored: Progress{Tier: 1, Units: []string{unitKey("documentation"), unitKey("interactive")}, Revision: 1}, event: guideCompleted("x", "learning-journey"),
 			want:        `{"achievementId":"well-rounded","decision":"award","from":1,"to":2,"final":true,"units":3,"next":null,"revision":1}`,
-			wantChanged: true, wantUnits: []string{"documentation", "interactive", "learning-journey"},
+			wantChanged: true, wantUnits: []string{unitKey("documentation"), unitKey("interactive"), unitKey("learning-journey")},
 		},
 		{
 			name: "the last occurrence tier is a final award",
@@ -53,17 +53,17 @@ func TestEvaluateGolden(t *testing.T) {
 		},
 		{
 			name: "unit already in the ledger is a duplicate",
-			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{"a"}, Revision: 1}, event: dashboardCreated("a", 3),
+			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{unitKey("a")}, Revision: 1}, event: dashboardCreated("a", 3),
 			want: `{"achievementId":"dash-builder","decision":"ignored","reason":"duplicate","from":1,"to":1,"final":false,"units":1,"next":5,"revision":1}`,
 		},
 		{
 			name: "earned final tier is complete",
-			id:   "well-rounded", stored: Progress{Tier: 2, Units: []string{"documentation", "interactive", "learning-journey"}, Revision: 1}, event: guideCompleted("x", "interactive"),
+			id:   "well-rounded", stored: Progress{Tier: 2, Units: []string{unitKey("documentation"), unitKey("interactive"), unitKey("learning-journey")}, Revision: 1}, event: guideCompleted("x", "interactive"),
 			want: `{"achievementId":"well-rounded","decision":"ignored","reason":"complete","from":2,"to":2,"final":true,"units":3,"next":null,"revision":1}`,
 		},
 		{
 			name: "newer schema record is untouched",
-			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{"a"}, Revision: 1, SchemaVersion: SchemaVersion + 1}, event: dashboardCreated("b", 1),
+			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{unitKey("a")}, Revision: 1, SchemaVersion: SchemaVersion + 1}, event: dashboardCreated("b", 1),
 			want: `{"achievementId":"dash-builder","decision":"ignored","reason":"record_newer","from":1,"to":1,"final":false,"units":1,"next":5,"revision":1}`,
 		},
 		{
@@ -101,15 +101,15 @@ func TestEvaluateGolden(t *testing.T) {
 			want:  `{"achievementId":"well-rounded","decision":"ignored","reason":"invalid_context","from":0,"to":0,"final":false,"units":0,"next":2,"revision":1}`,
 		},
 		{
-			name: "unit id over 128 bytes is invalid_context",
-			id:   "dash-builder", stored: Progress{Revision: 1}, event: dashboardCreated(string(make([]byte, 129)), 2),
+			name: "unit id over the cap is invalid_context",
+			id:   "dash-builder", stored: Progress{Revision: 1}, event: dashboardCreated(string(repeatByte('x', maxUnitIDBytes-len("516:")+1)), 2),
 			want: `{"achievementId":"dash-builder","decision":"ignored","reason":"invalid_context","from":0,"to":0,"final":false,"units":0,"next":1,"revision":1}`,
 		},
 		{
-			name: "unit id of exactly 128 bytes counts",
-			id:   "dash-builder", stored: Progress{Revision: 1}, event: dashboardCreated(string(repeatByte('x', 128)), 2),
+			name: "unit id of exactly the cap counts",
+			id:   "dash-builder", stored: Progress{Revision: 1}, event: dashboardCreated(string(repeatByte('x', maxUnitIDBytes-len("516:"))), 2),
 			want:        `{"achievementId":"dash-builder","decision":"award","from":0,"to":1,"final":false,"units":1,"next":5,"revision":1}`,
-			wantChanged: true, wantUnits: []string{string(repeatByte('x', 128))},
+			wantChanged: true, wantUnits: []string{unitKey(string(repeatByte('x', maxUnitIDBytes-len("516:"))))},
 		},
 		{
 			name: "a route earns its tier outright",
@@ -151,14 +151,14 @@ func TestEvaluateGolden(t *testing.T) {
 		},
 		{
 			name: "a named resource counts its own unit, so a second guide of one category is a duplicate",
-			id:   "well-rounded", stored: Progress{Revision: 1, Units: []string{"interactive"}}, event: guideCompleted("other-guide", "interactive"),
+			id:   "well-rounded", stored: Progress{Revision: 1, Units: []string{unitKey("interactive")}}, event: guideCompleted("other-guide", "interactive"),
 			want: `{"achievementId":"well-rounded","decision":"ignored","reason":"duplicate","from":0,"to":0,"final":false,"units":1,"next":2,"revision":1}`,
 		},
 		{
 			name: "a lowered threshold applies on a duplicate event",
-			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{"a", "b", "c", "d", "e"}, Revision: 1}, event: dashboardCreated("a", 1),
+			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{unitKey("a"), unitKey("b"), unitKey("c"), unitKey("d"), unitKey("e")}, Revision: 1}, event: dashboardCreated("a", 1),
 			want:        `{"achievementId":"dash-builder","decision":"tier_up","from":1,"to":2,"final":false,"units":5,"next":25,"revision":1}`,
-			wantChanged: true, wantUnits: []string{"a", "b", "c", "d", "e"},
+			wantChanged: true, wantUnits: []string{unitKey("a"), unitKey("b"), unitKey("c"), unitKey("d"), unitKey("e")},
 		},
 		{
 			name: "a revision behind the catalog is updated with no recount",
@@ -174,9 +174,9 @@ func TestEvaluateGolden(t *testing.T) {
 		},
 		{
 			name: "the ledger is kept sorted and distinct",
-			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{"b", "d"}, Revision: 1}, event: dashboardCreated("c", 1),
+			id:   "dash-builder", stored: Progress{Tier: 1, Units: []string{unitKey("b"), unitKey("d")}, Revision: 1}, event: dashboardCreated("c", 1),
 			want:        `{"achievementId":"dash-builder","decision":"increment","from":1,"to":1,"final":false,"units":3,"next":5,"revision":1}`,
-			wantChanged: true, wantUnits: []string{"b", "c", "d"},
+			wantChanged: true, wantUnits: []string{unitKey("b"), unitKey("c"), unitKey("d")},
 		},
 	}
 
@@ -203,9 +203,9 @@ func TestEvaluateGolden(t *testing.T) {
 
 func TestEvaluateDoesNotMutateStoredLedger(t *testing.T) {
 	catalog := mustCatalog(t)
-	stored := Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{"a", "c"}, Revision: 1}
+	stored := Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("a"), unitKey("c")}, Revision: 1}
 	evaluate(&catalog.Achievements[0], stored, dashboardCreated("b", 1))
-	if !equalStrings(stored.Units, []string{"a", "c"}) {
+	if !equalStrings(stored.Units, []string{unitKey("a"), unitKey("c")}) {
 		t.Errorf("stored ledger mutated: %v", stored.Units)
 	}
 }
@@ -219,9 +219,9 @@ func TestEvaluateLedgerStopsAtTopThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored := Progress{AchievementID: "small", Tier: 1, Units: []string{"a", "b"}, Revision: 1}
+	stored := Progress{AchievementID: "small", Tier: 1, Units: []string{unitKey("a"), unitKey("b")}, Revision: 1}
 	got := evaluate(&catalog.Achievements[0], stored, dashboardCreated("c", 1))
-	if !equalStrings(got.next.Units, []string{"a", "b"}) || got.decision.To != 2 || got.decision.Units != 2 {
+	if !equalStrings(got.next.Units, []string{unitKey("a"), unitKey("b")}) || got.decision.To != 2 || got.decision.Units != 2 {
 		t.Errorf("ledger grew past the top threshold: %+v units=%v", got.decision, got.next.Units)
 	}
 }
@@ -291,5 +291,52 @@ func TestCatalogRoundTripsThroughJSON(t *testing.T) {
 	}
 	if rulesJSON(&catalog.Achievements[0]) != rulesJSON(&again.Achievements[0]) {
 		t.Error("catalog changed across a marshal and load")
+	}
+}
+
+const guideUnitCatalogJSON = `{"schemaVersion":1,"achievements":[
+  {"id":"guides","revision":1,"title":"Guides","description":"Finish guides.",
+   "counter":{"unit":"guide","evidence":[{"entity":"guides","action":"completed","countBy":"resource"}]},
+   "tiers":[{"tier":1,"at":1},{"tier":2,"at":2}]}]}`
+
+func guideFinished(source, id string) Event {
+	return Event{ID: "evt", Entity: "guides", Action: "completed", Context: map[string]any{"guideSource": source, "guideId": id}}
+}
+
+func TestEvaluateCompoundUnitIDsCannotCollide(t *testing.T) {
+	catalog, err := LoadCatalog([]byte(guideUnitCatalogJSON), mustRegistry(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &catalog.Achievements[0]
+	first := evaluate(d, Progress{AchievementID: d.ID, Revision: 1}, guideFinished("a:b", "c"))
+	second := evaluate(d, first.next, guideFinished("a", "b:c"))
+	if second.decision.Decision != KindAward || second.decision.To != 2 || second.decision.Units != 2 {
+		t.Errorf("(a:b, c) and (a, b:c) = %+v, want two distinct guides", second.decision)
+	}
+	if want := []string{unitKey("a", "b:c"), unitKey("a:b", "c")}; !equalStrings(second.next.Units, want) {
+		t.Errorf("units = %q, want %q", second.next.Units, want)
+	}
+}
+
+func TestEvaluateCountsTheRecordersLongestGuideID(t *testing.T) {
+	catalog, err := LoadCatalog([]byte(guideUnitCatalogJSON), mustRegistry(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &catalog.Achievements[0]
+	source, id := string(repeatByte('s', 256)), string(repeatByte('i', 256))
+	got := evaluate(d, Progress{AchievementID: d.ID, Revision: 1}, guideFinished(source, id))
+	if got.decision.Decision != KindAward || got.decision.Units != 1 || !equalStrings(got.next.Units, []string{unitKey(source, id)}) {
+		t.Errorf("a 256-byte source and id = %+v, want one counted guide", got.decision)
+	}
+}
+
+func TestEvaluateKeepsTheStoredSchemaVersion(t *testing.T) {
+	catalog := mustCatalog(t)
+	stored := Progress{AchievementID: "dash-builder", Revision: 1, SchemaVersion: SchemaVersion}
+	got := evaluate(&catalog.Achievements[0], stored, dashboardCreated("a", 1))
+	if !got.changed || got.next.SchemaVersion != SchemaVersion {
+		t.Errorf("changed = %v schemaVersion = %d, want it kept at %d", got.changed, got.next.SchemaVersion, SchemaVersion)
 	}
 }
