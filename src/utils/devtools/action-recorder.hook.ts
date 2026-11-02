@@ -519,7 +519,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       // Recorded steps are stored in React state only and are not persisted.
       // Users should avoid navigating away while recording, or export steps frequently.
 
-      // Generate selector using shared utility, constrained by the hovered element
       const result = generateSelectorFromEvent(target, event);
       const selector = result.selector;
       const action = result.action;
@@ -688,7 +687,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           return;
         }
 
-        // Generate selector using shared utility, constrained by the hovered element
         const result = generateSelectorFromEvent(target, event);
         const selector = result.selector;
         const action = result.action;

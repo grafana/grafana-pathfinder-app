@@ -2,7 +2,7 @@
  * Element Picker Component
  *
  * A full-screen overlay that captures element clicks for selector generation.
- * Shows DOM path tooltip on hover and returns the selector when clicked.
+ * Shows the selector a click would record on hover and returns it when clicked.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -205,10 +205,17 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     };
   }, [handleClick, handleMouseMove, handleKeyDown]);
 
-  const hoveredSelector = useMemo(
-    () => (hoveredElement ? generateSelectorForElement(hoveredElement) : ''),
-    [hoveredElement]
-  );
+  const hoveredSelector = useMemo(() => {
+    if (!hoveredElement) {
+      return '';
+    }
+    // This runs during render, so a throw here would unmount the picker.
+    try {
+      return generateSelectorForElement(hoveredElement);
+    } catch {
+      return '';
+    }
+  }, [hoveredElement]);
 
   return createPortal(
     <>

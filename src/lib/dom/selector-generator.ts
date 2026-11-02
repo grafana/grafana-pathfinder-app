@@ -840,7 +840,7 @@ function testUniqueness(
   }
 }
 
-// Cleaning can drop the part of a selector that made it unique (#404).
+// Cleaning can drop the part of a selector that made it unique.
 function cleanIfStillUnique(selector: string, element: HTMLElement, method: string, inOverlay: boolean): string {
   const cleaned = cleanDynamicAttributes(selector);
   if (cleaned === selector) {

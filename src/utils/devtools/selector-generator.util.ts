@@ -5,7 +5,13 @@
  * the useActionRecorder hook and block editor components.
  */
 
-import { getSelectorInfo, selectorMatchesOnly, validateAndCleanSelector, type ValidatedSelector } from '../../lib/dom';
+import {
+  getSelectorInfo,
+  selectorMatchesOnly,
+  validateActionType,
+  validateAndCleanSelector,
+  type ValidatedSelector,
+} from '../../lib/dom';
 import { detectActionType, type DetectedAction } from '../../lib/dom/action-detector';
 import type { SelectorInfo } from './dev-tools.types';
 
@@ -78,7 +84,7 @@ export function generateSelectorForElement(target: HTMLElement): string {
   return cleanProvenSelector(target, getSelectorInfo(target), 'highlight').selector;
 }
 
-// Cleaning runs after the generator's uniqueness check, so it can make a proven selector match another element (#404).
+// Cleaning runs after the generator's uniqueness check, so it can make a proven selector match another element.
 function cleanProvenSelector(
   target: HTMLElement,
   info: ReturnType<typeof getSelectorInfo>,
@@ -92,12 +98,15 @@ function cleanProvenSelector(
   ) {
     return validated;
   }
+  // The action, flag and warnings above describe the cleaned selector, so redo them for the one we keep.
+  const { correctedAction, warning } = validateActionType(info.selector, action);
   return {
-    ...validated,
     selector: info.selector,
+    action: correctedAction,
     warnings: [
-      ...validated.warnings,
       `Kept "${info.selector}": cleaning it to "${validated.selector}" matched a different element.`,
+      ...(warning ? [warning] : []),
     ],
+    wasModified: false,
   };
 }
