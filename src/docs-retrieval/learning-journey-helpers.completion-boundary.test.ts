@@ -1604,3 +1604,78 @@ describe('mark-complete click identity matches the recorded completion', () => {
     });
   });
 });
+
+describe('PR-tester previews stay out of real completion records', () => {
+  const base = 'https://grafana.com/docs/lp/linux/';
+  const slug = 'select-platform';
+  const realUrl = milestoneUrl(base, slug);
+  const marked = (fetchId: string) => `${realUrl}#pf-pr-${fetchId}`;
+  const journeyMetadata = (url: string) =>
+    ({
+      learningJourney: { baseUrl: `${base}#pf-pr-one`, milestones: [{ url, isLocked: false }] },
+      packageManifest: { id: 'linux-journey', type: 'journey' },
+    }) as unknown as SurfaceCompletionInput['metadata'];
+
+  it('writes milestone progress under the marked key only', async () => {
+    await markMilestoneDone(`${base}#pf-pr-one`, slug, marked('one'));
+
+    expect(interactiveCompletionSetMock).toHaveBeenCalledWith(marked('one'), 100);
+    expect(interactiveCompletionData.has(realUrl)).toBe(false);
+  });
+
+  it('records no slug-keyed progress, badge, or durable record', async () => {
+    await markMilestoneDone(`${base}#pf-pr-one`, slug, marked('one'), [marked('one')]);
+
+    expect(markGuideCompletedMock).not.toHaveBeenCalled();
+    expect(awardBadgeMock).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('keeps two fetches of the same milestone in separate records', async () => {
+    await markMilestoneDone(`${base}#pf-pr-one`, slug, marked('one'));
+
+    expect(interactiveCompletionData.get(marked('one'))).toBe(100);
+    expect(interactiveCompletionData.has(marked('two'))).toBe(false);
+  });
+
+  it('emits nothing from the surface completion emitter for a marked milestone', () => {
+    recordGuideCompletionForSurface({
+      currentUrl: marked('one'),
+      baseUrl: `${base}#pf-pr-one`,
+      metadata: journeyMetadata(marked('one')),
+    });
+
+    expect(markGuideCompletedMock).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('emits nothing for a marked standalone guide', () => {
+    recordGuideCompletionForSurface({
+      currentUrl: 'https://raw.githubusercontent.com/org/repo/abc/guide/content.json#pf-pr-one',
+      metadata: { packageManifest: { id: 'a-guide', type: 'guide' } } as unknown as SurfaceCompletionInput['metadata'],
+    });
+
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('resolves no completion identity for a marked surface', () => {
+    const input = { currentUrl: marked('one'), metadata: journeyMetadata(marked('one')) };
+
+    expect(resolveSurfaceCompletionIdentity(input)).toBeUndefined();
+    expect(resolveSurfaceGuideIdentity(input)).toBeNull();
+  });
+
+  it('leaves the real identity guard alone when a marked guide is reset', async () => {
+    await markMilestoneDone(base, slug, realUrl);
+    expect(emitted).toHaveLength(1);
+
+    await resetGuideProgress(marked('one'), { milestoneSlug: slug, journeyBaseUrl: `${base}#pf-pr-one` });
+    await markMilestoneDone(base, slug, realUrl);
+
+    expect(emitted).toHaveLength(1);
+  });
+
+  it('reads the slug the same with or without the marker', () => {
+    expect(getMilestoneSlug(`${base}${slug}/content.json#pf-pr-one`)).toBe(slug);
+  });
+});

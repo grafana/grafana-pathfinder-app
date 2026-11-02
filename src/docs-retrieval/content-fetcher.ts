@@ -16,6 +16,7 @@ import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
+import { stripPrTestMarker } from '../lib/pr-test-marker';
 import { recordContentFetch, recordContentFetchFallback, type ContentFetchTier } from '../lib/telemetry';
 
 // Re-exported to keep the barrel surface stable: `injectJourneyExtrasIntoJsonGuide`
@@ -107,7 +108,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         };
       }
 
-      const hashFragment = parseHashFragment(url);
+      const hashFragment = parseHashFragment(stripPrTestMarker(url));
       const cleanUrl = removeHashFragment(url);
 
       // SECURITY: Enforce HTTPS to prevent MITM attacks
