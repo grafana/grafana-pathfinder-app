@@ -1066,7 +1066,7 @@ export async function markMilestoneDone(
   await queueMilestoneCompletionWrite(contentKey, 100);
   dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
   // PR-tester progress stays in the per-fetch content key; the writes below are slug-keyed and real.
-  if (isPrTestUrl(milestoneUrl)) {
+  if (isPrTestUrl(milestoneUrl) || isPrTestUrl(journeyBaseUrl)) {
     return;
   }
   await markGuideCompleted(milestoneSlug);

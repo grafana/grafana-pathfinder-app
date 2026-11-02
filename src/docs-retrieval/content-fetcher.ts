@@ -16,7 +16,7 @@ import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
-import { stripPrTestMarker } from '../lib/pr-test-marker';
+import { getPrTestFetchId, stripPrTestMarker, withPrTestMarker } from '../lib/pr-test-marker';
 import { recordContentFetch, recordContentFetchFallback, type ContentFetchTier } from '../lib/telemetry';
 
 // Re-exported to keep the barrel surface stable: `injectJourneyExtrasIntoJsonGuide`
@@ -110,6 +110,8 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
       const hashFragment = parseHashFragment(stripPrTestMarker(url));
       const cleanUrl = removeHashFragment(url);
+      const prTestFetchId = getPrTestFetchId(url);
+      const contentUrl = (resolved: string) => (prTestFetchId ? withPrTestMarker(resolved, prTestFetchId) : resolved);
 
       // SECURITY: Enforce HTTPS to prevent MITM attacks
       if (!enforceHttps(cleanUrl)) {
@@ -230,7 +232,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
               content: jsonContent,
               metadata: htmlMetadata,
               type: contentType,
-              url: htmlUrl,
+              url: contentUrl(htmlUrl),
               lastFetched: new Date().toISOString(),
               hashFragment,
               isNativeJson: false,
@@ -286,7 +288,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         content: jsonContent,
         metadata,
         type: contentType,
-        url: finalUrl, // Use final URL to correctly resolve relative links
+        url: contentUrl(finalUrl),
         lastFetched: new Date().toISOString(),
         hashFragment,
         isNativeJson,
