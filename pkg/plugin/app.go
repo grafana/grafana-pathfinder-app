@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"
 
+	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
 
@@ -57,6 +58,13 @@ type App struct {
 
 	// Per-user rate limiter for GET /assignments/my.
 	assignmentsReadRateLimiter *userRateLimiter
+
+	achievementEventsRateLimiter *userRateLimiter
+	achievementsRegistry         *achievements.Registry
+	achievementsCatalog          *achievements.Catalog
+	// Builds the persistence for a request. Nil until a store adapter is wired,
+	// and the achievements routes report themselves unavailable meanwhile.
+	achievementsBackendFor achievementsBackendFor
 }
 
 // NewApp creates a new App instance.
@@ -73,6 +81,12 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 		logger:                     logger,
 		completionWriteRateLimiter: newCompletionWriteRateLimiter(),
 		assignmentsReadRateLimiter: newUserRateLimiter(assignmentsReadRateBurst, assignmentsReadRateRefillPerSec),
+
+		achievementEventsRateLimiter: newUserRateLimiter(achievementEventsRateBurst, achievementEventsRateRefillPerSec),
+	}
+	if app.achievementsRegistry, app.achievementsCatalog, err = achievements.LoadBundled(); err != nil {
+		logger.Error("Bundled achievements failed to load, achievements routes disabled", "error", err)
+		app.achievementsRegistry, app.achievementsCatalog = nil, nil
 	}
 
 	// A stack without provisioned on-behalf-of credentials still loads: the App

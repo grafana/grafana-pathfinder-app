@@ -1,4 +1,69 @@
 {
+  "Decision": [
+    {
+      "field": "AchievementID",
+      "json": "achievementId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Decision",
+      "json": "decision",
+      "type": "achievements.Kind",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "achievements.Reason",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "From",
+      "json": "from",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "To",
+      "json": "to",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "Final",
+      "json": "final",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Units",
+      "json": "units",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "Next",
+      "json": "next",
+      "type": "*int",
+      "wire": "nullable<integer>",
+      "omitempty": false
+    },
+    {
+      "field": "Revision",
+      "json": "revision",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    }
+  ],
   "PackageEntry": [
     {
       "field": "ID",
@@ -79,6 +144,112 @@
       "json": "match",
       "type": "json.RawMessage",
       "wire": "json",
+      "omitempty": false
+    }
+  ],
+  "achievementAward": [
+    {
+      "field": "AchievementID",
+      "json": "achievementId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Tier",
+      "json": "tier",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "Route",
+      "json": "route",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Revision",
+      "json": "revision",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "EarnedAt",
+      "json": "earnedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    }
+  ],
+  "achievementCapability": [
+    {
+      "field": "Available",
+      "json": "available",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
+  "achievementEventsResponse": [
+    {
+      "field": "EventID",
+      "json": "eventId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Retry",
+      "json": "retry",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Decisions",
+      "json": "decisions",
+      "type": "[]achievements.Decision",
+      "wire": "array<object>",
+      "omitempty": false
+    }
+  ],
+  "achievementProgress": [
+    {
+      "field": "AchievementID",
+      "json": "achievementId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Units",
+      "json": "units",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "Next",
+      "json": "next",
+      "type": "*int",
+      "wire": "nullable<integer>",
+      "omitempty": false
+    },
+    {
+      "field": "Revision",
+      "json": "revision",
+      "type": "int",
+      "wire": "integer",
       "omitempty": false
     }
   ],
@@ -893,6 +1064,73 @@
       "field": "Assignments",
       "json": "assignments",
       "type": "[]plugin.learningInsightsAssignment",
+      "wire": "array<object>",
+      "omitempty": false
+    }
+  ],
+  "legacyBadge": [
+    {
+      "field": "Source",
+      "json": "source",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Name",
+      "json": "name",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "AcquiredAt",
+      "json": "acquiredAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
+  "myAchievementsResponse": [
+    {
+      "field": "AsOf",
+      "json": "asOf",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "plugin.achievementCapability",
+      "wire": "object",
+      "omitempty": false
+    },
+    {
+      "field": "Truncated",
+      "json": "truncated",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Awards",
+      "json": "awards",
+      "type": "[]plugin.achievementAward",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "Progress",
+      "json": "progress",
+      "type": "[]plugin.achievementProgress",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "Legacy",
+      "json": "legacy",
+      "type": "[]plugin.legacyBadge",
       "wire": "array<object>",
       "omitempty": false
     }

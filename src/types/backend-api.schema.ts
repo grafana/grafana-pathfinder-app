@@ -101,6 +101,79 @@ export const MyCompletionsResponseWireSchema = z.strictObject({
   asOf: z.string().optional(),
 });
 
+// ============ /api/v1/achievements ============
+
+/**
+ * `reason` is a free string: a new decision reason is an additive change within v1.
+ * @coupling Go struct: Decision (pkg/achievements/types.go)
+ */
+export const AchievementDecisionWireSchema = z.strictObject({
+  achievementId: z.string(),
+  decision: z.enum(['award', 'tier_up', 'increment', 'ignored']),
+  reason: z.string().optional(),
+  from: z.number().int(),
+  to: z.number().int(),
+  final: z.boolean(),
+  units: z.number().int(),
+  next: z.number().int().nullable(),
+  revision: z.number().int(),
+});
+
+/**
+ * `decisions` is always an array, `[]` when no achievement matched the event.
+ * @coupling Go struct: achievementEventsResponse
+ */
+export const AchievementEventsResponseWireSchema = z.strictObject({
+  eventId: z.string(),
+  retry: z.boolean(),
+  decisions: z.array(AchievementDecisionWireSchema),
+});
+
+/** @coupling Go struct: achievementCapability */
+export const AchievementCapabilityWireSchema = z.strictObject({
+  available: z.boolean(),
+  reason: z.string().optional(),
+});
+
+/** @coupling Go struct: achievementAward */
+export const AchievementAwardWireSchema = z.strictObject({
+  achievementId: z.string(),
+  tier: z.number().int(),
+  route: z.string(),
+  revision: z.number().int(),
+  earnedAt: z.string(),
+});
+
+/** @coupling Go struct: achievementProgress */
+export const AchievementProgressWireSchema = z.strictObject({
+  achievementId: z.string(),
+  units: z.number().int(),
+  next: z.number().int().nullable(),
+  revision: z.number().int(),
+});
+
+/** @coupling Go struct: legacyBadge */
+export const LegacyBadgeWireSchema = z.strictObject({
+  source: z.string(),
+  name: z.string(),
+  acquiredAt: z.string().optional(),
+});
+
+/**
+ * All three arrays are required, never nullable: the handler builds non-nil
+ * slices unconditionally, including in the unavailable answer.
+ *
+ * @coupling Go struct: myAchievementsResponse
+ */
+export const MyAchievementsResponseWireSchema = z.strictObject({
+  asOf: z.string().optional(),
+  capability: AchievementCapabilityWireSchema,
+  truncated: z.boolean(),
+  awards: z.array(AchievementAwardWireSchema),
+  progress: z.array(AchievementProgressWireSchema),
+  legacy: z.array(LegacyBadgeWireSchema),
+});
+
 // ============ /assignments/my ============
 
 /**
@@ -358,6 +431,13 @@ export const GO_STRUCT_SCHEMAS = {
   learningInsightsPerson: LearningInsightsPersonWireSchema,
   learningInsightsCompletion: LearningInsightsCompletionWireSchema,
   learningInsightsAssignment: LearningInsightsAssignmentWireSchema,
+  achievementEventsResponse: AchievementEventsResponseWireSchema,
+  Decision: AchievementDecisionWireSchema,
+  myAchievementsResponse: MyAchievementsResponseWireSchema,
+  achievementCapability: AchievementCapabilityWireSchema,
+  achievementAward: AchievementAwardWireSchema,
+  achievementProgress: AchievementProgressWireSchema,
+  legacyBadge: LegacyBadgeWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
@@ -376,6 +456,8 @@ export const BACKEND_RESPONSE_ENVELOPES = {
   'completion-records-capability': 'completionCapability',
   'assignments-my': 'myAssignmentsResponse',
   'learning-insights': 'learningInsightsResponse',
+  'achievements-events': 'achievementEventsResponse',
+  'achievements-my': 'myAchievementsResponse',
 } as const satisfies Record<string, GoStructName>;
 
 export type BackendResponseEnvelopeKey = keyof typeof BACKEND_RESPONSE_ENVELOPES;
@@ -385,4 +467,6 @@ export type MyAssignmentsResponseWire = z.infer<typeof MyAssignmentsResponseWire
 export type AssignmentEntryWire = z.infer<typeof AssignmentEntryWireSchema>;
 export type CustomGuideRepositoryResponseWire = z.infer<typeof CustomGuideRepositoryResponseWireSchema>;
 export type PackageRecommendationsResponseWire = z.infer<typeof PackageRecommendationsResponseWireSchema>;
+export type AchievementEventsResponseWire = z.infer<typeof AchievementEventsResponseWireSchema>;
+export type MyAchievementsResponseWire = z.infer<typeof MyAchievementsResponseWireSchema>;
 export type CompletionCapabilityWire = z.infer<typeof CompletionCapabilityWireSchema>;
