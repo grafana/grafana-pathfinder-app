@@ -93,7 +93,7 @@ func TestEvaluateCreatesMissingProgressAndAward(t *testing.T) {
 		t.Fatalf("decision = %+v", d)
 	}
 	row := store.progress["dash-builder"]
-	if row.Tier != 1 || !equalStrings(row.Units, []string{"a"}) || row.Revision != 1 {
+	if row.Tier != 1 || !equalStrings(row.Units, []string{unitKey("a")}) || row.Revision != 1 || row.SchemaVersion != SchemaVersion {
 		t.Errorf("stored progress = %+v", row)
 	}
 	award, ok := store.awards["dash-builder/1"]
@@ -144,7 +144,7 @@ func TestEvaluateReplayChangesNothing(t *testing.T) {
 func TestEvaluateExistingProgressRowIsReusedAndExistingCreateReloads(t *testing.T) {
 	t.Run("loaded row skips create", func(t *testing.T) {
 		store := newFakeStore()
-		store.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{"a"}, Revision: 1})
+		store.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("a")}, Revision: 1})
 		ev := newTestEvaluator(t, store, &fakePolicy{})
 		decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("b", 1))
 		if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindIncrement || d.Units != 2 {
@@ -178,7 +178,7 @@ func (s *raceStore) LoadProgress(ctx context.Context, p Person, ids []string) (m
 	if !s.raced {
 		s.raced = true
 		s.loads++
-		s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{"a"}, Revision: 1})
+		s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("a")}, Revision: 1})
 		return map[string]Progress{}, nil
 	}
 	return s.fakeStore.LoadProgress(ctx, p, ids)
@@ -259,7 +259,7 @@ func TestEvaluateConflict(t *testing.T) {
 		store := newFakeStore()
 		store.beforeSave = func(s *fakeStore, attempt int) {
 			if attempt == 1 {
-				s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{"a"}, Revision: 1})
+				s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("a")}, Revision: 1})
 			}
 		}
 		ev := newTestEvaluator(t, store, &fakePolicy{})
@@ -276,7 +276,7 @@ func TestEvaluateConflict(t *testing.T) {
 		store := newFakeStore()
 		store.beforeSave = func(s *fakeStore, attempt int) {
 			if attempt == 1 {
-				s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{"z"}, Revision: 1})
+				s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("z")}, Revision: 1})
 			}
 		}
 		ev := newTestEvaluator(t, store, &fakePolicy{})
@@ -285,7 +285,7 @@ func TestEvaluateConflict(t *testing.T) {
 		if d.Decision != KindIncrement || d.Units != 2 || d.From != 1 {
 			t.Errorf("decision = %+v", d)
 		}
-		if got := store.progress["dash-builder"].Units; !equalStrings(got, []string{"a", "z"}) {
+		if got := store.progress["dash-builder"].Units; !equalStrings(got, []string{unitKey("a"), unitKey("z")}) {
 			t.Errorf("ledger = %v", got)
 		}
 	})
@@ -323,7 +323,7 @@ func TestEvaluateConflict(t *testing.T) {
 
 func TestEvaluateRecordNewerIsTransientAndUntouched(t *testing.T) {
 	store := newFakeStore()
-	store.seed(Progress{AchievementID: "dash-builder", Tier: 2, Units: []string{"a"}, Revision: 9, SchemaVersion: SchemaVersion + 1})
+	store.seed(Progress{AchievementID: "dash-builder", Tier: 2, Units: []string{unitKey("a")}, Revision: 9, SchemaVersion: SchemaVersion + 1})
 	before := store.progress["dash-builder"]
 	ev := newTestEvaluator(t, store, &fakePolicy{})
 	decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("b", 1))

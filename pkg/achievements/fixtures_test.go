@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -85,6 +86,16 @@ func decisionJSON(t testing.TB, d any) string {
 }
 
 func intp(n int) *int { return &n }
+
+func unitKey(parts ...string) string {
+	var key strings.Builder
+	for _, p := range parts {
+		key.WriteString(strconv.Itoa(len(p)))
+		key.WriteByte(':')
+		key.WriteString(p)
+	}
+	return key.String()
+}
 
 type fakeStore struct {
 	progress map[string]Progress
