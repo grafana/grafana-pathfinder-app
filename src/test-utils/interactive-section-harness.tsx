@@ -210,6 +210,16 @@ export function createUserStorageMock() {
       clear: jest.fn(async (contentKey: string) => {
         memoryStore.delete(completionKey(contentKey));
       }),
+      peekAll: jest.fn(() => {
+        const prefix = completionKey('');
+        const record: Record<string, number> = {};
+        memoryStore.forEach((value, key) => {
+          if (key.startsWith(prefix) && typeof value === 'number') {
+            record[key.slice(prefix.length)] = value;
+          }
+        });
+        return record;
+      }),
     },
     /** The `mark-guide-complete` namespace the completion store consults
      *  synchronously when it derives a guide's percentage. */

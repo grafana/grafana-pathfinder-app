@@ -218,6 +218,7 @@ describe('InteractiveSection — an acknowledgement moves the guide percentage',
       contentKey: NON_PREVIEW_KEY,
       index: computeGuideBlockIndex([
         { type: 'section', id: 'mixed', blocks: [{ type: 'interactive', id: MIXED_STEP_ID }, { type: 'markdown' }] },
+        { type: 'interactive', id: 'after-mixed' },
       ]),
       denominatorSource: 'live-pre-inlining',
     });
@@ -263,8 +264,9 @@ describe('InteractiveSection — an acknowledgement moves the guide percentage',
       act(() => {
         screen.getByTestId(completeBtn(MIXED_STEP_ID)).click();
       });
-      // The step is block 1 of 2; the section's trailing prose is block 2.
-      await waitFor(() => expect(guidePercentages(events)).toContain(50));
+      // The step is block 1 of 3; the section's trailing prose is block 2. A
+      // later interactive block keeps the guide from completing at the step.
+      await waitFor(() => expect(guidePercentages(events)).toContain(33));
 
       act(() => {
         screen.getByTestId(testIds.interactive.markSectionCompleteButton(MIXED_SECTION_ID)).click();
@@ -272,9 +274,9 @@ describe('InteractiveSection — an acknowledgement moves the guide percentage',
 
       // Acknowledging evidences the section's last block, so both the reported
       // and the persisted percentage have to move with it.
-      await waitFor(() => expect(guidePercentages(events)).toContain(100));
-      expect(peekGuidePercentage(NON_PREVIEW_KEY)).toBe(100);
-      expect(memoryStore.get(`interactive-completion::${NON_PREVIEW_KEY}`)).toBe(100);
+      await waitFor(() => expect(guidePercentages(events)).toContain(66));
+      expect(peekGuidePercentage(NON_PREVIEW_KEY)).toBe(66);
+      expect(memoryStore.get(`interactive-completion::${NON_PREVIEW_KEY}`)).toBe(66);
     } finally {
       unsubscribe();
     }
