@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "drilldown-metrics-open-metrics-explore",
+  "title": "Open a metric visualization in Explore",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Explore is your gateway for querying, analyzing, and aggregating data in Grafana. It allows you to visually explore and iterate until you develop a working query or set of queries for building visualizations and conducting data analysis. If your data source supports graph and table data, there's no need to create a dashboard, as Explore can display the results in both formats. This facilitates quick, detailed, real-time data analysis.\n\nWith Explore you can:\n\n- Create visualizations to integrate into your dashboards.\n- Create queries using mixed data sources.\n- Create multiple queries within a single interface.\n- Understand the shape of your data across various data sources.\n- Perform real time data exploration and analysis.\n\nKey features include:\n\n- Query editor, based on specific data source, to create and iterate queries.\n- Query history to track and maintain your queries.\n- Query inspector to help troubleshoot query performance.\n\nTo open a metric visualization in Explore, complete the following steps:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Hover your cursor over the metric you want to open in Explore."
+        },
+        {
+          "type": "conditional",
+          "conditions": [
+            "renderer:website"
+          ],
+          "whenTrue": [
+            {
+              "type": "image",
+              "src": "https://grafana.com/media/docs/learning-journey/metrics-drilldown/open-explore.png",
+              "alt": "Image shows navigating to Explore"
+            }
+          ],
+          "whenFalse": []
+        },
+        {
+          "type": "multistep",
+          "content": "Click the **Menu** icon, then click **Explore**.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "button[title='Menu']:nth-match(1)"
+            },
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid='data-testid Panel menu item Explore']"
+            }
+          ],
+          "requirements": [
+            "exists-reftarget"
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "When the metrics visualization opens, you'll see the query view. If needed, you can edit the query."
+        },
+        {
+          "type": "conditional",
+          "conditions": [
+            "renderer:website"
+          ],
+          "whenTrue": [
+            {
+              "type": "image",
+              "src": "https://grafana.com/media/docs/learning-journey/metrics-drilldown/open-explore-1.png",
+              "alt": "Image shows metric open in Explore"
+            }
+          ],
+          "whenFalse": []
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "In your final milestone, you'll learn how to add the visualization to a dashboard."
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### More to explore (optional)\n\n- [Use Grafana Explore to query, collect, and analyze data](https://grafana.com/docs/grafana/latest/explore/)"
+    }
+  ]
+}

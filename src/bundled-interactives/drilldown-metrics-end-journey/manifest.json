@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "drilldown-metrics-end-journey",
+  "type": "guide",
+  "description": "Your journey concludes and it's time to learn about related paths you can take.",
+  "category": "query-and-visualize",
+  "author": {
+    "name": "knylander-grafana",
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["drilldown-metrics-add-metric-dashboard"],
+  "recommends": [],
+  "suggests": ["visualization-metrics-lj"],
+  "provides": []
+}

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "drilldown-metrics-search-metrics",
+  "title": "Search and filter metrics",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Use metrics search and filtering to narrow your data and focus on specific systems, services, or time frames. This targeted approach is an important first step in effectively using Metrics Drilldown.\n\nTo search and filter metrics, complete the following steps:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/a/grafana-metricsdrilldown-app/drilldown']",
+          "requirements": ["navmenu-open", "exists-reftarget"],
+          "content": "On the Grafana Cloud home page, open the navigation menu and click **Drilldown > Metrics**."
+        },
+        {
+          "type": "markdown",
+          "content": "If you see a **Let's start** button, click it."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "input[data-testid='data-testid Dashboard template variables Variable Value DropDown value link text grafanacloud-prom-input']",
+          "content": "Select the **data source** you want to query.\n\nThe Metrics Drilldown interface containing a visualization for each metric appears.",
+          "requirements": ["exists-reftarget"],
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "input[placeholder='+ label = value']",
+          "content": "Use one of the following methods to reduce the number of metrics you see:\n\n- Select a filter in the **+ label = value** field.\n- Enter a search expression in the **Search metrics** field and press **Enter**.\n\nFor example, enter `cpu`. The metrics that match the search or filter expression appear.",
+          "requirements": ["exists-reftarget"],
+          "doIt": false
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "After you've located the metrics of interest, you'll continue your investigation."
+    }
+  ]
+}

@@ -56,8 +56,13 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "recommends": ["welcome-to-grafana", "prometheus-grafana-101"],
-    "provides": ["first-dashboard-created"],
+    "recommends": [
+      "welcome-to-grafana",
+      "prometheus-grafana-101"
+    ],
+    "provides": [
+      "first-dashboard-created"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -93,8 +98,12 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "recommends": ["welcome-to-grafana-cloud"],
-    "provides": ["first-dashboard-created-cloud"],
+    "recommends": [
+      "welcome-to-grafana-cloud"
+    ],
+    "provides": [
+      "first-dashboard-created-cloud"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -153,8 +162,12 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/connections",
-    "depends": ["prometheus-grafana-101"],
-    "provides": ["loki-configured"],
+    "depends": [
+      "prometheus-grafana-101"
+    ],
+    "provides": [
+      "loki-configured"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -190,7 +203,10 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/explore",
-    "recommends": ["prometheus-grafana-101", "loki-grafana-101"],
+    "recommends": [
+      "prometheus-grafana-101",
+      "loki-grafana-101"
+    ],
     "targeting": {
       "match": {
         "or": [
@@ -223,8 +239,12 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/connections",
-    "recommends": ["welcome-to-grafana"],
-    "provides": ["prometheus-configured"],
+    "recommends": [
+      "welcome-to-grafana"
+    ],
+    "provides": [
+      "prometheus-configured"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -260,7 +280,9 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "provides": ["grafana-tour-oss"],
+    "provides": [
+      "grafana-tour-oss"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -296,7 +318,9 @@
       "team": "Grafana Developer Advocacy"
     },
     "startingLocation": "/",
-    "provides": ["grafana-tour-cloud"],
+    "provides": [
+      "grafana-tour-cloud"
+    ],
     "targeting": {
       "match": {
         "and": [
@@ -319,6 +343,167 @@
       "sectionCount": 1,
       "completableBlockCount": 7,
       "finalCompletablePosition": 9
+    }
+  },
+  "drilldown-metrics-add-metric-dashboard": {
+    "path": "drilldown-metrics-add-metric-dashboard/",
+    "title": "Add Metrics Drilldown visualization to a dashboard",
+    "type": "guide",
+    "description": "Learn how to save your query and add it to a dashboard for ongoing monitoring.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "knylander-grafana",
+      "team": "Grafana Documentation"
+    },
+    "startingLocation": "/",
+    "depends": [
+      "drilldown-metrics-open-metrics-explore"
+    ],
+    "recommends": [
+      "drilldown-metrics-end-journey"
+    ],
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "drilldown-metrics-analyze-data": {
+    "path": "drilldown-metrics-analyze-data/",
+    "title": "Investigate the data",
+    "type": "guide",
+    "description": "Learn how to analyze metric data and explore related metrics.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "knylander-grafana",
+      "team": "Grafana Documentation"
+    },
+    "startingLocation": "/",
+    "depends": [
+      "drilldown-metrics-search-metrics"
+    ],
+    "recommends": [
+      "drilldown-metrics-open-metrics-explore"
+    ],
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "drilldown-metrics-end-journey": {
+    "path": "drilldown-metrics-end-journey/",
+    "title": "Destination reached!",
+    "type": "guide",
+    "description": "Your journey concludes and it's time to learn about related paths you can take.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "knylander-grafana",
+      "team": "Grafana Documentation"
+    },
+    "startingLocation": "/",
+    "depends": [
+      "drilldown-metrics-add-metric-dashboard"
+    ],
+    "suggests": [
+      "visualization-metrics-lj"
+    ],
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "drilldown-metrics-lj": {
+    "path": "drilldown-metrics-lj/",
+    "title": "Explore data using Metrics Drilldown",
+    "type": "path",
+    "description": "Step-by-step guide: Explore data using Metrics Drilldown.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "knylander-grafana",
+      "team": "Documentation"
+    },
+    "startingLocation": "/a/grafana-metricsdrilldown-app/drilldown",
+    "milestones": [
+      "drilldown-metrics-search-metrics",
+      "drilldown-metrics-analyze-data",
+      "drilldown-metrics-open-metrics-explore",
+      "drilldown-metrics-add-metric-dashboard",
+      "drilldown-metrics-end-journey"
+    ],
+    "suggests": [
+      "linux-server-integration-lj",
+      "prom-remote-write-lj",
+      "kubernetes-lj",
+      "prometheus-lj",
+      "macos-integration-lj",
+      "postgresql-integration-lj",
+      "mongodb-integration-lj",
+      "mysql-integration-lj",
+      "visualization-metrics-lj"
+    ],
+    "targeting": {
+      "match": {
+        "or": [
+          {
+            "and": [
+              {
+                "urlPrefix": "/a/grafana-metricsdrilldown-app/drilldown"
+              },
+              {
+                "targetPlatform": "cloud"
+              }
+            ]
+          },
+          {
+            "and": [
+              {
+                "urlRegex": "^(?:/drilldown)/?$"
+              },
+              {
+                "targetPlatform": "cloud"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "drilldown-metrics-open-metrics-explore": {
+    "path": "drilldown-metrics-open-metrics-explore/",
+    "title": "Open a metric visualization in Explore",
+    "type": "guide",
+    "description": "Learn how to open a metrics visualization in Explore.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "knylander-grafana",
+      "team": "Grafana Documentation"
+    },
+    "startingLocation": "/",
+    "depends": [
+      "drilldown-metrics-analyze-data"
+    ],
+    "recommends": [
+      "drilldown-metrics-add-metric-dashboard"
+    ],
+    "testEnvironment": {
+      "tier": "cloud"
+    }
+  },
+  "drilldown-metrics-search-metrics": {
+    "path": "drilldown-metrics-search-metrics/",
+    "title": "Search and filter metrics",
+    "type": "guide",
+    "description": "Learn how to search for and filter metrics to focus on the data that matters most.",
+    "category": "query-and-visualize",
+    "author": {
+      "name": "knylander-grafana",
+      "team": "Grafana Documentation"
+    },
+    "startingLocation": "/",
+    "recommends": [
+      "drilldown-metrics-analyze-data"
+    ],
+    "testEnvironment": {
+      "tier": "cloud"
     }
   }
 }

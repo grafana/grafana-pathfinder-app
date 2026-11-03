@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "drilldown-metrics-analyze-data",
+  "type": "guide",
+  "description": "Learn how to analyze metric data and explore related metrics.",
+  "category": "query-and-visualize",
+  "author": {
+    "name": "knylander-grafana",
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": ["drilldown-metrics-search-metrics"],
+  "recommends": ["drilldown-metrics-open-metrics-explore"],
+  "suggests": [],
+  "provides": []
+}

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "drilldown-metrics-lj",
+  "type": "path",
+  "description": "Step-by-step guide: Explore data using Metrics Drilldown.",
+  "category": "query-and-visualize",
+  "author": {
+    "name": "knylander-grafana",
+    "team": "Documentation"
+  },
+  "startingLocation": "/a/grafana-metricsdrilldown-app/drilldown",
+  "targeting": {
+    "match": {
+      "or": [
+        {
+          "and": [
+            {
+              "urlPrefix": "/a/grafana-metricsdrilldown-app/drilldown"
+            },
+            {
+              "targetPlatform": "cloud"
+            }
+          ]
+        },
+        {
+          "and": [
+            {
+              "urlRegex": "^(?:/drilldown)/?$"
+            },
+            {
+              "targetPlatform": "cloud"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "milestones": [
+    "drilldown-metrics-search-metrics",
+    "drilldown-metrics-analyze-data",
+    "drilldown-metrics-open-metrics-explore",
+    "drilldown-metrics-add-metric-dashboard",
+    "drilldown-metrics-end-journey"
+  ],
+  "depends": [],
+  "suggests": [
+    "linux-server-integration-lj",
+    "prom-remote-write-lj",
+    "kubernetes-lj",
+    "prometheus-lj",
+    "macos-integration-lj",
+    "postgresql-integration-lj",
+    "mongodb-integration-lj",
+    "mysql-integration-lj",
+    "visualization-metrics-lj"
+  ],
+  "provides": []
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "drilldown-metrics-add-metric-dashboard",
+  "title": "Add Metrics Drilldown visualization to a dashboard",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "A Grafana dashboard is a set of one or more panels, organized and arranged into one or more rows, that provide an at-a-glance view of related information. These panels are created using components that query and transform raw data from a data source into visualizations.\n\nA data source can be an SQL database, Grafana Loki, Grafana Mimir, or an API endpoint. It can even be a basic CSV file. Data source plugins take a query you want answered, retrieve the data from the data source, and reconcile the differences between the data model of the data source and the data model of Grafana dashboards.\n\nTo add a Metrics Drilldown visualization to a dashboard, complete the following steps:"
+    },
+    {
+      "type": "section",
+      "autoCollapse": false,
+      "blocks": [
+        {
+          "type": "multistep",
+          "content": "On the toolbar at the top of the Explore page, click **Add > Add to dashboard**, then click **Open dashboard**.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "div[data-testid='data-testid Explore'] button:nth-match(4)"
+            },
+            {
+              "action": "highlight",
+              "reftarget": "[role='menuitem']:contains('Add to dashboard')"
+            },
+            {
+              "action": "button",
+              "reftarget": "Open dashboard"
+            }
+          ],
+          "requirements": ["exists-reftarget"]
+        },
+        {
+          "type": "markdown",
+          "content": "On the **Add panel to dashboard** dialog box, perform one of the following:\n\n- To add the visualization to a new dashboard, click **New dashboard**.\n- To add the visualization to an existing dashboard, click **Existing dashboard** and select a dashboard from the list.\n\nThe visualization appears in a dashboard."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid='data-testid Save dashboard button']",
+          "content": "Click **Save dashboard** located in the upper-right of the page.",
+          "requirements": ["exists-reftarget"]
+        },
+        {
+          "type": "markdown",
+          "content": "Enter a title and description for your dashboard, select a folder if applicable, and click **Save**."
+        }
+      ]
+    }
+  ]
+}

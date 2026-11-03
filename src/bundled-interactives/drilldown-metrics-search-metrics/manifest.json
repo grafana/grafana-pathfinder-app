@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "drilldown-metrics-search-metrics",
+  "type": "guide",
+  "description": "Learn how to search for and filter metrics to focus on the data that matters most.",
+  "category": "query-and-visualize",
+  "author": {
+    "name": "knylander-grafana",
+    "team": "Grafana Documentation"
+  },
+  "testEnvironment": {
+    "tier": "cloud"
+  },
+  "depends": [],
+  "recommends": ["drilldown-metrics-analyze-data"],
+  "suggests": [],
+  "provides": []
+}

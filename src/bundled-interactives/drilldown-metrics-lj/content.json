@@ -1,0 +1,26 @@
+{
+  "id": "drilldown-metrics-lj",
+  "title": "Explore data using Metrics Drilldown",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Welcome to the Explore data using Metrics Drilldown learning path. Grafana Metrics Drilldown is a query-less experience for browsing Prometheus-compatible metrics offering a fast and easy way to verify metric flow into Grafana Cloud. Quickly find related metrics without needing to write PromQL queries to retrieve metrics and identify potential causes of problems with system performance.\n\nThe Metrics Drilldown image below displays metrics related to network utilization, Kubernetes deployment details, and the duration of HTTP client and server requests and responses.\n\n"
+    },
+    {
+      "type": "markdown",
+      "content": "## Here's what to expect\n\nWhen you complete this journey, you'll be able to:\n\n- Navigate to Metrics Drilldown\n- Search for and filter specific metrics you want to investigate\n- Learn how to drill down into a metric and investigate related metrics\n- Add a metric visualization to a dashboard"
+    },
+    {
+      "type": "markdown",
+      "content": "## Troubleshooting\n\nIf you get stuck, we've got your back! Where appropriate, troubleshooting information is just a click away."
+    },
+    {
+      "type": "markdown",
+      "content": "## More to explore\n\nWe understand you might want to explore other capabilities not strictly on this path. We'll provide you opportunities where it makes sense."
+    },
+    {
+      "type": "markdown",
+      "content": "## Before you begin\n\nBefore you use Metrics Drilldown, ensure that you have:\n\n- Prometheus metrics sent to Grafana Cloud.\n- A familiarity with the metrics you plan to examine. Understanding what these metrics measure and how they typically behave will help you identify the significance of any changes."
+    }
+  ]
+}

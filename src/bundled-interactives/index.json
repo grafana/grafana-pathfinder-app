@@ -5,7 +5,9 @@
       "title": "Welcome to Grafana",
       "summary": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
       "filename": "welcome-to-grafana/content.json",
-      "url": ["/"],
+      "url": [
+        "/"
+      ],
       "targetPlatform": "oss"
     },
     {
@@ -13,7 +15,9 @@
       "title": "Welcome to Grafana Cloud",
       "summary": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
       "filename": "welcome-to-grafana-cloud/content.json",
-      "url": ["/"],
+      "url": [
+        "/"
+      ],
       "targetPlatform": "cloud"
     },
     {
@@ -21,14 +25,18 @@
       "title": "Advanced Prometheus queries",
       "summary": "Practice advanced PromQL in Explore: aggregation, joins, time comparisons, histograms, and rule expressions. Customize queries for your data with Grafana Assistant.",
       "filename": "prometheus-advanced-queries/content.json",
-      "url": ["/explore"]
+      "url": [
+        "/explore"
+      ]
     },
     {
       "id": "prometheus-grafana-101",
       "title": "Prometheus & Grafana 101",
       "summary": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
       "filename": "prometheus-grafana-101/content.json",
-      "url": ["/connections"],
+      "url": [
+        "/connections"
+      ],
       "targetPlatform": "oss"
     },
     {
@@ -36,7 +44,9 @@
       "title": "Loki & Grafana 101",
       "summary": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
       "filename": "loki-grafana-101/content.json",
-      "url": ["/connections"],
+      "url": [
+        "/connections"
+      ],
       "targetPlatform": "oss"
     },
     {
@@ -44,7 +54,9 @@
       "title": "Create your first dashboard",
       "summary": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more",
       "filename": "first-dashboard/content.json",
-      "url": ["/"],
+      "url": [
+        "/"
+      ],
       "targetPlatform": "oss"
     },
     {
@@ -52,8 +64,19 @@
       "title": "Create your first dashboard in Grafana Cloud",
       "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more",
       "filename": "first-dashboard-cloud/content.json",
-      "url": ["/"],
+      "url": [
+        "/"
+      ],
       "targetPlatform": "cloud"
+    },
+    {
+      "id": "drilldown-metrics-lj",
+      "title": "Explore data using Metrics Drilldown",
+      "summary": "Explore Prometheus-compatible metrics with Grafana Metrics Drilldown: search and filter, investigate related metrics, open in Explore, and add a metric to a dashboard.",
+      "filename": "drilldown-metrics-lj/content.json",
+      "url": [
+        "/a/grafana-metricsdrilldown-app/drilldown"
+      ]
     }
   ]
 }
