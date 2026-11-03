@@ -2,15 +2,15 @@
  * Element Picker Component
  *
  * A full-screen overlay that captures element clicks for selector generation.
- * Shows DOM path tooltip on hover and returns the selector when clicked.
+ * Shows the selector a click would record on hover and returns it when clicked.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { generateSelectorFromEvent, generateFullDomPath } from '../../utils/devtools';
+import { generateSelectorFromEvent, generateSelectorForElement } from '../../utils/devtools';
 import { DomPathTooltip } from '../DomPathTooltip';
 import { logger } from '../../lib/logging';
 
@@ -205,7 +205,17 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     };
   }, [handleClick, handleMouseMove, handleKeyDown]);
 
-  const domPath = hoveredElement ? generateFullDomPath(hoveredElement) : '';
+  const hoveredSelector = useMemo(() => {
+    if (!hoveredElement) {
+      return '';
+    }
+    // This runs during render, so a throw here would unmount the picker.
+    try {
+      return generateSelectorForElement(hoveredElement);
+    } catch {
+      return '';
+    }
+  }, [hoveredElement]);
 
   return createPortal(
     <>
@@ -232,7 +242,9 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
         </button>
       </div>
 
-      {cursorPosition && <DomPathTooltip domPath={domPath} position={cursorPosition} visible={!!domPath} />}
+      {cursorPosition && (
+        <DomPathTooltip domPath={hoveredSelector} position={cursorPosition} visible={!!hoveredSelector} />
+      )}
     </>,
     document.body
   );
