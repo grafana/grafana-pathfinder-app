@@ -529,6 +529,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
 
       if (decision === 'completed') {
+        if (objectivesBaseline !== objectivesBaselineRef.current) {
+          return;
+        }
         const finalState = createObjectivesCompletedState(skippable);
         if (isMountedRef.current) {
           setObjectivesOrigin(objectivesBaseline.seenUnmet ? 'change' : 'load');
