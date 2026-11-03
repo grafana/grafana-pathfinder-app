@@ -230,11 +230,11 @@ test.describe('restricted Markdown prerequisites', () => {
     await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible();
 
     const card = page
-      .getByTestId(/context-panel-recommendation-card-/)
+      .getByTestId(/^sidebar-hub-(featured|row-\d+)$/)
       .filter({ has: page.getByText(summaryFixture.title, { exact: true }) });
     await expect(card).toBeVisible({ timeout: 30_000 });
     expect(routes.packageFeedRequests()).toBeGreaterThan(0);
-    await card.getByTestId(/context-panel-recommendation-summary-/).click();
+    await card.getByTestId(/^sidebar-hub-(featured-toggle|row-toggle-\d+)$/).click();
 
     await expectLiteralPrerequisite(card);
     await expectSecurePopup(page, card, 'Open summary docs', `${DESTINATION_ORIGIN}/summary`);
