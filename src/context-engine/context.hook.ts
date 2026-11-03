@@ -43,7 +43,6 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(true);
   const [hasFetchedRecommendations, setHasFetchedRecommendations] = useState(false);
   const [contextVersion, setContextVersion] = useState(0);
-  const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
 
   // Track location changes with more detail
   const lastLocationRef = useRef<{
@@ -412,15 +411,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     locationService.push(path);
   }, []);
 
-  const toggleOtherDocsExpansion = useCallback(() => {
-    setOtherDocsExpanded((prev) => !prev);
-  }, []);
-
   return {
     contextData,
     isLoadingRecommendations,
     hasFetchedRecommendations,
-    otherDocsExpanded,
 
     // Actions
     refreshContext,
@@ -429,7 +423,6 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     openDocsPage,
     toggleSummaryExpansion,
     navigateToPath,
-    toggleOtherDocsExpansion,
   };
 }
 

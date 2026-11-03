@@ -7,7 +7,6 @@ import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { useContextPanel, type Recommendation } from '../../context-engine';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
 import { useLearningPaths, useMyAssignments, type ResolvedAssignment } from '../../learning-paths';
-import { useBooleanFlag } from '../../utils/openfeature';
 
 jest.mock('@grafana/scenes', () => ({ SceneObjectBase: class {} }));
 
@@ -43,7 +42,6 @@ jest.mock('../../learning-paths', () => ({
   useLearningPaths: jest.fn(),
   useMyAssignments: jest.fn(),
 }));
-jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: jest.fn() }));
 jest.mock('../../hooks', () => ({
   usePathfinderPluginConfig: () => ({ config: { acceptedTermsAndConditions: true } }),
 }));
@@ -52,22 +50,18 @@ jest.mock('../../utils/usePublishedGuides', () => ({
   usePublishedGuides: () => mockUsePublishedGuides(),
 }));
 jest.mock('./hooks', () => ({ useRecommendationsScrollPosition: () => jest.fn() }));
-jest.mock('../UserProfileBar/UserProfileBar', () => ({
-  UserProfileBar: () => <div data-testid="user-profile-bar" />,
-}));
 jest.mock('../InteractiveLearningBanner', () => ({ InteractiveLearningBanner: () => null }));
 jest.mock('../EnableRecommenderBanner', () => ({
   EnableRecommenderBanner: () => <div data-testid="enable-recommender-banner" />,
 }));
 jest.mock('../HelpFooter', () => ({
-  HelpFooter: ({ variant }: { variant?: string }) => <div data-testid="help-footer" data-variant={variant} />,
+  HelpFooter: () => <div data-testid="help-footer" />,
 }));
 
 const { __mockPush: mockPush, __mockPublish: mockPublish } = jest.requireMock('@grafana/runtime');
 const mockUseContextPanel = useContextPanel as jest.Mock;
 const mockUseLearningPaths = useLearningPaths as jest.Mock;
 const mockUseMyAssignments = useMyAssignments as jest.Mock;
-const mockUseBooleanFlag = useBooleanFlag as jest.Mock;
 const mockResolvePackageNavLinks = resolvePackageNavLinks as jest.Mock;
 
 const openDocsPage = jest.fn();
@@ -102,7 +96,6 @@ async function click(element: HTMLElement) {
 const model = { state: { onOpenLearningJourney: jest.fn(), onOpenDocsPage: jest.fn() }, setState: jest.fn() };
 
 interface SetupOptions {
-  hub?: boolean;
   recommendations?: Recommendation[];
   featured?: Recommendation[];
   startedPath?: boolean;
@@ -113,7 +106,6 @@ interface SetupOptions {
 }
 
 function setup({
-  hub = true,
   recommendations = [],
   featured = [],
   startedPath = false,
@@ -122,7 +114,6 @@ function setup({
   assignments = [],
   hasLoadedAssignments = true,
 }: SetupOptions = {}) {
-  mockUseBooleanFlag.mockImplementation((flag: string) => hub && flag === 'pathfinder.sidebar-hub');
   mockUseContextPanel.mockReturnValue({
     contextData: {
       recommendations,
@@ -132,11 +123,9 @@ function setup({
     },
     isLoadingRecommendations: false,
     hasFetchedRecommendations: true,
-    otherDocsExpanded: false,
     openLearningJourney,
     openDocsPage,
     toggleSummaryExpansion,
-    toggleOtherDocsExpansion: jest.fn(),
   });
   const path = {
     id: 'getting-started',
@@ -169,7 +158,7 @@ function setup({
   return render(<ContextPanel.Component model={model as never} />);
 }
 
-describe('ContextPanelRenderer sidebar hub flag', () => {
+describe('ContextPanelRenderer sidebar hub', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUsePublishedGuides.mockReturnValue({
@@ -183,23 +172,12 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
     mockResolvePackageNavLinks.mockResolvedValue([]);
   });
 
-  it('keeps the existing recommended tab when the flag is off', async () => {
-    setup({ hub: false, recommendations: [pkg('one')] });
-
-    expect(screen.getByTestId('user-profile-bar')).toBeInTheDocument();
-    expect(screen.getByTestId(testIds.contextPanel.recommendationsContainer)).toBeInTheDocument();
-    expect(screen.queryByTestId(testIds.sidebarHub.container)).not.toBeInTheDocument();
-    expect(screen.getByTestId('help-footer')).toHaveAttribute('data-variant', 'default');
-  });
-
-  it('renders the hub with the compact footer when the flag is on', async () => {
+  it('renders the hub in place of the old recommendations list', async () => {
     setup({ recommendations: [pkg('one')] });
 
     expect(screen.getByTestId(testIds.sidebarHub.container)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Welcome back, Ada' })).toBeInTheDocument();
-    expect(screen.queryByTestId('user-profile-bar')).not.toBeInTheDocument();
-    expect(screen.queryByTestId(testIds.contextPanel.recommendationsContainer)).not.toBeInTheDocument();
-    expect(screen.getByTestId('help-footer')).toHaveAttribute('data-variant', 'compact');
+    expect(screen.getByTestId('help-footer')).toBeInTheDocument();
   });
 
   it('opens the first recommendation with its package info and reports the hub location', async () => {
@@ -235,6 +213,57 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
       'Title ops-path',
       expect.objectContaining({ packageId: 'ops-path', trackId: 'ops' })
     );
+  });
+
+  it('matches a recommended path to its assignment by manifest id, not by title', async () => {
+    setup({
+      featured: [pkg('admin-path', { title: 'Some path', manifest: { id: 'admin-path', type: 'path' } })],
+      assignments: [
+        assignment('admin-path', { title: 'A different title', trackId: 'ops' }),
+        assignment('unrelated-path', { title: 'Some path', trackId: 'wrong' }),
+      ],
+    });
+
+    await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
+
+    expect(openDocsPage).toHaveBeenCalledWith(
+      'https://cdn.example.com/admin-path/content.json',
+      'Some path',
+      expect.objectContaining({ trackId: 'ops' })
+    );
+  });
+
+  it('drops the track when the manifest id matches no assignment, even if a title matches', async () => {
+    setup({
+      featured: [pkg('not-assigned', { title: 'Some path', manifest: { id: 'not-assigned', type: 'path' } })],
+      assignments: [assignment('unrelated-path', { title: 'Some path', trackId: 'wrong' })],
+    });
+
+    await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
+
+    expect(openDocsPage.mock.calls[0][2]).not.toHaveProperty('trackId');
+  });
+
+  it('matches an id-less path by title, unless two assignments share it', async () => {
+    const idless = pkg('idless', { title: 'Some path', manifest: { type: 'path' } });
+    const { unmount } = setup({
+      featured: [idless],
+      assignments: [assignment('one', { title: 'some path', trackId: 'ops' })],
+    });
+    await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
+    expect(openDocsPage.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ trackId: 'ops' }));
+    unmount();
+    openDocsPage.mockClear();
+
+    setup({
+      featured: [idless],
+      assignments: [
+        assignment('one', { title: 'Some path', trackId: 'ops' }),
+        assignment('two', { title: 'Some path', trackId: 'other' }),
+      ],
+    });
+    await click(screen.getByTestId(testIds.sidebarHub.featuredAction));
+    expect(openDocsPage.mock.calls[0]?.[2]).not.toHaveProperty('trackId');
   });
 
   it('lists the next three recommendations in engine order', async () => {
@@ -881,20 +910,6 @@ describe('ContextPanelRenderer sidebar hub flag', () => {
 
       expect(screen.queryByTestId(testIds.sidebarHub.customGuides)).not.toBeInTheDocument();
       expect(screen.getByTestId(testIds.sidebarHub.customGuidesLoading)).toBeInTheDocument();
-    });
-
-    it('keeps the old custom guides section and omits the hub one when the flag is off', () => {
-      mockUsePublishedGuides.mockReturnValue({
-        guides: [published('a')],
-        paths: [],
-        orphanGuides: [published('a')],
-        isLoading: false,
-        hasLoaded: true,
-      });
-      setup({ hub: false, recommendations: [pkg('one')] });
-
-      expect(screen.queryByTestId(testIds.sidebarHub.customGuides)).not.toBeInTheDocument();
-      expect(screen.getByTestId(testIds.contextPanel.customGuidesSection)).toBeInTheDocument();
     });
   });
 });

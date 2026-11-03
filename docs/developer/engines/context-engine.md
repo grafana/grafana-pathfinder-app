@@ -127,14 +127,12 @@ The EchoSrv subscription, inferred datasource/visualization values, and change-l
 
 - `contextData` - Current context data (path, tags, datasources, dashboard info, etc.)
 - `isLoadingRecommendations` - Whether recommendations are being fetched, or have not been fetched yet
-- `otherDocsExpanded` - Whether the "other docs" section is expanded
 - `refreshContext()` - Manually trigger a context refresh
 - `refreshRecommendations()` - Manually trigger a recommendations refresh
 - `openLearningJourney(url, title)` - Open a learning path in the panel
 - `openDocsPage(url, title)` - Open a docs page in the panel
 - `toggleSummaryExpansion(url)` - Toggle recommendation summary expansion
 - `navigateToPath(path)` - Navigate to a Grafana path
-- `toggleOtherDocsExpansion()` - Toggle other docs section visibility
 
 **Backward-compatible Hooks**:
 

@@ -326,11 +326,6 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1923',
   },
   {
-    violation: 'components/UserProfileBar/index.ts',
-    reason: 'Barrel with no importer — the sole consumer deep-imports UserProfileBar/UserProfileBar directly.',
-    tracking: '#1923',
-  },
-  {
     violation: 'components/block-editor/forms/condition-helpers/types.ts',
     reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
     tracking: '#1923',
