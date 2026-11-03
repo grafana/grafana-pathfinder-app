@@ -189,7 +189,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // REACT: Track mounted state to prevent state updates after unmount (R4)
   const isMountedRef = useRef(true);
   // Mirrors the passive coordinator's baseline: objectives met on their first
-  // answered check describe state the reader already had, so they save as 'load'.
+  // answered check save as 'load', on the assumption the reader already had them.
   // A reset swaps in a new baseline, so a check started before it cannot mark it.
   const objectivesBaselineRef = useRef({ seenUnmet: false });
   const [objectivesOrigin, setObjectivesOrigin] = useState<ProgressOrigin>('change');
