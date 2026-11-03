@@ -78,7 +78,7 @@ export interface DocsLoadSuccessPatchInput {
   pendingAlignment?: PendingAlignment;
 }
 
-function titleFromLoadedContent(
+export function titleFromLoadedContent(
   tab: LearningJourneyTab,
   requestedUrl: string,
   fetchedContent: RawContent
