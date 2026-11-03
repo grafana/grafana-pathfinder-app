@@ -145,6 +145,7 @@ test('should complete first two steps of Welcome to Grafana journey', async ({ p
 
   const hub = page.getByTestId(testIds.sidebarHub.container);
   await expect(hub).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId(testIds.sidebarHub.loading)).toHaveCount(0, { timeout: 30000 });
 
   // The Welcome journey is either the featured recommendation, a "More recommended" row, or under "Other documentation"
   const featured = page.getByTestId(testIds.sidebarHub.featured);
