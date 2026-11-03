@@ -46,7 +46,7 @@ Public API:
 - `useSectionCompletion(sectionId)` — `ReadonlySet<string>` of completed step IDs for the section, stable identity between renders that didn't change membership.
 - `markStepCompleted(stepId, sectionId | undefined, reason)` — single-step write.
 - `resetStep(stepId, sectionId?)` — single-step clear.
-- `markStepsCompleted(stepIds, sectionId, reason?)` — atomic bulk write (used by the section's objectives-auto-complete and run-section paths).
+- `markStepsCompleted(stepIds, sectionId, reason?, origin?)` — atomic bulk write (used by the section's objectives-auto-complete and run-section paths).
 - `resetSteps(stepIds, sectionId)` — atomic tail-reset used by the section's individual-step redo path.
 - `resetSection(sectionId)` — atomic clear used by the section's full-reset path.
 - `peekGuidePercentage(contentKey)` — the guide's percentage as an integer 0..100, derived by bridging stored evidence (completed steps and acknowledged sections) into the frozen block index's own position calculation in `src/lib/guide-stats`; the store is the only producer of that number. `0` when no index has been published for the key yet. A guide carrying the `guideCompletionMarkStorage` mark reports `100` whatever the evidence says, and `refreshGuidePercentage` persists the same, so a later step write cannot move a marked guide back down. Rationale: `docs/design/COMPLETION-MODEL.md`, decision 2.
