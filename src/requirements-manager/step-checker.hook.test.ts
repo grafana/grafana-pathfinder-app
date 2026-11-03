@@ -1355,4 +1355,40 @@ describe('useStepChecker objectives completion origin', () => {
     expect(result.current.completionReason).toBe('objectives');
     expect(guideOrigins).toEqual(['load']);
   });
+
+  it('ignores a satisfied check that settles after a reset', async () => {
+    objectivesMet = false;
+    const onComplete = jest.fn();
+    const { result } = await renderStepChecker({ objectives: 'has-datasources', sectionId: 'section-a', onComplete });
+    await checkNow(result);
+
+    let settleStaleCheck: () => void = () => {};
+    mockCheckRequirements.mockImplementationOnce(
+      ({ requirements }) =>
+        new Promise((resolve) => {
+          settleStaleCheck = () => resolve({ pass: true, requirements: conditionLabel(requirements), error: [] });
+        })
+    );
+    let staleCheck: Promise<void> = Promise.resolve();
+    act(() => {
+      staleCheck = result.current.checkStep();
+    });
+    act(() => {
+      result.current.resetStep();
+    });
+
+    objectivesMet = true;
+    await checkNow(result);
+    expect(result.current.objectivesOrigin).toBe('load');
+    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      settleStaleCheck();
+      await staleCheck;
+    });
+
+    expect(result.current.objectivesOrigin).toBe('load');
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(guideOrigins).toEqual(['load']);
+  });
 });
