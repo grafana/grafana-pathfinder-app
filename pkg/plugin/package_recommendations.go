@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,47 @@ import (
 // Hardcoded rather than configurable: pairs the URL with a strict host
 // allowlist enforced against exactly this value.
 const packageRepositoryURL = "https://interactive-learning.grafana.net/packages/repository.json"
+
+// devRepositoryURLEnvVar and devRepositoryURLFile override packageRepositoryURL
+// for local testing against an external, self-hosted package repository (for
+// example one served from Grafana's own /public directory). The env var is
+// checked first; the file is a fallback for harnesses that cannot forward host
+// env vars to backend plugins. Empty falls back to the CDN.
+const devRepositoryURLEnvVar = "PATHFINDER_DEV_REPOSITORY_URL"
+const devRepositoryURLFile = "/etc/grafana/pathfinder-dev-repository-url"
+
+// resolvePackageRepositoryURL returns the repository index URL, honouring the
+// dev override when set.
+func resolvePackageRepositoryURL() string {
+	if override := strings.TrimSpace(os.Getenv(devRepositoryURLEnvVar)); override != "" {
+		return override
+	}
+	if data, err := os.ReadFile(devRepositoryURLFile); err == nil {
+		if override := strings.TrimSpace(string(data)); override != "" {
+			return override
+		}
+	}
+	return packageRepositoryURL
+}
+
+// isAllowedPackageRepositoryURL permits the CDN allowlist plus the exact
+// operator-configured dev override, so local testing can point at a
+// self-hosted repository without widening the public allowlist. Only the one
+// URL named in the env var is trusted, preserving the "URL paired with a
+// strict allowlist" model.
+func isAllowedPackageRepositoryURL(rawURL string) bool {
+	if isAllowedInteractiveLearningHost(rawURL) {
+		return true
+	}
+	// When a dev override is active, trust any URL under its base so the
+	// index, each content.json, and each manifest.json resolve from the same
+	// configured repository.
+	configured := resolvePackageRepositoryURL()
+	if configured == packageRepositoryURL {
+		return false
+	}
+	return strings.HasPrefix(rawURL, baseURLFromRepositoryURL(configured))
+}
 
 const (
 	packageRepositoryFetchTimeout = 5 * time.Second
@@ -232,7 +274,7 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 	// the 6-hour cache with a "context canceled" error. The index fetch
 	// timeout and the enrichment budget still apply because they're added
 	// with their own context.WithTimeout.
-	resp, partial, err := fetchAndParsePackageRepository(context.WithoutCancel(ctx), packageRepositoryURL)
+	resp, partial, err := fetchAndParsePackageRepository(context.WithoutCancel(ctx), resolvePackageRepositoryURL())
 
 	packageCacheMu.Lock()
 	packageCache = &packageCacheEntry{
@@ -254,7 +296,7 @@ func (a *App) getCachedPackageRecommendations(ctx context.Context) (*PackageReco
 // response to the slim shape the frontend consumes. The bool reports whether
 // manifest enrichment was cut short by its total budget (partial result).
 func fetchAndParsePackageRepository(ctx context.Context, rawURL string) (*PackageRecommendationsResponse, bool, error) {
-	if !isAllowedInteractiveLearningHost(rawURL) {
+	if !isAllowedPackageRepositoryURL(rawURL) {
 		return nil, false, fmt.Errorf("package repository host not allowed")
 	}
 
@@ -354,8 +396,9 @@ func enrichPackagesWithManifests(
 			recordFailure("invalid-url")
 			continue
 		}
-		// Defensive: only fetch from the same allowlisted host as the index.
-		if !isAllowedInteractiveLearningHost(manifestURL) {
+		// Defensive: only fetch from the same allowlisted host as the index
+		// (CDN allowlist or the configured dev override).
+		if !isAllowedPackageRepositoryURL(manifestURL) {
 			recordFailure("blocked-url")
 			continue
 		}
