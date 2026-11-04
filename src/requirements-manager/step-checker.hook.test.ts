@@ -1391,4 +1391,41 @@ describe('useStepChecker objectives completion origin', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(guideOrigins).toEqual(['load']);
   });
+
+  it('rechecks after a reset when checkStep was rebuilt during the stale check', async () => {
+    objectivesMet = false;
+    const { result, rerender } = renderHook(
+      ({ refTarget }: { refTarget: string }) =>
+        useStepChecker({ stepId: 'test-step', isEligibleForChecking: true, objectives: 'has-datasources', refTarget }),
+      { initialProps: { refTarget: '#first' } }
+    );
+    await checkNow(result);
+
+    let settleStaleCheck: () => void = () => {};
+    mockCheckRequirements.mockImplementationOnce(
+      ({ requirements }) =>
+        new Promise((resolve) => {
+          settleStaleCheck = () => resolve({ pass: true, requirements: conditionLabel(requirements), error: [] });
+        })
+    );
+    let staleCheck: Promise<void> = Promise.resolve();
+    act(() => {
+      staleCheck = result.current.checkStep();
+    });
+    rerender({ refTarget: '#second' });
+    act(() => {
+      result.current.resetStep();
+    });
+    await act(async () => {
+      settleStaleCheck();
+      await staleCheck;
+    });
+    expect(result.current.isCompleted).toBe(false);
+
+    objectivesMet = true;
+    await checkNow(result);
+
+    expect(result.current.isCompleted).toBe(true);
+    expect(result.current.completionReason).toBe('objectives');
+  });
 });
