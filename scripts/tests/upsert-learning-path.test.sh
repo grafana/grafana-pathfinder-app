@@ -12,6 +12,7 @@ set -uo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "${SCRIPT_DIR}/../.." && pwd)
 UPSERT="${REPO_ROOT}/scripts/upsert-learning-path.sh"
+UPSERT_GUIDE="${REPO_ROOT}/scripts/upsert-guide.sh"
 
 SENTINEL_TOKEN='glsa_sentinel_do_not_leak'
 PASS=0
@@ -42,6 +43,15 @@ run() {
   : >"$log"
   RUN_OUT=$(STUB_LOG="$log" STUB_MODE="${MODE:-empty}" \
     "$UPSERT" --stack stack.invalid --token "$SENTINEL_TOKEN" "$@" 2>&1)
+  RUN_CODE=$?
+  RUN_LOG=$(cat "$log")
+}
+
+run_guide() {
+  local log="${WORK}/requests.log"
+  : >"$log"
+  RUN_OUT=$(STUB_LOG="$log" STUB_MODE="${MODE:-empty}" \
+    "$UPSERT_GUIDE" --stack stack.invalid --namespace stacks-1 --token "$SENTINEL_TOKEN" "$@" 2>&1)
   RUN_CODE=$?
   RUN_LOG=$(cat "$log")
 }
@@ -82,6 +92,7 @@ write_order() { printf '%s\n' "$RUN_LOG" | sed -n 's/^BODY	.*"name": *"\([^"]*\)
 # --- fixtures ---------------------------------------------------------------
 
 blocks='[{"type":"markdown","id":"b1","content":"hi"}]'
+divider_blocks='[{"type":"divider","id":"top"},{"type":"conditional","conditions":["on-page:/"],"whenTrue":[{"type":"divider","id":"nested"}],"whenFalse":[]}]'
 
 mkpkg() { # dir, id, type, milestones-json, blocks-json
   mkdir -p "$1"
@@ -265,6 +276,32 @@ expect_code "a malformed non-milestone subdirectory is skipped, not fatal" 0
 expect_out "and says which directory it skipped" "skipping"
 
 # --- writes -----------------------------------------------------------------
+
+DIRECT_SPEC="${WORK}/direct-divider.json"
+printf '{"id":"direct-divider","title":"Direct divider","blocks":%s}' "$divider_blocks" >"$DIRECT_SPEC"
+MODE=empty run_guide --spec "$DIRECT_SPEC"
+expect_code "a direct guide with dividers uploads" 0
+DIRECT_BODY=$(printf '%s\n' "$RUN_LOG" | sed -n 's/^BODY\t//p' | jq -c 'select(.metadata.name == "direct-divider")')
+DIVIDER_MARKER='<!-- pathfinder:block=divider;v=1 -->
+---'
+if [[ "$(echo "$DIRECT_BODY" | jq --arg marker "$DIVIDER_MARKER" '[.. | objects | select(.type? == "markdown" and .content? == $marker)] | length')" == "2" &&
+      "$(echo "$DIRECT_BODY" | jq '[.. | objects | select(.type? == "divider")] | length')" == "0" ]]; then
+  ok "direct guide publishing recursively encodes top-level and nested dividers"
+else
+  nope "direct guide divider encoding" "$DIRECT_BODY"
+fi
+
+DIVIDER_PKG=$(path_pkg divider)
+printf '{"id":"m-a","title":"T m-a","blocks":%s}' "$divider_blocks" >"${DIVIDER_PKG}/first/content.json"
+MODE=empty run --package "$DIVIDER_PKG"
+expect_code "a learning path with dividers uploads" 0
+MILESTONE_BODY=$(printf '%s\n' "$RUN_LOG" | sed -n 's/^BODY\t//p' | jq -c 'select(.metadata.name == "m-a")')
+if [[ "$(echo "$MILESTONE_BODY" | jq --arg marker "$DIVIDER_MARKER" '[.. | objects | select(.type? == "markdown" and .content? == $marker)] | length')" == "2" &&
+      "$(echo "$MILESTONE_BODY" | jq '[.. | objects | select(.type? == "divider")] | length')" == "0" ]]; then
+  ok "learning-path publishing recursively encodes top-level and nested dividers"
+else
+  nope "learning-path divider encoding" "$MILESTONE_BODY"
+fi
 
 MODE=empty run --package "$PKG"
 expect_code "a clean package uploads" 0

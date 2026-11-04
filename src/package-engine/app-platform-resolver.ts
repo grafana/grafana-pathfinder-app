@@ -39,7 +39,7 @@ import type {
   PackageResolver,
   ResolveOptions,
 } from '../types/package.types';
-import type { JsonBlock } from '../types/json-guide.types';
+import { decodeAppPlatformGuideBlocks } from '../types/app-platform-guide-compat';
 
 const APP_PLATFORM_REPOSITORY = 'app-platform';
 
@@ -341,11 +341,20 @@ export class AppPlatformPackageResolver implements PackageResolver {
           reason: 'missing-fields',
         });
       }
+      const decoded = decodeAppPlatformGuideBlocks(resource.spec.blocks);
+      if (!decoded.ok) {
+        return attemptedFailure(packageId, 'validation-error', 'App platform guide blocks failed validation', {
+          source: 'app-platform',
+          stage: 'validate',
+          reason: 'schema-invalid',
+          validationCount: decoded.issues.length,
+        });
+      }
       const content: ContentJson = {
         id: resource.spec.id || resource.metadata?.name || packageId,
         title: resource.spec.title,
         schemaVersion: resource.spec.schemaVersion || '1.0',
-        blocks: resource.spec.blocks as JsonBlock[],
+        blocks: decoded.blocks,
       };
       resolution.content = content;
     }

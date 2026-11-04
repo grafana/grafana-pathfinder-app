@@ -37,7 +37,7 @@ export interface BackendGuideSpec {
   id: string;
   title: string;
   schemaVersion?: string;
-  blocks: any[];
+  blocks: unknown[];
   status?: 'draft' | 'published';
   /** Package metadata. Absent on legacy content-only guides; derived on every editor save. */
   manifest?: Record<string, unknown>;
