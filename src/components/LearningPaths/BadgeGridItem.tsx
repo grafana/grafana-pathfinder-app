@@ -18,6 +18,7 @@ import { getBadgeProgress } from './badge-utils';
 import type { getMyLearningStyles } from './MyLearningTab.styles';
 
 interface BadgeGridItemProps {
+  compact?: boolean;
   badge: EarnedBadge;
   index: number;
   completedGuides: string[];
@@ -28,6 +29,7 @@ interface BadgeGridItemProps {
 }
 
 export function BadgeGridItem({
+  compact = false,
   badge,
   index,
   completedGuides,
@@ -59,9 +61,16 @@ export function BadgeGridItem({
       title={isLegacy ? 'This badge was earned in a previous version' : undefined}
       data-testid={testIds.learningPaths.badgeItem(badge.id)}
     >
-      <div className={styles.badgeTileIconWrapper}>
-        <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xl" emojiClassName={styles.badgeTileEmoji} />
-        {isEarned && !isLegacy && (
+      <div
+        className={`${styles.badgeTileIconWrapper} ${compact ? styles.badgeCircle : ''} ${compact && isEarned ? styles.badgeCircleEarned : ''} ${compact && !isEarned && !isLegacy ? styles.badgeCircleUnearned : ''}`}
+      >
+        <BadgeIcon
+          emoji={badge.emoji}
+          icon={badge.icon}
+          size="xl"
+          emojiClassName={compact ? styles.badgeCompactEmoji : styles.badgeTileEmoji}
+        />
+        {isEarned && !isLegacy && !compact && (
           <div className={styles.badgeCheckmark}>
             <Icon name="check" size="xs" />
           </div>

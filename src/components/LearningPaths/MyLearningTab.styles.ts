@@ -22,7 +22,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
   const successGreen = '#22C55E';
   const successGreenGlow = isDark ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)';
 
-  const iconCallout = (size: number, tint?: string) =>
+  const iconCallout = (size: number, tint?: string, bright = false) =>
     css({
       position: 'relative',
       display: 'inline-flex',
@@ -32,7 +32,9 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       height: theme.spacing(size),
       flexShrink: 0,
       color: tint ?? theme.colors.text.primary,
-      border: tint ? '1px solid transparent' : `1px solid ${theme.colors.border.weak}`,
+      border: tint
+        ? '1px solid transparent'
+        : `1px solid ${bright ? theme.colors.border.medium : theme.colors.border.weak}`,
       borderRadius: theme.shape.radius.md,
       boxSizing: 'border-box',
       isolation: 'isolate',
@@ -40,10 +42,12 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
         content: '""',
         position: 'absolute',
         inset: theme.spacing(0.25),
-        backgroundColor: theme.colors.background.secondary,
-        backgroundImage: tint
-          ? `linear-gradient(oklch(from ${tint} l c h / 12%), oklch(from ${tint} l c h / 12%))`
-          : undefined,
+        backgroundColor: bright ? theme.colors.background.elevated : theme.colors.background.secondary,
+        backgroundImage: bright
+          ? `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`
+          : tint
+            ? `linear-gradient(oklch(from ${tint} l c h / 12%), oklch(from ${tint} l c h / 12%))`
+            : undefined,
         borderRadius: `calc(${theme.shape.radius.md} - 1px - ${theme.spacing(0.25)})`,
         zIndex: -1,
         pointerEvents: 'none',
@@ -73,6 +77,21 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       gap: theme.spacing(hideSectionIcons ? 6 : 4),
       height: '100%',
       overflowY: 'auto',
+      ...(hideSectionIcons && {
+        '& [data-learning-card] [data-learning-topic-icon]': {
+          width: theme.spacing(5),
+          height: theme.spacing(5),
+          '& svg': { width: 22, height: 22 },
+        },
+        '& [data-learning-card]': {
+          backgroundColor: theme.colors.background.canvas,
+          backgroundImage: 'none',
+          '&:hover, &:focus-within': {
+            backgroundImage: 'none',
+            backgroundColor: theme.colors.background.secondary,
+          },
+        },
+      }),
     }),
 
     columnsContainer: css({}),
@@ -203,6 +222,82 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       minWidth: 0,
       paddingTop: theme.spacing(1),
     }),
+    intro: hideSectionIcons
+      ? css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(2) })
+      : css({ display: 'contents' }),
+    achievements: css({
+      '&&': { paddingTop: 0 },
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(1),
+    }),
+    achievementsAction: css({ alignSelf: 'flex-start' }),
+    achievementsRow: css({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: theme.spacing(2),
+    }),
+    badgeCircle: css({
+      '&&': {
+        width: theme.spacing(6),
+        height: theme.spacing(6),
+        borderRadius: '50%',
+        background: theme.colors.background.secondary,
+        border: `1px solid ${theme.colors.border.medium}`,
+      },
+    }),
+    badgeCircleUnearned: css({
+      '&&': {
+        background: theme.colors.background.secondary,
+        border: `1px dashed ${theme.colors.border.medium}`,
+        '& > span, & > svg': { opacity: 0.35 },
+      },
+    }),
+    badgeCircleEarned: css({
+      '&&': {
+        background: `linear-gradient(135deg, ${successGreen}40 0%, ${successGreen}15 100%)`,
+        border: `2px solid ${successGreen}`,
+        boxShadow: `0 0 8px rgb(from ${successGreen} r g b / 20%), 0 0 16px rgb(from ${successGreen} r g b / 12%)`,
+        '& svg': {
+          color: successGreen,
+          filter: `drop-shadow(0 0 3px rgb(from ${successGreen} r g b / 40%))`,
+        },
+      },
+    }),
+    achievementsGrid: css({
+      '& > button': {
+        background: 'none',
+        borderColor: 'transparent',
+        boxShadow: 'none',
+        animation: 'none',
+        opacity: 1,
+        minHeight: theme.spacing(10),
+        width: 80,
+      },
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, 80px)',
+      flex: '1 1 280px',
+      columnGap: 0,
+      rowGap: theme.spacing(1),
+    }),
+    badgeGallery: css({
+      '&&': {
+        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+        gap: theme.spacing(3, 2),
+        '& > button': {
+          width: '100%',
+          minHeight: theme.spacing(20),
+          padding: theme.spacing(2),
+          gap: theme.spacing(2),
+        },
+        '& > button > div:first-child': { width: theme.spacing(11), height: theme.spacing(11) },
+        '& > button > div:first-child > span': { fontSize: 36 },
+        '& > button > div:first-child > svg': { width: 36, height: 36 },
+        '& > button > span': { ...theme.typography.base, maxWidth: '100%' },
+      },
+    }),
     columnSection: css({}),
     openSection: css({
       display: 'flex',
@@ -217,7 +312,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       marginBottom: theme.spacing(2),
       minHeight: theme.spacing(4.5),
     }),
-    sectionIcon: hideSectionIcons ? css({ display: 'none' }) : iconCallout(5),
+    sectionIcon: iconCallout(5, undefined, hideSectionIcons),
     sectionHeadingText: css({ flex: 1, minWidth: 0 }),
     sectionTitle: css({
       margin: 0,
@@ -228,7 +323,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
     sectionDescription: css({
       margin: 0,
       marginTop: theme.spacing(0.5),
-      ...(hideSectionIcons ? theme.typography.base : theme.typography.sm),
+      ...(hideSectionIcons ? theme.typography.md : theme.typography.sm),
       color: theme.colors.text.secondary,
     }),
     // Empty-state message shared by sections with no items yet
@@ -250,7 +345,9 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
     // Paths Grid
     pathsGrid: css({
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
+      gridTemplateColumns: hideSectionIcons
+        ? 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))'
+        : 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
       alignItems: 'stretch',
       gap: theme.spacing(1.5),
     }),
@@ -321,6 +418,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       fontSize: 40,
       lineHeight: 1,
     }),
+    badgeCompactEmoji: css({ fontSize: 24, lineHeight: 1 }),
     badgeTileEmoji: css({
       fontSize: 34,
       lineHeight: 1,

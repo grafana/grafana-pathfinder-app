@@ -37,6 +37,7 @@ import { useCatalogLaunch } from '../LearningPaths/useCatalogLaunch';
 import { getPackageBrowserStyles } from './package-browser.styles';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
+import { getLearningPreview } from '../LearningContentCard/learning-previews';
 import { CatalogDetails } from './CatalogDetails';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
 
@@ -328,12 +329,14 @@ function PackageBrowserContent({
       key={`${catalog.scope}:${item.key}`}
       title={item.title}
       tile={page}
+      preview={page && item.source === 'grafana' ? getLearningPreview(item.id) : undefined}
       onViewPath={page ? () => launch(item) : undefined}
       kind={item.format}
       variant={variant}
       topic={catalogTopic(item)}
       description={item.description}
       effort={effort(item)}
+      estimatedMinutes={page ? item.estimatedMinutes : undefined}
       organization={item.source === 'organization'}
       progress={progress.get(item.key)?.percent}
       onLaunch={() => launch(item)}

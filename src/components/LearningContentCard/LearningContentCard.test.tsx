@@ -474,16 +474,18 @@ it('keeps zero-percent radial progress and metadata on unstarted catalogue path 
       kind="path"
       topic="dashboards"
       description="Path description"
-      effort="7 guides · About 20 min"
+      effort="7 guides"
+      estimatedMinutes={20}
       progress={0}
       onLaunch={jest.fn()}
       onViewPath={jest.fn()}
     />
   );
   expect(screen.getByText('0%')).toBeInTheDocument();
-  expect(screen.getByText(/Learning path · 7 guides/)).toBeInTheDocument();
+  expect(screen.getByText('Learning path')).toBeInTheDocument();
   expect(screen.queryByText('Dashboards')).not.toBeInTheDocument();
-  expect(screen.getByText(/7 guides · About 20 min/)).toBeInTheDocument();
+  expect(screen.getByText('7 guides')).toBeInTheDocument();
+  expect(screen.getByText('About 20 min')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Start path' })).not.toBeInTheDocument();
 });
 

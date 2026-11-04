@@ -2,25 +2,39 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
 const topGlowLayers = [
-  { color: '#FFFFFF', endColor: '#FFFFFF', opacity: 0.05, offset: 0.48519, transform: '0 46.9 -169.12 0 529.5 0' },
-  { color: '#0952FF', endColor: '#008CE3', opacity: 0.1, offset: 0, transform: '14.1 48.65 -114.05 22.953 328 -176' },
-  { color: '#B877D9', endColor: '#B877D9', opacity: 0.1, offset: 0, transform: '10.4 36.3 -67.911 19.456 903.5 0' },
-  { color: '#F15A29', endColor: '#FFFFFF', opacity: 0.1, offset: 0, transform: '6.1 43.15 73.755 -10.426 1583 -89' },
+  { color: '#FFFFFF', endColor: '#FFFFFF', opacity: 0.02, offset: 0.48519, transform: '0 46.9 -169.12 0 529.5 0' },
+  { color: '#B9AFF2', endColor: '#B9AFF2', opacity: 0.12, offset: 0, transform: '14.1 48.65 -114.05 22.953 328 -70' },
+  { color: '#8FADE6', endColor: '#8FADE6', opacity: 0.085, offset: 0, transform: '10.4 40 -115 19.456 1160 0' },
+  { color: '#8FADE6', endColor: '#8FADE6', opacity: 0.035, offset: 0, transform: '6.1 44 105 -10.426 1810 -35' },
 ];
 
-const topGlow =
+const topGlow = (strength = 1) =>
   encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1912 469" preserveAspectRatio="none">
-  <defs>${topGlowLayers.map((layer, index) => `<radialGradient id="glow${index}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="10" gradientTransform="matrix(${layer.transform})"><stop offset="${layer.offset}" stop-color="${layer.color}" stop-opacity="${layer.opacity}"/><stop offset="1" stop-color="${layer.endColor}" stop-opacity="0"/></radialGradient>`).join('')}</defs>
+  <defs>${topGlowLayers.map((layer, index) => `<radialGradient id="glow${index}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="10" gradientTransform="matrix(${layer.transform})"><stop offset="${layer.offset}" stop-color="${layer.color}" stop-opacity="${layer.opacity * (index === 0 ? 1 : strength)}"/><stop offset="1" stop-color="${layer.endColor}" stop-opacity="0"/></radialGradient>`).join('')}</defs>
   ${topGlowLayers.map((_, index) => `<rect width="1912" height="469" fill="url(#glow${index})"/>`).join('')}
 </svg>`);
 
-const getLearningBackground = (theme: GrafanaTheme2) => ({
-  backgroundColor: theme.colors.background.page,
-  backgroundImage: `url("data:image/svg+xml,${topGlow}")`,
-  backgroundSize: '100% 469px',
-  backgroundPosition: '0 0',
-  backgroundRepeat: 'no-repeat',
-});
+const getLearningBackground = (theme: GrafanaTheme2, glowHeight = 469) => {
+  const dots =
+    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1912" height="1000" viewBox="0 0 1912 1000">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="color-mix(in srgb, ${theme.colors.text.secondary} 22%, transparent)"/></pattern>
+      <radialGradient id="fade" cx="25%" cy="0%" r="70%"><stop stop-color="white" stop-opacity="0.6"/><stop offset="1" stop-color="white" stop-opacity="0"/></radialGradient>
+      <mask id="dotFade"><rect width="1912" height="1000" fill="url(#fade)"/></mask>
+    </defs>
+    <rect width="1912" height="1000" fill="url(#dots)" mask="url(#dotFade)"/>
+  </svg>`);
+  return {
+    backgroundColor: theme.colors.background.page,
+    backgroundImage:
+      glowHeight > 469
+        ? `url("data:image/svg+xml,${dots}"), url("data:image/svg+xml,${topGlow(glowHeight > 469 ? 1.5 : 1)}")`
+        : `url("data:image/svg+xml,${topGlow(glowHeight > 469 ? 1.5 : 1)}")`,
+    backgroundSize: glowHeight > 469 ? `auto 1000px, 100% ${glowHeight}px` : `100% ${glowHeight}px`,
+    backgroundPosition: 'top center',
+    backgroundRepeat: 'no-repeat',
+  };
+};
 
 export const getHomePageStyles = (theme: GrafanaTheme2) => {
   return {
@@ -38,6 +52,14 @@ export const getHomePageStyles = (theme: GrafanaTheme2) => {
       maxWidth: `calc(1200px + ${theme.spacing(4)})`,
       marginInline: 'auto',
       padding: theme.spacing(10, 2, 0),
+    }),
+    badgesContent: css({
+      width: `calc(100% - ${theme.spacing(4)})`,
+      maxWidth: `calc(1200px + ${theme.spacing(4)})`,
+      marginInline: 'auto',
+      padding: theme.spacing(1.5, 2, 6),
+      overflowY: 'auto',
+      '& h1': { ...theme.typography.h1, margin: theme.spacing(0, 0, 4) },
     }),
     heading: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(2), paddingTop: theme.spacing(10) }),
     headingText: css({ minWidth: 0 }),
@@ -68,7 +90,7 @@ export const getHomePageStyles = (theme: GrafanaTheme2) => {
       },
       // Scenes owns the page wrapper; scope its background to this home panel.
       '[class*="-page-wrapper"]:has(&)': {
-        ...getLearningBackground(theme),
+        ...getLearningBackground(theme, 850),
       },
     }),
   };

@@ -1486,7 +1486,7 @@ it('homepage separates started paths from the restored available path list', () 
   );
 });
 
-it('homepage shows topic cards above badges and links to filtered Explore', () => {
+it('homepage puts badges above learning content and links topic cards to filtered Explore', () => {
   mockCatalogItems = [
     {
       key: 'bundled:topic-guide',
@@ -1502,8 +1502,8 @@ it('homepage shows topic cards above badges and links to filtered Explore', () =
   const topic = screen.getByRole('link', { name: /Dashboards 1 guides and paths/ });
   expect(topic).toHaveAttribute('href', expect.stringContaining('topic=dashboards'));
   const explore = screen.getByRole('heading', { name: 'Explore learning' });
-  const badges = screen.getByRole('heading', { name: 'Badges' });
-  expect(explore.compareDocumentPosition(badges) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const badges = screen.getByRole('region', { name: 'Badges' });
+  expect(badges.compareDocumentPosition(explore) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 it('homepage retains an unstarted assigned path alongside started paths', () => {

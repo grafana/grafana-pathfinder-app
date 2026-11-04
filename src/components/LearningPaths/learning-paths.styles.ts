@@ -154,11 +154,12 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       '&:hover': { borderColor: theme.colors.border.medium },
     }),
     tile: css({
+      background: theme.colors.background.canvas,
       borderRadius: theme.shape.radius.md,
       cursor: 'pointer',
       display: 'flex',
       flexDirection: 'column',
-      '& > div:first-child': {
+      '& > [data-learning-card-body]': {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'stretch',
@@ -168,7 +169,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
         cursor: 'inherit',
         userSelect: 'auto',
       },
-      '& > div:first-child > div:first-child': { flex: 1 },
+      '& > [data-learning-card-body] > div:first-child': { flex: 1 },
       '&& h3': { ...theme.typography.h4, fontWeight: theme.typography.fontWeightMedium },
       transition: 'background-color 150ms ease, border-color 150ms ease',
       '&:hover': {
@@ -180,8 +181,31 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
         backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
         borderColor: theme.colors.border.medium,
       },
-      '&:focus-within': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: -2 },
+      '&&:focus-within': {
+        outline: 'none',
+        borderColor: theme.colors.accent?.main ?? theme.colors.primary.main,
+        backgroundColor: theme.colors.background.secondary,
+        '& button:focus-visible': { outline: 'none' },
+      },
       '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
+    }),
+    tilePreview: css({
+      width: `calc(100% - ${theme.spacing(1)})`,
+      margin: theme.spacing(0.5, 0.5, 0),
+      flexShrink: 0,
+      aspectRatio: '16 / 9',
+      objectFit: 'cover',
+      objectPosition: 'top left',
+      borderRadius: theme.shape.radius.sm,
+      border: `1px solid ${theme.colors.border.weak}`,
+    }),
+    tileEyebrow: css({
+      ...theme.typography.sm,
+      color: theme.colors.text.secondary,
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      marginBottom: theme.spacing(1),
     }),
     completedLabel: css({ color: theme.colors.success.text }),
     tileFooter: css({
@@ -201,9 +225,13 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
     }),
     tileGuideCount: css({
       ...theme.typography.sm,
-      display: 'block',
-      fontWeight: theme.typography.fontWeightRegular,
       color: theme.colors.text.secondary,
+      display: 'flex',
+      flexWrap: 'wrap',
+      columnGap: theme.spacing(1.5),
+      rowGap: theme.spacing(0.5),
+      '& > span': { display: 'inline-flex', alignItems: 'center', gap: theme.spacing(0.5) },
+      '& strong': { fontWeight: theme.typography.fontWeightMedium },
     }),
     titleButton: css({
       font: 'inherit',

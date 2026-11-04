@@ -696,7 +696,8 @@ it('filters the page by recorded progress without affecting the sidebar', () => 
   fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
   expect(screen.getByRole('heading', { name: 'Team guide' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
-  expect(screen.getByRole('article')).toHaveTextContent('Completed · Guide');
+  expect(within(screen.getByRole('article')).getByText('Completed')).toBeInTheDocument();
+  expect(within(screen.getByRole('article')).getByText('Guide', { exact: true })).toBeInTheDocument();
 });
 
 it('includes started and completed path-member guides in the page status views', () => {

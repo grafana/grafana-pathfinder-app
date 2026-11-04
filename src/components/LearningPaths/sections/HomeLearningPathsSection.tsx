@@ -2,6 +2,8 @@ import React from 'react';
 import { Icon } from '@grafana/ui';
 import type { IconName } from '@grafana/data';
 
+import { getLearningPreview } from '../../LearningContentCard/learning-previews';
+
 import { LearningPathCard } from '../LearningPathCard';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
 import type { LearningPathEntry as HomePathEntry } from '../../../learning-paths';
@@ -44,6 +46,7 @@ export function HomeLearningPathsSection({
           <LearningPathCard
             key={entry.key}
             tile
+            preview={entry.path.isPrivate ? undefined : getLearningPreview(entry.path.id)}
             showOrganization
             topic={entry.topic}
             path={entry.path}

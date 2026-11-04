@@ -5,6 +5,7 @@ import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
+import { getLearningPreview } from '../LearningContentCard/learning-previews';
 import { HomeLearningPathsSection, type HomePathEntry } from './sections/HomeLearningPathsSection';
 import { withoutPathMembers } from '../../lib/package-catalog';
 import { catalogTopic, catalogTopicShortcuts } from '../../lib/catalog-discovery';
@@ -557,14 +558,28 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
 
   return (
     <div className={styles.container}>
-      <HeroStats
-        narrative={homepage}
-        guidesCompleted={totalGuidesCompleted}
-        pathsCompleted={totalPathsCompleted}
-        badgesEarned={totalBadgesEarned}
-        streakDays={streakInfo.days}
-        styles={styles}
-      />
+      <div className={styles.intro}>
+        <HeroStats
+          narrative={homepage}
+          guidesCompleted={totalGuidesCompleted}
+          pathsCompleted={totalPathsCompleted}
+          badgesEarned={totalBadgesEarned}
+          streakDays={streakInfo.days}
+          styles={styles}
+        />
+
+        {homepage && (
+          <BadgesSection
+            compact
+            badges={sortedBadges}
+            completedGuides={progress.completedGuides}
+            streakDays={progress.streakDays}
+            paths={pathsForProgress}
+            onSelect={setSelectedBadge}
+            styles={styles}
+          />
+        )}
+      </div>
 
       {!homepage && (
         <ContinueLearningSection
@@ -595,9 +610,11 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
               title={item.title}
               description={item.description}
               kind="guide"
+              preview={item.source === 'grafana' ? getLearningPreview(item.id) : undefined}
               topic={catalogTopic(item)}
               organization={item.source === 'organization'}
               progress={catalogProgress.get(item.key)?.percent}
+              estimatedMinutes={item.estimatedMinutes}
               effort={item.activityCount !== undefined ? `${item.activityCount} activities` : undefined}
               onViewPath={() => {
                 void catalogLaunch.launch(item);
@@ -684,14 +701,16 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
             </section>
           )}
 
-          <BadgesSection
-            badges={sortedBadges}
-            completedGuides={progress.completedGuides}
-            streakDays={progress.streakDays}
-            paths={pathsForProgress}
-            onSelect={setSelectedBadge}
-            styles={styles}
-          />
+          {!homepage && (
+            <BadgesSection
+              badges={sortedBadges}
+              completedGuides={progress.completedGuides}
+              streakDays={progress.streakDays}
+              paths={pathsForProgress}
+              onSelect={setSelectedBadge}
+              styles={styles}
+            />
+          )}
         </div>
       </div>
 

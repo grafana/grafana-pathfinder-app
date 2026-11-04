@@ -231,7 +231,7 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(2),
     minWidth: 0,
     color: theme.colors.text.primary,
-    background: theme.colors.background.primary,
+    background: theme.colors.background.secondary,
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.md,
     '&:hover': {

@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Button, useStyles2 } from '@grafana/ui';
+import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
 
@@ -9,9 +9,12 @@ import { LearningTopicIcon } from './LearningTopicIcon';
 import { getLearningAction } from './learning-action';
 import { getLearningTopicMetadata } from './learning-topic-visual';
 import { getLearningContentCardStyles } from './learning-content-card.styles';
+import type { LearningPreview } from './learning-previews';
 
 export interface LearningContentCardProps {
   title: string;
+  estimatedMinutes?: number;
+  preview?: Pick<LearningPreview, 'src' | 'alt'>;
   tile?: boolean;
   onViewPath?: () => void;
   variant?: 'compact' | 'featured' | 'completion-primary' | 'completion-alternative';
@@ -48,6 +51,8 @@ const FEATURED_DESCRIPTION_LINES = 4;
 
 export function LearningContentCard({
   title,
+  estimatedMinutes,
+  preview,
   tile = false,
   onViewPath,
   variant = 'compact',
@@ -208,7 +213,8 @@ export function LearningContentCard({
   if (tile) {
     return (
       <article
-        className={cx(styles.card, styles.tile)}
+        className={cx(styles.card, styles.tile, preview && styles.tileWithPreview)}
+        data-learning-card
         data-testid={testId}
         onClick={(event) => {
           if (!(event.target as HTMLElement).closest('button, a, input')) {
@@ -216,10 +222,18 @@ export function LearningContentCard({
           }
         }}
       >
+        {preview && <img className={styles.tilePreview} src={preview.src} alt={preview.alt} loading="lazy" />}
         <div className={styles.tileBody}>
-          <div className={styles.tileTopic}>
-            <LearningTopicIcon topic={topic} kind={kind} size="sm" bordered surface="secondary" />
-          </div>
+          {preview ? (
+            <div className={styles.tileEyebrow}>
+              <Icon name={topicMetadata.icon} size="sm" />
+              <span>{topicLabel}</span>
+            </div>
+          ) : (
+            <div className={styles.tileTopic}>
+              <LearningTopicIcon topic={topic} kind={kind} size="sm" bordered surface="secondary" />
+            </div>
+          )}
           <div className={styles.tileHeading}>
             <h3 data-testid={titleTestId}>
               <button type="button" className={styles.titleButton} onClick={onViewPath}>
@@ -244,23 +258,39 @@ export function LearningContentCard({
             )}
             <span className={styles.tileMetadata}>
               {percent === 100 && (
-                <>
-                  <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
-                  {' · '}
-                </>
+                <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
               )}
-              {kind === 'path'
-                ? t('learningCard.path', 'Learning path')
-                : kind === 'guide'
-                  ? t('learningCard.guide', 'Guide')
-                  : ''}
-              {kind !== 'docs' && (effort || organization) ? ' · ' : ''}
-              {effort}
+              {kind !== 'docs' && (
+                <span>
+                  <Icon name={kind === 'path' ? 'book-open' : 'file-alt'} size="xs" />
+                  <strong>
+                    {kind === 'path' ? t('learningCard.path', 'Learning path') : t('learningCard.guide', 'Guide')}
+                  </strong>
+                  {kind === 'path' && effort && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      {effort}
+                    </>
+                  )}
+                </span>
+              )}
+              {kind !== 'path' && effort && (
+                <span>
+                  <Icon name="list-ul" size="xs" />
+                  {effort}
+                </span>
+              )}
+              {typeof estimatedMinutes === 'number' && estimatedMinutes > 0 && (
+                <span>
+                  <Icon name="clock-nine" size="xs" />
+                  About {estimatedMinutes} min
+                </span>
+              )}
               {organization && (
-                <>
-                  {effort ? ' · ' : ''}
+                <span>
+                  <Icon name="users-alt" size="xs" />
                   {t('learningCard.organization', 'Your organization')}
-                </>
+                </span>
               )}
             </span>
           </div>

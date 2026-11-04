@@ -3,6 +3,7 @@ import { useStyles2, Icon, ConfirmModal } from '@grafana/ui';
 import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
+import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-visual';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
 import { formatDueDate, getDueStatus, markCurrentGuide } from '../../learning-paths';
@@ -28,12 +29,14 @@ export function LearningPathCard({
   launchDisabled = false,
   assignment,
   tile = false,
+  preview,
   onViewPath,
   showOrganization = false,
   topic,
 }: LearningPathCardProps & {
   defaultExpanded?: boolean;
   tile?: boolean;
+  preview?: { src: string; alt: string };
   onViewPath?: () => void;
   showOrganization?: boolean;
   topic?: string;
@@ -144,19 +147,31 @@ export function LearningPathCard({
             }
           : undefined
       }
+      data-learning-card={tile ? true : undefined}
       data-testid={testIds.learningPaths.card(path.id)}
     >
-      <div className={styles.header} onClick={tile ? undefined : handleToggleExpand}>
+      {tile && preview && <img className={styles.tilePreview} src={preview.src} alt={preview.alt} loading="lazy" />}
+      <div
+        data-learning-card-body={tile ? true : undefined}
+        className={styles.header}
+        onClick={tile ? undefined : handleToggleExpand}
+      >
         {!tile && (
           <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
         )}
 
         <div className={styles.content}>
-          {tile && (
-            <div className={styles.tileTopic}>
-              <LearningTopicIcon topic={topic} kind="path" size="sm" bordered surface="secondary" />
-            </div>
-          )}
+          {tile &&
+            (preview ? (
+              <div className={styles.tileEyebrow}>
+                <Icon name={getLearningTopicMetadata(topic, 'path').icon} size="sm" />
+                <span>{getLearningTopicMetadata(topic, 'path').label ?? 'Learning path'}</span>
+              </div>
+            ) : (
+              <div className={styles.tileTopic}>
+                <LearningTopicIcon topic={topic} kind="path" size="sm" bordered surface="secondary" />
+              </div>
+            ))}
           <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>
             {tile ? (
               <button type="button" className={styles.titleButton} onClick={onViewPath}>
@@ -195,14 +210,26 @@ export function LearningPathCard({
               />
               <span className={styles.tileGuideCount}>
                 {isCompleted && (
-                  <>
-                    <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
-                    {' · '}
-                  </>
+                  <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
                 )}
-                {t('learningCard.path', 'Learning path')} ·{' '}
-                {isLoadingGuides ? 'Loading guides…' : `${completedCount}/${guides.length} guides`}
-                {showOrganization && path.isPrivate ? ' · Your organisation' : ''}
+                <span>
+                  <Icon name="book-open" size="xs" />
+                  <strong>{t('learningCard.path', 'Learning path')}</strong>
+                  <span aria-hidden="true">·</span>
+                  {isLoadingGuides ? 'Loading guides…' : `${completedCount}/${guides.length} guides`}
+                </span>
+                {typeof path.estimatedMinutes === 'number' && path.estimatedMinutes > 0 && (
+                  <span>
+                    <Icon name="clock-nine" size="xs" />
+                    About {path.estimatedMinutes} min
+                  </span>
+                )}
+                {showOrganization && path.isPrivate && (
+                  <span>
+                    <Icon name="users-alt" size="xs" />
+                    Your organisation
+                  </span>
+                )}
               </span>
             </div>
             {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}

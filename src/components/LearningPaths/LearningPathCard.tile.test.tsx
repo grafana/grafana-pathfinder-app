@@ -35,3 +35,24 @@ it('opens the tile overview, keeps radial progress, and has no competing start a
   expect(view).toHaveBeenCalledTimes(2);
   expect(launch).not.toHaveBeenCalled();
 });
+
+it('opens the course from its inset preview and replaces the icon tile with a category eyebrow', () => {
+  const view = jest.fn();
+  const { container } = render(
+    <LearningPathCard
+      tile
+      path={{ id: 'preview', title: 'Preview path', description: 'Preview course', guides: [], badgeId: '' }}
+      guides={[]}
+      progress={25}
+      isCompleted={false}
+      onContinue={jest.fn()}
+      onViewPath={view}
+      topic="logs"
+      preview={{ src: 'test-preview.png', alt: 'Collected logs in Grafana' }}
+    />
+  );
+  expect(screen.getByText('Logs')).toBeInTheDocument();
+  expect(container.querySelector('[data-learning-topic-icon]')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('img', { name: 'Collected logs in Grafana' }));
+  expect(view).toHaveBeenCalledTimes(1);
+});
