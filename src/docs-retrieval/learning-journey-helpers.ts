@@ -56,6 +56,8 @@ export type { ActiveMilestoneToolbarContext } from './active-milestone-sequence'
  */
 export interface CompletionContext {
   source?: CompletionSource;
+  /** From the content becoming ready to completion; guide facts only, never a journey's. */
+  durationMs?: number;
   guideStats?: CompletionFact['guideStats'];
   packageManifest?: Record<string, unknown>;
   /** Recommendation-level repository (sibling of manifest in the V1 wire shape). */
@@ -772,6 +774,7 @@ function recordBundledGuideCompletion(guideId: string, context?: CompletionConte
       completionPercent: 100,
       source: context?.source ?? 'objectives',
       ...(context?.guideStats && { guideStats: context.guideStats }),
+      ...(context?.durationMs !== undefined && { durationMs: context.durationMs }),
       completedAt: new Date().toISOString(),
     },
     { attemptEligible }
@@ -798,6 +801,7 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
       completionPercent: 100,
       source: context?.source ?? 'objectives',
       ...(context?.guideStats && { guideStats: context.guideStats }),
+      ...(context?.durationMs !== undefined && { durationMs: context.durationMs }),
       completedAt: new Date().toISOString(),
     },
     { attemptEligible: true }
@@ -814,6 +818,7 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
  */
 export interface SurfaceCompletionInput {
   source?: CompletionSource;
+  durationMs?: number;
   contentKey?: string;
   /**
    * activeTab.baseUrl — the SURFACE base, which is the milestone URL when a tab
@@ -912,6 +917,7 @@ function planSurfaceCompletion(input: SurfaceCompletionInput) {
   const activeIndex = input.contentKey ? getGuideIndex(input.contentKey) : undefined;
   const completionContext: CompletionContext = {
     source: input.source,
+    ...(input.durationMs !== undefined && { durationMs: input.durationMs }),
     guideStats: activeIndex ? summarizeGuideBlockIndex(activeIndex.index) : undefined,
     packageManifest: willMarkMilestone
       ? (metadata?.journeyManifest ?? metadata?.packageManifest)
@@ -1086,6 +1092,7 @@ export async function markMilestoneDone(
     completionPercent: 100,
     source: context?.source ?? 'objectives',
     ...(context?.guideStats && { guideStats: context.guideStats }),
+    ...(context?.durationMs !== undefined && { durationMs: context.durationMs }),
     completedAt: new Date().toISOString(),
   });
 

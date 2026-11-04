@@ -40,7 +40,12 @@ import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey 
 import { logger } from '../lib/logging';
 import { furthestEvidencedPosition, guideProgress, type CompletionEvidence } from '../lib/guide-stats';
 
-import { choiceGuideProgress, CHOICE_COMPLETION_VARIABLE } from '../lib/guide-stats/choice-progress';
+import {
+  choiceGuideProgress,
+  choicePathCompletionKeys,
+  choicePathHasUnansweredRequiredInput,
+  CHOICE_COMPLETION_VARIABLE,
+} from '../lib/guide-stats/choice-progress';
 import {
   evictAllGuideIndexes,
   evictGuideIndex,
@@ -69,6 +74,8 @@ const IDLE_ENTRY: StepCompletionEntry = Object.freeze({
 
 const entries = new Map<string, Map<string, Map<string, StepCompletionEntry>>>();
 const hydratedSections = new Set<string>();
+const loadCompletionCrossings = new Set<string>();
+const pendingLoadBaselines = new Map<string, number>();
 const listenersByContent = new Map<string, Set<() => void>>();
 
 /**
@@ -450,6 +457,7 @@ function refreshGuidePercentage(contentKey: string, origin?: ProgressOrigin): vo
   if (progress === undefined) {
     return;
   }
+  settleLoadBaseline(contentKey, progress.percent, origin);
   // Preview content keys never persist (see `persistSection`) — writing here
   // would also crowd `interactiveCompletionStorage`'s capped namespace with
   // throwaway entries that displace real readers' progress. Nothing durable
@@ -459,6 +467,17 @@ function refreshGuidePercentage(contentKey: string, origin?: ProgressOrigin): vo
     return;
   }
   void persistAndAnnounceGuidePercentage(contentKey, progress, origin);
+}
+
+function settleLoadBaseline(contentKey: string, percent: number, origin?: ProgressOrigin): void {
+  const baseline = pendingLoadBaselines.get(contentKey);
+  if (baseline === undefined) {
+    return;
+  }
+  pendingLoadBaselines.delete(contentKey);
+  if (origin !== 'change' && baseline < 100 && percent === 100) {
+    loadCompletionCrossings.add(contentKey);
+  }
 }
 
 function announceGuidePercentage(contentKey: string, progress: GuidePercentage, origin?: ProgressOrigin): void {
@@ -525,7 +544,20 @@ export function refreshGuidePercentageOnLoad(contentKey: string): void {
   if (collectEvidence(contentKey).length === 0) {
     return;
   }
+  if (!pendingLoadBaselines.has(contentKey)) {
+    pendingLoadBaselines.set(contentKey, interactiveCompletionStorage.peekAll()[contentKey] ?? 0);
+  }
   refreshAndNotifyGuideProgress(contentKey, 'load');
+}
+
+/**
+ * Whether a load-time recompute is what first took this guide to 100%, judged
+ * against the percentage persisted before it. That percentage lives in the
+ * same per-browser record as the evidence that produces it. True at most once
+ * per crossing.
+ */
+export function takeLoadCompletionCrossing(contentKey: string): boolean {
+  return loadCompletionCrossings.delete(contentKey);
 }
 
 export interface UseStepCompletionResult {
@@ -619,7 +651,43 @@ export function peekGuidePercentage(contentKey: string): number {
   return computeGuideProgress(contentKey)?.percent ?? 0;
 }
 
+/**
+ * Bottom-visible evidence: the end of a guide with no completable block was
+ * seen on screen. Content with no block index (a docs page) counts as such a
+ * guide unless `expectsBlockIndex` says its index has simply not published.
+ * Returns whether the mark was written; it is readable synchronously on return.
+ */
+export function markGuideEndViewed(contentKey: string, expectsBlockIndex: boolean): boolean {
+  if (isPreviewContentKey(contentKey) || guideCompletionMarkStorage.isMarked(contentKey)) {
+    return false;
+  }
+  const active = getGuideIndex(contentKey);
+  if (active ? active.index.completableBlockCount > 0 : expectsBlockIndex) {
+    return false;
+  }
+  let choiceCompletionKeys: string[] | undefined;
+  if (active?.choiceModel) {
+    const hidden = getHiddenGuideSections(contentKey);
+    if (
+      !isGuideChoiceProgressReady(contentKey) ||
+      active.responses === undefined ||
+      choicePathHasUnansweredRequiredInput(active.choiceModel, active.responses, hidden)
+    ) {
+      return false;
+    }
+    choiceCompletionKeys = choicePathCompletionKeys(active.choiceModel, active.responses, hidden);
+  }
+  void guideCompletionMarkStorage
+    .setViewed(contentKey, choiceCompletionKeys)
+    .then(() => refreshAndNotifyGuideProgress(contentKey));
+  return true;
+}
+
 export function getGuideCompletionSource(contentKey: string): 'manual' | 'skipped' | 'objectives' {
+  // Seeing the end is the completion criterion of a guide with no completable block.
+  if (guideCompletionMarkStorage.isViewed(contentKey)) {
+    return 'objectives';
+  }
   if (guideCompletionMarkStorage.isMarked(contentKey)) {
     return 'manual';
   }
@@ -876,6 +944,8 @@ export function evictContentCache(contentKey: string): void {
   // idempotent per content key), serving stale positions after a reset.
   evictGuideIndex(contentKey);
   previewAcknowledgedSections.delete(contentKey);
+  loadCompletionCrossings.delete(contentKey);
+  pendingLoadBaselines.delete(contentKey);
   entries.delete(contentKey);
   const prefix = `${contentKey}::`;
   for (const key of Array.from(hydratedSections)) {
@@ -1009,6 +1079,8 @@ export function markStepsCompleted(
 export function evictAllContentCaches(): void {
   evictAllGuideIndexes();
   previewAcknowledgedSections.clear();
+  loadCompletionCrossings.clear();
+  pendingLoadBaselines.clear();
   const contentKeys = Array.from(listenersByContent.keys());
   // Bump every existing hydration version BEFORE clearing the maps so
   // any in-flight hydration cycle drops its merge on resolve. Clearing
@@ -1038,6 +1110,8 @@ export function resetCompletionStoreForTests(): void {
   listenersByContent.clear();
   sectionVersions.clear();
   previewAcknowledgedSections.clear();
+  loadCompletionCrossings.clear();
+  pendingLoadBaselines.clear();
   evictAllGuideIndexes();
 }
 

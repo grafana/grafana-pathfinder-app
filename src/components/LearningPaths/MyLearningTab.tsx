@@ -350,7 +350,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       // App Platform paths carry a manifest but no cover `url`, so the member
       // launches as `backend-guide:<id>`. Thread the PATH manifest through as
-      // packageInfo (mirroring CustomGuidesSection) — without it the loader
+      // packageInfo (mirroring the sidebar hub's custom guides) — without it the loader
       // falls through to plain fetchContent and the member renders as a
       // standalone guide with no milestone toolbar, next/prev, or cover.
       const packageInfo: PackageOpenInfo | undefined = parentPath?.manifest
