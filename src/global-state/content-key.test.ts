@@ -92,6 +92,20 @@ describe('content-key', () => {
       expect(first).not.toBe(second);
     });
 
+    it('keeps two distinct long URLs of one fetch on separate keys', () => {
+      const prefix = 'https://raw.githubusercontent.com/org/repo/' + 'a'.repeat(190);
+      setActiveTabUrl(withPrTestMarker(`${prefix}/guide-one/content.json`, 'abcdef1'));
+      const first = getContentKey();
+      setActiveTabUrl(withPrTestMarker(`${prefix}/guide-two/content.json`, 'abcdef1'));
+      const second = getContentKey();
+
+      expect(first).not.toBe(second);
+      expect(first.length).toBeLessThanOrEqual(MAX);
+      expect(second.length).toBeLessThanOrEqual(MAX);
+      expect(getPrTestFetchId(first)).toBe('abcdef1');
+      expect(getPrTestFetchId(second)).toBe('abcdef1');
+    });
+
     it('still truncates an unmarked URL to the bound', () => {
       setActiveTabUrl('https://example.com/' + 'a'.repeat(500) + '#pf-pr-');
       expect(getContentKey()).toHaveLength(MAX);

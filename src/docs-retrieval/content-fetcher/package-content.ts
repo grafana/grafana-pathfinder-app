@@ -471,7 +471,7 @@ export async function fetchPackageContent(
           .filter((id): id is string => id != null);
         if (lockedTrackGuideIds.length > 0) {
           const retriedUrls = await Promise.all(lockedTrackGuideIds.map((id) => resolvePackageUrlBypassCache(id)));
-          isConfirmedTrackMember = retriedUrls.includes(contentUrl);
+          isConfirmedTrackMember = retriedUrls.some((url) => url !== undefined && markForPrTest(url) === contentUrl);
         }
       }
 

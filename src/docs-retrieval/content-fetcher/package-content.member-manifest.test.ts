@@ -289,6 +289,35 @@ describe('member launch keeps the loader manifest reachable', () => {
   });
 
   describe('confirmed track membership without a member snapshot', () => {
+    it('confirms a track member on retry when the load carries a PR-tester marker', async () => {
+      const owner = {
+        ...pathManifest,
+        repository: 'owner-source',
+        tracks: [{ trackId: 'extra', label: 'Extra', guides: ['fe-alerting-01'] }],
+      };
+      mockFetch.mockReturnValue(backendGuideResource({}));
+      const resolve = jest.fn().mockImplementation((id: string, options: { bypassCache?: boolean }) => {
+        if (id === 'fe-alerting-01' && !options.bypassCache) {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'missing metadata' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `backend-guide:${id}`,
+          manifestUrl: `https://example.test/${id}/manifest.json`,
+          repository: 'base-source',
+          ...(id === owner.id && { manifest: owner }),
+        });
+      });
+      setPackageResolver({ resolve });
+
+      const result = await fetchPackageContent('backend-guide:fe-alerting-01#pf-pr-abc123', owner, [resolvedMember]);
+
+      expect(resolve).toHaveBeenCalledWith('fe-alerting-01', { loadContent: false, bypassCache: true });
+      expect(result.content?.metadata.learningJourney).toBeUndefined();
+      expect(result.content?.metadata.trackMemberBaseUrl).toBe('backend-guide:path-id#pf-pr-abc123');
+    });
+
     it.each(['retry', 'declared'] as const)(
       'preserves loaded member metadata and completion ownership for %s membership',
       async (membership) => {
