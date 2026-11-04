@@ -37,7 +37,7 @@ The components are organized into logical groups with clear responsibilities:
 
 - **EnableRecommenderBanner/**: Banner for enabling recommendation service
 - **HelpFooter/**: Help content and footer integration
-- **SidebarHub/**: The Recommended tab content behind the `pathfinder.sidebar-hub` flag: welcome header, featured recommendation, resume card, count tiles, expandable "More recommended" rows, an expandable "Other documentation" list, and a temporary custom guides list
+- **SidebarHub/**: The Recommended tab content: welcome header, featured recommendation, resume card, count tiles, expandable "More recommended" rows, an expandable "Other documentation" list, and a temporary custom guides list. To remove the custom guides list, delete `CustomGuides.tsx` and `custom-guides.tsx`, the `customGuides` props on `SidebarHub`, the `hubCustomGuides` memo in `context-panel.tsx`, the `organization` and `badges` fields on `HubGuide`, and the `customGuides*` test ids and `sidebarHub.showAll` key. The "Recommended next" and "You might also like" links are not rebuilt in the hub
 - **DomPathTooltip/**: DOM path visualization tooltip for element inspection
 - **SkeletonLoader/**: Loading state skeleton UI with multiple variants
 - **FeedbackButton/**: User feedback collection button

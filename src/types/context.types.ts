@@ -169,7 +169,6 @@ export interface UseContextPanelReturn {
   contextData: ContextData;
   isLoadingRecommendations: boolean;
   hasFetchedRecommendations: boolean;
-  otherDocsExpanded: boolean;
 
   // Actions
   refreshContext: () => void;
@@ -178,5 +177,4 @@ export interface UseContextPanelReturn {
   openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
   toggleSummaryExpansion: (recommendationUrl: string) => void;
   navigateToPath: (path: string) => void;
-  toggleOtherDocsExpansion: () => void;
 }

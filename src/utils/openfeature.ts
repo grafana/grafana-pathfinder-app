@@ -60,12 +60,6 @@ const pathfinderFeatureFlags = {
     defaultValue: false,
     trackingKey: 'learning_insights',
   },
-  'pathfinder.sidebar-hub': {
-    valueType: 'boolean',
-    values: [true, false],
-    defaultValue: false,
-    trackingKey: 'sidebar_hub',
-  },
   'pathfinder.help-button-nudge-experiment': {
     valueType: 'object',
     values: ['excluded', 'control', 'learn', 'learn_hint'].map((variant) => ({ variant })),
