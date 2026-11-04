@@ -97,7 +97,7 @@ func TestEvaluateCreatesMissingProgressAndAward(t *testing.T) {
 		t.Errorf("stored progress = %+v", row)
 	}
 	award, ok := store.awards["dash-builder/1"]
-	if !ok || award.Route != "dashboards" || award.Revision != 1 {
+	if !ok || award.Entity != "dashboards" || award.Revision != 1 {
 		t.Fatalf("award = %+v ok=%v", award, ok)
 	}
 	if !award.EarnedAt.Equal(fixedNow) || award.EarnedAt.Location() != time.UTC {
@@ -112,7 +112,7 @@ func TestEvaluateAwardsEveryTierUpToTheNewOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, key := range []string{"guide-routes/1", "guide-routes/2"} {
-		if a, ok := store.awards[key]; !ok || a.Route != "guides" {
+		if a, ok := store.awards[key]; !ok || a.Entity != "guides" {
 			t.Errorf("award %s = %+v ok=%v", key, a, ok)
 		}
 	}
