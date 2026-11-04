@@ -15,6 +15,7 @@ export interface LearningContentCardProps {
   title: string;
   estimatedMinutes?: number;
   preview?: Pick<LearningPreview, 'src' | 'alt'>;
+  presentation?: 'resume' | 'compact';
   tile?: boolean;
   onViewPath?: () => void;
   variant?: 'compact' | 'featured' | 'completion-primary' | 'completion-alternative';
@@ -53,6 +54,7 @@ export function LearningContentCard({
   title,
   estimatedMinutes,
   preview,
+  presentation,
   tile = false,
   onViewPath,
   variant = 'compact',
@@ -213,8 +215,15 @@ export function LearningContentCard({
   if (tile) {
     return (
       <article
-        className={cx(styles.card, styles.tile, preview && styles.tileWithPreview)}
+        className={cx(
+          styles.card,
+          styles.tile,
+          preview && styles.tileWithPreview,
+          presentation === 'resume' && styles.resumeTile,
+          presentation === 'compact' && styles.compactTile
+        )}
         data-learning-card
+        data-learning-resume={presentation === 'resume' ? true : undefined}
         data-testid={testId}
         onClick={(event) => {
           if (!(event.target as HTMLElement).closest('button, a, input')) {
@@ -224,7 +233,7 @@ export function LearningContentCard({
       >
         {preview && <img className={styles.tilePreview} src={preview.src} alt={preview.alt} loading="lazy" />}
         <div className={styles.tileBody}>
-          {preview ? (
+          {preview || presentation ? (
             <div className={styles.tileEyebrow}>
               <Icon name={topicMetadata.icon} size="sm" />
               <span>{topicLabel}</span>
@@ -250,8 +259,8 @@ export function LearningContentCard({
             {kind !== 'docs' && (
               <ProgressRing
                 progress={percent}
-                size={percent === 100 ? 30 : 32}
-                strokeWidth={2}
+                size={presentation === 'resume' ? 56 : percent === 100 ? 30 : 32}
+                strokeWidth={presentation === 'resume' ? 3 : 2}
                 isCompleted={percent === 100}
                 showPercentage
               />
@@ -294,6 +303,11 @@ export function LearningContentCard({
               )}
             </span>
           </div>
+          {presentation === 'resume' && (
+            <Button icon="play" size="md" variant="primary" onClick={onViewPath}>
+              Resume
+            </Button>
+          )}
         </div>
         {(launchError || error) && (
           <p role="alert" className={styles.error}>

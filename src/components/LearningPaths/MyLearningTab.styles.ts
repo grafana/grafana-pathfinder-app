@@ -78,12 +78,13 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       height: '100%',
       overflowY: 'auto',
       ...(hideSectionIcons && {
+        containerType: 'inline-size',
         '& [data-learning-card] [data-learning-topic-icon]': {
           width: theme.spacing(5),
           height: theme.spacing(5),
           '& svg': { width: 22, height: 22 },
         },
-        '& [data-learning-card]': {
+        '& [data-learning-card]:not([data-learning-resume])': {
           backgroundColor: theme.colors.background.canvas,
           backgroundImage: 'none',
           '&:hover, &:focus-within': {
@@ -232,6 +233,11 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       gap: theme.spacing(1),
     }),
     achievementsAction: css({ alignSelf: 'flex-start' }),
+    homeBadgeShelf: css({
+      padding: theme.spacing(2),
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      '& h2': { ...theme.typography.base, fontWeight: theme.typography.fontWeightMedium, margin: 0 },
+    }),
     achievementsRow: css({
       display: 'flex',
       alignItems: 'center',
@@ -343,6 +349,26 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
     }),
 
     // Paths Grid
+    homeContinueLayout: css({
+      display: 'grid',
+      gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)',
+      gap: theme.spacing(3),
+      alignItems: 'start',
+      '@container (max-width: 900px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+    }),
+    homeContinuePrimary: css({ minWidth: 0 }),
+    homeContinueSecondary: css({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(2),
+      minWidth: 0,
+    }),
+    homeAvailableGrid: css({
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: theme.spacing(1.5),
+      '@container (max-width: 900px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+    }),
     pathsGrid: css({
       display: 'grid',
       gridTemplateColumns: hideSectionIcons

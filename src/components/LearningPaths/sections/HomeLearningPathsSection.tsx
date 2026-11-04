@@ -18,6 +18,8 @@ export function HomeLearningPathsSection({
   children,
   onView,
   styles,
+  presentation,
+  aside,
 }: {
   title: string;
   description: string;
@@ -26,10 +28,32 @@ export function HomeLearningPathsSection({
   children?: React.ReactNode;
   onView: (entry: HomePathEntry) => void;
   styles: ReturnType<typeof getMyLearningStyles>;
+  presentation?: 'continue' | 'compact';
+  aside?: React.ReactNode;
 }) {
   if (!entries.length && !React.Children.count(children)) {
     return null;
   }
+  const cards = [
+    ...entries.map((entry, index) => (
+      <LearningPathCard
+        key={entry.key}
+        tile
+        presentation={presentation === 'continue' && index === 0 ? 'resume' : presentation ? 'compact' : undefined}
+        preview={entry.path.isPrivate ? undefined : getLearningPreview(entry.path.id)}
+        showOrganization
+        topic={entry.topic}
+        path={entry.path}
+        guides={entry.guides}
+        progress={entry.percent}
+        isCompleted={false}
+        assignment={entry.assignment}
+        onContinue={() => onView(entry)}
+        onViewPath={() => onView(entry)}
+      />
+    )),
+    ...React.Children.toArray(children),
+  ];
   return (
     <section className={styles.openSection}>
       <div className={styles.sectionHeader}>
@@ -41,25 +65,17 @@ export function HomeLearningPathsSection({
           <p className={styles.sectionDescription}>{description}</p>
         </div>
       </div>
-      <div className={styles.pathsGrid}>
-        {entries.map((entry) => (
-          <LearningPathCard
-            key={entry.key}
-            tile
-            preview={entry.path.isPrivate ? undefined : getLearningPreview(entry.path.id)}
-            showOrganization
-            topic={entry.topic}
-            path={entry.path}
-            guides={entry.guides}
-            progress={entry.percent}
-            isCompleted={false}
-            assignment={entry.assignment}
-            onContinue={() => onView(entry)}
-            onViewPath={() => onView(entry)}
-          />
-        ))}
-        {children}
-      </div>
+      {presentation === 'continue' ? (
+        <div className={styles.homeContinueLayout}>
+          <div className={styles.homeContinuePrimary}>{cards[0]}</div>
+          <div className={styles.homeContinueSecondary}>
+            {cards.slice(1)}
+            {aside}
+          </div>
+        </div>
+      ) : (
+        <div className={presentation === 'compact' ? styles.homeAvailableGrid : styles.pathsGrid}>{cards}</div>
+      )}
     </section>
   );
 }

@@ -177,7 +177,9 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   const homePathEntries = allHomePathEntries.filter(
     (entry) => entry.percent < 100 || (entry.assignment && !entry.assignment.satisfied)
   );
-  const homeContinuePaths = homePathEntries.filter((entry) => entry.percent > 0 && entry.percent < 100);
+  const homeContinuePaths = homePathEntries
+    .filter((entry) => entry.percent > 0 && entry.percent < 100)
+    .sort((a, b) => b.percent - a.percent);
   const homeContinueGuides = catalog.items.filter((item) => {
     const percent = catalogProgress.get(item.key)?.percent ?? 0;
     return item.format === 'guide' && Number.isFinite(percent) && percent > 0 && percent < 100;
@@ -556,6 +558,22 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     );
   }
 
+  const hasHomeContinue = homeContinuePaths.length > 0 || homeContinueGuides.length > 0;
+  const homeBadges = (
+    <aside className={styles.homeBadgeShelf}>
+      <h2>Badges</h2>
+      <BadgesSection
+        compact
+        badges={sortedBadges}
+        completedGuides={progress.completedGuides}
+        streakDays={progress.streakDays}
+        paths={pathsForProgress}
+        onSelect={setSelectedBadge}
+        styles={styles}
+      />
+    </aside>
+  );
+
   return (
     <div className={styles.container}>
       <div className={styles.intro}>
@@ -568,17 +586,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           styles={styles}
         />
 
-        {homepage && (
-          <BadgesSection
-            compact
-            badges={sortedBadges}
-            completedGuides={progress.completedGuides}
-            streakDays={progress.streakDays}
-            paths={pathsForProgress}
-            onSelect={setSelectedBadge}
-            styles={styles}
-          />
-        )}
+        {homepage && !hasHomeContinue && homeBadges}
       </div>
 
       {!homepage && (
@@ -596,6 +604,8 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
       )}
       {homepage && (
         <HomeLearningPathsSection
+          presentation="continue"
+          aside={homeBadges}
           title="Continue learning"
           description="Pick up guides and paths you have started."
           icon="play"
@@ -603,10 +613,11 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           onView={handleHomePathView}
           styles={styles}
         >
-          {homeContinueGuides.map((item) => (
+          {homeContinueGuides.map((item, index) => (
             <LearningContentCard
               key={item.key}
               tile
+              presentation={homeContinuePaths.length === 0 && index === 0 ? 'resume' : 'compact'}
               title={item.title}
               description={item.description}
               kind="guide"
@@ -659,6 +670,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           )}
           {homepage && (
             <HomeLearningPathsSection
+              presentation="compact"
               title="Your learning paths"
               description="Learning paths available to you, including assignments."
               icon="book-open"

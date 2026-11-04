@@ -56,3 +56,27 @@ it('opens the course from its inset preview and replaces the icon tile with a ca
   fireEvent.click(screen.getByRole('img', { name: 'Collected logs in Grafana' }));
   expect(view).toHaveBeenCalledTimes(1);
 });
+
+it('features the next guide without repeating the full outline and resumes through the existing overview', () => {
+  const view = jest.fn();
+  render(
+    <LearningPathCard
+      tile
+      presentation="resume"
+      path={{ id: 'active', title: 'Active course', description: 'A course', guides: ['one', 'two'], badgeId: '' }}
+      guides={[
+        { id: 'one', title: 'Completed lesson', completed: true, isCurrent: false },
+        { id: 'two', title: 'Next lesson', completed: false, isCurrent: true },
+      ]}
+      progress={50}
+      isCompleted={false}
+      onContinue={jest.fn()}
+      onViewPath={view}
+    />
+  );
+  expect(screen.getByText('Next lesson')).toBeInTheDocument();
+  expect(screen.queryByText('Completed lesson')).not.toBeInTheDocument();
+  expect(screen.getByText(/1\/2 guides/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+  expect(view).toHaveBeenCalledTimes(1);
+});

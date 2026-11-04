@@ -1,5 +1,5 @@
 import React, { useId, useMemo, useState } from 'react';
-import { useStyles2, Icon, ConfirmModal } from '@grafana/ui';
+import { useStyles2, Icon, ConfirmModal, Button } from '@grafana/ui';
 import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
@@ -30,6 +30,7 @@ export function LearningPathCard({
   assignment,
   tile = false,
   preview,
+  presentation,
   onViewPath,
   showOrganization = false,
   topic,
@@ -37,6 +38,7 @@ export function LearningPathCard({
   defaultExpanded?: boolean;
   tile?: boolean;
   preview?: { src: string; alt: string };
+  presentation?: 'resume' | 'compact';
   onViewPath?: () => void;
   showOrganization?: boolean;
   topic?: string;
@@ -134,6 +136,8 @@ export function LearningPathCard({
       className={cx(
         styles.card,
         tile && styles.tile,
+        tile && presentation === 'resume' && styles.resumeTile,
+        tile && presentation === 'compact' && styles.compactTile,
         isCompleted && styles.cardCompleted,
         dueStatus?.tone === 'today' && styles.cardUpcoming,
         dueStatus?.tone === 'overdue' && styles.cardOverdue
@@ -148,6 +152,7 @@ export function LearningPathCard({
           : undefined
       }
       data-learning-card={tile ? true : undefined}
+      data-learning-resume={tile && presentation === 'resume' ? true : undefined}
       data-testid={testIds.learningPaths.card(path.id)}
     >
       {tile && preview && <img className={styles.tilePreview} src={preview.src} alt={preview.alt} loading="lazy" />}
@@ -162,7 +167,7 @@ export function LearningPathCard({
 
         <div className={styles.content}>
           {tile &&
-            (preview ? (
+            (preview || presentation ? (
               <div className={styles.tileEyebrow}>
                 <Icon name={getLearningTopicMetadata(topic, 'path').icon} size="sm" />
                 <span>{getLearningTopicMetadata(topic, 'path').label ?? 'Learning path'}</span>
@@ -183,6 +188,12 @@ export function LearningPathCard({
           </h3>
 
           {tile && path.description && <p className={styles.tileDescription}>{path.description}</p>}
+          {tile && presentation === 'resume' && (currentGuide ?? firstIncompleteGuide) && (
+            <div className={styles.resumeNext}>
+              <span>Up next</span>
+              <strong>{(currentGuide ?? firstIncompleteGuide)?.title}</strong>
+            </div>
+          )}
 
           {!tile && (
             <div className={styles.meta}>
@@ -203,8 +214,8 @@ export function LearningPathCard({
             <div className={styles.tileProgress}>
               <ProgressRing
                 progress={progress}
-                size={isCompleted ? 30 : 32}
-                strokeWidth={2}
+                size={presentation === 'resume' ? 56 : isCompleted ? 30 : 32}
+                strokeWidth={presentation === 'resume' ? 3 : 2}
                 isCompleted={isCompleted}
                 showPercentage
               />
@@ -233,6 +244,11 @@ export function LearningPathCard({
               </span>
             </div>
             {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
+            {presentation === 'resume' && (
+              <Button icon="play" size="md" variant="primary" onClick={onViewPath}>
+                Resume
+              </Button>
+            )}
           </div>
         )}
         {(!tile || isCompleted) && (
