@@ -44,7 +44,7 @@ type achievementProgressSpec struct {
 type achievementAwardSpec struct {
 	AchievementID   string `json:"achievementId"`
 	Tier            int64  `json:"tier"`
-	Route           string `json:"route"`
+	Entity          string `json:"entity"`
 	Revision        int64  `json:"revision"`
 	EarnedAt        string `json:"earnedAt"`
 	UserID          string `json:"userId"`
@@ -169,7 +169,7 @@ func (s *achievementStore) CreateAward(ctx context.Context, person achievements.
 		Spec: achievementAwardSpec{
 			AchievementID:   a.AchievementID,
 			Tier:            int64(a.Tier),
-			Route:           a.Route,
+			Entity:          a.Route,
 			Revision:        int64(a.Revision),
 			EarnedAt:        a.EarnedAt.UTC().Format(time.RFC3339),
 			UserID:          person.ID,

@@ -26,6 +26,12 @@
                                         "description": "earnedAt is the ISO 8601 UTC timestamp of when the plugin earned the\ntier, from the plugin's clock and never the client-reported time.",
                                         "type": "string"
                                     },
+                                    "entity": {
+                                        "description": "entity is the kind of thing the event that crossed the tier acted on,\nsuch as \"dashboards\" or \"guides\".",
+                                        "maxLength": 32,
+                                        "minLength": 1,
+                                        "type": "string"
+                                    },
                                     "orgId": {
                                         "description": "orgId is the Grafana organization the write originated from.",
                                         "type": "integer"
@@ -34,12 +40,6 @@
                                         "description": "revision is the catalog revision of the achievement when the tier was\nearned (\u003e= 1). It scopes the operator's revoke line to one revision.",
                                         "minimum": 1,
                                         "type": "integer"
-                                    },
-                                    "route": {
-                                        "description": "route is the entity of the event that crossed the tier, such as\n\"dashboards\" or \"guides\".",
-                                        "maxLength": 32,
-                                        "minLength": 1,
-                                        "type": "string"
                                     },
                                     "schemaVersion": {
                                         "description": "schemaVersion is the AchievementAward spec schema version (\u003e= 1).\nSeparate from the CRD apiVersion so a schema mistake can be corrected\nwithout an API-version bump.",
@@ -74,7 +74,7 @@
                                 "required": [
                                     "achievementId",
                                     "tier",
-                                    "route",
+                                    "entity",
                                     "revision",
                                     "earnedAt",
                                     "userId",

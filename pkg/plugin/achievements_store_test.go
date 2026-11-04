@@ -348,7 +348,7 @@ func TestAchievementStore_AwardWriteIsStamped(t *testing.T) {
 		t.Fatal("award not stored under its tier name")
 	}
 	want := map[string]any{
-		"achievementId": "guides-finished", "tier": 2.0, "route": "guides", "revision": 1.0,
+		"achievementId": "guides-finished", "tier": 2.0, "entity": "guides", "revision": 1.0,
 		"earnedAt": "2026-11-02T08:30:00Z", "userId": "user:27", "userLogin": "ada", "userDisplayName": "Ada L",
 		"orgId": 1.0, "stackNamespace": achievementTestNamespace, "schemaVersion": 1.0,
 	}
