@@ -92,7 +92,7 @@ write_order() { printf '%s\n' "$RUN_LOG" | sed -n 's/^BODY	.*"name": *"\([^"]*\)
 # --- fixtures ---------------------------------------------------------------
 
 blocks='[{"type":"markdown","id":"b1","content":"hi"}]'
-divider_blocks='[{"type":"divider","id":"top"},{"type":"conditional","conditions":["on-page:/"],"whenTrue":[{"type":"divider","id":"nested"}],"whenFalse":[]}]'
+divider_blocks='[{"type":"divider","id":"top"},{"type":"conditional","conditions":["on-page:/"],"whenTrue":[{"type":"divider","id":"nested"}],"whenFalse":[{"type":"divider"},{"type":"markdown","content":"---"}]}]'
 
 mkpkg() { # dir, id, type, milestones-json, blocks-json
   mkdir -p "$1"
@@ -284,8 +284,13 @@ expect_code "a direct guide with dividers uploads" 0
 DIRECT_BODY=$(printf '%s\n' "$RUN_LOG" | sed -n 's/^BODY\t//p' | jq -c 'select(.metadata.name == "direct-divider")')
 DIVIDER_MARKER='<!-- pathfinder:block=divider;v=1 -->
 ---'
-if [[ "$(echo "$DIRECT_BODY" | jq --arg marker "$DIVIDER_MARKER" '[.. | objects | select(.type? == "markdown" and .content? == $marker)] | length')" == "2" &&
-      "$(echo "$DIRECT_BODY" | jq '[.. | objects | select(.type? == "divider")] | length')" == "0" ]]; then
+expected_divider_blocks=$(jq -cn --arg marker "$DIVIDER_MARKER" '[
+  {type:"markdown", id:"top", content:$marker},
+  {type:"conditional", conditions:["on-page:/"],
+   whenTrue:[{type:"markdown", id:"nested", content:$marker}],
+   whenFalse:[{type:"markdown", content:$marker}, {type:"markdown", content:"---"}]}
+]')
+if jq -e --argjson expected "$expected_divider_blocks" '.spec.blocks == $expected' <<<"$DIRECT_BODY" >/dev/null; then
   ok "direct guide publishing recursively encodes top-level and nested dividers"
 else
   nope "direct guide divider encoding" "$DIRECT_BODY"
@@ -296,8 +301,7 @@ printf '{"id":"m-a","title":"T m-a","blocks":%s}' "$divider_blocks" >"${DIVIDER_
 MODE=empty run --package "$DIVIDER_PKG"
 expect_code "a learning path with dividers uploads" 0
 MILESTONE_BODY=$(printf '%s\n' "$RUN_LOG" | sed -n 's/^BODY\t//p' | jq -c 'select(.metadata.name == "m-a")')
-if [[ "$(echo "$MILESTONE_BODY" | jq --arg marker "$DIVIDER_MARKER" '[.. | objects | select(.type? == "markdown" and .content? == $marker)] | length')" == "2" &&
-      "$(echo "$MILESTONE_BODY" | jq '[.. | objects | select(.type? == "divider")] | length')" == "0" ]]; then
+if jq -e --argjson expected "$expected_divider_blocks" '.spec.blocks == $expected' <<<"$MILESTONE_BODY" >/dev/null; then
   ok "learning-path publishing recursively encodes top-level and nested dividers"
 else
   nope "learning-path divider encoding" "$MILESTONE_BODY"

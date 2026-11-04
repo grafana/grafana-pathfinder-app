@@ -84,6 +84,20 @@ describe('App Platform guide compatibility', () => {
     expect(decodeAppPlatformGuideBlocks(markdown)).toEqual({ ok: true, blocks: markdown });
   });
 
+  it('preserves unknown fields from newer deployments after validation', () => {
+    const persisted = [
+      {
+        type: 'section',
+        id: 'future-section',
+        futureSectionOption: 'keep-me',
+        blocks: [{ type: 'markdown', content: 'Future content', futureBlockOption: { enabled: true } }],
+      },
+    ];
+
+    const decoded = decodeAppPlatformGuideBlocks(persisted);
+    expect(decoded.ok && encodeAppPlatformGuideBlocks(decoded.blocks)).toEqual(persisted);
+  });
+
   it('normalizes legacy action aliases on blocks and multistep steps', () => {
     expect(
       decodeAppPlatformGuideBlocks([
@@ -119,10 +133,11 @@ describe('App Platform guide compatibility', () => {
     expect(decodeAppPlatformGuideBlocks([{ ...wrapper, whenFalse: null }]).ok).toBe(false);
   });
 
-  it('rejects an invalid identifier on a stored divider', () => {
-    expect(decodeAppPlatformGuideBlocks([{ type: 'markdown', id: 17, content: PERSISTED_DIVIDER_MARKDOWN }]).ok).toBe(
-      false
-    );
+  it.each([null, '', 17])('restores a stored divider without an unusable id (%p)', (id) => {
+    expect(decodeAppPlatformGuideBlocks([{ type: 'markdown', id, content: PERSISTED_DIVIDER_MARKDOWN }])).toEqual({
+      ok: true,
+      blocks: [{ type: 'divider' }],
+    });
   });
 
   it('returns a validation error for excessively nested external data', () => {

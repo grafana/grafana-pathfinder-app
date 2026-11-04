@@ -81,7 +81,7 @@ export function decodeAppPlatformGuideBlocks(blocks: unknown): AppPlatformGuideB
     if (block.type === 'markdown' && block.content === PERSISTED_DIVIDER_MARKDOWN) {
       return {
         type: 'divider',
-        ...(block.id !== undefined ? { id: block.id } : {}),
+        ...(typeof block.id === 'string' && block.id.length > 0 ? { id: block.id } : {}),
       };
     }
 
@@ -141,5 +141,5 @@ export function decodeAppPlatformGuideBlocks(blocks: unknown): AppPlatformGuideB
     };
   }
   const parsed = JsonBlockSchema.array().safeParse(decoded);
-  return parsed.success ? { ok: true, blocks: parsed.data as JsonBlock[] } : { ok: false, issues: parsed.error.issues };
+  return parsed.success ? { ok: true, blocks: decoded as JsonBlock[] } : { ok: false, issues: parsed.error.issues };
 }
