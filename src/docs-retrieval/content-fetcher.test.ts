@@ -606,6 +606,31 @@ describe('PR-tester marker round trip', () => {
     expect(requested.every((url) => !url.includes('#'))).toBe(true);
   });
 
+  it('opens a bundled package member from a marked URL and keeps the marker on the result', async () => {
+    const bare = await fetchContent('bundled:first-dashboard/content.json');
+    const marked = await fetchContent('bundled:first-dashboard/content.json#pf-pr-abc123');
+
+    expect(bare.error).toBeUndefined();
+    expect(marked.error).toBeUndefined();
+    expect(marked.content?.url).toBe('bundled:first-dashboard/content.json#pf-pr-abc123');
+    expect(marked.content?.content).toBe(bare.content?.content);
+  });
+
+  it('opens a legacy indexed bundled guide from a marked URL', async () => {
+    const marked = await fetchContent('bundled:first-dashboard#pf-pr-abc123');
+
+    expect(marked.error).toBeUndefined();
+    expect(marked.content?.url).toBe('bundled:first-dashboard#pf-pr-abc123');
+  });
+
+  it('keeps a missing bundled member an unmarked not-found', async () => {
+    const result = await fetchContent('bundled:nonexistent-package/content.json#pf-pr-abc123');
+
+    expect(result.content).toBeNull();
+    expect(result.error).toContain('nonexistent-package/content.json');
+    expect(result.error).not.toContain('pf-pr-');
+  });
+
   it('leaves an unmarked URL unmarked', async () => {
     installFetch(JSON.stringify(validGuide));
 

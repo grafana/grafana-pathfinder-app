@@ -54,6 +54,14 @@ function wrapContentAsJsonGuide(content: string, url: string, title: string): st
   return JSON.stringify(jsonGuide);
 }
 
+function restorePrTestMarker(result: ContentFetchResult, markedUrl: string): ContentFetchResult {
+  const fetchId = getPrTestFetchId(markedUrl);
+  if (!fetchId || !result.content) {
+    return result;
+  }
+  return { ...result, content: { ...result.content, url: withPrTestMarker(result.content.url, fetchId) } };
+}
+
 /**
  * Main unified content fetcher
  * Determines content type and fetches accordingly
@@ -77,15 +85,11 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
       if (url.startsWith('bundled:')) {
         tier = 'bundled';
-        const result = await fetchBundledInteractive(url);
-
-        return result;
+        return restorePrTestMarker(await fetchBundledInteractive(stripPrTestMarker(url)), url);
       }
       if (url.startsWith('backend-guide:')) {
         tier = 'backend-guide';
-        const result = await fetchBackendInteractive(url, options.loadContext);
-
-        return result;
+        return restorePrTestMarker(await fetchBackendInteractive(stripPrTestMarker(url), options.loadContext), url);
       }
 
       // SECURITY: Validate URL is from a trusted source before fetching

@@ -21,13 +21,24 @@
  *   3. `window.location.pathname` (last-resort fallback)
  */
 
+import { getPrTestFetchId, stripPrTestMarker, withPrTestMarker } from '../lib/pr-test-marker';
+
 const MAX_KEY_LENGTH = 200;
 
 let activeTabUrl: string | undefined;
 let contentKeyOverride: string | undefined;
 
 function sanitize(value: string): string {
-  return value.replace(/\.\./g, '').slice(0, MAX_KEY_LENGTH);
+  const stripped = value.replace(/\.\./g, '');
+  const fetchId = getPrTestFetchId(stripped);
+  if (fetchId === undefined) {
+    return stripped.slice(0, MAX_KEY_LENGTH);
+  }
+  // Truncating the URL's tail would drop the PR-test marker, merging the fetch
+  // into the production guide's records, so the bound applies to the URL before it.
+  const bare = stripPrTestMarker(stripped);
+  const room = MAX_KEY_LENGTH - (stripped.length - bare.length);
+  return room > 0 ? withPrTestMarker(bare.slice(0, room), fetchId) : stripped.slice(0, MAX_KEY_LENGTH);
 }
 
 /**

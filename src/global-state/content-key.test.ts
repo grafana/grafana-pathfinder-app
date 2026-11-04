@@ -6,6 +6,7 @@ import {
   setActiveTabUrl,
   setContentKeyOverride,
 } from './content-key';
+import { getPrTestFetchId, isPrTestUrl, withPrTestMarker } from '../lib/pr-test-marker';
 
 describe('content-key', () => {
   beforeEach(() => {
@@ -55,6 +56,46 @@ describe('content-key', () => {
     const longUrl = 'https://example.com/' + 'a'.repeat(500);
     setActiveTabUrl(longUrl);
     expect(getContentKey()).toHaveLength(200);
+  });
+
+  describe('PR-tester marker at the length bound', () => {
+    const MAX = 200;
+    const urlOfLength = (marked: number, fetchId: string) => {
+      const markerLength = withPrTestMarker('', fetchId).length;
+      return withPrTestMarker(
+        'https://raw.githubusercontent.com/org/repo/' + 'a'.repeat(marked - markerLength - 43),
+        fetchId
+      );
+    };
+
+    it.each([199, 200, 201, 228, 500])('keeps preview classification and fetch identity at %i characters', (length) => {
+      const marked = urlOfLength(length, 'k3x9a');
+      expect(marked).toHaveLength(length);
+      setActiveTabUrl(marked);
+
+      const key = getContentKey();
+
+      expect(key.length).toBeLessThanOrEqual(MAX);
+      expect(isPrTestUrl(key)).toBe(true);
+      expect(getPrTestFetchId(key)).toBe('k3x9a');
+      if (length <= MAX) {
+        expect(key).toBe(marked);
+      }
+    });
+
+    it.each([200, 201, 228, 500])('separates two fetches of one %i-character URL', (length) => {
+      setActiveTabUrl(urlOfLength(length, 'abcdef1'));
+      const first = getContentKey();
+      setActiveTabUrl(urlOfLength(length, 'abcdef2'));
+      const second = getContentKey();
+
+      expect(first).not.toBe(second);
+    });
+
+    it('still truncates an unmarked URL to the bound', () => {
+      setActiveTabUrl('https://example.com/' + 'a'.repeat(500) + '#pf-pr-');
+      expect(getContentKey()).toHaveLength(MAX);
+    });
   });
 
   it('treats empty-string inputs as unset', () => {
