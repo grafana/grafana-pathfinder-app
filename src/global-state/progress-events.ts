@@ -26,7 +26,7 @@ export type ProgressReason = 'none' | 'objectives' | 'observed' | 'manual' | 'sk
 /**
  * Why a guide percentage was announced: `'change'` for a step or section write
  * the reader just made, `'load'` for a recompute of evidence already stored or
- * objectives met on their first answered check.
+ * objectives met on their first answered check with no completion requested.
  * Absent on resets and anything else; a consumer must treat absent as not a change.
  */
 export type ProgressOrigin = 'change' | 'load';
