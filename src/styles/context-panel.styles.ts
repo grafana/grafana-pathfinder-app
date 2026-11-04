@@ -24,7 +24,7 @@ export const getContainerStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
-    padding: theme.spacing(1),
+    padding: theme.spacing(2),
     width: '100%',
     maxWidth: '100%',
     boxSizing: 'border-box',
