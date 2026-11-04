@@ -6,8 +6,11 @@ import { mockDatasourceList, mockDatasourceListFailure } from '../../test-utils/
 
 const mockLocation = { pathname: '/a/grafana-pathfinder-app', search: {} as Record<string, string> };
 const mockSetPageContext = jest.fn();
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 jest.mock('@grafana/runtime', () => ({
-  ...require('../../test-utils/datasource-list').runtimeDatasourceSrvStub,
   locationService: {
     getLocation: () => ({ pathname: mockLocation.pathname }),
     getSearchObject: () => mockLocation.search,

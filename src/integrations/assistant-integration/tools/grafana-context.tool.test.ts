@@ -4,8 +4,11 @@ import { createGrafanaContextTool } from './grafana-context.tool';
 import type { GrafanaContextArtifact } from './types';
 import { mockDatasourceList, mockDatasourceListFailure } from '../../../test-utils/datasource-list';
 
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 jest.mock('@grafana/runtime', () => ({
-  ...require('../../../test-utils/datasource-list').runtimeDatasourceSrvStub,
   config: { bootData: { settings: { buildInfo: { version: '13.2.0' } }, user: { orgRole: 'Editor' } }, theme2: {} },
   locationService: {
     getLocation: () => ({ pathname: '/explore', search: '', hash: '' }),

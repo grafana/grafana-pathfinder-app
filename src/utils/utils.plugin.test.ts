@@ -1,12 +1,12 @@
-import { of } from 'rxjs';
+import { getPluginSettings, updateAppPluginSettings } from '@grafana/plugin-compat/apps';
 
 import { fetchPluginJsonData, fetchPluginSettings, updatePluginSettings } from './utils.plugin';
 import { saveTenantSettings } from '../components/AppConfig/save-settings';
 import { fetchPathfinderSettingsSnapshot, savePathfinderSettings } from './pathfinder-settings-api';
 
-const fetchMock = jest.fn();
-jest.mock('@grafana/runtime', () => ({
-  getBackendSrv: () => ({ fetch: fetchMock }),
+jest.mock('@grafana/plugin-compat/apps', () => ({
+  getPluginSettings: jest.fn(),
+  updateAppPluginSettings: jest.fn(),
 }));
 jest.mock('./pathfinder-settings-api', () => ({
   ...jest.requireActual('./pathfinder-settings-api'),
@@ -17,17 +17,15 @@ jest.mock('./pathfinder-settings-api', () => ({
 const PLUGIN_ID = 'grafana-pathfinder-app';
 
 function serveSettings(record: Record<string, unknown>) {
-  fetchMock.mockImplementation(({ method }: { method: string }) => of({ data: method === 'GET' ? record : {} }));
+  jest.mocked(getPluginSettings).mockResolvedValue(record as never);
+  jest.mocked(updateAppPluginSettings).mockResolvedValue(record as never);
 }
 
 function sentWrites(): unknown[] {
-  return fetchMock.mock.calls
-    .map(([request]) => request)
-    .filter((request) => request.method === 'POST')
-    .map((request) => {
-      expect(request.url).toBe(`/api/plugins/${PLUGIN_ID}/settings`);
-      return request.data;
-    });
+  return jest.mocked(updateAppPluginSettings).mock.calls.map(([pluginId, data]) => {
+    expect(pluginId).toBe(PLUGIN_ID);
+    return data;
+  });
 }
 
 beforeEach(() => {
@@ -44,6 +42,7 @@ describe('fetchPluginSettings', () => {
       enabled: false,
       pinned: true,
     });
+    expect(getPluginSettings).toHaveBeenCalledWith(PLUGIN_ID);
   });
 
   it("defaults to Grafana's reading of omitted fields: enabled, not pinned, empty jsonData", async () => {

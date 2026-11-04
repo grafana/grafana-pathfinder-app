@@ -2,9 +2,12 @@ import type { ToolInvokeOptions } from '@grafana/assistant';
 
 import { createDatasourceMetadataTool } from './datasource-metadata.tool';
 import { fetchPrometheusMetadata } from './utils/prometheus.utils';
-import { getInstanceMock, mockDatasourceList } from '../../../test-utils/datasource-list';
+import { getDataSourceInstanceMock, mockDatasourceList } from '../../../test-utils/datasource-list';
 
-jest.mock('@grafana/runtime', () => require('../../../test-utils/datasource-list').runtimeDatasourceSrvStub);
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 jest.mock('@grafana/assistant', () => ({
   createTool: (
     invoke: (input: unknown, options: unknown) => unknown,
@@ -33,7 +36,7 @@ it('names the supported types when no supported data source exists', async () =>
   await expect(invoke()).resolves.toBe(
     'No supported datasources found. Supported types: Prometheus, Loki, Tempo, Pyroscope.'
   );
-  expect(getInstanceMock).not.toHaveBeenCalled();
+  expect(getDataSourceInstanceMock).not.toHaveBeenCalled();
 });
 
 it('lists the available supported types when the requested type is absent', async () => {
@@ -50,7 +53,7 @@ it('lists the available supported types when the requested type is absent', asyn
 it('reports an unknown uid as not found', async () => {
   mockDatasourceList([{ uid: 'prom-1', name: 'Prod metrics', type: 'prometheus' }]);
   await expect(invoke({ datasourceUid: 'deleted' })).resolves.toBe('Could not find the specified datasource.');
-  expect(getInstanceMock).not.toHaveBeenCalled();
+  expect(getDataSourceInstanceMock).not.toHaveBeenCalled();
 });
 
 it('fetches metadata from the instance of the matched data source', async () => {
@@ -59,13 +62,13 @@ it('fetches metadata from the instance of the matched data source', async () => 
     { uid: 'prom-1', name: 'Prod metrics', type: 'prometheus' },
   ]);
   const instance = { uid: 'prom-1', name: 'instance' };
-  getInstanceMock.mockResolvedValueOnce(instance);
+  getDataSourceInstanceMock.mockResolvedValueOnce(instance);
   jest.mocked(fetchPrometheusMetadata).mockResolvedValue({ labels: { job: ['api'] }, metrics: ['up'] } as never);
   const onArtifact = jest.fn();
 
   const [text, artifact] = (await invoke({}, onArtifact)) as [string, unknown];
 
-  expect(getInstanceMock).toHaveBeenCalledWith('prom-1');
+  expect(getDataSourceInstanceMock).toHaveBeenCalledWith('prom-1');
   expect(fetchPrometheusMetadata).toHaveBeenCalledWith(instance);
   expect(artifact).toEqual({
     datasource: { uid: 'prom-1', name: 'Prod metrics', type: 'prometheus' },

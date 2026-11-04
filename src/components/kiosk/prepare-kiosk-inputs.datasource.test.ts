@@ -5,10 +5,10 @@ import { mockDatasourceList, mockDatasourceListFailure } from '../../test-utils/
 import type { KioskInput } from '../../types/kiosk-page.schema';
 import type { KioskRule } from './kiosk-rules';
 
-jest.mock('@grafana/runtime', () => ({
-  ...jest.requireActual('@grafana/runtime'),
-  ...require('../../test-utils/datasource-list').runtimeDatasourceSrvStub,
-}));
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({ prepareGuideLaunch: jest.fn() }));
 jest.mock('../../lib/user-storage', () => ({ guideResponseStorage: { mergeResponses: jest.fn() } }));
 

@@ -1,13 +1,13 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { HasDatasourceHelper } from './HasDatasourceHelper';
-import { mockDatasourceList, mockDatasourceListFailure } from '../../../../test-utils/datasource-list';
+import { holdDatasourceList, mockDatasourceList } from '../../../../test-utils/datasource-list';
 
-jest.mock('@grafana/runtime', () => ({
-  ...jest.requireActual('@grafana/runtime'),
-  ...require('../../../../test-utils/datasource-list').runtimeDatasourceSrvStub,
-}));
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 
 const LIST = [
   { uid: 'grafana', name: '-- Grafana --', type: 'grafana', meta: { builtIn: true } },
@@ -51,11 +51,25 @@ it('groups instance names under their type', async () => {
   expect(await screen.findByText('Match any of the 2 prometheus datasources you have configured')).toBeInTheDocument();
 });
 
-it('shows only the free-text input when the data source service fails', async () => {
-  mockDatasourceListFailure();
+it('shows only the free-text input while the list loads, then the suggestions', async () => {
+  const list = holdDatasourceList();
   renderHelper();
 
-  expect(await screen.findByTestId('has-ds')).toBeInTheDocument();
+  expect(screen.getByTestId('has-ds')).toBeInTheDocument();
+  expect(screen.queryByText('By type (recommended — survives renames)')).not.toBeInTheDocument();
+
+  await act(async () => list.resolve(LIST));
+
+  expect(screen.getByText('By type (recommended — survives renames)')).toBeInTheDocument();
+});
+
+it('shows only the free-text input when the data source service fails', async () => {
+  const list = holdDatasourceList();
+  renderHelper();
+
+  await act(async () => list.reject(new Error('data source service unavailable')));
+
+  expect(screen.getByTestId('has-ds')).toBeInTheDocument();
   expect(screen.queryByText('By type (recommended — survives renames)')).not.toBeInTheDocument();
   expect(screen.queryByText('Or by name (matches one specific datasource)')).not.toBeInTheDocument();
 });
