@@ -75,7 +75,7 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 			return out.decision
 		}
 		for tier := current.Tier + 1; tier <= out.next.Tier; tier++ {
-			award := Award{AchievementID: d.ID, Tier: tier, Route: ev.Entity, Revision: out.next.Revision, EarnedAt: e.now().UTC()}
+			award := Award{AchievementID: d.ID, Tier: tier, Entity: ev.Entity, Revision: out.next.Revision, EarnedAt: e.now().UTC()}
 			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
 				return d.unavailable(current)
 			}

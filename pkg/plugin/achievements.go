@@ -260,7 +260,7 @@ func (a *App) shapeMyAchievements(rows achievements.Rows) myAchievementsResponse
 		resp.Awards = append(resp.Awards, achievementAward{
 			AchievementID: aw.AchievementID,
 			Tier:          aw.Tier,
-			Entity:        aw.Route,
+			Entity:        aw.Entity,
 			Revision:      aw.Revision,
 			EarnedAt:      aw.EarnedAt.UTC().Format(time.RFC3339),
 		})
