@@ -120,6 +120,8 @@ import {
   type SurfaceCompletionInput,
   journeyMilestonePercentages,
 } from './learning-journey-helpers';
+import { sanitizeContentKey } from '../global-state/content-key';
+import { getPrTestFetchId } from '../lib/pr-test-marker';
 import { StorageKeys } from '../lib/storage-keys';
 import { resetGuideProgress } from '../components/docs-panel/hooks/resetGuideProgress';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
@@ -1637,6 +1639,29 @@ describe('PR-tester previews stay out of real completion records', () => {
     expect(interactiveCompletionData.get(marked('one'))).toBe(100);
     expect(interactiveCompletionData.has(marked('two'))).toBe(false);
   });
+
+  it.each([200, 201, 228])(
+    'keeps a %i-character marked milestone in its own bounded record, apart from other fetches',
+    async (length) => {
+      const tail = `/${slug}/content.json`;
+      const markerLength = '#pf-pr-abcdef1'.length;
+      const longBase = `https://raw.githubusercontent.com/org/repo/${'d'.repeat(
+        length - markerLength - tail.length - 'https://raw.githubusercontent.com/org/repo/'.length
+      )}`;
+      const first = `${longBase}${tail}#pf-pr-abcdef1`;
+      const second = `${longBase}${tail}#pf-pr-abcdef2`;
+      expect(first).toHaveLength(length);
+
+      await markMilestoneDone(`${longBase}#pf-pr-abcdef1`, slug, first);
+
+      const writtenKey = interactiveCompletionSetMock.mock.calls[0]![0] as string;
+      expect(writtenKey.length).toBeLessThanOrEqual(200);
+      expect(getPrTestFetchId(writtenKey)).toBe('abcdef1');
+      expect(interactiveCompletionData.has(sanitizeContentKey(second))).toBe(false);
+      expect(markGuideCompletedMock).not.toHaveBeenCalled();
+      expect(emitted).toHaveLength(0);
+    }
+  );
 
   it('emits nothing from the surface completion emitter for a marked milestone', () => {
     recordGuideCompletionForSurface({
