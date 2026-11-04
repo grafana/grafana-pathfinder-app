@@ -27,7 +27,7 @@ func seedProgress(id string) achievements.Progress {
 }
 
 func award(id string, tier int) achievements.Award {
-	return achievements.Award{AchievementID: id, Tier: tier, Route: "guides", Revision: 2, EarnedAt: time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC)}
+	return achievements.Award{AchievementID: id, Tier: tier, Entity: "guides", Revision: 2, EarnedAt: time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC)}
 }
 
 func mustCreate(t *testing.T, s achievements.Store, p achievements.Person, id string) achievements.Progress {

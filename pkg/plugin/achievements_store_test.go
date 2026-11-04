@@ -338,7 +338,7 @@ func TestAchievementStore_ProgressWriteIsStampedAndSchemaValid(t *testing.T) {
 func TestAchievementStore_AwardWriteIsStamped(t *testing.T) {
 	store, api := newAchievementTestStore(t)
 	err := store.CreateAward(context.Background(), achievementTestPerson, achievements.Award{
-		AchievementID: "guides-finished", Tier: 2, Route: "guides", Revision: 1, EarnedAt: achievementTestNow,
+		AchievementID: "guides-finished", Tier: 2, Entity: "guides", Revision: 1, EarnedAt: achievementTestNow,
 	})
 	if err != nil {
 		t.Fatalf("CreateAward: %v", err)
@@ -362,7 +362,7 @@ func TestAchievementStore_AwardWriteIsStamped(t *testing.T) {
 func TestAchievementStore_AwardOmitsUnavailableDisplayFields(t *testing.T) {
 	store, api := newAchievementTestStore(t)
 	store.writer.UserLogin, store.writer.UserDisplayName = "", ""
-	if err := store.CreateAward(context.Background(), achievementTestPerson, achievements.Award{AchievementID: "a", Tier: 1, Route: "guides", Revision: 1, EarnedAt: achievementTestNow}); err != nil {
+	if err := store.CreateAward(context.Background(), achievementTestPerson, achievements.Award{AchievementID: "a", Tier: 1, Entity: "guides", Revision: 1, EarnedAt: achievementTestNow}); err != nil {
 		t.Fatalf("CreateAward: %v", err)
 	}
 	spec := api.spec(achievementAwardResource, achievementAwardName(achievementTestPerson.ID, "a", 1))
@@ -407,7 +407,7 @@ func TestAchievementStore_UpstreamFailuresPassThrough(t *testing.T) {
 			return err
 		}},
 		{"award 503", "POST " + achievementAwardResource, http.StatusServiceUnavailable, func(s *achievementStore) error {
-			return s.CreateAward(context.Background(), achievementTestPerson, achievements.Award{AchievementID: "a", Tier: 1, Route: "guides", Revision: 1, EarnedAt: achievementTestNow})
+			return s.CreateAward(context.Background(), achievementTestPerson, achievements.Award{AchievementID: "a", Tier: 1, Entity: "guides", Revision: 1, EarnedAt: achievementTestNow})
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

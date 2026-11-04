@@ -169,7 +169,7 @@ func (s *achievementStore) CreateAward(ctx context.Context, person achievements.
 		Spec: achievementAwardSpec{
 			AchievementID:   a.AchievementID,
 			Tier:            int64(a.Tier),
-			Entity:          a.Route,
+			Entity:          a.Entity,
 			Revision:        int64(a.Revision),
 			EarnedAt:        a.EarnedAt.UTC().Format(time.RFC3339),
 			UserID:          person.ID,

@@ -46,7 +46,7 @@ type Progress struct {
 type Award struct {
 	AchievementID string
 	Tier          int
-	Route         string
+	Entity        string
 	Revision      int
 	EarnedAt      time.Time
 }
