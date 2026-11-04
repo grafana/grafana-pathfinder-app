@@ -459,7 +459,7 @@ func TestMyAchievements_ShapesOnlyTheCallersRows(t *testing.T) {
 	if body.AsOf != "2026-11-02T09:00:00Z" || body.Truncated {
 		t.Fatalf("asOf %q truncated %v", body.AsOf, body.Truncated)
 	}
-	if len(body.Awards) != 2 || body.Awards[0].AchievementID != "dash-builder" || body.Awards[0].Tier != 1 || body.Awards[0].Route != "dashboards" ||
+	if len(body.Awards) != 2 || body.Awards[0].AchievementID != "dash-builder" || body.Awards[0].Tier != 1 || body.Awards[0].Entity != "dashboards" ||
 		body.Awards[1].AchievementID != "guide-routes" {
 		t.Fatalf("awards = %+v", body.Awards)
 	}

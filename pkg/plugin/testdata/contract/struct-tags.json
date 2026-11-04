@@ -163,8 +163,8 @@
       "omitempty": false
     },
     {
-      "field": "Route",
-      "json": "route",
+      "field": "Entity",
+      "json": "entity",
       "type": "string",
       "wire": "string",
       "omitempty": false

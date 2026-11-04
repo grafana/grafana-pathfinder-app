@@ -85,7 +85,7 @@ type achievementCapability struct {
 type achievementAward struct {
 	AchievementID string `json:"achievementId"`
 	Tier          int    `json:"tier"`
-	Route         string `json:"route"`
+	Entity        string `json:"entity"`
 	Revision      int    `json:"revision"`
 	EarnedAt      string `json:"earnedAt"`
 }
@@ -260,7 +260,7 @@ func (a *App) shapeMyAchievements(rows achievements.Rows) myAchievementsResponse
 		resp.Awards = append(resp.Awards, achievementAward{
 			AchievementID: aw.AchievementID,
 			Tier:          aw.Tier,
-			Route:         aw.Route,
+			Entity:        aw.Route,
 			Revision:      aw.Revision,
 			EarnedAt:      aw.EarnedAt.UTC().Format(time.RFC3339),
 		})

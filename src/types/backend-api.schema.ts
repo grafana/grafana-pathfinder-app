@@ -139,7 +139,7 @@ export const AchievementCapabilityWireSchema = z.strictObject({
 export const AchievementAwardWireSchema = z.strictObject({
   achievementId: z.string(),
   tier: z.number().int(),
-  route: z.string(),
+  entity: z.string(),
   revision: z.number().int(),
   earnedAt: z.string(),
 });
