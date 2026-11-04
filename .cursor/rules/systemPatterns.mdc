@@ -195,10 +195,11 @@ reporting cache or stale replay (`Cache-Control: no-store`). Partial reads and u
 remain explicit, not false zero/outstanding. Broad raw GAP grants remain a known separate issue.
 For the full contract and read-only smoke procedure, see `docs/developer/LEARNING_INSIGHTS.md`.
 
-`pkg/achievements` is a pure library with no I/O and no caller yet: the achievements evaluator, catalog and
-registry loaders, and baseline check from the Achievements RFC (pathfinder-rfcs#24, §6). The store and the
-admission policy are ports the future App Platform adapter implements. Its bundled catalog and registry live in
-`pkg/achievements/data/`. Earn windows (RFC §6.2) are not supported and the loader rejects a `window` key.
+`pkg/achievements` is the achievements evaluator. Given an event, it uses the bundled catalog and event
+registry (`pkg/achievements/data/`) to decide which tiers the user earns and what progress to record. It does
+no I/O: storage and admission are interfaces for the plugin's App Platform store to implement, so the package
+is tested on its own with golden tables. Its loaders validate the catalog and registry, and a catalog that
+declares a `window` key fails to load.
 
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
