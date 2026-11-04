@@ -191,7 +191,7 @@ async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): P
 **Role**:
 
 - Provides React context for plugin props
-- Updates plugin settings through Grafana's backend service
+- Reads and updates plugin settings through `@grafana/plugin-compat` (`getPluginSettings`, `updateAppPluginSettings`)
 
 **Key Exports**:
 
