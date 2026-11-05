@@ -116,7 +116,11 @@ test('records the App Platform compatibility facade invariant', () => {
     context.contract_anchor.contract,
     /Every repository-owned full-content reader validates unknown resource blocks/
   );
-  assert.match(context.contract_anchor.contract, /every supported writer recursively encodes canonical dividers/);
+  assert.match(
+    context.contract_anchor.contract,
+    /the editor, MCP finalize tool, and shell publishing scripts recursively encode canonical dividers/
+  );
+  assert.match(context.contract_anchor.contract, /Terraform applies raw specs/);
 });
 
 test('records the review orchestration contract under ai-subsystem', () => {
