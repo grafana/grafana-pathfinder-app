@@ -1,6 +1,6 @@
 import type { GrafanaTheme2 } from '@grafana/data';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { LinkButton, useStyles2, Icon } from '@grafana/ui';
+import { LinkButton, useStyles2, Icon, ConfirmModal } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
@@ -21,7 +21,7 @@ import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
-import type { LearningPath } from '../../types/learning-paths.types';
+import type { LearningPath, PathGuide } from '../../types/learning-paths.types';
 import {
   catalogIdentity,
   compareResolvedAssignments,
@@ -34,6 +34,7 @@ import {
   useMyAssignments,
   BADGES,
   getPathsData,
+  getAssignmentGuideState,
   type DiscoverMoreItem,
 } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
@@ -102,6 +103,10 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     };
   }, []);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
+  const [pendingAssignment, setPendingAssignment] = useState<{
+    entry: HomePathEntry;
+    mismatchedGuides: PathGuide[];
+  } | null>(null);
 
   const {
     paths,
@@ -383,7 +388,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     [launch, allPaths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
 
-  const handleHomePathView = (entry: HomePathEntry) => {
+  const openHomePath = (entry: HomePathEntry) => {
     selectCard(entry.key);
     const item = catalog.items.find(
       (candidate) => candidate.format === 'path' && catalogIdentity(candidate) === entry.key
@@ -395,7 +400,50 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     ) {
       void catalogLaunch.launch(item);
     } else {
-      handleOpenGuide(entry.path.guides[0] ?? '', entry.path.id, { path: entry.path, inSidebar: true });
+      const { effectiveGuides } = getAssignmentGuideState(entry.guides, entry.assignment?.guides);
+      const nextGuide =
+        effectiveGuides.find((guide) => guide.isCurrent && !guide.completed) ??
+        effectiveGuides.find((guide) => !guide.completed) ??
+        effectiveGuides[0];
+      handleOpenGuide(nextGuide?.id ?? '', entry.path.id, { path: entry.path, inSidebar: true });
+    }
+  };
+
+  const handleHomePathView = (entry: HomePathEntry) => {
+    if (launchInFlightRef.current) {
+      return;
+    }
+    const { mismatchedGuides } = getAssignmentGuideState(entry.guides, entry.assignment?.guides);
+    if (mismatchedGuides.length > 0) {
+      setPendingAssignment({ entry, mismatchedGuides });
+      return;
+    }
+    openHomePath(entry);
+  };
+
+  const confirmAssignmentReset = async () => {
+    if (!pendingAssignment || launchInFlightRef.current) {
+      return;
+    }
+    launchInFlightRef.current = true;
+    setLaunchingId(pendingAssignment.entry.path.id);
+    let resetSucceeded = false;
+    try {
+      await resetPathGuides(pendingAssignment.entry.path.id, pendingAssignment.mismatchedGuides);
+      resetSucceeded = true;
+    } catch {
+      if (mountedRef.current) {
+        notifyGuideLaunchError();
+      }
+    } finally {
+      launchInFlightRef.current = false;
+      if (mountedRef.current) {
+        setLaunchingId(null);
+      }
+    }
+    if (resetSucceeded && mountedRef.current) {
+      setPendingAssignment(null);
+      openHomePath(pendingAssignment.entry);
     }
   };
 
@@ -758,7 +806,35 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
         </button>
       </div>
 
-      {/* Badge Detail Card Overlay */}
+      {pendingAssignment && (
+        <ConfirmModal
+          isOpen
+          title={t('myLearning.assignmentResetTitle', 'Reset local progress?')}
+          body={
+            <>
+              <p>
+                {t(
+                  'myLearning.assignmentResetBody',
+                  'Starting this assignment will reset local progress on the following guide(s):'
+                )}
+              </p>
+              <ul>
+                {pendingAssignment.mismatchedGuides.map((guide) => (
+                  <li key={guide.id}>{guide.title}</li>
+                ))}
+              </ul>
+            </>
+          }
+          confirmText={t('myLearning.assignmentResetConfirm', 'Reset and continue')}
+          dismissText={t('myLearning.assignmentResetCancel', 'Cancel')}
+          onConfirm={confirmAssignmentReset}
+          onDismiss={() => {
+            if (!launchInFlightRef.current) {
+              setPendingAssignment(null);
+            }
+          }}
+        />
+      )}
       {selectedBadge && (
         <BadgeDetailCard
           badge={selectedBadge}

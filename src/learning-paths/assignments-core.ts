@@ -4,10 +4,24 @@
  */
 import type { AssignmentEntry } from '../lib/assignments-client';
 import { getManifestTracks, type ManifestTrack } from '../types/package.types';
-import type { LearningPath, ResolvedAssignment } from '../types/learning-paths.types';
+import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
+import { markCurrentGuide } from './mark-current-guide';
 
 /** The only target type this destination resolves into a path card. */
 export const PATH_ASSIGNMENT_TARGET = 'path';
+
+export function getAssignmentGuideState(guides: PathGuide[], assignmentGuides?: ResolvedAssignment['guides']) {
+  if (!assignmentGuides?.length) {
+    return { effectiveGuides: guides, mismatchedGuides: [] as PathGuide[] };
+  }
+  const completedByGuideId = new Map(assignmentGuides.map((guide) => [guide.guideId, guide.completed]));
+  return {
+    effectiveGuides: markCurrentGuide(
+      guides.map((guide) => ({ ...guide, completed: completedByGuideId.get(guide.id) ?? guide.completed }))
+    ),
+    mismatchedGuides: guides.filter((guide) => guide.completed && completedByGuideId.get(guide.id) === false),
+  };
+}
 
 export interface ResolvedAssignments {
   items: ResolvedAssignment[];

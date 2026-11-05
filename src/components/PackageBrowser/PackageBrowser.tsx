@@ -265,7 +265,12 @@ function PackageBrowserContent({
           memberIds: entry.path.guides,
           curatedPath: entry.path,
           packageInfo: entry.path.isPrivate
-            ? { packageId: entry.path.id, repository: 'app-platform', packageManifest: entry.path.manifest }
+            ? {
+                packageId: entry.path.id,
+                repository: 'app-platform',
+                packageManifest: entry.path.manifest,
+                trackId: entry.assignment?.trackId,
+              }
             : undefined,
         });
       }
@@ -282,7 +287,14 @@ function PackageBrowserContent({
         (candidate) => candidate.format === 'path' && catalogIdentity(candidate) === entry.key
       );
       if (item) {
-        merged.set(item.key, { ...merged.get(item.key), percent: entry.percent });
+        const nextGuide =
+          entry.guides.find((guide) => guide.isCurrent && !guide.completed) ??
+          entry.guides.find((guide) => !guide.completed);
+        merged.set(item.key, {
+          ...merged.get(item.key),
+          percent: entry.percent,
+          nextId: nextGuide?.id ?? merged.get(item.key)?.nextId,
+        });
       }
     }
     return merged;

@@ -1,13 +1,16 @@
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { LearningPath } from '../../types/learning-paths.types';
+import type { LearningPath, PathGuide, GuideMetadataEntry } from '../../types/learning-paths.types';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import { PackageBrowser } from './PackageBrowser';
 import { getCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { AppPlatformPackageResolver } from '../../package-engine';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
+import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
+
+jest.mock('../docs-panel/utils/open-prepared-guide', () => ({ openGuideInSidebar: jest.fn() }));
 
 jest.mock('@grafana/scenes', () => ({
   ControlsLabel: ({ label, htmlFor }: { label: string; htmlFor?: string }) => <label htmlFor={htmlFor}>{label}</label>,
@@ -39,6 +42,8 @@ const mockItems: CatalogPackage[] = [
 let mockScope = 'test';
 let mockProgress = new Map<string, { percent: number }>();
 let mockLocalPaths: LearningPath[] = [];
+let mockLocalGuides: PathGuide[] = [];
+let mockGuideMetadata: Record<string, GuideMetadataEntry> = {};
 let mockLocalPercent = 0;
 const mockRetry = jest.fn();
 const mockResolve = jest.fn();
@@ -68,13 +73,14 @@ jest.mock('../../learning-paths', () => ({
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   useCatalogProgress: () => mockProgress,
+  getPathsData: () => ({ guideMetadata: mockGuideMetadata }),
   useLearningPaths: () => ({
     paths: mockLocalPaths,
     getPathProgress: () => mockLocalPercent,
     getPathGuides: () => [],
     progress: { completedGuides: [] },
   }),
-  useMyAssignments: () => ({ onlinePaths: [], assignmentByTargetId: new Map(), getPathGuides: () => [] }),
+  useMyAssignments: () => ({ onlinePaths: [], assignmentByTargetId: new Map(), getPathGuides: () => mockLocalGuides }),
   usePackageCatalog: () => ({
     scope: mockScope,
     items: mockItems,
@@ -106,6 +112,8 @@ beforeEach(() => {
   mockScope = 'test';
   mockProgress = new Map();
   mockLocalPaths = [];
+  mockLocalGuides = [];
+  mockGuideMetadata = {};
   mockLocalPercent = 0;
   mockItems.splice(2);
   updateCatalogView('test', {
@@ -736,4 +744,50 @@ it('uses the same local path progress as the homepage even when catalogue progre
   fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
   expect(screen.getByRole('heading', { name: 'Started local path' })).toBeInTheDocument();
   expect(screen.getByText('28%')).toBeInTheDocument();
+});
+
+it('resumes a local bundled path whose guides are missing from the catalog', async () => {
+  mockLocalPaths = [{ id: 'local-path', title: 'Local course', description: '', guides: ['old', 'next'], badgeId: '' }];
+  mockLocalGuides = [
+    { id: 'old', title: 'Completed guide', completed: true, isCurrent: false },
+    { id: 'next', title: 'Next guide', completed: false, isCurrent: true },
+  ];
+  mockGuideMetadata = { next: { title: 'Next guide', estimatedMinutes: 5 } };
+  mockLocalPercent = 50;
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Local course' }));
+
+  await waitFor(() =>
+    expect(openGuideInSidebar).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'bundled:next', title: 'Next guide' })
+    )
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('opens a missing-catalog organization path instead of a public guide with a matching member ID', async () => {
+  const manifest = { id: 'team-path', type: 'path', milestones: ['dashboard'] };
+  mockLocalPaths = [
+    {
+      id: 'team-path',
+      title: 'Team course',
+      description: '',
+      guides: ['dashboard'],
+      badgeId: '',
+      isPrivate: true,
+      manifest,
+    },
+  ];
+  mockResolve.mockResolvedValue({ ok: true, manifest });
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Team course' }));
+
+  await waitFor(() =>
+    expect(openGuideInSidebar).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'backend-guide:team-path', title: 'Team course' })
+    )
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

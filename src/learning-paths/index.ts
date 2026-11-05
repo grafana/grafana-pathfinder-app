@@ -64,6 +64,7 @@ export {
   compareResolvedAssignments,
   formatDueDate,
   getDueStatus,
+  getAssignmentGuideState,
 } from './assignments-core';
 export type { DueStatus } from './assignments-core';
 export type { ResolvedAssignment } from '../types/learning-paths.types';

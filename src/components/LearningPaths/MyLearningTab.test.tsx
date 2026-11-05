@@ -222,6 +222,7 @@ jest.mock('../../learning-paths', () => ({
   getDueStatus: jest.requireActual('../../learning-paths/assignments-core').getDueStatus,
   formatDueDate: jest.requireActual('../../learning-paths/assignments-core').formatDueDate,
   compareResolvedAssignments: jest.requireActual('../../learning-paths/assignments-core').compareResolvedAssignments,
+  getAssignmentGuideState: jest.requireActual('../../learning-paths/assignments-core').getAssignmentGuideState,
   markCurrentGuide: jest.requireActual('../../learning-paths/mark-current-guide').markCurrentGuide,
 }));
 
@@ -1511,6 +1512,24 @@ describe('homepage path launches', () => {
     prepareMock.mockResolvedValue(okResult);
   });
 
+  it('resumes a coverless bundled path at its next incomplete guide', async () => {
+    mockPaths = [{ id: 'path-1', title: 'Started path', guides: ['first', 'next'] }];
+    mockGetPathGuides.mockReturnValue([
+      { id: 'first', title: 'First guide', completed: true, isCurrent: false },
+      { id: 'next', title: 'Next guide', completed: false, isCurrent: true },
+    ]);
+    mockGetGuideUrlForPath.mockImplementation((id: string) => `bundled:${id}`);
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+
+    await waitFor(() =>
+      expect(openGuideInSidebar).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'bundled:next', title: 'Next guide' })
+      )
+    );
+  });
+
   it.each(['title', 'resume'])('tracks a URL-based path once when opened from its %s', async (target) => {
     const url = 'https://grafana.com/docs/learning-paths/path-1/';
     mockPaths = [{ id: 'path-1', title: 'Started path', guides: ['guide-1'], url }];
@@ -1640,6 +1659,82 @@ describe('homepage path launches', () => {
       source: 'home_page',
       packageInfo: { packageId: 'path-1', packageManifest: manifest, trackId: undefined },
     });
+  });
+});
+
+describe('homepage assignment progress mismatch', () => {
+  beforeEach(() => {
+    mockPaths = [{ id: 'path-new', title: 'Assigned path', guides: ['guide-1', 'guide-2'] }];
+    mockGetPathGuides.mockReturnValue([
+      { id: 'guide-1', title: 'Guide one', completed: true, isCurrent: false },
+      { id: 'guide-2', title: 'Guide two', completed: false, isCurrent: true },
+    ]);
+    mockGetGuideUrlForPath.mockImplementation((id: string) => `bundled:${id}`);
+    mockAssignments = [
+      {
+        targetType: 'path',
+        targetId: 'path-new',
+        title: 'Assigned path',
+        overdue: false,
+        satisfied: false,
+        progress: 50,
+        guides: [
+          { guideId: 'guide-1', completed: false },
+          { guideId: 'guide-2', completed: true },
+        ],
+      },
+    ];
+  });
+
+  it('lets the learner cancel without resetting or opening anything', () => {
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Assigned path' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Guide one');
+    expect(openGuideInSidebar).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    expect(mockResetPathGuides).not.toHaveBeenCalled();
+    expect(openGuideInSidebar).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('waits for one confirmed reset before opening the assignment’s incomplete guide', async () => {
+    let finishReset!: () => void;
+    mockResetPathGuides.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishReset = resolve;
+      })
+    );
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Assigned path' }));
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset and continue' });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(mockResetPathGuides).toHaveBeenCalledTimes(1);
+    expect(mockResetPathGuides).toHaveBeenCalledWith('path-new', [expect.objectContaining({ id: 'guide-1' })]);
+    expect(openGuideInSidebar).not.toHaveBeenCalled();
+
+    await act(async () => finishReset());
+
+    await waitFor(() =>
+      expect(openGuideInSidebar).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'bundled:guide-1', title: 'Guide one' })
+      )
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps the confirmation open and does not launch when reset fails', async () => {
+    mockResetPathGuides.mockRejectedValue(new Error('Reset failed'));
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Assigned path' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset and continue' }));
+
+    await waitFor(() => expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' })));
+    expect(openGuideInSidebar).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });
 

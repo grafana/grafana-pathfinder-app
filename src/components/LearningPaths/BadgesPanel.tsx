@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { SceneObjectBase, type SceneObjectState } from '@grafana/scenes';
 import { Button, useStyles2 } from '@grafana/ui';
 import { locationService } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
 import { ROUTES } from '../../constants';
+import { useLearningPageScroll } from '../../hooks';
 import { BADGES, useLearningPaths } from '../../learning-paths';
 import type { EarnedBadge } from '../../types';
 import { prefixRoute } from '../../utils/utils.routing';
@@ -21,6 +22,8 @@ export class BadgesPanel extends SceneObjectBase<SceneObjectState> {
 }
 
 function BadgesPanelRenderer() {
+  const container = useRef<HTMLDivElement>(null);
+  useLearningPageScroll(container);
   const pageStyles = useStyles2(getHomePageStyles);
   const exploreStyles = useStyles2(getPackageBrowserStyles);
   const styles = useStyles2(getMyLearningStyles);
@@ -33,7 +36,7 @@ function BadgesPanelRenderer() {
     : null;
 
   return (
-    <div className={pageStyles.browseLayout}>
+    <div ref={container} className={pageStyles.browseLayout}>
       <nav aria-label="Learning pages" className={pageStyles.browseNavigation}>
         <Button
           onClick={() => locationService.push(prefixRoute(ROUTES.Home))}

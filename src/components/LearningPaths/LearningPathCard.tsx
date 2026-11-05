@@ -6,7 +6,7 @@ import { t } from '@grafana/i18n';
 import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-visual';
 import { LearningCardPreview } from '../LearningContentCard/LearningCardPreview';
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
-import { formatDueDate, getDueStatus, markCurrentGuide } from '../../learning-paths';
+import { formatDueDate, getDueStatus, getAssignmentGuideState } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { getLearningPathCardStyles } from './learning-paths.styles';
 import { AssignmentBadges, dueLabel } from './AssignmentBadges';
@@ -57,21 +57,11 @@ export function LearningPathCard({
   const isUrlBased = Boolean(path.url);
   const isLoadingGuides = isUrlBased && guides.length === 0;
 
-  // Satisfaction follows completion records, not local progress; guides local
-  // storage marks done but the assignment doesn't credit must reset before Continue.
   const assignmentGuides = assignment?.guides;
-  const { effectiveGuides, mismatchedGuides } = useMemo(() => {
-    if (!assignmentGuides || assignmentGuides.length === 0) {
-      return { effectiveGuides: guides, mismatchedGuides: [] };
-    }
-    const completedByGuideId = new Map(assignmentGuides.map((g) => [g.guideId, g.completed]));
-    return {
-      effectiveGuides: markCurrentGuide(
-        guides.map((guide) => ({ ...guide, completed: completedByGuideId.get(guide.id) ?? guide.completed }))
-      ),
-      mismatchedGuides: guides.filter((guide) => guide.completed && completedByGuideId.get(guide.id) === false),
-    };
-  }, [guides, assignmentGuides]);
+  const { effectiveGuides, mismatchedGuides } = useMemo(
+    () => getAssignmentGuideState(guides, assignmentGuides),
+    [guides, assignmentGuides]
+  );
 
   const currentGuide = effectiveGuides.find((g) => g.isCurrent);
   const firstIncompleteGuide = effectiveGuides.find((g) => !g.completed);
