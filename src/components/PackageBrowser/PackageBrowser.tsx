@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { Alert, Button, Icon, Input, Combobox, EmptyState, RadioButtonGroup, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
+import { ControlsLabel } from '@grafana/scenes';
 
 import { useLearningPageScroll } from '../../hooks';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
@@ -70,6 +71,31 @@ function topicLabel(topic: string): string {
     default:
       return topic.replace(/-/g, ' ');
   }
+}
+
+function CatalogFilter({
+  label,
+  id,
+  page,
+  children,
+}: {
+  label: string;
+  id: string;
+  page: boolean;
+  children: React.ReactNode;
+}) {
+  const styles = useStyles2(getPackageBrowserStyles);
+  return page ? (
+    <div className={styles.pageFilter}>
+      <ControlsLabel label={label} htmlFor={id} />
+      {children}
+    </div>
+  ) : (
+    <label htmlFor={id}>
+      {label}
+      {children}
+    </label>
+  );
 }
 
 export function PackageBrowser({ page = false, ...props }: PackageBrowserProps) {
@@ -457,102 +483,109 @@ function PackageBrowserContent({
           </div>
         )}
         {view.mode === 'all' && (
-          <div className={page ? styles.pageFilters : styles.filters}>
-            {page && (
-              <fieldset className={styles.completionFilter}>
-                <legend>{t('packageBrowser.status', 'Status')}</legend>
-                <RadioButtonGroup<'all' | 'in-progress' | 'completed'>
-                  className={styles.completionToggle}
+          <div className={page ? styles.pageFilters : undefined}>
+            <div className={page ? styles.pageFilterControls : styles.filters}>
+              {page && (
+                <fieldset className={styles.completionFilter} aria-label={t('packageBrowser.status', 'Status')}>
+                  <RadioButtonGroup<'all' | 'in-progress' | 'completed'>
+                    className={styles.completionToggle}
+                    options={[
+                      { value: 'all', label: t('packageBrowser.allStatus', 'All') },
+                      { value: 'in-progress', label: t('packageBrowser.inProgress', 'In progress') },
+                      { value: 'completed', label: t('packageBrowser.completed', 'Completed') },
+                    ]}
+                    value={completionFilter}
+                    onChange={(value) => {
+                      setCompletionFilter(value);
+                      update({ scrollTop: 0, visibleCount: CATALOG_BATCH_SIZE });
+                    }}
+                  />
+                </fieldset>
+              )}
+              <CatalogFilter label={t('packageBrowser.format', 'Format')} id={`${searchId}-format`} page={page}>
+                <Combobox
+                  id={`${searchId}-format`}
+                  aria-label={t('packageBrowser.format', 'Format')}
+                  {...(page ? { width: 'auto' as const, minWidth: 12, maxWidth: 24 } : { width: undefined })}
+                  value={view.format}
                   options={[
-                    { value: 'all', label: t('packageBrowser.allStatus', 'All') },
-                    { value: 'in-progress', label: t('packageBrowser.inProgress', 'In progress') },
-                    { value: 'completed', label: t('packageBrowser.completed', 'Completed') },
+                    { value: 'all', label: t('packageBrowser.allFormats', 'All formats') },
+                    { value: 'guide', label: t('packageBrowser.guides', 'Guides') },
+                    { value: 'path', label: t('packageBrowser.paths', 'Learning paths') },
                   ]}
-                  value={completionFilter}
-                  onChange={(value) => {
-                    setCompletionFilter(value);
-                    update({ scrollTop: 0, visibleCount: CATALOG_BATCH_SIZE });
-                  }}
+                  onChange={(option) => update({ format: option.value as CatalogViewState['format'], scrollTop: 0 })}
                 />
-              </fieldset>
-            )}
-            <label htmlFor={`${searchId}-format`}>
-              {t('packageBrowser.format', 'Format')}
-              <Combobox
-                id={`${searchId}-format`}
-                aria-label={t('packageBrowser.format', 'Format')}
-                value={view.format}
-                options={[
-                  { value: 'all', label: t('packageBrowser.allFormats', 'All formats') },
-                  { value: 'guide', label: t('packageBrowser.guides', 'Guides') },
-                  { value: 'path', label: t('packageBrowser.paths', 'Learning paths') },
-                ]}
-                onChange={(option) => update({ format: option.value as CatalogViewState['format'], scrollTop: 0 })}
-              />
-            </label>
-            <label htmlFor={`${searchId}-topic`}>
-              {t('packageBrowser.topic', 'Topic')}
-              <Combobox
-                id={`${searchId}-topic`}
-                aria-label={t('packageBrowser.topic', 'Topic')}
-                value={view.category}
-                options={[
-                  { value: 'all', label: t('packageBrowser.allTopics', 'All topics') },
-                  ...categories.map((category) => ({ value: category.id, label: topicLabel(category.id) })),
-                ]}
-                onChange={(option) => selectTopic(option.value ?? 'all', 'filter')}
-              />
-            </label>
-            <fieldset className={styles.sourceFilter}>
-              <legend>{t('packageBrowser.source', 'Source')}</legend>
+              </CatalogFilter>
+              <CatalogFilter label={t('packageBrowser.topic', 'Topic')} id={`${searchId}-topic`} page={page}>
+                <Combobox
+                  id={`${searchId}-topic`}
+                  aria-label={t('packageBrowser.topic', 'Topic')}
+                  {...(page ? { width: 'auto' as const, minWidth: 12, maxWidth: 24 } : { width: undefined })}
+                  value={view.category}
+                  options={[
+                    { value: 'all', label: t('packageBrowser.allTopics', 'All topics') },
+                    ...categories.map((category) => ({ value: category.id, label: topicLabel(category.id) })),
+                  ]}
+                  onChange={(option) => selectTopic(option.value ?? 'all', 'filter')}
+                />
+              </CatalogFilter>
               {page ? (
-                <Combobox<CatalogViewState['source']>
-                  aria-label={t('packageBrowser.source', 'Source')}
-                  options={[
-                    { value: 'all', label: t('packageBrowser.allSourcesPill', 'All') },
-                    { value: 'grafana', label: t('packageBrowser.official', 'Official') },
-                    { value: 'organization', label: t('packageBrowser.organization', 'Your organization') },
-                  ]}
-                  value={view.source}
-                  onChange={(option) => {
-                    const source = option.value;
-                    if (source !== view.source) {
-                      reportCatalogInteraction({ action: 'source', source, previousSource: view.source });
-                    }
-                    update({ source, scrollTop: 0 });
-                  }}
-                />
-              ) : (
-                <div className={styles.sourceSegments}>
-                  {(
-                    [
+                <CatalogFilter label={t('packageBrowser.source', 'Source')} id={`${searchId}-source`} page>
+                  <Combobox<CatalogViewState['source']>
+                    id={`${searchId}-source`}
+                    aria-label={t('packageBrowser.source', 'Source')}
+                    width="auto"
+                    minWidth={12}
+                    maxWidth={24}
+                    options={[
                       { value: 'all', label: t('packageBrowser.allSourcesPill', 'All') },
                       { value: 'grafana', label: t('packageBrowser.official', 'Official') },
                       { value: 'organization', label: t('packageBrowser.organization', 'Your organization') },
-                    ] as const
-                  ).map((source) => (
-                    <button
-                      key={source.value}
-                      type="button"
-                      className={styles.sourceSegment}
-                      aria-pressed={view.source === source.value}
-                      onClick={() => {
-                        if (source.value !== view.source) {
-                          reportCatalogInteraction({
-                            action: 'source',
-                            source: source.value,
-                            previousSource: view.source,
-                          });
-                        }
-                        update({ source: source.value, scrollTop: 0 });
-                      }}
-                    >
-                      {source.label}
-                    </button>
-                  ))}
-                </div>
+                    ]}
+                    value={view.source}
+                    onChange={(option) => {
+                      const source = option.value;
+                      if (source !== view.source) {
+                        reportCatalogInteraction({ action: 'source', source, previousSource: view.source });
+                      }
+                      update({ source, scrollTop: 0 });
+                    }}
+                  />
+                </CatalogFilter>
+              ) : (
+                <fieldset className={styles.sourceFilter}>
+                  <legend>{t('packageBrowser.source', 'Source')}</legend>
+                  <div className={styles.sourceSegments}>
+                    {(
+                      [
+                        { value: 'all', label: t('packageBrowser.allSourcesPill', 'All') },
+                        { value: 'grafana', label: t('packageBrowser.official', 'Official') },
+                        { value: 'organization', label: t('packageBrowser.organization', 'Your organization') },
+                      ] as const
+                    ).map((source) => (
+                      <button
+                        key={source.value}
+                        type="button"
+                        className={styles.sourceSegment}
+                        aria-pressed={view.source === source.value}
+                        onClick={() => {
+                          if (source.value !== view.source) {
+                            reportCatalogInteraction({
+                              action: 'source',
+                              source: source.value,
+                              previousSource: view.source,
+                            });
+                          }
+                          update({ source: source.value, scrollTop: 0 });
+                        }}
+                      >
+                        {source.label}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
               )}
-            </fieldset>
+            </div>
             {page && <div className={styles.pageSearch}>{searchControl}</div>}
           </div>
         )}

@@ -67,15 +67,17 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
 
   return {
     homeAssignmentsList: css({
-      maxHeight: theme.spacing(31),
-      overflow: 'auto',
-      overscrollBehavior: 'contain',
-      scrollbarGutter: 'stable',
-      scrollbarWidth: 'thin',
       background: theme.colors.background.primary,
       border: `1px solid ${theme.colors.border.weak}`,
       borderRadius: theme.shape.radius.lg,
       containerType: 'inline-size',
+      '&[data-has-assignments]': {
+        maxHeight: theme.spacing(31),
+        overflow: 'auto',
+        overscrollBehavior: 'contain',
+        scrollbarGutter: 'stable',
+        scrollbarWidth: 'thin',
+      },
       '& > div': { overflow: 'visible' },
       '& > p': { ...theme.typography.base, color: theme.colors.text.secondary, margin: theme.spacing(2) },
       '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
@@ -343,7 +345,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
         '& > button': {
           width: '100%',
           minHeight: theme.spacing(24),
-          padding: theme.spacing(2),
+          padding: theme.spacing(3, 2, 2),
           gap: theme.spacing(2),
           background: theme.colors.background.primary,
           border: `1px solid ${theme.colors.border.weak}`,
@@ -483,7 +485,8 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
     badgeTileLabel: css({
       ...theme.typography.base,
       fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.primary,
+      color: theme.colors.text.secondary,
+      '&[data-earned="true"]': { color: theme.colors.text.primary },
     }),
     badgeTileEarnedDate: css({
       ...theme.typography.sm,

@@ -223,7 +223,10 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(0.25),
-      marginTop: theme.spacing(2),
+      marginTop: theme.spacing(3),
+      '@container learning-continue (width > 560px) and (width <= 960px)': {
+        marginTop: theme.spacing(2),
+      },
       '& > span': {
         ...theme.typography.sm,
         color: theme.colors.text.secondary,
@@ -233,7 +236,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
         fontSize: theme.typography.pxToRem(16),
         fontWeight: theme.typography.fontWeightMedium,
       },
-      '& > p': { margin: 0 },
+      '& > p': { margin: theme.spacing(0.25, 0, 0) },
     }),
     resumeDescription: css({ WebkitLineClamp: 3 }),
     resumeAction: css({ marginTop: theme.spacing(2) }),

@@ -45,7 +45,9 @@ export function BadgeGridItem({
 
   const details = (
     <div className={styles.badgeTileBody}>
-      <span className={styles.badgeTileLabel}>{badge.title}</span>
+      <span className={styles.badgeTileLabel} data-earned={isEarned}>
+        {badge.title}
+      </span>
       {gallery && badge.earnedAt ? (
         <time className={styles.badgeTileEarnedDate} dateTime={new Date(badge.earnedAt).toISOString()}>
           Earned on{' '}

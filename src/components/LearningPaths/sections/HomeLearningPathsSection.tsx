@@ -82,7 +82,13 @@ export function HomeLearningPathsSection({
         </div>
       </div>
       {presentation === 'assigned' ? (
-        <div className={styles.homeAssignmentsList} role="region" aria-label={title} tabIndex={0}>
+        <div
+          className={styles.homeAssignmentsList}
+          data-has-assignments={entries.length > 0 ? true : undefined}
+          role="region"
+          aria-label={title}
+          tabIndex={entries.length > 0 ? 0 : undefined}
+        >
           <HomeAssignmentsTable
             entries={entries}
             onView={onView}

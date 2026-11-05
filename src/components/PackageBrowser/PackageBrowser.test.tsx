@@ -9,6 +9,10 @@ import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { AppPlatformPackageResolver } from '../../package-engine';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
 
+jest.mock('@grafana/scenes', () => ({
+  ControlsLabel: ({ label, htmlFor }: { label: string; htmlFor?: string }) => <label htmlFor={htmlFor}>{label}</label>,
+}));
+
 const mockItems: CatalogPackage[] = [
   {
     key: 'bundled:dashboard',
