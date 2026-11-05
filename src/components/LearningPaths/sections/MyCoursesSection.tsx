@@ -1,8 +1,3 @@
-/**
- * Incomplete catalogue paths. Assigned paths lead, ranked by urgency;
- * unassigned paths keep the incoming order.
- */
-
 import React, { useCallback, useMemo } from 'react';
 import { Icon } from '@grafana/ui';
 import { cx } from '@emotion/css';
@@ -17,7 +12,6 @@ import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
 interface MyCoursesSectionProps {
   courses: LearningPath[];
-  personal?: boolean;
   assignmentByTargetId: Map<string, ResolvedAssignment>;
   getPathGuides: (pathId: string) => PathGuide[];
   getPathProgress: (pathId: string) => number;
@@ -26,7 +20,6 @@ interface MyCoursesSectionProps {
   onResetGuides: (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>) => Promise<void>;
   launchingPathId: string | null;
   launchDisabled: boolean;
-  onViewPath?: (path: LearningPath) => void;
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
@@ -47,7 +40,6 @@ function orderCourses(
 
 export function MyCoursesSection({
   courses,
-  personal = false,
   assignmentByTargetId,
   getPathGuides,
   getPathProgress,
@@ -57,7 +49,6 @@ export function MyCoursesSection({
   launchingPathId,
   launchDisabled,
   styles,
-  onViewPath,
 }: MyCoursesSectionProps) {
   const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
   const activeAssignment = useCallback(
@@ -76,9 +67,7 @@ export function MyCoursesSection({
           <Icon name="book-open" size="lg" />
         </span>
         <div className={styles.sectionHeadingText}>
-          <h2 className={styles.sectionTitle}>
-            {personal ? 'Your learning paths' : t('myLearning.myCourses', 'My paths')}
-          </h2>
+          <h2 className={styles.sectionTitle}>{t('myLearning.myCourses', 'My paths')}</h2>
           <p className={styles.sectionDescription}>
             {t('myLearning.myCoursesDescription', "Assigned paths and paths you've started")}
           </p>
@@ -88,11 +77,7 @@ export function MyCoursesSection({
       {ordered.length === 0 ? (
         <div className={styles.emptyMessage}>
           <Icon name="book" size="xl" className={styles.emptyIcon} />
-          <p>
-            {personal
-              ? 'No assigned or started paths yet. Explore learning to find your next path.'
-              : t('myLearning.myCoursesEmpty', 'No learning paths available yet')}
-          </p>
+          <p>{t('myLearning.myCoursesEmpty', 'No learning paths available yet')}</p>
         </div>
       ) : (
         <div
@@ -106,9 +91,6 @@ export function MyCoursesSection({
 
             return (
               <LearningPathCard
-                tile={personal}
-                showOrganization={personal}
-                onViewPath={() => onViewPath?.(path)}
                 key={path.id}
                 path={path}
                 guides={getPathGuides(path.id)}

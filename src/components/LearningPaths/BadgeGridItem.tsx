@@ -1,24 +1,20 @@
-/**
- * Badge Grid Item
- *
- * A single badge rendered as a centered-icon tile: icon on top, label beneath,
- * and — for locked badges with measurable progress — a thin progress bar at
- * the foot of the tile.
- */
-
 import React from 'react';
 
-import { Icon } from '@grafana/ui';
+import { Tooltip } from '@grafana/ui';
 
 import { testIds } from '../../constants/testIds';
 import type { EarnedBadge } from '../../types';
 import { BADGES } from '../../learning-paths';
-import { BadgeIcon } from './BadgeIcon';
-import { getBadgeProgress } from './badge-utils';
+import { BadgeMedallion } from './BadgeMedallion';
+import { BadgeProgress } from './BadgeProgress';
+import { getBadgeProgress, type BadgeProgressInfo } from './badge-utils';
 import type { getMyLearningStyles } from './MyLearningTab.styles';
 
 interface BadgeGridItemProps {
-  compact?: boolean;
+  summary?: boolean;
+  gallery?: boolean;
+  selected?: boolean;
+  progress?: BadgeProgressInfo;
   badge: EarnedBadge;
   index: number;
   completedGuides: string[];
@@ -29,7 +25,10 @@ interface BadgeGridItemProps {
 }
 
 export function BadgeGridItem({
-  compact = false,
+  summary = false,
+  gallery = false,
+  selected = false,
+  progress: progressOverride,
   badge,
   index,
   completedGuides,
@@ -41,59 +40,44 @@ export function BadgeGridItem({
   const isEarned = !!badge.earnedAt;
   const isLegacy = badge.isLegacy;
   const baseBadge = BADGES.find((b) => b.id === badge.id);
-  const badgeProgress = baseBadge ? getBadgeProgress(baseBadge, completedGuides, streakDays, paths) : null;
+  const badgeProgress =
+    progressOverride ?? (baseBadge ? getBadgeProgress(baseBadge, completedGuides, streakDays, paths) : null);
 
-  const tileClass = isLegacy
-    ? `${styles.badgeTile} ${styles.badgeTileLegacy}`
-    : isEarned
-      ? `${styles.badgeTile} ${styles.badgeTileEarned}`
-      : `${styles.badgeTile} ${styles.badgeTileLocked}`;
+  const details = (
+    <div className={styles.badgeTileBody}>
+      <span className={styles.badgeTileLabel}>{badge.title}</span>
+      {gallery && badge.earnedAt ? (
+        <time className={styles.badgeTileEarnedDate} dateTime={new Date(badge.earnedAt).toISOString()}>
+          Earned on{' '}
+          {new Date(badge.earnedAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </time>
+      ) : null}
+      {!isEarned && !isLegacy && badgeProgress && badgeProgress.total > 0 && (
+        <BadgeProgress progress={badgeProgress} ariaLabel={badge.title} />
+      )}
+    </div>
+  );
 
-  const labelClass = `${styles.badgeTileLabel} ${!isEarned && !isLegacy ? styles.badgeTileLabelLocked : ''} ${
-    isLegacy ? styles.badgeTileLabelLegacy : ''
-  }`;
-
-  return (
+  const item = (
     <button
-      className={tileClass}
+      type="button"
+      className={`${styles.badgeTile} ${summary ? styles.badgeSummaryItem : ''}`}
       onClick={() => onSelect(badge)}
+      data-selected={selected || undefined}
+      aria-current={selected || undefined}
+      aria-label={summary && isEarned ? badge.title : undefined}
       style={{ animationDelay: `${index * 50}ms` }}
       title={isLegacy ? 'This badge was earned in a previous version' : undefined}
       data-testid={testIds.learningPaths.badgeItem(badge.id)}
     >
-      <div
-        className={`${styles.badgeTileIconWrapper} ${compact ? styles.badgeCircle : ''} ${compact && isEarned ? styles.badgeCircleEarned : ''} ${compact && !isEarned && !isLegacy ? styles.badgeCircleUnearned : ''}`}
-      >
-        <BadgeIcon
-          emoji={badge.emoji}
-          icon={badge.icon}
-          size="xl"
-          emojiClassName={compact ? styles.badgeCompactEmoji : styles.badgeTileEmoji}
-        />
-        {isEarned && !isLegacy && !compact && (
-          <div className={styles.badgeCheckmark}>
-            <Icon name="check" size="xs" />
-          </div>
-        )}
-        {isLegacy && (
-          <div className={styles.badgeLegacyIndicator}>
-            <Icon name="history" size="xs" />
-          </div>
-        )}
-      </div>
+      <BadgeMedallion badge={badge} size={gallery ? 'lg' : 'sm'} />
 
-      <span className={labelClass}>{badge.title}</span>
-
-      {!isEarned && !isLegacy && badgeProgress && badgeProgress.total > 0 && (
-        <div className={styles.badgeTileProgress}>
-          <div className={styles.badgeTileProgressTrack}>
-            <div className={styles.badgeTileProgressBar} style={{ width: `${badgeProgress.percentage}%` }} />
-          </div>
-          <span className={styles.badgeTileProgressText}>
-            {badgeProgress.current}/{badgeProgress.total}
-          </span>
-        </div>
-      )}
+      {(!summary || !isEarned) && details}
     </button>
   );
+  return summary && isEarned ? <Tooltip content={badge.title}>{item}</Tooltip> : item;
 }

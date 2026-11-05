@@ -1,5 +1,6 @@
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
+import { getLearningCardInteractionStyles } from '../LearningContentCard/learning-card-interaction.styles';
 
 export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -32,13 +33,13 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
       letterSpacing: '-0.013889em',
       margin: 0,
     },
-    '& > div > div:first-child': { paddingTop: theme.spacing(1.5), marginBottom: theme.spacing(3) },
+    '& > div > div:first-child': { paddingTop: theme.spacing(1.5), marginBottom: theme.spacing(4) },
     '& > div > div:first-child p': {
       ...theme.typography.base,
-      fontSize: 16,
+      fontSize: theme.typography.pxToRem(16),
       fontWeight: theme.typography.fontWeightMedium,
       lineHeight: 1.6,
-      marginTop: theme.spacing(0.5),
+      marginTop: theme.spacing(1),
     },
   }),
   inner: css({ minWidth: 0 }),
@@ -135,6 +136,7 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
     '& legend': { ...theme.typography.sm, padding: 0, marginBottom: theme.spacing(0.5) },
     '&& label, && input:checked + label': { fontWeight: theme.typography.fontWeightRegular },
   }),
+  completionToggle: css({ background: theme.components.input.background }),
   pageSearch: css({
     marginLeft: 'auto',
     width: 260,
@@ -189,6 +191,13 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
   }),
   pagination: css({ paddingTop: theme.spacing(2), paddingBottom: theme.spacing(2) }),
+  pagePagination: css({
+    flexDirection: 'column-reverse',
+    justifyContent: 'center',
+    textAlign: 'center',
+    gap: theme.spacing(2),
+    padding: theme.spacing(2, 0),
+  }),
   pageGrid: css({
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
@@ -223,7 +232,10 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1.25),
     '@container (max-width: 320px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
   }),
-  homeTopics: css({ gap: theme.spacing(1.5) }),
+  homeTopics: css({
+    gap: theme.spacing(1.5),
+    '@container (max-width: 600px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+  }),
   homeTopicCard: css({
     display: 'flex',
     alignItems: 'center',
@@ -231,21 +243,15 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(2),
     minWidth: 0,
     color: theme.colors.text.primary,
-    background: theme.colors.background.secondary,
+    background: theme.colors.background.primary,
     border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.md,
+    borderRadius: theme.shape.radius.lg,
+    ...getLearningCardInteractionStyles(theme),
     '&:hover': {
-      '& [data-learning-topic-icon]': {
-        backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
-        borderColor: theme.colors.border.medium,
-        outlineColor: theme.colors.border.medium,
-      },
+      ...getLearningCardInteractionStyles(theme)['&:hover'],
       color: theme.colors.text.primary,
-      backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
-      borderColor: theme.colors.border.medium,
       textDecoration: 'none',
     },
-    '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
     '&& strong': { ...theme.typography.base, fontWeight: theme.typography.fontWeightMedium },
     '&& small': {
       ...theme.typography.base,
@@ -267,8 +273,7 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: `calc(${theme.shape.radius.default} * 2)`,
     cursor: 'pointer',
-    '&:hover': { borderColor: theme.colors.border.medium, background: theme.colors.action.hover },
-    '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
+    ...getLearningCardInteractionStyles(theme),
   }),
   topicContent: css({
     minWidth: 0,
@@ -296,5 +301,4 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
   }),
   effort: css({ fontSize: theme.typography.bodySmall.fontSize, color: theme.colors.text.secondary }),
-  empty: css({ textAlign: 'center', padding: theme.spacing(4), border: `1px dashed ${theme.colors.border.medium}` }),
 });

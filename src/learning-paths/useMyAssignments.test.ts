@@ -1,8 +1,3 @@
-/**
- * Tests for useMyAssignments: the fetch-once-on-mount/namespace-gated shape
- * (mirroring usePublishedGuides.test.ts's mocking style). Resolution rules
- * live in assignments-core.test.ts.
- */
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import type { LearningPath } from '../types/learning-paths.types';
@@ -97,12 +92,13 @@ describe('useMyAssignments', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it('is loaded at once without a namespace', () => {
+  it('is loaded at once without a namespace', async () => {
     mockNamespace = undefined;
 
     const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
 
     expect(result.current.hasLoaded).toBe(true);
+    await act(async () => {});
   });
 
   it('is loaded once the first fetch settles, including when it fails', async () => {
@@ -111,7 +107,23 @@ describe('useMyAssignments', () => {
     const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
 
     expect(result.current.hasLoaded).toBe(false);
+    expect(result.current.isLoading).toBe(true);
     await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+    expect(result.current.items).toEqual([]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.hasError).toBe(true);
+  });
+
+  it('retries a failed initial request and clears its error after a successful empty response', async () => {
+    mockFetchMyAssignments.mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true, assignments: [] });
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+    await waitFor(() => expect(result.current.hasError).toBe(true));
+    await act(async () => {
+      await result.current.retry();
+    });
+    expect(mockFetchMyAssignments).toHaveBeenCalledTimes(2);
+    expect(result.current.hasError).toBe(false);
+    expect(result.current.isLoading).toBe(false);
     expect(result.current.items).toEqual([]);
   });
 
@@ -147,6 +159,8 @@ describe('useMyAssignments', () => {
     await waitFor(() => expect(logger.warn).toHaveBeenCalled());
 
     expect(result.current.notDone).toEqual([]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.hasError).toBe(true);
     expect(logger.warn).toHaveBeenCalledWith('[assignments] unresolvable target', {
       reason: 'unresolvable-target',
       count: 1,
@@ -154,6 +168,40 @@ describe('useMyAssignments', () => {
     expect(logger.debug).toHaveBeenCalledWith('[assignments] unresolvable target', { targetIds: 'ghost-path' });
     expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain('ghost-path');
     expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledWith(1);
+  });
+
+  it('keeps loading until online assignment resolution settles, then reports an unresolved target as an error', async () => {
+    let finishCatalog: (value: { baseUrl: string; packages: [] }) => void = () => {};
+    mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'online-path' })] });
+    mockFetchOnlinePackageRecommendations.mockReturnValue(
+      new Promise((resolve) => {
+        finishCatalog = resolve;
+      })
+    );
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+    await waitFor(() => expect(mockFetchOnlinePackageRecommendations).toHaveBeenCalled());
+    expect(result.current.hasLoaded).toBe(true);
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.hasError).toBe(false);
+    await act(async () => {
+      finishCatalog({ baseUrl: '', packages: [] });
+    });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.hasError).toBe(true);
+  });
+
+  it('clears an unresolved-target error when the path becomes available in the catalogue', async () => {
+    mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'new-path' })] });
+    const { result, rerender } = renderHook(({ paths }) => useMyAssignments({ ...baseOptions, paths }), {
+      initialProps: { paths: [] as LearningPath[] },
+    });
+    await waitFor(() => expect(result.current.hasError).toBe(true));
+    await act(async () => {
+      rerender({ paths: [path({ id: 'new-path', title: 'New path' })] });
+    });
+    expect(result.current.hasError).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.notDone.map((entry) => entry.targetId)).toEqual(['new-path']);
   });
 
   it("reflects local completion in an online target's guides", async () => {

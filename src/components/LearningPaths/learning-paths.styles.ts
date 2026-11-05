@@ -7,6 +7,7 @@
 
 import { css, keyframes } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
+import { getLearningCardInteractionStyles } from '../LearningContentCard/learning-card-interaction.styles';
 
 // ============================================================================
 // COLOR PALETTE
@@ -151,11 +152,11 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       background: theme.colors.background.primary,
       border: `1px solid ${theme.colors.border.weak}`,
       overflow: 'hidden',
-      '&:hover': { borderColor: theme.colors.border.medium },
+      ...getLearningCardInteractionStyles(theme),
     }),
     tile: css({
       background: theme.colors.background.canvas,
-      borderRadius: theme.shape.radius.md,
+      borderRadius: theme.shape.radius.lg,
       cursor: 'pointer',
       display: 'flex',
       flexDirection: 'column',
@@ -169,74 +170,82 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
         cursor: 'inherit',
         userSelect: 'auto',
       },
-      '& > [data-learning-card-body] > div:first-child': { flex: 1 },
+      '& > [data-learning-card-body] > div:first-child': { flex: 1, paddingTop: 0 },
       '&& h3': { ...theme.typography.h4, fontWeight: theme.typography.fontWeightMedium },
-      transition: 'background-color 150ms ease, border-color 150ms ease',
-      '&:hover': {
-        '& [data-learning-topic-icon]': {
-          backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
-          borderColor: theme.colors.border.medium,
-          outlineColor: theme.colors.border.medium,
-        },
-        backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
-        borderColor: theme.colors.border.medium,
+      '&&:has(button:focus-visible)': {
+        borderColor: theme.colors.text.primary,
+        boxShadow: `inset 0 0 0 1px ${theme.colors.text.primary}`,
       },
-      '&&:focus-within': {
+      '& button:focus-visible': {
         outline: 'none',
-        borderColor: theme.colors.accent?.main ?? theme.colors.primary.main,
-        backgroundColor: theme.colors.background.secondary,
-        '& button:focus-visible': { outline: 'none' },
+        boxShadow: 'none',
       },
       '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
     }),
     resumeTile: css({
       '&&': {
-        minHeight: theme.spacing(42),
-        backgroundImage: `linear-gradient(120deg, ${theme.colors.primary.transparent}, transparent 75%)`,
-        '& > [data-learning-card-body]': { padding: theme.spacing(3) },
-        '& h3': { ...theme.typography.h2, fontWeight: theme.typography.fontWeightMedium },
-        '& > img': { aspectRatio: '3 / 1', maxHeight: theme.spacing(22), objectPosition: 'center' },
+        minHeight: theme.spacing(60),
+        '& h3': { ...theme.typography.lg, fontWeight: theme.typography.fontWeightMedium },
+        '& > [data-learning-card-body]': { padding: theme.spacing(2), gap: theme.spacing(3) },
+        '@container learning-continue (max-width: 960px)': {
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 38%) minmax(0, 1fr)',
+          gridTemplateRows: '1fr auto',
+          gap: 0,
+          minHeight: theme.spacing(34),
+          '& > [data-learning-card-body]': { gridColumn: 2, padding: theme.spacing(2), gap: theme.spacing(2) },
+        },
+        '@container learning-continue (max-width: 560px)': {
+          display: 'flex',
+          minHeight: 0,
+          '& [data-learning-card-footer]': { flexDirection: 'column', alignItems: 'stretch' },
+          '& h3': { ...theme.typography.md },
+        },
       },
     }),
-    compactTile: css({
-      '&&': {
-        display: 'grid',
-        gridTemplateColumns: `${theme.spacing(12)} minmax(0, 1fr)`,
-        alignItems: 'stretch',
-        '& > img': {
-          width: `calc(100% - ${theme.spacing(1)})`,
-          height: theme.spacing(11),
-          aspectRatio: 'auto',
-          margin: `${theme.spacing(0.5)} ${theme.spacing(0.5)}`,
-          alignSelf: 'center',
-          objectPosition: 'center',
-        },
-        '&:not(:has(> img))': { gridTemplateColumns: 'minmax(0, 1fr)' },
-        '& > [data-learning-card-body]': { gap: theme.spacing(1.5), padding: theme.spacing(2) },
-        '& p': { WebkitLineClamp: 2 },
-        '& [data-learning-topic-icon]': { display: 'none' },
-        '@media (max-width: 600px)': { gridTemplateColumns: `${theme.spacing(9)} minmax(0, 1fr)` },
+    resumePreview: css({
+      '@container learning-continue (max-width: 960px)': {
+        gridColumn: 1,
+        gridRow: '1 / -1',
+        width: `calc(100% - ${theme.spacing(0.5)})`,
+        height: `calc(100% - ${theme.spacing(1)})`,
+        margin: theme.spacing(0.5),
+        aspectRatio: 'auto',
+      },
+      '@container learning-continue (max-width: 560px)': {
+        width: `calc(100% - ${theme.spacing(1)})`,
+        height: 'auto',
+        margin: theme.spacing(0.5, 0.5, 0),
+        aspectRatio: '16 / 9',
       },
     }),
     resumeNext: css({
       display: 'flex',
       flexDirection: 'column',
-      gap: theme.spacing(0.5),
-      paddingBlock: theme.spacing(2),
+      gap: theme.spacing(0.25),
       marginTop: theme.spacing(2),
-      borderTop: `1px solid ${theme.colors.border.weak}`,
-      '& span': { ...theme.typography.sm, color: theme.colors.text.secondary },
-      '& strong': { ...theme.typography.base, fontWeight: theme.typography.fontWeightMedium },
+      '& > span': {
+        ...theme.typography.sm,
+        color: theme.colors.text.secondary,
+      },
+      '& > strong': {
+        ...theme.typography.base,
+        fontSize: theme.typography.pxToRem(16),
+        fontWeight: theme.typography.fontWeightMedium,
+      },
+      '& > p': { margin: 0 },
     }),
-    tilePreview: css({
-      width: `calc(100% - ${theme.spacing(1)})`,
-      margin: theme.spacing(0.5, 0.5, 0),
-      flexShrink: 0,
-      aspectRatio: '16 / 9',
-      objectFit: 'cover',
-      objectPosition: 'top left',
-      borderRadius: theme.shape.radius.sm,
-      border: `1px solid ${theme.colors.border.weak}`,
+    resumeDescription: css({ WebkitLineClamp: 3 }),
+    resumeAction: css({ marginTop: theme.spacing(2) }),
+    compactTile: css({
+      '&&': {
+        '& > [data-learning-card-body]': { padding: theme.spacing(1.5), gap: theme.spacing(2) },
+        '& h3': {
+          ...theme.typography.md,
+          fontWeight: theme.typography.fontWeightMedium,
+          margin: 0,
+        },
+      },
     }),
     tileEyebrow: css({
       ...theme.typography.sm,
@@ -244,8 +253,9 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(0.5),
-      marginBottom: theme.spacing(1),
+      marginBottom: theme.spacing(0.5),
     }),
+    tileEyebrowMetricIcon: css({ boxSizing: 'border-box', padding: theme.spacing(0.125) }),
     completedLabel: css({ color: theme.colors.success.text }),
     tileFooter: css({
       display: 'flex',
@@ -278,19 +288,14 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       background: 'none',
       border: 0,
       padding: 0,
+      width: '100%',
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+      overflow: 'hidden',
       textAlign: 'left',
       cursor: 'pointer',
       '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
-    }),
-    tileTopic: css({
-      ...theme.typography.sm,
-      color: theme.colors.text.secondary,
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: theme.spacing(1),
-      padding: theme.spacing(0.25),
-      marginBottom: theme.spacing(2.5),
     }),
     tileDescription: css({
       ...theme.typography.base,

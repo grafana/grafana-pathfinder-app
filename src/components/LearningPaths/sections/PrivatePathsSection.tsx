@@ -25,7 +25,6 @@ interface PrivatePathsSectionProps {
   onReset: (pathId: string) => void;
   launchingPathId: string | null;
   launchDisabled: boolean;
-  onViewPath?: (path: LearningPath) => void;
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
@@ -38,7 +37,6 @@ export function PrivatePathsSection({
   launchingPathId,
   launchDisabled,
   styles,
-  onViewPath,
 }: PrivatePathsSectionProps) {
   const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
 
@@ -67,7 +65,6 @@ export function PrivatePathsSection({
 
           return (
             <LearningPathCard
-              onViewPath={() => onViewPath?.(path)}
               key={path.id}
               path={path}
               guides={getPathGuides(path.id)}

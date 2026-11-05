@@ -15,6 +15,7 @@ jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: jest.fn(() => true
 
 import React from 'react';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
+import { reportPathfinderSurface } from '../../lib/telemetry/surface';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
 import { recordGuideRender } from '../../lib/telemetry/facade';
 import { MyLearningTab } from './MyLearningTab';
@@ -24,6 +25,7 @@ import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 import { openCatalogBrowser } from '../docs-panel/utils/open-catalog-browser';
 import type { CatalogPackage } from '../../types/package-catalog.types';
+import type { Badge } from '../../types';
 import { testIds } from '../../constants/testIds';
 import {
   guideCompletionMarkStorage,
@@ -88,6 +90,26 @@ jest.mock('@grafana/i18n', () => ({
 
 // Style keys come back as their own names so tests can assert on composition.
 jest.mock('@grafana/ui', () => ({
+  InteractiveTable: ({ columns, data, getRowId }: any) => (
+    <table>
+      <thead>
+        <tr>
+          {columns.map((column: any) => (
+            <th key={column.id}>{column.header}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((entry: any) => (
+          <tr key={getRowId(entry)}>
+            {columns.map((column: any) => (
+              <td key={column.id}>{column.cell?.({ row: { original: entry } })}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ),
   Badge: ({ text }: any) => <span>{text}</span>,
   LinkButton: ({ children, href }: any) => <a href={href}>{children}</a>,
   Button: ({ children, icon: _icon, size: _size, variant: _variant, ...props }: any) => (
@@ -111,6 +133,7 @@ let mockPaths: any[] = [];
 let mockGuideMetadata: Record<string, any> = {};
 let mockCompletedGuides: string[] = [];
 let mockBadges: any[] = [];
+let mockBadgeDefinitions: Badge[] = [];
 const mockGetPathGuides = jest.fn();
 const mockGetPathProgress = jest.fn();
 const mockIsPathCompleted = jest.fn();
@@ -135,6 +158,7 @@ type MockAssignment = {
   trackId?: string;
   trackLabel?: string;
   assignedBy?: string;
+  assignedAt?: string;
   dueAt?: string;
   overdue: boolean;
   satisfied: boolean;
@@ -144,11 +168,16 @@ type MockAssignment = {
 let mockAssignments: MockAssignment[] = [];
 let mockAssignedCompleted: MockAssignment[] = [];
 let mockOnlinePaths: any[] = [];
+let mockAssignmentsLoading = false;
+let mockAssignmentsError = false;
+const mockRetryAssignments = jest.fn();
 
 jest.mock('../../learning-paths', () => ({
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
-  BADGES: [],
+  get BADGES() {
+    return mockBadgeDefinitions;
+  },
   pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
   selectContinueLearning: jest.requireActual('../../learning-paths/catalog-learning-core').selectContinueLearning,
   useCatalogProgress: () => mockCatalogProgress,
@@ -184,6 +213,9 @@ jest.mock('../../learning-paths', () => ({
       assignmentByTargetId,
       onlinePaths: mockOnlinePaths,
       getPathGuides: mockGetPathGuides,
+      isLoading: mockAssignmentsLoading,
+      hasError: mockAssignmentsError,
+      retry: mockRetryAssignments,
     };
   },
   daysUntilDue: jest.requireActual('../../learning-paths/assignments-core').daysUntilDue,
@@ -259,12 +291,15 @@ beforeEach(() => {
   mockGuideMetadata = {};
   mockCompletedGuides = ['guide-2'];
   mockBadges = [];
+  mockBadgeDefinitions = [];
   mockDiscoverItems = [];
   mockCatalogItems = [];
   mockCatalogProgress = new Map();
   mockDiscoverExcludeIdentities = undefined;
   mockAssignments = [];
   mockAssignedCompleted = [];
+  mockAssignmentsLoading = false;
+  mockAssignmentsError = false;
   mockGetPathGuides.mockImplementation((id: string) =>
     id === 'path-done'
       ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
@@ -1474,7 +1509,7 @@ describe('MyLearningTab — reset all learning progress', () => {
 it('homepage separates started paths from the restored available path list', () => {
   mockPaths.push({ id: 'private-new', title: 'Private new', guides: [], isPrivate: true });
   render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
-  expect(screen.getByRole('heading', { name: 'Your learning paths' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Find your next learning path' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Started path' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'New path' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Private new' })).toBeInTheDocument();
@@ -1499,9 +1534,9 @@ it('homepage puts badges above learning content and links topic cards to filtere
     },
   ];
   render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
-  const topic = screen.getByRole('link', { name: /Dashboards 1 guides and paths/ });
+  const topic = screen.getByRole('link', { name: /Dashboards 1 guides and learning paths/ });
   expect(topic).toHaveAttribute('href', expect.stringContaining('topic=dashboards'));
-  const explore = screen.getByRole('heading', { name: 'Explore learning' });
+  const explore = screen.getByRole('heading', { name: 'What would you like to learn?' });
   const badges = screen.getByRole('region', { name: 'Badges' });
   expect(badges.compareDocumentPosition(explore) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
@@ -1512,8 +1547,252 @@ it('homepage retains an unstarted assigned path alongside started paths', () => 
   ];
   render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
   expect(screen.getByRole('heading', { name: 'Started path' })).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'New path' })).toBeInTheDocument();
-  expect(screen.getByTestId(testIds.learningPaths.card('path-new'))).toHaveTextContent('Assigned');
+  expect(
+    within(screen.getByRole('region', { name: 'Your assignments' })).getByRole('button', { name: 'New path' })
+  ).toBeInTheDocument();
+});
+
+it('homepage puts outstanding assignments first, ordered by urgency, without repeating them in other rows', () => {
+  mockPaths.push({ id: 'available', title: 'Available path', guides: [] });
+  mockAssignments = [
+    {
+      targetType: 'path',
+      targetId: 'path-new',
+      title: 'New path',
+      assignedBy: 'Learning team',
+      assignedAt: '2026-10-15T12:00:00Z',
+      dueAt: '2099-06-01T00:00:00Z',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+    {
+      targetType: 'path',
+      targetId: 'path-1',
+      title: 'Started path',
+      assignedBy: 'Course manager',
+      assignedAt: '2026-10-16T12:00:00Z',
+      dueAt: '2000-01-15T00:00:00Z',
+      overdue: true,
+      satisfied: false,
+      progress: 50,
+    },
+  ];
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const assigned = screen.getByRole('region', { name: 'Your assignments' });
+  const continuation = screen.getByRole('heading', { name: 'Pick up where you left off' }).closest('section')!;
+  const available = screen.getByRole('region', { name: 'Find your next learning path' });
+  expect(assigned.compareDocumentPosition(continuation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(
+    within(assigned)
+      .getAllByRole('button', { name: /^(Started path|New path)$/ })
+      .map((button) => button.textContent)
+  ).toEqual(['Started path', 'New path']);
+  expect(within(assigned).getByText('Course manager')).toBeInTheDocument();
+  expect(within(assigned).getByText('Learning team')).toBeInTheDocument();
+  expect(assigned.querySelector('time[datetime="2026-10-15T12:00:00Z"]')).toHaveTextContent(/2026/);
+  expect(assigned.querySelector('time[datetime="2000-01-15T00:00:00Z"]')).toHaveTextContent(/2000/);
+  expect(within(assigned).getByText('Overdue')).toBeInTheDocument();
+  expect(within(assigned).queryByRole('button', { name: /^(Start|Resume)$/ })).not.toBeInTheDocument();
+  expect(
+    within(assigned)
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent)
+  ).toEqual(['Assignment', 'Progress', 'Assigned', 'Due', 'Assigned by']);
+  for (const title of ['Started path', 'New path']) {
+    expect(within(continuation).queryByRole('heading', { name: title })).not.toBeInTheDocument();
+    expect(within(available).queryByRole('heading', { name: title })).not.toBeInTheDocument();
+  }
+});
+
+it('homepage omits missing assignment details and shows an empty state when there are no outstanding assignments', () => {
+  mockAssignments = [
+    { targetType: 'path', targetId: 'path-new', title: 'New path', overdue: false, satisfied: false, progress: 0 },
+  ];
+  const { rerender } = render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const assigned = screen.getByRole('region', { name: 'Your assignments' });
+  const cells = within(assigned).getAllByRole('cell');
+  expect(cells[4]).toHaveTextContent('—');
+  expect(cells[2]).toHaveTextContent('—');
+  expect(cells[3]).toHaveTextContent('—');
+  expect(assigned.querySelector('time')).not.toBeInTheDocument();
+  mockAssignedCompleted = [{ ...mockAssignments[0]!, satisfied: true, progress: 100 }];
+  mockAssignments = [];
+  rerender(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('heading', { name: 'Your assignments' })).toBeInTheDocument();
+  expect(screen.getByText('You’re all clear!')).toBeInTheDocument();
+  const emptyTable = within(screen.getByRole('region', { name: 'Your assignments' })).getByRole('table');
+  expect(within(emptyTable).queryByRole('columnheader')).not.toBeInTheDocument();
+  expect(within(emptyTable).getByRole('cell')).toHaveAttribute('colspan', '5');
+  expect(
+    within(emptyTable).getByText('No assignments right now. Explore a guide or learning path while you’re here.')
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByRole('region', { name: 'Your assignments' })).queryByRole('heading')
+  ).not.toBeInTheDocument();
+});
+
+it('waits for assignments and shows a retryable failure instead of claiming the user is all clear', () => {
+  mockAssignmentsLoading = true;
+  const { rerender } = render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('status', { name: 'Loading assignments…' })).toBeInTheDocument();
+  expect(screen.queryByText('You’re all clear!')).not.toBeInTheDocument();
+  mockAssignmentsLoading = false;
+  mockAssignmentsError = true;
+  rerender(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('alert')).toHaveTextContent('Assignments couldn’t be loaded.');
+  expect(screen.queryByText('You’re all clear!')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(mockRetryAssignments).toHaveBeenCalledTimes(1);
+  mockAssignmentsError = false;
+  rerender(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByText('You’re all clear!')).toBeInTheDocument();
+});
+
+it('keeps the last assignments visible when a refresh fails', () => {
+  mockAssignments = [
+    { targetType: 'path', targetId: 'path-1', title: 'Started path', overdue: false, satisfied: false, progress: 50 },
+  ];
+  mockAssignmentsError = true;
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
+  expect(assigned.getByRole('button', { name: 'Started path' })).toBeInTheDocument();
+  expect(assigned.getByRole('alert')).toHaveTextContent('Assignments couldn’t be loaded.');
+  expect(assigned.queryByText('You’re all clear!')).not.toBeInTheDocument();
+});
+
+it('opens the assigned path from any row cell, preserves its track, and clears selection when the panel closes', async () => {
+  mockPaths = [
+    {
+      id: 'path-1',
+      title: 'Started path',
+      guides: ['guide-1'],
+      manifest: {
+        id: 'path-1',
+        type: 'path',
+        milestones: ['guide-1'],
+        tracks: [{ trackId: 'builder', label: 'Builder', guides: ['guide-1'] }],
+      },
+    },
+  ];
+  mockAssignments = [
+    {
+      targetType: 'path',
+      targetId: 'path-1',
+      title: 'Started path',
+      trackId: 'builder',
+      trackLabel: 'Builder',
+      overdue: false,
+      satisfied: false,
+      progress: 50,
+    },
+  ];
+  const coverUrl = 'backend-guide:path-1';
+  resolvePackageNavLinksMock.mockResolvedValue([{ packageId: 'path-1', title: 'Started path', contentUrl: coverUrl }]);
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
+  const title = assigned.getByRole('button', { name: 'Started path' });
+  fireEvent.click(assigned.getAllByRole('cell')[2]!);
+  expect(title).toHaveAttribute('aria-current', 'true');
+  await waitFor(() =>
+    expect(openGuideInSidebar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: coverUrl,
+        packageInfo: expect.objectContaining({ packageId: 'path-1', trackId: 'builder' }),
+      })
+    )
+  );
+  act(() => reportPathfinderSurface('sidebar'));
+  expect(title).toHaveAttribute('aria-current', 'true');
+  act(() => reportPathfinderSurface('closed'));
+  expect(title).not.toHaveAttribute('aria-current');
+  fireEvent.click(title);
+  expect(title).toHaveAttribute('aria-current', 'true');
+  await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(2));
+});
+
+it('transfers selection between assignments and learning cards while the panel stays open', async () => {
+  mockAssignments = [
+    { targetType: 'path', targetId: 'path-1', title: 'Started path', overdue: false, satisfied: false, progress: 50 },
+  ];
+  mockCatalogItems = [
+    {
+      key: 'bundled:other',
+      id: 'other',
+      title: 'Another guide',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:other',
+    },
+  ];
+  mockCatalogProgress = new Map([['bundled:other', { percent: 25 }]]);
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const assignment = within(screen.getByRole('region', { name: 'Your assignments' })).getByRole('button', {
+    name: 'Started path',
+  });
+  const guide = screen.getByRole('button', { name: 'Another guide' });
+  act(() => reportPathfinderSurface('sidebar'));
+  fireEvent.click(assignment);
+  expect(assignment).toHaveAttribute('aria-current', 'true');
+  await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(1));
+  fireEvent.click(guide);
+  expect(assignment).not.toHaveAttribute('aria-current');
+  expect(guide).toHaveAttribute('aria-current', 'true');
+  await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(2));
+  fireEvent.click(assignment);
+  expect(guide).not.toHaveAttribute('aria-current');
+  expect(assignment).toHaveAttribute('aria-current', 'true');
+  await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(3));
+});
+
+it('uses completed guides for badge progress instead of partial course progress', () => {
+  const badge: Badge = {
+    id: 'course-badge',
+    title: 'Course badge',
+    description: 'Complete the course',
+    icon: 'rocket',
+    trigger: { type: 'path-completed', pathId: 'path-1' },
+  };
+  mockBadgeDefinitions = [badge];
+  mockBadges = [badge];
+  mockPaths = [{ id: 'path-1', title: 'Started path', guides: ['first', 'second'] }];
+  mockCompletedGuides = [];
+  mockGetPathProgress.mockReturnValue(25);
+  mockGetPathGuides.mockReturnValue([
+    { id: 'first', title: 'First guide', completed: false, isCurrent: true },
+    { id: 'second', title: 'Second guide', completed: false, isCurrent: false },
+  ]);
+  const { rerender } = render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.queryByRole('progressbar', { name: 'Course badge' })).not.toBeInTheDocument();
+  mockCompletedGuides = ['first'];
+  mockGetPathProgress.mockReturnValue(75);
+  rerender(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const progress = screen.getByRole('progressbar', { name: 'Course badge' });
+  expect(progress).toHaveAttribute('aria-valuenow', '1');
+  expect(progress).toHaveAttribute('aria-valuemax', '2');
+  expect(progress.firstElementChild).toHaveStyle({ width: '50%' });
+});
+
+it.each(['production', 'development'])('uses only real assignments in %s', (mode) => {
+  const environment = jest.replaceProperty(process.env, 'NODE_ENV', mode);
+  const { rerender } = render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByText('You’re all clear!')).toBeInTheDocument();
+  mockAssignments = [
+    {
+      targetType: 'path',
+      targetId: 'path-new',
+      title: 'New path',
+      assignedBy: 'Real assigning team',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+  ];
+  rerender(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
+  expect(assigned.getByText('Real assigning team')).toBeInTheDocument();
+  expect(assigned.getAllByRole('button')).toHaveLength(1);
+  environment.restore();
 });
 
 it('homepage puts started catalogue paths from both sources in Continue without duplicates', () => {
@@ -1551,11 +1830,11 @@ it('homepage puts started catalogue paths from both sources in Continue without 
     ['curated:path-1', { percent: 50 }],
   ]);
   render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
-  const continued = screen.getByRole('heading', { name: 'Continue learning' }).closest('section')!;
+  const continued = screen.getByRole('heading', { name: 'Pick up where you left off' }).closest('section')!;
   expect(within(continued).getByRole('heading', { name: 'Started public catalogue path' })).toBeInTheDocument();
   expect(within(continued).getByRole('heading', { name: 'Started organisation catalogue path' })).toBeInTheDocument();
   expect(screen.getAllByRole('heading', { name: 'Started path' })).toHaveLength(1);
-  const available = screen.getByRole('heading', { name: 'Your learning paths' }).closest('section')!;
+  const available = screen.getByRole('heading', { name: 'Find your next learning path' }).closest('section')!;
   expect(within(available).queryByRole('heading', { name: 'Started public catalogue path' })).not.toBeInTheDocument();
   expect(within(available).getByRole('heading', { name: 'New path' })).toBeInTheDocument();
 });
@@ -1571,7 +1850,7 @@ it('homepage includes in-progress guides from both sources in Continue learning'
   }));
   mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 16 }]));
   render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
-  const continued = screen.getByRole('heading', { name: 'Continue learning' }).closest('section')!;
+  const continued = screen.getByRole('heading', { name: 'Pick up where you left off' }).closest('section')!;
   for (const item of mockCatalogItems) {
     expect(within(continued).getByRole('heading', { name: item.title })).toBeInTheDocument();
   }
@@ -1637,4 +1916,38 @@ it('homepage reports completed learning paths separately without duplicate catal
   render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
   const calls = jest.requireMock('@grafana/i18n').Trans.mock.calls;
   expect(calls[calls.length - 1][0].values.pathsCompleted).toBe(1);
+});
+
+it('homepage gives one active course a Resume action and keeps every other course accessible without descriptions', () => {
+  mockPaths = Array.from({ length: 8 }, (_, index) => ({
+    id: `active-${index}`,
+    title: `Active path ${index}`,
+    description: `Path overview ${index}`,
+    guides: [],
+    badgeId: '',
+  }));
+  mockGetPathProgress.mockReturnValue(50);
+  mockCatalogItems = ['grafana', 'organization'].map((source) => ({
+    key: `${source}:active-guide`,
+    id: `${source}-active-guide`,
+    title: `${source} active guide`,
+    description: `${source} guide overview`,
+    format: 'guide',
+    source: source as 'grafana' | 'organization',
+    url: 'bundled:guide',
+  }));
+  mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 25 }]));
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const section = screen.getByRole('heading', { name: 'Pick up where you left off' }).closest('section')!;
+  const resumed = within(section);
+  expect(resumed.getAllByRole('button', { name: 'Resume' })).toHaveLength(1);
+  expect(resumed.getAllByRole('heading', { level: 3 })).toHaveLength(10);
+  for (const item of mockCatalogItems) {
+    expect(resumed.getByRole('heading', { name: item.title })).toBeInTheDocument();
+    expect(resumed.queryByText(item.description!)).not.toBeInTheDocument();
+  }
+  for (let index = 0; index < 8; index++) {
+    expect(resumed.getByRole('button', { name: `Active path ${index}` })).toBeInTheDocument();
+    expect(resumed.queryByText(`Path overview ${index}`)).not.toBeInTheDocument();
+  }
 });

@@ -466,6 +466,64 @@ it('opens tile path details by clicking the card without a separate launch butto
   expect(launch).not.toHaveBeenCalled();
 });
 
+it('shares tile launch locking, busy feedback and focus refs across its title and body', async () => {
+  let resolve: () => void = () => {};
+  const view = jest.fn(() => new Promise<void>((done) => (resolve = done)));
+  const actionRef = React.createRef<HTMLButtonElement>();
+  const { rerender } = render(
+    <LearningContentCard
+      tile
+      title="Explore metrics"
+      kind="path"
+      onLaunch={jest.fn()}
+      onViewPath={view}
+      actionRef={actionRef}
+    />
+  );
+  const title = screen.getByRole('button', { name: 'Explore metrics' });
+  const card = screen.getByRole('article');
+  expect(actionRef.current).toBe(title);
+  title.focus();
+  fireEvent.click(card);
+  expect(title).toHaveAttribute('aria-disabled', 'true');
+  expect(title).toHaveFocus();
+  expect(card).toHaveAttribute('aria-busy', 'true');
+  expect(screen.getByRole('status')).toHaveTextContent('Opening…');
+  fireEvent.click(card);
+  fireEvent.click(title);
+  expect(view).toHaveBeenCalledTimes(1);
+  await act(async () => resolve());
+  expect(title).not.toHaveAttribute('aria-disabled');
+  expect(title).toHaveFocus();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  rerender(
+    <LearningContentCard
+      tile
+      title="Explore metrics"
+      kind="path"
+      onLaunch={view}
+      launchDisabled
+      actionRef={actionRef}
+    />
+  );
+  fireEvent.click(card);
+  expect(title).toHaveAttribute('aria-disabled', 'true');
+  expect(view).toHaveBeenCalledTimes(1);
+  expect(actionRef.current).toBe(title);
+});
+
+it('re-enables tile actions after a rejected launch without exposing the failure details', async () => {
+  const view = jest.fn().mockRejectedValue(new Error('private backend detail'));
+  render(<LearningContentCard tile title="A guide" kind="guide" onLaunch={view} />);
+  const title = screen.getByRole('button', { name: 'A guide' });
+  await act(async () => {
+    fireEvent.click(title);
+  });
+  expect(screen.getByRole('alert')).toHaveTextContent('Could not open this content. Try again.');
+  expect(screen.queryByText('private backend detail')).not.toBeInTheDocument();
+  expect(title).toBeEnabled();
+});
+
 it('keeps zero-percent radial progress and metadata on unstarted catalogue path tiles', () => {
   render(
     <LearningContentCard
@@ -483,9 +541,9 @@ it('keeps zero-percent radial progress and metadata on unstarted catalogue path 
   );
   expect(screen.getByText('0%')).toBeInTheDocument();
   expect(screen.getByText('Learning path')).toBeInTheDocument();
-  expect(screen.queryByText('Dashboards')).not.toBeInTheDocument();
+  expect(screen.getByText('Dashboards')).toBeInTheDocument();
   expect(screen.getByText('7 guides')).toBeInTheDocument();
-  expect(screen.getByText('About 20 min')).toBeInTheDocument();
+  expect(screen.getByText('20 min')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Start path' })).not.toBeInTheDocument();
 });
 
@@ -504,4 +562,29 @@ it('shows partial guide completion with the same radial used by path tiles', () 
   expect(screen.getByText('16%')).toBeInTheDocument();
   expect(screen.queryByText('16% complete')).not.toBeInTheDocument();
   expect(screen.getByText(/About 10 min/)).toBeInTheDocument();
+});
+
+it('preserves the image area, duration and card navigation when a tile image fails', () => {
+  const view = jest.fn();
+  render(
+    <LearningContentCard
+      tile
+      title="Logs guide"
+      topic="logs"
+      kind="guide"
+      preview={{ src: 'missing-preview.png', alt: 'Logs view' }}
+      estimatedMinutes={20}
+      onLaunch={jest.fn()}
+      onViewPath={view}
+    />
+  );
+  const image = screen.getByRole('img', { name: 'Logs view' });
+  const frame = image.parentElement!;
+  expect(frame).toContainElement(screen.getByText('20 min'));
+  fireEvent.error(image);
+  expect(frame.querySelector('svg')).toBeInTheDocument();
+  expect(frame).toContainElement(screen.getByText('20 min'));
+  expect(screen.queryByRole('img', { name: 'Logs view' })).not.toBeInTheDocument();
+  fireEvent.click(frame);
+  expect(view).toHaveBeenCalledTimes(1);
 });

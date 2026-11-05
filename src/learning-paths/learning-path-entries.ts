@@ -92,6 +92,7 @@ export function selectLearningPathEntries({
         return {
           id,
           title: member?.title ?? id,
+          description: member?.description,
           completed: (catalogProgress.get(member?.key ?? '')?.percent ?? 0) >= 100,
           isCurrent: false,
         };

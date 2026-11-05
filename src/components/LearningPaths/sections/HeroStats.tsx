@@ -30,20 +30,15 @@ export function HeroStats({
       pathsCompleted === 1
         ? t('myLearning.summaryOnePath', '1 learning path')
         : t('myLearning.summaryPaths', '{{count}} learning paths', { count: pathsCompleted });
-    const badgesLabel =
-      badgesEarned === 1
-        ? t('myLearning.summaryOneBadge', '1 badge')
-        : t('myLearning.summaryBadges', '{{count}} badges', { count: badgesEarned });
     return (
       <p className={styles.learningSummary}>
         <Trans
           i18nKey="myLearning.learningSummary"
-          values={{ guidesCompleted, pathsCompleted, badgesEarned, streakDays, guidesLabel, pathsLabel, badgesLabel }}
+          values={{ guidesCompleted, pathsCompleted, streakDays, guidesLabel, pathsLabel }}
         >
-          You’re learning on the <strong>Fundamentals track</strong>. You’ve completed{' '}
-          <strong>{'{{guidesLabel}}'}</strong> and <strong>{'{{pathsLabel}}'}</strong>, earned{' '}
-          <strong>{'{{badgesLabel}}'}</strong>, and have a <strong>{'{{streakDays}}'}-day streak</strong>. Pick up where
-          you left off, or explore something new below.
+          Your learning altitude is <strong>Fundamentals</strong>. You’ve completed <strong>{'{{guidesLabel}}'}</strong>
+          , <strong>{'{{pathsLabel}}'}</strong>, and you’re on a <strong>{'{{streakDays}}'}-day streak</strong>. Pick up
+          where you left off, or explore something new below.
         </Trans>
       </p>
     );
@@ -83,7 +78,7 @@ export function HeroStats({
             <Icon name="layer-group" size="lg" />
           </span>
           <div className={styles.statContent}>
-            <div className={styles.statLabel}>{t('myLearning.learningAltitude', 'Learning altitude')}</div>
+            <div className={styles.statLabel}>{t('myLearning.learningAltitude', 'Your learning altitude')}</div>
             <div className={styles.statValueAltitude}>{t('myLearning.fundamentals', 'Fundamentals')}</div>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
+import { useLearningCardSelection } from '../LearningContentCard/useLearningCardSelection';
 import { getLearningPreview } from '../LearningContentCard/learning-previews';
 import { HomeLearningPathsSection, type HomePathEntry } from './sections/HomeLearningPathsSection';
 import { withoutPathMembers } from '../../lib/package-catalog';
@@ -23,6 +24,7 @@ import type { PackageOpenInfo } from '../../types/content-panel.types';
 import type { LearningPath } from '../../types/learning-paths.types';
 import {
   catalogIdentity,
+  compareResolvedAssignments,
   selectLearningPathEntries,
   useLearningPaths,
   useDiscoverMore,
@@ -52,13 +54,15 @@ import {
 import { evictAllContentCaches } from '../../global-state/completion-store';
 import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
 import type { EarnedBadge } from '../../types';
-import { getBadgeProgress } from './badge-utils';
+import { getBadgeProgress, type BadgeProgressInfo } from './badge-utils';
+
 import { getMyLearningStyles } from './MyLearningTab.styles';
 import { BadgeDetailCard } from './BadgeDetailCard';
 import { HeroStats } from './sections/HeroStats';
 import { MyCoursesSection } from './sections/MyCoursesSection';
 import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
+import { HomeBadgesSummary } from './sections/HomeBadgesSummary';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
 import { useCatalogLaunch } from './useCatalogLaunch';
 import { ContinueLearningSection } from './sections/ContinueLearningSection';
@@ -66,12 +70,7 @@ import { CompletedSection } from './sections/CompletedSection';
 
 interface MyLearningTabProps {
   homepage?: boolean;
-  /**
-   * Called once the guide has been fetched, snippet-expanded, and classified,
-   * so the host can choose the display surface (full-screen for reading-only
-   * content, sidebar/floating when it drives the Grafana UI) and open the tab
-   * without a second fetch.
-   */
+  /** Opens the prepared guide without fetching it again. */
   onOpenGuide: (launch: PreparedGuideLaunch) => void;
 }
 
@@ -81,8 +80,6 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   const exploreStyles = useStyles2(getPackageBrowserStyles);
   // Guards against a second launch while the first is still fetching/classifying.
   const launchInFlightRef = useRef(false);
-  // Drives the pending affordance on the launching card while the ref above
-  // stays the correctness guard. Shared by course cards and Discover More.
   const [launchingId, setLaunchingId] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const preparingLoadRef = useRef<GuideLoadContext | undefined>(undefined);
@@ -110,7 +107,14 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     isLoading,
   } = useLearningPaths();
 
-  const { assignmentByTargetId, onlinePaths, getPathGuides } = useMyAssignments({
+  const {
+    assignmentByTargetId,
+    onlinePaths,
+    getPathGuides,
+    isLoading: assignmentsLoading,
+    hasError: assignmentsError,
+    retry: retryAssignments,
+  } = useMyAssignments({
     paths,
     getPathProgress,
     getPathGuides: getLocalPathGuides,
@@ -118,9 +122,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     resolveNavLinks: resolvePackageNavLinks,
   });
 
-  // An unsatisfied assignment keeps a path in My Courses even at 100% local
-  // progress; online-catalogue paths exist only because they're assigned, so
-  // their wire `satisfied`/`progress` decide the section.
+  // Outstanding assignments stay visible even when local progress reaches 100%.
   const inProgress = useMemo(() => {
     const local = paths.filter((path) => {
       const assignment = assignmentByTargetId.get(path.id);
@@ -136,8 +138,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   }, [paths, onlinePaths, getPathProgress, assignmentByTargetId]);
 
   const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
-  // An assigned private path also surfaces here, same as an online-catalogue
-  // one — alongside Private Paths, not instead of it; duplication is fine.
+  // Assigned private paths also appear in My paths.
   const courses = useMemo(
     () => inProgress.filter((path) => !path.isPrivate || assignmentByTargetId.get(path.id)),
     [inProgress, assignmentByTargetId]
@@ -160,6 +161,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   } = useDiscoverMore({ excludeIdentities, count: Number.MAX_SAFE_INTEGER });
   const homeTopics = useMemo(() => catalogTopicShortcuts(withoutPathMembers(catalog.items)), [catalog.items]);
   const catalogProgress = useCatalogProgress(catalog.items, catalog.scope);
+  const { selectedCardKey, selectCard } = useLearningCardSelection(catalog.scope);
   const allHomePathEntries = useMemo(
     () =>
       selectLearningPathEntries({
@@ -177,15 +179,23 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   const homePathEntries = allHomePathEntries.filter(
     (entry) => entry.percent < 100 || (entry.assignment && !entry.assignment.satisfied)
   );
-  const homeContinuePaths = homePathEntries
+  const homeAssignedPaths = homePathEntries
+    .filter((entry) => entry.assignment && !entry.assignment.satisfied)
+    .sort((a, b) => compareResolvedAssignments(a.assignment!, b.assignment!));
+  const homeAssignedKeys = new Set(homeAssignedPaths.map((entry) => entry.key));
+  const homeUnassignedPaths = homePathEntries.filter((entry) => !homeAssignedKeys.has(entry.key));
+  const homeContinuePaths = homeUnassignedPaths
     .filter((entry) => entry.percent > 0 && entry.percent < 100)
     .sort((a, b) => b.percent - a.percent);
   const homeContinueGuides = catalog.items.filter((item) => {
     const percent = catalogProgress.get(item.key)?.percent ?? 0;
     return item.format === 'guide' && Number.isFinite(percent) && percent > 0 && percent < 100;
   });
-  const homeAvailablePaths = homePathEntries.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
-  const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress, { loadInSidebar: homepage });
+  const homeAvailablePaths = homeUnassignedPaths.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
+  const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress, {
+    loadInSidebar: homepage,
+    onAcceptedLaunch: (item) => selectCard(catalogIdentity(item)),
+  });
   const continueItems = useMemo(
     () =>
       selectContinueLearning(
@@ -416,6 +426,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   };
 
   const handleHomePathView = (entry: HomePathEntry) => {
+    selectCard(entry.key);
     const item = catalog.items.find(
       (candidate) => candidate.format === 'path' && catalogIdentity(candidate) === entry.key
     );
@@ -539,6 +550,17 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     });
   }, [badgesWithStatus, progress.completedGuides, progress.streakDays, pathsForProgress]);
 
+  const homeBadgeProgress = useMemo(() => {
+    const values = new Map<string, BadgeProgressInfo>();
+    for (const badge of BADGES) {
+      const value = getBadgeProgress(badge, progress.completedGuides, progress.streakDays, pathsForProgress);
+      if (value) {
+        values.set(badge.id, value);
+      }
+    }
+    return values;
+  }, [progress.completedGuides, progress.streakDays, pathsForProgress]);
+
   const selectedBadgeProgress = useMemo(() => {
     if (!selectedBadge) {
       return null;
@@ -547,8 +569,11 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     if (!baseBadge) {
       return null;
     }
+    if (homepage) {
+      return homeBadgeProgress.get(baseBadge.id) ?? null;
+    }
     return getBadgeProgress(baseBadge, progress.completedGuides, progress.streakDays, pathsForProgress);
-  }, [selectedBadge, progress.completedGuides, progress.streakDays, pathsForProgress]);
+  }, [selectedBadge, progress.completedGuides, progress.streakDays, pathsForProgress, homepage, homeBadgeProgress]);
 
   if (isLoading) {
     return (
@@ -558,20 +583,17 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     );
   }
 
-  const hasHomeContinue = homeContinuePaths.length > 0 || homeContinueGuides.length > 0;
   const homeBadges = (
-    <aside className={styles.homeBadgeShelf}>
-      <h2>Badges</h2>
-      <BadgesSection
-        compact
-        badges={sortedBadges}
-        completedGuides={progress.completedGuides}
-        streakDays={progress.streakDays}
-        paths={pathsForProgress}
-        onSelect={setSelectedBadge}
-        styles={styles}
-      />
-    </aside>
+    <HomeBadgesSummary
+      badges={sortedBadges}
+      selectedBadgeId={selectedBadge?.id}
+      badgeProgress={homeBadgeProgress}
+      completedGuides={progress.completedGuides}
+      streakDays={progress.streakDays}
+      paths={pathsForProgress}
+      onSelect={setSelectedBadge}
+      styles={styles}
+    />
   );
 
   return (
@@ -586,8 +608,24 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           styles={styles}
         />
 
-        {homepage && !hasHomeContinue && homeBadges}
+        {homepage && homeBadges}
       </div>
+
+      {homepage && (
+        <HomeLearningPathsSection
+          presentation="assigned"
+          title={t('myLearning.yourAssignments', 'Your assignments')}
+          description={t('myLearning.assignmentsDescription', 'Guides and learning paths assigned to you.')}
+          icon="user"
+          entries={homeAssignedPaths}
+          selectedCardKey={selectedCardKey}
+          assignmentsLoading={assignmentsLoading}
+          assignmentsError={assignmentsError}
+          onRetryAssignments={retryAssignments}
+          onView={handleHomePathView}
+          styles={styles}
+        />
+      )}
 
       {!homepage && (
         <ContinueLearningSection
@@ -605,11 +643,11 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
       {homepage && (
         <HomeLearningPathsSection
           presentation="continue"
-          aside={homeBadges}
-          title="Continue learning"
-          description="Pick up guides and paths you have started."
+          title="Pick up where you left off"
+          description="Your guides and learning paths in progress."
           icon="play"
           entries={homeContinuePaths}
+          selectedCardKey={selectedCardKey}
           onView={handleHomePathView}
           styles={styles}
         >
@@ -617,7 +655,8 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
             <LearningContentCard
               key={item.key}
               tile
-              presentation={homeContinuePaths.length === 0 && index === 0 ? 'resume' : 'compact'}
+              selected={selectedCardKey === catalogIdentity(item) && catalogLaunch.launchError?.key !== item.key}
+              presentation={homeContinuePaths.length + index === 0 ? 'resume' : 'compact'}
               title={item.title}
               description={item.description}
               kind="guide"
@@ -627,10 +666,10 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
               progress={catalogProgress.get(item.key)?.percent}
               estimatedMinutes={item.estimatedMinutes}
               effort={item.activityCount !== undefined ? `${item.activityCount} activities` : undefined}
-              onViewPath={() => {
-                void catalogLaunch.launch(item);
-              }}
+              onViewPath={() => catalogLaunch.launch(item)}
               onLaunch={() => catalogLaunch.launch(item)}
+              launching={catalogLaunch.launchingKey === item.key}
+              launchDisabled={catalogLaunch.launchingKey !== null && catalogLaunch.launchingKey !== item.key}
               launchError={catalogLaunch.launchError?.key === item.key ? catalogLaunch.launchError.message : undefined}
             />
           ))}
@@ -643,7 +682,6 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           getPathGuides={getPathGuides}
           getPathProgress={getPathProgress}
           onContinue={handleOpenGuide}
-          onViewPath={handleViewPath}
           onReset={resetPath}
           launchingPathId={launchingId}
           launchDisabled={launchingId !== null || catalogLaunch.launchingKey !== null}
@@ -660,7 +698,6 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
               getPathGuides={getPathGuides}
               getPathProgress={getPathProgress}
               onContinue={handleOpenGuide}
-              onViewPath={handleViewPath}
               onReset={resetPath}
               onResetGuides={resetPathGuides}
               launchingPathId={launchingId}
@@ -670,11 +707,11 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           )}
           {homepage && (
             <HomeLearningPathsSection
-              presentation="compact"
-              title="Your learning paths"
-              description="Learning paths available to you, including assignments."
+              title="Find your next learning path"
+              description="Build your Grafana skills, one step at a time."
               icon="book-open"
               entries={homeAvailablePaths}
+              selectedCardKey={selectedCardKey}
               onView={handleHomePathView}
               styles={styles}
             />
@@ -687,8 +724,8 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
                   <Icon name="compass" size="lg" />
                 </span>
                 <div className={styles.sectionHeadingText}>
-                  <h2 className={styles.sectionTitle}>Explore learning</h2>
-                  <p className={styles.sectionDescription}>Find your next guide or learning path by topic.</p>
+                  <h2 className={styles.sectionTitle}>What would you like to learn?</h2>
+                  <p className={styles.sectionDescription}>Browse guides and learning paths by topic.</p>
                 </div>
                 <LinkButton href={`${prefixRoute(ROUTES.Browse)}?view=all`} variant="primary" size="md">
                   Explore all <Icon name="arrow-right" />
@@ -704,7 +741,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
                     <LearningTopicIcon topic={topic.id} size="sm" bordered />
                     <span className={exploreStyles.topicContent}>
                       <strong>{getLearningTopicMetadata(topic.id).label ?? topic.id}</strong>
-                      <small>{topic.count} guides and paths</small>
+                      <small>{topic.count} guides and learning paths</small>
                     </span>
                   </a>
                 ))}
@@ -716,6 +753,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           {!homepage && (
             <BadgesSection
               badges={sortedBadges}
+              selectedBadgeId={selectedBadge?.id}
               completedGuides={progress.completedGuides}
               streakDays={progress.streakDays}
               paths={pathsForProgress}

@@ -6,6 +6,7 @@ import { cx } from '@emotion/css';
 import { ProgressRing } from '../LearningPaths/ProgressRing';
 import { LearningDetailsToggle } from './LearningDetailsToggle';
 import { LearningTopicIcon } from './LearningTopicIcon';
+import { LearningCardPreview } from './LearningCardPreview';
 import { getLearningAction } from './learning-action';
 import { getLearningTopicMetadata } from './learning-topic-visual';
 import { getLearningContentCardStyles } from './learning-content-card.styles';
@@ -17,7 +18,8 @@ export interface LearningContentCardProps {
   preview?: Pick<LearningPreview, 'src' | 'alt'>;
   presentation?: 'resume' | 'compact';
   tile?: boolean;
-  onViewPath?: () => void;
+  selected?: boolean;
+  onViewPath?: () => void | Promise<void>;
   variant?: 'compact' | 'featured' | 'completion-primary' | 'completion-alternative';
   eyebrow?: string;
   expandableDescription?: boolean;
@@ -56,6 +58,7 @@ export function LearningContentCard({
   preview,
   presentation,
   tile = false,
+  selected = false,
   onViewPath,
   variant = 'compact',
   eyebrow,
@@ -95,6 +98,8 @@ export function LearningContentCard({
   const detailsId = useId();
   const [localExpanded, setLocalExpanded] = useState(false);
   const [pending, setPending] = useState(false);
+  const busy = launching || pending;
+  const disabled = launchDisabled || busy;
   const [error, setError] = useState(false);
   const mounted = useRef(true);
   const lock = useRef(false);
@@ -150,7 +155,7 @@ export function LearningContentCard({
     lock.current = true;
     setError(false);
     try {
-      const result = onLaunch();
+      const result = tile && onViewPath ? onViewPath() : onLaunch();
       if (result && typeof result.then === 'function') {
         setPending(true);
         void result
@@ -175,7 +180,7 @@ export function LearningContentCard({
   };
 
   const bottomAction = featured && actionAtBottom;
-  const launchButton = (
+  const launchButton = !tile && (
     <Button
       ref={actionRef}
       aria-label={actionAriaLabel}
@@ -184,7 +189,7 @@ export function LearningContentCard({
       size={bottomAction ? 'md' : 'sm'}
       fullWidth={bottomAction}
       icon={kind === 'docs' ? 'file-alt' : 'play'}
-      disabled={launchDisabled || launching || pending}
+      disabled={disabled}
       onClick={launch}
       data-testid={actionTestId}
     >
@@ -212,68 +217,109 @@ export function LearningContentCard({
     </span>
   );
 
+  const imageDuration =
+    tile && typeof estimatedMinutes === 'number' && Number.isFinite(estimatedMinutes) && estimatedMinutes > 0;
+
   if (tile) {
     return (
       <article
         className={cx(
           styles.card,
           styles.tile,
-          preview && styles.tileWithPreview,
-          presentation === 'resume' && styles.resumeTile,
-          presentation === 'compact' && styles.compactTile
+          styles.tileWithPreview,
+          presentation === 'compact' && styles.compactTile,
+          presentation === 'resume' && styles.resumeTile
         )}
         data-learning-card
+        data-selected={selected || undefined}
         data-learning-resume={presentation === 'resume' ? true : undefined}
         data-testid={testId}
+        aria-busy={busy || undefined}
         onClick={(event) => {
-          if (!(event.target as HTMLElement).closest('button, a, input')) {
-            onViewPath?.();
+          if (event.target instanceof Element && !event.target.closest('button, a, input')) {
+            launch();
           }
         }}
       >
-        {preview && <img className={styles.tilePreview} src={preview.src} alt={preview.alt} loading="lazy" />}
-        <div className={styles.tileBody}>
-          {preview || presentation ? (
-            <div className={styles.tileEyebrow}>
-              <Icon name={topicMetadata.icon} size="sm" />
-              <span>{topicLabel}</span>
-            </div>
-          ) : (
-            <div className={styles.tileTopic}>
-              <LearningTopicIcon topic={topic} kind={kind} size="sm" bordered surface="secondary" />
-            </div>
-          )}
+        <LearningCardPreview
+          preview={preview}
+          topic={topic}
+          kind={kind}
+          estimatedMinutes={estimatedMinutes}
+          organization={organization}
+          className={presentation === 'resume' ? styles.resumePreview : undefined}
+        />
+        <div className={styles.tileBody} data-learning-card-body>
+          <div className={styles.tileEyebrow}>
+            <Icon
+              name={topicMetadata.icon}
+              size="sm"
+              className={topicMetadata.icon === 'graph-bar' ? styles.tileEyebrowMetricIcon : undefined}
+            />
+            <span>
+              {topicLabel ??
+                (kind === 'path'
+                  ? t('learningCard.path', 'Learning path')
+                  : kind === 'guide'
+                    ? t('learningCard.guide', 'Guide')
+                    : t('learningCard.docs', 'Documentation'))}
+            </span>
+          </div>
           <div className={styles.tileHeading}>
             <h3 data-testid={titleTestId}>
-              <button type="button" className={styles.titleButton} onClick={onViewPath}>
+              <button
+                ref={actionRef}
+                type="button"
+                className={styles.titleButton}
+                onClick={launch}
+                aria-disabled={disabled || undefined}
+                aria-current={selected || undefined}
+              >
                 {title}
               </button>
             </h3>
           </div>
-          {description && <p className={styles.tileDescription}>{description}</p>}
+          {description && presentation !== 'compact' && (
+            <p className={cx(styles.tileDescription, presentation === 'resume' && styles.resumeDescription)}>
+              {description}
+            </p>
+          )}
 
           {badges && <div className={styles.badges}>{badges}</div>}
+          {presentation === 'resume' && (
+            <div className={styles.resumeAction}>
+              <Button icon="play" size="md" variant="primary" onClick={launch} disabled={disabled}>
+                {busy ? t('learningCard.opening', 'Opening…') : 'Resume'}
+              </Button>
+            </div>
+          )}
         </div>
-        <div className={styles.tileFooter}>
+        <div className={styles.tileFooter} data-learning-card-footer>
           <div className={styles.tileProgress}>
             {kind !== 'docs' && (
               <ProgressRing
                 progress={percent}
-                size={presentation === 'resume' ? 56 : percent === 100 ? 30 : 32}
-                strokeWidth={presentation === 'resume' ? 3 : 2}
+                size={presentation === 'compact' ? 32 : percent === 100 ? 34 : 36}
+                strokeWidth={2}
                 isCompleted={percent === 100}
                 showPercentage
               />
             )}
             <span className={styles.tileMetadata}>
+              {busy && kind === 'docs' && <span role="status">{t('learningCard.opening', 'Opening…')}</span>}
               {percent === 100 && (
                 <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
               )}
               {kind !== 'docs' && (
                 <span>
-                  <Icon name={kind === 'path' ? 'book-open' : 'file-alt'} size="xs" />
                   <strong>
-                    {kind === 'path' ? t('learningCard.path', 'Learning path') : t('learningCard.guide', 'Guide')}
+                    {busy ? (
+                      <span role="status">{t('learningCard.opening', 'Opening…')}</span>
+                    ) : kind === 'path' ? (
+                      t('learningCard.path', 'Learning path')
+                    ) : (
+                      t('learningCard.guide', 'Guide')
+                    )}
                   </strong>
                   {kind === 'path' && effort && (
                     <>
@@ -283,31 +329,13 @@ export function LearningContentCard({
                   )}
                 </span>
               )}
-              {kind !== 'path' && effort && (
-                <span>
-                  <Icon name="list-ul" size="xs" />
-                  {effort}
-                </span>
-              )}
-              {typeof estimatedMinutes === 'number' && estimatedMinutes > 0 && (
-                <span>
-                  <Icon name="clock-nine" size="xs" />
-                  About {estimatedMinutes} min
-                </span>
-              )}
-              {organization && (
-                <span>
-                  <Icon name="users-alt" size="xs" />
-                  {t('learningCard.organization', 'Your organization')}
-                </span>
-              )}
+              {kind !== 'path' && effort && <span>{effort}</span>}
+              {presentation !== 'compact' &&
+                !imageDuration &&
+                typeof estimatedMinutes === 'number' &&
+                estimatedMinutes > 0 && <span>About {estimatedMinutes} min</span>}
             </span>
           </div>
-          {presentation === 'resume' && (
-            <Button icon="play" size="md" variant="primary" onClick={onViewPath}>
-              Resume
-            </Button>
-          )}
         </div>
         {(launchError || error) && (
           <p role="alert" className={styles.error}>

@@ -11,7 +11,7 @@ import { HomePanel } from '../components/Home';
 import { getFirstName } from '../components/SidebarHub/user-first-name';
 
 export const homePage = new SceneAppPage({
-  title: 'My Learning',
+  title: 'Learn',
   renderTitle: () => createElement(HomePageHeading),
   url: prefixRoute(ROUTES.Home),
   // routePath must be relative (not prefixed) — Grafana 12's RRv6 routing strips the plugin base URL

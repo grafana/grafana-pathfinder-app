@@ -8,7 +8,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { Alert, Button, Icon, Input, Combobox, RadioButtonGroup, useStyles2 } from '@grafana/ui';
+import { Alert, Button, Icon, Input, Combobox, EmptyState, RadioButtonGroup, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
 import { useLearningPageScroll } from '../../hooks';
@@ -37,6 +37,7 @@ import { useCatalogLaunch } from '../LearningPaths/useCatalogLaunch';
 import { getPackageBrowserStyles } from './package-browser.styles';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { LearningContentCard } from '../LearningContentCard/LearningContentCard';
+import { useLearningCardSelection } from '../LearningContentCard/useLearningCardSelection';
 import { getLearningPreview } from '../LearningContentCard/learning-previews';
 import { CatalogDetails } from './CatalogDetails';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
@@ -96,6 +97,7 @@ function PackageBrowserContent({
 }) {
   const styles = useStyles2(getPackageBrowserStyles);
   const catalog = usePackageCatalog();
+  const { selectedCardKey, selectCard } = useLearningCardSelection(catalog.scope);
   const viewScope = page ? `${catalog.scope}:homepage-explore` : catalog.scope;
   const snapshot = useCallback(() => getCatalogView(catalog.scope), [catalog.scope]);
   const sidebarView = useSyncExternalStore(subscribeCatalogView, snapshot, snapshot);
@@ -294,7 +296,10 @@ function PackageBrowserContent({
     {
       onOpenGuide,
       loadInSidebar: page,
-      onAcceptedLaunch: (item) => update({ focusKey: item.key }),
+      onAcceptedLaunch: (item) => {
+        update({ focusKey: item.key });
+        selectCard(item.key);
+      },
       interactionLocation: 'package_browser',
     }
   );
@@ -329,6 +334,7 @@ function PackageBrowserContent({
       key={`${catalog.scope}:${item.key}`}
       title={item.title}
       tile={page}
+      selected={page && selectedCardKey === item.key && launchError?.key !== item.key}
       preview={page && item.source === 'grafana' ? getLearningPreview(item.id) : undefined}
       onViewPath={page ? () => launch(item) : undefined}
       kind={item.format}
@@ -377,7 +383,7 @@ function PackageBrowserContent({
   const searchControl = (
     <>
       <label htmlFor={searchId} className={styles.searchLabel}>
-        {t('packageBrowser.searchLabel', 'Search guides and paths')}
+        {t('packageBrowser.searchLabel', 'Search guides and learning paths')}
       </label>
       <Input
         id={searchId}
@@ -385,8 +391,8 @@ function PackageBrowserContent({
         prefix={<Icon name="search" />}
         placeholder={
           page
-            ? t('packageBrowser.pageSearchPlaceholder', 'Search guides or paths')
-            : t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, paths…')
+            ? t('packageBrowser.pageSearchPlaceholder', 'Search')
+            : t('packageBrowser.searchPlaceholder', 'Search dashboards, metrics, learning paths…')
         }
         onChange={(event) => {
           const query = event.currentTarget.value;
@@ -420,7 +426,7 @@ function PackageBrowserContent({
               <h2>{t('packageBrowser.title', 'Explore learning')}</h2>
             )}
             <p className={styles.description}>
-              {t('packageBrowser.description', 'Find something to learn or build in Grafana.')}
+              {t('packageBrowser.description', 'Browse all guides and learning paths.')}
             </p>
           </div>
           {!page && (
@@ -456,6 +462,7 @@ function PackageBrowserContent({
               <fieldset className={styles.completionFilter}>
                 <legend>{t('packageBrowser.status', 'Status')}</legend>
                 <RadioButtonGroup<'all' | 'in-progress' | 'completed'>
+                  className={styles.completionToggle}
                   options={[
                     { value: 'all', label: t('packageBrowser.allStatus', 'All') },
                     { value: 'in-progress', label: t('packageBrowser.inProgress', 'In progress') },
@@ -605,7 +612,9 @@ function PackageBrowserContent({
                       <span className={styles.topicContent}>
                         <strong>{topicLabel(topic.id)}</strong>
                         <small>
-                          {t('packageBrowser.topicResults', '{{count}} guides and paths', { count: topic.count })}
+                          {t('packageBrowser.topicResults', '{{count}} guides and learning paths', {
+                            count: topic.count,
+                          })}
                         </small>
                       </span>
                     </button>
@@ -642,7 +651,7 @@ function PackageBrowserContent({
               {items.slice(0, view.visibleCount).map((item) => renderCard(item))}
             </div>
             {items.length > view.visibleCount && (
-              <div className={`${styles.resultRow} ${styles.pagination}`}>
+              <div className={`${styles.resultRow} ${page ? styles.pagePagination : styles.pagination}`}>
                 <span>
                   {t('packageBrowser.showing', 'Showing {{shown}} of {{total}} results', {
                     shown: view.visibleCount,
@@ -658,11 +667,9 @@ function PackageBrowserContent({
               </div>
             )}
             {items.length === 0 && !catalog.loading && (
-              <div className={styles.empty}>
-                <Icon name="search" size="xl" />
-                <h3>{t('packageBrowser.noResults', 'No guides match these filters')}</h3>
-                <p>{t('packageBrowser.noResultsDescription', 'Clear the filters or try another search.')}</p>
-              </div>
+              <EmptyState variant="not-found" message={t('packageBrowser.noResults', 'No guides match these filters')}>
+                {t('packageBrowser.noResultsDescription', 'Clear the filters or try another search.')}
+              </EmptyState>
             )}
           </>
         )}

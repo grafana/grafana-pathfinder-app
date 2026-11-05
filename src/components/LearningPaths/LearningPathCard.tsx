@@ -4,7 +4,7 @@ import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
 import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-visual';
-import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
+import { LearningCardPreview } from '../LearningContentCard/LearningCardPreview';
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
 import { formatDueDate, getDueStatus, markCurrentGuide } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
@@ -29,6 +29,7 @@ export function LearningPathCard({
   launchDisabled = false,
   assignment,
   tile = false,
+  selected = false,
   preview,
   presentation,
   onViewPath,
@@ -37,6 +38,7 @@ export function LearningPathCard({
 }: LearningPathCardProps & {
   defaultExpanded?: boolean;
   tile?: boolean;
+  selected?: boolean;
   preview?: { src: string; alt: string };
   presentation?: 'resume' | 'compact';
   onViewPath?: () => void;
@@ -44,13 +46,13 @@ export function LearningPathCard({
   topic?: string;
 }) {
   const styles = useStyles2(getLearningPathCardStyles);
+  const topicMetadata = getLearningTopicMetadata(topic, 'path');
   const [isExpanded, setIsExpanded] = useState(tile ? false : defaultExpanded);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
   const [isConfirmingAssignmentReset, setIsConfirmingAssignmentReset] = useState(false);
   const detailsId = useId();
 
   const dueStatus = assignment ? getDueStatus(assignment) : undefined;
-
   // Whether this is a URL-based path (guides fetched dynamically)
   const isUrlBased = Boolean(path.url);
   const isLoadingGuides = isUrlBased && guides.length === 0;
@@ -73,6 +75,7 @@ export function LearningPathCard({
 
   const currentGuide = effectiveGuides.find((g) => g.isCurrent);
   const firstIncompleteGuide = effectiveGuides.find((g) => !g.completed);
+  const nextGuide = currentGuide ?? firstIncompleteGuide;
   const firstGuide = effectiveGuides[0];
 
   const guideToOpen = currentGuide?.id || firstIncompleteGuide?.id || firstGuide?.id;
@@ -130,6 +133,18 @@ export function LearningPathCard({
   };
 
   const completedCount = effectiveGuides.filter((g) => g.completed).length;
+  const imageDuration =
+    tile &&
+    typeof path.estimatedMinutes === 'number' &&
+    Number.isFinite(path.estimatedMinutes) &&
+    path.estimatedMinutes > 0;
+  const resumeAction = tile && presentation === 'resume' && (
+    <div className={styles.resumeAction}>
+      <Button icon="play" size="md" variant="primary" onClick={onViewPath}>
+        Resume
+      </Button>
+    </div>
+  );
 
   return (
     <div
@@ -152,34 +167,48 @@ export function LearningPathCard({
           : undefined
       }
       data-learning-card={tile ? true : undefined}
+      data-selected={tile && selected ? true : undefined}
       data-learning-resume={tile && presentation === 'resume' ? true : undefined}
       data-testid={testIds.learningPaths.card(path.id)}
     >
-      {tile && preview && <img className={styles.tilePreview} src={preview.src} alt={preview.alt} loading="lazy" />}
+      {tile && (
+        <LearningCardPreview
+          preview={preview}
+          topic={topic}
+          kind="path"
+          estimatedMinutes={path.estimatedMinutes}
+          organization={showOrganization && path.isPrivate}
+          className={presentation === 'resume' ? styles.resumePreview : undefined}
+        />
+      )}
       <div
         data-learning-card-body={tile ? true : undefined}
         className={styles.header}
         onClick={tile ? undefined : handleToggleExpand}
       >
         {!tile && (
-          <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
+          <ProgressRing progress={progress} size={44} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
         )}
 
         <div className={styles.content}>
-          {tile &&
-            (preview || presentation ? (
-              <div className={styles.tileEyebrow}>
-                <Icon name={getLearningTopicMetadata(topic, 'path').icon} size="sm" />
-                <span>{getLearningTopicMetadata(topic, 'path').label ?? 'Learning path'}</span>
-              </div>
-            ) : (
-              <div className={styles.tileTopic}>
-                <LearningTopicIcon topic={topic} kind="path" size="sm" bordered surface="secondary" />
-              </div>
-            ))}
+          {tile && (
+            <div className={styles.tileEyebrow}>
+              <Icon
+                name={topicMetadata.icon}
+                size="sm"
+                className={topicMetadata.icon === 'graph-bar' ? styles.tileEyebrowMetricIcon : undefined}
+              />
+              <span>{topicMetadata.label ?? t('learningCard.path', 'Learning path')}</span>
+            </div>
+          )}
           <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>
             {tile ? (
-              <button type="button" className={styles.titleButton} onClick={onViewPath}>
+              <button
+                type="button"
+                className={styles.titleButton}
+                onClick={onViewPath}
+                aria-current={selected || undefined}
+              >
                 {path.title}
               </button>
             ) : (
@@ -187,13 +216,17 @@ export function LearningPathCard({
             )}
           </h3>
 
-          {tile && path.description && <p className={styles.tileDescription}>{path.description}</p>}
-          {tile && presentation === 'resume' && (currentGuide ?? firstIncompleteGuide) && (
-            <div className={styles.resumeNext}>
+          {tile && !presentation && path.description && <p className={styles.tileDescription}>{path.description}</p>}
+          {tile && presentation === 'resume' && nextGuide && (
+            <div className={styles.resumeNext} data-learning-next>
               <span>Up next</span>
-              <strong>{(currentGuide ?? firstIncompleteGuide)?.title}</strong>
+              <strong>{nextGuide.title}</strong>
+              {nextGuide.description && (
+                <p className={cx(styles.tileDescription, styles.resumeDescription)}>{nextGuide.description}</p>
+              )}
             </div>
           )}
+          {resumeAction}
 
           {!tile && (
             <div className={styles.meta}>
@@ -210,12 +243,12 @@ export function LearningPathCard({
         </div>
 
         {tile && (
-          <div className={styles.tileFooter}>
+          <div className={styles.tileFooter} data-learning-card-footer>
             <div className={styles.tileProgress}>
               <ProgressRing
                 progress={progress}
-                size={presentation === 'resume' ? 56 : isCompleted ? 30 : 32}
-                strokeWidth={presentation === 'resume' ? 3 : 2}
+                size={presentation === 'compact' ? 32 : isCompleted ? 34 : 36}
+                strokeWidth={2}
                 isCompleted={isCompleted}
                 showPercentage
               />
@@ -224,31 +257,21 @@ export function LearningPathCard({
                   <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
                 )}
                 <span>
-                  <Icon name="book-open" size="xs" />
                   <strong>{t('learningCard.path', 'Learning path')}</strong>
                   <span aria-hidden="true">·</span>
-                  {isLoadingGuides ? 'Loading guides…' : `${completedCount}/${guides.length} guides`}
+                  {isLoadingGuides
+                    ? 'Loading guides…'
+                    : presentation === 'resume' || presentation === 'compact'
+                      ? `${guides.length} guides`
+                      : `${completedCount}/${guides.length} guides`}
                 </span>
-                {typeof path.estimatedMinutes === 'number' && path.estimatedMinutes > 0 && (
-                  <span>
-                    <Icon name="clock-nine" size="xs" />
-                    About {path.estimatedMinutes} min
-                  </span>
-                )}
-                {showOrganization && path.isPrivate && (
-                  <span>
-                    <Icon name="users-alt" size="xs" />
-                    Your organisation
-                  </span>
-                )}
+                {presentation !== 'compact' &&
+                  !imageDuration &&
+                  typeof path.estimatedMinutes === 'number' &&
+                  path.estimatedMinutes > 0 && <span>About {path.estimatedMinutes} min</span>}
               </span>
             </div>
             {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
-            {presentation === 'resume' && (
-              <Button icon="play" size="md" variant="primary" onClick={onViewPath}>
-                Resume
-              </Button>
-            )}
           </div>
         )}
         {(!tile || isCompleted) && (

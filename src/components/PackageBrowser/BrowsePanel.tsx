@@ -1,7 +1,8 @@
 import { getHomePageStyles } from '../Home/home.styles';
 import React from 'react';
 import { SceneObjectBase, type SceneObjectState } from '@grafana/scenes';
-import { LinkButton, useStyles2 } from '@grafana/ui';
+import { Button, useStyles2 } from '@grafana/ui';
+import { locationService } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 import { useBooleanFlag } from '../../utils/openfeature';
 import { prefixRoute } from '../../utils/utils.routing';
@@ -19,9 +20,15 @@ function BrowsePanelRenderer() {
   return (
     <div className={styles.browseLayout}>
       <nav aria-label="Learning pages" className={styles.browseNavigation}>
-        <LinkButton href={prefixRoute(ROUTES.Home)} variant="secondary" fill="text" size="md" icon="arrow-left">
+        <Button
+          onClick={() => locationService.push(prefixRoute(ROUTES.Home))}
+          variant="secondary"
+          fill="text"
+          size="md"
+          icon="arrow-left"
+        >
           Back
-        </LinkButton>
+        </Button>
       </nav>
       {enabled ? (
         <PackageBrowser page onOpenGuide={openGuideInSidebar} />

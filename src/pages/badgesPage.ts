@@ -3,12 +3,14 @@ import { EmbeddedScene, SceneAppPage, SceneFlexItem, SceneFlexLayout } from '@gr
 import { prefixRoute } from '../utils/utils.routing';
 import { ROUTES } from '../constants';
 import { BadgesPanel } from '../components/LearningPaths/BadgesPanel';
+import { homePage } from './homePage';
 
 export const badgesPage = new SceneAppPage({
-  title: 'Badges',
+  title: 'Your badges',
   url: prefixRoute(ROUTES.Badges),
   routePath: ROUTES.Badges,
   layout: PageLayoutType.Custom,
+  getParentPage: () => homePage,
   getScene: () =>
     new EmbeddedScene({
       body: new SceneFlexLayout({

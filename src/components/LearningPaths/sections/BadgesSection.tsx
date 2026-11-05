@@ -14,6 +14,7 @@ import { prefixRoute } from '../../../utils/utils.routing';
 interface BadgesSectionProps {
   compact?: boolean;
   gallery?: boolean;
+  selectedBadgeId?: string;
   badges: EarnedBadge[];
   completedGuides: string[];
   streakDays: number;
@@ -25,6 +26,7 @@ interface BadgesSectionProps {
 export function BadgesSection({
   compact = false,
   gallery = false,
+  selectedBadgeId,
   badges,
   completedGuides,
   streakDays,
@@ -51,7 +53,7 @@ export function BadgesSection({
           <div className={styles.sectionHeadingText}>
             <h2 className={styles.sectionTitle}>{t('myLearning.badges', 'Badges')}</h2>
             <p className={styles.sectionDescription}>
-              {t('myLearning.badgesDescription', 'Earn badges by completing paths and maintaining streaks')}
+              {t('myLearning.badgesDescription', 'Earn badges as you complete guides and learning paths.')}
             </p>
           </div>
         </div>
@@ -76,7 +78,8 @@ export function BadgesSection({
           {visible.map((badge, index) => (
             <BadgeGridItem
               key={badge.id}
-              compact={compact}
+              gallery={gallery}
+              selected={selectedBadgeId === badge.id}
               badge={badge}
               index={index}
               completedGuides={completedGuides}

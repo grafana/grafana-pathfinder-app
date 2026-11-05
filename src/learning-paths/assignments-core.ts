@@ -170,6 +170,7 @@ export function buildResolvedAssignment(
     trackId: track?.trackId,
     trackLabel: track?.label,
     assignedBy: assignment.assignedBy ? formatTrackLabel(assignment.assignedBy) : undefined,
+    assignedAt: assignment.assignedAt,
     dueAt: assignment.dueAt,
     overdue: isOverdue(assignment.dueAt, satisfied, now, timeZone),
     satisfied,

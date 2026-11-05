@@ -14,7 +14,7 @@ const topGlow = (strength = 1) =>
   ${topGlowLayers.map((_, index) => `<rect width="1912" height="469" fill="url(#glow${index})"/>`).join('')}
 </svg>`);
 
-const getLearningBackground = (theme: GrafanaTheme2, glowHeight = 469) => {
+const getLearningBackground = (theme: GrafanaTheme2) => {
   const dots =
     encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1912" height="1000" viewBox="0 0 1912 1000">
     <defs>
@@ -26,11 +26,8 @@ const getLearningBackground = (theme: GrafanaTheme2, glowHeight = 469) => {
   </svg>`);
   return {
     backgroundColor: theme.colors.background.page,
-    backgroundImage:
-      glowHeight > 469
-        ? `url("data:image/svg+xml,${dots}"), url("data:image/svg+xml,${topGlow(glowHeight > 469 ? 1.5 : 1)}")`
-        : `url("data:image/svg+xml,${topGlow(glowHeight > 469 ? 1.5 : 1)}")`,
-    backgroundSize: glowHeight > 469 ? `auto 1000px, 100% ${glowHeight}px` : `100% ${glowHeight}px`,
+    backgroundImage: `url("data:image/svg+xml,${dots}"), url("data:image/svg+xml,${topGlow(1.5)}")`,
+    backgroundSize: 'auto 1000px, 100% 850px',
     backgroundPosition: 'top center',
     backgroundRepeat: 'no-repeat',
   };
@@ -44,7 +41,9 @@ export const getHomePageStyles = (theme: GrafanaTheme2) => {
       flexDirection: 'column',
       height: '100%',
       minHeight: 0,
-      ...getLearningBackground(theme),
+      '[class*="-page-wrapper"]:has(&)': {
+        ...getLearningBackground(theme),
+      },
     }),
     browseNavigation: css({
       flexShrink: 0,
@@ -52,14 +51,6 @@ export const getHomePageStyles = (theme: GrafanaTheme2) => {
       maxWidth: `calc(1200px + ${theme.spacing(4)})`,
       marginInline: 'auto',
       padding: theme.spacing(10, 2, 0),
-    }),
-    badgesContent: css({
-      width: `calc(100% - ${theme.spacing(4)})`,
-      maxWidth: `calc(1200px + ${theme.spacing(4)})`,
-      marginInline: 'auto',
-      padding: theme.spacing(1.5, 2, 6),
-      overflowY: 'auto',
-      '& h1': { ...theme.typography.h1, margin: theme.spacing(0, 0, 4) },
     }),
     heading: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(2), paddingTop: theme.spacing(10) }),
     headingText: css({ minWidth: 0 }),
@@ -90,7 +81,7 @@ export const getHomePageStyles = (theme: GrafanaTheme2) => {
       },
       // Scenes owns the page wrapper; scope its background to this home panel.
       '[class*="-page-wrapper"]:has(&)': {
-        ...getLearningBackground(theme, 850),
+        ...getLearningBackground(theme),
       },
     }),
   };
