@@ -45,6 +45,7 @@ const ALL_LAUNCH_SOURCES = [
   'content_link',
   'block_editor_preview',
   'custom_guide',
+  'organization_guide',
 ] as const satisfies readonly LaunchSource[];
 
 // Compile-time guard: if `LaunchSource` gains a new literal that is not in

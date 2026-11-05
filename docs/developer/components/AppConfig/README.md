@@ -265,3 +265,53 @@ Updates the global configuration via window object which provides settings to:
 The configuration interface is only accessible to Grafana administrators with plugin management permissions. Different tabs may have different access requirements based on the organization's setup.
 
 This component ensures the plugin can be properly configured for different environments, authentication requirements, and feature rollout strategies.
+
+### Organization onboarding guide
+
+Cloud administrators can select, replace, or clear one published organization guide
+in Configuration or Learning insights. Both controls use `saveTenantSettings` and
+explain that the selection applies to existing users as well as newcomers without
+matching completion. A guide can be selected only when the completion service is
+available; clearing remains possible when that service is unavailable.
+
+`organizationGuideId` is a sparse tenant setting referencing
+`InteractiveGuide.metadata.name` in the current namespace. An absent or empty
+value disables the feature. The picker stores the resource name; completion lookup
+uses the source-qualified identity from the resolved content, not its title or URL.
+Deploy the companion `grafana-pathfinder-backend` schema before enabling this feature.
+Explicit selection changes require the App Platform settings API and verified
+readback; they never silently fall back to plugin `jsonData`. A failed verification
+does not roll back a possibly successful write: refresh before retrying.
+
+The Organization guide entry appears above sidebar recommendations and remains
+available after completion or reminder exhaustion. It offers Start, Resume, or Open
+guide according to existing progress. Reference reopening does not reset progress
+or remove completion records. The adjacent custom-guide list excludes the same guide.
+
+Automatic introductions are independent of analytics enrollment. On an eligible
+page load, or after leaving the setup wizard during that load, the coordinator
+resolves published content and durable completion before opening. The browser
+budget allows three successfully rendered introductions, at least 24 hours apart,
+per namespace, user, and selected resource. A Web Lock serializes competing tabs;
+unavailable locks, unreadable/corrupt storage, failed persistence, unresolved
+snippets, or unknown completion suppress the attempt. Closing or choosing Not now
+does not record completion. Manual opens do not spend the budget or move the cooldown.
+Disabling and re-enabling the same identity does not reset its budget. Clearing
+browser storage or using another browser can renew it; durable completion still
+suppresses introductions.
+
+The coordinator yields to explicit interactions, deep links, restored content,
+other occupied sidebars, hidden tabs, kiosk/controller flows, and changes of
+location or user while responses are pending. No timer interrupts an ongoing
+session when a cooldown expires. Other automatic learning offers are suppressed
+while the organization guide is configured, including during cooldown or after
+dismissal. Recommendations remain available on manual open.
+
+Author a brief orientation with links to detailed guidance. Existing guide sections
+and completion controls apply: Completed does not prove understanding or separate
+acknowledgment of every statement, and Mark complete can bypass section actions.
+This feature does not gate access, add acknowledgment receipts, detect first login,
+or provide onboarding reporting/export. Learning insights continues to show its
+existing recorded completion and assignment evidence, not an eligible-user roster.
+To introduce new guidance to completed users, publish and select a new identity;
+do not delete completion history. See [the delivery scope](https://github.com/grafana/grafana-pathfinder-app/issues/2252).

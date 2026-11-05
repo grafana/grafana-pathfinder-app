@@ -1,3 +1,5 @@
+import { useOrganizationGuideOffer } from './hooks/useOrganizationGuideOffer';
+import { isOrganizationGuideIntroduction } from '../../global-state/organization-guide-offer';
 import { isLearningJourneyUrl } from './utils/url-validation';
 import type { ReaderPosition } from '../../types/cross-tab.types';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
@@ -14,7 +16,7 @@ import { diagnoseGuideError } from '../../lib/guide-diagnostics';
 
 import React, { useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
-import { useStyles2, useTheme2 } from '@grafana/ui';
+import { Button, useStyles2, useTheme2 } from '@grafana/ui';
 // (Lazy Coda terminal imports retained below — the renderer still mounts the
 //  terminal panel for dev-mode users.)
 
@@ -1239,6 +1241,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Restore tabs after storage is initialized (fixes race condition)
   useTabRestoration({ model, panelMode, tabs });
+  useOrganizationGuideOffer(model, panelMode === 'sidebar');
   useCatalogBrowserListener(model, panelMode);
 
   // Hand the model the config React resolved and let it re-apply the tab
@@ -1586,6 +1589,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         onOpenDevToolsTab={() => model.openDevToolsTab()}
       />
 
+      {activeTab && isOrganizationGuideIntroduction(activeTab.id) && (
+        <Button variant="secondary" size="sm" onClick={() => model.closeTab(activeTab.id)}>
+          Not now
+        </Button>
+      )}
       <DocsPanelContentArea
         styles={styles}
         journeyStyles={journeyStyles}

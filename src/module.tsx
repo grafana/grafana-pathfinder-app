@@ -1,3 +1,4 @@
+import { suppressAutomaticLearningOffers, setAutomaticLearningPolicy } from './global-state/automatic-learning-offers';
 import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import React, { useEffect } from 'react';
@@ -93,6 +94,16 @@ const pathfinderAvailability = await resolvePathfinderAvailability(
 );
 const pathfinderEnabled = pathfinderAvailability === 'enabled';
 const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
+
+if (pathfinderEnabled) {
+  setAutomaticLearningPolicy('pending');
+  void import('./integrations/organization-guide/introduce')
+    .then(({ startOrganizationGuideIntroduction }) => {
+      const stop = startOrganizationGuideIntroduction();
+      window.addEventListener('pagehide', stop, { once: true });
+    })
+    .catch(() => logger.warn('Organization guide initialization unavailable'));
+}
 
 // Telemetry chunk retries must never delay plugin registration.
 void (async () => {
@@ -554,6 +565,10 @@ function handlePathfinderSuggest(event: CustomEvent): void {
     sidebar_already_open: false,
     buffered,
   });
+  if (suppressAutomaticLearningOffers()) {
+    detail.status = 'accepted';
+    return;
+  }
   sidebarState.setPendingOpenSource('external_suggestion', 'auto_open');
   sidebarState.openSidebar(SIDEBAR_COMPONENT_TITLE);
   detail.status = 'accepted';

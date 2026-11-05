@@ -133,3 +133,11 @@ These captures predate the PR #2218 dev-feedback corrections and are historical,
 - [Overview, light theme](images/learning-insights/overview-light.png)
 - [Assignments and learner evidence](images/learning-insights/assignments-dark.png)
 - [Assignments and learner evidence, narrow viewport](images/learning-insights/assignments-mobile.png)
+
+## Organization guide configuration
+
+On Cloud, current-organization administrators can also select the instance's
+organization onboarding guide here. This uses the same tenant settings control as
+the plugin Configuration page; it does not change the reporting queries or add a
+non-completer population. See [Organization onboarding guide](components/AppConfig/README.md#organization-onboarding-guide)
+for storage, reminder behavior, and the limits of completion evidence.

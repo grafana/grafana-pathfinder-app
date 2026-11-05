@@ -128,3 +128,17 @@ describe('isSettingsApiAvailable', () => {
     expect(isSettingsApiAvailable()).toBe(false);
   });
 });
+
+describe('organization guide identity', () => {
+  it.each(['welcome-to-our-org', 'replacement-guide', ''])(
+    'round-trips the explicit selection %j',
+    (organizationGuideId) => {
+      expect(specToConfig(configToSpec({ organizationGuideId }))).toEqual({ organizationGuideId });
+    }
+  );
+
+  it('leaves an absent selection sparse in storage', () => {
+    expect(configToSpec({})).not.toHaveProperty('organizationGuideId');
+    expect(specToConfig({})).not.toHaveProperty('organizationGuideId');
+  });
+});

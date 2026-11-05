@@ -107,6 +107,7 @@ export const DEFAULT_DEV_MODE_OPT_IN = false;
 // Org overrides are sparse in storage; defaults and rollout decisions remain system-owned.
 export interface PathfinderTenantSettings {
   pathfinderEnabled: boolean;
+  organizationGuideId: string;
   recommenderServiceUrl: string;
   tutorialUrl: string;
   // Terms and Conditions
@@ -152,6 +153,7 @@ export interface PathfinderTenantSettings {
  */
 export const TENANT_SETTING_KEYS = [
   'pathfinderEnabled',
+  'organizationGuideId',
   'recommenderServiceUrl',
   'tutorialUrl',
   'acceptedTermsAndConditions',
@@ -213,6 +215,7 @@ export type ResolvedPathfinderConfig = PathfinderTenantSettings & PathfinderUser
 // the second is provisioning's, not ours.
 export const getConfigWithDefaults = (config: PathfinderPluginConfig): ResolvedPathfinderConfig => ({
   pathfinderEnabled: config.pathfinderEnabled ?? true,
+  organizationGuideId: config.organizationGuideId ?? '',
   recommenderServiceUrl:
     config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
       ? config.recommenderServiceUrl

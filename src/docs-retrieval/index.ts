@@ -90,3 +90,5 @@ export { resolveAssetUrl } from './components/docs/resolve-asset-url';
 export { validateKioskDestination } from './kiosk-inputs';
 
 export { resolveActiveMilestoneSequence } from './active-milestone-sequence';
+
+export { buildBackendGuideContent, type BackendGuideResource } from './content-fetcher/backend-guide';

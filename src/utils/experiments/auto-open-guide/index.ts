@@ -1,3 +1,7 @@
+import {
+  suppressAutomaticLearningOffers,
+  onAutomaticLearningPolicyChange,
+} from '../../../global-state/automatic-learning-offers';
 import { config, locationService, reportExperimentView } from '@grafana/runtime';
 
 import {
@@ -66,6 +70,7 @@ function findOffer(targeting: AutoOpenGuideConfig, hostname: string, path: strin
 function canPopOut(): boolean {
   const params = parsePathfinderDeepLink(window.location.search);
   return (
+    !suppressAutomaticLearningOffers() &&
     document.visibilityState === 'visible' &&
     !isPathfinderOpen() &&
     !isExtensionSidebarInUse() &&
@@ -238,6 +243,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     notifyEnrollment();
   }
   check();
+  const stopPolicy = onAutomaticLearningPolicyChange(check);
 
   let unlisten = () => {};
   try {
@@ -255,6 +261,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
 
   return () => {
     stopped = true;
+    stopPolicy();
     pending?.abort();
     unlisten();
     document.removeEventListener('visibilitychange', onVisibilityChange);

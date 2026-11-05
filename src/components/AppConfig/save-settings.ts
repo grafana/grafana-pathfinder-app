@@ -21,15 +21,27 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
 
   // Persist explicit overrides only; runtime defaults and feature flags have their own owners.
   if (await savePathfinderSettings(next, tenant)) {
-    if (changes.pathfinderEnabled !== undefined) {
+    if (changes.pathfinderEnabled !== undefined || changes.organizationGuideId !== undefined) {
       const saved = await fetchPathfinderSettingsSnapshot();
-      if (saved?.config.pathfinderEnabled !== changes.pathfinderEnabled) {
+      if (changes.pathfinderEnabled !== undefined && saved?.config.pathfinderEnabled !== changes.pathfinderEnabled) {
         throw new Error(
           'Interactive learning preference was not retained. Verify the backend schema is deployed and try again.'
         );
       }
+      if (
+        changes.organizationGuideId !== undefined &&
+        saved?.config.organizationGuideId !== changes.organizationGuideId
+      ) {
+        throw new Error(
+          'Organization guide preference was not retained. Verify the backend schema is deployed and try again.'
+        );
+      }
     }
     return;
+  }
+
+  if (changes.organizationGuideId !== undefined) {
+    throw new Error('Organization guide settings require the App Platform settings API.');
   }
 
   const { devModeOptIn: _devModeOptIn, ...legacy } = pluginSettings.jsonData;

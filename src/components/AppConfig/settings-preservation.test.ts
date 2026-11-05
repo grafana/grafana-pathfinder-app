@@ -337,3 +337,41 @@ it('reports a failed verification read rather than declaring the save successful
     'read failed'
   );
 });
+
+describe('organization guide settings', () => {
+  it.each(['welcome', 'replacement', ''])(
+    'verifies the saved selection %j and preserves unrelated settings',
+    async (organizationGuideId) => {
+      const base = tenantSnapshot({ tutorialUrl: 'stored', organizationGuideId: 'previous' });
+      mockFetchTenant.mockResolvedValueOnce(base).mockResolvedValueOnce(tenantSnapshot({ organizationGuideId }));
+      mockSaveTenant.mockResolvedValue(true);
+      await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { organizationGuideId } });
+      expect(mockSaveTenant).toHaveBeenCalledWith({ tutorialUrl: 'stored', organizationGuideId }, base);
+      expect(mockUpdatePlugin).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([{}, { organizationGuideId: 'previous' }])('rejects a discarded or stale selection', async (stored) => {
+    mockFetchTenant.mockResolvedValueOnce(null).mockResolvedValueOnce(tenantSnapshot(stored));
+    mockSaveTenant.mockResolvedValue(true);
+    await expect(
+      saveTenantSettings({ pluginId: PLUGIN_ID, changes: { organizationGuideId: 'welcome' } })
+    ).rejects.toThrow('Organization guide preference was not retained');
+    expect(mockUpdatePlugin).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back to plugin jsonData when the settings API is unavailable', async () => {
+    await expect(
+      saveTenantSettings({ pluginId: PLUGIN_ID, changes: { organizationGuideId: 'welcome' } })
+    ).rejects.toThrow('require the App Platform settings API');
+    expect(mockUpdatePlugin).not.toHaveBeenCalled();
+  });
+
+  it('preserves the selection when saving unrelated tenant settings', async () => {
+    const base = tenantSnapshot({ organizationGuideId: 'welcome' });
+    mockFetchTenant.mockResolvedValue(base);
+    mockSaveTenant.mockResolvedValue(true);
+    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'new' } });
+    expect(mockSaveTenant).toHaveBeenCalledWith({ organizationGuideId: 'welcome', tutorialUrl: 'new' }, base);
+  });
+});

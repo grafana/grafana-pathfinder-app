@@ -1,3 +1,7 @@
+import {
+  suppressAutomaticLearningOffers,
+  onAutomaticLearningPolicyChange,
+} from '../../../global-state/automatic-learning-offers';
 import { type ExperimentConfig } from '@grafana-experiments/sdk';
 import { config, reportExperimentView } from '@grafana/runtime';
 import { loadTranslatedModule } from '../../../lib/plugin-translations';
@@ -134,8 +138,15 @@ export async function startHelpButtonExperiment(): Promise<() => void> {
       prepareLearnUI: async () => {
         ({ t } = await loadTranslatedModule(() => import('@grafana/i18n')));
       },
-      isOpen: isPathfinderOpen,
-      subscribeToOpen: (listener) => onPathfinderSurfaceChange(listener),
+      isOpen: () => isPathfinderOpen() || suppressAutomaticLearningOffers(),
+      subscribeToOpen: (listener) => {
+        const stopSurface = onPathfinderSurfaceChange(listener);
+        const stopPolicy = onAutomaticLearningPolicyChange(listener);
+        return () => {
+          stopSurface();
+          stopPolicy();
+        };
+      },
       isEnrolled: enrolled.get,
       markEnrolled: () => enrolled.set(true),
       isAttentionDismissed: attentionDismissed.get,

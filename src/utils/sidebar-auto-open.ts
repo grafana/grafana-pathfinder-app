@@ -1,3 +1,7 @@
+import {
+  suppressAutomaticLearningOffers,
+  onAutomaticLearningPolicyChange,
+} from '../global-state/automatic-learning-offers';
 // Config-driven sidebar auto-open. Opens the Pathfinder extension sidebar on
 // launch when the operator opted in via the "Open panel on launch" plugin
 // config or the `pathfinder.auto-open-sidebar` flag. Extracted from the retired
@@ -53,12 +57,16 @@ function isOnboardingFlowPath(path: string): boolean {
 }
 
 function openSidebarIfFree(delay = 200): void {
-  if (isExtensionSidebarInUse()) {
+  if (suppressAutomaticLearningOffers() || isExtensionSidebarInUse()) {
     console.log('[Pathfinder] Skipping auto-open: sidebar already in use by another plugin');
     return;
   }
   sidebarState.setPendingOpenSource('auto_open', 'auto_open');
-  attemptAutoOpen(delay);
+  setTimeout(() => {
+    if (!suppressAutomaticLearningOffers() && !isExtensionSidebarInUse()) {
+      attemptAutoOpen(0);
+    }
+  }, delay);
 }
 
 // Defer auto-open when launched on Grafana's onboarding flow so Pathfinder
@@ -101,5 +109,14 @@ export function setupConfigAutoOpen(context: ConfigAutoOpenContext): void {
     return;
   }
 
+  if (suppressAutomaticLearningOffers()) {
+    const stop = onAutomaticLearningPolicyChange(() => {
+      stop();
+      if (!suppressAutomaticLearningOffers()) {
+        openSidebarIfFree();
+      }
+    });
+    return;
+  }
   openSidebarIfFree();
 }

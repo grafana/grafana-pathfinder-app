@@ -1,3 +1,5 @@
+import { useOrganizationGuide } from '../OrganizationGuide/useOrganizationGuide';
+import { OrganizationGuideEntry } from '../OrganizationGuide/OrganizationGuideEntry';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
@@ -464,6 +466,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
       toggleSummaryExpansion,
     ]
   );
+  const organizationGuide = useOrganizationGuide();
   const hubCustomGuides = useMemo(
     () =>
       toHubCustomGuides({
@@ -550,10 +553,11 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           {/* Treatment arm of the interactive-learning banner experiment; renders null otherwise */}
           <InteractiveLearningBanner />
 
+          {organizationGuide && <OrganizationGuideEntry entry={organizationGuide} onOpen={openDocsPage} />}
           <SidebarHub
             userName={getFirstName(config.bootData?.user)}
             guides={hubGuides}
-            customGuides={hubCustomGuides}
+            customGuides={hubCustomGuides.filter((guide) => guide.key !== `custom:${organizationGuide?.guide.guideId}`)}
             isLoadingCustomGuides={isLoadingCustomGuides}
             resume={hubLearning.resume}
             stats={hubLearning.stats}

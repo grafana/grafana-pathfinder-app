@@ -1,3 +1,4 @@
+import { organizationGuideRendered } from '../../../global-state/organization-guide-offer';
 import { usePathfinderPluginConfig } from '../../../hooks';
 import { useBooleanFlag } from '../../../utils/openfeature';
 import { openGuideInSidebar } from '../utils/open-prepared-guide';
@@ -476,6 +477,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
                       } ${interactiveStyles} ${prismStyles}`}
                       onContentReady={() => {
+                        organizationGuideRendered(activeTab.id);
                         restoreScrollPosition();
                       }}
                       completion={{ kind: 'tracked', input: surfaceCompletionInput }}

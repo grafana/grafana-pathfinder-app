@@ -57,7 +57,8 @@ export type LaunchSource =
   | 'content_link'
   // Editor authoring (also needs alignment check)
   | 'block_editor_preview'
-  | 'custom_guide';
+  | 'custom_guide'
+  | 'organization_guide';
 
 /**
  * Sources whose launch surface guarantees the user is already on the right page,
@@ -105,6 +106,7 @@ export const ALIGNED_BY_CONSTRUCTION_SOURCES: ReadonlySet<LaunchSource> = new Se
  * to fire on it.
  */
 export const NEEDS_ALIGNMENT_CHECK_SOURCES: ReadonlySet<LaunchSource> = new Set<LaunchSource>([
+  'organization_guide',
   'home_page',
   'package_browser',
   'url_param',

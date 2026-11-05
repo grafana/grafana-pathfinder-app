@@ -1,3 +1,4 @@
+import { OrganizationGuideSettings } from '../../components/OrganizationGuide/OrganizationGuideSettings';
 import React, { useState } from 'react';
 import { config } from '@grafana/runtime';
 import { dateMath, dateTime, type RawTimeRange, type TimeRange } from '@grafana/data';
@@ -278,13 +279,16 @@ function AuthorizedLearningInsights() {
     }
   };
   return (
-    <LearningInsightsView
-      {...result}
-      refresh={refresh}
-      timeRange={timeRange}
-      onTimeRange={setTimeRange}
-      onTimeZone={setTimeZone}
-    />
+    <>
+      <OrganizationGuideSettings />
+      <LearningInsightsView
+        {...result}
+        refresh={refresh}
+        timeRange={timeRange}
+        onTimeRange={setTimeRange}
+        onTimeZone={setTimeZone}
+      />
+    </>
   );
 }
 
