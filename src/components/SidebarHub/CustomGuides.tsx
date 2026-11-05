@@ -2,7 +2,7 @@ import React, { useId, useState } from 'react';
 import { Button, Text, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
-import { usePersistedBoolean } from '../../hooks/usePersistedLocalState';
+import { usePersistedBoolean } from '../../hooks';
 import { StorageKeys } from '../../lib/storage-keys';
 import { testIds } from '../../constants/testIds';
 import { GuideRow, type HubGuide } from './GuideRow';
