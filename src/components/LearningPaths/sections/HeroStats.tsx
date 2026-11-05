@@ -37,8 +37,7 @@ export function HeroStats({
           values={{ guidesCompleted, pathsCompleted, streakDays, guidesLabel, pathsLabel }}
         >
           Your learning altitude is <strong>Fundamentals</strong>. You’ve completed <strong>{'{{guidesLabel}}'}</strong>
-          , <strong>{'{{pathsLabel}}'}</strong>, and you’re on a <strong>{'{{streakDays}}'}-day streak</strong>. Pick up
-          where you left off, or explore something new below.
+          , <strong>{'{{pathsLabel}}'}</strong>, and you’re on a <strong>{'{{streakDays}}'}-day streak</strong>.
         </Trans>
       </p>
     );

@@ -71,6 +71,7 @@ import { CompletedSection } from './sections/CompletedSection';
 
 interface MyLearningTabProps {
   homepage?: boolean;
+  header?: React.ComponentType<{ children: React.ReactNode }>;
   /** Opens the prepared guide without fetching it again. */
   onOpenGuide: (launch: PreparedGuideLaunch) => void;
 }
@@ -85,7 +86,7 @@ function notifyGuideLaunchError() {
   });
 }
 
-export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabProps) {
+export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }: MyLearningTabProps) {
   const getStyles = useCallback((theme: GrafanaTheme2) => getMyLearningStyles(theme, homepage), [homepage]);
   const styles = useStyles2(getStyles);
   const exploreStyles = useStyles2(getPackageBrowserStyles);
@@ -584,6 +585,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   if (isLoading) {
     return (
       <div className={styles.container}>
+        {Header && <Header>{null}</Header>}
         <SkeletonLoader type="recommendations" />
       </div>
     );
@@ -602,17 +604,21 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     />
   );
 
+  const summary = (
+    <HeroStats
+      narrative={homepage}
+      guidesCompleted={totalGuidesCompleted}
+      pathsCompleted={totalPathsCompleted}
+      badgesEarned={totalBadgesEarned}
+      streakDays={streakInfo.days}
+      styles={styles}
+    />
+  );
+
   return (
     <div className={styles.container}>
       <div className={styles.intro}>
-        <HeroStats
-          narrative={homepage}
-          guidesCompleted={totalGuidesCompleted}
-          pathsCompleted={totalPathsCompleted}
-          badgesEarned={totalBadgesEarned}
-          streakDays={streakInfo.days}
-          styles={styles}
-        />
+        {Header ? <Header>{summary}</Header> : summary}
 
         {homepage && homeBadges}
       </div>

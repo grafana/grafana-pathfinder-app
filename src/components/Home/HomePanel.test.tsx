@@ -9,7 +9,7 @@
 import React from 'react';
 import { OrgRole } from '@grafana/data';
 import { render, screen } from '@testing-library/react';
-import { HomePanelRenderer } from './HomePanel';
+import { HomePageActions, HomePanelRenderer } from './HomePanel';
 import { sidebarState } from '../../global-state/sidebar';
 import { guideLaunchStore } from '../../global-state/guide-launch';
 import { linkInterceptionState } from '../../global-state/link-interception';
@@ -70,9 +70,15 @@ const mockTheme = {
 let capturedOnOpenGuide: ((launch: PreparedGuideLaunch) => void) | undefined;
 
 jest.mock('../LearningPaths', () => ({
-  MyLearningTab: ({ onOpenGuide }: { onOpenGuide: (launch: PreparedGuideLaunch) => void }) => {
+  MyLearningTab: ({
+    onOpenGuide,
+    header: Header,
+  }: {
+    onOpenGuide: (launch: PreparedGuideLaunch) => void;
+    header?: React.ComponentType<{ children: React.ReactNode }>;
+  }) => {
     capturedOnOpenGuide = onOpenGuide;
-    return <div data-testid="my-learning-tab">MyLearningTab</div>;
+    return <div data-testid="my-learning-tab">{Header && <Header>Learning summary</Header>}MyLearningTab</div>;
   },
 }));
 
@@ -149,22 +155,26 @@ describe('HomePanelRenderer', () => {
   describe('composition', () => {
     it('discovers insights only for current-org administrators', () => {
       config.bootData.user.orgRole = OrgRole.Admin;
-      const { rerender } = render(<HomePanelRenderer />);
+      const { rerender } = render(<HomePageActions />);
       expect(screen.getByRole('link', { name: 'Learning insights' })).toHaveAttribute(
         'href',
         '/a/grafana-pathfinder-app/learning-insights'
       );
       config.bootData.user.orgRole = OrgRole.Viewer;
-      rerender(<HomePanelRenderer />);
+      rerender(<HomePageActions />);
       expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Explore learning' })).toHaveAttribute(
+        'href',
+        '/a/grafana-pathfinder-app/browse?view=all'
+      );
     });
 
-    it('hides insights from admins when the rollout flag is off without hiding My learning', () => {
+    it('hides insights from admins when the rollout flag is off without hiding Explore learning', () => {
       config.bootData.user.orgRole = OrgRole.Admin;
       jest.mocked(getFeatureFlagValue).mockReturnValue(false);
-      render(<HomePanelRenderer />);
+      render(<HomePageActions />);
       expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
-      expect(screen.getByTestId('my-learning-tab')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Explore learning' })).toBeInTheDocument();
       expect(getFeatureFlagValue).toHaveBeenCalledWith('pathfinder.learning-insights', false);
     });
 
