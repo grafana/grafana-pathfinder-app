@@ -614,10 +614,10 @@ function PackageBrowserContent({
                   </h3>
                   <span>{t('packageBrowser.guidedIntroductions', 'Guided introductions')}</span>
                 </div>
-                <div className={page ? styles.pageGrid : styles.grid}>
+                <div className={styles.grid}>
                   {starters.map((item, index) => (
                     <React.Fragment key={item.key}>
-                      {!page && index > 0 && item.format === 'guide' && (
+                      {index > 0 && item.format === 'guide' && (
                         <p className={styles.starterNote}>
                           {t('packageBrowser.singleGuide', 'Prefer a single guide?')}
                         </p>

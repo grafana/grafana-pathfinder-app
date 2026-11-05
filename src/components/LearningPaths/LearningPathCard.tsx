@@ -377,7 +377,7 @@ export function LearningPathCard({
               )}
             </div>
           )}
-          {!tile && path.description && <p className={styles.description}>{path.description}</p>}
+          {path.description && <p className={styles.description}>{path.description}</p>}
           <GuideList guides={effectiveGuides} isLoading={isLoadingGuides} className={styles.guideList} />
         </div>
       )}

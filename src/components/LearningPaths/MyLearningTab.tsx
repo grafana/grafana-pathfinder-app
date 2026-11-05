@@ -74,6 +74,16 @@ interface MyLearningTabProps {
   onOpenGuide: (launch: PreparedGuideLaunch) => void;
 }
 
+function notifyGuideLaunchError() {
+  getAppEvents().publish({
+    type: 'alert-error',
+    payload: [
+      t('myLearning.launchErrorTitle', 'Could not open the guide'),
+      t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
+    ],
+  });
+}
+
 export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabProps) {
   const getStyles = useCallback((theme: GrafanaTheme2) => getMyLearningStyles(theme, homepage), [homepage]);
   const styles = useStyles2(getStyles);
@@ -234,13 +244,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           content_url: normalizeTelemetryUrl(url),
           error_code: result.errorCode,
         });
-        getAppEvents().publish({
-          type: 'alert-error',
-          payload: [
-            t('myLearning.launchErrorTitle', 'Could not open the guide'),
-            t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
-          ],
-        });
+        notifyGuideLaunchError();
       }
     },
     [onOpenGuide]
@@ -265,17 +269,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     [performLaunch]
   );
 
-  // Manifest-backed (package) paths — App Platform or online packages alike —
-  // have no cover `url` the way URL-based cloud paths do, so a fresh launch
-  // has to resolve the path's own cover contentUrl before opening it. Mirrors
-  // the URL-based branch in handleOpenGuide below, which already has one.
-  //
-  // The lock is acquired here, before resolvePackageNavLinks, rather than
-  // inside `launch` — Continue/Start buttons disable purely on `launchingId`,
-  // so a lock acquired only inside `launch` would leave that whole resolve
-  // window unguarded, letting a second click start another resolve (and
-  // potentially open a different path) before the first one ever reaches
-  // `launch`'s own lock.
+  // Lock before resolving the cover so repeated clicks cannot race the lookup.
   const openPathCover = useCallback(
     async (path: LearningPath, inSidebar = false) => {
       if (launchInFlightRef.current) {
@@ -293,9 +287,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
         if (!mountedRef.current) {
           return;
         }
-        // A resolver miss shouldn't fail the whole launch: fall back to the
-        // first member guide, same as a manifest-backed path used to do via
-        // getGuideUrlForPath before the cover page had its own contentUrl.
+        // A resolver miss can still open the first member guide.
         const coverUrl = navLink?.contentUrl || getGuideUrlForPath(path.guides[0] ?? '', path.id) || '';
 
         reportAppInteraction(UserInteraction.OpenResourceClick, {
@@ -303,20 +295,12 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           content_url: coverUrl || `package:${path.id}`,
           content_type: AnalyticsContentType.LearningJourney,
           interaction_location: 'my_learning_tab',
-          // The fallback opens the first member guide, not the cover — the
-          // discriminator must reflect what actually opened, not what was intended.
           launch_target: navLink?.contentUrl ? 'cover_page' : 'first_guide_fallback',
         });
 
         if (!coverUrl) {
           logger.error('[MyLearning] Could not resolve a cover or fallback URL for path', { path_id: path.id });
-          getAppEvents().publish({
-            type: 'alert-error',
-            payload: [
-              t('myLearning.launchErrorTitle', 'Could not open the guide'),
-              t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
-            ],
-          });
+          notifyGuideLaunchError();
           return;
         }
 
@@ -334,28 +318,20 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
   const allPaths = useMemo(() => [...paths, ...onlinePaths], [paths, onlinePaths]);
 
   const handleOpenGuide = useCallback(
-    (guideId: string, pathId: string) => {
-      const parentPath = allPaths.find((p) => p.id === pathId);
+    (guideId: string, pathId: string, options?: { path: LearningPath; inSidebar: boolean }) => {
+      if (launchInFlightRef.current) {
+        return;
+      }
+      const parentPath = options?.path ?? allPaths.find((p) => p.id === pathId);
+      const inSidebar = options?.inSidebar ?? false;
 
-      // Manifest-backed (package) paths — App Platform and public/CDN course
-      // packages alike — always land on their own cover page from My Learning,
-      // fresh or resumed, same as URL-based cloud paths below. The rendering
-      // pipeline is identical for every repository
-      // (docs/design/package/learning-journeys.md), so there's no reason to
-      // special-case one source over another here. Whether the cover itself
-      // is interactive is decided by prepareGuideLaunch's own content-based
-      // classification, independent of progress — resuming a course whose
-      // cover happens to be interactive still ends up in the sidebar, exactly
-      // like a fresh launch would.
       if (parentPath?.manifest && !parentPath.url) {
-        void openPathCover(parentPath);
+        void openPathCover(parentPath, inSidebar);
         return;
       }
 
       if (parentPath?.url) {
-        // The path's own url is its cover page; the cover's own CTA
-        // ("Get started" / "Resume") is what resolves the current milestone,
-        // using real completion data — see LearningPathTableOfContents.
+        // The cover's CTA chooses the next guide from completion data.
         reportAppInteraction(UserInteraction.OpenResourceClick, {
           content_title: parentPath.title,
           content_url: parentPath.url,
@@ -364,13 +340,15 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
           launch_target: 'cover_page',
         });
 
-        void launch(parentPath.url, parentPath.title, parentPath.id);
+        void launch(parentPath.url, parentPath.title, parentPath.id, undefined, inSidebar);
         return;
       }
 
-      // Static or App Platform guide — resolve via the path-scoped metadata
-      // hook exposes (covers App Platform member guides too, RFC §6.11),
-      // falling back to the static bundled catalogue as before.
+      if (!guideId) {
+        notifyGuideLaunchError();
+        return;
+      }
+
       const resolvedGuideUrl = parentPath ? getGuideUrlForPath(guideId, parentPath.id) : undefined;
       const staticGuideMetadata = getPathsData().guideMetadata[guideId];
       const title =
@@ -386,7 +364,6 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
         interaction_location: 'my_learning_tab',
       });
 
-      // Track learning path progress when user opens a guide from a path
       if (parentPath) {
         const pathProgress = getPathProgress(parentPath.id);
         const pathGuides = getPathGuides(parentPath.id);
@@ -401,29 +378,10 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
         });
       }
 
-      // App Platform paths carry a manifest but no cover `url`, so the member
-      // launches as `backend-guide:<id>`. Thread the PATH manifest through as
-      // packageInfo (mirroring CustomGuidesSection) — without it the loader
-      // falls through to plain fetchContent and the member renders as a
-      // standalone guide with no milestone toolbar, next/prev, or cover.
-      const packageInfo: PackageOpenInfo | undefined = parentPath?.manifest
-        ? { packageId: parentPath.id, packageManifest: { ...parentPath.manifest, id: parentPath.id } }
-        : undefined;
-
-      void launch(guideUrl, title, pathId, packageInfo);
+      void launch(guideUrl, title, pathId, undefined, inSidebar);
     },
     [launch, allPaths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
-
-  const handleViewPath = (path: LearningPath) => {
-    if (path.manifest && !path.url) {
-      void openPathCover(path, true);
-    } else if (path.url) {
-      void launch(path.url, path.title, path.id, undefined, true);
-    } else {
-      handleOpenGuide(path.guides[0] ?? '', path.id);
-    }
-  };
 
   const handleHomePathView = (entry: HomePathEntry) => {
     selectCard(entry.key);
@@ -437,7 +395,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false }: MyLearningTabPr
     ) {
       void catalogLaunch.launch(item);
     } else {
-      handleViewPath(entry.path);
+      handleOpenGuide(entry.path.guides[0] ?? '', entry.path.id, { path: entry.path, inSidebar: true });
     }
   };
 

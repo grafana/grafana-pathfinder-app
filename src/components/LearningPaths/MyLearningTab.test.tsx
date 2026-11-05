@@ -1506,6 +1506,143 @@ describe('MyLearningTab — reset all learning progress', () => {
   });
 });
 
+describe('homepage path launches', () => {
+  beforeEach(() => {
+    prepareMock.mockResolvedValue(okResult);
+  });
+
+  it.each(['title', 'resume'])('tracks a URL-based path once when opened from its %s', async (target) => {
+    const url = 'https://grafana.com/docs/learning-paths/path-1/';
+    mockPaths = [{ id: 'path-1', title: 'Started path', guides: ['guide-1'], url }];
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+
+    fireEvent.click(screen.getByRole('button', { name: target === 'title' ? 'Started path' : 'Resume' }));
+
+    await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(1));
+    expect(openGuideInSidebar).toHaveBeenCalledWith({
+      url,
+      title: 'Started path',
+      source: 'home_page',
+      packageInfo: undefined,
+    });
+    expect(
+      jest.mocked(reportAppInteraction).mock.calls.filter(([type]) => type === UserInteraction.OpenResourceClick)
+    ).toEqual([
+      [
+        UserInteraction.OpenResourceClick,
+        {
+          content_title: 'Started path',
+          content_url: url,
+          content_type: 'LearningJourney',
+          interaction_location: 'my_learning_tab',
+          launch_target: 'cover_page',
+        },
+      ],
+    ]);
+    expect(prepareMock).not.toHaveBeenCalled();
+    expect(onOpenGuide).not.toHaveBeenCalled();
+  });
+
+  it('does not track or open a duplicate click while a Home launch is pending', async () => {
+    mockPaths = [mockPaths[0]];
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const title = screen.getByRole('button', { name: 'Started path' });
+
+    await act(async () => {
+      fireEvent.click(title);
+      fireEvent.click(title);
+    });
+
+    expect(openGuideInSidebar).toHaveBeenCalledTimes(1);
+    expect(
+      jest.mocked(reportAppInteraction).mock.calls.filter(([type]) => type === UserInteraction.OpenResourceClick)
+    ).toHaveLength(1);
+  });
+
+  it('opens the first bundled guide in the side panel when the path has no cover', async () => {
+    mockPaths = [{ id: 'path-new', title: 'New path', guides: ['guide-new'] }];
+    mockGetGuideUrlForPath.mockReturnValue(undefined);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'New path' }));
+
+    await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(1));
+    expect(openGuideInSidebar).toHaveBeenCalledWith({
+      url: 'bundled:guide-new',
+      title: 'New guide',
+      source: 'home_page',
+      packageInfo: undefined,
+    });
+    expect(prepareMock).not.toHaveBeenCalled();
+    expect(onOpenGuide).not.toHaveBeenCalled();
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.OpenResourceClick,
+      expect.objectContaining({ content_url: 'bundled:guide-new' })
+    );
+  });
+
+  it('reports an error without launching or tracking a path with no cover or guides', () => {
+    mockPaths = [{ id: 'empty-path', title: 'Empty path', guides: [] }];
+    mockGetPathGuides.mockReturnValue([]);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Empty path' }));
+
+    expect(openGuideInSidebar).not.toHaveBeenCalled();
+    expect(prepareMock).not.toHaveBeenCalled();
+    expect(onOpenGuide).not.toHaveBeenCalled();
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    expect(publishMock).toHaveBeenCalledWith({
+      type: 'alert-error',
+      payload: ['Could not open the guide', 'Something went wrong while loading the guide. Please try again.'],
+    });
+  });
+
+  it('opens a path cover even before its guide list has loaded', async () => {
+    const url = 'https://grafana.com/docs/learning-paths/path-1/';
+    mockPaths = [{ id: 'path-1', title: 'Started path', guides: [], url }];
+    mockGetPathGuides.mockReturnValue([]);
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Started path' }));
+
+    await waitFor(() =>
+      expect(openGuideInSidebar).toHaveBeenCalledWith(expect.objectContaining({ url, title: 'Started path' }))
+    );
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the selected organization path when a public path has the same ID', async () => {
+    const manifest = { id: 'path-1', type: 'path', milestones: ['guide-1'] };
+    mockPaths = [
+      {
+        id: 'path-1',
+        title: 'Public path',
+        guides: ['guide-1'],
+        url: 'https://grafana.com/docs/learning-paths/path-1/',
+      },
+      { id: 'path-1', title: 'Organization path', guides: ['guide-1'], isPrivate: true, manifest },
+    ];
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'path-1', title: 'Organization path', contentUrl: 'backend-guide:path-1' },
+    ]);
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Organization path' }));
+
+    await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(1));
+    expect(openGuideInSidebar).toHaveBeenCalledWith({
+      url: 'backend-guide:path-1',
+      title: 'Organization path',
+      source: 'home_page',
+      packageInfo: { packageId: 'path-1', packageManifest: manifest, trackId: undefined },
+    });
+  });
+});
+
 it('homepage separates started paths from the restored available path list', () => {
   mockPaths.push({ id: 'private-new', title: 'Private new', guides: [], isPrivate: true });
   render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
