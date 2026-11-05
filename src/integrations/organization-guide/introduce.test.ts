@@ -152,16 +152,14 @@ it.each([
 });
 
 it('honors prior durable completion by source and content identity', async () => {
-  jest
-    .mocked(loadMyCompletions)
-    .mockResolvedValue({
-      kind: 'ok',
-      data: {
-        capability: { available: true },
-        inProgress: [],
-        completions: [{ guideSource: 'app-platform', guideId: 'content-id', maxCompletionPercent: 100 } as never],
-      },
-    });
+  jest.mocked(loadMyCompletions).mockResolvedValue({
+    kind: 'ok',
+    data: {
+      capability: { available: true },
+      inProgress: [],
+      completions: [{ guideSource: 'app-platform', guideId: 'content-id', maxCompletionPercent: 100 } as never],
+    },
+  });
   stop = startOrganizationGuideIntroduction();
   await flush();
   expect(publish).not.toHaveBeenCalled();

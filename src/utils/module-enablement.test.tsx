@@ -67,6 +67,9 @@ async function boot(
     recordStartupSettings: jest.fn(),
     startHelpButtonExperiment: jest.fn().mockResolvedValue(jest.fn()),
     startAutoOpenGuideExperiment: jest.fn().mockResolvedValue(jest.fn()),
+    startOrganizationGuideIntroduction: jest.fn().mockReturnValue(jest.fn()),
+    setAutomaticLearningPolicy: jest.fn(),
+    suppressAutomaticLearningOffers: jest.fn(() => false),
     onPathfinderSurfaceChange: jest.fn().mockReturnValue(jest.fn()),
     setInterceptionEnabled: jest.fn(),
     ensurePluginTranslations: jest.fn().mockReturnValue(translationReady),
@@ -150,6 +153,8 @@ async function boot(
     './utils/experiments/active-experiments': { getActiveExperiments: jest.fn() },
     './utils/experiments/help-button-attention': effects,
     './utils/experiments/auto-open-guide': effects,
+    './global-state/automatic-learning-offers': effects,
+    './integrations/organization-guide/introduce': effects,
     './utils/experiments': {
       ...effects,
       createExperimentDebugger: jest.fn(),
@@ -200,6 +205,7 @@ it.each([
   expect(effects.installDeepLinkNavListener).not.toHaveBeenCalled();
   expect(effects.setPackageResolverFactory).not.toHaveBeenCalled();
   expect(effects.startAutoOpenGuideExperiment).not.toHaveBeenCalled();
+  expect(effects.startOrganizationGuideIntroduction).not.toHaveBeenCalled();
   const Root = root.component!;
   render(<Root />);
   expect(await screen.findByText('Disabled')).toBeInTheDocument();
