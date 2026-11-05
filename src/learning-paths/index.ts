@@ -8,10 +8,6 @@
 // Main hook
 export { useLearningPaths, useGuideCompletion } from './learning-paths.hook';
 
-// Profile summary hook
-export { useNextLearningAction, computeNextAction } from './useNextLearningAction';
-export type { LearningProfileSummary, NextLearningAction } from './useNextLearningAction';
-
 // Discover More (external package index)
 export { useDiscoverMore, toDiscoverMoreItem } from './useDiscoverMore';
 export type { DiscoverMoreItem, UseDiscoverMoreReturn } from './useDiscoverMore';

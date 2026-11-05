@@ -116,6 +116,7 @@ jest.mock('./link-handler.hook', () => ({
 }));
 
 jest.mock('../../security', () => ({
+  isInteractiveLearningUrl: jest.requireActual('../../security/url-validator').isInteractiveLearningUrl,
   parseUrlSafely: jest.fn((url: string) => {
     try {
       return new URL(url);
@@ -730,6 +731,51 @@ describe('CombinedLearningJourneyPanel.loadTab — learning-journey completion s
       expect.objectContaining({ guideTitle: 'Journey' }),
       { attemptEligible: false }
     );
+  });
+});
+
+describe('trailing-slash journey deep link', () => {
+  it('replaces the URL placeholder with the fetched title', async () => {
+    jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(false);
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/';
+    mockFetchContent.mockResolvedValueOnce({
+      content: { ...preparedContent, url, metadata: { title: 'Getting started with alerting' } },
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [{ ...makeTab('journey-tab'), type: 'learning-journey', title: 'Alerting Intro Lj', baseUrl: url }],
+      activeTabId: 'journey-tab',
+    });
+
+    await panel.loadTab('journey-tab', url);
+
+    expect(panel.getActiveTab()).toMatchObject({ title: 'Getting started with alerting', currentUrl: url });
+    expect(mockFetchContent).toHaveBeenCalledWith(url, expect.anything());
+  });
+
+  it.each([
+    { title: '   ', requestedUrl: 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/' },
+    {
+      title: 'Create your first alert rule',
+      requestedUrl: 'https://interactive-learning.grafana.net/packages/first-rule/content.json',
+    },
+  ])('keeps the journey title for a blank title or milestone load ($title)', async ({ title, requestedUrl }) => {
+    jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(false);
+    const baseUrl = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/';
+    mockFetchContent.mockResolvedValueOnce({
+      content: { ...preparedContent, url: requestedUrl, metadata: { title } },
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [{ ...makeTab('journey-tab'), type: 'learning-journey', title: 'Alerting Intro Lj', baseUrl }],
+      activeTabId: 'journey-tab',
+    });
+
+    await panel.loadTab('journey-tab', requestedUrl);
+
+    expect(panel.getActiveTab()).toMatchObject({ title: 'Alerting Intro Lj', currentUrl: requestedUrl });
   });
 });
 

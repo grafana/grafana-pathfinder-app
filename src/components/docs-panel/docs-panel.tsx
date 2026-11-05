@@ -121,6 +121,7 @@ import {
   projectPersistedTabs,
   resolveDocsLoadAlignment,
   buildDocsLoadSuccessPatch,
+  titleFromLoadedContent,
   type TabGates,
 } from './utils';
 import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
@@ -613,7 +614,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           };
         }
 
-        const updatedTab = this.finishTabSuccess(tabId, () => ({ content, currentUrl: url }));
+        const updatedTab = this.finishTabSuccess(tabId, (tab) => {
+          const title = titleFromLoadedContent(tab, url, content);
+          return { content, currentUrl: url, ...(title ? { title } : {}) };
+        });
 
         // Completion readers key journey progress by the cover URL.
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {

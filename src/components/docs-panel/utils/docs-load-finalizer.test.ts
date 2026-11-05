@@ -1,5 +1,6 @@
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
+import { findDocPage } from '../../../utils/find-doc-page';
 import { buildDocsLoadSuccessPatch, resolveDocsLoadAlignment } from './docs-load-finalizer';
 
 function tab(overrides: Partial<LearningJourneyTab> = {}): LearningJourneyTab {
@@ -200,6 +201,55 @@ describe('buildDocsLoadSuccessPatch', () => {
 
     expect(patch.type).toBe('learning-journey');
     expect(patch.packageInfo).toBe(packageInfo);
+  });
+
+  it.each(['content.json', 'unstyled.html', '', 'content.json?source=website#start'])(
+    'replaces a CDN deep-link placeholder with the fetched title (%s)',
+    (suffix) => {
+      const url = `https://interactive-learning.grafana.net/packages/alerting-intro-lj/${suffix}`;
+      const page = findDocPage(url)!;
+      const patch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: page.title, baseUrl: page.url }),
+        requestedUrl: page.url,
+        fetchedContent: content({ metadata: { title: 'Getting started with alerting' } }),
+        packageInfo: { packageId: 'alerting-intro-lj', packageManifest: { type: 'path' } },
+      });
+
+      expect(patch.title).toBe('Getting started with alerting');
+    }
+  );
+
+  it.each(['', '   '])('keeps a CDN placeholder when the fetched title is empty (%j)', (title) => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Alerting Intro Lj', baseUrl: url }),
+      requestedUrl: url,
+      fetchedContent: content({ metadata: { title } }),
+    });
+
+    expect(patch.title).toBeUndefined();
+  });
+
+  it('preserves an established CDN title on reload', () => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Getting started with alerting', baseUrl: url }),
+      requestedUrl: url,
+      fetchedContent: content({ metadata: { title: 'Another title' } }),
+    });
+
+    expect(patch.title).toBeUndefined();
+  });
+
+  it('does not replace a path title with a milestone title even when it matches the URL slug', () => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Alerting Intro Lj', baseUrl: url }),
+      requestedUrl: 'https://interactive-learning.grafana.net/packages/first-rule/content.json',
+      fetchedContent: content({ metadata: { title: 'Create your first alert rule' } }),
+    });
+
+    expect(patch.title).toBeUndefined();
   });
 
   it('replaces a backend-guide resource name with the fetched guide title', () => {
