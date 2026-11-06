@@ -36,11 +36,6 @@
                                         "description": "orgId is the Grafana organization the write originated from.",
                                         "type": "integer"
                                     },
-                                    "revision": {
-                                        "description": "revision is the catalog revision of the achievement when the tier was\nearned (\u003e= 1). It scopes the operator's revoke line to one revision.",
-                                        "minimum": 1,
-                                        "type": "integer"
-                                    },
                                     "schemaVersion": {
                                         "description": "schemaVersion is the AchievementAward spec schema version (\u003e= 1).\nSeparate from the CRD apiVersion so a schema mistake can be corrected\nwithout an API-version bump.",
                                         "minimum": 1,
@@ -51,11 +46,12 @@
                                         "minLength": 1,
                                         "type": "string"
                                     },
-                                    "tier": {
-                                        "description": "tier is the tier earned (1 to 10). Each tier is its own row.",
-                                        "maximum": 10,
-                                        "minimum": 1,
-                                        "type": "integer"
+                                    "tierId": {
+                                        "description": "tierId is the catalog tier id earned, such as \"bronze\". Each tier is its own\nrow, named hash(userId, achievementId, tierId).",
+                                        "maxLength": 32,
+                                        "minLength": 1,
+                                        "pattern": "^[a-z][a-z0-9-]*$",
+                                        "type": "string"
                                     },
                                     "userDisplayName": {
                                         "description": "userDisplayName is the display name at the time of the write.",
@@ -73,9 +69,8 @@
                                 },
                                 "required": [
                                     "achievementId",
-                                    "tier",
+                                    "tierId",
                                     "entity",
-                                    "revision",
                                     "earnedAt",
                                     "userId",
                                     "orgId",

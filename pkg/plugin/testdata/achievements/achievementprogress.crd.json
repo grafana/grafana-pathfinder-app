@@ -26,11 +26,6 @@
                                         "description": "orgId is the Grafana organization the write originated from.",
                                         "type": "integer"
                                     },
-                                    "revision": {
-                                        "description": "revision is the catalog revision of the achievement the record was last\nevaluated against (\u003e= 1).",
-                                        "minimum": 1,
-                                        "type": "integer"
-                                    },
                                     "schemaVersion": {
                                         "description": "schemaVersion is the AchievementProgress spec schema version (\u003e= 1).\nSeparate from the CRD apiVersion so a schema mistake can be corrected\nwithout an API-version bump.",
                                         "minimum": 1,
@@ -41,17 +36,22 @@
                                         "minLength": 1,
                                         "type": "string"
                                     },
-                                    "tier": {
-                                        "description": "tier is the highest tier awarded so far (0 to 10); 0 means none yet.\nWritten as \u003e-1 because \u003e=0 makes the generator emit uint64 and drop the\nminimum from the CRD, which would admit negative tiers.",
-                                        "exclusiveMinimum": true,
-                                        "maximum": 10,
-                                        "minimum": -1,
-                                        "type": "integer"
+                                    "tierIds": {
+                                        "description": "tierIds is the set of catalog tier ids held, at most one per tier.",
+                                        "items": {
+                                            "maxLength": 32,
+                                            "minLength": 1,
+                                            "pattern": "^[a-z][a-z0-9-]*$",
+                                            "type": "string"
+                                        },
+                                        "maxItems": 10,
+                                        "type": "array",
+                                        "x-kubernetes-list-type": "set"
                                     },
                                     "units": {
-                                        "description": "units is the grow-only set of distinct units counted (a dashboard uid,\na guide, an event id), capped at the top threshold. The writer keeps it\nsorted and distinct; the CRD cannot express either, so neither is\nenforced here.",
+                                        "description": "units is the grow-only set of distinct units counted (a dashboard uid,\na guide, an event id), counted past the final tier up to the grammar\nceiling. The writer keeps it sorted and distinct; the CRD cannot express\neither, so neither is enforced here.",
                                         "items": {
-                                            "maxLength": 128,
+                                            "maxLength": 1040,
                                             "type": "string"
                                         },
                                         "maxItems": 200,
@@ -69,9 +69,8 @@
                                 },
                                 "required": [
                                     "achievementId",
-                                    "tier",
+                                    "tierIds",
                                     "units",
-                                    "revision",
                                     "updatedAt",
                                     "userId",
                                     "orgId",

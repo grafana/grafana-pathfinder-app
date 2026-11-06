@@ -41,7 +41,6 @@ type Catalog struct {
 // threshold. Without one it is a milestone: each tier is earned by an Or route.
 type Definition struct {
 	ID          string   `json:"id"`
-	Revision    int      `json:"revision"`
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	Counter     *Counter `json:"counter,omitempty"`
@@ -63,12 +62,13 @@ type Matcher struct {
 }
 
 // Tier is earned by reaching At distinct units, or outright by an event that
-// matches one of its Or routes. Art is an opaque display reference.
+// matches one of its Or routes. ID is permanent; array order is rank. Art is an
+// opaque display reference.
 type Tier struct {
-	Tier int     `json:"tier"`
-	At   *int    `json:"at,omitempty"`
-	Art  string  `json:"art,omitempty"`
-	Or   []Route `json:"or,omitempty"`
+	ID  string  `json:"id"`
+	At  *int    `json:"at,omitempty"`
+	Art string  `json:"art,omitempty"`
+	Or  []Route `json:"or,omitempty"`
 }
 
 type Route struct {
@@ -167,9 +167,6 @@ func (d *Definition) validate(registry *Registry) []error {
 	if len(d.ID) > maxIDLen || !idPattern.MatchString(d.ID) {
 		fail("id must be a lowercase token of at most %d characters", maxIDLen)
 	}
-	if d.Revision < 1 {
-		fail("revision must be at least 1")
-	}
 	if d.Title == "" || d.Description == "" {
 		fail("title and description are required")
 	}
@@ -183,11 +180,17 @@ func (d *Definition) validate(registry *Registry) []error {
 		occurrence = d.Counter.Unit == unitOccurrence
 	}
 	prev := 0
+	tierIDs := map[string]bool{}
 	for i, t := range d.Tiers {
-		tw := fmt.Sprintf("tier %d", i+1)
-		if t.Tier != i+1 {
-			fail("%s: tier numbers must run 1, 2, 3, ... in order, got %d", tw, t.Tier)
+		tw := fmt.Sprintf("tier %q", t.ID)
+		if !validToken(t.ID) {
+			tw = fmt.Sprintf("tier %d", i+1)
+			fail("%s: id %q is not a lowercase token of at most %d characters", tw, t.ID, maxTokenLen)
 		}
+		if tierIDs[t.ID] {
+			fail("%s: id declared twice", tw)
+		}
+		tierIDs[t.ID] = true
 		switch {
 		case d.Counter == nil && t.At != nil:
 			fail("%s: at is forbidden on a milestone achievement", tw)

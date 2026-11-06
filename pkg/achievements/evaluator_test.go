@@ -76,7 +76,7 @@ func TestEvaluateSelectsInCatalogOrderOneDecisionEach(t *testing.T) {
 	if d := decisionFor(t, decisions, "dash-builder"); d.Reason != ReasonConditionNotMet {
 		t.Errorf("dash-builder = %+v", d)
 	}
-	if d := decisionFor(t, decisions, "guide-routes"); d.Decision != KindAward || d.To != 1 {
+	if d := decisionFor(t, decisions, "guide-routes"); d.Decision != KindAward || d.To != "intro" {
 		t.Errorf("guide-routes = %+v", d)
 	}
 }
@@ -89,15 +89,15 @@ func TestEvaluateCreatesMissingProgressAndAward(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := decisionFor(t, decisions, "dash-builder")
-	if d.Decision != KindAward || d.To != 1 || d.Units != 1 {
+	if d.Decision != KindAward || d.To != "bronze" || !equalStrings(d.Awarded, []string{"bronze"}) || d.Units != 1 {
 		t.Fatalf("decision = %+v", d)
 	}
 	row := store.progress["dash-builder"]
-	if row.Tier != 1 || !equalStrings(row.Units, []string{unitKey("a")}) || row.Revision != 1 || row.SchemaVersion != SchemaVersion {
+	if !equalStrings(row.TierIDs, []string{"bronze"}) || !equalStrings(row.Units, []string{unitKey("a")}) || row.SchemaVersion != SchemaVersion {
 		t.Errorf("stored progress = %+v", row)
 	}
-	award, ok := store.awards["dash-builder/1"]
-	if !ok || award.Entity != "dashboards" || award.Revision != 1 {
+	award, ok := store.awards["dash-builder/bronze"]
+	if !ok || award.Entity != "dashboards" || award.TierID != "bronze" {
 		t.Fatalf("award = %+v ok=%v", award, ok)
 	}
 	if !award.EarnedAt.Equal(fixedNow) || award.EarnedAt.Location() != time.UTC {
@@ -111,7 +111,7 @@ func TestEvaluateAwardsEveryTierUpToTheNewOne(t *testing.T) {
 	if _, err := ev.Evaluate(context.Background(), testPerson, guideCompleted("expert", "interactive")); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"guide-routes/1", "guide-routes/2"} {
+	for _, key := range []string{"guide-routes/intro", "guide-routes/advanced"} {
 		if a, ok := store.awards[key]; !ok || a.Entity != "guides" {
 			t.Errorf("award %s = %+v ok=%v", key, a, ok)
 		}
@@ -144,7 +144,7 @@ func TestEvaluateReplayChangesNothing(t *testing.T) {
 func TestEvaluateExistingProgressRowIsReusedAndExistingCreateReloads(t *testing.T) {
 	t.Run("loaded row skips create", func(t *testing.T) {
 		store := newFakeStore()
-		store.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("a")}, Revision: 1})
+		store.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{unitKey("a")}})
 		ev := newTestEvaluator(t, store, &fakePolicy{})
 		decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("b", 1))
 		if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindIncrement || d.Units != 2 {
@@ -162,7 +162,7 @@ func TestEvaluateExistingProgressRowIsReusedAndExistingCreateReloads(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindIncrement || d.Units != 2 || d.From != 1 {
+		if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindIncrement || d.Units != 2 || d.From != "bronze" {
 			t.Errorf("decision = %+v", d)
 		}
 	})
@@ -178,7 +178,7 @@ func (s *raceStore) LoadProgress(ctx context.Context, p Person, ids []string) (m
 	if !s.raced {
 		s.raced = true
 		s.loads++
-		s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("a")}, Revision: 1})
+		s.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{unitKey("a")}})
 		return map[string]Progress{}, nil
 	}
 	return s.fakeStore.LoadProgress(ctx, p, ids)
@@ -187,15 +187,16 @@ func (s *raceStore) LoadProgress(ctx context.Context, p Person, ids []string) (m
 func TestEvaluateStoreFailuresAreTransientDecisions(t *testing.T) {
 	boom := errors.New("boom")
 	cases := []struct {
-		name       string
-		setup      func(*fakeStore)
-		wantSaves  int
-		wantReason Reason
+		name        string
+		setup       func(*fakeStore)
+		wantSaves   int
+		wantReason  Reason
+		wantAwarded []string
 	}{
-		{"load fails", func(s *fakeStore) { s.loadErr = boom }, 0, ReasonStoreUnavailable},
-		{"create progress fails", func(s *fakeStore) { s.createProgressErr = boom }, 0, ReasonStoreUnavailable},
-		{"award create fails", func(s *fakeStore) { s.awardErr = boom }, 0, ReasonStoreUnavailable},
-		{"save fails", func(s *fakeStore) { s.saveErr = boom }, 1, ReasonStoreUnavailable},
+		{"load fails", func(s *fakeStore) { s.loadErr = boom }, 0, ReasonStoreUnavailable, nil},
+		{"create progress fails", func(s *fakeStore) { s.createProgressErr = boom }, 0, ReasonStoreUnavailable, nil},
+		{"award create fails", func(s *fakeStore) { s.awardErr = boom }, 0, ReasonStoreUnavailable, nil},
+		{"save fails after the award was created", func(s *fakeStore) { s.saveErr = boom }, 1, ReasonStoreUnavailable, []string{"bronze"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -207,7 +208,7 @@ func TestEvaluateStoreFailuresAreTransientDecisions(t *testing.T) {
 				t.Fatal(err)
 			}
 			d := decisionFor(t, decisions, "dash-builder")
-			if d.Decision != KindIgnored || d.Reason != tc.wantReason || d.From != 0 || d.To != 0 {
+			if d.Decision != KindIgnored || d.Reason != tc.wantReason || d.From != "" || d.To != "" || !equalStrings(d.Awarded, tc.wantAwarded) {
 				t.Errorf("decision = %+v", d)
 			}
 			if !Retry(decisions) {
@@ -220,52 +221,119 @@ func TestEvaluateStoreFailuresAreTransientDecisions(t *testing.T) {
 	}
 }
 
-func TestEvaluateAwardCreateExistingStillReportsAward(t *testing.T) {
+func TestEvaluateAwardAlreadyHeldIsNotReportedAsNew(t *testing.T) {
 	store := newFakeStore()
-	store.awards["dash-builder/1"] = Award{AchievementID: "dash-builder", Tier: 1}
+	store.awards["dash-builder/bronze"] = Award{AchievementID: "dash-builder", TierID: "bronze"}
 	ev := newTestEvaluator(t, store, &fakePolicy{})
 	decisions, err := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindAward || d.To != 1 {
-		t.Errorf("decision = %+v, want award despite the 409", d)
+	if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindIncrement || len(d.Awarded) != 0 || d.To != "bronze" {
+		t.Errorf("decision = %+v, want the held tier left out of the report", d)
 	}
-	if store.progress["dash-builder"].Tier != 1 {
-		t.Error("progress was not saved after the existing award")
+	if got := store.progress["dash-builder"].TierIDs; !equalStrings(got, []string{"bronze"}) {
+		t.Errorf("held = %v, want the existing award recorded as held", got)
 	}
 }
 
-func TestEvaluateRetryAfterPartialFailureReportsTheSameDecision(t *testing.T) {
+func TestEvaluateAwardAlreadyHeldWithNothingCountedIsADuplicate(t *testing.T) {
+	store := newFakeStore()
+	store.awards["guide-routes/intro"] = Award{AchievementID: "guide-routes", TierID: "intro"}
+	ev := newTestEvaluator(t, store, &fakePolicy{})
+	decisions, _ := ev.Evaluate(context.Background(), testPerson, guideCompleted("expert", "interactive"))
+	d := decisionFor(t, decisions, "guide-routes")
+	if d.Decision != KindAward || !equalStrings(d.Awarded, []string{"advanced"}) {
+		t.Errorf("decision = %+v, want only the newly held tier", d)
+	}
+	store.awards["dash-builder/bronze"] = Award{AchievementID: "dash-builder", TierID: "bronze"}
+	decisions, _ = ev.Evaluate(context.Background(), testPerson, guideCompleted("first-dashboard-cloud", "interactive"))
+	if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindIgnored || d.Reason != ReasonDuplicate || len(d.Awarded) != 0 {
+		t.Errorf("route to a held tier = %+v, want a duplicate", d)
+	}
+}
+
+func TestEvaluateRetryAfterAFailedSaveDoesNotReportTheAwardTwice(t *testing.T) {
 	store := newFakeStore()
 	store.saveErr = errors.New("down")
 	ev := newTestEvaluator(t, store, &fakePolicy{})
 	event := dashboardCreated("a", 1)
-	if _, err := ev.Evaluate(context.Background(), testPerson, event); err != nil {
+	first, err := ev.Evaluate(context.Background(), testPerson, event)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(store.awards) != 1 || store.progress["dash-builder"].Tier != 0 {
-		t.Fatalf("setup: awards=%d tier=%d", len(store.awards), store.progress["dash-builder"].Tier)
+	if d := decisionFor(t, first, "dash-builder"); d.Reason != ReasonStoreUnavailable || !equalStrings(d.Awarded, []string{"bronze"}) || !Retry(first) {
+		t.Errorf("failed save = %+v, want the created award reported on it and the event kept queued", d)
+	}
+	if len(store.awards) != 1 || len(store.progress["dash-builder"].TierIDs) != 0 {
+		t.Fatalf("setup: awards=%d held=%v", len(store.awards), store.progress["dash-builder"].TierIDs)
 	}
 	store.saveErr = nil
 	decisions, _ := ev.Evaluate(context.Background(), testPerson, event)
-	if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindAward || d.To != 1 {
+	if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindIncrement || len(d.Awarded) != 0 || d.To != "bronze" {
 		t.Errorf("retry = %+v", d)
+	}
+	if got := store.progress["dash-builder"].TierIDs; !equalStrings(got, []string{"bronze"}) {
+		t.Errorf("held = %v", got)
+	}
+}
+
+func TestEvaluateTransientDecisionsMarshalAwardedAsAnArray(t *testing.T) {
+	store := newFakeStore()
+	store.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{unitKey("a")}})
+	store.saveErr = errors.New("down")
+	ev := newTestEvaluator(t, store, &fakePolicy{})
+	decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("b", 1))
+	got := decisionJSON(t, decisionFor(t, decisions, "dash-builder"))
+	if want := `{"achievementId":"dash-builder","decision":"ignored","reason":"store_unavailable","from":"bronze","to":"bronze","awarded":[],"final":false,"units":1,"next":5}`; got != want {
+		t.Errorf("got %s\nwant %s", got, want)
+	}
+}
+
+func TestEvaluateNewerRecordAfterACreateKeepsTheEventQueued(t *testing.T) {
+	store := newFakeStore()
+	store.beforeSave = func(s *fakeStore, attempt int) {
+		if attempt == 1 {
+			s.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, SchemaVersion: SchemaVersion + 1})
+		}
+	}
+	ev := newTestEvaluator(t, store, &fakePolicy{})
+	decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
+	d := decisionFor(t, decisions, "dash-builder")
+	if d.Reason != ReasonRecordNewer || !Retry(decisions) || !equalStrings(d.Awarded, []string{"bronze"}) {
+		t.Errorf("decision = %+v, want record_newer, still queued, with the created award reported", d)
+	}
+}
+
+func TestEvaluateAwardCreatedBeforeAConflictIsStillReported(t *testing.T) {
+	store := newFakeStore()
+	store.beforeSave = func(s *fakeStore, attempt int) {
+		if attempt == 1 {
+			s.seed(Progress{AchievementID: "dash-builder", Units: []string{unitKey("z")}})
+		}
+	}
+	ev := newTestEvaluator(t, store, &fakePolicy{})
+	decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
+	if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindAward || !equalStrings(d.Awarded, []string{"bronze"}) {
+		t.Errorf("decision = %+v, want the award this call created", d)
+	}
+	if store.awardCalls != 1 {
+		t.Errorf("award creates = %d, want one across the retry", store.awardCalls)
 	}
 }
 
 func TestEvaluateConflict(t *testing.T) {
-	t.Run("another replica counted the same unit: one count, one duplicate", func(t *testing.T) {
+	t.Run("a replica whose award create found ours records the same unit: our award is still reported", func(t *testing.T) {
 		store := newFakeStore()
 		store.beforeSave = func(s *fakeStore, attempt int) {
 			if attempt == 1 {
-				s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("a")}, Revision: 1})
+				s.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{unitKey("a")}})
 			}
 		}
 		ev := newTestEvaluator(t, store, &fakePolicy{})
 		decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
 		d := decisionFor(t, decisions, "dash-builder")
-		if d.Decision != KindIgnored || d.Reason != ReasonDuplicate || d.Units != 1 {
+		if d.Decision != KindAward || !equalStrings(d.Awarded, []string{"bronze"}) || d.From != "" || d.Units != 1 {
 			t.Errorf("decision = %+v", d)
 		}
 		if store.saves != 1 {
@@ -276,13 +344,13 @@ func TestEvaluateConflict(t *testing.T) {
 		store := newFakeStore()
 		store.beforeSave = func(s *fakeStore, attempt int) {
 			if attempt == 1 {
-				s.seed(Progress{AchievementID: "dash-builder", Tier: 1, Units: []string{unitKey("z")}, Revision: 1})
+				s.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{unitKey("z")}})
 			}
 		}
 		ev := newTestEvaluator(t, store, &fakePolicy{})
 		decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
 		d := decisionFor(t, decisions, "dash-builder")
-		if d.Decision != KindIncrement || d.Units != 2 || d.From != 1 {
+		if d.Decision != KindAward || !equalStrings(d.Awarded, []string{"bronze"}) || d.Units != 2 {
 			t.Errorf("decision = %+v", d)
 		}
 		if got := store.progress["dash-builder"].Units; !equalStrings(got, []string{unitKey("a"), unitKey("z")}) {
@@ -312,7 +380,7 @@ func TestEvaluateConflict(t *testing.T) {
 			s.loadErr = errors.New("down")
 		}
 		ev := newTestEvaluator(t, store, &fakePolicy{})
-		store.seed(Progress{AchievementID: "dash-builder", Revision: 1})
+		store.seed(Progress{AchievementID: "dash-builder"})
 		decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
 		store.loadErr = nil
 		if d := decisionFor(t, decisions, "dash-builder"); d.Reason != ReasonStoreUnavailable {
@@ -323,7 +391,7 @@ func TestEvaluateConflict(t *testing.T) {
 
 func TestEvaluateRecordNewerIsTransientAndUntouched(t *testing.T) {
 	store := newFakeStore()
-	store.seed(Progress{AchievementID: "dash-builder", Tier: 2, Units: []string{unitKey("a")}, Revision: 9, SchemaVersion: SchemaVersion + 1})
+	store.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"silver"}, Units: []string{unitKey("a")}, SchemaVersion: SchemaVersion + 1})
 	before := store.progress["dash-builder"]
 	ev := newTestEvaluator(t, store, &fakePolicy{})
 	decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("b", 1))
@@ -349,8 +417,8 @@ func TestEvaluateUnmatchedEventStillCreatesTheRow(t *testing.T) {
 }
 
 func TestDecisionJSONShape(t *testing.T) {
-	got := decisionJSON(t, Decision{AchievementID: "x", Decision: KindIncrement, From: 1, To: 1, Units: 2, Next: intp(5), Revision: 1})
-	if want := `{"achievementId":"x","decision":"increment","from":1,"to":1,"final":false,"units":2,"next":5,"revision":1}`; got != want {
+	got := decisionJSON(t, Decision{AchievementID: "x", Decision: KindTierUp, From: "silver", To: "silver", Awarded: []string{"bronze"}, Units: 6, Next: intp(25)})
+	if want := `{"achievementId":"x","decision":"tier_up","from":"silver","to":"silver","awarded":["bronze"],"final":false,"units":6,"next":25}`; got != want {
 		t.Errorf("got %s\nwant %s", got, want)
 	}
 }

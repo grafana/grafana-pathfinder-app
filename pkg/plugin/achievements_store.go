@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
@@ -28,12 +27,12 @@ const (
 )
 
 // Field names track kinds/achievementprogress.cue and kinds/achievementaward.cue
-// in pathfinder-backend. The CRD requires units, so it must encode as [], not null.
+// in pathfinder-backend. The CRD requires tierIds and units, so they must encode
+// as [], not null.
 type achievementProgressSpec struct {
 	AchievementID  string   `json:"achievementId"`
-	Tier           int64    `json:"tier"`
+	TierIDs        []string `json:"tierIds"`
 	Units          []string `json:"units"`
-	Revision       int64    `json:"revision"`
 	UpdatedAt      string   `json:"updatedAt"`
 	UserID         string   `json:"userId"`
 	OrgID          int64    `json:"orgId"`
@@ -43,9 +42,8 @@ type achievementProgressSpec struct {
 
 type achievementAwardSpec struct {
 	AchievementID   string `json:"achievementId"`
-	Tier            int64  `json:"tier"`
+	TierID          string `json:"tierId"`
 	Entity          string `json:"entity"`
-	Revision        int64  `json:"revision"`
 	EarnedAt        string `json:"earnedAt"`
 	UserID          string `json:"userId"`
 	UserLogin       string `json:"userLogin,omitempty"`
@@ -105,8 +103,8 @@ func achievementProgressName(userID, achievementID string) string {
 	return "achievement-progress-" + achievementName(userID, achievementID)
 }
 
-func achievementAwardName(userID, achievementID string, tier int) string {
-	return "achievement-award-" + achievementName(userID, achievementID, strconv.Itoa(tier))
+func achievementAwardName(userID, achievementID, tierID string) string {
+	return "achievement-award-" + achievementName(userID, achievementID, tierID)
 }
 
 func (s *achievementStore) LoadProgress(ctx context.Context, person achievements.Person, ids []string) (map[string]achievements.Progress, error) {
@@ -165,12 +163,11 @@ func (s *achievementStore) CreateAward(ctx context.Context, person achievements.
 	obj := achievementObject[achievementAwardSpec]{
 		APIVersion: achievementGroupVersion,
 		Kind:       achievementKindAward,
-		Metadata:   achievementObjectMeta{Name: achievementAwardName(person.ID, a.AchievementID, a.Tier), Namespace: s.writer.Namespace},
+		Metadata:   achievementObjectMeta{Name: achievementAwardName(person.ID, a.AchievementID, a.TierID), Namespace: s.writer.Namespace},
 		Spec: achievementAwardSpec{
 			AchievementID:   a.AchievementID,
-			Tier:            int64(a.Tier),
+			TierID:          a.TierID,
 			Entity:          a.Entity,
-			Revision:        int64(a.Revision),
 			EarnedAt:        a.EarnedAt.UTC().Format(time.RFC3339),
 			UserID:          person.ID,
 			UserLogin:       boundedIdentityField(s.writer.UserLogin, completionMaxDisplayLen),
@@ -198,9 +195,8 @@ func (s *achievementStore) progressObject(person achievements.Person, p achievem
 		Metadata:   achievementObjectMeta{Name: achievementProgressName(person.ID, p.AchievementID), Namespace: s.writer.Namespace},
 		Spec: achievementProgressSpec{
 			AchievementID:  p.AchievementID,
-			Tier:           int64(p.Tier),
+			TierIDs:        sortedDistinct(p.TierIDs),
 			Units:          sortedDistinct(p.Units),
-			Revision:       int64(p.Revision),
 			UpdatedAt:      s.now().UTC().Format(time.RFC3339),
 			UserID:         person.ID,
 			OrgID:          s.writer.OrgID,
@@ -235,15 +231,14 @@ func decodeAchievementProgress(body []byte) (achievementObject[achievementProgre
 func progressOf(obj achievementObject[achievementProgressSpec]) achievements.Progress {
 	return achievements.Progress{
 		AchievementID: obj.Spec.AchievementID,
-		Tier:          int(obj.Spec.Tier),
+		TierIDs:       sortedDistinct(obj.Spec.TierIDs),
 		Units:         sortedDistinct(obj.Spec.Units),
-		Revision:      int(obj.Spec.Revision),
 		SchemaVersion: int(obj.Spec.SchemaVersion),
 		Version:       obj.Metadata.ResourceVersion,
 	}
 }
 
-// The CRD cannot require order or uniqueness, so a row written directly under /apis may have neither.
+// The CRD cannot require order, or uniqueness of units, so a row written directly under /apis may have neither.
 func sortedDistinct(units []string) []string {
 	out := slices.Clone(units)
 	if out == nil {

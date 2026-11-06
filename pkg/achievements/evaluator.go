@@ -3,6 +3,7 @@ package achievements
 import (
 	"context"
 	"errors"
+	"maps"
 	"time"
 )
 
@@ -69,35 +70,80 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		current = created
 	}
 
+	createdHere := map[string]bool{}
+	unavailable := func(p Progress) Decision {
+		dec := d.unavailable(p)
+		dec.Awarded = d.inRank(createdHere)
+		return dec
+	}
 	for range maxAttempts {
 		out := evaluate(d, current, ev)
-		if !out.changed {
+		if !out.changed && len(createdHere) == 0 {
 			return out.decision
 		}
-		for tier := current.Tier + 1; tier <= out.next.Tier; tier++ {
-			award := Award{AchievementID: d.ID, Tier: tier, Entity: ev.Entity, Revision: out.next.Revision, EarnedAt: e.now().UTC()}
-			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
-				return d.unavailable(current)
+		if !out.changed && out.decision.Reason.Transient() {
+			out.decision.Awarded = d.inRank(createdHere)
+			return out.decision
+		}
+		if !out.changed {
+			return d.reported(out, createdHere)
+		}
+		for _, id := range out.decision.Awarded {
+			if createdHere[id] {
+				continue
+			}
+			err := e.store.CreateAward(ctx, person, Award{AchievementID: d.ID, TierID: id, Entity: ev.Entity, EarnedAt: e.now().UTC()})
+			switch {
+			case err == nil:
+				createdHere[id] = true
+			case !errors.Is(err, ErrExists):
+				return unavailable(current)
 			}
 		}
 		_, err := e.store.SaveProgress(ctx, person, out.next)
 		switch {
 		case err == nil:
-			return out.decision
+			return d.reported(out, createdHere)
 		case !errors.Is(err, ErrConflict):
-			return d.unavailable(current)
+			return unavailable(current)
 		}
 		reloaded, ok := e.reload(ctx, person, d)
 		if !ok {
-			return d.unavailable(current)
+			return unavailable(current)
 		}
 		current = reloaded
 	}
-	return d.decision(KindIgnored, ReasonConflict, current.Tier, current.Tier, len(current.Units), current.Revision)
+	held := heldSet(current.TierIDs)
+	return d.decision(KindIgnored, ReasonConflict, held, held, d.inRank(createdHere), len(current.Units))
+}
+
+// Award rows are create-only, so the call whose create succeeded is the only one
+// that reports the tier, even after a racing call has recorded it as held.
+func (d *Definition) reported(out outcome, createdHere map[string]bool) Decision {
+	awarded := d.inRank(createdHere)
+	before := maps.Clone(out.held)
+	for id := range createdHere {
+		delete(before, id)
+	}
+	after := maps.Clone(out.held)
+	for _, id := range out.next.TierIDs {
+		after[id] = true
+	}
+	return d.decision(d.kindFor(before, after, awarded, out.added), "", before, after, awarded, out.decision.Units)
+}
+
+func (d *Definition) inRank(ids map[string]bool) []string {
+	ranked := []string{}
+	for _, t := range d.Tiers {
+		if ids[t.ID] {
+			ranked = append(ranked, t.ID)
+		}
+	}
+	return ranked
 }
 
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {
-	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, Revision: d.Revision, SchemaVersion: SchemaVersion})
+	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, SchemaVersion: SchemaVersion})
 	switch {
 	case err == nil:
 		return created, true
@@ -115,5 +161,6 @@ func (e *Evaluator) reload(ctx context.Context, person Person, d *Definition) (P
 }
 
 func (d *Definition) unavailable(p Progress) Decision {
-	return d.decision(KindIgnored, ReasonStoreUnavailable, p.Tier, p.Tier, len(p.Units), max(p.Revision, d.Revision))
+	held := heldSet(p.TierIDs)
+	return d.decision(KindIgnored, ReasonStoreUnavailable, held, held, nil, len(p.Units))
 }

@@ -11,13 +11,13 @@ func wrap(achievement string) string {
 }
 
 func counted(counter, tiers string) string {
-	return fmt.Sprintf(`{"id":"x","revision":1,"title":"X","description":"X.","counter":%s,"tiers":%s}`, counter, tiers)
+	return fmt.Sprintf(`{"id":"x","title":"X","description":"X.","counter":%s,"tiers":%s}`, counter, tiers)
 }
 
 const (
 	dashEvidence = `{"entity":"dashboards","action":"created","countBy":"resource"}`
 	dashCounter  = `{"unit":"dashboard","evidence":[` + dashEvidence + `]}`
-	oneTier      = `[{"tier":1,"at":1}]`
+	oneTier      = `[{"id":"t1","at":1}]`
 )
 
 func evidenceWith(extra string) string {
@@ -31,7 +31,7 @@ func TestLoadCatalogRejects(t *testing.T) {
 	elevenTiers := "[" + strings.TrimSuffix(func() string {
 		var b strings.Builder
 		for i := 1; i <= 11; i++ {
-			fmt.Fprintf(&b, `{"tier":%d,"at":%d},`, i, i)
+			fmt.Fprintf(&b, `{"id":"t%d","at":%d},`, i, i)
 		}
 		return b.String()
 	}(), ",") + "]"
@@ -40,7 +40,7 @@ func TestLoadCatalogRejects(t *testing.T) {
 		{"schema version", `{"schemaVersion":3,"achievements":[]}`, "schemaVersion"},
 		{"duplicate id", wrap(counted(dashCounter, oneTier) + "," + counted(dashCounter, oneTier)), "declared twice"},
 		{"bad id", wrap(strings.Replace(counted(dashCounter, oneTier), `"id":"x"`, `"id":"X Y"`, 1)), "id must be a lowercase token"},
-		{"revision zero", wrap(strings.Replace(counted(dashCounter, oneTier), `"revision":1`, `"revision":0`, 1)), "revision must be at least 1"},
+		{"revision is not in the grammar", wrap(strings.Replace(counted(dashCounter, oneTier), `"title":"X"`, `"revision":1,"title":"X"`, 1)), `unknown field "revision"`},
 		{"missing title", wrap(strings.Replace(counted(dashCounter, oneTier), `"title":"X"`, `"title":""`, 1)), "title and description"},
 		{"no tiers", wrap(counted(dashCounter, `[]`)), "needs 1 to 10 tiers"},
 		{"eleven tiers", wrap(counted(dashCounter, elevenTiers)), "needs 1 to 10 tiers"},
@@ -71,22 +71,25 @@ func TestLoadCatalogRejects(t *testing.T) {
 		{"countBy bad object", wrap(counted(`{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":{"field":"x"}}]}`, oneTier)), "countBy"},
 		{"counter unit token", wrap(counted(`{"unit":"Dash Board","evidence":[`+dashEvidence+`]}`, oneTier)), "counter unit"},
 
-		{"at not increasing", wrap(counted(dashCounter, `[{"tier":1,"at":5},{"tier":2,"at":5}]`)), "strictly greater"},
-		{"at decreasing", wrap(counted(dashCounter, `[{"tier":1,"at":5},{"tier":2,"at":3}]`)), "strictly greater"},
-		{"at zero", wrap(counted(dashCounter, `[{"tier":1,"at":0}]`)), "at must be 1 to 200"},
-		{"at over 200", wrap(counted(dashCounter, `[{"tier":1,"at":201}]`)), "at must be 1 to 200"},
-		{"occurrence at over 50", wrap(counted(`{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}`, `[{"tier":1,"at":51}]`)), "at must be 1 to 50"},
-		{"at missing on a counted achievement", wrap(counted(dashCounter, `[{"tier":1}]`)), "at is required"},
-		{"at on a milestone", wrap(`{"id":"x","revision":1,"title":"X","description":"X.","tiers":[{"tier":1,"at":1,"or":[{"entity":"guides","action":"completed"}]}]}`), "forbidden on a milestone"},
-		{"milestone tier without a route", wrap(`{"id":"x","revision":1,"title":"X","description":"X.","tiers":[{"tier":1}]}`), "needs at least one route"},
-		{"tier numbers skip", wrap(counted(dashCounter, `[{"tier":2,"at":1}]`)), "tier numbers must run"},
-		{"tier numbers reordered", wrap(counted(dashCounter, `[{"tier":1,"at":1},{"tier":3,"at":2},{"tier":2,"at":3}]`)), "tier numbers must run"},
+		{"at not increasing", wrap(counted(dashCounter, `[{"id":"t1","at":5},{"id":"t2","at":5}]`)), "strictly greater"},
+		{"at decreasing", wrap(counted(dashCounter, `[{"id":"t1","at":5},{"id":"t2","at":3}]`)), "strictly greater"},
+		{"at zero", wrap(counted(dashCounter, `[{"id":"t1","at":0}]`)), "at must be 1 to 200"},
+		{"at over 200", wrap(counted(dashCounter, `[{"id":"t1","at":201}]`)), "at must be 1 to 200"},
+		{"occurrence at over 50", wrap(counted(`{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}`, `[{"id":"t1","at":51}]`)), "at must be 1 to 50"},
+		{"at missing on a counted achievement", wrap(counted(dashCounter, `[{"id":"t1"}]`)), "at is required"},
+		{"at on a milestone", wrap(`{"id":"x","title":"X","description":"X.","tiers":[{"id":"t1","at":1,"or":[{"entity":"guides","action":"completed"}]}]}`), "forbidden on a milestone"},
+		{"milestone tier without a route", wrap(`{"id":"x","title":"X","description":"X.","tiers":[{"id":"t1"}]}`), "needs at least one route"},
+		{"tier id missing", wrap(counted(dashCounter, `[{"at":1}]`)), `tier 1: id "" is not a lowercase token`},
+		{"tier id not a token", wrap(counted(dashCounter, `[{"id":"Gold Star","at":1}]`)), `id "Gold Star" is not a lowercase token`},
+		{"tier id over 32", wrap(counted(dashCounter, `[{"id":"`+strings.Repeat("g", 33)+`","at":1}]`)), "is not a lowercase token of at most 32"},
+		{"tier id declared twice", wrap(counted(dashCounter, `[{"id":"gold","at":1},{"id":"gold","at":2}]`)), `tier "gold": id declared twice`},
+		{"positional tier number", wrap(counted(dashCounter, `[{"tier":1,"id":"bronze","at":1}]`)), `unknown field "tier"`},
 
-		{"route action not completed", wrap(counted(dashCounter, `[{"tier":1,"at":1,"or":[{"entity":"dashboards","action":"created"}]}]`)), `routes take action "completed"`},
-		{"route undeclared pair", wrap(counted(dashCounter, `[{"tier":1,"at":1,"or":[{"entity":"widgets","action":"completed"}]}]`)), "widgets.completed is not declared"},
-		{"route undeclared field", wrap(counted(dashCounter, `[{"tier":1,"at":1,"or":[{"entity":"guides","action":"completed","where":[{"field":"nope","op":"eq","value":"x"}]}]}]`)), `field "nope"`},
-		{"route over 5", wrap(counted(dashCounter, `[{"tier":1,"at":1,"or":[`+tooManyRoutes+`]}]`)), "6 routes, at most 5"},
-		{"route with countBy", wrap(counted(dashCounter, `[{"tier":1,"at":1,"or":[{"entity":"guides","action":"completed","countBy":"resource"}]}]`)), "unknown field"},
+		{"route action not completed", wrap(counted(dashCounter, `[{"id":"t1","at":1,"or":[{"entity":"dashboards","action":"created"}]}]`)), `routes take action "completed"`},
+		{"route undeclared pair", wrap(counted(dashCounter, `[{"id":"t1","at":1,"or":[{"entity":"widgets","action":"completed"}]}]`)), "widgets.completed is not declared"},
+		{"route undeclared field", wrap(counted(dashCounter, `[{"id":"t1","at":1,"or":[{"entity":"guides","action":"completed","where":[{"field":"nope","op":"eq","value":"x"}]}]}]`)), `field "nope"`},
+		{"route over 5", wrap(counted(dashCounter, `[{"id":"t1","at":1,"or":[`+tooManyRoutes+`]}]`)), "6 routes, at most 5"},
+		{"route with countBy", wrap(counted(dashCounter, `[{"id":"t1","at":1,"or":[{"entity":"guides","action":"completed","countBy":"resource"}]}]`)), "unknown field"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,8 +109,8 @@ func TestLoadCatalogRejectsRuleKindsOutsideTheGrammar(t *testing.T) {
 		{"counting window", counted(`{"unit":"dashboard","window":"7d","evidence":[`+dashEvidence+`]}`, oneTier), "window"},
 		{"sequence", counted(`{"unit":"dashboard","evidence":[`+dashEvidence+`],"sequence":["a","b"]}`, oneTier), "sequence"},
 		{"streak", strings.Replace(counted(dashCounter, oneTier), `"tiers"`, `"streak":{"days":3},"tiers"`, 1), "streak"},
-		{"all", counted(dashCounter, `[{"tier":1,"at":1,"all":[{"entity":"guides","action":"completed"}]}]`), "all"},
-		{"criteria_met", counted(dashCounter, `[{"tier":1,"at":1,"criteria_met":true}]`), "criteria_met"},
+		{"all", counted(dashCounter, `[{"id":"t1","at":1,"all":[{"entity":"guides","action":"completed"}]}]`), "all"},
+		{"criteria_met", counted(dashCounter, `[{"id":"t1","at":1,"criteria_met":true}]`), "criteria_met"},
 		{"duration", counted(`{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource","durationMs":100}]}`, oneTier), "durationMs"},
 		{"expression", counted(`{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource","expr":"numPanels > 1"}]}`, oneTier), "expr"},
 		{"negation op", counted(evidenceWith(`,"where":[{"field":"numPanels","op":"not","value":1}]`), oneTier), `op "not"`},
@@ -132,10 +135,10 @@ func TestLoadCatalogAcceptsBoundaryValues(t *testing.T) {
 	for name, achievement := range map[string]string{
 		"8 conditions":  counted(evidenceWith(`,"where":[`+conds+`]`), oneTier),
 		"16 evidence":   counted(`{"unit":"dashboard","evidence":[`+evidence+`]}`, oneTier),
-		"5 routes":      counted(dashCounter, `[{"tier":1,"at":1,"or":[`+routes+`]}]`),
+		"5 routes":      counted(dashCounter, `[{"id":"t1","at":1,"or":[`+routes+`]}]`),
 		"16 in values":  counted(evidenceWith(`,"where":[{"field":"numPanels","op":"in","value":`+list+`}]`), oneTier),
-		"at 200":        counted(dashCounter, `[{"tier":1,"at":200}]`),
-		"occurrence 50": counted(`{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}`, `[{"tier":1,"at":50}]`),
+		"at 200":        counted(dashCounter, `[{"id":"t1","at":200}]`),
+		"occurrence 50": counted(`{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}`, `[{"id":"t1","at":50}]`),
 		"boolean eq":    counted(evidenceWith(`,"where":[{"field":"starred","op":"eq","value":true}]`), oneTier),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -147,7 +150,7 @@ func TestLoadCatalogAcceptsBoundaryValues(t *testing.T) {
 }
 
 func TestLoadCatalogReportsEveryProblem(t *testing.T) {
-	_, err := LoadCatalog([]byte(wrap(counted(`{"unit":"dashboard","evidence":[{"entity":"nope","action":"created","countBy":"resource"}]}`, `[{"tier":1,"at":0}]`))), mustRegistry(t))
+	_, err := LoadCatalog([]byte(wrap(counted(`{"unit":"dashboard","evidence":[{"entity":"nope","action":"created","countBy":"resource"}]}`, `[{"id":"t1","at":0}]`))), mustRegistry(t))
 	if err == nil || !strings.Contains(err.Error(), "nope.created") || !strings.Contains(err.Error(), "at must be") {
 		t.Errorf("err = %v, want both problems", err)
 	}

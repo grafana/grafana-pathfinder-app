@@ -195,12 +195,15 @@ reporting cache or stale replay (`Cache-Control: no-store`). Partial reads and u
 remain explicit, not false zero/outstanding. Broad raw GAP grants remain a known separate issue.
 For the full contract and read-only smoke procedure, see `docs/developer/LEARNING_INSIGHTS.md`.
 
-`pkg/achievements` is a pure library with no I/O and no caller yet: the achievements evaluator, catalog and
-registry loaders, and baseline check from the Achievements RFC (pathfinder-rfcs#24, §6). The store and the
-admission policy are ports. `pkg/plugin/achievements_store.go` is the unwired App Platform `Store` adapter
-(compare-and-swap on progress, 409 on a repeated award) and `pkg/achievements/storetest` holds the contract
-every `Store` must pass, with an in-memory implementation. The bundled catalog and registry live in
-`pkg/achievements/data/`. Earn windows (RFC §6.2) are not supported and the loader rejects a `window` key.
+`pkg/achievements` is a pure library with no I/O and no caller yet: the achievements evaluator and the
+catalog and registry loaders from the Achievements RFC (pathfinder-rfcs#24, §6). Tiers carry permanent ids;
+progress keeps the set of tier ids held, and award rows are named by (user, achievement, tier id). The store and
+the admission policy are ports. `pkg/plugin/achievements_store.go` is the unwired App Platform `Store` adapter
+(compare-and-swap on progress; a 409 on an award create means already held and is never reported as new) and
+`pkg/achievements/storetest` holds the contract every `Store` must pass, with an in-memory implementation. The
+bundled catalog and registry live in `pkg/achievements/data/`; `released_test.go` fails CI when an edit breaks the
+author rules against the last release tag. Earn windows (RFC §6.2) are not supported and the loader rejects a
+`window` key.
 
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.

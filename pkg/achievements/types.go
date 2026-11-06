@@ -30,14 +30,14 @@ type Event struct {
 // Progress is one person's stored state for one achievement.
 type Progress struct {
 	AchievementID string
-	// Tier is the highest awarded tier, 0 for none.
-	Tier int
+	// TierIDs is the set of tier ids held, including ids the running catalog no
+	// longer knows. Stores return it sorted ascending and distinct.
+	TierIDs []string
 	// Units is the ledger of counted units. A unit counted by resource is its id
 	// fields, each as byte length, ":" and the field ("7:bundled4:tour"); a unit
 	// counted by occurrence is the event id. Stores must return Units sorted
 	// ascending and distinct, which the evaluator binary-searches.
 	Units         []string
-	Revision      int
 	SchemaVersion int
 	// Version is the store's opaque compare-and-swap token.
 	Version string
@@ -45,9 +45,8 @@ type Progress struct {
 
 type Award struct {
 	AchievementID string
-	Tier          int
+	TierID        string
 	Entity        string
-	Revision      int
 	EarnedAt      time.Time
 }
 
@@ -60,7 +59,7 @@ type Store interface {
 	CreateProgress(ctx context.Context, person Person, p Progress) (Progress, error)
 	// SaveProgress writes p if its Version is still current, else returns ErrConflict.
 	SaveProgress(ctx context.Context, person Person, p Progress) (Progress, error)
-	// CreateAward returns ErrExists when the tier was already awarded.
+	// CreateAward returns ErrExists when the person already holds the tier.
 	CreateAward(ctx context.Context, person Person, a Award) error
 }
 
@@ -107,13 +106,16 @@ type Decision struct {
 	AchievementID string `json:"achievementId"`
 	Decision      Kind   `json:"decision"`
 	Reason        Reason `json:"reason,omitempty"`
-	From          int    `json:"from"`
-	To            int    `json:"to"`
-	Final         bool   `json:"final"`
-	Units         int    `json:"units"`
-	// Next is the threshold of the next tier, nil when final or for a milestone.
-	Next     *int `json:"next"`
-	Revision int  `json:"revision"`
+	// From and To are the highest-ranked tier ids held before and after, "" for none.
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Awarded is the tier ids this call's award creates granted, in rank order,
+	// on any decision, a transient one included; a tier already held never appears.
+	Awarded []string `json:"awarded"`
+	Final   bool     `json:"final"`
+	Units   int      `json:"units"`
+	// Next is the threshold of the lowest tier not held, nil when none or for a milestone.
+	Next *int `json:"next"`
 }
 
 // Retry reports whether any decision has a transient reason, so the event stays queued.
