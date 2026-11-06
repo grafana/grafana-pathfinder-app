@@ -186,7 +186,7 @@ export const JsonStepSchema = z
       .string()
       .optional()
       .describe(
-        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) ask the user, (c) set a placeholder `[data-testid="TODO-<what-to-target>"]` with an `authorNote` flagging it, and tell the user to replace it. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
       ),
 
     targetvalue: z
@@ -356,7 +356,7 @@ export const JsonInteractiveBlockSchema = z
       .string()
       .optional()
       .describe(
-        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) ask the user, (c) set a placeholder `[data-testid="TODO-<what-to-target>"]` with an `authorNote` flagging it, and tell the user to replace it. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
       ),
 
     targetvalue: z

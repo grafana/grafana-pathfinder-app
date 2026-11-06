@@ -133,6 +133,20 @@ describe('MCP server', () => {
     }
   });
 
+  it('surfaces guideShape with a top-level preamble and per-kind guidance in pathfinder_authoring_start', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const ctx = await callTool(client, 'pathfinder_authoring_start');
+      const shape = ctx.guideShape as { skeleton: string[]; kinds: Record<string, string> };
+      expect(shape.skeleton.join('\n')).toMatch(/preamble/i);
+      expect(Object.keys(shape.kinds).sort()).toEqual(['reference', 'teach', 'walkthrough']);
+      expect(shape.kinds.teach).toMatch(/quiz/);
+      expect(shape.kinds.walkthrough).toMatch(/placeholder/i);
+    } finally {
+      await close();
+    }
+  });
+
   it('describes every tool with a use-case-led opener so MCP clients can route on description-time hints (issue #7)', async () => {
     const { client, close } = await spinUp();
     try {

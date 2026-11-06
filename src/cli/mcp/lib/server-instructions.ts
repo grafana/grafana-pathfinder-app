@@ -49,7 +49,7 @@ export const SERVER_INSTRUCTIONS: string = [
   '',
   'Two rules that bite agents in production — observe them before writing blocks:',
   '',
-  '- Never invent or guess Grafana DOM selectors for a `reftarget` field. If you do not have a verified selector, write a markdown block describing the action, use a `button` action with visible text matching, or ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.',
+  '- Never invent or guess Grafana DOM selectors for a `reftarget` field. If you do not have a verified selector, use a `button` action with visible text matching, ask the user, or write the placeholder selector `pathfinder_authoring_start` describes and tell the user to replace it. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.',
   '',
   '- Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must be completed in order and are tightly coupled. Never write a step with `action: noop` as filler — if there is nothing concrete for the user to do, write a markdown block describing what they would do instead.',
   '',
