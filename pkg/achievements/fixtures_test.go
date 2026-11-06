@@ -38,8 +38,8 @@ const testCatalogJSON = `{"schemaVersion":1,"achievements":[
    "tiers":[{"id":"bronze","at":1},{"id":"silver","at":3}]},
   {"id":"guide-routes","title":"Guide routes","description":"Finish the named guides.",
    "tiers":[
-     {"id":"intro","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]},
-     {"id":"advanced","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"in","value":["advanced","expert"]}]}]}]}
+     {"id":"bronze","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]},
+     {"id":"silver","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"in","value":["advanced","expert"]}]}]}]}
 ]}`
 
 var fixedNow = time.Date(2026, 11, 2, 9, 30, 0, 0, time.FixedZone("test", 3600))

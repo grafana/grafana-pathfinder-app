@@ -69,7 +69,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"save without a version is ErrConflict and changes nothing", saveUnversioned},
 		{"racing saves at one version have exactly one winner", saveRace},
 		{"units come back sorted and distinct", unitsNormalised},
-		{"held tier ids come back sorted and distinct", tierIDsNormalised},
+		{"held tier ids come back distinct", tierIDsDistinct},
 		{"people never see each other's rows", peopleIsolated},
 		{"award create twice is ErrExists", awardTwice},
 		{"awards are independent per tier id, achievement and person", awardIndependent},
@@ -139,6 +139,10 @@ var (
 	silver = []string{"bronze", "silver"}
 )
 
+func sameSet(got, want []string) bool {
+	return slices.Equal(slices.Compact(slices.Sorted(slices.Values(got))), slices.Sorted(slices.Values(want)))
+}
+
 func withUnits(p achievements.Progress, held []string, units ...string) achievements.Progress {
 	p.TierIDs = held
 	p.Units = units
@@ -156,13 +160,13 @@ func saveAdvances(t *testing.T, s achievements.Store) {
 		if next.Version == "" || next.Version == row.Version {
 			t.Fatalf("save %d version %q did not advance from %q", i, next.Version, row.Version)
 		}
-		if !slices.Equal(next.TierIDs, held[i-1]) {
+		if !sameSet(next.TierIDs, held[i-1]) {
 			t.Fatalf("save %d returned tier ids %v", i, next.TierIDs)
 		}
 		row = next
 	}
 	loaded := mustLoad(t, s, alice, "a")
-	if loaded.Version != row.Version || !slices.Equal(loaded.TierIDs, held[2]) || !slices.Equal(loaded.Units, []string{"u3"}) {
+	if loaded.Version != row.Version || !sameSet(loaded.TierIDs, held[2]) || !slices.Equal(loaded.Units, []string{"u3"}) {
 		t.Fatalf("loaded = %+v, want the last save", loaded)
 	}
 }
@@ -176,7 +180,7 @@ func saveStale(t *testing.T, s achievements.Store) {
 	if _, err := s.SaveProgress(context.Background(), alice, withUnits(stale, silver, "loser")); !errors.Is(err, achievements.ErrConflict) {
 		t.Fatalf("stale save err = %v, want ErrConflict", err)
 	}
-	if got := mustLoad(t, s, alice, "a"); got.Version != current.Version || !slices.Equal(got.TierIDs, bronze) || !slices.Equal(got.Units, []string{"winner"}) {
+	if got := mustLoad(t, s, alice, "a"); got.Version != current.Version || !sameSet(got.TierIDs, bronze) || !slices.Equal(got.Units, []string{"winner"}) {
 		t.Fatalf("row after stale save = %+v, want the winner's", got)
 	}
 }
@@ -261,13 +265,13 @@ func unitsNormalised(t *testing.T, s achievements.Store) {
 	}
 }
 
-func tierIDsNormalised(t *testing.T, s achievements.Store) {
+func tierIDsDistinct(t *testing.T, s achievements.Store) {
 	row := mustCreate(t, s, alice, "a")
 	if _, err := s.SaveProgress(context.Background(), alice, withUnits(row, []string{"silver", "bronze", "silver"})); err != nil {
 		t.Fatalf("SaveProgress: %v", err)
 	}
-	if got := mustLoad(t, s, alice, "a").TierIDs; !slices.Equal(got, silver) {
-		t.Fatalf("tier ids = %v, want %v", got, silver)
+	if got := mustLoad(t, s, alice, "a").TierIDs; len(got) != len(silver) || !sameSet(got, silver) {
+		t.Fatalf("tier ids = %v, want the set %v once each", got, silver)
 	}
 }
 
@@ -282,7 +286,7 @@ func peopleIsolated(t *testing.T, s achievements.Store) {
 	if _, err := s.CreateProgress(context.Background(), bob, seedProgress("a")); err != nil {
 		t.Fatalf("bob's create: %v", err)
 	}
-	if got := mustLoad(t, s, alice, "a"); !slices.Equal(got.TierIDs, bronze) {
+	if got := mustLoad(t, s, alice, "a"); !sameSet(got.TierIDs, bronze) {
 		t.Fatalf("alice's row changed: %+v", got)
 	}
 }

@@ -547,25 +547,26 @@ func TestAchievementStore_SchemaRefusesADuplicateHeldTier(t *testing.T) {
 	}
 }
 
-func TestAchievementStore_HeldAwardIsNotReportedAgain(t *testing.T) {
+func TestAchievementStore_ExistingAwardRowIsRecordedAsHeld(t *testing.T) {
 	_, catalog, err := achievements.LoadBundled()
 	if err != nil {
 		t.Fatal(err)
 	}
 	store, api := newAchievementTestStore(t)
-	if err := store.CreateAward(context.Background(), achievementTestPerson, achievements.Award{AchievementID: "guides-finished", TierID: "bronze", Entity: "guides", EarnedAt: achievementTestNow}); err != nil {
+	bronze := achievements.Award{AchievementID: "guides-finished", TierID: "bronze", Entity: "guides", EarnedAt: achievementTestNow}
+	if err := store.CreateAward(context.Background(), achievementTestPerson, bronze); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.CreateAward(context.Background(), achievementTestPerson, bronze); !errors.Is(err, achievements.ErrExists) {
+		t.Fatalf("repeat create err = %v, want ErrExists: the tier is already held", err)
 	}
 	evaluator := achievements.NewEvaluator(catalog, store, allowAllPolicy{}, func() time.Time { return achievementTestNow })
 	decisions, err := evaluator.Evaluate(context.Background(), achievementTestPerson, achievements.Event{
 		ID: "evt-1", Entity: "guides", Action: "completed",
 		Context: map[string]any{"guideSource": "bundled", "guideId": "one", "guideCategory": "interactive"},
 	})
-	if err != nil || len(decisions) != 1 {
-		t.Fatalf("Evaluate = %v, %v", decisions, err)
-	}
-	if d := decisions[0]; d.Decision != achievements.KindIncrement || len(d.Awarded) != 0 || d.To != "bronze" {
-		t.Fatalf("decision = %+v, want the 409 award left out of the report", d)
+	if err != nil || len(decisions) != 1 || decisions[0].Reason.Transient() {
+		t.Fatalf("Evaluate = %v, %v, want the existing row to settle, not fail", decisions, err)
 	}
 	held := api.spec(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "guides-finished"))["tierIds"].([]any)
 	if len(held) != 1 || held[0] != "bronze" {

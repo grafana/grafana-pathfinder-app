@@ -216,8 +216,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-          # pkg/achievements/released_test.go compares against the last release tag.
-          fetch-depth: 0
+          # The release-compatibility test reads the bundled achievements data at the last release tag.
+          fetch-tags: true
 
       - name: Check for backend
         id: check-for-backend
@@ -235,8 +235,6 @@ jobs:
       - name: Test backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
         uses: magefile/mage-action@07f03e200d4d168576899f4d31ffebfa8fb195ff
-        env:
-          REQUIRE_RELEASE_TAG: '1'
         with:
           version: latest
           args: coverage

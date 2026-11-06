@@ -3,7 +3,6 @@ package achievements
 import (
 	"context"
 	"errors"
-	"maps"
 	"time"
 )
 
@@ -70,76 +69,31 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		current = created
 	}
 
-	createdHere := map[string]bool{}
-	unavailable := func(p Progress) Decision {
-		dec := d.unavailable(p)
-		dec.Awarded = d.inRank(createdHere)
-		return dec
-	}
 	for range maxAttempts {
 		out := evaluate(d, current, ev)
-		if !out.changed && len(createdHere) == 0 {
-			return out.decision
-		}
-		if !out.changed && out.decision.Reason.Transient() {
-			out.decision.Awarded = d.inRank(createdHere)
-			return out.decision
-		}
 		if !out.changed {
-			return d.reported(out, createdHere)
+			return out.decision
 		}
-		for _, id := range out.decision.Awarded {
-			if createdHere[id] {
-				continue
-			}
-			err := e.store.CreateAward(ctx, person, Award{AchievementID: d.ID, TierID: id, Entity: ev.Entity, EarnedAt: e.now().UTC()})
-			switch {
-			case err == nil:
-				createdHere[id] = true
-			case !errors.Is(err, ErrExists):
-				return unavailable(current)
+		for _, tierID := range out.decision.Awarded {
+			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, EarnedAt: e.now().UTC()}
+			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
+				return d.unavailable(current)
 			}
 		}
 		_, err := e.store.SaveProgress(ctx, person, out.next)
 		switch {
 		case err == nil:
-			return d.reported(out, createdHere)
+			return out.decision
 		case !errors.Is(err, ErrConflict):
-			return unavailable(current)
+			return d.unavailable(current)
 		}
 		reloaded, ok := e.reload(ctx, person, d)
 		if !ok {
-			return unavailable(current)
+			return d.unavailable(current)
 		}
 		current = reloaded
 	}
-	held := heldSet(current.TierIDs)
-	return d.decision(KindIgnored, ReasonConflict, held, held, d.inRank(createdHere), len(current.Units))
-}
-
-// Award rows are create-only, so the call whose create succeeded is the only one
-// that reports the tier, even after a racing call has recorded it as held.
-func (d *Definition) reported(out outcome, createdHere map[string]bool) Decision {
-	awarded := d.inRank(createdHere)
-	before := maps.Clone(out.held)
-	for id := range createdHere {
-		delete(before, id)
-	}
-	after := maps.Clone(out.held)
-	for _, id := range out.next.TierIDs {
-		after[id] = true
-	}
-	return d.decision(d.kindFor(before, after, awarded, out.added), "", before, after, awarded, out.decision.Units)
-}
-
-func (d *Definition) inRank(ids map[string]bool) []string {
-	ranked := []string{}
-	for _, t := range d.Tiers {
-		if ids[t.ID] {
-			ranked = append(ranked, t.ID)
-		}
-	}
-	return ranked
+	return d.decision(KindIgnored, ReasonConflict, nil, heldSet(current.TierIDs), len(current.Units))
 }
 
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {
@@ -161,6 +115,5 @@ func (e *Evaluator) reload(ctx context.Context, person Person, d *Definition) (P
 }
 
 func (d *Definition) unavailable(p Progress) Decision {
-	held := heldSet(p.TierIDs)
-	return d.decision(KindIgnored, ReasonStoreUnavailable, held, held, nil, len(p.Units))
+	return d.decision(KindIgnored, ReasonStoreUnavailable, nil, heldSet(p.TierIDs), len(p.Units))
 }

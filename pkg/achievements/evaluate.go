@@ -14,8 +14,6 @@ type outcome struct {
 	decision Decision
 	// next is the progress to persist; meaningful only when changed.
 	next    Progress
-	held    map[string]bool
-	added   bool
 	changed bool
 }
 
@@ -24,7 +22,7 @@ type outcome struct {
 func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	held := heldSet(stored.TierIDs)
 	ignored := func(reason Reason) outcome {
-		return outcome{decision: d.decision(KindIgnored, reason, held, held, nil, len(stored.Units)), held: held}
+		return outcome{decision: d.decision(KindIgnored, reason, nil, held, len(stored.Units))}
 	}
 	switch {
 	case stored.SchemaVersion > SchemaVersion:
@@ -47,8 +45,8 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 			}
 		}
 	}
-	routeRank := d.routeRank(ev)
-	if len(units) == 0 && routeRank == 0 {
+	routed := d.routedIndex(ev)
+	if len(units) == 0 && routed < 0 {
 		if sawInvalid {
 			return ignored(ReasonInvalidContext)
 		}
@@ -67,50 +65,42 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	var awarded []string
 	after := maps.Clone(held)
 	for i, t := range d.Tiers {
-		if !held[t.ID] && (i < routeRank || (t.At != nil && *t.At <= len(ledger))) {
+		if !held[t.ID] && (i <= routed || (t.At != nil && *t.At <= len(ledger))) {
 			awarded = append(awarded, t.ID)
 			after[t.ID] = true
 		}
 	}
 
+	kind, reason := KindIgnored, ReasonDuplicate
+	switch {
+	case len(awarded) > 0 && (!d.holdsAny(held) || d.holdsAll(after)):
+		kind, reason = KindAward, ""
+	case len(awarded) > 0:
+		kind, reason = KindTierUp, ""
+	case added:
+		kind, reason = KindIncrement, ""
+	}
 	next := stored
-	next.TierIDs, next.Units = slices.Sorted(maps.Keys(after)), ledger
+	next.TierIDs, next.Units = d.mergeHeld(stored.TierIDs, after), ledger
 	return outcome{
-		decision: d.decision(d.kindFor(held, after, awarded, added), "", held, after, awarded, len(ledger)),
+		decision: d.decision(kind, reason, awarded, after, len(ledger)),
 		next:     next,
-		held:     held,
-		added:    added,
 		changed:  added || len(awarded) > 0,
 	}
 }
 
-func (d *Definition) kindFor(before, after map[string]bool, awarded []string, added bool) Kind {
-	switch {
-	case len(awarded) > 0 && (d.highest(before) == "" || d.holdsAll(after)):
-		return KindAward
-	case len(awarded) > 0:
-		return KindTierUp
-	case added:
-		return KindIncrement
-	default:
-		return KindIgnored
-	}
-}
-
-func (d *Definition) decision(kind Kind, reason Reason, before, after map[string]bool, awarded []string, units int) Decision {
-	if kind == KindIgnored && reason == "" {
-		reason = ReasonDuplicate
+func (d *Definition) decision(kind Kind, reason Reason, awarded []string, held map[string]bool, units int) Decision {
+	if awarded == nil {
+		awarded = []string{}
 	}
 	return Decision{
 		AchievementID: d.ID,
 		Decision:      kind,
 		Reason:        reason,
-		From:          d.highest(before),
-		To:            d.highest(after),
-		Awarded:       append([]string{}, awarded...),
-		Final:         d.holdsAll(after),
+		Awarded:       awarded,
+		Final:         d.holdsAll(held),
 		Units:         units,
-		Next:          d.nextThreshold(after),
+		Next:          d.nextThreshold(held),
 	}
 }
 
@@ -122,15 +112,6 @@ func heldSet(ids []string) map[string]bool {
 	return held
 }
 
-func (d *Definition) highest(held map[string]bool) string {
-	for i := len(d.Tiers) - 1; i >= 0; i-- {
-		if held[d.Tiers[i].ID] {
-			return d.Tiers[i].ID
-		}
-	}
-	return ""
-}
-
 func (d *Definition) holdsAll(held map[string]bool) bool {
 	for _, t := range d.Tiers {
 		if !held[t.ID] {
@@ -140,42 +121,55 @@ func (d *Definition) holdsAll(held map[string]bool) bool {
 	return true
 }
 
-func (d *Definition) nextThreshold(held map[string]bool) *int {
-	if d.Counter == nil {
-		return nil
-	}
+func (d *Definition) holdsAny(held map[string]bool) bool {
 	for _, t := range d.Tiers {
-		if !held[t.ID] {
+		if held[t.ID] {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeHeld lists the held tier ids in catalog order, then any the catalog does
+// not define in their stored order, so a rollback to an older catalog keeps them.
+func (d *Definition) mergeHeld(stored []string, held map[string]bool) []string {
+	ids := make([]string, 0, len(held))
+	known := make(map[string]bool, len(d.Tiers))
+	for _, t := range d.Tiers {
+		known[t.ID] = true
+		if held[t.ID] {
+			ids = append(ids, t.ID)
+		}
+	}
+	for _, id := range stored {
+		if !known[id] {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (d *Definition) nextThreshold(held map[string]bool) *int {
+	for _, t := range d.Tiers {
+		if t.At != nil && !held[t.ID] {
 			return t.At
 		}
 	}
 	return nil
 }
 
-// Counting continues past the final tier up to this limit, so a tier appended
-// later lands for counts that already meet it.
-func (d *Definition) ceiling() int {
-	switch {
-	case d.Counter == nil:
-		return 0
-	case d.Counter.Unit == unitOccurrence:
-		return maxOccurrenceAt
-	default:
-		return maxThreshold
-	}
-}
-
-// routeRank is 1 + the rank of the highest tier whose route matches, 0 for none.
-func (d *Definition) routeRank(ev Event) int {
-	rank := 0
+// routedIndex is the position of the last tier whose route the event matches,
+// or -1. A route earns its tier and every tier before it.
+func (d *Definition) routedIndex(ev Event) int {
+	routed := -1
 	for i, t := range d.Tiers {
 		for _, r := range t.Or {
 			if r.Entity == ev.Entity && r.Action == ev.Action && conditionsHold(r.Where, ev.Context) {
-				rank = i + 1
+				routed = i
 			}
 		}
 	}
-	return rank
+	return routed
 }
 
 func (m *Matcher) unitID(ev Event) (string, bool) {

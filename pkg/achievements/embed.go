@@ -14,6 +14,7 @@ var catalogJSON []byte
 //go:embed data/events.json
 var registryJSON []byte
 
+// LoadBundled parses and validates the embedded registry and catalog.
 func LoadBundled() (*Registry, *Catalog, error) {
 	registry, err := LoadRegistry(registryJSON)
 	if err != nil {
