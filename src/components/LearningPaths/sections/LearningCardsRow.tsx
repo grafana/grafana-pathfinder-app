@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { css, cx } from '@emotion/css';
 import type { GrafanaTheme2, IconName } from '@grafana/data';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
@@ -75,7 +76,7 @@ export function LearningCardsRow({
               size="md"
               variant="secondary"
               fill="outline"
-              aria-label={`Previous items in ${title}`}
+              aria-label={t('myLearning.previousItems', 'Previous items in {{section}}', { section: title })}
               aria-controls={rowId}
               disabled={!edges.previous}
               onClick={() => scroll(-1)}
@@ -85,7 +86,7 @@ export function LearningCardsRow({
               size="md"
               variant="secondary"
               fill="outline"
-              aria-label={`Next items in ${title}`}
+              aria-label={t('myLearning.nextItems', 'Next items in {{section}}', { section: title })}
               aria-controls={rowId}
               disabled={!edges.next}
               onClick={() => scroll(1)}

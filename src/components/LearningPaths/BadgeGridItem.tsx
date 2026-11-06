@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { Tooltip } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 
 import { testIds } from '../../constants/testIds';
 import type { EarnedBadge } from '../../types';
@@ -50,11 +51,12 @@ export function BadgeGridItem({
       </span>
       {gallery && badge.earnedAt ? (
         <time className={styles.badgeTileEarnedDate} dateTime={new Date(badge.earnedAt).toISOString()}>
-          Earned on{' '}
-          {new Date(badge.earnedAt).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
+          {t('myLearning.badgeEarnedOn', 'Earned on {{date}}', {
+            date: new Date(badge.earnedAt).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            }),
           })}
         </time>
       ) : null}

@@ -141,7 +141,9 @@ function PackageBrowserContent({
   const writeView = useCallback(
     (patch: Partial<CatalogViewState>, notify = true) => {
       if (page) {
-        setPageView((current) => ({ ...current, ...patch }));
+        if (notify) {
+          setPageView((current) => ({ ...current, ...patch }));
+        }
       } else {
         updateCatalogView(catalog.scope, patch, notify);
       }
@@ -204,8 +206,8 @@ function PackageBrowserContent({
         ...(filtersChanged ? { mode: 'all' as const } : {}),
         ...patch,
       });
-      if (navigationChanged && container.current) {
-        container.current.scrollTop = 0;
+      if (container.current && (navigationChanged || patch.scrollTop !== undefined)) {
+        container.current.scrollTop = patch.scrollTop ?? 0;
       }
     },
     [writeView, cancelPendingSearch]

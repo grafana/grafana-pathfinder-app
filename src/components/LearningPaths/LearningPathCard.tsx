@@ -131,7 +131,7 @@ export function LearningPathCard({
   const resumeAction = tile && presentation === 'resume' && (
     <div className={styles.resumeAction}>
       <Button icon="play" size="md" variant="primary" onClick={onViewPath}>
-        Resume
+        {t('learningCard.resume', 'Resume')}
       </Button>
     </div>
   );
@@ -209,7 +209,7 @@ export function LearningPathCard({
           {tile && !presentation && path.description && <p className={styles.tileDescription}>{path.description}</p>}
           {tile && presentation === 'resume' && nextGuide && (
             <div className={styles.resumeNext} data-learning-next>
-              <span>Up next</span>
+              <span>{t('coverPage.upNext', 'Up next')}</span>
               <strong>{nextGuide.title}</strong>
               {nextGuide.description && (
                 <p className={cx(styles.tileDescription, styles.resumeDescription)}>{nextGuide.description}</p>
@@ -250,15 +250,20 @@ export function LearningPathCard({
                   <strong>{t('learningCard.path', 'Learning path')}</strong>
                   <span aria-hidden="true">·</span>
                   {isLoadingGuides
-                    ? 'Loading guides…'
+                    ? t('learningCard.loadingGuides', 'Loading guides…')
                     : presentation === 'resume' || presentation === 'compact'
-                      ? `${guides.length} guides`
-                      : `${completedCount}/${guides.length} guides`}
+                      ? t('myLearning.summaryGuides', '{{count}} guides', { count: guides.length })
+                      : t('myLearning.guidesProgress', '{{completed}}/{{total}} guides', {
+                          completed: completedCount,
+                          total: guides.length,
+                        })}
                 </span>
                 {presentation !== 'compact' &&
                   !imageDuration &&
                   typeof path.estimatedMinutes === 'number' &&
-                  path.estimatedMinutes > 0 && <span>About {path.estimatedMinutes} min</span>}
+                  path.estimatedMinutes > 0 && (
+                    <span>{t('packageBrowser.time', 'About {{minutes}} min', { minutes: path.estimatedMinutes })}</span>
+                  )}
               </span>
             </div>
             {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}

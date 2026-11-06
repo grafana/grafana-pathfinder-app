@@ -682,6 +682,42 @@ it('page exploration keeps its filters separate from the sidebar', () => {
   expect(screen.getByRole('heading', { name: 'Explore learning', level: 1 })).toBeInTheDocument();
 });
 
+it('keeps page scrolling out of React updates and resets scroll when searching', () => {
+  mockProgress = new Map([['bundled:dashboard', { percent: 25 }]]);
+  const onRender = jest.fn();
+  render(
+    <React.Profiler id="explore" onRender={onRender}>
+      <PackageBrowser page onOpenGuide={jest.fn()} />
+    </React.Profiler>
+  );
+  const container = screen.getByTestId('package-browser');
+  const renders = onRender.mock.calls.length;
+
+  for (const scrollTop of [120, 240, 420]) {
+    container.scrollTop = scrollTop;
+    fireEvent.scroll(container);
+    expect(container.scrollTop).toBe(scrollTop);
+  }
+
+  expect(onRender).toHaveBeenCalledTimes(renders);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and learning paths' }), {
+    target: { value: 'team' },
+  });
+  expect(container.scrollTop).toBe(0);
+  expect(screen.getByRole('heading', { name: 'Team guide' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and learning paths' }), {
+    target: { value: '' },
+  });
+  container.scrollTop = 240;
+  fireEvent.scroll(container);
+  fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
+  expect(container.scrollTop).toBe(0);
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Team guide' })).not.toBeInTheDocument();
+});
+
 it('opens a topic link directly in the page catalogue', () => {
   window.history.replaceState({}, '', '/?topic=dashboards');
   render(<PackageBrowser page onOpenGuide={jest.fn()} />);

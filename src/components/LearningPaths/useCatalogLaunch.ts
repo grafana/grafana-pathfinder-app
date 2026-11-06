@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { t } from '@grafana/i18n';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import { getPathsData, type CatalogProgress } from '../../learning-paths';
@@ -14,6 +14,7 @@ type CatalogInteractionLocation =
   'package_browser' | 'my_learning_discover_more' | 'my_learning_continue' | 'content_completion_panel';
 
 interface CatalogLaunchOptions {
+  launchLock?: RefObject<boolean>;
   loadInSidebar?: boolean;
   onOpenGuide?: (launch: PreparedGuideLaunch) => void;
   onAcceptedLaunch?: (item: CatalogPackage) => void;
@@ -28,7 +29,8 @@ export function useCatalogLaunch(
 ) {
   const mounted = useRef(true);
   const currentScope = useRef(scope);
-  const lock = useRef(false);
+  const localLock = useRef(false);
+  const lock = options.launchLock ?? localLock;
   const preparingLoad = useRef<GuideLoadContext | undefined>(undefined);
   const [pending, setPending] = useState<{ scope: string; key: string } | null>(null);
   const [error, setError] = useState<{ scope: string; key: string; message: string } | null>(null);

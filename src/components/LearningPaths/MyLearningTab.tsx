@@ -209,6 +209,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   });
   const homeAvailablePaths = homeUnassignedPaths.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
   const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress, {
+    launchLock: launchInFlightRef,
     loadInSidebar: homepage,
     onAcceptedLaunch: (item) => selectCard(catalogIdentity(item)),
   });
@@ -655,8 +656,8 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
       {homepage && (
         <HomeLearningPathsSection
           presentation="continue"
-          title="Pick up where you left off"
-          description="Your guides and learning paths in progress."
+          title={t('myLearning.pickUpLearning', 'Pick up where you left off')}
+          description={t('myLearning.pickUpLearningDescription', 'Your guides and learning paths in progress.')}
           icon="play"
           entries={homeContinuePaths}
           selectedCardKey={selectedCardKey}
@@ -677,11 +678,17 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
               organization={item.source === 'organization'}
               progress={catalogProgress.get(item.key)?.percent}
               estimatedMinutes={item.estimatedMinutes}
-              effort={item.activityCount !== undefined ? `${item.activityCount} activities` : undefined}
+              effort={
+                item.activityCount !== undefined
+                  ? t('packageBrowser.activities', '{{count}} activities', { count: item.activityCount })
+                  : undefined
+              }
               onViewPath={() => catalogLaunch.launch(item)}
               onLaunch={() => catalogLaunch.launch(item)}
               launching={catalogLaunch.launchingKey === item.key}
-              launchDisabled={catalogLaunch.launchingKey !== null && catalogLaunch.launchingKey !== item.key}
+              launchDisabled={
+                launchingId !== null || (catalogLaunch.launchingKey !== null && catalogLaunch.launchingKey !== item.key)
+              }
               launchError={catalogLaunch.launchError?.key === item.key ? catalogLaunch.launchError.message : undefined}
             />
           ))}
@@ -719,8 +726,8 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
           )}
           {homepage && (
             <HomeLearningPathsSection
-              title="Find your next learning path"
-              description="Build your Grafana skills, one step at a time."
+              title={t('myLearning.findNextPath', 'Find your next learning path')}
+              description={t('myLearning.findNextPathDescription', 'Build your Grafana skills, one step at a time.')}
               icon="book-open"
               entries={homeAvailablePaths}
               selectedCardKey={selectedCardKey}
@@ -736,11 +743,15 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
                   <Icon name="compass" size="lg" />
                 </span>
                 <div className={styles.sectionHeadingText}>
-                  <h2 className={styles.sectionTitle}>What would you like to learn?</h2>
-                  <p className={styles.sectionDescription}>Browse guides and learning paths by topic.</p>
+                  <h2 className={styles.sectionTitle}>
+                    {t('myLearning.exploreTopics', 'What would you like to learn?')}
+                  </h2>
+                  <p className={styles.sectionDescription}>
+                    {t('myLearning.exploreTopicsDescription', 'Browse guides and learning paths by topic.')}
+                  </p>
                 </div>
                 <LinkButton href={`${prefixRoute(ROUTES.Browse)}?view=all`} variant="primary" size="md">
-                  Explore all <Icon name="arrow-right" />
+                  {t('myLearning.exploreAll', 'Explore all')} <Icon name="arrow-right" />
                 </LinkButton>
               </div>
               <div className={`${exploreStyles.topics} ${exploreStyles.homeTopics}`}>
@@ -753,7 +764,11 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
                     <LearningTopicIcon topic={topic.id} size="sm" bordered />
                     <span className={exploreStyles.topicContent}>
                       <strong>{getLearningTopicMetadata(topic.id).label ?? topic.id}</strong>
-                      <small>{topic.count} guides and learning paths</small>
+                      <small>
+                        {t('myLearning.topicContentCount', '{{count}} guides and learning paths', {
+                          count: topic.count,
+                        })}
+                      </small>
                     </span>
                   </a>
                 ))}

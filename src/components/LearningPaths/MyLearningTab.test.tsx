@@ -1512,6 +1512,70 @@ describe('homepage path launches', () => {
     prepareMock.mockResolvedValue(okResult);
   });
 
+  it.each(['Known path', 'Catalogue path'])(
+    'blocks competing launches while %s is resolving, then releases the lock',
+    async (firstTitle) => {
+      mockPaths = [
+        { id: 'path-1', title: 'Known path', guides: ['guide-1'], manifest: { id: 'path-1', type: 'path' } },
+      ];
+      mockCatalogItems = [
+        {
+          key: 'cdn:catalogue-path',
+          id: 'catalogue-path',
+          title: 'Catalogue path',
+          format: 'path',
+          source: 'grafana',
+          url: '',
+          memberIds: ['catalogue-guide'],
+          curatedPath: {
+            id: 'catalogue-path',
+            title: 'Catalogue path',
+            description: '',
+            guides: ['catalogue-guide'],
+            badgeId: '',
+            manifest: { id: 'catalogue-path', type: 'path' },
+          },
+        },
+        {
+          key: 'cdn:catalogue-guide',
+          id: 'catalogue-guide',
+          title: 'Catalogue guide',
+          format: 'guide',
+          source: 'grafana',
+          url: 'bundled:catalogue-guide',
+        },
+      ];
+      mockCatalogProgress = new Map([
+        ['cdn:catalogue-path', { percent: 25 }],
+        ['cdn:catalogue-guide', { percent: 25 }],
+      ]);
+      const cover = [
+        { contentUrl: 'https://grafana.com/docs/learning-paths/test/', repository: 'interactive-tutorials' },
+      ];
+      let finishResolve!: (value: typeof cover) => void;
+      resolvePackageNavLinksMock.mockReturnValueOnce(
+        new Promise<typeof cover>((resolve) => {
+          finishResolve = resolve;
+        })
+      );
+      render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+      const secondTitle = firstTitle === 'Known path' ? 'Catalogue guide' : 'Known path';
+
+      fireEvent.click(screen.getByRole('button', { name: firstTitle }));
+      fireEvent.click(screen.getByRole('button', { name: secondTitle }));
+
+      expect(resolvePackageNavLinksMock).toHaveBeenCalledTimes(1);
+      expect(openGuideInSidebar).not.toHaveBeenCalled();
+      await act(async () => finishResolve(cover));
+      expect(openGuideInSidebar).toHaveBeenCalledTimes(1);
+      expect(openGuideInSidebar).toHaveBeenCalledWith(expect.objectContaining({ title: firstTitle }));
+
+      resolvePackageNavLinksMock.mockResolvedValue(cover);
+      fireEvent.click(screen.getByRole('button', { name: secondTitle }));
+      await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(2));
+    }
+  );
+
   it('resumes a coverless bundled path at its next incomplete guide', async () => {
     mockPaths = [{ id: 'path-1', title: 'Started path', guides: ['first', 'next'] }];
     mockGetPathGuides.mockReturnValue([

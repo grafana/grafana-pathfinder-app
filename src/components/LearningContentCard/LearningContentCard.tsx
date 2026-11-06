@@ -289,7 +289,7 @@ export function LearningContentCard({
           {presentation === 'resume' && (
             <div className={styles.resumeAction}>
               <Button icon="play" size="md" variant="primary" onClick={launch} disabled={disabled}>
-                {busy ? t('learningCard.opening', 'Opening…') : 'Resume'}
+                {busy ? t('learningCard.opening', 'Opening…') : t('learningCard.resume', 'Resume')}
               </Button>
             </div>
           )}

@@ -62,7 +62,7 @@ export function HomeBadgesSummary({
     <aside
       className={styles.homeBadgeShelf}
       role="region"
-      aria-label="Badges"
+      aria-label={t('myLearning.badges', 'Badges')}
       data-testid={testIds.learningPaths.badgesSection}
     >
       <div className={styles.homeBadgeHeader}>
@@ -72,7 +72,7 @@ export function HomeBadgesSummary({
             : t('myLearning.badgesUnlocked', 'You’ve unlocked {{count}} badges', { count: earned.length })}
         </h2>
         <LinkButton variant="secondary" fill="outline" size="md" href={prefixRoute(ROUTES.Badges)}>
-          Show all badges
+          {t('myLearning.showAllBadges', 'Show all badges')}
         </LinkButton>
       </div>
       {(earned.length > 0 || nextBadge) && (

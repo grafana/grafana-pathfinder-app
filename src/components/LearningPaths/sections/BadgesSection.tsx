@@ -62,7 +62,7 @@ export function BadgesSection({
       {compact && !gallery && (
         <div className={styles.achievementsAction}>
           <LinkButton variant="secondary" fill="text" size="sm" href={prefixRoute(ROUTES.Badges)}>
-            Show all badges
+            {t('myLearning.showAllBadges', 'Show all badges')}
           </LinkButton>
         </div>
       )}

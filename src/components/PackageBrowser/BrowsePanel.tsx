@@ -19,7 +19,7 @@ function BrowsePanelRenderer() {
   const enabled = useBooleanFlag('pathfinder.package-browser', true);
   return (
     <div className={styles.browseLayout}>
-      <nav aria-label="Learning pages" className={styles.browseNavigation}>
+      <nav aria-label={t('myLearning.pageActions', 'Learning pages')} className={styles.browseNavigation}>
         <Button
           onClick={() => locationService.push(prefixRoute(ROUTES.Home))}
           variant="secondary"
@@ -27,7 +27,7 @@ function BrowsePanelRenderer() {
           size="md"
           icon="arrow-left"
         >
-          Back
+          {t('common.back', 'Back')}
         </Button>
       </nav>
       {enabled ? (

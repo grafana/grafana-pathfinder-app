@@ -37,7 +37,7 @@ function BadgesPanelRenderer() {
 
   return (
     <div ref={container} className={pageStyles.browseLayout}>
-      <nav aria-label="Learning pages" className={pageStyles.browseNavigation}>
+      <nav aria-label={t('myLearning.pageActions', 'Learning pages')} className={pageStyles.browseNavigation}>
         <Button
           onClick={() => locationService.push(prefixRoute(ROUTES.Home))}
           variant="secondary"
@@ -45,7 +45,7 @@ function BadgesPanelRenderer() {
           size="md"
           icon="arrow-left"
         >
-          Back
+          {t('common.back', 'Back')}
         </Button>
       </nav>
       <main className={exploreStyles.pageContainer}>
