@@ -83,6 +83,10 @@ func TestLoadCatalogRejects(t *testing.T) {
 		{"tier id missing", wrap(counted(dashCounter, `[{"at":1}]`)), "tier 1: id must be a lowercase token"},
 		{"tier id not a token", wrap(counted(dashCounter, `[{"id":"Gold","at":1}]`)), `tier "Gold": id must be a lowercase token`},
 		{"tier id over 32", wrap(counted(dashCounter, `[{"id":"`+strings.Repeat("a", 33)+`","at":1}]`)), "at most 32 characters"},
+		{"art a URL", wrap(counted(dashCounter, `[{"id":"bronze","at":1,"art":"https://example.com/x.svg"}]`)), `tier "bronze": art must be a lowercase key of at most 64 characters`},
+		{"art a path", wrap(counted(dashCounter, `[{"id":"bronze","at":1,"art":"../x"}]`)), "art must be a lowercase key"},
+		{"art not lowercase", wrap(counted(dashCounter, `[{"id":"bronze","at":1,"art":"Bronze"}]`)), "art must be a lowercase key"},
+		{"art over 64", wrap(counted(dashCounter, `[{"id":"bronze","at":1,"art":"`+strings.Repeat("a", 65)+`"}]`)), "art must be a lowercase key"},
 		{"tier id twice", wrap(counted(dashCounter, `[{"id":"bronze","at":1},{"id":"bronze","at":2}]`)), `tier "bronze": tier id declared twice`},
 
 		{"route action not completed", wrap(counted(dashCounter, `[{"id":"bronze","at":1,"or":[{"entity":"dashboards","action":"created"}]}]`)), `routes take action "completed"`},
@@ -139,6 +143,7 @@ func TestLoadCatalogAcceptsBoundaryValues(t *testing.T) {
 		"16 in values":  counted(evidenceWith(`,"where":[{"field":"numPanels","op":"in","value":`+list+`}]`), oneTier),
 		"at 200":        counted(dashCounter, `[{"id":"bronze","at":200}]`),
 		"tier id of 32": counted(dashCounter, `[{"id":"`+strings.Repeat("a", 32)+`","at":1}]`),
+		"art of 64":     counted(dashCounter, `[{"id":"bronze","at":1,"art":"`+strings.Repeat("a", 64)+`"}]`),
 		"occurrence 50": counted(`{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}`, `[{"id":"bronze","at":50}]`),
 		"boolean eq":    counted(evidenceWith(`,"where":[{"field":"starred","op":"eq","value":true}]`), oneTier),
 	} {
