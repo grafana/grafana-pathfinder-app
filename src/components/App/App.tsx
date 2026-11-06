@@ -9,6 +9,7 @@ import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
 import { fullScreenPage } from '../../pages/fullScreenPage';
 import { browsePage } from '../../pages/browsePage';
+import { badgesPage } from '../../pages/badgesPage';
 import { learningInsightsPage } from '../../pages/learningInsightsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getFeatureFlagValue } from '../../utils/openfeature';
@@ -136,6 +137,7 @@ function getSceneApp() {
       docsPage,
       fullScreenPage,
       browsePage,
+      badgesPage,
       ...(config.bootData?.user?.orgRole === 'Admin' && getFeatureFlagValue('pathfinder.learning-insights', false)
         ? [learningInsightsPage]
         : []),

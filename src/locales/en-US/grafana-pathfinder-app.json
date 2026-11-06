@@ -98,6 +98,8 @@
     "milestoneButton": "Mark complete and continue"
   },
   "myLearning": {
+    "welcome": "Welcome",
+    "welcomeName": "Welcome, {{- name}}",
     "assignedBadge": "Assigned",
     "assignedBy": "Assigned by",
     "assignedTrack": "Track",
@@ -106,8 +108,9 @@
     "assignmentResetConfirm": "Reset and continue",
     "assignmentResetTitle": "Reset local progress?",
     "badges": "Badges",
-    "badgesDescription": "Earn badges by completing paths and maintaining streaks",
+    "badgesDescription": "Earn badges as you complete guides and learning paths.",
     "badgesEarned": "Badges earned",
+    "yourBadges": "Your badges",
     "collapse": "Collapse",
     "completed": "Completed",
     "completedDescription": "Courses and paths you've finished",
@@ -132,7 +135,7 @@
     "guidesCompleted": "Guides completed",
     "launchErrorMessage": "Something went wrong while loading the guide. Please try again.",
     "launchErrorTitle": "Could not open the guide",
-    "learningAltitude": "Learning altitude",
+    "learningAltitude": "Your learning altitude",
     "learningPaths": "Learning paths",
     "loadingGuides": "Loading guides...",
     "myCourses": "My paths",
@@ -143,7 +146,15 @@
     "privatePathsDescription": "Paths published for your organization",
     "resetPathErrorMessage": "Some of this path's progress could not be cleared. Reload the page and try again.",
     "resetPathErrorTitle": "Reset incomplete",
-    "subtitle": "Track your progress, earn badges, and master Grafana"
+    "subtitle": "Track your progress, earn badges, and master Grafana",
+    "summaryOneGuide": "1 guide",
+    "summaryGuides": "{{count}} guides",
+    "summaryOnePath": "1 learning path",
+    "summaryPaths": "{{count}} learning paths",
+    "summaryOneBadge": "1 badge",
+    "summaryBadges": "{{count}} badges",
+    "loadingAssignments": "Loading assignments…",
+    "assignmentsLoadError": "Assignments couldn’t be loaded."
   },
   "sidebarHub": {
     "actionLabel": "{{action}}: {{- title}}",
@@ -211,5 +222,8 @@
     "message": "Try interactive learning",
     "dismiss": "Dismiss learning hint",
     "learn": "Learn"
+  },
+  "common": {
+    "retry": "Retry"
   }
 }

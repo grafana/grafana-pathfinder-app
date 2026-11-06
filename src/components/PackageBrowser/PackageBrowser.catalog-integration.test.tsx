@@ -5,7 +5,13 @@ import { updateCatalogView } from '../../global-state/package-browser';
 import { fetchCustomGuideCatalogue } from '../../lib/custom-guide-repository-client';
 import { fetchOnlinePackageRecommendations } from '../../lib/package-recommendations-client';
 
+jest.mock('@grafana/scenes', () => ({
+  ControlsLabel: ({ label, htmlFor }: { label: string; htmlFor?: string }) => <label htmlFor={htmlFor}>{label}</label>,
+}));
+
 jest.mock('../../learning-paths', () => ({
+  catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   usePackageCatalog: jest.requireActual('../../learning-paths/package-catalog.hook').usePackageCatalog,
   useCatalogProgress: () => new Map(),
 }));
