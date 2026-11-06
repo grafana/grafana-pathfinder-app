@@ -547,7 +547,7 @@ func TestAchievementStore_SchemaRefusesADuplicateHeldTier(t *testing.T) {
 	}
 }
 
-func TestAchievementStore_ExistingAwardRowIsRecordedAsHeld(t *testing.T) {
+func TestAchievementStore_ExistingAwardRowIsHeldNotReported(t *testing.T) {
 	_, catalog, err := achievements.LoadBundled()
 	if err != nil {
 		t.Fatal(err)
@@ -565,8 +565,11 @@ func TestAchievementStore_ExistingAwardRowIsRecordedAsHeld(t *testing.T) {
 		ID: "evt-1", Entity: "guides", Action: "completed",
 		Context: map[string]any{"guideSource": "bundled", "guideId": "one", "guideCategory": "interactive"},
 	})
-	if err != nil || len(decisions) != 1 || decisions[0].Reason.Transient() {
-		t.Fatalf("Evaluate = %v, %v, want the existing row to settle, not fail", decisions, err)
+	if err != nil || len(decisions) != 1 {
+		t.Fatalf("Evaluate = %v, %v", decisions, err)
+	}
+	if d := decisions[0]; d.Reason.Transient() || len(d.Awarded) != 0 {
+		t.Fatalf("decision = %+v, want the 409 tier left out of awarded and the event settled", d)
 	}
 	held := api.spec(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "guides-finished"))["tierIds"].([]any)
 	if len(held) != 1 || held[0] != "bronze" {

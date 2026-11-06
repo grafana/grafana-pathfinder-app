@@ -69,21 +69,29 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		current = created
 	}
 
+	awarded := map[string]bool{}
 	for range maxAttempts {
 		out := evaluate(d, current, ev)
-		if !out.changed {
+		switch {
+		case !out.changed && len(awarded) == 0:
 			return out.decision
+		case !out.changed:
+			out.next = current
+			return d.reported(out, awarded)
 		}
 		for _, tierID := range out.decision.Awarded {
 			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, EarnedAt: e.now().UTC()}
-			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
+			switch err := e.store.CreateAward(ctx, person, award); {
+			case err == nil:
+				awarded[tierID] = true
+			case !errors.Is(err, ErrExists):
 				return d.unavailable(current)
 			}
 		}
 		_, err := e.store.SaveProgress(ctx, person, out.next)
 		switch {
 		case err == nil:
-			return out.decision
+			return d.reported(out, awarded)
 		case !errors.Is(err, ErrConflict):
 			return d.unavailable(current)
 		}
