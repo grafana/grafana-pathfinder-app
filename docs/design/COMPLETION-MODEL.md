@@ -537,7 +537,7 @@ today's fallback behaviour is preserved
 (`src/package-engine/composite-resolver.ts`). Two schemes carrying the same id
 may therefore be two different guides, so a maximum across schemes would report
 a private guide's progress as a bundled member's. The join consults the schemes
-in the resolver's own precedence order and the first one holding a record
+in bundled-first progress ownership order and the first one holding a record
 answers — including when that record is unreadable, because falling through
 would substitute a different guide's number for a corrupt one.
 
@@ -551,10 +551,12 @@ Platform metadata before the static fallback, and that metadata covers every
 published guide rather than only members of App Platform paths, so a colliding
 CR id can hand the join `backend-guide:<id>` for a member of a static bundled
 path. **Known follow-on for the rollup:** the caller resolving member URLs
-bundled-first, matching the composite resolver, so the join is never handed an
+bundled-first for path ownership, so the join is never handed an
 App Platform URL for a bundled member. Until then, do not read decision 9 as a
 guarantee that a private guide's progress can never surface as a bundled
 member's — only that the join's own scheme fallback will not cause it.
+The seven guides in `src/constants/bundled-tutorials.json` are the content-resolution
+exception: they prefer the enabled recommender but retain shared bundled progress identity.
 
 **A present but unreadable record is excluded too, not scored zero.** The
 persisted record is unchecked `JSON.parse` output, so a key may be present and

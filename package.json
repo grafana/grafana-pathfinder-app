@@ -51,7 +51,8 @@
     "schema:export": "node dist/cli/cli/index.js schema --all",
     "eval:guide-search": "npm run build:cli && node scripts/guide-search-eval/evaluate.js",
     "check": "node scripts/check.js",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:sync-bundled-tutorials": "node --test scripts/tests/sync-bundled-tutorials.test.mjs"
   },
   "author": "Grafanalabs",
   "license": "AGPL-3.0",

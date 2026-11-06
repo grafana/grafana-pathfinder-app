@@ -147,6 +147,8 @@ jobs:
         run: npm ci
       - name: Build CLI
         run: npm run build:cli
+      - name: Test bundled tutorial sync
+        run: npm run test:sync-bundled-tutorials
       - name: Validate bundled packages
         run: npm run validate:packages
       - name: Check repository.json freshness

@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
 /**
  * Step completion store.
  *
@@ -248,6 +249,7 @@ export async function readStepCompletion(
   sectionId: string | undefined,
   contentKey: string
 ): Promise<boolean> {
+  contentKey = bundledTutorialContentKey(contentKey);
   const section = sectionId ?? STANDALONE_SECTION_ID;
   await ensureHydrated(contentKey, section);
   return entries.get(contentKey)?.get(section)?.get(stepId)?.completed ?? false;
@@ -259,6 +261,7 @@ export async function readStepCompletion(
  * progress the reader would find on a real guide.
  */
 export function isPreviewContentKey(contentKey: string): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   return contentKey.indexOf('devtools') > -1 || isBlockEditorPreviewUrl(contentKey);
 }
 
@@ -283,6 +286,7 @@ const previewAcknowledgedSections = new Map<string, Set<string>>();
 
 /** Called by `useSectionPersistence`'s preview branch in place of the storage write it skips. */
 export function notePreviewSectionAcknowledged(contentKey: string, sectionId: string, acknowledged: boolean): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   if (!acknowledged) {
     previewAcknowledgedSections.get(contentKey)?.delete(sectionId);
   } else {
@@ -521,6 +525,7 @@ async function persistAndAnnounceGuidePercentage(
  * `'change'` only for a write the reader just made; omit it for a reset.
  */
 export function refreshAndNotifyGuideProgress(contentKey: string, origin?: ProgressOrigin): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   refreshGuidePercentage(contentKey, origin);
   notify(contentKey);
 }
@@ -541,6 +546,7 @@ export function refreshAndNotifyGuideProgress(contentKey: string, origin?: Progr
  * every load, competing with real readers' progress for the same bound.
  */
 export function refreshGuidePercentageOnLoad(contentKey: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   if (collectEvidence(contentKey).length === 0) {
     return;
   }
@@ -557,6 +563,7 @@ export function refreshGuidePercentageOnLoad(contentKey: string): void {
  * per crossing.
  */
 export function takeLoadCompletionCrossing(contentKey: string): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   return loadCompletionCrossings.delete(contentKey);
 }
 
@@ -648,6 +655,7 @@ export function resetStep(stepId: string, sectionId: string | undefined = STANDA
  * countable blocks at all.
  */
 export function peekGuidePercentage(contentKey: string): number {
+  contentKey = bundledTutorialContentKey(contentKey);
   return computeGuideProgress(contentKey)?.percent ?? 0;
 }
 
@@ -658,6 +666,7 @@ export function peekGuidePercentage(contentKey: string): number {
  * Returns whether the mark was written; it is readable synchronously on return.
  */
 export function markGuideEndViewed(contentKey: string, expectsBlockIndex: boolean): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   if (isPreviewContentKey(contentKey) || guideCompletionMarkStorage.isMarked(contentKey)) {
     return false;
   }
@@ -684,6 +693,7 @@ export function markGuideEndViewed(contentKey: string, expectsBlockIndex: boolea
 }
 
 export function getGuideCompletionSource(contentKey: string): 'manual' | 'skipped' | 'objectives' {
+  contentKey = bundledTutorialContentKey(contentKey);
   // Seeing the end is the completion criterion of a guide with no completable block.
   if (guideCompletionMarkStorage.isViewed(contentKey)) {
     return 'objectives';
@@ -712,6 +722,7 @@ export function getSectionSkippedSteps(sectionId: string, completed: ReadonlySet
 
 /** Subscribe to per-content progress changes. Returns an unsubscribe function. */
 export function subscribeProgress(contentKey: string, listener: () => void): () => void {
+  contentKey = bundledTutorialContentKey(contentKey);
   return subscribeToContent(contentKey, listener);
 }
 
@@ -899,6 +910,7 @@ export function evictSectionCache(sectionId: string): void {
  * re-adds the key before the old `.then` runs).
  */
 export function evictSectionCacheForKey(contentKey: string, sectionId: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   const bySection = entries.get(contentKey);
   if (bySection) {
     bySection.delete(sectionId);
@@ -939,6 +951,7 @@ export function evictSectionCacheForKey(contentKey: string, sectionId: string): 
  * remain mounted under it, use `evictAllContentCaches()` instead.
  */
 export function evictContentCache(contentKey: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   // Otherwise the next load for this key would find the old frozen block
   // index still published and skip recomputing it (publishGuideIndex is
   // idempotent per content key), serving stale positions after a reset.

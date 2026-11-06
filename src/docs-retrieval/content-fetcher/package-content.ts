@@ -1,3 +1,4 @@
+import { isBundledTutorial } from '../../lib/bundled-tutorial-identity';
 import { identifyGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 // Package content integration (Phase 4g).
@@ -637,12 +638,13 @@ export async function fetchPackageById(
     };
   }
 
-  // verifyPublished: the content fetch that follows has no publish-status gate
-  // of its own (backend-guide.ts serves drafts on purpose, for share links and
-  // tab restore), so a draft opened by bare id is only caught here. The baseUrl
-  // hydration resolve() in fetchPackageContent stays unverified — it runs on
-  // every milestone fetch and its id is already known-good.
-  const resolution = await resolver.resolve(packageId, { loadContent: false, verifyPublished: true, loadContext });
+  // Private bare-ID opens must verify publish status; share links intentionally permit drafts.
+  const bundledTutorial = isBundledTutorial(packageId);
+  const resolution = await resolver.resolve(packageId, {
+    loadContent: bundledTutorial,
+    verifyPublished: true,
+    loadContext,
+  });
 
   if (!resolution.ok) {
     return {
@@ -655,18 +657,29 @@ export async function fetchPackageById(
 
   // The probe already GET the resource to read its status; build content from
   // it rather than re-issuing the identical request.
-  const preFetched = resolution.probedResource
-    ? buildBackendGuideContent(resolution.probedResource as BackendGuideResource, resolution.contentUrl, packageId)
-    : undefined;
+  const preFetched: ContentFetchResult | undefined =
+    bundledTutorial && resolution.content
+      ? {
+          content: {
+            content: JSON.stringify(resolution.content),
+            metadata: { title: resolution.content.title },
+            type: 'interactive',
+            url: resolution.contentUrl,
+            lastFetched: new Date().toISOString(),
+            isNativeJson: true,
+          },
+        }
+      : resolution.probedResource
+        ? buildBackendGuideContent(resolution.probedResource as BackendGuideResource, resolution.contentUrl, packageId)
+        : undefined;
 
-  // Prefer an explicit caller-supplied repository, but fall back to the
-  // resolver's own source so a bare-ID open still keys the durable completion
-  // on the true repository instead of the manifest schema default.
   return fetchPackageContent(
     resolution.contentUrl,
-    packageManifest,
+    bundledTutorial
+      ? ((resolution.manifest as Record<string, unknown> | undefined) ?? packageManifest)
+      : packageManifest,
     undefined,
-    repository ?? resolution.repository,
+    bundledTutorial ? resolution.repository : (repository ?? resolution.repository),
     preFetched,
     undefined,
     undefined,

@@ -1,3 +1,4 @@
+import { bundledTutorialCompletionSource } from '../lib/bundled-tutorial-identity';
 /**
  * Resolve a `(guideSource, guideId)` completion key from the resolved package
  * manifest — never from a loader URL.
@@ -101,7 +102,7 @@ export function resolveCompletionIdentity(input: ResolveCompletionIdentityInput)
     asNonEmptyString(fallbackSource) ??
     DEFAULT_GUIDE_SOURCE;
 
-  return { guideSource, guideId };
+  return { guideSource: bundledTutorialCompletionSource(guideSource, guideId), guideId };
 }
 
 export interface ResolveMilestoneCompletionIdentityInput {
