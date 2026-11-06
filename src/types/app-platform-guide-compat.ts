@@ -1,4 +1,6 @@
 import type { JsonBlock } from './json-guide.types';
+import { JsonBlockSchema, MAX_NESTING_DEPTH } from './json-guide.schema';
+import { normalizeJsonGuideAliasFields } from './json-guide-aliases';
 
 /**
  * App Platform resources outlive an individual Pathfinder deployment. Store
@@ -55,12 +57,31 @@ export function encodeAppPlatformGuideBlocks(blocks: JsonBlock[]): JsonBlock[] {
   return blocks.map(encodeBlock);
 }
 
-export function decodeAppPlatformGuideBlocks(blocks: JsonBlock[]): JsonBlock[] {
-  const decodeBlock = (block: JsonBlock): JsonBlock => {
+export type AppPlatformGuideBlocksDecodeResult =
+  { ok: true; blocks: JsonBlock[] } | { ok: false; issues: ReadonlyArray<{ message: string }> };
+
+function isBlockRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function decodeAppPlatformGuideBlocks(blocks: unknown): AppPlatformGuideBlocksDecodeResult {
+  let exceededMaxDepth = false;
+
+  const decodeBlock = (value: unknown, depth: number): unknown => {
+    // Persisting a visibility section adds one conditional level to the canonical tree.
+    if (depth > MAX_NESTING_DEPTH + 1) {
+      exceededMaxDepth = true;
+      return value;
+    }
+    if (!isBlockRecord(value)) {
+      return value;
+    }
+    const block = normalizeJsonGuideAliasFields(value);
+
     if (block.type === 'markdown' && block.content === PERSISTED_DIVIDER_MARKDOWN) {
       return {
         type: 'divider',
-        ...(block.id ? { id: block.id } : {}),
+        ...(typeof block.id === 'string' && block.id.length > 0 ? { id: block.id } : {}),
       };
     }
 
@@ -68,24 +89,57 @@ export function decodeAppPlatformGuideBlocks(blocks: JsonBlock[]): JsonBlock[] {
       block.type === 'input' &&
       block.inputType === 'text' &&
       block.placeholder === PERSISTED_CHECKBOX_GROUP &&
-      block.choices
+      Array.isArray(block.choices)
     ) {
       const { placeholder, ...input } = block;
       return { ...input, inputType: 'checkbox-group' };
     }
-    if (
-      block.type === 'conditional' &&
-      block.description?.startsWith(PERSISTED_SECTION_VISIBILITY) &&
-      block.whenTrue.length === 1 &&
-      block.whenTrue[0]?.type === 'section'
-    ) {
-      const mode = block.description.slice(PERSISTED_SECTION_VISIBILITY.length);
-      if (mode === 'hide' || mode === 'heading-only') {
-        return { ...mapNestedBlocks(block.whenTrue[0], decodeBlock), whenRequirementsUnmet: mode } as JsonBlock;
+
+    const mapped = { ...block };
+    if (Array.isArray(mapped.steps)) {
+      mapped.steps = mapped.steps.map((step) => (isBlockRecord(step) ? normalizeJsonGuideAliasFields(step) : step));
+    }
+    for (const field of NESTED_BLOCK_FIELDS) {
+      if (Array.isArray(mapped[field])) {
+        mapped[field] = mapped[field].map((child) => decodeBlock(child, depth + 1));
       }
     }
-    return mapNestedBlocks(block, decodeBlock);
+
+    if (
+      mapped.type === 'conditional' &&
+      typeof mapped.description === 'string' &&
+      mapped.description.startsWith(PERSISTED_SECTION_VISIBILITY) &&
+      Array.isArray(mapped.whenTrue) &&
+      mapped.whenTrue.length === 1 &&
+      isBlockRecord(mapped.whenTrue[0]) &&
+      mapped.whenTrue[0].type === 'section' &&
+      Array.isArray(mapped.conditions) &&
+      mapped.conditions.every((condition) => typeof condition === 'string') &&
+      Array.isArray(mapped.whenFalse)
+    ) {
+      const mode = mapped.description.slice(PERSISTED_SECTION_VISIBILITY.length);
+      const fallback = mapped.whenFalse[0];
+      if (
+        (mode === 'hide' && mapped.whenFalse.length === 0) ||
+        (mode === 'heading-only' &&
+          mapped.whenFalse.length === 1 &&
+          isBlockRecord(fallback) &&
+          fallback.type === 'markdown' &&
+          typeof fallback.content === 'string')
+      ) {
+        return { ...mapped.whenTrue[0], whenRequirementsUnmet: mode };
+      }
+    }
+    return mapped;
   };
 
-  return blocks.map(decodeBlock);
+  const decoded = Array.isArray(blocks) ? blocks.map((block) => decodeBlock(block, 0)) : blocks;
+  if (exceededMaxDepth) {
+    return {
+      ok: false,
+      issues: [{ message: `Guide blocks exceed the maximum nesting depth of ${MAX_NESTING_DEPTH}` }],
+    };
+  }
+  const parsed = JsonBlockSchema.array().safeParse(decoded);
+  return parsed.success ? { ok: true, blocks: decoded as JsonBlock[] } : { ok: false, issues: parsed.error.issues };
 }
