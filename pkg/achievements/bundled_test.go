@@ -16,12 +16,17 @@ func TestBundledDefinitionIsGuidesFinished(t *testing.T) {
 		t.Fatalf("%d achievements, want the single guides-finished definition", len(catalog.Achievements))
 	}
 	d := catalog.Achievements[0]
-	if d.ID != "guides-finished" || d.Counter == nil || d.Counter.Unit != "guide" || len(d.Tiers) < 2 {
+	if d.ID != "guides-finished" || d.Counter == nil || d.Counter.Unit != "guide" || len(d.Tiers) < 3 {
 		t.Fatalf("definition = %+v", d)
 	}
 	m := d.Counter.Evidence[0]
 	if m.Entity != "guides" || m.Action != "completed" || len(m.Where) != 0 {
 		t.Errorf("evidence = %+v, want every guides.completed counted by guide", m)
+	}
+	for i, want := range []string{"guides-finished-1", "guides-finished-2", "guides-finished-3"} {
+		if d.Tiers[i].Art != want {
+			t.Errorf("tier %s art = %q, want %q", d.Tiers[i].ID, d.Tiers[i].Art, want)
+		}
 	}
 	if _, ok := registry.action("guides", "completed"); !ok {
 		t.Error("registry does not declare guides.completed")

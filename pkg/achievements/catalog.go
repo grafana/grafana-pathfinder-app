@@ -64,7 +64,9 @@ type Matcher struct {
 
 // Tier is earned by reaching At distinct units, or outright by an event that
 // matches one of its Or routes or a later tier's. ID is permanent: a released
-// tier is never renamed, removed or moved. Art is an opaque display reference.
+// tier is never renamed, removed or moved. Art is an optional, explicitly
+// authored key naming the image published at achievements/art/<key>.svg on the
+// interactive-learning CDN; never a URL or a path.
 type Tier struct {
 	ID  string  `json:"id"`
 	At  *int    `json:"at,omitempty"`
@@ -192,6 +194,9 @@ func (d *Definition) validate(registry *Registry) []error {
 			fail("%s: tier id declared twice", tw)
 		}
 		tierIDs[t.ID] = true
+		if t.Art != "" && (len(t.Art) > maxIDLen || !idPattern.MatchString(t.Art)) {
+			fail("%s: art must be a lowercase key of at most %d characters", tw, maxIDLen)
+		}
 		switch {
 		case d.Counter == nil && t.At != nil:
 			fail("%s: at is forbidden on a milestone achievement", tw)
