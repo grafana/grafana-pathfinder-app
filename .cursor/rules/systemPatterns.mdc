@@ -195,6 +195,14 @@ reporting cache or stale replay (`Cache-Control: no-store`). Partial reads and u
 remain explicit, not false zero/outstanding. Broad raw GAP grants remain a known separate issue.
 For the full contract and read-only smoke procedure, see `docs/developer/LEARNING_INSIGHTS.md`.
 
+`pkg/achievements` is a pure library with no I/O: the achievements evaluator, catalog and registry loaders, and
+event validation from the Achievements RFC (pathfinder-rfcs#24, §6). Tiers carry permanent ids and progress keeps the
+set held; `release_compat_test.go` fails when the bundled data drops, reorders or redefines what the last release tag
+shipped, so the backend CI job fetches tags. The store, the read
+port and the admission policy are ports; `plugin/achievements.go` serves the routes over them and stays
+unavailable until a store adapter sets `App.achievementsBackendFor`. Its bundled catalog and registry live in
+`pkg/achievements/data/`. Earn windows (RFC §6.2) are not supported and the loader rejects a `window` key.
+
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
 
@@ -219,6 +227,7 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | `plugin/assignments_client.go`      | Per-kind wrapper for the `Assignment` resource: LIST plus the `status` PUT. |
 | `plugin/assignment_paths.go`        | Path-guide sources for an assignment target: bundled, custom and online. |
 | `plugin/assignment_satisfaction.go` | Per-request satisfaction evaluation, plus background and on-read `status.satisfied` writes. |
+| `plugin/achievements.go`            | Achievements routes under `/api/v1/achievements/` (version in `achievementsAPIVersion`): `POST events` and `GET my`, with the people-only principal gate and a per-user limiter. |
 | `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
 | `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |
 | `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
@@ -231,7 +240,7 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 
 `/package-recommendations`, `/completion-records` (POST create), `/completion-records/my`,
 `/completion-records/capability`, `/assignments/my`, `/learning-insights` (GET, current-org Admin),
-`/custom-guide-repository`, `/health`.
+`/custom-guide-repository`, `/api/v1/achievements/events` (POST), `/api/v1/achievements/my`, `/health`.
 
 **Security boundaries:**
 

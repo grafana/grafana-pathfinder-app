@@ -74,6 +74,8 @@ func contractRoots() []contractRoot {
 		{"completion-records-capability", reflect.TypeOf(completionCapability{})},
 		{"assignments-my", reflect.TypeOf(myAssignmentsResponse{})},
 		{"learning-insights", reflect.TypeOf(learningInsightsResponse{})},
+		{"achievements-events", reflect.TypeOf(achievementEventsResponse{})},
+		{"achievements-my", reflect.TypeOf(myAchievementsResponse{})},
 	}
 }
 
@@ -105,6 +107,14 @@ func contractCases() []contractCase {
 		{"assignments-my.unavailable", captureMyAssignmentsUnavailable},
 		{"learning-insights.default", captureLearningInsightsDefault},
 		{"learning-insights.unavailable", captureLearningInsightsUnavailable},
+		{"achievements-events.tier-up", captureAchievementEventsTierUp},
+		{"achievements-events.milestone-award", captureAchievementEventsMilestoneAward},
+		{"achievements-events.no-selection", captureAchievementEventsNoSelection},
+		{"achievements-events.retry", captureAchievementEventsRetry},
+		{"achievements-my.default", captureMyAchievementsDefault},
+		{"achievements-my.empty", captureMyAchievementsEmpty},
+		{"achievements-my.truncated", captureMyAchievementsTruncated},
+		{"achievements-my.unavailable", captureMyAchievementsUnavailable},
 	}
 }
 
