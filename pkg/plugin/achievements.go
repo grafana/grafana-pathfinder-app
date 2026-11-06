@@ -84,9 +84,8 @@ type achievementCapability struct {
 
 type achievementAward struct {
 	AchievementID string `json:"achievementId"`
-	Tier          int    `json:"tier"`
+	TierID        string `json:"tierId"`
 	Entity        string `json:"entity"`
-	Revision      int    `json:"revision"`
 	EarnedAt      string `json:"earnedAt"`
 }
 
@@ -94,7 +93,6 @@ type achievementProgress struct {
 	AchievementID string `json:"achievementId"`
 	Units         int    `json:"units"`
 	Next          *int   `json:"next"`
-	Revision      int    `json:"revision"`
 }
 
 type legacyBadge struct {
@@ -259,9 +257,8 @@ func (a *App) shapeMyAchievements(rows achievements.Rows) myAchievementsResponse
 	for _, aw := range rows.Awards {
 		resp.Awards = append(resp.Awards, achievementAward{
 			AchievementID: aw.AchievementID,
-			Tier:          aw.Tier,
+			TierID:        aw.TierID,
 			Entity:        aw.Entity,
-			Revision:      aw.Revision,
 			EarnedAt:      aw.EarnedAt.UTC().Format(time.RFC3339),
 		})
 	}
@@ -270,10 +267,10 @@ func (a *App) shapeMyAchievements(rows achievements.Rows) myAchievementsResponse
 		if x.AchievementID != y.AchievementID {
 			return x.AchievementID < y.AchievementID
 		}
-		return x.Tier < y.Tier
+		return a.awardBefore(x, y)
 	})
 	for _, p := range rows.Progress {
-		next, counted := a.achievementsCatalog.NextAt(p.AchievementID, p.Tier)
+		next, counted := a.achievementsCatalog.NextAt(p.AchievementID, p.TierIDs)
 		if !counted {
 			continue
 		}
@@ -281,11 +278,24 @@ func (a *App) shapeMyAchievements(rows achievements.Rows) myAchievementsResponse
 			AchievementID: p.AchievementID,
 			Units:         len(p.Units),
 			Next:          next,
-			Revision:      p.Revision,
 		})
 	}
 	sort.Slice(resp.Progress, func(i, j int) bool { return resp.Progress[i].AchievementID < resp.Progress[j].AchievementID })
 	return resp
+}
+
+// awardBefore orders by catalog rank; a tier id the catalog lacks sorts last.
+func (a *App) awardBefore(x, y achievementAward) bool {
+	xr, xok := a.achievementsCatalog.TierRank(x.AchievementID, x.TierID)
+	yr, yok := a.achievementsCatalog.TierRank(y.AchievementID, y.TierID)
+	switch {
+	case xok && yok:
+		return xr < yr
+	case xok != yok:
+		return xok
+	default:
+		return x.TierID < y.TierID
+	}
 }
 
 func (a *App) writeMyAchievements(w http.ResponseWriter, resp myAchievementsResponse) {

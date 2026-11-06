@@ -86,17 +86,34 @@ func printable(s string) bool {
 	return true
 }
 
-// NextAt reports the next tier threshold for a stored tier of one achievement.
-// counted is false when the achievement is not in the catalog or is a milestone,
-// which have no progress to show.
-func (c *Catalog) NextAt(achievementID string, tier int) (next *int, counted bool) {
+// NextAt is the threshold of the lowest tier not held. counted is false for an
+// unknown achievement or a milestone, which have no progress to show.
+func (c *Catalog) NextAt(achievementID string, tierIDs []string) (next *int, counted bool) {
+	d := c.definition(achievementID)
+	if d == nil {
+		return nil, false
+	}
+	held, _ := d.held(tierIDs)
+	return d.nextThreshold(held), d.Counter != nil
+}
+
+// TierRank is a tier's position in its achievement, lowest first.
+func (c *Catalog) TierRank(achievementID, tierID string) (rank int, ok bool) {
+	d := c.definition(achievementID)
+	if d == nil {
+		return 0, false
+	}
+	rank = d.tierRank(tierID)
+	return rank, rank >= 0
+}
+
+func (c *Catalog) definition(id string) *Definition {
 	for i := range c.Achievements {
-		d := &c.Achievements[i]
-		if d.ID == achievementID {
-			return d.nextThreshold(tier), d.Counter != nil
+		if c.Achievements[i].ID == id {
+			return &c.Achievements[i]
 		}
 	}
-	return nil, false
+	return nil
 }
 
 // Rows is one person's stored state, as read for the /my route.

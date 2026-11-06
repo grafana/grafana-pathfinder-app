@@ -74,8 +74,8 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		if !out.changed {
 			return out.decision
 		}
-		for tier := current.Tier + 1; tier <= out.next.Tier; tier++ {
-			award := Award{AchievementID: d.ID, Tier: tier, Entity: ev.Entity, Revision: out.next.Revision, EarnedAt: e.now().UTC()}
+		for _, tierID := range out.awarded {
+			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, EarnedAt: e.now().UTC()}
 			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
 				return d.unavailable(current)
 			}
@@ -93,11 +93,11 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		}
 		current = reloaded
 	}
-	return d.decision(KindIgnored, ReasonConflict, current.Tier, current.Tier, len(current.Units), current.Revision)
+	return d.ignoredAt(ReasonConflict, current)
 }
 
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {
-	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, Revision: d.Revision, SchemaVersion: SchemaVersion})
+	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, SchemaVersion: SchemaVersion})
 	switch {
 	case err == nil:
 		return created, true
@@ -115,5 +115,11 @@ func (e *Evaluator) reload(ctx context.Context, person Person, d *Definition) (P
 }
 
 func (d *Definition) unavailable(p Progress) Decision {
-	return d.decision(KindIgnored, ReasonStoreUnavailable, p.Tier, p.Tier, len(p.Units), max(p.Revision, d.Revision))
+	return d.ignoredAt(ReasonStoreUnavailable, p)
+}
+
+func (d *Definition) ignoredAt(reason Reason, p Progress) Decision {
+	held, _ := d.held(p.TierIDs)
+	from := d.highest(held)
+	return d.decision(KindIgnored, reason, held, from, from, len(p.Units))
 }

@@ -24,15 +24,15 @@
     {
       "field": "From",
       "json": "from",
-      "type": "int",
-      "wire": "integer",
+      "type": "string",
+      "wire": "string",
       "omitempty": false
     },
     {
       "field": "To",
       "json": "to",
-      "type": "int",
-      "wire": "integer",
+      "type": "string",
+      "wire": "string",
       "omitempty": false
     },
     {
@@ -54,13 +54,6 @@
       "json": "next",
       "type": "*int",
       "wire": "nullable<integer>",
-      "omitempty": false
-    },
-    {
-      "field": "Revision",
-      "json": "revision",
-      "type": "int",
-      "wire": "integer",
       "omitempty": false
     }
   ],
@@ -156,10 +149,10 @@
       "omitempty": false
     },
     {
-      "field": "Tier",
-      "json": "tier",
-      "type": "int",
-      "wire": "integer",
+      "field": "TierID",
+      "json": "tierId",
+      "type": "string",
+      "wire": "string",
       "omitempty": false
     },
     {
@@ -167,13 +160,6 @@
       "json": "entity",
       "type": "string",
       "wire": "string",
-      "omitempty": false
-    },
-    {
-      "field": "Revision",
-      "json": "revision",
-      "type": "int",
-      "wire": "integer",
       "omitempty": false
     },
     {
@@ -243,13 +229,6 @@
       "json": "next",
       "type": "*int",
       "wire": "nullable<integer>",
-      "omitempty": false
-    },
-    {
-      "field": "Revision",
-      "json": "revision",
-      "type": "int",
-      "wire": "integer",
       "omitempty": false
     }
   ],

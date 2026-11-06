@@ -31,11 +31,11 @@ const achievementsTestRegistryJSON = `{"schemaVersion":1,"entities":{
 }}`
 
 const achievementsTestCatalogJSON = `{"schemaVersion":1,"achievements":[
-  {"id":"dash-builder","revision":1,"title":"Dashboard builder","description":"Create dashboards.",
+  {"id":"dash-builder","title":"Dashboard builder","description":"Create dashboards.",
    "counter":{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource"}]},
-   "tiers":[{"tier":1,"at":1},{"tier":2,"at":3},{"tier":3,"at":5}]},
-  {"id":"guide-routes","revision":1,"title":"Guide routes","description":"Finish the named guide.",
-   "tiers":[{"tier":1,"or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]}]}
+   "tiers":[{"id":"bronze","at":1},{"id":"silver","at":3},{"id":"gold","at":5}]},
+  {"id":"guide-routes","title":"Guide routes","description":"Finish the named guide.",
+   "tiers":[{"id":"intro","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]}]}
 ]}`
 
 const achievementsTestUser = "user:1"
@@ -98,7 +98,7 @@ func (m *memAchievements) SaveProgress(_ context.Context, p achievements.Person,
 func (m *memAchievements) CreateAward(_ context.Context, p achievements.Person, a achievements.Award) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := fmt.Sprintf("%s/%s/%d", p.ID, a.AchievementID, a.Tier)
+	key := p.ID + "/" + a.AchievementID + "/" + a.TierID
 	if _, ok := m.awards[key]; ok {
 		return achievements.ErrExists
 	}
@@ -252,7 +252,7 @@ func TestAchievementEvent_AwardsOnceAndRepeatChangesNothing(t *testing.T) {
 	if body.EventID != "evt-1" || body.Retry || len(body.Decisions) != 1 {
 		t.Fatalf("unexpected response %+v", body)
 	}
-	if d := body.Decisions[0]; d.AchievementID != "dash-builder" || d.Decision != achievements.KindAward || d.From != 0 || d.To != 1 || d.Units != 1 {
+	if d := body.Decisions[0]; d.AchievementID != "dash-builder" || d.Decision != achievements.KindAward || d.From != "" || d.To != "bronze" || d.Units != 1 {
 		t.Fatalf("decision = %+v", d)
 	}
 	if awards, progress := mem.rowsFor(achievementsTestUser); awards != 1 || progress != 1 {
@@ -459,7 +459,7 @@ func TestMyAchievements_ShapesOnlyTheCallersRows(t *testing.T) {
 	if body.AsOf != "2026-11-02T09:00:00Z" || body.Truncated {
 		t.Fatalf("asOf %q truncated %v", body.AsOf, body.Truncated)
 	}
-	if len(body.Awards) != 2 || body.Awards[0].AchievementID != "dash-builder" || body.Awards[0].Tier != 1 || body.Awards[0].Entity != "dashboards" ||
+	if len(body.Awards) != 2 || body.Awards[0].AchievementID != "dash-builder" || body.Awards[0].TierID != "bronze" || body.Awards[0].Entity != "dashboards" ||
 		body.Awards[1].AchievementID != "guide-routes" {
 		t.Fatalf("awards = %+v", body.Awards)
 	}
@@ -485,6 +485,21 @@ func TestMyAchievements_FinalTierHasNoNextAndTruncationPasses(t *testing.T) {
 	}
 	if len(body.Awards) != 3 {
 		t.Fatalf("every tier has its own award row, got %+v", body.Awards)
+	}
+}
+
+func TestMyAchievements_AwardsFollowCatalogRankWithUnknownTiersLast(t *testing.T) {
+	mem := newMemAchievements()
+	for _, tier := range []string{"gold", "platinum", "bronze", "silver"} {
+		mem.awards[achievementsTestUser+"/dash-builder/"+tier] = achievements.Award{AchievementID: "dash-builder", TierID: tier, Entity: "dashboards", EarnedAt: timeNow()}
+	}
+	_, body := getMyAchievements(t, newAchievementsTestApp(t, mem), achievementsTestUser)
+	var got []string
+	for _, a := range body.Awards {
+		got = append(got, a.TierID)
+	}
+	if strings.Join(got, ",") != "bronze,silver,gold,platinum" {
+		t.Fatalf("award order = %v, want catalog rank with a tier the catalog does not know last", got)
 	}
 }
 
