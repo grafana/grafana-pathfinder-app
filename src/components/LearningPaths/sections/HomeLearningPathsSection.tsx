@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '@grafana/ui';
 import type { IconName } from '@grafana/data';
 
@@ -39,7 +39,30 @@ export function HomeLearningPathsSection({
   assignmentsError?: boolean;
   onRetryAssignments?: () => void;
 }) {
-  if (presentation !== 'assigned' && !entries.length && !React.Children.count(children)) {
+  const layout = useRef<HTMLDivElement>(null);
+  const [secondaryCardLimit, setSecondaryCardLimit] = useState(6);
+  const hasCards = entries.length > 0 || React.Children.count(children) > 0;
+  useLayoutEffect(() => {
+    const element = layout.current;
+    if (!element || presentation !== 'continue') {
+      return;
+    }
+    const updateCardLimit = () => {
+      const limit = Number(getComputedStyle(element).getPropertyValue('--continue-card-limit'));
+      if (limit > 0) {
+        setSecondaryCardLimit(limit);
+      }
+    };
+    updateCardLimit();
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(updateCardLimit);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [presentation, hasCards]);
+
+  if (presentation !== 'assigned' && !hasCards) {
     return null;
   }
   const cards = [
@@ -100,11 +123,19 @@ export function HomeLearningPathsSection({
         </div>
       ) : (
         <div className={styles.homeContinueStack}>
-          <div className={styles.homeContinueLayout} data-single-card={cards.length === 1 ? true : undefined}>
+          <div
+            ref={layout}
+            className={styles.homeContinueLayout}
+            data-single-card={cards.length === 1 ? true : undefined}
+          >
             <div className={styles.homeContinuePrimary}>{cards[0]}</div>
-            {cards.length > 1 && <div className={styles.homeContinueSecondary}>{cards.slice(1, 7)}</div>}
+            {cards.length > 1 && (
+              <div className={styles.homeContinueSecondary}>{cards.slice(1, secondaryCardLimit + 1)}</div>
+            )}
           </div>
-          {cards.length > 7 && <div className={styles.homeContinueOverflow}>{cards.slice(7)}</div>}
+          {cards.length > secondaryCardLimit + 1 && (
+            <div className={styles.homeContinueOverflow}>{cards.slice(secondaryCardLimit + 1)}</div>
+          )}
         </div>
       )}
     </section>

@@ -401,15 +401,19 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       color: theme.colors.text.disabled,
     }),
 
-    // Paths Grid
     homeContinueLayout: css({
+      '--continue-card-limit': '6',
       display: 'grid',
       gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 2.8fr)',
       gap: theme.spacing(1.5),
       alignItems: 'stretch',
       '&[data-single-card]': { gridTemplateColumns: 'minmax(0, 480px)' },
-      '@container learning-continue (max-width: 1200px)': { gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.5fr)' },
+      '@container learning-continue (max-width: 1200px)': {
+        '--continue-card-limit': '4',
+        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.5fr)',
+      },
       '@container learning-continue (max-width: 960px)': {
+        '--continue-card-limit': '6',
         gridTemplateColumns: 'minmax(0, 1fr)',
         '&[data-single-card]': { gridTemplateColumns: 'minmax(0, 1fr)' },
       },
