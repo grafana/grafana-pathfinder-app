@@ -12,6 +12,8 @@ interface UseKeyboardShortcutsProps {
     setActiveTab: (tabId: string) => void;
     navigateToNextMilestone: () => void;
     navigateToPreviousMilestone: () => void;
+    canNavigateNext?: () => boolean;
+    canNavigatePrevious?: () => boolean;
   };
 }
 
@@ -59,12 +61,16 @@ export function useKeyboardShortcuts({
         if (!isTextEditable) {
           if (event.key === 'ArrowRight') {
             safeEventHandler(event, { preventDefault: true });
-            model.navigateToNextMilestone();
+            if (model.canNavigateNext ? model.canNavigateNext() : true) {
+              model.navigateToNextMilestone();
+            }
           }
 
           if (event.key === 'ArrowLeft') {
             safeEventHandler(event, { preventDefault: true });
-            model.navigateToPreviousMilestone();
+            if (model.canNavigatePrevious ? model.canNavigatePrevious() : true) {
+              model.navigateToPreviousMilestone();
+            }
           }
         }
       }
