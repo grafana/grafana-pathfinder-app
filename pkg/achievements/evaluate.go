@@ -15,6 +15,7 @@ type outcome struct {
 	// next is the progress to persist; meaningful only when changed.
 	next    Progress
 	changed bool
+	added   bool
 }
 
 // evaluate is the pure step 4 of RFC §6.3: one event against one achievement's
@@ -71,22 +72,46 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 		}
 	}
 
-	kind, reason := KindIgnored, ReasonDuplicate
-	switch {
-	case len(awarded) > 0 && (!d.holdsAny(held) || d.holdsAll(after)):
-		kind, reason = KindAward, ""
-	case len(awarded) > 0:
-		kind, reason = KindTierUp, ""
-	case added:
-		kind, reason = KindIncrement, ""
-	}
+	kind, reason := d.kind(awarded, held, after, added)
 	next := stored
 	next.TierIDs, next.Units = d.mergeHeld(stored.TierIDs, after), ledger
 	return outcome{
 		decision: d.decision(kind, reason, awarded, after, len(ledger)),
 		next:     next,
 		changed:  added || len(awarded) > 0,
+		added:    added,
 	}
+}
+
+func (d *Definition) kind(awarded []string, before, after map[string]bool, added bool) (Kind, Reason) {
+	switch {
+	case len(awarded) > 0 && (!d.holdsAny(before) || d.holdsAll(after)):
+		return KindAward, ""
+	case len(awarded) > 0:
+		return KindTierUp, ""
+	case added:
+		return KindIncrement, ""
+	default:
+		return KindIgnored, ReasonDuplicate
+	}
+}
+
+// reported rebuilds the decision around the award rows this event created,
+// across re-runs, so a row that already existed is never reported as new.
+func (d *Definition) reported(out outcome, created map[string]bool) Decision {
+	after := heldSet(out.next.TierIDs)
+	before := maps.Clone(after)
+	awarded := []string{}
+	for _, t := range d.Tiers {
+		if created[t.ID] {
+			awarded = append(awarded, t.ID)
+			delete(before, t.ID)
+		}
+	}
+	dec := out.decision
+	dec.Awarded = awarded
+	dec.Decision, dec.Reason = d.kind(awarded, before, after, out.added)
+	return dec
 }
 
 func (d *Definition) decision(kind Kind, reason Reason, awarded []string, held map[string]bool, units int) Decision {
