@@ -1,6 +1,7 @@
 package achievements
 
 import (
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,14 +20,14 @@ type outcome struct {
 // evaluate is the pure step 4 of RFC §6.3: one event against one achievement's
 // stored progress.
 func evaluate(d *Definition, stored Progress, ev Event) outcome {
+	held := heldSet(stored.TierIDs)
 	ignored := func(reason Reason) outcome {
-		return outcome{decision: d.decision(KindIgnored, reason, stored.Tier, stored.Tier, len(stored.Units), stored.Revision)}
+		return outcome{decision: d.decision(KindIgnored, reason, nil, held, len(stored.Units))}
 	}
-	last := len(d.Tiers)
 	switch {
 	case stored.SchemaVersion > SchemaVersion:
 		return ignored(ReasonRecordNewer)
-	case stored.Tier >= last:
+	case d.holdsAll(held) && len(stored.Units) >= d.ceiling():
 		return ignored(ReasonComplete)
 	}
 
@@ -44,8 +45,8 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 			}
 		}
 	}
-	routeTier := d.routeTier(ev)
-	if len(units) == 0 && routeTier == 0 {
+	routed := d.routedIndex(ev)
+	if len(units) == 0 && routed < 0 {
 		if sawInvalid {
 			return ignored(ReasonInvalidContext)
 		}
@@ -56,81 +57,119 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	added := false
 	for _, unit := range units {
 		i, found := slices.BinarySearch(ledger, unit)
-		if !found && len(ledger) < d.topThreshold() {
+		if !found && len(ledger) < d.ceiling() {
 			ledger = slices.Insert(ledger, i, unit)
 			added = true
 		}
 	}
-	tier := max(stored.Tier, d.tierForCount(len(ledger)), routeTier)
-	revision := max(stored.Revision, d.Revision)
-	earned := tier > stored.Tier
+	var awarded []string
+	after := maps.Clone(held)
+	for i, t := range d.Tiers {
+		if !held[t.ID] && (i <= routed || (t.At != nil && *t.At <= len(ledger))) {
+			awarded = append(awarded, t.ID)
+			after[t.ID] = true
+		}
+	}
 
 	kind, reason := KindIgnored, ReasonDuplicate
 	switch {
-	case earned && (stored.Tier == 0 || tier == last):
+	case len(awarded) > 0 && (!d.holdsAny(held) || d.holdsAll(after)):
 		kind, reason = KindAward, ""
-	case earned:
+	case len(awarded) > 0:
 		kind, reason = KindTierUp, ""
 	case added:
 		kind, reason = KindIncrement, ""
 	}
 	next := stored
-	next.Tier, next.Units, next.Revision = tier, ledger, revision
+	next.TierIDs, next.Units = d.mergeHeld(stored.TierIDs, after), ledger
 	return outcome{
-		decision: d.decision(kind, reason, stored.Tier, tier, len(ledger), revision),
+		decision: d.decision(kind, reason, awarded, after, len(ledger)),
 		next:     next,
-		changed:  added || earned || revision != stored.Revision,
+		changed:  added || len(awarded) > 0,
 	}
 }
 
-func (d *Definition) decision(kind Kind, reason Reason, from, to, units, revision int) Decision {
+func (d *Definition) decision(kind Kind, reason Reason, awarded []string, held map[string]bool, units int) Decision {
+	if awarded == nil {
+		awarded = []string{}
+	}
 	return Decision{
 		AchievementID: d.ID,
 		Decision:      kind,
 		Reason:        reason,
-		From:          from,
-		To:            to,
-		Final:         to >= len(d.Tiers),
+		Awarded:       awarded,
+		Final:         d.holdsAll(held),
 		Units:         units,
-		Next:          d.nextThreshold(to),
-		Revision:      revision,
+		Next:          d.nextThreshold(held),
 	}
 }
 
-func (d *Definition) nextThreshold(tier int) *int {
-	if d.Counter == nil || tier >= len(d.Tiers) {
-		return nil
+func heldSet(ids []string) map[string]bool {
+	held := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		held[id] = true
 	}
-	return d.Tiers[tier].At
+	return held
 }
 
-func (d *Definition) topThreshold() int {
-	if d.Counter == nil {
-		return 0
-	}
-	return *d.Tiers[len(d.Tiers)-1].At
-}
-
-func (d *Definition) tierForCount(n int) int {
-	tier := 0
+func (d *Definition) holdsAll(held map[string]bool) bool {
 	for _, t := range d.Tiers {
-		if t.At != nil && *t.At <= n {
-			tier = t.Tier
+		if !held[t.ID] {
+			return false
 		}
 	}
-	return tier
+	return true
 }
 
-func (d *Definition) routeTier(ev Event) int {
-	tier := 0
+func (d *Definition) holdsAny(held map[string]bool) bool {
 	for _, t := range d.Tiers {
+		if held[t.ID] {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeHeld lists the held tier ids in catalog order, then any the catalog does
+// not define in their stored order, so a rollback to an older catalog keeps them.
+func (d *Definition) mergeHeld(stored []string, held map[string]bool) []string {
+	ids := make([]string, 0, len(held))
+	known := make(map[string]bool, len(d.Tiers))
+	for _, t := range d.Tiers {
+		known[t.ID] = true
+		if held[t.ID] {
+			ids = append(ids, t.ID)
+		}
+	}
+	for _, id := range stored {
+		if !known[id] {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (d *Definition) nextThreshold(held map[string]bool) *int {
+	for _, t := range d.Tiers {
+		if t.At != nil && !held[t.ID] {
+			return t.At
+		}
+	}
+	return nil
+}
+
+// routedIndex is the position of the last tier whose route the event matches,
+// or -1. A route earns its tier and every tier before it.
+func (d *Definition) routedIndex(ev Event) int {
+	routed := -1
+	for i, t := range d.Tiers {
 		for _, r := range t.Or {
 			if r.Entity == ev.Entity && r.Action == ev.Action && conditionsHold(r.Where, ev.Context) {
-				tier = max(tier, t.Tier)
+				routed = i
 			}
 		}
 	}
-	return tier
+	return routed
 }
 
 func (m *Matcher) unitID(ev Event) (string, bool) {

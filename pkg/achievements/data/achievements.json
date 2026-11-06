@@ -3,7 +3,6 @@
   "achievements": [
     {
       "id": "guides-finished",
-      "revision": 1,
       "title": "Guide finisher",
       "description": "Finish guides in Grafana.",
       "counter": {
@@ -11,9 +10,9 @@
         "evidence": [{ "entity": "guides", "action": "completed", "countBy": "resource" }]
       },
       "tiers": [
-        { "tier": 1, "at": 1, "art": "guides-finished-1" },
-        { "tier": 2, "at": 5, "art": "guides-finished-2" },
-        { "tier": 3, "at": 15, "art": "guides-finished-3" }
+        { "id": "bronze", "at": 1, "art": "guides-finished-1" },
+        { "id": "silver", "at": 5, "art": "guides-finished-2" },
+        { "id": "gold", "at": 15, "art": "guides-finished-3" }
       ]
     }
   ]

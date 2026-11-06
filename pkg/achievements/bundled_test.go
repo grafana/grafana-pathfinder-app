@@ -50,7 +50,7 @@ func TestBundledDefinitionCountsDistinctGuides(t *testing.T) {
 		return decisions[0]
 	}
 
-	if d := finish("bundled", "first-dashboard"); d.Decision != KindAward || d.To != 1 {
+	if d := finish("bundled", "first-dashboard"); d.Decision != KindAward || !equalStrings(d.Awarded, []string{"bronze"}) {
 		t.Errorf("first guide = %+v", d)
 	}
 	if d := finish("bundled", "first-dashboard"); d.Reason != ReasonDuplicate {
@@ -82,19 +82,22 @@ func TestBundledDefinitionReachesEveryShippedTier(t *testing.T) {
 	}
 
 	steps := []struct {
-		guides   int
-		kind     Kind
-		reason   Reason
-		from, to int
-		final    bool
-		next     *int
+		guides  int
+		kind    Kind
+		reason  Reason
+		awarded []string
+		units   int
+		final   bool
+		next    *int
 	}{
-		{1, KindAward, "", 0, 1, false, intp(5)},
-		{4, KindIncrement, "", 1, 1, false, intp(5)},
-		{5, KindTierUp, "", 1, 2, false, intp(15)},
-		{14, KindIncrement, "", 2, 2, false, intp(15)},
-		{15, KindAward, "", 2, 3, true, nil},
-		{16, KindIgnored, ReasonComplete, 3, 3, true, nil},
+		{1, KindAward, "", []string{"bronze"}, 1, false, intp(5)},
+		{4, KindIncrement, "", []string{}, 4, false, intp(5)},
+		{5, KindTierUp, "", []string{"silver"}, 5, false, intp(15)},
+		{14, KindIncrement, "", []string{}, 14, false, intp(15)},
+		{15, KindAward, "", []string{"gold"}, 15, true, nil},
+		{16, KindIncrement, "", []string{}, 16, true, nil},
+		{maxThreshold, KindIncrement, "", []string{}, maxThreshold, true, nil},
+		{maxThreshold + 1, KindIgnored, ReasonComplete, []string{}, maxThreshold, true, nil},
 	}
 	n := 0
 	for _, step := range steps {
@@ -103,17 +106,20 @@ func TestBundledDefinitionReachesEveryShippedTier(t *testing.T) {
 			n++
 			d = finish(n)
 		}
-		if d.Decision != step.kind || d.Reason != step.reason || d.From != step.from || d.To != step.to || d.Final != step.final {
-			t.Errorf("guide %d = %+v, want %s %q %d->%d final=%v", n, d, step.kind, step.reason, step.from, step.to, step.final)
+		if d.Decision != step.kind || d.Reason != step.reason || !equalStrings(d.Awarded, step.awarded) || d.Units != step.units || d.Final != step.final {
+			t.Errorf("guide %d = %+v, want %s %q awarded=%v units=%d final=%v", n, d, step.kind, step.reason, step.awarded, step.units, step.final)
 		}
 		if (d.Next == nil) != (step.next == nil) || (d.Next != nil && *d.Next != *step.next) {
 			t.Errorf("guide %d next = %v, want %v", n, d.Next, step.next)
 		}
 	}
-	for tier := 1; tier <= 3; tier++ {
-		if _, ok := store.awards[fmt.Sprintf("guides-finished/%d", tier)]; !ok {
-			t.Errorf("no award for tier %d", tier)
+	for _, tierID := range []string{"bronze", "silver", "gold"} {
+		if _, ok := store.awards["guides-finished/"+tierID]; !ok {
+			t.Errorf("no award for tier %s", tierID)
 		}
+	}
+	if len(store.awards) != 3 {
+		t.Errorf("%d awards, want one per tier", len(store.awards))
 	}
 }
 

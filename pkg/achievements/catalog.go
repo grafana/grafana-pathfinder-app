@@ -16,6 +16,7 @@ const (
 	maxRoutes         = 5
 	maxInValues       = 16
 	maxIDLen          = 64
+	maxTierIDLen      = 32
 	unitOccurrence    = "occurrence"
 	actionCompleted   = "completed"
 	countByResource   = "resource"
@@ -41,7 +42,6 @@ type Catalog struct {
 // threshold. Without one it is a milestone: each tier is earned by an Or route.
 type Definition struct {
 	ID          string   `json:"id"`
-	Revision    int      `json:"revision"`
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	Counter     *Counter `json:"counter,omitempty"`
@@ -63,12 +63,13 @@ type Matcher struct {
 }
 
 // Tier is earned by reaching At distinct units, or outright by an event that
-// matches one of its Or routes. Art is an opaque display reference.
+// matches one of its Or routes or a later tier's. ID is permanent: a released
+// tier is never renamed, removed or moved. Art is an opaque display reference.
 type Tier struct {
-	Tier int     `json:"tier"`
-	At   *int    `json:"at,omitempty"`
-	Art  string  `json:"art,omitempty"`
-	Or   []Route `json:"or,omitempty"`
+	ID  string  `json:"id"`
+	At  *int    `json:"at,omitempty"`
+	Art string  `json:"art,omitempty"`
+	Or  []Route `json:"or,omitempty"`
 }
 
 type Route struct {
@@ -167,9 +168,6 @@ func (d *Definition) validate(registry *Registry) []error {
 	if len(d.ID) > maxIDLen || !idPattern.MatchString(d.ID) {
 		fail("id must be a lowercase token of at most %d characters", maxIDLen)
 	}
-	if d.Revision < 1 {
-		fail("revision must be at least 1")
-	}
 	if d.Title == "" || d.Description == "" {
 		fail("title and description are required")
 	}
@@ -177,27 +175,30 @@ func (d *Definition) validate(registry *Registry) []error {
 		fail("needs 1 to %d tiers, got %d", maxTiers, len(d.Tiers))
 	}
 
-	occurrence := false
 	if d.Counter != nil {
 		errs = append(errs, d.Counter.validate(where, registry)...)
-		occurrence = d.Counter.Unit == unitOccurrence
 	}
 	prev := 0
+	tierIDs := map[string]bool{}
 	for i, t := range d.Tiers {
 		tw := fmt.Sprintf("tier %d", i+1)
-		if t.Tier != i+1 {
-			fail("%s: tier numbers must run 1, 2, 3, ... in order, got %d", tw, t.Tier)
+		if t.ID != "" {
+			tw = fmt.Sprintf("tier %q", t.ID)
 		}
+		if len(t.ID) > maxTierIDLen || !idPattern.MatchString(t.ID) {
+			fail("%s: id must be a lowercase token of at most %d characters", tw, maxTierIDLen)
+		}
+		if tierIDs[t.ID] {
+			fail("%s: tier id declared twice", tw)
+		}
+		tierIDs[t.ID] = true
 		switch {
 		case d.Counter == nil && t.At != nil:
 			fail("%s: at is forbidden on a milestone achievement", tw)
 		case d.Counter != nil && t.At == nil:
 			fail("%s: at is required on a counted achievement", tw)
 		case t.At != nil:
-			limit := maxThreshold
-			if occurrence {
-				limit = maxOccurrenceAt
-			}
+			limit := d.ceiling()
 			if *t.At < 1 || *t.At > limit {
 				fail("%s: at must be 1 to %d, got %d", tw, limit, *t.At)
 			}
@@ -217,6 +218,19 @@ func (d *Definition) validate(registry *Registry) []error {
 		}
 	}
 	return errs
+}
+
+// ceiling is the most units a counter records, so a tier appended later can
+// land on a count reached before it existed.
+func (d *Definition) ceiling() int {
+	switch {
+	case d.Counter == nil:
+		return 0
+	case d.Counter.Unit == unitOccurrence:
+		return maxOccurrenceAt
+	default:
+		return maxThreshold
+	}
 }
 
 func (c *Counter) validate(where string, registry *Registry) []error {

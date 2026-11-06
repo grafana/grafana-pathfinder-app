@@ -3,7 +3,6 @@ package achievements
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,25 +21,25 @@ const testRegistryJSON = `{"schemaVersion":1,"entities":{
 }}`
 
 const testCatalogJSON = `{"schemaVersion":1,"achievements":[
-  {"id":"dash-builder","revision":1,"title":"Dashboard builder","description":"Create dashboards.",
+  {"id":"dash-builder","title":"Dashboard builder","description":"Create dashboards.",
    "counter":{"unit":"dashboard","evidence":[
      {"entity":"dashboards","action":"created","countBy":"resource","where":[{"field":"numPanels","op":"gte","value":1}]}]},
    "tiers":[
-     {"tier":1,"at":1,"art":"dash-1","or":[{"entity":"guides","action":"completed","where":[
+     {"id":"bronze","at":1,"art":"dash-1","or":[{"entity":"guides","action":"completed","where":[
         {"field":"guideSource","op":"eq","value":"bundled"},{"field":"guideId","op":"eq","value":"first-dashboard-cloud"}]}]},
-     {"tier":2,"at":5,"art":"dash-2"},
-     {"tier":3,"at":25,"art":"dash-3"}]},
-  {"id":"well-rounded","revision":1,"title":"Well rounded","description":"Finish guides of different kinds.",
+     {"id":"silver","at":5,"art":"dash-2"},
+     {"id":"gold","at":25,"art":"dash-3"}]},
+  {"id":"well-rounded","title":"Well rounded","description":"Finish guides of different kinds.",
    "counter":{"unit":"guide-category","evidence":[
      {"entity":"guides","action":"completed","countBy":{"resource":"guide-category"}}]},
-   "tiers":[{"tier":1,"at":2},{"tier":2,"at":3}]},
-  {"id":"alert-starter","revision":2,"title":"Alert starter","description":"Create alert rules.",
+   "tiers":[{"id":"bronze","at":2},{"id":"silver","at":3}]},
+  {"id":"alert-starter","title":"Alert starter","description":"Create alert rules.",
    "counter":{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},
-   "tiers":[{"tier":1,"at":1},{"tier":2,"at":3}]},
-  {"id":"guide-routes","revision":1,"title":"Guide routes","description":"Finish the named guides.",
+   "tiers":[{"id":"bronze","at":1},{"id":"silver","at":3}]},
+  {"id":"guide-routes","title":"Guide routes","description":"Finish the named guides.",
    "tiers":[
-     {"tier":1,"or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]},
-     {"tier":2,"or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"in","value":["advanced","expert"]}]}]}]}
+     {"id":"bronze","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]},
+     {"id":"silver","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"in","value":["advanced","expert"]}]}]}]}
 ]}`
 
 var fixedNow = time.Date(2026, 11, 2, 9, 30, 0, 0, time.FixedZone("test", 3600))
@@ -167,7 +166,7 @@ func (s *fakeStore) CreateAward(_ context.Context, _ Person, a Award) error {
 	if s.awardErr != nil {
 		return s.awardErr
 	}
-	key := fmt.Sprintf("%s/%d", a.AchievementID, a.Tier)
+	key := a.AchievementID + "/" + a.TierID
 	if _, ok := s.awards[key]; ok {
 		return ErrExists
 	}
