@@ -9,6 +9,9 @@
  */
 export function mapRequirementToUserFriendlyMessage(requirement: string): string {
   const requirementMappings: Record<string, string> = {
+    'workflow-ready:cloud-access-policy-token':
+      'Finish creating the token. If creation failed, resolve the error shown in the token form.',
+
     // Navigation requirements
     'navmenu-open':
       'The navigation menu needs to be open and docked. Click "Fix this" to automatically open and dock the navigation menu.',

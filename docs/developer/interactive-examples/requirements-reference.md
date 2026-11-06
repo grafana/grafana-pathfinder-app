@@ -81,6 +81,16 @@ Examples:
 
 ## User authentication and permissions
 
+### Automatic token workflow detection
+
+JSON guides using the shared Cloud access-policy token form need no additional completion configuration. A guided or multistep block containing exactly a `formfill` on `#tokenName` (or `[data-testid="generate-token-name-input"]`) followed by a `button` action on `Create token` (or `[data-testid="generate-token-submit-button"]`) gets an inferred completion objective. A standalone button using the submit test ID is also supported. The actions or block must specify one consistent `on-page:/a/...` requirement, and the token name must not have an authored target value.
+
+The runtime checks the shared component's API-success marker in its unique visible form. Creating the token before reaching the guide step, or resetting the guide while that form still shows success, completes the block without creating another token. Clicking Create token alone does not complete it: errors and loading remain incomplete. The check reads no input values, token secrets, or success-message text, and makes no API requests.
+
+Explicit `objectives` override inference, including `objectives: []` to retain action-based completion. A standalone block's explicit `verify` also prevents inference. Mixed blocks that include unrelated actions are not inferred, and ordinary token-name entry or token-mode selection steps retain their existing behavior.
+
+`workflow-ready:cloud-access-policy-token` is the underlying read-only condition, usable with the existing requirements/objectives/verify machinery. It confirms successful creation in the current form, not the existence, validity, or permissions of a previously issued token. Existing-token paste workflows, other credential components, hidden or ambiguous forms, and pages where the form has been removed are not supported by this detector. Add further workflow recognizers and state checks in code; authors do not need to describe authenticated APIs.
+
 ### `is-logged-in`
 
 Ensures the user is authenticated.
