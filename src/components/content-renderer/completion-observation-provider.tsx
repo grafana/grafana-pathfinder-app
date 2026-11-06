@@ -18,6 +18,7 @@ import { CompletionObservationContext } from '../../global-state/observation/con
 import { useGuideRequirements, splitGuideScopedRequirements } from '../../requirements-manager';
 import { conditionTokens } from '../../lib/condition-input';
 import { onContextChange } from '../../lib/context-event-bus';
+import { observeWorkflowStateChanges } from '../../lib/dom/workflow-observer';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel, useControllerConnected } from '../../global-state/controller-channel';
@@ -174,6 +175,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       recheckIfVisible();
     };
     const unsubscribeContext = onContextChange(visibleCheck);
+    const stopWorkflowObservation = mode === 'interactive' ? observeWorkflowStateChanges(visibleCheck) : () => {};
     const unsubscribeProgress = subscribeProgressEvent((event) => {
       if (event.kind !== 'guide' && !event.completed) {
         coordinator.resetScope(event.kind === 'step' ? event.stepId : undefined, event.sectionId);
@@ -267,6 +269,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       window.removeEventListener('pagehide', saveHandoff);
       window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleReset);
       unsubscribeContext();
+      stopWorkflowObservation();
       unsubscribeProgress();
       unsubscribeGeneration();
       observe();
