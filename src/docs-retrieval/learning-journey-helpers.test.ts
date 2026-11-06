@@ -250,7 +250,7 @@ describe('generateJourneyContentWithExtras — locked-milestone handling', () =>
   // known, and a track can make either button correct or incorrect
   // regardless of the raw Foundations milestone sequence (see
   // appendBottomNavigationToContent's own doc comment). Both buttons always
-  // render now; useLinkClickHandler's layout effect corrects real visibility
+  // render now; useLinkClickHandler's layout effect corrects real disabled state
   // against the live, track-aware canNavigateNext()/canNavigatePrevious().
   it('always renders "Next →" and "← Previous" regardless of the raw milestone sequence — real visibility is decided live, not here', () => {
     const lockedHtml = generateJourneyContentWithExtras(
