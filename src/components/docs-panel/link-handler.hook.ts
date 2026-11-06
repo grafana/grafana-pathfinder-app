@@ -623,31 +623,31 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
   }, [contentRef, theme, activeTab?.content, activeTab?.baseUrl, activeTab?.title, model]);
 
   // Bottom-nav buttons always render (appendBottomNavigationToContent) — real
-  // visibility is decided here, live, against the track-aware model.
+  // disabled state is decided here, live, against the track-aware model.
   useLayoutEffect(() => {
     const contentElement = contentRef.current;
     if (!contentElement) {
       return;
     }
 
-    const syncBottomNavVisibility = () => {
+    const syncBottomNavDisabled = () => {
       contentElement.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => prepareKioskLink(anchor, true));
-      const nextButton = contentElement.querySelector<HTMLElement>('.journey-nav-next');
-      const prevButton = contentElement.querySelector<HTMLElement>('.journey-nav-prev');
+      const nextButton = contentElement.querySelector<HTMLButtonElement>('.journey-nav-next');
+      const prevButton = contentElement.querySelector<HTMLButtonElement>('.journey-nav-prev');
       if (nextButton) {
-        nextButton.hidden = !model.canNavigateNext();
+        nextButton.disabled = !model.canNavigateNext();
       }
       if (prevButton) {
-        prevButton.hidden = !model.canNavigatePrevious();
+        prevButton.disabled = !model.canNavigatePrevious();
       }
     };
 
-    syncBottomNavVisibility();
+    syncBottomNavDisabled();
 
     // ContentProcessor can swap the DOM tree without activeTab.content
     // changing (e.g. async snippet inlining) — re-sync on any such mutation.
-    // childList/subtree only, so the `hidden` writes above don't retrigger this.
-    const observer = new MutationObserver(syncBottomNavVisibility);
+    // childList/subtree only, so the `disabled` writes above don't retrigger this.
+    const observer = new MutationObserver(syncBottomNavDisabled);
     observer.observe(contentElement, { childList: true, subtree: true });
 
     return () => {
