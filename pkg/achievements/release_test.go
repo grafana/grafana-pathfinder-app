@@ -2,6 +2,7 @@ package achievements
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -95,15 +96,24 @@ func TestCheckReleaseRegistry(t *testing.T) {
 }
 
 func TestBundledDefinitionsKeepTheLastReleasesIdentities(t *testing.T) {
+	// CI's test-backend job sets this and checks out full history. Release
+	// and CD builds run the same tests on shallow clones, where the guard skips.
+	required := os.Getenv("ACHIEVEMENTS_RELEASE_GUARD") == "required"
+	cannotRun := func(format string, args ...any) {
+		t.Helper()
+		if required {
+			t.Fatalf(format, args...)
+		}
+		t.Skipf(format, args...)
+	}
 	if out, err := exec.Command("git", "rev-parse", "--is-shallow-repository").Output(); err != nil {
-		t.Skipf("not a git checkout: %v", err)
+		cannotRun("not a git checkout: %v", err)
 	} else if strings.TrimSpace(string(out)) == "true" {
-		t.Fatal("shallow clone: the last release tag is unreachable; check out with full history (fetch-depth: 0)")
+		cannotRun("shallow clone: the last release tag is unreachable; check out with full history (fetch-depth: 0)")
 	}
 	tag, err := exec.Command("git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD").Output()
 	if err != nil {
-		t.Logf("no release tag reachable from HEAD, nothing to guard: %v", err)
-		return
+		cannotRun("no release tag reachable from HEAD: %v", err)
 	}
 	release := strings.TrimSpace(string(tag))
 	registryJSON, okRegistry := fileAtRelease(t, release, "pkg/achievements/data/events.json")

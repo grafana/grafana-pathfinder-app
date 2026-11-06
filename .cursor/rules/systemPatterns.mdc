@@ -198,7 +198,8 @@ For the full contract and read-only smoke procedure, see `docs/developer/LEARNIN
 `pkg/achievements` is a pure library with no I/O: the achievements evaluator, catalog and registry loaders,
 event validation, and the release guard from the Achievements RFC (pathfinder-rfcs#24, §6). Tiers carry permanent
 ids and progress keeps the set held; the release guard is a test that fails when an id or tier disappears against the
-last release tag, so the backend CI job checks out full history. The store, the read
+last release tag. The backend CI job checks out full history and sets `ACHIEVEMENTS_RELEASE_GUARD=required`;
+release and CD builds run on shallow clones, where the guard skips. The store, the read
 port and the admission policy are ports; `plugin/achievements.go` serves the routes over them and stays
 unavailable until a store adapter sets `App.achievementsBackendFor`. Its bundled catalog and registry live in
 `pkg/achievements/data/`. Earn windows (RFC §6.2) are not supported and the loader rejects a `window` key.
