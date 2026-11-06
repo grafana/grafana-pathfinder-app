@@ -21,13 +21,37 @@
  *   3. `window.location.pathname` (last-resort fallback)
  */
 
+import { getPrTestFetchId, stripPrTestMarker, withPrTestMarker } from '../lib/pr-test-marker';
+
 const MAX_KEY_LENGTH = 200;
 
 let activeTabUrl: string | undefined;
 let contentKeyOverride: string | undefined;
 
+function fnv1a(value: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h = Math.imul(h ^ value.charCodeAt(i), 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
 function sanitize(value: string): string {
-  return value.replace(/\.\./g, '').slice(0, MAX_KEY_LENGTH);
+  const stripped = value.replace(/\.\./g, '');
+  const fetchId = getPrTestFetchId(stripped);
+  if (fetchId === undefined) {
+    return stripped.slice(0, MAX_KEY_LENGTH);
+  }
+  const bare = stripPrTestMarker(stripped);
+  const markerLength = stripped.length - bare.length;
+  if (stripped.length <= MAX_KEY_LENGTH) {
+    return stripped;
+  }
+  // Truncating the URL's tail would drop the marker, and a bare prefix would merge distinct
+  // long URLs, so the key keeps a digest of the full URL between the prefix and the marker.
+  const digest = `~${fnv1a(bare)}`;
+  const room = MAX_KEY_LENGTH - markerLength - digest.length;
+  return room > 0 ? withPrTestMarker(`${bare.slice(0, room)}${digest}`, fetchId) : stripped.slice(0, MAX_KEY_LENGTH);
 }
 
 /**

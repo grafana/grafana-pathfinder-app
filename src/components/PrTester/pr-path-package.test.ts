@@ -11,6 +11,8 @@ import type { OnlinePackageEntry } from '../../lib/package-recommendations-clien
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const RAW_BASE = `https://raw.githubusercontent.com/org/repo/${SHA}`;
 const CDN_BASE = 'https://interactive-learning.grafana.net/packages';
+const FETCH_ID = 'fetch1';
+const MARK = `#pf-pr-${FETCH_ID}`;
 
 function prFile(directoryName: string, kind: 'content' | 'manifest' = 'content'): PrJsonFile {
   return {
@@ -120,18 +122,19 @@ describe('buildPathPackageInfo', () => {
       ]),
       catalogById: new Map(),
       catalogBaseUrl: '',
+      fetchId: FETCH_ID,
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) {
       return;
     }
-    expect(result.coverUrl).toBe(`${RAW_BASE}/my-path/content.json`);
+    expect(result.coverUrl).toBe(`${RAW_BASE}/my-path/content.json${MARK}`);
     expect(result.title).toBe('My Path');
     const milestones = result.packageInfo.resolvedMilestones ?? [];
     expect(milestones.map((m) => m.url)).toEqual([
-      `${RAW_BASE}/guide-one/content.json`,
-      `${RAW_BASE}/guide-two/content.json`,
+      `${RAW_BASE}/guide-one/content.json${MARK}`,
+      `${RAW_BASE}/guide-two/content.json${MARK}`,
     ]);
     expect(milestones[0]?.title).toBe('Guide One');
     // Without Milestone.id set to the real manifest guide id,
@@ -155,6 +158,7 @@ describe('buildPathPackageInfo', () => {
         catalogGuide('guide-two', { title: 'Published Two' }),
       ]),
       catalogBaseUrl: CDN_BASE,
+      fetchId: FETCH_ID,
     });
 
     expect(result.ok).toBe(true);
@@ -162,12 +166,12 @@ describe('buildPathPackageInfo', () => {
       return;
     }
     // Cover falls back to the published path package.
-    expect(result.coverUrl).toBe(`${CDN_BASE}/my-path/v1.0.0/content.json`);
+    expect(result.coverUrl).toBe(`${CDN_BASE}/my-path/v1.0.0/content.json${MARK}`);
     const milestones = result.packageInfo.resolvedMilestones ?? [];
     // guide-one: PR wins. guide-two: from the catalog.
-    expect(milestones[0]?.url).toBe(`${RAW_BASE}/guide-one/content.json`);
+    expect(milestones[0]?.url).toBe(`${RAW_BASE}/guide-one/content.json${MARK}`);
     expect(milestones[0]?.title).toBe('PR One');
-    expect(milestones[1]?.url).toBe(`${CDN_BASE}/guide-two/v1.0.0/content.json`);
+    expect(milestones[1]?.url).toBe(`${CDN_BASE}/guide-two/v1.0.0/content.json${MARK}`);
     expect(milestones[1]?.title).toBe('Published Two');
     expect(result.preview.map((p) => p.source)).toEqual(['pr', 'cdn']);
   });
@@ -180,9 +184,10 @@ describe('buildPathPackageInfo', () => {
       prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one')]]),
       catalogById: byId([catalogPath('my-path', ['guide-one'])]),
       catalogBaseUrl: CDN_BASE,
+      fetchId: FETCH_ID,
     });
 
-    expect(result.ok && result.coverUrl).toBe(`${RAW_BASE}/my-path/content.json`);
+    expect(result.ok && result.coverUrl).toBe(`${RAW_BASE}/my-path/content.json${MARK}`);
   });
 
   it('reports missing_milestones for IDs in neither the PR nor the catalog', () => {
@@ -193,6 +198,7 @@ describe('buildPathPackageInfo', () => {
       prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one')]]),
       catalogById: byId([catalogGuide('guide-one')]),
       catalogBaseUrl: CDN_BASE,
+      fetchId: FETCH_ID,
     });
 
     expect(result.ok).toBe(false);
@@ -210,6 +216,7 @@ describe('buildPathPackageInfo', () => {
       prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one')]]),
       catalogById: byId([catalogGuide('guide-one')]), // no 'my-path' entry
       catalogBaseUrl: CDN_BASE,
+      fetchId: FETCH_ID,
     });
 
     expect(result.ok).toBe(false);
@@ -226,6 +233,7 @@ describe('buildPathPackageInfo', () => {
       prContentById: new Map(),
       catalogById: new Map(),
       catalogBaseUrl: '',
+      fetchId: FETCH_ID,
     });
 
     expect(result.ok).toBe(false);
@@ -244,6 +252,7 @@ describe('buildPathPackageInfo', () => {
         prContentById: new Map<string, PrContentEntry>([['guide-one', prContentEntry('guide-one')]]),
         catalogById: new Map(),
         catalogBaseUrl: '',
+        fetchId: FETCH_ID,
       });
     }
 

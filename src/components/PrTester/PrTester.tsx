@@ -24,6 +24,7 @@ import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { createPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
 
 const PR_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_URL;
 const SELECTED_FILE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_FILE;
@@ -31,6 +32,7 @@ const SELECTED_PATH_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_PATH;
 const TEST_MODE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_MODE;
 const FETCHED_FILES_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCHED_FILES;
 const FETCHED_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCHED_URL;
+const FETCH_ID_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCH_ID;
 
 const EMPTY_CATALOG_BY_ID: ReadonlyMap<string, OnlinePackageEntry> = new Map();
 
@@ -107,6 +109,19 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       // Ignore
     }
     return [];
+  });
+
+  // Marks every URL handed to the docs panel, so each fetch keeps its own progress records.
+  const [fetchId, setFetchId] = useState<string>(() => {
+    try {
+      const storedId = localStorage.getItem(FETCH_ID_STORAGE_KEY);
+      if (storedId) {
+        return storedId;
+      }
+    } catch {
+      // Ignore
+    }
+    return createPrTestFetchId();
   });
 
   // Initial fetch state reflects whether files were restored from storage.
@@ -206,11 +221,12 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       if (files.length > 0) {
         localStorage.setItem(FETCHED_FILES_STORAGE_KEY, JSON.stringify(files));
         localStorage.setItem(FETCHED_URL_STORAGE_KEY, prUrl);
+        localStorage.setItem(FETCH_ID_STORAGE_KEY, fetchId);
       }
     } catch {
       // Ignore localStorage errors
     }
-  }, [files, prUrl]);
+  }, [files, prUrl, fetchId]);
 
   // Content-only subset for single/all modes
   const contentFiles = useMemo(() => files.filter((f) => f.kind === 'content'), [files]);
@@ -490,8 +506,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       prContentById,
       catalogById: catalog?.byId ?? EMPTY_CATALOG_BY_ID,
       catalogBaseUrl: catalog?.baseUrl ?? '',
+      fetchId,
     });
-  }, [selectedCandidate, prContentById, catalog]);
+  }, [selectedCandidate, prContentById, catalog, fetchId]);
 
   const hasAnyPathPackage = pathCandidates.length > 0;
 
@@ -519,6 +536,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
+    setFetchId(createPrTestFetchId());
     setFetchState('fetching');
     setError(null);
     setWarning(null);
@@ -548,11 +566,11 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       if (!currentFile) {
         return;
       }
-      onOpenDocsPage(currentFile.rawUrl, currentFile.directoryName);
+      onOpenDocsPage(withPrTestMarker(currentFile.rawUrl, fetchId), currentFile.directoryName);
       setTestSuccess(true);
     } else if (effectiveTestMode === 'all') {
       contentFiles.forEach((file) => {
-        onOpenDocsPage(file.rawUrl, file.directoryName);
+        onOpenDocsPage(withPrTestMarker(file.rawUrl, fetchId), file.directoryName);
       });
       setTestSuccess(true);
     } else if (effectiveTestMode === 'path') {
@@ -564,7 +582,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     }
 
     successTimeoutRef.current = setTimeout(() => setTestSuccess(false), 2000);
-  }, [contentFiles, currentFile, onOpenDocsPage, pathBuild, effectiveTestMode]);
+  }, [contentFiles, currentFile, onOpenDocsPage, pathBuild, effectiveTestMode, fetchId]);
 
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.currentTarget.value;
@@ -582,6 +600,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         setCatalog(null);
         localStorage.removeItem(FETCHED_FILES_STORAGE_KEY);
         localStorage.removeItem(FETCHED_URL_STORAGE_KEY);
+        localStorage.removeItem(FETCH_ID_STORAGE_KEY);
       }
     } catch {
       setFetchState('idle');
