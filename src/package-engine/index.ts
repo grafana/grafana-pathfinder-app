@@ -7,7 +7,7 @@
  * Public API:
  * - BundledPackageResolver / createBundledResolver — resolve package IDs
  * - RecommenderPackageResolver — resolve via recommender HTTP API
- * - CompositePackageResolver / createCompositeResolver — bundled-first fallback chain
+ * - CompositePackageResolver / createCompositeResolver — consent-gated online-first fallback chain
  * - Loader functions — load content.json and manifest.json from bundles
  *
  * Resolution types (PackageResolution, PackageResolver, etc.) are defined

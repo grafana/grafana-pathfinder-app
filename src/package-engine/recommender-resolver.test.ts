@@ -22,8 +22,8 @@ const BASE_URL = 'https://recommender.example.com';
 
 const FIXTURE_RESOLUTION = {
   id: 'alerting-101',
-  contentUrl: 'https://cdn.example.com/packages/alerting-101/content.json',
-  manifestUrl: 'https://cdn.example.com/packages/alerting-101/manifest.json',
+  contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+  manifestUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/manifest.json',
   repository: 'interactive-tutorials',
 };
 
@@ -281,7 +281,7 @@ describe('RecommenderPackageResolver', () => {
         }
         expect(mockFetch).toHaveBeenCalledTimes(loadContent === true ? 3 : 2);
         expect(fetchOnlinePackageRecommendationsMock).toHaveBeenCalledTimes(1);
-        expect(mockFetch).toHaveBeenLastCalledWith(FIXTURE_RESOLUTION.manifestUrl);
+        expect(mockFetch).toHaveBeenLastCalledWith(FIXTURE_RESOLUTION.manifestUrl, { signal: expect.any(AbortSignal) });
       }
     );
 
@@ -457,3 +457,26 @@ declare global {
     }
   }
 }
+
+describe('bounded recommender requests', () => {
+  it('aborts a hung request and returns a fallback-compatible failure', async () => {
+    jest.useFakeTimers();
+    mockFetch.mockReset().mockImplementation(() => new Promise(() => {}));
+    try {
+      const pending = new RecommenderPackageResolver(BASE_URL).resolve('first-dashboard', { loadContent: true });
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(await pending).toMatchObject({ ok: false, error: { diagnostic: { reason: 'timeout' } } });
+      expect(mockFetch.mock.calls[0]![1].signal.aborted).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('rejects a response for a different package', async () => {
+    mockFetch.mockReset().mockResolvedValue({ ok: true, json: async () => FIXTURE_RESOLUTION });
+    expect(await new RecommenderPackageResolver(BASE_URL).resolve('first-dashboard')).toMatchObject({
+      ok: false,
+      error: { code: 'validation-error' },
+    });
+  });
+});

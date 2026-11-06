@@ -468,7 +468,7 @@ describe('fetchPackageById with resolved content', () => {
 
     const result = await fetchPackageById('first-dashboard', manifest);
 
-    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false, verifyPublished: true });
+    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: true, verifyPublished: true });
     if (result.content) {
       expect(result.content.metadata.packageManifest).toMatchObject(manifest);
       expect(result.content.type).toBe('interactive');
@@ -2053,5 +2053,25 @@ describe('resolvePackageMilestones — website URL derivation', () => {
     const result = await resolvePackageMilestones(['any-id']);
 
     expect(result[0]).not.toHaveProperty('websiteUrl');
+  });
+});
+
+it('renders already validated tutorial content without fetching it a second time', async () => {
+  const content = { id: 'first-dashboard', title: 'Dashboard tutorial', blocks: [] };
+  const resolver = makeResolver(
+    makeSuccessResolution({
+      id: content.id,
+      repository: 'bundled',
+      contentUrl: 'bundled:first-dashboard/content.json',
+      content,
+      manifest: { id: content.id, type: 'guide', description: 'Create a dashboard' },
+    })
+  );
+  setPackageResolver(resolver);
+  const result = await fetchPackageById(content.id, undefined, 'interactive-tutorials');
+  expect(resolver.resolve).toHaveBeenCalledWith(content.id, { loadContent: true, verifyPublished: true });
+  expect(result.content).toMatchObject({
+    content: JSON.stringify(content),
+    metadata: { repository: 'bundled' },
   });
 });

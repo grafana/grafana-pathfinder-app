@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
 /**
  * The frozen block index for the currently-loaded guide.
  *
@@ -55,6 +56,7 @@ export function setGuideSectionVisibility(
   sectionId: string,
   visible: boolean | undefined
 ): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   let sections = sectionVisibility.get(contentKey);
   if (!sections) {
     sections = new Map();
@@ -68,6 +70,7 @@ export function setGuideSectionVisibility(
 }
 
 export function forgetGuideSectionVisibility(contentKey: string, sectionId: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   const sections = sectionVisibility.get(contentKey);
   sections?.delete(sectionId);
   if (sections?.size === 0) {
@@ -76,6 +79,7 @@ export function forgetGuideSectionVisibility(contentKey: string, sectionId: stri
 }
 
 export function getHiddenGuideSections(contentKey: string): ReadonlySet<string> {
+  contentKey = bundledTutorialContentKey(contentKey);
   const model = activeIndexes.get(contentKey)?.choiceModel;
   return new Set(
     model?.positions
@@ -86,6 +90,7 @@ export function getHiddenGuideSections(contentKey: string): ReadonlySet<string> 
 
 /** Unknown responses or environment gates cannot exclude unfinished content. */
 export function isGuideChoiceProgressReady(contentKey: string): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   const active = activeIndexes.get(contentKey);
   if (!active?.choiceModel) {
     return true;
@@ -108,6 +113,7 @@ export function setGuideChoiceResponses(
   contentKey: string,
   responses: Readonly<Record<string, unknown>> | undefined
 ): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   const active = activeIndexes.get(contentKey);
   if (active) {
     active.responses = responses;
@@ -171,6 +177,7 @@ export function getGuideIndexPublicationRevision(): number {
  * Notifies publication subscribers when a NEW index is actually inserted.
  */
 export function publishGuideIndex(entry: ActiveGuideIndex): void {
+  entry = { ...entry, contentKey: bundledTutorialContentKey(entry.contentKey) };
   if (activeIndexes.has(entry.contentKey)) {
     return;
   }
@@ -179,11 +186,13 @@ export function publishGuideIndex(entry: ActiveGuideIndex): void {
 }
 
 export function getGuideIndex(contentKey: string): ActiveGuideIndex | undefined {
+  contentKey = bundledTutorialContentKey(contentKey);
   return activeIndexes.get(contentKey);
 }
 
 /** Paired with `evictContentCache` — a reset must let the next load recompute a fresh index. */
 export function evictGuideIndex(contentKey: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   if (activeIndexes.delete(contentKey)) {
     notifyEvicted();
   }

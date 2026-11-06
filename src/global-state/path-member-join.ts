@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
 /**
  * The content-key join for a path member.
  *
@@ -197,7 +198,8 @@ function bundledLaunchShapes(url: string): readonly string[] {
  * then find nothing and score a real record as an unopened zero.
  */
 function pathMemberContentKeyGroups(member: PathMember, pathBaseUrl?: string): ReadonlyArray<readonly string[]> {
-  const groups = member.url ? [bundledLaunchShapes(member.url)] : pathBaseUrl ? [] : idSchemeKeyGroups(member.id);
+  const url = member.url && !member.url.startsWith('bundled:') ? bundledTutorialContentKey(member.url) : member.url;
+  const groups = url ? [bundledLaunchShapes(url)] : pathBaseUrl ? [] : idSchemeKeyGroups(member.id);
   if (!groups.every((group) => group.every(isNormalizedCandidate))) {
     return [];
   }
