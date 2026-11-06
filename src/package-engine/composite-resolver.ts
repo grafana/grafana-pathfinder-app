@@ -1,9 +1,10 @@
+import { isBundledTutorial } from '../lib/bundled-tutorial-identity';
 import type { GuideDiagnostic } from '../types/guide-diagnostics.types';
 /**
  * Composite Package Resolver
  *
  * Combines multiple PackageResolver implementations into a single resolver.
- * Resolution order: recommender first when enabled, then bundled offline content.
+ * Only migrated tutorials prefer the enabled recommender; other IDs stay bundled-first.
  *
  * The composite preserves the PackageResolver interface — callers don't
  * know which tier resolved.
@@ -41,7 +42,7 @@ export class CompositePackageResolver implements PackageResolver {
 
   constructor(
     resolvers: PackageResolver[],
-    private readonly retryBundledFallback = false
+    private readonly preferOnlineFor?: (packageId: string) => boolean
   ) {
     this.resolvers = resolvers;
   }
@@ -69,7 +70,7 @@ export class CompositePackageResolver implements PackageResolver {
     promise.then(
       (result) => {
         if (
-          (this.retryBundledFallback && (!result.ok || result.repository === 'bundled')) ||
+          (this.preferOnlineFor?.(packageId) && (!result.ok || result.repository === 'bundled')) ||
           (result.repository && UNCACHEABLE_REPOSITORIES.has(result.repository))
         ) {
           if (this.cache.get(cacheKey) === promise) {
@@ -87,7 +88,10 @@ export class CompositePackageResolver implements PackageResolver {
     let lastFailure: PackageResolution | undefined;
     let attemptedDiagnostic: GuideDiagnostic | undefined;
 
-    for (const resolver of this.resolvers) {
+    const [bundled, online, ...remaining] = this.resolvers;
+    const resolvers =
+      this.preferOnlineFor?.(packageId) && bundled && online ? [online, bundled, ...remaining] : this.resolvers;
+    for (const resolver of resolvers) {
       const result = await resolver.resolve(packageId, options);
       if (result.ok) {
         return result;
@@ -119,12 +123,12 @@ export class CompositePackageResolver implements PackageResolver {
 
 export function createCompositeResolver(pluginConfig: PathfinderPluginConfig): CompositePackageResolver {
   const enabled = isRecommenderEnabled(pluginConfig);
-  const resolvers: PackageResolver[] = enabled
-    ? [
-        new RecommenderPackageResolver(getConfigWithDefaults(pluginConfig).recommenderServiceUrl),
-        createBundledResolver(),
-      ]
-    : [createBundledResolver(), new OnlineCdnPackageResolver()];
-  resolvers.push(new AppPlatformPackageResolver());
-  return new CompositePackageResolver(resolvers, enabled);
+  const resolvers: PackageResolver[] = [
+    createBundledResolver(),
+    enabled
+      ? new RecommenderPackageResolver(getConfigWithDefaults(pluginConfig).recommenderServiceUrl)
+      : new OnlineCdnPackageResolver(),
+    new AppPlatformPackageResolver(),
+  ];
+  return new CompositePackageResolver(resolvers, enabled ? isBundledTutorial : undefined);
 }

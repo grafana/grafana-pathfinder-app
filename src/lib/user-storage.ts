@@ -472,11 +472,6 @@ export function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserSto
   };
 }
 
-/**
- * Module-level guard so the one-off discard of progress records left in the
- * superseded key shape runs once per page lifecycle rather than on every
- * `useUserStorage()` mount.
- */
 let hasMigratedBundledTutorialProgress = false;
 function migrateBundledTutorialProgressOnce(): void {
   if (hasMigratedBundledTutorialProgress) {
@@ -490,6 +485,11 @@ function migrateBundledTutorialProgressOnce(): void {
   }
 }
 
+/**
+ * Module-level guard so the one-off discard of progress records left in the
+ * superseded key shape runs once per page lifecycle rather than on every
+ * `useUserStorage()` mount.
+ */
 let hasSweptDiscardedProgress = false;
 
 /**

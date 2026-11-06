@@ -110,7 +110,7 @@ A stamped manifest carries a top-level `stats` key, which reaches `repository.js
 
 ### Package IDs must not collide across repositories
 
-A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
+Outside the seven synchronized fallback tutorials, a bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The default lookup order is bundled → recommender or CDN → App Platform. Only the seven migrated tutorials prefer an enabled recommender before bundled. The first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
 
 ---
 
@@ -523,7 +523,9 @@ Unset the enable variable to pause synchronization without affecting bundled con
 Recommender packages win over bundled recommendations when enabled. Explicit
 `bundled:` links stay local, and consent-disabled resolution stays bundled-first.
 The seven mapped guides retain their bundled progress identity across delivery
-sources; loading telemetry still identifies the actual delivery source.
+sources; loading telemetry still identifies the actual delivery source. The Go
+assignment evaluator embeds the same allowlist and accepts their shared public/bundled
+identity for both direct targets and path members, while preserving private-source isolation.
 
 The former upstream RSS tutorial is now `first-dashboard-rss`. Its historical
 online `first-dashboard` completion records remain stored and are projected to
