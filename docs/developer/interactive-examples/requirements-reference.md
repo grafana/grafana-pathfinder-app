@@ -89,6 +89,8 @@ The runtime checks the shared component's API-success marker in its unique visib
 
 Explicit `objectives` override inference, including `objectives: []` to retain action-based completion. A standalone block's explicit `verify` also prevents inference. Mixed blocks that include unrelated actions are not inferred, and ordinary token-name entry or token-mode selection steps retain their existing behavior.
 
+To configure completion explicitly in the block editor, open the interactive, guided, or multistep block's **Objectives** field, select **Add condition**, choose **Cloud token created**, and select **Add**. No argument is required. This saves `workflow-ready:cloud-access-policy-token`; add an `on-page:` objective too if completion must be restricted to a specific page. For a mixed block, include objectives for its other required outcomes as well.
+
 `workflow-ready:cloud-access-policy-token` is the underlying read-only condition, usable with the existing requirements/objectives/verify machinery. It confirms successful creation in the current form, not the existence, validity, or permissions of a previously issued token. Existing-token paste workflows, other credential components, hidden or ambiguous forms, and pages where the form has been removed are not supported by this detector. Add further workflow recognizers and state checks in code; authors do not need to describe authenticated APIs.
 
 ### `is-logged-in`

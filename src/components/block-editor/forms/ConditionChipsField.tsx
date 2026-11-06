@@ -11,6 +11,7 @@ import {
 } from '../../../types/requirements.types';
 import { isAutoRecoverableRequirement } from '../../../recovery';
 import { StorageKeys } from '../../../lib/storage-keys';
+import { CLOUD_TOKEN_OBJECTIVE } from '../../../lib/workflow-objectives';
 import { usePersistedBoolean } from '../../../hooks';
 import { ChoiceConditionPicker } from './ChoiceConditionPicker';
 import { useChoiceInputs } from './ChoiceInputsContext';
@@ -48,6 +49,12 @@ const CHOICE_PICKER_OPTION: PickerOption = {
 };
 
 const PICKER_OPTIONS: PickerOption[] = [
+  {
+    value: CLOUD_TOKEN_OBJECTIVE,
+    label: 'Cloud token created',
+    description: 'The shared Cloud token form confirms successful creation in the current visible form',
+    isPrefix: false,
+  },
   ...FIXED_REQUIREMENTS.map((token): PickerOption => ({
     value: token,
     label: token,
