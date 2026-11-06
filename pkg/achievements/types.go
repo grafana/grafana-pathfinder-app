@@ -30,7 +30,7 @@ type Event struct {
 // Progress is one person's stored state for one achievement.
 type Progress struct {
 	AchievementID string
-	// TierIDs is the set of tier ids held, in any order.
+	// TierIDs is the set of tier ids held, including ids a newer catalog defined.
 	TierIDs []string
 	// Units is the ledger of counted units. A unit counted by resource is its id
 	// fields, each as byte length, ":" and the field ("7:bundled4:tour"); a unit
@@ -58,7 +58,7 @@ type Store interface {
 	CreateProgress(ctx context.Context, person Person, p Progress) (Progress, error)
 	// SaveProgress writes p if its Version is still current, else returns ErrConflict.
 	SaveProgress(ctx context.Context, person Person, p Progress) (Progress, error)
-	// CreateAward returns ErrExists when the tier id was already awarded.
+	// CreateAward returns ErrExists when the tier was already awarded.
 	CreateAward(ctx context.Context, person Person, a Award) error
 }
 
@@ -105,15 +105,12 @@ type Decision struct {
 	AchievementID string `json:"achievementId"`
 	Decision      Kind   `json:"decision"`
 	Reason        Reason `json:"reason,omitempty"`
-	// From is the highest held tier id before the event, "" for none.
-	From string `json:"from"`
-	// To is the highest tier id this event awarded, or From when it awarded none.
-	To string `json:"to"`
-	// Final is true when every tier is held.
+	// Awarded lists the tier ids this event newly awarded, in catalog order.
+	Awarded []string `json:"awarded"`
+	// Final reports that every tier in the catalog is held.
 	Final bool `json:"final"`
 	Units int  `json:"units"`
-	// Next is the threshold of the lowest tier not held, nil when every tier is
-	// held or for a milestone.
+	// Next is the lowest threshold among tiers not held, nil when there is none.
 	Next *int `json:"next"`
 }
 

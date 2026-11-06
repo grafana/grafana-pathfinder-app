@@ -22,17 +22,10 @@
       "omitempty": true
     },
     {
-      "field": "From",
-      "json": "from",
-      "type": "string",
-      "wire": "string",
-      "omitempty": false
-    },
-    {
-      "field": "To",
-      "json": "to",
-      "type": "string",
-      "wire": "string",
+      "field": "Awarded",
+      "json": "awarded",
+      "type": "[]string",
+      "wire": "array<string>",
       "omitempty": false
     },
     {

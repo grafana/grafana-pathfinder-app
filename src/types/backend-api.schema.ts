@@ -105,15 +105,14 @@ export const MyCompletionsResponseWireSchema = z.strictObject({
 
 /**
  * `reason` is a free string: a new decision reason is an additive change within v1.
- * `from` and `to` are tier ids, `""` when none is held.
+ * `awarded` is the tier ids this event newly awarded, `[]` when none.
  * @coupling Go struct: Decision (pkg/achievements/types.go)
  */
 export const AchievementDecisionWireSchema = z.strictObject({
   achievementId: z.string(),
   decision: z.enum(['award', 'tier_up', 'increment', 'ignored']),
   reason: z.string().optional(),
-  from: z.string(),
-  to: z.string(),
+  awarded: z.array(z.string()),
   final: z.boolean(),
   units: z.number().int(),
   next: z.number().int().nullable(),

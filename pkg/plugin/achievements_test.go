@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -252,7 +253,7 @@ func TestAchievementEvent_AwardsOnceAndRepeatChangesNothing(t *testing.T) {
 	if body.EventID != "evt-1" || body.Retry || len(body.Decisions) != 1 {
 		t.Fatalf("unexpected response %+v", body)
 	}
-	if d := body.Decisions[0]; d.AchievementID != "dash-builder" || d.Decision != achievements.KindAward || d.From != "" || d.To != "bronze" || d.Units != 1 {
+	if d := body.Decisions[0]; d.AchievementID != "dash-builder" || d.Decision != achievements.KindAward || !slices.Equal(d.Awarded, []string{"bronze"}) || d.Units != 1 {
 		t.Fatalf("decision = %+v", d)
 	}
 	if awards, progress := mem.rowsFor(achievementsTestUser); awards != 1 || progress != 1 {

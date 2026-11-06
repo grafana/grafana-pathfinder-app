@@ -80,13 +80,13 @@ func TestNewEventContextBounds(t *testing.T) {
 
 func TestCatalogNextAt(t *testing.T) {
 	catalog := mustCatalog(t)
-	if next, counted := catalog.NextAt("dash-builder", []string{"t1"}); !counted || next == nil || *next != 5 {
-		t.Fatalf("dash-builder t1 = %v, %v", next, counted)
+	if next, counted := catalog.NextAt("dash-builder", []string{"bronze"}); !counted || next == nil || *next != 5 {
+		t.Fatalf("dash-builder bronze = %v, %v", next, counted)
 	}
-	if next, counted := catalog.NextAt("dash-builder", []string{"t1", "t3"}); !counted || next == nil || *next != 5 {
-		t.Fatalf("dash-builder missing t2 = %v, %v, want the lowest tier not held", next, counted)
+	if next, counted := catalog.NextAt("dash-builder", []string{"bronze", "gold"}); !counted || next == nil || *next != 5 {
+		t.Fatalf("dash-builder missing silver = %v, %v, want the lowest tier not held", next, counted)
 	}
-	if next, counted := catalog.NextAt("dash-builder", []string{"t3", "t2", "t1"}); !counted || next != nil {
+	if next, counted := catalog.NextAt("dash-builder", []string{"gold", "silver", "bronze"}); !counted || next != nil {
 		t.Fatalf("dash-builder final = %v, %v", next, counted)
 	}
 	if _, counted := catalog.NextAt("guide-routes", nil); counted {
@@ -104,10 +104,10 @@ func TestCatalogTierRank(t *testing.T) {
 		rank              int
 		ok                bool
 	}{
-		{"dash-builder", "t1", 0, true},
-		{"dash-builder", "t3", 2, true},
+		{"dash-builder", "bronze", 0, true},
+		{"dash-builder", "gold", 2, true},
 		{"dash-builder", "platinum", 0, false},
-		{"retired", "t1", 0, false},
+		{"retired", "bronze", 0, false},
 	} {
 		if rank, ok := catalog.TierRank(tc.achievement, tc.tier); ok != tc.ok || (ok && rank != tc.rank) {
 			t.Errorf("%s/%s = %d, %v, want %d, %v", tc.achievement, tc.tier, rank, ok, tc.rank, tc.ok)

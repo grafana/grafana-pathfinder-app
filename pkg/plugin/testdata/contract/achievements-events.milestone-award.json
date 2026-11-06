@@ -1,1 +1,1 @@
-{"eventId":"event-m","retry":false,"decisions":[{"achievementId":"guide-routes","decision":"award","from":"","to":"intro","final":true,"units":0,"next":null}]}
+{"eventId":"event-m","retry":false,"decisions":[{"achievementId":"guide-routes","decision":"award","awarded":["intro"],"final":true,"units":0,"next":null}]}

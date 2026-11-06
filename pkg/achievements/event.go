@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 	"unicode/utf8"
 )
@@ -93,8 +94,7 @@ func (c *Catalog) NextAt(achievementID string, tierIDs []string) (next *int, cou
 	if d == nil {
 		return nil, false
 	}
-	held, _ := d.held(tierIDs)
-	return d.nextThreshold(held), d.Counter != nil
+	return d.nextThreshold(heldSet(tierIDs)), d.Counter != nil
 }
 
 // TierRank is a tier's position in its achievement, lowest first.
@@ -103,7 +103,7 @@ func (c *Catalog) TierRank(achievementID, tierID string) (rank int, ok bool) {
 	if d == nil {
 		return 0, false
 	}
-	rank = d.tierRank(tierID)
+	rank = slices.IndexFunc(d.Tiers, func(t Tier) bool { return t.ID == tierID })
 	return rank, rank >= 0
 }
 
