@@ -311,6 +311,14 @@ describe('LearningPathTableOfContents', () => {
       expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(0);
     });
 
+    it('never sends a fallback ordinal id as data-milestone-id on any row when milestones carry no real id', () => {
+      setCompletedSlugs(new Set(['set-up']));
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+      expect(rowTargets()).toHaveLength(2);
+      rowTargets().forEach((row) => expect(row).not.toHaveAttribute('data-milestone-id'));
+    });
+
     it('keeps only publish-locked milestones locked and out of the click targets', () => {
       const withUnpublished: Milestone[] = [
         threeMilestones[0]!,

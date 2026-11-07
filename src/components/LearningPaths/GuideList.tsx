@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
@@ -32,6 +32,7 @@ function rowAccessibleName(guide: PathGuide): string {
 
 export function GuideList({ guides, isLoading = false, className, enableRowLinks = false }: GuideListProps) {
   const styles = useStyles2(getGuideListStyles);
+  const listId = useId();
 
   return (
     <div className={cx(styles.list, className)}>
@@ -41,9 +42,13 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
           <span>{t('myLearning.loadingGuides', 'Loading guides...')}</span>
         </div>
       ) : (
-        guides.map((guide) => {
+        guides.map((guide, index) => {
           const isRowLink = enableRowLinks && !guide.locked && guide.url != null;
           const showCurrentChrome = guide.isCurrent && enableRowLinks;
+          const hasMeta = guide.locked || typeof guide.estimatedMinutes === 'number';
+          const descriptionId = `${listId}-${index}-description`;
+          const metaId = `${listId}-${index}-meta`;
+          const describedBy = [guide.description && descriptionId, hasMeta && metaId].filter(Boolean).join(' ');
           return (
             <div
               key={guide.id}
@@ -69,6 +74,7 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
                     role: 'button',
                     tabIndex: 0,
                     'aria-label': rowAccessibleName(guide),
+                    ...(describedBy && { 'aria-describedby': describedBy }),
                     onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
@@ -98,9 +104,13 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
               </span>
               <span className={styles.guideTextGroup}>
                 <span>{guide.title}</span>
-                {guide.description && <span className={styles.guideDescription}>{guide.description}</span>}
-                {(guide.locked || typeof guide.estimatedMinutes === 'number') && (
-                  <span className={styles.guideMeta}>
+                {guide.description && (
+                  <span id={descriptionId} className={styles.guideDescription}>
+                    {guide.description}
+                  </span>
+                )}
+                {hasMeta && (
+                  <span id={metaId} className={styles.guideMeta}>
                     {typeof guide.estimatedMinutes === 'number' && (
                       <>
                         <Icon name="clock-nine" size="sm" />

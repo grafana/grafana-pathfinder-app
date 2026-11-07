@@ -103,7 +103,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         };
 
         // Get the milestone URL (and, when the click target carried one, the
-        // manifest guide id it resolved from — GuideList's current row and
+        // manifest guide id it resolved from — GuideList's rows and
         // the cover-page CTA both set this) from the button's data attributes.
         const milestoneUrl = startElement.getAttribute('data-milestone-url');
         const milestoneId = startElement.getAttribute('data-milestone-id') ?? undefined;

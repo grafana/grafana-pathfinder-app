@@ -120,7 +120,7 @@ describe('useLinkClickHandler', () => {
       });
     });
 
-    // Regression: GuideList's current row and the cover-page CTA both tag
+    // Regression: GuideList's rows and the cover-page CTA both tag
     // their click target with the manifest guide id it resolved from, so
     // fetchPackageContent can classify the next load by direct lookup
     // instead of comparing resolved URLs.

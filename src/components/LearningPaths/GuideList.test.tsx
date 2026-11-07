@@ -128,6 +128,31 @@ describe('GuideList', () => {
     expect(clickSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('describes each row link by its description and meta, and forwards only a real guideId as data-milestone-id', () => {
+    const withUrl: PathGuide[] = [
+      {
+        id: '1',
+        guideId: 'real-id',
+        title: 'Described module',
+        description: 'What this module covers.',
+        estimatedMinutes: 12,
+        completed: false,
+        isCurrent: false,
+        url: 'bundled:a/content.json',
+      },
+      { id: '2', title: 'Plain module', completed: false, isCurrent: false, url: 'bundled:b/content.json' },
+    ];
+    render(<GuideList guides={withUrl} enableRowLinks />);
+
+    const described = screen.getByRole('button', { name: 'Described module' });
+    expect(described).toHaveAccessibleDescription('What this module covers. 12 min');
+    expect(described).toHaveAttribute('data-milestone-id', 'real-id');
+
+    const plain = screen.getByRole('button', { name: 'Plain module' });
+    expect(plain).not.toHaveAttribute('aria-describedby');
+    expect(plain).not.toHaveAttribute('data-milestone-id');
+  });
+
   // Regression test (Cursor Bugbot, "GuideList click affordance leaks"):
   // GuideList also renders inside LearningPathCard on My Learning, a
   // separate DOM tree with no listener for data-journey-start (only the

@@ -1108,7 +1108,7 @@ describe('fetchPackageContent path-type enrichment', () => {
 
   // Classification is a direct id lookup against `milestones`/`tracks`,
   // not a URL comparison: `explicitGuideId` is the manifest guide id the
-  // click target already carried (GuideList's current row, the cover
+  // click target already carried (a GuideList row, the cover
   // page's CTA). This single test exercises all three classifications
   // against the SAME manifest: a real cover-page load (no explicitGuideId
   // — the load behind no click, e.g. the initial open), a track-exclusive
