@@ -698,6 +698,29 @@ describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) lau
     const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
     expect(tab).toMatchObject({ activeTrackId: 'ops', activeTrackPathId: 'path-1' });
   });
+
+  it("keeps a track member opened without its cover on that track's sequence", async () => {
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(true);
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [], activeTabId: 'recommendations' });
+    const trackMilestones = [
+      { id: 'setup', number: 1, title: 'Setup', url: 'backend-guide:setup', isActive: false },
+      { id: 'ops-1', number: 2, title: 'Ops 1', url: 'backend-guide:ops-1', isActive: false },
+    ];
+
+    const tabId = await panel.openDocsPage('backend-guide:ops-1', 'Path', {
+      preparedContent,
+      packageInfo: { packageId: 'path-1', packageManifest: { type: 'path' }, trackId: 'ops', trackMilestones },
+    });
+    await flush();
+
+    const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
+    expect(tab).toMatchObject({
+      activeTrackId: 'ops',
+      activeTrackPathId: 'path-1',
+      activeTrackMilestones: trackMilestones,
+    });
+  });
 });
 
 describe('CombinedLearningJourneyPanel.loadTab — learning-journey completion seam', () => {

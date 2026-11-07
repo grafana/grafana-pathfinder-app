@@ -409,6 +409,10 @@ export const testIds = {
     customGuidesToggle: 'sidebar-hub-custom-guides-toggle',
     customGuidesLoading: 'sidebar-hub-custom-guides-loading',
     customRow: (index: number) => `sidebar-hub-custom-row-${index}`,
+    customRowToggle: (index: number) => `sidebar-hub-custom-row-toggle-${index}`,
+    customRowDetails: (index: number) => `sidebar-hub-custom-row-details-${index}`,
+    customRowDetailsLoading: (index: number) => `sidebar-hub-custom-row-details-loading-${index}`,
+    customRowModule: (row: number, index: number) => `sidebar-hub-custom-row-${row}-module-${index}`,
   },
 
   // Help Footer

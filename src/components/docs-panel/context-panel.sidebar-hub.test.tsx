@@ -5,7 +5,8 @@ import { PLUGIN_BASE_URL } from '../../constants';
 import { testIds } from '../../constants/testIds';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { useContextPanel, type Recommendation } from '../../context-engine';
-import { resolvePackageNavLinks } from '../../docs-retrieval';
+import { journeyMilestonePercentages, resolvePackageMilestones, resolvePackageNavLinks } from '../../docs-retrieval';
+import type { Milestone } from '../../types/content.types';
 import { useLearningPaths, useMyAssignments, type ResolvedAssignment } from '../../learning-paths';
 
 jest.mock('@grafana/scenes', () => ({ SceneObjectBase: class {} }));
@@ -36,7 +37,11 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
 }));
 jest.mock('../../context-engine', () => ({ useContextPanel: jest.fn() }));
-jest.mock('../../docs-retrieval', () => ({ resolvePackageNavLinks: jest.fn() }));
+jest.mock('../../docs-retrieval', () => ({
+  resolvePackageNavLinks: jest.fn(),
+  resolvePackageMilestones: jest.fn(),
+  journeyMilestonePercentages: jest.fn(),
+}));
 jest.mock('../../learning-paths', () => ({
   ...jest.requireActual('../../learning-paths'),
   useLearningPaths: jest.fn(),
@@ -63,6 +68,16 @@ const mockUseContextPanel = useContextPanel as jest.Mock;
 const mockUseLearningPaths = useLearningPaths as jest.Mock;
 const mockUseMyAssignments = useMyAssignments as jest.Mock;
 const mockResolvePackageNavLinks = resolvePackageNavLinks as jest.Mock;
+const mockResolvePackageMilestones = resolvePackageMilestones as jest.Mock;
+const mockJourneyMilestonePercentages = journeyMilestonePercentages as jest.Mock;
+const resolvedAs = (ids: string[]): Milestone[] =>
+  ids.map((id, index) => ({
+    id,
+    number: index + 1,
+    title: `Title ${id}`,
+    url: `backend-guide:${id}`,
+    isActive: false,
+  }));
 
 const openDocsPage = jest.fn();
 const openLearningJourney = jest.fn();
@@ -170,6 +185,8 @@ describe('ContextPanelRenderer sidebar hub', () => {
     });
     openDocsPage.mockResolvedValue(undefined);
     mockResolvePackageNavLinks.mockResolvedValue([]);
+    mockResolvePackageMilestones.mockImplementation(async (ids: string[]) => resolvedAs(ids));
+    mockJourneyMilestonePercentages.mockReturnValue([]);
   });
 
   it('renders the hub in place of the old recommendations list', async () => {
@@ -844,6 +861,7 @@ describe('ContextPanelRenderer sidebar hub', () => {
       const section = screen.getByRole('region', { name: 'Custom guides' });
       expect(within(section).getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(3);
 
+      expect(screen.queryByTestId(testIds.sidebarHub.customRowToggle(0))).not.toBeInTheDocument();
       await click(within(screen.getByTestId(testIds.sidebarHub.customRow(0))).getByRole('button'));
 
       expect(openDocsPage).toHaveBeenCalledWith('backend-guide:a', 'Custom a', undefined);
@@ -867,13 +885,202 @@ describe('ContextPanelRenderer sidebar hub', () => {
       });
       setup({ recommendations: [pkg('one')], assignments: [assignment('p1', { trackId: 'ops' })] });
 
-      await click(within(screen.getByTestId(testIds.sidebarHub.customRow(0))).getByRole('button'));
+      await click(
+        within(screen.getByTestId(testIds.sidebarHub.customRow(0))).getByRole('button', { name: 'Start: Custom p1' })
+      );
 
       expect(openDocsPage).toHaveBeenCalledWith(
         'backend-guide:p1',
         'Custom p1',
         expect.objectContaining({ packageId: 'p1', launchSource: 'custom_guide', trackId: 'ops' })
       );
+    });
+
+    describe('milestones', () => {
+      // The track Combobox measures option text on a canvas and watches its scroll edges, neither of which jsdom has.
+      let canvas: jest.SpyInstance;
+      const originalObserver = global.IntersectionObserver;
+      beforeAll(() => {
+        canvas = jest
+          .spyOn(HTMLCanvasElement.prototype, 'getContext')
+          .mockReturnValue({ measureText: () => ({ width: 100 }) } as unknown as CanvasRenderingContext2D);
+        global.IntersectionObserver = class {
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        } as unknown as typeof IntersectionObserver;
+      });
+      afterAll(() => {
+        canvas.mockRestore();
+        global.IntersectionObserver = originalObserver;
+      });
+
+      const labs = Array.from({ length: 12 }, (_, index) => `lab-${String(index + 1).padStart(2, '0')}`);
+      const publish = (...paths: Array<ReturnType<typeof published>>) =>
+        mockUsePublishedGuides.mockReturnValue({
+          guides: paths,
+          paths,
+          orphanGuides: [],
+          isLoading: false,
+          hasLoaded: true,
+        });
+      const bootcamp = () =>
+        published('bootcamp', {
+          title: 'Bootcamp',
+          manifest: { type: 'path', milestones: labs, startingLocation: '/connections', additionalFields: { a: 1 } },
+        });
+      const workshop = () =>
+        published('workshop', {
+          title: 'Workshop',
+          manifest: {
+            type: 'path',
+            milestones: ['setup'],
+            tracks: [
+              { trackId: 'metrics', label: 'Metrics', guides: ['setup', 'm-1', 'm-2'] },
+              { trackId: 'logs', label: 'Logs', guides: ['setup', 'l-1'] },
+            ],
+          },
+        });
+      const expand = async () => {
+        await click(screen.getByTestId(testIds.sidebarHub.customRowToggle(0)));
+        return screen.getByTestId(testIds.sidebarHub.customRowDetails(0));
+      };
+      const milestoneButtons = (details: HTMLElement) => within(details).findAllByRole('button', { name: /Title / });
+
+      it("expands a published custom path's milestones and opens milestone 7 directly", async () => {
+        publish(bootcamp());
+        setup({ recommendations: [pkg('one')] });
+
+        const toggle = screen.getByTestId(testIds.sidebarHub.customRowToggle(0));
+        expect(toggle).toHaveAccessibleName('Show milestones');
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.getByTestId(testIds.sidebarHub.customRow(0))).toHaveTextContent('12 milestones');
+        expect(mockResolvePackageMilestones).not.toHaveBeenCalled();
+
+        const details = await expand();
+
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        expect(toggle).toHaveAttribute('aria-controls', details.id);
+        expect(await milestoneButtons(details)).toHaveLength(12);
+        expect(mockResolvePackageMilestones.mock.calls.map(([ids]) => ids)).toEqual([labs.slice(0, 8), labs.slice(8)]);
+        expect(openDocsPage).not.toHaveBeenCalled();
+
+        await click(screen.getByTestId(testIds.sidebarHub.customRowModule(0, 6)));
+
+        expect(openDocsPage).toHaveBeenCalledTimes(1);
+        const [url, title, packageInfo] = openDocsPage.mock.calls[0]!;
+        expect([url, title]).toEqual(['backend-guide:lab-07', 'Bootcamp']);
+        expect(packageInfo).toMatchObject({
+          packageId: 'bootcamp',
+          launchSource: 'custom_guide',
+          packageManifest: { id: 'bootcamp', type: 'path', milestones: labs },
+        });
+        expect(packageInfo.packageManifest).not.toHaveProperty('startingLocation');
+        expect(packageInfo.packageManifest).not.toHaveProperty('additionalFields');
+        expect(packageInfo).not.toHaveProperty('trackId');
+        expect(packageInfo.resolvedMilestones.map((m: Milestone) => [m.number, m.id])).toEqual(
+          labs.map((id, index) => [index + 1, id])
+        );
+        expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.JumpIntoMilestoneClick, {
+          milestone_number: 7,
+          total_milestones: 12,
+          interaction_location: 'hub_custom_milestone_list',
+        });
+      });
+
+      it('marks completed milestones and the one to resume at', async () => {
+        mockJourneyMilestonePercentages.mockImplementation((_baseUrl: string, milestones: Milestone[]) =>
+          milestones.map((milestone, index) => ({ milestone, percent: index < 4 ? 100 : index === 4 ? 40 : 0 }))
+        );
+        publish(bootcamp());
+        setup({ recommendations: [pkg('one')] });
+
+        const details = await expand();
+        await milestoneButtons(details);
+
+        expect(mockJourneyMilestonePercentages).toHaveBeenLastCalledWith('backend-guide:bootcamp', expect.any(Array));
+        expect(within(details).getAllByText('Completed')).toHaveLength(4);
+        const current = screen.getByTestId(testIds.sidebarHub.customRowModule(0, 4));
+        expect(current).toHaveAttribute('aria-current', 'step');
+        expect(current).toHaveTextContent('Up next');
+        expect(within(details).getAllByRole('button', { current: 'step' })).toEqual([current]);
+      });
+
+      it('switches a tracked path between its sequences and opens a track member on its track', async () => {
+        publish(workshop());
+        setup({ recommendations: [pkg('one')], assignments: [assignment('workshop', { trackId: 'logs' })] });
+
+        expect(screen.getByTestId(testIds.sidebarHub.customRow(0))).toHaveTextContent('4 milestones');
+        const details = await expand();
+        const track = within(details).getByRole('combobox', { name: 'Track' });
+        expect(track).toHaveValue('Logs');
+        expect(await milestoneButtons(details)).toHaveLength(2);
+        const pick = async (label: string) => {
+          fireEvent.change(track, { target: { value: label } });
+          await act(async () => {});
+          fireEvent.keyDown(track, { key: 'ArrowDown' });
+          await act(async () => {
+            fireEvent.keyDown(track, { key: 'Enter' });
+          });
+        };
+
+        await pick('Fundamentals');
+        await waitFor(async () => expect(await milestoneButtons(details)).toHaveLength(1));
+        await pick('Metrics');
+        await waitFor(async () => expect(await milestoneButtons(details)).toHaveLength(3));
+        expect(track).toHaveValue('Metrics');
+        expect(mockResolvePackageMilestones.mock.calls.map(([ids]) => ids)).toEqual([
+          ['setup', 'l-1'],
+          ['setup'],
+          ['setup', 'm-1', 'm-2'],
+        ]);
+
+        await click(screen.getByTestId(testIds.sidebarHub.customRowModule(0, 2)));
+
+        const [url, , packageInfo] = openDocsPage.mock.calls[0]!;
+        expect(url).toBe('backend-guide:m-2');
+        expect(packageInfo).toMatchObject({ packageId: 'workshop', trackId: 'metrics' });
+        expect(packageInfo.trackMilestones.map((m: Milestone) => m.id)).toEqual(['setup', 'm-1', 'm-2']);
+        expect(packageInfo.resolvedMilestones).toBeUndefined();
+      });
+
+      it('keeps an unpublished milestone disabled and retries a failed load', async () => {
+        mockResolvePackageMilestones
+          .mockRejectedValueOnce(new Error('unavailable'))
+          .mockResolvedValueOnce([
+            ...resolvedAs(['lab-01']),
+            { id: 'lab-02', number: 2, title: 'Title lab-02', url: '', isActive: false, isLocked: true },
+          ]);
+        publish(published('short', { manifest: { type: 'path', milestones: ['lab-01', 'lab-02'] } }));
+        setup({ recommendations: [pkg('one')] });
+
+        const details = await expand();
+        const alert = await within(details).findByRole('alert');
+        expect(alert).toHaveTextContent('Could not load milestone details.');
+
+        await click(within(alert).getByRole('button', { name: 'Retry' }));
+
+        const [published1, unpublished] = await milestoneButtons(details);
+        expect(published1).toBeEnabled();
+        expect(unpublished).toBeDisabled();
+        expect(unpublished).toHaveTextContent('Unavailable');
+        expect(within(details).queryByRole('alert')).not.toBeInTheDocument();
+      });
+
+      it('ignores a milestone click while another launch is still opening', async () => {
+        let finish: () => void = () => {};
+        openDocsPage.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+        publish(bootcamp());
+        setup({ recommendations: [pkg('one')] });
+
+        const details = await expand();
+        await milestoneButtons(details);
+        await click(screen.getByTestId(testIds.sidebarHub.customRowModule(0, 1)));
+        await click(screen.getByTestId(testIds.sidebarHub.customRowModule(0, 2)));
+
+        expect(openDocsPage).toHaveBeenCalledTimes(1);
+        await act(async () => finish());
+      });
     });
 
     it('shows the error toast when a custom guide fails to open', async () => {

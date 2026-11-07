@@ -34,6 +34,14 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       '& p': { marginBottom: theme.spacing(0.75) },
     }),
     detailsSkeleton: css({ '&&': { padding: theme.spacing(0.5, 0), borderTop: 'none', gap: 0 } }),
+    detailsField: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      marginBottom: theme.spacing(1.5),
+      '& > label': { flexShrink: 0, fontSize: theme.typography.sm.fontSize, color: theme.colors.text.secondary },
+      '& > div': { flex: 1, minWidth: 0 },
+    }),
     detailsHeading: css({
       '&&': {
         margin: theme.spacing(0, 0, 0.5),

@@ -123,6 +123,8 @@ export interface PackageOpenInfo {
   launchSource?: string;
   /** Path Tracks tab the cover page opens on. */
   trackId?: string;
+  /** That track's resolved guides, for a member opened without its cover, so Next/Previous stay on the track. */
+  trackMilestones?: Milestone[];
 }
 
 export interface ContextPanelState extends SceneObjectState {
