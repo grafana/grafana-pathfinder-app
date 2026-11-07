@@ -179,7 +179,7 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 - Step events built by `buildInteractiveStepProperties` (`step_auto_completed`, `show_me_button_click`, `do_it_button_click` and others): `source_document` is the active tab URL, `backend-guide:` keys included.
 - `learning_path_progress`: `path_id` and `path_title`.
 - `alignment_prompt_shown`, `alignment_prompt_confirmed` and `alignment_prompt_dismissed`: `guide_url` and `guide_title`.
-- `jump_into_milestone_click`: `content_url`, which is `backend-guide:<path id>` for an App Platform path, and the path and milestone titles.
+- `jump_into_milestone_click`: `content_url`, which is `backend-guide:<path id>` for an App Platform path, and the path and milestone titles. The hub's custom path milestone list (`interaction_location: hub_custom_milestone_list`) is the exception: it follows the resume card's rule for organization content and omits titles, URLs and ids, sending only `milestone_number`, `total_milestones` and `interaction_location`.
 - `open_resource_click` from the custom guides section: `content_url` (`backend-guide:<guide id>`) and `content_title`.
 - `close_tab_click`: `content_url` and `tab_title`.
 - `milestone_arrow_interaction_click`: `content_url` and `content_title`.

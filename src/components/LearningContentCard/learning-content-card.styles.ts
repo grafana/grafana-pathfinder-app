@@ -218,6 +218,9 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       '&:hover:not(:disabled)': { borderColor: theme.colors.border.medium },
       '&:disabled': { cursor: 'default', opacity: 0.65 },
     }),
+    moduleCurrent: css({
+      '&&': { borderColor: theme.colors.primary.border, background: theme.colors.primary.transparent },
+    }),
     moduleNumber: css({
       display: 'inline-flex',
       alignItems: 'center',
