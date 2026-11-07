@@ -559,3 +559,83 @@ it('classifies an insecure documentation URL as blocked without requesting it', 
   expect(fetchMock).not.toHaveBeenCalled();
   fetchMock.mockRestore();
 });
+
+describe('PR-tester marker round trip', () => {
+  const markedUrl = 'https://interactive-learning.grafana.net/packages/guide-two/v1.0.0/content.json#pf-pr-abc123';
+  const validGuide = { id: 'guide-two', title: 'Guide two', blocks: [{ type: 'markdown', content: 'Hello' }] };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const installFetch = (json: string) => {
+    const requested: string[] = [];
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      requested.push(url);
+      const isHtml = url.endsWith('unstyled.html');
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        url,
+        text: async () => (isHtml ? '<html><head><title>Guide two</title></head><body>Hi</body></html>' : json),
+        headers: new Headers({ 'Content-Type': isHtml ? 'text/html; charset=utf-8' : 'application/json' }),
+      });
+    });
+    return requested;
+  };
+
+  it('keeps the marker on the returned URL while never sending it', async () => {
+    const requested = installFetch(JSON.stringify(validGuide));
+
+    const result = await fetchContent(markedUrl);
+
+    expect(result.content?.url).toBe(markedUrl);
+    expect(result.content?.hashFragment).toBeUndefined();
+    expect(requested.length).toBeGreaterThan(0);
+    expect(requested.every((url) => !url.includes('#'))).toBe(true);
+  });
+
+  it('keeps the marker when content.json falls back to unstyled.html', async () => {
+    const requested = installFetch('null');
+
+    const result = await fetchContent(markedUrl);
+
+    expect(result.content?.url).toBe(
+      'https://interactive-learning.grafana.net/packages/guide-two/v1.0.0/unstyled.html#pf-pr-abc123'
+    );
+    expect(requested.every((url) => !url.includes('#'))).toBe(true);
+  });
+
+  it('opens a bundled package member from a marked URL and keeps the marker on the result', async () => {
+    const bare = await fetchContent('bundled:first-dashboard/content.json');
+    const marked = await fetchContent('bundled:first-dashboard/content.json#pf-pr-abc123');
+
+    expect(bare.error).toBeUndefined();
+    expect(marked.error).toBeUndefined();
+    expect(marked.content?.url).toBe('bundled:first-dashboard/content.json#pf-pr-abc123');
+    expect(marked.content?.content).toBe(bare.content?.content);
+  });
+
+  it('opens a legacy indexed bundled guide from a marked URL', async () => {
+    const marked = await fetchContent('bundled:first-dashboard#pf-pr-abc123');
+
+    expect(marked.error).toBeUndefined();
+    expect(marked.content?.url).toBe('bundled:first-dashboard#pf-pr-abc123');
+  });
+
+  it('keeps a missing bundled member an unmarked not-found', async () => {
+    const result = await fetchContent('bundled:nonexistent-package/content.json#pf-pr-abc123');
+
+    expect(result.content).toBeNull();
+    expect(result.error).toContain('nonexistent-package/content.json');
+    expect(result.error).not.toContain('pf-pr-');
+  });
+
+  it('leaves an unmarked URL unmarked', async () => {
+    installFetch(JSON.stringify(validGuide));
+
+    const result = await fetchContent(markedUrl.replace('#pf-pr-abc123', ''));
+
+    expect(result.content?.url).toBe(markedUrl.replace('#pf-pr-abc123', ''));
+  });
+});

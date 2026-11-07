@@ -1171,3 +1171,52 @@ describe('fetchPrContentMeta', () => {
     expect(result).toBeUndefined();
   });
 });
+
+describe('fetchPrContentFiles under a browser HTTP cache', () => {
+  const originalFetch = global.fetch;
+  const OLD_SHA = 'a'.repeat(40);
+  const NEW_SHA = 'b'.repeat(40);
+  const API_MAX_AGE_MS = 60_000;
+  const REVALIDATING_MODES = ['no-store', 'no-cache', 'reload'];
+
+  let now: number;
+  let serverSha: string;
+
+  function installCachingFetch() {
+    const cache = new Map<string, { storedAt: number; body: unknown }>();
+    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const entry = cache.get(url);
+      const bypass = REVALIDATING_MODES.includes(init?.cache ?? 'default');
+      if (entry && !bypass && now - entry.storedAt < API_MAX_AGE_MS) {
+        return { ok: true, status: 200, json: async () => entry.body } as Response;
+      }
+      const body = url.endsWith('/files?per_page=100')
+        ? [{ filename: 'guide-one/content.json', status: 'modified' }]
+        : { head: { sha: serverSha } };
+      cache.set(url, { storedAt: now, body });
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }) as jest.Mock;
+  }
+
+  beforeEach(() => {
+    now = 0;
+    serverSha = OLD_SHA;
+    installCachingFetch();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('sees a commit pushed seconds after the previous fetch', async () => {
+    const first = await fetchPrContentFiles('grafana', 'interactive-tutorials', 70);
+    expect(first.success && first.files[0]?.rawUrl).toContain(OLD_SHA);
+
+    serverSha = NEW_SHA;
+    now += 10_000;
+
+    const second = await fetchPrContentFiles('grafana', 'interactive-tutorials', 70);
+    expect(second.success && second.files[0]?.rawUrl).toContain(NEW_SHA);
+  });
+});

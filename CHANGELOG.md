@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.26.0
+
+### Added
+
+- **Automatic guide completion**: Guides complete at their last completable block. Prose-only guides complete when the end of the guide is visible. (#2262)
+
+### Fixed
+
+- **Fresh, isolated PR previews**: PR previews fetch updated content after a push and keep preview progress separate from real guide completion records. (#2275)
+- **Completion after a reset**: A late objectives check from before a reset no longer completes a step twice or changes its completion origin. (#2292)
+- **Existing objectives on guide load**: With passive completion off, objectives already met when a guide opens no longer count as new learner progress. (#2256)
+- **Deep-link tab titles**: Learning paths opened from website links replace temporary tab titles with the fetched content title. (#2282)
+- **Sidebar hub spacing**: The Recommended tab uses the same page padding as Explore. (#2287)
+- **Guided steps across tabs**: Guided commands with a `noop` substep now reach the live tab instead of being rejected. (#2253)
+- **Reliable authoring selectors**: The element picker keeps the original selector if cleaning makes it stop uniquely matching the selected element. (#2268)
+- **Spanish translations**: Spanish navigation labels use sentence case. Interactive learning actions and settings now have Spanish text instead of empty or English strings. (#2303)
+
+### Security
+
+- **Go dependency security updates**: Update Go JOSE and related dependencies, including the follow-up RSA key validation fix. (#2187, #2277)
+- **Glob cancellation fix**: Update glob to address filesystem traversal that continues after cancellation. (#2272)
+- **Container base image updates**: Refresh Node.js and CA trust base images with security updates. (#2296, #2300, #2301)
+
+### Chore
+
+- **Sidebar hub enabled for everyone**: Remove the sidebar hub feature flag. The Recommended tab always uses the hub layout. (#2286)
+
 ## 2.25.0
 
 ### Added

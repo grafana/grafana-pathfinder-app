@@ -3,7 +3,7 @@ module github.com/grafana/grafana-pathfinder-app
 go 1.26.7
 
 require (
-	github.com/go-jose/go-jose/v4 v4.1.6
+	github.com/go-jose/go-jose/v4 v4.1.8
 	github.com/grafana/authlib v0.0.0-20260930204439-665ccbf27cbe
 	github.com/grafana/grafana-plugin-sdk-go v0.298.0
 )

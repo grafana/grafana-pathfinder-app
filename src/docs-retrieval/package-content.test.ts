@@ -895,6 +895,49 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(journey.tracks![0]!.milestones[0]!.title).toBe('Milestone: builder-1');
   });
 
+  it("keeps a PR-tester load, its catalog-resolved tracks, and its base URL under the load's marker", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `https://cdn.example/packages/${id}/content.json`,
+          manifestUrl: `https://cdn.example/packages/${id}/manifest.json`,
+          repository: 'interactive-tutorials',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+    const manifest = {
+      id: 'first-dashboard',
+      type: 'path',
+      milestones: ['step-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    };
+    const coverUrl = 'https://cdn.example/packages/first-dashboard/content.json#pf-pr-abc';
+    const preFetched = {
+      content: {
+        content: JSON.stringify({ id: 'first-dashboard', title: 'Cover', blocks: [] }),
+        metadata: { title: 'Cover' },
+        type: 'interactive',
+        url: coverUrl,
+        lastFetched: new Date().toISOString(),
+      },
+    } as unknown as Awaited<ReturnType<typeof fetchContent>>;
+
+    const result = await fetchPackageContent(coverUrl, manifest, undefined, undefined, preFetched);
+
+    const journey = result.content!.metadata.learningJourney!;
+    expect(journey.milestones.map((m) => m.url)).toEqual([
+      'https://cdn.example/packages/step-1/content.json#pf-pr-abc',
+    ]);
+    expect(journey.tracks![0]!.milestones.map((m) => m.url)).toEqual([
+      'https://cdn.example/packages/builder-1/content.json#pf-pr-abc',
+    ]);
+  });
+
   it('reads tracks from the package manifest when the caller manifest is a slim recommender projection', async () => {
     const packageManifest = {
       id: 'first-dashboard',

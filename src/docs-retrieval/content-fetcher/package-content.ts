@@ -21,6 +21,7 @@ import { buildBackendGuideContent, type BackendGuideResource } from './backend-g
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
+import { getPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
 import { readDeclaredStartingLocation } from '../../recovery/starting-location';
 import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
@@ -361,7 +362,7 @@ export async function fetchPackageContent(
   // resolver fetched ahead of this array) so a cold resolver's chunk fetch
   // overlaps fetchContent(contentUrl, { loadContext }) instead of
   // serializing in front of it.
-  const [result, resolvedMilestones, baseUrlResolution, pathTracks] = await Promise.all([
+  const [result, unmarkedMilestones, baseUrlResolution, unmarkedPathTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId
@@ -371,6 +372,23 @@ export async function fetchPackageContent(
       : Promise.resolve(undefined),
     tracksEligible ? resolvePathTracks(manifestId, packageManifest, pathSlug) : Promise.resolve(undefined),
   ]);
+  // A PR-tester load keeps every URL it derives under the same per-fetch marker,
+  // so catalog-resolved members never read or write the production guide's records.
+  const prTestFetchId = getPrTestFetchId(contentUrl);
+  const markForPrTest = (url: string) => (prTestFetchId && url ? withPrTestMarker(url, prTestFetchId) : url);
+  const markMilestonesForPrTest = (list: Milestone[]) => list.map((m) => ({ ...m, url: markForPrTest(m.url) }));
+  const resolvedMilestones =
+    unmarkedMilestones && prTestFetchId ? markMilestonesForPrTest(unmarkedMilestones) : unmarkedMilestones;
+  const pathTracks =
+    unmarkedPathTracks && prTestFetchId
+      ? {
+          ...unmarkedPathTracks,
+          resolved: unmarkedPathTracks.resolved.map((track) => ({
+            ...track,
+            milestones: markMilestonesForPrTest(track.milestones),
+          })),
+        }
+      : unmarkedPathTracks;
   const manifestTracks = pathTracks?.declared ?? [];
 
   if (!result.content) {
@@ -453,7 +471,7 @@ export async function fetchPackageContent(
           .filter((id): id is string => id != null);
         if (lockedTrackGuideIds.length > 0) {
           const retriedUrls = await Promise.all(lockedTrackGuideIds.map((id) => resolvePackageUrlBypassCache(id)));
-          isConfirmedTrackMember = retriedUrls.includes(contentUrl);
+          isConfirmedTrackMember = retriedUrls.some((url) => url !== undefined && markForPrTest(url) === contentUrl);
         }
       }
 
@@ -482,7 +500,7 @@ export async function fetchPackageContent(
 
         let baseUrl = contentUrl;
         if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {
-          baseUrl = baseUrlResolution.contentUrl;
+          baseUrl = markForPrTest(baseUrlResolution.contentUrl);
         }
 
         learningJourney = {
@@ -514,7 +532,7 @@ export async function fetchPackageContent(
           );
         }
       } else if (baseUrlResolution && baseUrlResolution.ok) {
-        trackMemberBaseUrl = baseUrlResolution.contentUrl;
+        trackMemberBaseUrl = markForPrTest(baseUrlResolution.contentUrl);
       } else if (knownBaseUrl) {
         // This SAME request's own re-resolve of manifestId failed, but the
         // caller already knows the answer (the cover page this guide was
@@ -529,7 +547,7 @@ export async function fetchPackageContent(
         // chance before this guide's completion is dropped for real.
         const retriedBaseUrl = await resolvePackageUrlBypassCache(manifestId);
         if (retriedBaseUrl) {
-          trackMemberBaseUrl = retriedBaseUrl;
+          trackMemberBaseUrl = markForPrTest(retriedBaseUrl);
         } else {
           // Even the retry came up empty. Falling back to this guide's own
           // contentUrl still preserves a completion identity rather than
