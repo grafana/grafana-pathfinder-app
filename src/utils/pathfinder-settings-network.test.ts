@@ -16,6 +16,18 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: () => ({ fetch: fetchMock }),
   config: { namespace: 'stacks-123' },
 }));
+// Routes plugin-settings reads and writes onto the same fetch as the tenant
+// store, the way plugin-compat's legacy fallback reaches the host.
+jest.mock('@grafana/plugin-compat/apps', () => {
+  const { lastValueFrom } = jest.requireActual('rxjs');
+  const url = (pluginId: string) => `/api/plugins/${pluginId}/settings`;
+  return {
+    getPluginSettings: async (pluginId: string) =>
+      (await lastValueFrom(fetchMock({ url: url(pluginId), method: 'GET' }))).data,
+    updateAppPluginSettings: async (pluginId: string, data: unknown) =>
+      (await lastValueFrom(fetchMock({ url: url(pluginId), method: 'POST', data }))).data,
+  };
+});
 jest.mock('./interactive-guides-api', () => ({
   APP_PLATFORM_API_VERSION: 'pathfinderbackend.ext.grafana.app/v1alpha1',
   isBackendApiAvailable: jest.fn(() => true),

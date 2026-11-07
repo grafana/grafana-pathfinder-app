@@ -23,10 +23,10 @@ import {
 } from '../../lib/analytics';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { DataCheckControls } from './data-check-controls';
-import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 import { useDataCheck } from './use-data-check';
+import { useDatasourceOptions } from './use-datasource-options';
 
 export interface DatasourceCheckStepProps {
   variableName: string;
@@ -131,8 +131,11 @@ export function DatasourceCheckStep({
   });
   const renderedStepId = stepId ?? generatedStepId;
 
-  const datasources = useMemo(() => filterDatasourcesByType(datasourceFilter), [datasourceFilter]);
-  const datasourceOptions = useMemo(() => toDatasourceOptions(datasources), [datasources]);
+  const {
+    datasources,
+    options: datasourceOptions,
+    loading: datasourcesLoading,
+  } = useDatasourceOptions(datasourceFilter);
 
   // The pick lives in the guide response and arrives asynchronously, so reading
   // it once into state would strand the picker empty on every reload. Local
@@ -298,9 +301,10 @@ export function DatasourceCheckStep({
 
   const isEnabled = checker.isEnabled && !disabled;
   const hasDatasources = datasourceOptions.length > 0;
+  const noDatasources = !datasourcesLoading && !hasDatasources;
   const isUnsupportedType = Boolean(selectedDatasource) && !supportedType;
   let skipReason: StepSkipReason = 'user';
-  if (!isEnabled || !hasDatasources) {
+  if (!isEnabled || noDatasources) {
     skipReason = 'requirements_unmet';
   } else if (state === 'no-data' || state === 'error') {
     skipReason = 'after_failure';
@@ -382,7 +386,7 @@ export function DatasourceCheckStep({
         </div>
       )}
 
-      {isEnabled && !isCompleted && !hasDatasources && (
+      {isEnabled && !isCompleted && noDatasources && (
         <Alert title="No data sources available" severity="warning">
           No data sources{datasourceFilter ? ` of type "${datasourceFilter}"` : ''} are configured in this Grafana
           instance.
@@ -390,13 +394,15 @@ export function DatasourceCheckStep({
         </Alert>
       )}
 
-      {isEnabled && !isCompleted && hasDatasources && (
+      {isEnabled && !isCompleted && !noDatasources && (
         <>
           <div className={styles.picker}>
             <Field label="Data source">
               <Combobox
                 options={datasourceOptions}
-                value={selectedDatasource?.name ?? null}
+                value={datasourcesLoading ? rememberedName : (selectedDatasource?.name ?? null)}
+                loading={datasourcesLoading}
+                disabled={datasourcesLoading}
                 onChange={handleDatasourceChange}
                 placeholder={placeholder || 'Select a data source...'}
                 isClearable

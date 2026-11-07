@@ -12,16 +12,17 @@ import { KioskLaunchError } from '../../lib/kiosk-launch-error';
 import { KioskFormError } from '../../lib/input-value';
 import { reportAppInteraction } from '../../lib/analytics';
 import type { KioskPage as Page } from '../../types/kiosk-page.schema';
+import { mockDatasourceList } from '../../test-utils/datasource-list';
 
 jest.mock('../../lib/logging', () => ({ logger: { error: jest.fn(), warn: jest.fn(), exception: jest.fn() } }));
 
 jest.mock('./prepare-kiosk-inputs', () => ({ prepareKioskInputs: jest.fn() }));
 jest.mock('./launch-kiosk-guide', () => ({ launchKioskGuide: jest.fn() }));
 jest.mock('./KioskTile', () => ({ KioskTile: () => null }));
-jest.mock('../interactive-tutorial/datasource-options', () => ({
-  filterDatasourcesByType: () => [],
-  toDatasourceOptions: () => [{ label: 'Private data source', value: 'private-datasource' }],
-}));
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { KioskInteraction: 'kiosk_interaction' },
@@ -130,6 +131,7 @@ it('counts a data source selection without its selected name', async () => {
   jest
     .spyOn(HTMLCanvasElement.prototype, 'getContext')
     .mockReturnValue({ measureText: () => ({ width: 100 }) } as unknown as CanvasRenderingContext2D);
+  mockDatasourceList([{ uid: 'private-uid', name: 'private-datasource', type: 'prometheus' }]);
   render(
     <KioskPage
       page={{
@@ -148,6 +150,8 @@ it('counts a data source selection without its selected name', async () => {
       onLaunch={jest.fn()}
     />
   );
+  expect(screen.getByRole('combobox')).toBeDisabled();
+  await waitFor(() => expect(screen.getByRole('combobox')).toBeEnabled());
   fireEvent.click(screen.getByRole('combobox'));
   fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
   expect(report.mock.calls).toEqual([

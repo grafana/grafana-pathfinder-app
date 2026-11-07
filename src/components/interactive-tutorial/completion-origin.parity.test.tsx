@@ -22,6 +22,7 @@ import {
 } from '../../lib/guide-stats/completion-affordance';
 import { interactiveStepStorage } from '../../lib/user-storage';
 import { testIds } from '../../constants/testIds';
+import { mockDatasourceList, settleDatasourceList } from '../../test-utils/datasource-list';
 
 let mockTerminalStatus: 'connected' | 'disconnected' = 'connected';
 
@@ -100,12 +101,14 @@ jest.mock('../../lib/datasource/run-data-check-query', () => ({
   runDataCheckQuery: jest.fn().mockResolvedValue({ ok: true, hasData: true, seriesCount: 1, rowCount: 3 }),
 }));
 
-jest.mock('@grafana/runtime', () => ({
-  ...jest.requireActual('@grafana/runtime'),
-  getDataSourceSrv: () => ({
-    getList: () => [{ uid: 'prom', name: 'Prometheus', type: 'prometheus', meta: { id: 'prometheus' } }],
-  }),
-}));
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
+
+beforeEach(() =>
+  mockDatasourceList([{ uid: 'prom', name: 'Prometheus', type: 'prometheus', meta: { id: 'prometheus' } }])
+);
 
 const CONTENT_KEY = 'https://example.com/parity-guide/content.json';
 const STEP_ID = 'parity-step';
@@ -199,6 +202,7 @@ const BLOCKS: Record<CompletableBlockType, BlockCase> = {
       <DatasourceCheckStep stepId={STEP_ID} variableName="parityDatasource" query="up" datasourceFilter="prometheus" />
     ),
     complete: async () => {
+      await settleDatasourceList();
       fireEvent.change(await screen.findByLabelText(/select a data source/i), { target: { value: 'Prometheus' } });
       await click(testIds.dataCheck.runQueryButton(STEP_ID));
     },

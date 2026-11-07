@@ -1,16 +1,17 @@
 import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
+import { logger } from '../../lib/logging';
+import { mockDatasourceList, mockDatasourceListFailure } from '../../test-utils/datasource-list';
 
-const mockGetList = jest.fn();
-
-jest.mock('@grafana/runtime', () => ({
-  getDataSourceSrv: () => ({ getList: mockGetList }),
-}));
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 
 jest.mock('../../lib/logging', () => ({
   logger: { warn: jest.fn(), debug: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
-const ds = (name: string, uid: string, type: string) => ({ name, uid, type }) as never;
+const ds = (name: string, uid: string, type: string) => ({ name, uid, type, meta: {} }) as never;
 
 const LIST = [
   ds('Prod metrics', 'uid-prom', 'prometheus'),
@@ -22,12 +23,12 @@ const LIST = [
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGetList.mockReturnValue(LIST);
+  mockDatasourceList(LIST);
 });
 
 describe('filterDatasourcesByType', () => {
-  it('offers every data source when no filter is authored', () => {
-    expect(filterDatasourcesByType().map((d) => d.uid)).toEqual([
+  it('offers every data source when no filter is authored', async () => {
+    expect((await filterDatasourcesByType()).map((d) => d.uid)).toEqual([
       'uid-prom',
       'uid-amp',
       'uid-loki',
@@ -36,28 +37,28 @@ describe('filterDatasourcesByType', () => {
     ]);
   });
 
-  it('matches a type exactly', () => {
-    expect(filterDatasourcesByType('loki').map((d) => d.uid)).toEqual(['uid-loki']);
+  it('matches a type exactly', async () => {
+    expect((await filterDatasourcesByType('loki')).map((d) => d.uid)).toEqual(['uid-loki']);
   });
 
-  it('matches a vendor-prefixed type by substring', () => {
-    expect(filterDatasourcesByType('prometheus').map((d) => d.uid)).toEqual(['uid-prom', 'uid-amp']);
-    expect(filterDatasourcesByType('testdata').map((d) => d.uid)).toEqual(['uid-testdata']);
+  it('matches a vendor-prefixed type by substring', async () => {
+    expect((await filterDatasourcesByType('prometheus')).map((d) => d.uid)).toEqual(['uid-prom', 'uid-amp']);
+    expect((await filterDatasourcesByType('testdata')).map((d) => d.uid)).toEqual(['uid-testdata']);
   });
 
-  it('ignores filter casing', () => {
-    expect(filterDatasourcesByType('PROMETHEUS').map((d) => d.uid)).toEqual(['uid-prom', 'uid-amp']);
+  it('ignores filter casing', async () => {
+    expect((await filterDatasourcesByType('PROMETHEUS')).map((d) => d.uid)).toEqual(['uid-prom', 'uid-amp']);
   });
 
-  it('returns nothing when no type matches', () => {
-    expect(filterDatasourcesByType('elasticsearch')).toEqual([]);
+  it('returns nothing when no type matches', async () => {
+    expect(await filterDatasourcesByType('elasticsearch')).toEqual([]);
   });
 
-  it('returns nothing rather than throwing when the service is unavailable', () => {
-    mockGetList.mockImplementation(() => {
-      throw new Error('srv not ready');
-    });
-    expect(filterDatasourcesByType('prometheus')).toEqual([]);
+  it('returns nothing rather than rejecting when the service is unavailable, and logs why', async () => {
+    const failure = new Error('srv not ready');
+    mockDatasourceListFailure(failure);
+    expect(await filterDatasourcesByType('prometheus')).toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith('[datasource-options] Failed to get datasources', { error: failure });
   });
 });
 

@@ -27,6 +27,10 @@ module.exports = {
   moduleNameMapper: {
     ...require('./.config/jest.config').moduleNameMapper,
     '\\.(svg)$': '<rootDir>/__mocks__/svgMock.js', // Mock SVG files
+    // The real entry eagerly loads runtime internals that suites' partial
+    // @grafana/data mocks break; plugin-compat treats an empty module as a host
+    // without the unstable APIs and falls through to the @grafana/runtime ones.
+    '^@grafana/runtime/unstable$': '<rootDir>/__mocks__/grafanaRuntimeUnstable.js',
   },
 
   // Extend testMatch to include tests/e2e-runner/utils unit tests

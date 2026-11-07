@@ -29,7 +29,6 @@ jest.mock('@grafana/runtime', () => ({
     featureToggles: {},
   },
   hasPermission: jest.fn(),
-  getDataSourceSrv: jest.fn(),
   getBackendSrv: jest.fn(),
 }));
 

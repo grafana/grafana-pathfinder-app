@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DataSourceInstanceSettings } from '@grafana/data';
+import type { DataSourceInstanceListItem } from '@grafana/data';
 
 import { getNormalizedDatasourceType, type SupportedDatasourceType } from '../../constants/datasource-types';
 import { runDataCheckQuery } from '../../lib/datasource/run-data-check-query';
@@ -26,7 +26,7 @@ export interface DataCheckReport {
 }
 
 export interface UseDataCheckOptions {
-  datasource: DataSourceInstanceSettings | null;
+  datasource: DataSourceInstanceListItem | null;
   query?: string;
   timeFrom?: string;
   timeTo?: string;

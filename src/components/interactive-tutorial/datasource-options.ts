@@ -1,6 +1,6 @@
-import type { DataSourceInstanceSettings } from '@grafana/data';
+import type { DataSourceInstanceListItem } from '@grafana/data';
 import type { ComboboxOption } from '@grafana/ui';
-import { getDataSourceSrv } from '@grafana/runtime';
+import { getDataSourceInstanceList } from '@grafana/plugin-compat/datasources';
 import { logger } from '../../lib/logging';
 
 /**
@@ -9,9 +9,9 @@ import { logger } from '../../lib/logging';
  * `grafana-amazonprometheus-datasource`, and `"testdata"` offers
  * `grafana-testdata-datasource`.
  */
-export function filterDatasourcesByType(filter?: string): DataSourceInstanceSettings[] {
+export async function filterDatasourcesByType(filter?: string): Promise<DataSourceInstanceListItem[]> {
   try {
-    const datasources = getDataSourceSrv().getList();
+    const datasources = await getDataSourceInstanceList();
     if (!filter) {
       return datasources;
     }
@@ -27,7 +27,7 @@ export function filterDatasourcesByType(filter?: string): DataSourceInstanceSett
 }
 
 /** Valued by name, not uid — a name is what `{{variable}}` and reftarget selectors match. */
-export function toDatasourceOptions(datasources: DataSourceInstanceSettings[]): Array<ComboboxOption<string>> {
+export function toDatasourceOptions(datasources: DataSourceInstanceListItem[]): Array<ComboboxOption<string>> {
   return datasources.map((ds) => ({
     label: ds.name,
     value: ds.name,
