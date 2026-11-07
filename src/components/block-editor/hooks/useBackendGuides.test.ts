@@ -43,6 +43,7 @@ import { logger } from '../../../lib/logging';
 import { reportAppInteraction } from '../../../lib/analytics';
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { PERSISTED_DIVIDER_MARKDOWN } from '../../../types/app-platform-guide-compat';
+import { guideReadUrl } from '../../../utils/interactive-guides-api';
 import type { JsonGuide } from '../types';
 import { hasManageableBackendGuides, useBackendGuides } from './useBackendGuides';
 
@@ -113,7 +114,24 @@ function loadedGuide(resource: StoredGuide): JsonGuide {
   } as JsonGuide;
 }
 
-async function renderLoaded(items: StoredGuide[]) {
+/** What the single-guide read proxy serves; independent of the list so the two can disagree. */
+let serverGuides: StoredGuide[] = [];
+
+function serveFetch(request: { url: string; method: string }) {
+  if (request.method !== 'GET') {
+    return of({ data: {} });
+  }
+  const name = new URL(request.url, 'http://localhost').searchParams.get('name');
+  const found = serverGuides.find((g) => g.metadata.name === name);
+  return found ? of({ data: found }) : throwError(() => ({ status: 404, data: { message: 'not found' } }));
+}
+
+function writes() {
+  return mockFetch.mock.calls.map(([request]) => request).filter((request) => request.method !== 'GET');
+}
+
+async function renderLoaded(items: StoredGuide[], server: StoredGuide[] = items) {
+  serverGuides = server;
   (fetchBackendGuides as jest.Mock).mockResolvedValue(items);
   const { result } = renderHook(() => useBackendGuides());
   await waitFor(() => expect(result.current.hasLoaded).toBe(true));
@@ -128,7 +146,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser.name = 'Sam Rivera';
   mockUser.login = 'sam';
-  mockFetch.mockReturnValue(of({ data: {} }));
+  serverGuides = [];
+  mockFetch.mockImplementation(serveFetch);
   (getBackendSrv as jest.Mock).mockReturnValue({ fetch: mockFetch });
 });
 
@@ -209,33 +228,47 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(metadata.resourceVersion).toBe('42');
   });
 
-  it('re-reads the list before refusing, so a transient list failure does not block the save', async () => {
+  it('saves a guide that is missing from the loaded list, reading it through the single-guide proxy', async () => {
     const resource = pathCoverPage();
-    // A LIST that failed with an unavailable status resolves to [] rather than an error, so the
-    // snapshot is empty while the resource is very much there.
-    const result = await renderLoaded([]);
-    (fetchBackendGuides as jest.Mock).mockResolvedValue([resource]);
+    // The list truncates silently on large instances, so the stored guide can be absent from it.
+    const result = await renderLoaded([], [resource]);
 
     await act(async () => {
       await result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft');
     });
 
+    expect(mockFetch.mock.calls[0]![0]).toMatchObject({ url: guideReadUrl('alerting-path'), method: 'GET' });
     expect(lastRequest().method).toBe('PUT');
     expect(lastRequest().data.spec.manifest).toEqual(MANIFEST);
     expect(lastRequest().data.metadata.resourceVersion).toBe('42');
   });
 
-  it('refuses to update a resource the server cannot confirm either', async () => {
-    const resource = pathCoverPage();
-    const result = await renderLoaded([]);
+  it('takes resourceVersion from the read, not from a stale loaded list', async () => {
+    const listed = pathCoverPage();
+    const stored = pathCoverPage();
+    stored.metadata.resourceVersion = '43';
+    const result = await renderLoaded([listed], [stored]);
 
-    await expect(result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')).rejects.toThrow(
-      'Could not read the saved guide'
-    );
-    expect(mockFetch).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(stored), 'alerting-path', { name: 'alerting-path' }, 'draft');
+    });
+
+    expect(lastRequest().data.metadata.resourceVersion).toBe('43');
   });
 
-  it('probes without committing, so a live error and the guide-library entry both survive a refusal', async () => {
+  it('refuses to update a resource the server reports missing', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([resource], []);
+
+    await act(async () => {
+      await expect(
+        result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')
+      ).rejects.toThrow(`Could not read the saved guide "alerting-path"`);
+    });
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('refuses without touching the list, so a live error and the guide-library entry both survive', async () => {
     const resource = pathCoverPage();
     (fetchBackendGuides as jest.Mock).mockRejectedValueOnce(new Error('list unavailable'));
     const { result } = renderHook(() => useBackendGuides());
@@ -243,30 +276,30 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     // The failed initial list is what keeps the guide-library entry visible.
     expect(hasManageableBackendGuides(result.current)).toBe(true);
 
-    (fetchBackendGuides as jest.Mock).mockResolvedValue([]);
     await act(async () => {
       await expect(
         result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')
       ).rejects.toThrow('Could not read the saved guide');
     });
 
-    // Committing the probe would clear the error and store an empty catalogue, hiding the only
-    // affordance that could refresh the list — while the save still refuses.
     expect(result.current.error).toBe('list unavailable');
     expect(hasManageableBackendGuides(result.current)).toBe(true);
   });
 
-  it('surfaces a failed probe as itself rather than as an absent resource', async () => {
+  it('surfaces a failed read as itself rather than as an absent resource', async () => {
     const resource = pathCoverPage();
-    const result = await renderLoaded([]);
-    (fetchBackendGuides as jest.Mock).mockRejectedValue(new Error('list unavailable'));
+    const result = await renderLoaded([resource]);
+    const unavailable = { status: 502, data: { message: 'upstream unavailable' } };
+    mockFetch.mockImplementation((request) =>
+      request.method === 'GET' ? throwError(() => unavailable) : serveFetch(request)
+    );
 
     await act(async () => {
-      await expect(
-        result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')
-      ).rejects.toThrow('list unavailable');
+      await expect(result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')).rejects.toBe(
+        unavailable
+      );
     });
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(writes()).toHaveLength(0);
   });
 
   it('falls back to the snapshot resourceVersion when caller metadata omits it', async () => {
@@ -512,6 +545,38 @@ describe('publishGuide / unpublishGuide — annotation passthrough', () => {
     expect(metadata.annotations).toEqual(ANNOTATIONS);
     expect(spec.manifest).toEqual(MANIFEST);
     expect(spec.status).toBe('draft');
+  });
+
+  it('publishes and unpublishes a guide that is missing from the loaded list', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([], [resource]);
+
+    await act(async () => {
+      await result.current.publishGuide('alerting-path', null);
+    });
+    expect(lastRequest().data.spec.status).toBe('published');
+    expect(lastRequest().data.spec.manifest).toEqual(MANIFEST);
+    expect(lastRequest().data.metadata.resourceVersion).toBe('42');
+
+    await act(async () => {
+      await result.current.unpublishGuide('alerting-path', null);
+    });
+    expect(lastRequest().data.spec.status).toBe('draft');
+    expect(lastRequest().data.metadata.annotations).toEqual(ANNOTATIONS);
+  });
+
+  it('publish and unpublish refuse a guide the server reports missing', async () => {
+    const result = await renderLoaded([pathCoverPage()], []);
+
+    await act(async () => {
+      await expect(result.current.publishGuide('alerting-path', null)).rejects.toThrow(
+        'Guide "alerting-path" not found in local list'
+      );
+      await expect(result.current.unpublishGuide('alerting-path', null)).rejects.toThrow(
+        'Guide "alerting-path" not found in local list'
+      );
+    });
+    expect(writes()).toHaveLength(0);
   });
 });
 

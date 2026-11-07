@@ -7,7 +7,7 @@ import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
-import { APP_PLATFORM_API_VERSION, collectionUrl, itemUrl } from '../../../utils/interactive-guides-api';
+import { APP_PLATFORM_API_VERSION, collectionUrl, guideReadUrl, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
 import {
   APP_PLATFORM_REPOSITORY,
@@ -123,6 +123,24 @@ function specWithAuthorDefault(spec: BackendGuideSpec, status: 'draft' | 'publis
     status,
     manifest: applyAuthor(spec.manifest ?? MINTED_MANIFEST, { signedInName: currentUserAuthorName() }),
   };
+}
+
+/**
+ * The stored resource, read singly right before a write. The loaded list cannot stand in for it:
+ * `/custom-guides` truncates silently on large instances. Only a 404 means the guide is gone.
+ */
+async function readStoredGuide(resourceName: string): Promise<BackendGuide | undefined> {
+  try {
+    const response = await lastValueFrom(
+      getBackendSrv().fetch<BackendGuide>({ url: guideReadUrl(resourceName), method: 'GET', showErrorAlert: false })
+    );
+    return response.data;
+  } catch (err) {
+    if ((err as { status?: number } | null)?.status === 404) {
+      return undefined;
+    }
+    throw err;
+  }
 }
 
 /** What a save tells the editor about the author it wrote. */
@@ -245,16 +263,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           throw new Error('Guide title or ID must contain at least one alphanumeric character');
         }
 
-        let existing = existingResourceName ? guides.find((g) => g.metadata.name === existingResourceName) : undefined;
-        // An absent entry does not mean an absent resource: a transient LIST failure resolves to an
-        // empty list rather than an error, so confirm with the server before refusing. Without this
-        // one failed refresh would make the guide permanently unsaveable. Probed rather than
-        // refreshed: committing the result would clear a live error and store an empty catalogue,
-        // hiding the guide-library entry that is the only way back.
-        if (existingResourceName && !existing) {
-          const probed = await fetchBackendGuides(namespace);
-          existing = probed.find((g) => g.metadata.name === existingResourceName);
-        }
+        const existing = existingResourceName ? await readStoredGuide(existingResourceName) : undefined;
         // Fail closed rather than replace a resource whose current spec is not in hand: the write
         // would drop spec.manifest and the provenance annotations, and with no resourceVersion it
         // would not even 409 against a concurrent writer.
@@ -303,7 +312,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         setIsSaving(false);
       }
     },
-    [namespace, guides, refreshGuides]
+    [namespace, refreshGuides]
   );
 
   /**
@@ -317,7 +326,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
 
       setIsSaving(true);
       try {
-        const existing = guides.find((g) => g.metadata.name === resourceName);
+        const existing = await readStoredGuide(resourceName);
         if (!existing) {
           throw new Error(`Guide "${resourceName}" not found in local list`);
         }
@@ -346,7 +355,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         setIsSaving(false);
       }
     },
-    [namespace, guides, refreshGuides]
+    [namespace, refreshGuides]
   );
 
   /**
@@ -360,7 +369,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
 
       setIsSaving(true);
       try {
-        const existing = guides.find((g) => g.metadata.name === resourceName);
+        const existing = await readStoredGuide(resourceName);
         if (!existing) {
           throw new Error(`Guide "${resourceName}" not found in local list`);
         }
@@ -389,7 +398,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         setIsSaving(false);
       }
     },
-    [namespace, guides, refreshGuides]
+    [namespace, refreshGuides]
   );
 
   /**
