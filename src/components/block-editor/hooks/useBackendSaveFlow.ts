@@ -67,7 +67,7 @@ export interface BackendSaveFlowGuidesInterface {
     details?: GuideDetails
   ) => Promise<{ defaultedAuthor?: DefaultedAuthor } | void>;
   refreshGuides: () => Promise<BackendSaveFlowGuideEntry[]>;
-  unpublishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
+  unpublishGuide: (resourceName: string) => Promise<void>;
 }
 
 export interface UseBackendSaveFlowOptions {
@@ -341,7 +341,7 @@ export function useBackendSaveFlow({
       return;
     }
     try {
-      await backendGuides.unpublishGuide(currentGuideResourceName, currentGuideMetadata);
+      await backendGuides.unpublishGuide(currentGuideResourceName);
 
       await backendGuides.refreshGuides();
       // Keep lastPublishedJson set — guide content is unchanged, only status changed.

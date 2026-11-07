@@ -164,8 +164,8 @@ export interface UseBackendGuidesReturn {
     replacesForeignResource?: boolean,
     details?: GuideDetails
   ) => Promise<SaveGuideResult>;
-  publishGuide: (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => Promise<void>;
-  unpublishGuide: (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => Promise<void>;
+  publishGuide: (resourceName: string) => Promise<void>;
+  unpublishGuide: (resourceName: string) => Promise<void>;
   deleteGuide: (resourceName: string) => Promise<void>;
   isSaving: boolean;
 }
@@ -319,7 +319,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
    * Publish an existing guide — sets spec.status to 'published' without changing content.
    */
   const publishGuide = useCallback(
-    async (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => {
+    async (resourceName: string) => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -331,10 +331,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           throw new Error(`Guide "${resourceName}" not found in local list`);
         }
 
-        const metadata = preservedMetadata(resourceName, namespace, {
-          ...existing.metadata,
-          ...(currentMetadata ?? {}),
-        });
+        const metadata = preservedMetadata(resourceName, namespace, existing.metadata);
 
         await lastValueFrom(
           getBackendSrv().fetch({
@@ -362,7 +359,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
    * Unpublish a guide — sets spec.status to 'draft', removing it from the docs panel.
    */
   const unpublishGuide = useCallback(
-    async (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => {
+    async (resourceName: string) => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -374,10 +371,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           throw new Error(`Guide "${resourceName}" not found in local list`);
         }
 
-        const metadata = preservedMetadata(resourceName, namespace, {
-          ...existing.metadata,
-          ...(currentMetadata ?? {}),
-        });
+        const metadata = preservedMetadata(resourceName, namespace, existing.metadata);
 
         await lastValueFrom(
           getBackendSrv().fetch({

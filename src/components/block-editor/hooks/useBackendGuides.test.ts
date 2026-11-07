@@ -314,18 +314,20 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(lastRequest().data.metadata.resourceVersion).toBe('42');
   });
 
-  it('publishGuide keeps annotations and resourceVersion when caller metadata is partial', async () => {
-    const resource = pathCoverPage();
-    const result = await renderLoaded([resource]);
+  it('publish and unpublish write the metadata they read, not a stale loaded list', async () => {
+    const listed = pathCoverPage();
+    const stored = pathCoverPage();
+    stored.metadata.resourceVersion = '43';
+    stored.metadata.annotations = { ...ANNOTATIONS, 'pathfinderbackend.ext.grafana.app/source-package': 'renamed' };
+    const result = await renderLoaded([listed], [stored]);
 
-    await act(async () => {
-      await result.current.publishGuide('alerting-path', { name: 'alerting-path' });
-    });
-
-    const { metadata } = lastRequest().data;
-    expect(metadata.resourceVersion).toBe('42');
-    expect(metadata.annotations).toEqual(ANNOTATIONS);
-    expect(metadata.labels).toEqual({ tier: 'gold' });
+    for (const write of [result.current.publishGuide, result.current.unpublishGuide]) {
+      await act(async () => {
+        await write('alerting-path');
+      });
+      expect(lastRequest().data.metadata.resourceVersion).toBe('43');
+      expect(lastRequest().data.metadata.annotations).toEqual(stored.metadata.annotations);
+    }
   });
 
   it('creates a brand-new guide as a complete package, with no inherited annotations', async () => {
@@ -522,7 +524,7 @@ describe('publishGuide / unpublishGuide — annotation passthrough', () => {
     const result = await renderLoaded([resource]);
 
     await act(async () => {
-      await result.current.publishGuide('alerting-path', resource.metadata);
+      await result.current.publishGuide('alerting-path');
     });
 
     const { metadata, spec } = lastRequest().data;
@@ -538,7 +540,7 @@ describe('publishGuide / unpublishGuide — annotation passthrough', () => {
     const result = await renderLoaded([resource]);
 
     await act(async () => {
-      await result.current.unpublishGuide('alerting-path', resource.metadata);
+      await result.current.unpublishGuide('alerting-path');
     });
 
     const { metadata, spec } = lastRequest().data;
@@ -552,14 +554,14 @@ describe('publishGuide / unpublishGuide — annotation passthrough', () => {
     const result = await renderLoaded([], [resource]);
 
     await act(async () => {
-      await result.current.publishGuide('alerting-path', null);
+      await result.current.publishGuide('alerting-path');
     });
     expect(lastRequest().data.spec.status).toBe('published');
     expect(lastRequest().data.spec.manifest).toEqual(MANIFEST);
     expect(lastRequest().data.metadata.resourceVersion).toBe('42');
 
     await act(async () => {
-      await result.current.unpublishGuide('alerting-path', null);
+      await result.current.unpublishGuide('alerting-path');
     });
     expect(lastRequest().data.spec.status).toBe('draft');
     expect(lastRequest().data.metadata.annotations).toEqual(ANNOTATIONS);
@@ -569,10 +571,10 @@ describe('publishGuide / unpublishGuide — annotation passthrough', () => {
     const result = await renderLoaded([pathCoverPage()], []);
 
     await act(async () => {
-      await expect(result.current.publishGuide('alerting-path', null)).rejects.toThrow(
+      await expect(result.current.publishGuide('alerting-path')).rejects.toThrow(
         'Guide "alerting-path" not found in local list'
       );
-      await expect(result.current.unpublishGuide('alerting-path', null)).rejects.toThrow(
+      await expect(result.current.unpublishGuide('alerting-path')).rejects.toThrow(
         'Guide "alerting-path" not found in local list'
       );
     });
@@ -695,13 +697,13 @@ describe('author attribution', () => {
       await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft', false, {
         authorName: 'Dana',
       });
-      await result.current.publishGuide('alerting-path', resource.metadata);
-      await result.current.unpublishGuide('alerting-path', resource.metadata);
+      await result.current.publishGuide('alerting-path');
+      await result.current.unpublishGuide('alerting-path');
     });
     mockFetch.mockReturnValue(throwError(() => new Error('boom')));
     (fetchBackendGuides as jest.Mock).mockRejectedValue(new Error('boom'));
     await act(async () => {
-      await result.current.publishGuide('alerting-path', resource.metadata).catch(() => {});
+      await result.current.publishGuide('alerting-path').catch(() => {});
       await result.current.deleteGuide('alerting-path').catch(() => {});
       await result.current.refreshGuides().catch(() => {});
     });
@@ -737,13 +739,13 @@ describe('author attribution', () => {
     const result = await renderLoaded([resource]);
 
     await act(async () => {
-      await result.current.publishGuide('alerting-path', resource.metadata);
+      await result.current.publishGuide('alerting-path');
     });
     expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Sam Rivera' });
     expect(lastRequest().data.spec.status).toBe('published');
 
     await act(async () => {
-      await result.current.unpublishGuide('alerting-path', resource.metadata);
+      await result.current.unpublishGuide('alerting-path');
     });
     expect(lastRequest().data.spec.manifest.author).toEqual({ name: 'Sam Rivera' });
     expect(lastRequest().data.spec.status).toBe('draft');
@@ -756,7 +758,7 @@ describe('author attribution', () => {
     const result = await renderLoaded([legacy]);
 
     await act(async () => {
-      await result.current.publishGuide('alerting-path', legacy.metadata);
+      await result.current.publishGuide('alerting-path');
     });
 
     expect(lastRequest().data.spec.manifest).toEqual({

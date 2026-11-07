@@ -373,7 +373,7 @@ describe('useBackendSaveFlow — performUnpublish', () => {
       await result.current.performUnpublish();
     });
 
-    expect(backendGuides.unpublishGuide).toHaveBeenCalledWith('g1', { name: 'g1' });
+    expect(backendGuides.unpublishGuide).toHaveBeenCalledWith('g1');
     expect(result.current.lastPublishedJson).toBe(JSON.stringify(g));
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ payload: ['Guide unpublished.'] }));
   });
