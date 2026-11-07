@@ -26,7 +26,7 @@ done
 # Scoped to the authoring scripts rather than every tracked .sh: the older
 # scripts carry warnings of their own, and cleaning them up belongs to a PR
 # that is about them. Widen the glob when they are fixed.
-CHECKED=(scripts/lib/*.sh scripts/upsert-*.sh scripts/tests/*.sh)
+CHECKED=(scripts/lib/*.sh scripts/upsert-*.sh scripts/sync-*.sh scripts/tests/*.sh)
 
 if command -v shellcheck >/dev/null; then
   echo "shellcheck --severity=warning over ${#CHECKED[@]} scripts"
