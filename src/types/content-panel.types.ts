@@ -104,7 +104,7 @@ export interface PersistedTabData {
   /** Optional for records written before tab kind became a required runtime invariant. */
   type?: LearningJourneyTabType;
   packageInfo?: PackageOpenInfo;
-  /** Persisted so the selected Path Tracks tab survives a surface switch; `activeTrackMilestones` is re-derived by the cover page. */
+  /** Persisted so the selected Path Tracks tab survives a surface switch; `activeTrackMilestones` is re-resolved on restore and by the cover page. */
   activeTrackId?: string | null;
   activeTrackPathId?: string | null;
 }

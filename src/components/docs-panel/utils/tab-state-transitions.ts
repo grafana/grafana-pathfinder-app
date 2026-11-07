@@ -1,4 +1,5 @@
 import type { LearningJourneyTab, PackageOpenInfo, PersistedTabData } from '../../../types/content-panel.types';
+import { getManifestTracks } from '../../../types/package.types';
 import type { TabGates } from './tab-gates';
 import { getGuideStripTabs, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
 
@@ -57,7 +58,7 @@ export function pruneGatedTabState(state: TabStateSnapshot, gates: TabGates): Ta
   return { tabs, activeTabId, changed: true };
 }
 
-/** A track's resolved guides are re-derived, like `activeTrackMilestones`, so they stay out of storage. */
+/** A track's resolved guides are re-derived (see `restoredTrackGuideIds`), so they stay out of storage. */
 function persistedPackageInfo(packageInfo: PackageOpenInfo | undefined): PackageOpenInfo | undefined {
   if (!packageInfo?.trackMilestones) {
     return packageInfo;
@@ -78,4 +79,20 @@ export function projectPersistedTabs(tabs: LearningJourneyTab[]): PersistedTabDa
       packageInfo: persistedPackageInfo(tab.packageInfo),
       ...(tab.activeTrackId && { activeTrackId: tab.activeTrackId, activeTrackPathId: tab.activeTrackPathId }),
     }));
+}
+
+/**
+ * The guide ids to resolve back into `activeTrackMilestones` for a restored tab, from the path manifest it was
+ * opened with. Without them a track member reached without its cover, such as a hub jump, navigates Foundations.
+ */
+export function restoredTrackGuideIds(tab: LearningJourneyTab): string[] | undefined {
+  if (!tab.activeTrackId || tab.activeTrackMilestones) {
+    return undefined;
+  }
+  const manifest = tab.packageInfo?.packageManifest;
+  const pathId = typeof manifest?.id === 'string' ? manifest.id : tab.packageInfo?.packageId;
+  if (!pathId || tab.activeTrackPathId !== pathId) {
+    return undefined;
+  }
+  return getManifestTracks(manifest).find((track) => track.trackId === tab.activeTrackId)?.guides;
 }
