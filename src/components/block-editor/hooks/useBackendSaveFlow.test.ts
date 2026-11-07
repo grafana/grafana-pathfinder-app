@@ -378,6 +378,22 @@ describe('useBackendSaveFlow — performUnpublish', () => {
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ payload: ['Guide unpublished.'] }));
   });
 
+  it('unpublishes a tracked guide that is missing from the loaded list', async () => {
+    const g = guide();
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ resourceName: 'g1', backendStatus: 'published', lastPublishedJson: JSON.stringify(g) })
+    );
+    const backendGuides = makeBackendGuides({ guides: [] });
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+
+    await act(async () => {
+      await result.current.performUnpublish();
+    });
+
+    expect(backendGuides.unpublishGuide).toHaveBeenCalledWith('g1');
+  });
+
   it('is a no-op when there is no tracked guide', async () => {
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides();
