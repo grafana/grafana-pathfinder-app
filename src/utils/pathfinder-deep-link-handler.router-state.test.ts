@@ -101,22 +101,48 @@ describe('consumed deep links with Grafana browser history', () => {
     }
   );
 
-  it('preserves fullscreen doc ownership while consuming panel mode under a subpath', async () => {
-    window.history.replaceState({}, '', '/grafana/a/grafana-pathfinder-app/fullscreen?doc=bundled%3Acheerlights');
-    setLocationService(new HistoryWrapper(createBrowserHistory({ basename: '/grafana' })));
-    installDeepLinkNavListener(deps);
-    expect(handlePathfinderDeepLink(deps)).toBe(false);
-    expect(locationService.getSearch().get('doc')).toBe(doc);
-    expect(launch).not.toHaveBeenCalled();
+  it.each(['sidebar', 'floating'])(
+    'launches a fresh dashboard arrival after fullscreen consumes panelMode=%s under a subpath',
+    async (mode) => {
+      window.history.replaceState(
+        {},
+        '',
+        `/grafana/a/grafana-pathfinder-app/fullscreen?orgId=1&doc=${encodeURIComponent(doc)}&panelMode=${mode}#guide`
+      );
+      setLocationService(new HistoryWrapper(createBrowserHistory({ basename: '/grafana' })));
+      locationService.getHistory().replace({ ...locationService.getLocation(), state: { draft: 'keep-me' } });
+      installDeepLinkNavListener(deps);
 
-    locationService.partial({ panelMode: 'floating' });
-    await flush();
-    expect(locationService.getLocation().pathname).toBe('/a/grafana-pathfinder-app/fullscreen');
-    expect(window.location.pathname).toBe('/grafana/a/grafana-pathfinder-app/fullscreen');
-    expect(locationService.getSearch().get('doc')).toBe(doc);
-    expect(locationService.getSearch().has('panelMode')).toBe(false);
-    expect(launch).not.toHaveBeenCalled();
-  });
+      expect(handlePathfinderDeepLink(deps)).toBe(true);
+      await flush();
+      expect(locationService.getLocation()).toMatchObject({
+        pathname: '/a/grafana-pathfinder-app/fullscreen',
+        search: '?orgId=1&doc=bundled%3Acheerlights',
+        hash: '#guide',
+        state: { draft: 'keep-me' },
+      });
+      expect(window.location.pathname).toBe('/grafana/a/grafana-pathfinder-app/fullscreen');
+      expect(launch).not.toHaveBeenCalled();
+
+      locationService.replace({
+        pathname: '/d/cheerlights',
+        search: `?orgId=1&doc=${encodeURIComponent(doc)}`,
+        hash: '#panel-3',
+        state: { draft: 'keep-me' },
+      });
+      await flush();
+
+      expect(locationService.getLocation()).toMatchObject({
+        pathname: '/d/cheerlights',
+        search: '?orgId=1',
+        hash: '#panel-3',
+        state: { draft: 'keep-me' },
+      });
+      expect(window.location.pathname).toBe('/grafana/d/cheerlights');
+      expect(launch).toHaveBeenCalledTimes(1);
+      expect(launch).toHaveBeenCalledWith(expect.objectContaining({ url: doc }));
+    }
+  );
 
   it.each(['', '/grafana'])('routes a fullscreen doc arrival under basename %s without replay', async (basename) => {
     arrive(basename, '&panelMode=fullscreen&type=learning-journey');
