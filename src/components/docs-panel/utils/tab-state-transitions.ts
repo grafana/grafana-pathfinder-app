@@ -1,4 +1,4 @@
-import type { LearningJourneyTab, PersistedTabData } from '../../../types/content-panel.types';
+import type { LearningJourneyTab, PackageOpenInfo, PersistedTabData } from '../../../types/content-panel.types';
 import type { TabGates } from './tab-gates';
 import { getGuideStripTabs, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
 
@@ -57,6 +57,15 @@ export function pruneGatedTabState(state: TabStateSnapshot, gates: TabGates): Ta
   return { tabs, activeTabId, changed: true };
 }
 
+/** A track's resolved guides are re-derived, like `activeTrackMilestones`, so they stay out of storage. */
+function persistedPackageInfo(packageInfo: PackageOpenInfo | undefined): PackageOpenInfo | undefined {
+  if (!packageInfo?.trackMilestones) {
+    return packageInfo;
+  }
+  const { trackMilestones: _trackMilestones, ...persisted } = packageInfo;
+  return persisted;
+}
+
 export function projectPersistedTabs(tabs: LearningJourneyTab[]): PersistedTabData[] {
   return tabs
     .filter((tab) => tab.type !== 'recommendations' && tab.type !== 'browse')
@@ -66,7 +75,7 @@ export function projectPersistedTabs(tabs: LearningJourneyTab[]): PersistedTabDa
       baseUrl: tab.baseUrl,
       currentUrl: tab.currentUrl,
       type: tab.type,
-      packageInfo: tab.packageInfo,
+      packageInfo: persistedPackageInfo(tab.packageInfo),
       ...(tab.activeTrackId && { activeTrackId: tab.activeTrackId, activeTrackPathId: tab.activeTrackPathId }),
     }));
 }

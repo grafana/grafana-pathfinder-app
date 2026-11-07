@@ -283,6 +283,22 @@ describe('projectPersistedTabs', () => {
     expect(persistedFoundations).not.toHaveProperty('activeTrackPathId');
   });
 
+  it("leaves a track's resolved guides out of the persisted package info", () => {
+    const trackMilestones = [{ id: 'ops-1', number: 1, title: 'Ops 1', url: 'backend-guide:ops-1', isActive: false }];
+    const opened: LearningJourneyTab = {
+      ...tab('member', 'docs'),
+      packageInfo: { packageId: 'path-a', trackId: 'ops', trackMilestones },
+      activeTrackId: 'ops',
+      activeTrackPathId: 'path-a',
+      activeTrackMilestones: trackMilestones,
+    };
+
+    const [persisted] = projectPersistedTabs([opened]);
+
+    expect(persisted!.packageInfo).toEqual({ packageId: 'path-a', trackId: 'ops' });
+    expect(opened.packageInfo!.trackMilestones).toBe(trackMilestones);
+  });
+
   it.each([{ tabs: [] }, { tabs: [recommendations] }])(
     'returns an empty array for non-persistable input %#',
     ({ tabs }) => {

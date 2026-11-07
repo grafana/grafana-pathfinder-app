@@ -1044,13 +1044,22 @@ describe('ContextPanelRenderer sidebar hub', () => {
         expect(packageInfo.resolvedMilestones).toBeUndefined();
       });
 
-      it('keeps an unpublished milestone disabled and retries a failed load', async () => {
+      const locked = (id: string, number: number): Milestone => ({
+        id,
+        number,
+        title: id,
+        url: '',
+        isActive: false,
+        isLocked: true,
+      });
+
+      it.each([
+        ['returns nothing', []],
+        ['locks every milestone', [locked('lab-01', 1), locked('lab-02', 2)]],
+      ])('offers a retry when the resolver %s, then keeps an unpublished milestone disabled', async (_, failure) => {
         mockResolvePackageMilestones
-          .mockRejectedValueOnce(new Error('unavailable'))
-          .mockResolvedValueOnce([
-            ...resolvedAs(['lab-01']),
-            { id: 'lab-02', number: 2, title: 'Title lab-02', url: '', isActive: false, isLocked: true },
-          ]);
+          .mockResolvedValueOnce(failure)
+          .mockResolvedValueOnce([...resolvedAs(['lab-01']), { ...locked('lab-02', 2), title: 'Title lab-02' }]);
         publish(published('short', { manifest: { type: 'path', milestones: ['lab-01', 'lab-02'] } }));
         setup({ recommendations: [pkg('one')] });
 
@@ -1065,6 +1074,25 @@ describe('ContextPanelRenderer sidebar hub', () => {
         expect(unpublished).toBeDisabled();
         expect(unpublished).toHaveTextContent('Unavailable');
         expect(within(details).queryByRole('alert')).not.toBeInTheDocument();
+        expect(mockResolvePackageMilestones).toHaveBeenCalledTimes(2);
+      });
+
+      it('follows an assigned track that loads after the row is shown', async () => {
+        publish(workshop());
+        const { rerender } = setup({ recommendations: [pkg('one')] });
+        const assigned = [assignment('workshop', { trackId: 'logs' })];
+        mockUseMyAssignments.mockReturnValue({
+          ...mockUseMyAssignments.mock.results.at(-1)!.value,
+          notDone: assigned,
+          assignmentByTargetId: new Map(assigned.map((a) => [a.targetId, a])),
+        });
+        rerender(<ContextPanel.Component model={model as never} />);
+
+        const details = await expand();
+
+        expect(within(details).getByRole('combobox', { name: 'Track' })).toHaveValue('Logs');
+        expect(await milestoneButtons(details)).toHaveLength(2);
+        expect(mockResolvePackageMilestones).toHaveBeenCalledWith(['setup', 'l-1']);
       });
 
       it('ignores a milestone click while another launch is still opening', async () => {

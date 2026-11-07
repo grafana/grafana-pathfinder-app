@@ -39,7 +39,7 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       gap: theme.spacing(1),
       marginBottom: theme.spacing(1.5),
-      '& > label': { flexShrink: 0, fontSize: theme.typography.sm.fontSize, color: theme.colors.text.secondary },
+      '& > label': { flexShrink: 0, fontSize: theme.typography.bodySmall.fontSize, color: theme.colors.text.secondary },
       '& > div': { flex: 1, minWidth: 0 },
     }),
     detailsHeading: css({

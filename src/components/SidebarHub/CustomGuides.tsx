@@ -36,45 +36,54 @@ function sequenceIds(members: CustomPathMembers, trackId: string): string[] {
   return members.tracks.find((track) => track.trackId === trackId)?.guides ?? members.milestoneIds;
 }
 
-/** Lazily resolves the selected sequence on first expand; `null` marks a failed resolve. */
+interface ResolvedSequence {
+  milestones: Milestone[];
+  /** Nothing in the sequence can be opened, which is how the resolver reports an outage. */
+  failed: boolean;
+}
+
+/** Lazily resolves the selected sequence on first expand. */
 function usePathMilestones(members: CustomPathMembers | undefined, expanded: boolean) {
-  const [trackId, setTrackId] = useState(members?.initialTrackId ?? FOUNDATIONS_TRACK_ID);
-  const [resolved, setResolved] = useState<Record<string, Milestone[] | null>>({});
+  // Only an explicit pick is state, so an assignment that loads after the row still selects its track.
+  const [picked, setPicked] = useState<string>();
+  const trackId = picked ?? members?.initialTrackId ?? FOUNDATIONS_TRACK_ID;
+  const [resolved, setResolved] = useState<Record<string, ResolvedSequence>>({});
   const key = members ? `${trackId}:${sequenceIds(members, trackId).join('\n')}` : '';
-  const milestones = resolved[key];
+  const sequence = resolved[key];
 
   useEffect(() => {
-    if (!expanded || !members || milestones !== undefined) {
+    if (!expanded || !members || sequence) {
       return;
     }
     let cancelled = false;
-    const settle = (value: Milestone[] | null) => {
+    const settle = (milestones: Milestone[]) => {
       if (!cancelled) {
-        setResolved((current) => ({ ...current, [key]: value }));
+        const failed = !milestones.some((milestone) => !milestone.isLocked);
+        setResolved((current) => ({ ...current, [key]: { milestones, failed } }));
       }
     };
-    resolveInBatches(sequenceIds(members, trackId)).then(settle, () => settle(null));
+    resolveInBatches(sequenceIds(members, trackId)).then(settle, () => settle([]));
     return () => {
       cancelled = true;
     };
-  }, [expanded, members, key, trackId, milestones]);
+  }, [expanded, members, key, trackId, sequence]);
 
   const retry = () =>
     setResolved((current) => Object.fromEntries(Object.entries(current).filter(([entry]) => entry !== key)));
-  return { trackId, setTrackId, milestones, retry };
+  return { trackId, setTrackId: setPicked, sequence, retry };
 }
 
 function usePathExpansion(members: CustomPathMembers | undefined): HubExpansion | undefined {
   const styles = useStyles2(getSidebarHubStyles);
   const trackFieldId = useId();
   const [expanded, setExpanded] = useState(false);
-  const { trackId, setTrackId, milestones, retry } = usePathMilestones(members, expanded);
+  const { trackId, setTrackId, sequence, retry } = usePathMilestones(members, expanded);
   useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
   if (!members) {
     return undefined;
   }
 
-  const modules = milestones ?? [];
+  const modules = sequence?.milestones ?? [];
   const progress: Record<string, number> = {};
   for (const { milestone, percent } of journeyMilestonePercentages(members.baseUrl, modules)) {
     if (milestone.id && percent !== undefined) {
@@ -89,7 +98,7 @@ function usePathExpansion(members: CustomPathMembers | undefined): HubExpansion 
     hasDetails: true,
     hasModules: true,
     modules,
-    isResolving: expanded && milestones === undefined,
+    isResolving: expanded && !sequence,
     totalSteps: sequenceIds(members, trackId).length,
     progress,
     currentIndex: currentIndex >= 0 ? currentIndex : undefined,
@@ -107,7 +116,7 @@ function usePathExpansion(members: CustomPathMembers | undefined): HubExpansion 
         />
       </div>
     ),
-    onRetry: milestones === null ? retry : undefined,
+    onRetry: sequence?.failed ? retry : undefined,
     onToggle: () => setExpanded((value) => !value),
     onOpenModule: (milestone) => members.openMilestone(milestone, modules, onTrack ? trackId : undefined),
   };
