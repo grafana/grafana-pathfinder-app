@@ -1053,12 +1053,9 @@ describe('ContextPanelRenderer sidebar hub', () => {
         isLocked: true,
       });
 
-      it.each([
-        ['returns nothing', []],
-        ['locks every milestone', [locked('lab-01', 1), locked('lab-02', 2)]],
-      ])('offers a retry when the resolver %s, then keeps an unpublished milestone disabled', async (_, failure) => {
+      it('offers a retry when the resolver returns nothing, then keeps an unpublished milestone disabled', async () => {
         mockResolvePackageMilestones
-          .mockResolvedValueOnce(failure)
+          .mockResolvedValueOnce([])
           .mockResolvedValueOnce([...resolvedAs(['lab-01']), { ...locked('lab-02', 2), title: 'Title lab-02' }]);
         publish(published('short', { manifest: { type: 'path', milestones: ['lab-01', 'lab-02'] } }));
         setup({ recommendations: [pkg('one')] });
@@ -1075,6 +1072,43 @@ describe('ContextPanelRenderer sidebar hub', () => {
         expect(unpublished).toHaveTextContent('Unavailable');
         expect(within(details).queryByRole('alert')).not.toBeInTheDocument();
         expect(mockResolvePackageMilestones).toHaveBeenCalledTimes(2);
+      });
+
+      it('lists a path with nothing published yet as unavailable and checks again on the next expand', async () => {
+        mockResolvePackageMilestones
+          .mockResolvedValueOnce([locked('lab-01', 1), locked('lab-02', 2)])
+          .mockResolvedValueOnce(resolvedAs(['lab-01', 'lab-02']));
+        publish(published('short', { manifest: { type: 'path', milestones: ['lab-01', 'lab-02'] } }));
+        setup({ recommendations: [pkg('one')] });
+
+        const details = await expand();
+        const rows = await within(details).findAllByRole('button', { name: /lab-0/ });
+        expect(rows.every((row) => row.hasAttribute('disabled'))).toBe(true);
+        expect(within(details).queryByRole('alert')).not.toBeInTheDocument();
+
+        await click(screen.getByTestId(testIds.sidebarHub.customRowToggle(0)));
+        await expand();
+
+        expect(await milestoneButtons(screen.getByTestId(testIds.sidebarHub.customRowDetails(0)))).toHaveLength(2);
+        expect(mockResolvePackageMilestones).toHaveBeenCalledTimes(2);
+      });
+
+      it('opens a track-only path on its first track instead of an empty Fundamentals list', async () => {
+        publish(
+          published('roles', {
+            title: 'Roles',
+            manifest: { type: 'path', tracks: [{ trackId: 'ops', label: 'Ops', guides: ['ops-1', 'ops-2'] }] },
+          })
+        );
+        setup({ recommendations: [pkg('one')] });
+
+        const details = await expand();
+        const track = within(details).getByRole('combobox', { name: 'Track' });
+
+        expect(track).toHaveValue('Ops');
+        expect(await milestoneButtons(details)).toHaveLength(2);
+        expect(within(details).queryByRole('alert')).not.toBeInTheDocument();
+        expect(mockResolvePackageMilestones.mock.calls.map(([ids]) => ids)).toEqual([['ops-1', 'ops-2']]);
       });
 
       it('follows an assigned track that loads after the row is shown', async () => {
