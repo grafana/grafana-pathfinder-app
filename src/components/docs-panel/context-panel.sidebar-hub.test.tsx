@@ -1129,6 +1129,25 @@ describe('ContextPanelRenderer sidebar hub', () => {
         expect(mockResolvePackageMilestones).toHaveBeenCalledWith(['setup', 'l-1']);
       });
 
+      it('keeps an in-flight expand when a catalogue refresh rebuilds the row', async () => {
+        let settle: (milestones: Milestone[]) => void = () => {};
+        mockResolvePackageMilestones
+          .mockImplementationOnce(() => new Promise<Milestone[]>((resolve) => (settle = resolve)))
+          .mockImplementation(() => new Promise<Milestone[]>(() => {}));
+        const short = () => published('short', { manifest: { type: 'path', milestones: ['lab-01', 'lab-02'] } });
+        publish(short());
+        const { rerender } = setup({ recommendations: [pkg('one')] });
+
+        const details = await expand();
+        expect(screen.getByTestId(testIds.sidebarHub.customRowDetailsLoading(0))).toBeInTheDocument();
+        publish(short());
+        rerender(<ContextPanel.Component model={model as never} />);
+        await act(async () => settle(resolvedAs(['lab-01', 'lab-02'])));
+
+        expect(await milestoneButtons(details)).toHaveLength(2);
+        expect(mockResolvePackageMilestones).toHaveBeenCalledTimes(1);
+      });
+
       it('ignores a milestone click while another launch is still opening', async () => {
         let finish: () => void = () => {};
         openDocsPage.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));

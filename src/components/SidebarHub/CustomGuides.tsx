@@ -43,17 +43,29 @@ function sequenceIds(members: CustomPathMembers, trackId: string): string[] {
   return members.tracks.find((track) => track.trackId === trackId)?.guides ?? members.milestoneIds;
 }
 
+// Guide ids, track ids and the `backend-guide:` base URL never contain a newline.
+const KEY_SEPARATOR = '\n';
+
+/** A string, so the resolve effect survives every catalogue or assignment refresh rebuilding `members`. */
+function sequenceKey(members: CustomPathMembers, trackId: string): string {
+  return [members.baseUrl, trackId, ...sequenceIds(members, trackId)].join(KEY_SEPARATOR);
+}
+
+function idsFromKey(key: string): string[] {
+  return key.split(KEY_SEPARATOR).slice(2);
+}
+
 /** Lazily resolves the selected sequence on first expand; an empty result is a failed load. */
 function usePathMilestones(members: CustomPathMembers | undefined, expanded: boolean) {
   // Only an explicit pick is state, so an assignment that loads after the row still selects its track.
   const [picked, setPicked] = useState<string>();
   const trackId = picked ?? defaultTrackId(members);
   const [resolved, setResolved] = useState<Record<string, Milestone[]>>({});
-  const key = members ? `${trackId}:${sequenceIds(members, trackId).join('\n')}` : '';
+  const key = members ? sequenceKey(members, trackId) : '';
   const sequence = resolved[key];
 
   useEffect(() => {
-    if (!expanded || !members || sequence) {
+    if (!expanded || !key || sequence) {
       return;
     }
     let cancelled = false;
@@ -62,11 +74,11 @@ function usePathMilestones(members: CustomPathMembers | undefined, expanded: boo
         setResolved((current) => ({ ...current, [key]: milestones }));
       }
     };
-    resolveInBatches(sequenceIds(members, trackId)).then(settle, () => settle([]));
+    resolveInBatches(idsFromKey(key)).then(settle, () => settle([]));
     return () => {
       cancelled = true;
     };
-  }, [expanded, members, key, trackId, sequence]);
+  }, [expanded, key, sequence]);
 
   const retry = () =>
     setResolved((current) => Object.fromEntries(Object.entries(current).filter(([entry]) => entry !== key)));
