@@ -913,3 +913,64 @@ it('keeps automatic objective evaluation opted out of command execution', async 
   await waitFor(() => expect(mockCheck).toHaveBeenCalled());
   expect(mockCheck).toHaveBeenCalledWith(expect.objectContaining({ allowCodaExecution: false }));
 });
+
+it('completes token objectives promptly after asynchronous success without adding checks to ordinary steps', async () => {
+  jest.useFakeTimers();
+  const done = jest.fn();
+  const objective = 'workflow-ready:cloud-access-policy-token';
+  mockCheck.mockImplementation(async () => ({
+    verdict: document.querySelector('[data-testid="generate-token-success-message"]') ? 'satisfied' : 'unsatisfied',
+  }));
+  const view = render(
+    <CompletionObservationProvider contentKey="guide">
+      <Step objectives={[objective]} onComplete={done} />
+    </CompletionObservationProvider>
+  );
+  try {
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(300);
+    });
+    expect(done).not.toHaveBeenCalled();
+    const success = document.createElement('div');
+    success.dataset.testid = 'generate-token-success-message';
+    await act(async () => {
+      document.body.append(success);
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(50);
+    });
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(mockCheck.mock.calls.every(([options]) => options.requirements[0] === objective)).toBe(true);
+    view.unmount();
+    success.remove();
+  } finally {
+    view.unmount();
+    jest.useRealTimers();
+  }
+});
+
+it('does not add a token objective to an ordinary action-based step', async () => {
+  jest.useFakeTimers();
+  const done = jest.fn();
+  const view = render(
+    <CompletionObservationProvider contentKey="guide">
+      <Step onComplete={done} />
+    </CompletionObservationProvider>
+  );
+  const success = document.createElement('div');
+  success.dataset.testid = 'generate-token-success-message';
+  try {
+    await act(async () => {
+      document.body.append(success);
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(100);
+    });
+    expect(mockCheck).not.toHaveBeenCalled();
+    expect(done).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Assist'));
+    expect(done).toHaveBeenCalledTimes(1);
+  } finally {
+    view.unmount();
+    success.remove();
+    jest.useRealTimers();
+  }
+});

@@ -118,6 +118,17 @@ function validateArgumentFormat(
   path: Array<string | number>
 ): ConditionIssue | null {
   switch (prefix) {
+    case ParameterizedRequirementPrefix.WORKFLOW_READY:
+      if (argument !== 'cloud-access-policy-token') {
+        return {
+          condition: fullCondition,
+          message: 'Unsupported workflow state check',
+          code: 'invalid_format',
+          path,
+        };
+      }
+      break;
+
     case ParameterizedRequirementPrefix.ON_PAGE:
       // Path should start with '/'
       if (!argument.startsWith('/')) {

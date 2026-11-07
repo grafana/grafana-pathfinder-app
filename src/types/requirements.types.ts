@@ -32,6 +32,7 @@ export enum ParameterizedRequirementPrefix {
   PLUGIN_ENABLED = 'plugin-enabled:',
   HAS_DASHBOARD_NAMED = 'has-dashboard-named:',
   ON_PAGE = 'on-page:',
+  WORKFLOW_READY = 'workflow-ready:',
   HAS_FEATURE = 'has-feature:',
   IN_ENVIRONMENT = 'in-environment:',
   MIN_VERSION = 'min-version:',
@@ -116,6 +117,7 @@ export const PARAMETERIZED_REQUIREMENT_PREFIXES: readonly string[] = Object.free
  */
 export const PARAMETERIZED_REQUIREMENT_EXAMPLES: ReadonlyArray<{ prefix: string; example: string }> = Object.freeze([
   { prefix: 'on-page:', example: 'on-page:/dashboards' },
+  { prefix: 'workflow-ready:', example: 'workflow-ready:cloud-access-policy-token' },
   { prefix: 'has-datasource:', example: 'has-datasource:prometheus' },
   { prefix: 'has-plugin:', example: 'has-plugin:grafana-clock-panel' },
   { prefix: 'has-permission:', example: 'has-permission:dashboards.create' },
@@ -164,6 +166,7 @@ export const REQUIREMENT_DESCRIPTIONS: Readonly<Record<string, string>> = Object
   'has-plugin:': 'A plugin with the given ID is installed (e.g. has-plugin:grafana-clock-panel)',
   'plugin-enabled:': 'A plugin with the given ID is installed and enabled',
   'has-dashboard-named:': 'A dashboard with the exact title (case-insensitive) exists',
+  'workflow-ready:': 'A supported workflow has confirmed its successful outcome',
   'on-page:': 'Current URL path matches the given value (e.g. on-page:/explore)',
   'has-feature:': 'A Grafana feature toggle is enabled (e.g. has-feature:publicDashboards)',
   'in-environment:': 'Running in a specific environment (e.g. in-environment:cloud)',
