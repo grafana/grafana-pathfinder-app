@@ -30,6 +30,14 @@ function rowAccessibleName(guide: PathGuide): string {
   return guide.title;
 }
 
+// Read by link-handler.hook.ts as `row_state`; keep in sync with its allowlist.
+function rowState(guide: PathGuide): 'completed' | 'up_next' | 'ahead' {
+  if (guide.completed) {
+    return 'completed';
+  }
+  return guide.isCurrent ? 'up_next' : 'ahead';
+}
+
 export function GuideList({ guides, isLoading = false, className, enableRowLinks = false }: GuideListProps) {
   const styles = useStyles2(getGuideListStyles);
   const listId = useId();
@@ -71,6 +79,7 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
                     // only a real manifest id may become the click-target id.
                     ...(guide.guideId != null && { 'data-milestone-id': guide.guideId }),
                     'data-interaction-location': 'module_row_click',
+                    'data-row-state': rowState(guide),
                     role: 'button',
                     tabIndex: 0,
                     'aria-label': rowAccessibleName(guide),

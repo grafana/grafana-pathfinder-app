@@ -105,6 +105,25 @@ describe('GuideList', () => {
     expect(screen.getByRole('button', { name: 'Later module' })).toBeInTheDocument();
   });
 
+  it("tags each row link with its state at render time, for link-handler.hook.ts's row_state", () => {
+    const withUrl: PathGuide[] = [
+      { id: 'a', title: 'Done module', completed: true, isCurrent: false, url: 'bundled:a/content.json' },
+      { id: 'b', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:b/content.json' },
+      { id: 'c', title: 'Later module', completed: false, isCurrent: false, url: 'bundled:c/content.json' },
+    ];
+    render(<GuideList guides={withUrl} enableRowLinks />);
+
+    expect(screen.getByRole('button', { name: 'Done module, completed' })).toHaveAttribute(
+      'data-row-state',
+      'completed'
+    );
+    expect(screen.getByRole('button', { name: 'Current module, up next' })).toHaveAttribute(
+      'data-row-state',
+      'up_next'
+    );
+    expect(screen.getByRole('button', { name: 'Later module' })).toHaveAttribute('data-row-state', 'ahead');
+  });
+
   it('makes the journey-start row keyboard-operable: focusable, and Enter/Space dispatch a click', () => {
     const withUrl: PathGuide[] = [
       { id: 'a', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:a/content.json' },

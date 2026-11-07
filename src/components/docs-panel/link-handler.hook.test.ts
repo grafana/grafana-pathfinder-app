@@ -859,6 +859,73 @@ describe('useLinkClickHandler', () => {
       );
     });
 
+    it.each(['up_next', 'completed', 'ahead'])(
+      'reports row_state %s on a module row click, so continuing, revisiting and jumping ahead stay separable',
+      (rowState) => {
+        const { reportAppInteraction } = require('../../lib/analytics');
+
+        renderHook(() =>
+          useLinkClickHandler({
+            contentRef,
+            activeTab: mockModel.getActiveTab(),
+            theme: mockTheme,
+            model: mockModel,
+          })
+        );
+
+        const row = document.createElement('div');
+        row.setAttribute('data-journey-start', 'true');
+        row.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone3');
+        row.setAttribute('data-interaction-location', 'module_row_click');
+        row.setAttribute('data-row-state', rowState);
+        contentDiv.appendChild(row);
+
+        fireEvent.click(row);
+
+        expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.StartLearningJourneyClick, {
+          content_title: 'Test Journey',
+          content_url: 'https://grafana.com/docs/test-journey',
+          interaction_location: 'module_row_click',
+          total_milestones: 5,
+          row_state: rowState,
+        });
+      }
+    );
+
+    it.each([
+      ['an unrecognized row state', 'module_row_click', 'attacker_supplied_value'],
+      ['a row state on a non-row trigger', 'resume_cta', 'ahead'],
+    ])('omits row_state for %s', (_label, location, rowState) => {
+      const { reportAppInteraction } = require('../../lib/analytics');
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const element = document.createElement('div');
+      element.setAttribute('data-journey-start', 'true');
+      element.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone3');
+      element.setAttribute('data-interaction-location', location);
+      element.setAttribute('data-row-state', rowState);
+      contentDiv.appendChild(element);
+
+      fireEvent.click(element);
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.StartLearningJourneyClick,
+        expect.not.objectContaining({ row_state: expect.anything() })
+      );
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.StartLearningJourneyClick,
+        expect.objectContaining({ interaction_location: location })
+      );
+    });
+
     it('falls back to the default interaction_location for an unrecognized value, since the element can come from remote content', () => {
       const { reportAppInteraction } = require('../../lib/analytics');
 

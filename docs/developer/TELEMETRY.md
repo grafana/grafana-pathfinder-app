@@ -446,7 +446,7 @@ The row sent when a reader accepts **Reset and continue** on an assignment is co
 
 ### Cover-page starts
 
-`start_learning_journey_click` from a path's cover page carries `interaction_location` `get_started_cta`, `resume_cta` or `module_row_click`, with the path's `content_url` and `total_milestones`. Before the release after v2.26.0, only the "Up next" row was clickable, so `module_row_click` meant "continued from the next incomplete milestone". From that release every published milestone row is clickable, so it also counts revisits of completed milestones and jumps ahead, and nothing in the event tells them apart. Split any trend on it there.
+`start_learning_journey_click` from a path's cover page carries `interaction_location` `get_started_cta`, `resume_cta` or `module_row_click`, with the path's `content_url` and `total_milestones`. Before the release after v2.26.0, only the "Up next" row was clickable, so `module_row_click` meant "continued from the next incomplete milestone". From that release every published milestone row is clickable, so it also counts revisits of completed milestones and jumps ahead. A `module_row_click` from then on carries `row_state`, the row's state when it was clicked: `up_next` for the next incomplete milestone, `completed` for a revisit, `ahead` for a jump past "Up next". Rows before that release have no `row_state`; read them as `up_next`. Split any trend on it there.
 
 ### Progress resets
 

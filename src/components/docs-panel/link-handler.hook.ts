@@ -32,6 +32,7 @@ import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOpti
  * dimension.
  */
 const KNOWN_INTERACTION_LOCATIONS = new Set(['get_started_cta', 'resume_cta', 'module_row_click']);
+const KNOWN_ROW_STATES = new Set(['up_next', 'completed', 'ahead']);
 
 interface UseLinkClickHandlerProps {
   contentRef: React.RefObject<HTMLDivElement | null>;
@@ -120,12 +121,17 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             rawInteractionLocation && KNOWN_INTERACTION_LOCATIONS.has(rawInteractionLocation)
               ? rawInteractionLocation
               : 'ready_to_begin_button';
-          // Track analytics for starting journey
+          const rawRowState = startElement.getAttribute('data-row-state');
+          const rowState =
+            interactionLocation === 'module_row_click' && rawRowState && KNOWN_ROW_STATES.has(rawRowState)
+              ? rawRowState
+              : undefined;
           reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
             content_title: activeTab.title,
             content_url: activeTab.baseUrl,
             interaction_location: interactionLocation,
             total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
+            ...(rowState && { row_state: rowState }),
           });
 
           // Navigate directly to the first milestone URL. Use the unified
