@@ -291,7 +291,7 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     const result = await renderLoaded([resource]);
     mockFetch.mockImplementation((request) =>
       request.method === 'GET'
-        ? throwError(() => ({ status: 503, data: { message: 'upstream unavailable' } }))
+        ? throwError(() => ({ status: 503, data: { error: 'app platform read failed' } }))
         : serveFetch(request)
     );
 
@@ -306,7 +306,7 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
         expect(failure).toBeInstanceOf(Error);
         expect(failure).toMatchObject({
           status: 503,
-          message: 'Could not read the saved guide "alerting-path": upstream unavailable (HTTP 503)',
+          message: 'Could not read the saved guide "alerting-path": app platform read failed (HTTP 503)',
         });
       });
     }

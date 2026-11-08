@@ -142,9 +142,9 @@ async function readStoredGuide(resourceName: string): Promise<BackendGuide | und
     if (status === 404) {
       return undefined;
     }
-    const reason =
-      (err as { data?: { message?: string } } | null)?.data?.message ||
-      (err instanceof Error ? err.message : 'request failed');
+    // Grafana errors carry `data.message`; the plugin proxy writes its reason as `data.error`.
+    const data = (err as { data?: { message?: string; error?: string } } | null)?.data;
+    const reason = data?.message || data?.error || (err instanceof Error ? err.message : 'request failed');
     const suffix = status === undefined ? '' : ` (HTTP ${status})`;
     throw Object.assign(new Error(`Could not read the saved guide "${resourceName}": ${reason}${suffix}`), { status });
   }
