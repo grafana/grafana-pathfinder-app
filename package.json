@@ -184,5 +184,5 @@
     ],
     "*.{json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
-  "packageManager": "npm@12.2.1"
+  "packageManager": "npm@12.2.2"
 }
