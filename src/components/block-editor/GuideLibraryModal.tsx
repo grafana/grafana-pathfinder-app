@@ -10,6 +10,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { JsonGuide } from './types';
 import { ConfirmModal, AlertModal } from './NotificationModals';
+import { formatPath } from '../../validation/errors';
 import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
 
 interface BackendGuide {
@@ -148,9 +149,14 @@ export function GuideLibraryModal({
       return;
     }
 
-    const decoded = decodeAppPlatformGuideBlocks(backendGuide.spec.blocks);
+    const decoded = decodeAppPlatformGuideBlocks(backendGuide.spec.blocks, 'editor');
     if (!decoded.ok) {
-      setLoadError(`Cannot load guide: ${decoded.issues[0]?.message || 'invalid blocks'}`);
+      const issue = decoded.issues[0];
+      const path = formatPath([
+        'blocks',
+        ...(issue?.path ?? []).map((key) => (typeof key === 'number' ? key : String(key))),
+      ]);
+      setLoadError(`Cannot load guide: ${path}: ${issue?.message ?? 'invalid blocks'}`);
       return;
     }
 

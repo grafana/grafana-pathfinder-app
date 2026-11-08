@@ -58,13 +58,16 @@ export function encodeAppPlatformGuideBlocks(blocks: JsonBlock[]): JsonBlock[] {
 }
 
 export type AppPlatformGuideBlocksDecodeResult =
-  { ok: true; blocks: JsonBlock[] } | { ok: false; issues: ReadonlyArray<{ message: string }> };
+  { ok: true; blocks: JsonBlock[] } | { ok: false; issues: ReadonlyArray<{ message: string; path?: PropertyKey[] }> };
 
 function isBlockRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function decodeAppPlatformGuideBlocks(blocks: unknown): AppPlatformGuideBlocksDecodeResult {
+export function decodeAppPlatformGuideBlocks(
+  blocks: unknown,
+  mode: 'runtime' | 'editor' = 'runtime'
+): AppPlatformGuideBlocksDecodeResult {
   let exceededMaxDepth = false;
 
   const decodeBlock = (value: unknown, depth: number): unknown => {
@@ -141,5 +144,11 @@ export function decodeAppPlatformGuideBlocks(blocks: unknown): AppPlatformGuideB
     };
   }
   const parsed = JsonBlockSchema.array().safeParse(decoded);
-  return parsed.success ? { ok: true, blocks: decoded as JsonBlock[] } : { ok: false, issues: parsed.error.issues };
+  if (!parsed.success) {
+    // Minimum-length errors preserve the field types and are shown by the editor's guide lint.
+    if (mode === 'runtime' || !parsed.error.issues.every((issue) => issue.code === 'too_small')) {
+      return { ok: false, issues: parsed.error.issues };
+    }
+  }
+  return { ok: true, blocks: decoded as JsonBlock[] };
 }
