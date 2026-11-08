@@ -286,23 +286,47 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(hasManageableBackendGuides(result.current)).toBe(true);
   });
 
-  it('surfaces a failed read as itself rather than as an absent resource', async () => {
+  it('surfaces a failed read as an error carrying its status and message, not as an absent resource', async () => {
     const resource = pathCoverPage();
     const result = await renderLoaded([resource]);
-    const unavailable = { status: 502, data: { message: 'upstream unavailable' } };
     mockFetch.mockImplementation((request) =>
-      request.method === 'GET' ? throwError(() => unavailable) : serveFetch(request)
+      request.method === 'GET'
+        ? throwError(() => ({ status: 503, data: { message: 'upstream unavailable' } }))
+        : serveFetch(request)
     );
 
-    await act(async () => {
-      await expect(result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')).rejects.toBe(
-        unavailable
-      );
-    });
+    for (const write of [
+      () => result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft'),
+      () => result.current.publishGuide('alerting-path'),
+      () => result.current.unpublishGuide('alerting-path'),
+    ]) {
+      await act(async () => {
+        const failure = await write().catch((err: unknown) => err);
+        // The save flow shows `message` only for Error instances; anything else toasts "Unknown error".
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure).toMatchObject({
+          status: 503,
+          message: 'Could not read the saved guide "alerting-path": upstream unavailable (HTTP 503)',
+        });
+      });
+    }
     expect(writes()).toHaveLength(0);
   });
 
-  it('falls back to the snapshot resourceVersion when caller metadata omits it', async () => {
+  it("keeps the caller's stale resourceVersion over the read, so a concurrent write still conflicts", async () => {
+    const listed = pathCoverPage();
+    const stored = pathCoverPage();
+    stored.metadata.resourceVersion = '43';
+    const result = await renderLoaded([listed], [stored]);
+
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(listed), 'alerting-path', listed.metadata, 'draft');
+    });
+
+    expect(lastRequest().data.metadata.resourceVersion).toBe('42');
+  });
+
+  it("falls back to the read's resourceVersion when caller metadata omits it", async () => {
     const resource = pathCoverPage();
     const result = await renderLoaded([resource]);
 
@@ -572,10 +596,10 @@ describe('publishGuide / unpublishGuide — annotation passthrough', () => {
 
     await act(async () => {
       await expect(result.current.publishGuide('alerting-path')).rejects.toThrow(
-        'Guide "alerting-path" not found in local list'
+        'Guide "alerting-path" was not found on the server'
       );
       await expect(result.current.unpublishGuide('alerting-path')).rejects.toThrow(
-        'Guide "alerting-path" not found in local list'
+        'Guide "alerting-path" was not found on the server'
       );
     });
     expect(writes()).toHaveLength(0);

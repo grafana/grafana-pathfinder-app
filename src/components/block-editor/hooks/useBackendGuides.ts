@@ -21,6 +21,7 @@ import {
 import { currentUserAuthorName } from '../../../utils/current-user-name';
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { logger } from '../../../lib/logging';
+import { extractFetchErrorStatus } from '../../../lib/fetch-error';
 import { encodeAppPlatformGuideBlocks } from '../../../types/app-platform-guide-compat';
 
 export type BackendGuideMetadata = {
@@ -127,7 +128,8 @@ function specWithAuthorDefault(spec: BackendGuideSpec, status: 'draft' | 'publis
 
 /**
  * The stored resource, read singly right before a write. The loaded list cannot stand in for it:
- * `/custom-guides` truncates silently on large instances. Only a 404 means the guide is gone.
+ * `/custom-guides` truncates silently on large instances. Only a 404 means the guide is gone; any
+ * other failure becomes an Error, because the save flow shows `message` only for Error instances.
  */
 async function readStoredGuide(resourceName: string): Promise<BackendGuide | undefined> {
   try {
@@ -136,10 +138,15 @@ async function readStoredGuide(resourceName: string): Promise<BackendGuide | und
     );
     return response.data;
   } catch (err) {
-    if ((err as { status?: number } | null)?.status === 404) {
+    const status = extractFetchErrorStatus(err);
+    if (status === 404) {
       return undefined;
     }
-    throw err;
+    const reason =
+      (err as { data?: { message?: string } } | null)?.data?.message ||
+      (err instanceof Error ? err.message : 'request failed');
+    const suffix = status === undefined ? '' : ` (HTTP ${status})`;
+    throw Object.assign(new Error(`Could not read the saved guide "${resourceName}": ${reason}${suffix}`), { status });
   }
 }
 
@@ -271,8 +278,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           throw new Error(`Could not read the saved guide "${existingResourceName}" — try saving again.`);
         }
 
-        // Caller metadata wins per field, not wholesale — partial metadata must not suppress the
-        // snapshot's resourceVersion and take the conflict check with it.
+        // Caller metadata wins per field: its resourceVersion is the version the editor's content is
+        // based on, so a concurrent write still 409s. Partial metadata falls back to the read's.
         const priorMetadata = existing ? { ...existing.metadata, ...(existingMetadata ?? {}) } : undefined;
 
         // A name-collision overwrite writes a guide that did not come from the stored resource, so
@@ -316,10 +323,11 @@ export function useBackendGuides(): UseBackendGuidesReturn {
   );
 
   /**
-   * Publish an existing guide — sets spec.status to 'published' without changing content.
+   * Re-PUT the stored spec with only its status flipped. Metadata comes from the read alone: the
+   * content written is the stored content, so there is no editor-held version to conflict against.
    */
-  const publishGuide = useCallback(
-    async (resourceName: string) => {
+  const writeStatus = useCallback(
+    async (resourceName: string, status: 'draft' | 'published') => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -328,10 +336,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       try {
         const existing = await readStoredGuide(resourceName);
         if (!existing) {
-          throw new Error(`Guide "${resourceName}" not found in local list`);
+          throw new Error(`Guide "${resourceName}" was not found on the server`);
         }
-
-        const metadata = preservedMetadata(resourceName, namespace, existing.metadata);
 
         await lastValueFrom(
           getBackendSrv().fetch({
@@ -340,8 +346,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
             data: {
               apiVersion: APP_PLATFORM_API_VERSION,
               kind: 'InteractiveGuide',
-              metadata,
-              spec: specWithAuthorDefault(existing.spec, 'published'),
+              metadata: preservedMetadata(resourceName, namespace, existing.metadata),
+              spec: specWithAuthorDefault(existing.spec, status),
             },
             showErrorAlert: false,
           })
@@ -355,45 +361,10 @@ export function useBackendGuides(): UseBackendGuidesReturn {
     [namespace, refreshGuides]
   );
 
-  /**
-   * Unpublish a guide — sets spec.status to 'draft', removing it from the docs panel.
-   */
-  const unpublishGuide = useCallback(
-    async (resourceName: string) => {
-      if (!namespace) {
-        throw new Error('No namespace available');
-      }
+  const publishGuide = useCallback((resourceName: string) => writeStatus(resourceName, 'published'), [writeStatus]);
 
-      setIsSaving(true);
-      try {
-        const existing = await readStoredGuide(resourceName);
-        if (!existing) {
-          throw new Error(`Guide "${resourceName}" not found in local list`);
-        }
-
-        const metadata = preservedMetadata(resourceName, namespace, existing.metadata);
-
-        await lastValueFrom(
-          getBackendSrv().fetch({
-            url: itemUrl(namespace, resourceName),
-            method: 'PUT',
-            data: {
-              apiVersion: APP_PLATFORM_API_VERSION,
-              kind: 'InteractiveGuide',
-              metadata,
-              spec: specWithAuthorDefault(existing.spec, 'draft'),
-            },
-            showErrorAlert: false,
-          })
-        );
-
-        await refreshGuides();
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [namespace, refreshGuides]
-  );
+  /** Sets the guide back to draft, removing it from the docs panel. */
+  const unpublishGuide = useCallback((resourceName: string) => writeStatus(resourceName, 'draft'), [writeStatus]);
 
   /**
    * Delete guide from backend
