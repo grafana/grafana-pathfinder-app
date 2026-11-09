@@ -20,7 +20,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 jest.mock('../utils/interactive-guides-api', () => ({
-  isBackendApiAvailable: () => true,
+  isBackendApiRuledOut: () => false,
 }));
 
 const completionListeners = new Set<() => void>();

@@ -1,5 +1,4 @@
 import type { ResolvedPathfinderConfig } from '../constants';
-import { installKioskNavigation } from './kiosk-navigation';
 
 interface ConfiguredBootstrapContext {
   pathfinderEnabled: boolean;
@@ -24,6 +23,7 @@ export async function initializeConfiguredSurfaces(
   if (!config || !context.pathfinderEnabled || !config.pathfinderEnabled) {
     return;
   }
+  const { installKioskNavigation } = await import('./kiosk-navigation');
   effects.applySettings(config);
   const kioskRequested = installKioskNavigation(() => effects.mountKiosk(config));
   if (context.controllerRequested) {

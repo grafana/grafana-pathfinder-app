@@ -2,14 +2,14 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { AppPluginMeta, PluginConfigPageProps } from '@grafana/data';
-import { currentPlatform } from '../../lib/platform';
+import { currentPlatform } from '../../constants/platform';
 import { getConfigWithDefaults, type PathfinderPluginConfig } from '../../constants';
 import { usePathfinderPluginConfig } from '../../hooks';
 import { getFeatureFlagValue } from '../../utils/openfeature';
 import { saveTenantSettings } from './save-settings';
 import ConfigurationForm from './ConfigurationForm';
 
-jest.mock('../../lib/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
+jest.mock('../../constants/platform', () => ({ currentPlatform: jest.fn(() => 'cloud') }));
 jest.mock('../../hooks', () => ({ usePathfinderPluginConfig: jest.fn() }));
 jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn() }));
 jest.mock('./save-settings', () => ({ saveTenantSettings: jest.fn() }));

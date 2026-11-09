@@ -8,6 +8,7 @@ import { validateKioskDestination } from '../../docs-retrieval';
 import { validateInternalNavigationPath } from '../../security/url-validator';
 import { getGuideResponseId } from '../../lib/guide-response-id';
 import { guideResponseStorage } from '../../lib/user-storage';
+import { listDataSources } from '../../lib/datasource/datasource-registry';
 import { filterDatasourcesByType } from '../interactive-tutorial/datasource-options';
 
 export async function prepareKioskInputs(
@@ -30,11 +31,14 @@ export async function prepareKioskInputs(
     );
   }
   const values = validateKioskValues(inputs, draft);
+  const dataSources = inputs.some((input) => input.inputType === 'datasource')
+    ? await listDataSources().catch(() => [])
+    : [];
   for (const input of inputs) {
     if (
       input.inputType === 'datasource' &&
       values[input.variableName] &&
-      !filterDatasourcesByType(input.datasourceFilter).some((ds) => ds.name === values[input.variableName])
+      !filterDatasourcesByType(dataSources, input.datasourceFilter).some((ds) => ds.name === values[input.variableName])
     ) {
       throw new KioskFormError('Choose an available data source');
     }

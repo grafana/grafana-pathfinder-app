@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { config } from '@grafana/runtime';
+import { useCurrentUserIsOrgAdmin } from '../../utils/current-user-role';
 import { dateMath, dateTime, type RawTimeRange, type TimeRange } from '@grafana/data';
 import { RefreshPicker, TimeRangePicker, useStyles2 } from '@grafana/ui';
 import { useLearningInsights } from '../../hooks';
@@ -290,8 +290,8 @@ function AuthorizedLearningInsights() {
 
 export default function LearningInsightsPage() {
   const s = useStyles2(getStyles);
-  const user = config.bootData.user;
-  if (user?.orgRole !== 'Admin') {
+  const isOrgAdmin = useCurrentUserIsOrgAdmin();
+  if (!isOrgAdmin) {
     return (
       <main className={s.page} aria-label="Learning insights">
         <p className={s.notice}>

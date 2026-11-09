@@ -8,7 +8,8 @@ import {
   useProvidePageContext,
   type ChatContextItem,
 } from '@grafana/assistant';
-import { getDataSourceSrv, locationService } from '@grafana/runtime';
+import { locationService } from '@grafana/runtime';
+import { listDataSources } from '../../lib/datasource/datasource-registry';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { useAssistantCustomizableContext } from './AssistantCustomizableContext';
@@ -312,8 +313,7 @@ export function AssistantCustomizable({
   // Get datasource context for assistant and provide it via page context
   const getDatasourceContext = useCallback(async () => {
     try {
-      const dataSourceSrv = getDataSourceSrv();
-      const dataSources = await dataSourceSrv.getList();
+      const dataSources = await listDataSources();
 
       // Get current datasource from URL if in Explore
       const location = locationService.getLocation();

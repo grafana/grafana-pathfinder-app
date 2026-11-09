@@ -7,7 +7,7 @@ import {
   collectionUrl,
   itemUrl,
 } from './pathfinder-settings-api';
-import { isBackendApiAvailable } from './interactive-guides-api';
+import { isBackendApiAvailable, isBackendApiRuledOut } from './interactive-guides-api';
 import { saveTenantSettings } from '../components/AppConfig/save-settings';
 import { resolveTenantSettings } from './resolve-tenant-settings';
 
@@ -19,6 +19,7 @@ jest.mock('@grafana/runtime', () => ({
 jest.mock('./interactive-guides-api', () => ({
   APP_PLATFORM_API_VERSION: 'pathfinderbackend.ext.grafana.app/v1alpha1',
   isBackendApiAvailable: jest.fn(() => true),
+  isBackendApiRuledOut: jest.fn(() => false),
 }));
 jest.mock('../lib/telemetry/facade', () => ({ recordSettingsStoreResolved: jest.fn() }));
 
@@ -30,6 +31,7 @@ beforeEach(() => {
   sessionStorage.clear();
   localStorage.clear();
   jest.mocked(isBackendApiAvailable).mockReturnValue(true);
+  jest.mocked(isBackendApiRuledOut).mockReturnValue(false);
   config.namespace = 'stacks-123';
 });
 
@@ -256,6 +258,7 @@ describe('existing resource update recovery', () => {
 
 it('preserves OSS plugin settings without materializing system defaults', async () => {
   jest.mocked(isBackendApiAvailable).mockReturnValue(false);
+  jest.mocked(isBackendApiRuledOut).mockReturnValue(true);
   fetchMock
     .mockReturnValueOnce(
       of({ data: { enabled: false, pinned: false, jsonData: { stackId: '123', futureField: 'keep' } } })
@@ -444,4 +447,19 @@ describe('the kind is not served (structural upstream 404)', () => {
       },
     ]);
   });
+});
+
+it('reads through the proxy when the boot toggles cannot answer, as under multi-tenancy', async () => {
+  jest.mocked(isBackendApiAvailable).mockReturnValue(false);
+  fetchMock.mockReturnValueOnce(of({ data: { metadata: { resourceVersion: '42' }, spec: base.spec } }));
+
+  expect(await fetchPathfinderSettingsSnapshot()).toEqual(base);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it('skips the read when the boot toggles rule the backend out', async () => {
+  jest.mocked(isBackendApiRuledOut).mockReturnValue(true);
+
+  expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled();
 });

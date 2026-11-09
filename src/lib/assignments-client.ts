@@ -8,7 +8,7 @@ import { getBackendSrv } from '@grafana/runtime';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
 import type { AssignmentEntryWire, MyAssignmentsResponseWire } from '../types/backend-api.schema';
-import { isBackendApiAvailable } from '../utils/interactive-guides-api';
+import { isBackendApiRuledOut } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
 import { logger } from './logging';
 import { recordAssignmentsUnavailable } from './telemetry/facade';
@@ -63,7 +63,7 @@ async function requestAssignments(): Promise<MyAssignmentsResult> {
  * answer is `ok: false`. Concurrent calls for a namespace share one in-flight request.
  */
 export async function fetchMyAssignments(namespace: string): Promise<MyAssignmentsResult> {
-  if (!isBackendApiAvailable() || !namespace) {
+  if (isBackendApiRuledOut() || !namespace) {
     return NOTHING_ASSIGNED;
   }
 

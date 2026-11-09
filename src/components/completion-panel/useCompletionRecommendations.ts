@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { currentPlatform } from '../../lib/platform';
+import { currentPlatform } from '../../constants/platform';
 import { getUserScope } from '../../lib/user-scope';
 import type { RawContent } from '../../types/content.types';
 import type { AnalyticsCompletionIdentity } from '../../docs-retrieval';

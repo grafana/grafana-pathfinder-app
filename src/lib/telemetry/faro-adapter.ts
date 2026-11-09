@@ -28,6 +28,7 @@ import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
 import { normalizeTelemetryUrl } from './url';
 import { retryChunkImport } from '../retry-chunk-import';
+import { readGrafanaFeatureToggle } from '../../utils/openfeature';
 import { checkValueCasing } from '../analytics-value-check';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
@@ -134,22 +135,15 @@ async function initializeFaroInstance(options?: InitFaroOptions): Promise<void> 
   }
 }
 
-// The session meta is mirrored to sessionStorage by Faro, so the panel session
-// id rides a per-item meta captured at push time and is moved into the
-// item's session attributes by stampPanelSessionAttribute.
 export function trackPanelSession(faro: Faro): void {
   faro.metas.add(() => ({ [PANEL_SESSION_META_KEY]: getPanelSessionId() ?? '' }) as Partial<Meta>);
 }
 
-// Grafana core ships its own rrweb recorder behind a private-preview toggle.
-// Two on one page double DOM serialization per mutation and compound rrweb's
-// global CSSStyleSheet.insertRule proxy, which is Emotion's hot path, so core
-// wins automatically rather than by runbook. Belt-and-braces only: a
-// private-preview toggle may never be surfaced to the frontend, in which case
-// this reads undefined and the remote flag is the sole lever.
+// Core's recorder wins; an unknown core toggle must also disable our recorder.
+
 export function resolveSessionReplayOptions(enabled: boolean, samplingRate: number): InitFaroOptions {
   return {
-    sessionReplay: config.featureToggles?.faroSessionReplay !== true && enabled,
+    sessionReplay: readGrafanaFeatureToggle('faroSessionReplay') === false && enabled,
     sessionReplaySamplingRate: samplingRate,
   };
 }

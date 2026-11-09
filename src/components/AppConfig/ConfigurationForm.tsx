@@ -3,7 +3,7 @@ import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge,
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { t } from '@grafana/i18n';
-import { currentPlatform } from '../../lib/platform';
+import { currentPlatform } from '../../constants/platform';
 import { testIds } from '../../constants/testIds';
 import {
   PathfinderPluginConfig,

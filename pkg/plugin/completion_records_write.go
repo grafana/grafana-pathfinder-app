@@ -266,7 +266,7 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Surface the new record promptly on the next GET /completion-records/my.
-	invalidateCompletionIndex(namespace)
+	a.completions.invalidate(namespace)
 	a.writeSatisfiedAssignments(r, userID, completionRecordSpec{
 		UserID:            spec.UserID,
 		GuideID:           spec.GuideID,

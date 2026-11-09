@@ -35,7 +35,6 @@ func TestAssignmentSourceChainParity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, constructor := range constructors {
 				t.Run(constructor.name, func(t *testing.T) {
-					resetPackageRecommendationsCache()
 					var custom []customGuideRepositoryEntry
 					for _, id := range []string{bundled.ID, "parity-custom"} {
 						path := guideEntry(id, id, "published", "path")

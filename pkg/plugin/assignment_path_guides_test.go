@@ -107,7 +107,6 @@ func TestGuideProgress_UnknownAndFailureStayUnknown(t *testing.T) {
 func TestOnlinePathGuides_RecorderShapedCompletions(t *testing.T) {
 	for _, source := range []string{"online-cdn", "interactive-tutorials", "bundled", "app-platform", "untrusted-repository", ""} {
 		t.Run(source, func(t *testing.T) {
-			resetPackageRecommendationsCache()
 			withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
 				switch {
 				case strings.HasSuffix(rawURL, "repository.json"):
@@ -137,7 +136,6 @@ func TestOnlinePathGuides_RecorderShapedCompletions(t *testing.T) {
 }
 
 func TestOnlinePathGuides_CachedIndexAvoidsMemberManifestFanout(t *testing.T) {
-	resetPackageRecommendationsCache()
 	memberFetches := 0
 	withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
 		switch {

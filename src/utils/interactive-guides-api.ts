@@ -1,11 +1,9 @@
 /**
  * Shared definitions for the InteractiveGuide App Platform API (Grafana App
- * Platform group `pathfinderbackend.ext.grafana.app`). `isBackendApiAvailable`
- * gates the feature on the aggregation toggle, so it cleanly hides where GAP
- * isn't enabled.
+ * Platform group `pathfinderbackend.ext.grafana.app`).
  */
-import { config } from '@grafana/runtime';
 import { PLUGIN_BACKEND_URL } from '../constants';
+import { readBootFeatureToggle } from './boot-feature-toggles';
 
 export const APP_PLATFORM_GROUP = 'pathfinderbackend.ext.grafana.app';
 export const APP_PLATFORM_API_VERSION = `${APP_PLATFORM_GROUP}/v1alpha1`;
@@ -14,13 +12,14 @@ const RESOURCE = 'interactiveguides';
 // Grafana derives the aggregation toggle from the group name, dots→dashes.
 const AGGREGATION_TOGGLE = `aggregation.${APP_PLATFORM_GROUP.replace(/\./g, '-')}.enabled`;
 
-/**
- * True when the InteractiveGuide backend API is available on this instance
- * (the GAP aggregation toggle is on). Reads the boot-time feature toggles.
- */
+// Confirmed on: gates direct App Platform reads and writes, which fail loudly when the group is not served.
 export function isBackendApiAvailable(): boolean {
-  const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
-  return featureToggles?.[AGGREGATION_TOGGLE] === true;
+  return readBootFeatureToggle(AGGREGATION_TOGGLE) === true;
+}
+
+// Confirmed off. When the boot toggles are unknown, proxied reads probe and the capability answer decides.
+export function isBackendApiRuledOut(): boolean {
+  return readBootFeatureToggle(AGGREGATION_TOGGLE) === false;
 }
 
 export function collectionUrl(namespace: string): string {

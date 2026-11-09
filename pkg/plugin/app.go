@@ -57,6 +57,9 @@ type App struct {
 
 	// Per-user rate limiter for GET /assignments/my.
 	assignmentsReadRateLimiter *userRateLimiter
+
+	completions            *completionCache
+	packageRecommendations *packageRecommendationsCache
 }
 
 // NewApp creates a new App instance.
@@ -73,6 +76,8 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 		logger:                     logger,
 		completionWriteRateLimiter: newCompletionWriteRateLimiter(),
 		assignmentsReadRateLimiter: newUserRateLimiter(assignmentsReadRateBurst, assignmentsReadRateRefillPerSec),
+		completions:                newCompletionCache(),
+		packageRecommendations:     &packageRecommendationsCache{},
 	}
 
 	// A stack without provisioned on-behalf-of credentials still loads: the App

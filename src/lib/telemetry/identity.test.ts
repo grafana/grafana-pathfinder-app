@@ -9,12 +9,15 @@ let mockUser = {
 jest.mock('@grafana/runtime', () => ({
   get config() {
     return {
-      bootData: {
-        settings: { buildInfo: { versionString: mockVersionString } },
-        user: mockUser,
-      },
+      buildInfo: { versionString: mockVersionString },
+      bootData: { user: mockUser },
     };
   },
+}));
+
+jest.mock('../../utils/current-user-role', () => ({
+  currentUser: () => ({ role: mockUser.orgRole }),
+  ensureCurrentUser: async () => undefined,
 }));
 
 import { buildTelemetryIdentity } from './identity';

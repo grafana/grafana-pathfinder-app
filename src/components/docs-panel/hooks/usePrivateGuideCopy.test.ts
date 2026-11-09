@@ -7,7 +7,10 @@ import { currentUserIsAdmin } from '../../../utils/current-user-role';
 import { notify } from '../../block-editor/notify';
 
 jest.mock('../utils/private-guide-copy', () => ({ preparePrivateGuideCopy: jest.fn() }));
-jest.mock('../../../utils/current-user-role', () => ({ currentUserIsAdmin: jest.fn(() => true) }));
+jest.mock('../../../utils/current-user-role', () => {
+  const currentUserIsAdmin = jest.fn(() => true);
+  return { currentUserIsAdmin, useCurrentUserIsAdmin: () => currentUserIsAdmin() };
+});
 jest.mock('../../block-editor/notify', () => ({ notify: jest.fn() }));
 
 const guide = { id: 'private-copy', title: 'Copy', blocks: [] };

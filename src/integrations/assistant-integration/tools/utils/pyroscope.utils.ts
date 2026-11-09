@@ -4,9 +4,9 @@
  * Fetches profile types and labels from Pyroscope datasources.
  */
 
-import { getBackendSrv } from '@grafana/runtime';
 import type { DataSourceApi } from '@grafana/data';
 import type { ProfilingMetadata } from '../types';
+import { getDataSourceResource } from '../../../../lib/datasource/datasource-registry';
 import { logger } from '../../../../lib/logging';
 
 /**
@@ -38,7 +38,7 @@ const PRIORITY_LABELS = ['service_name', 'namespace', 'pod', 'container', 'env',
  */
 const fetchProfileTypes = async (ds: PyroscopeDatasource): Promise<string[]> => {
   try {
-    const response = await getBackendSrv().get(`/api/datasources/uid/${ds.uid}/resources/profileTypes`);
+    const response = await getDataSourceResource<unknown>(ds, 'profileTypes');
 
     if (response && Array.isArray(response)) {
       // Profile types are usually objects with id and label
@@ -60,7 +60,7 @@ const fetchProfileTypes = async (ds: PyroscopeDatasource): Promise<string[]> => 
  */
 const fetchLabels = async (ds: PyroscopeDatasource): Promise<string[]> => {
   try {
-    const response = await getBackendSrv().get(`/api/datasources/uid/${ds.uid}/resources/labelNames`);
+    const response = await getDataSourceResource<unknown>(ds, 'labelNames');
 
     if (response && Array.isArray(response)) {
       // Filter out private labels (starting with __)
@@ -79,7 +79,7 @@ const fetchLabels = async (ds: PyroscopeDatasource): Promise<string[]> => {
  */
 const fetchLabelValues = async (ds: PyroscopeDatasource, labelName: string): Promise<string[]> => {
   try {
-    const response = await getBackendSrv().get(`/api/datasources/uid/${ds.uid}/resources/labelValues`, {
+    const response = await getDataSourceResource<unknown>(ds, 'labelValues', {
       label: labelName,
     });
 

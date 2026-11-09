@@ -22,9 +22,7 @@ let mockStoredResponse: string | undefined;
 
 jest.mock('@grafana/ui', () => require('../../test-utils/data-check-stubs').grafanaUiStub);
 
-jest.mock('@grafana/runtime', () => ({
-  getDataSourceSrv: () => ({ getList: () => require('../../test-utils/data-check-stubs').DATASOURCE_LIST }),
-}));
+jest.mock('./use-data-source-list', () => require('../../test-utils/data-check-stubs').dataSourceListStub);
 
 jest.mock('../../lib/datasource/run-data-check-query', () => ({
   runDataCheckQuery: (...args: unknown[]) => mockRunQuery(...args),
@@ -230,6 +228,18 @@ describe('the picker', () => {
     mockStoredResponse = 'Deleted data source';
     renderStep();
     expect(mockDeleteResponse).not.toHaveBeenCalled();
+  });
+
+  it('neither warns nor offers a picker while the data source list is loading', () => {
+    const stub = require('../../test-utils/data-check-stubs').dataSourceListStub;
+    stub.loading = true;
+    try {
+      renderStep();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByTestId(TEST_IDS.run)).not.toBeInTheDocument();
+    } finally {
+      stub.loading = false;
+    }
   });
 
   it('warns instead of offering an empty picker when nothing matches', () => {

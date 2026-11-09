@@ -1,3 +1,5 @@
+jest.mock('@grafana/runtime/unstable', () => ({}));
+
 /**
  * Tests for InteractiveGuided component — issue #786
  *

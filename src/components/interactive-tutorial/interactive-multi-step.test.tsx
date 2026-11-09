@@ -1,3 +1,5 @@
+jest.mock('@grafana/runtime/unstable', () => ({}));
+
 import React from 'react';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';

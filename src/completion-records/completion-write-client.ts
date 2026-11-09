@@ -4,7 +4,7 @@ import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
 import { extractFetchErrorStatus } from '../lib/fetch-error';
-import { currentPlatform, type GrafanaPlatform } from '../lib/platform';
+import { currentPlatform, type GrafanaPlatform } from '../constants/platform';
 
 import type { CompletionCategory, CompletionSource } from './types';
 import { WRITE_REQUEST_TIMEOUT_MS } from './completion-write-timing';

@@ -3,8 +3,9 @@ import React from 'react';
 import { Button, Alert, useStyles2, Tooltip } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { config, locationService } from '@grafana/runtime';
+import { locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { useCurrentUserIsAdmin } from '../../utils/current-user-role';
 
 interface EnableRecommenderBannerProps {
   className?: string;
@@ -13,8 +14,7 @@ interface EnableRecommenderBannerProps {
 export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = ({ className }) => {
   const styles = useStyles2(getStyles);
   const { config: configWithDefaults } = usePathfinderPluginConfig();
-  const user = config.bootData?.user;
-  const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
+  const canAccessPluginSettings = useCurrentUserIsAdmin();
 
   // Only show if recommender is disabled (uses centralized config with platform defaults)
   if (configWithDefaults.acceptedTermsAndConditions) {

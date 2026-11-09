@@ -2,10 +2,7 @@ import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
-import { isBackendApiAvailable } from './interactive-guides-api';
-
-// Re-exported so existing importers (e.g. BlockEditor) keep a stable path.
-export { isBackendApiAvailable };
+import { isBackendApiRuledOut } from './interactive-guides-api';
 
 interface BackendGuidesList {
   items?: any[];
@@ -18,7 +15,7 @@ const UNAVAILABLE_STATUSES = new Set([400, 403, 404, 405, 501, 503]);
  * Optional endpoints return an empty list; other errors reach the editor.
  */
 export async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): Promise<any[]> {
-  if (!isBackendApiAvailable() || !namespace) {
+  if (isBackendApiRuledOut() || !namespace) {
     return [];
   }
 

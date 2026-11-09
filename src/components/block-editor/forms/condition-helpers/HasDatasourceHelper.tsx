@@ -27,7 +27,8 @@ import React, { useEffect, useMemo } from 'react';
 import { Badge, Input, Stack, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { getDataSourceSrv } from '@grafana/runtime';
+import { useDataSourceList } from '../../../interactive-tutorial/use-data-source-list';
+import type { DataSourceListItem } from '../../../../lib/datasource/datasource-registry';
 import type { ConditionHelperProps } from './types';
 
 interface TypeSuggestion {
@@ -46,31 +47,23 @@ interface Suggestions {
   names: NameSuggestion[];
 }
 
-function loadSuggestions(): Suggestions {
-  try {
-    const sources = getDataSourceSrv().getList();
-    const byType = new Map<string, string[]>();
-    const names: NameSuggestion[] = [];
-    for (const ds of sources) {
-      // Skip Grafana's built-in pseudo-datasources (-- Grafana --, -- Mixed --,
-      // the variables-backer, etc.). These are never useful targets for a
-      // tutorial requirement.
-      if (ds.meta?.builtIn) {
-        continue;
-      }
-      const list = byType.get(ds.type) ?? [];
-      list.push(ds.name);
-      byType.set(ds.type, list);
-      names.push({ name: ds.name, type: ds.type });
+function toSuggestions(sources: DataSourceListItem[]): Suggestions {
+  const byType = new Map<string, string[]>();
+  const names: NameSuggestion[] = [];
+  for (const ds of sources) {
+    if (ds.meta?.builtIn) {
+      continue;
     }
-    const types = Array.from(byType.entries()).map(([type, instanceNames]) => ({
-      type,
-      instanceNames,
-    }));
-    return { types, names };
-  } catch {
-    return { types: [], names: [] };
+    const list = byType.get(ds.type) ?? [];
+    list.push(ds.name);
+    byType.set(ds.type, list);
+    names.push({ name: ds.name, type: ds.type });
   }
+  const types = Array.from(byType.entries()).map(([type, instanceNames]) => ({
+    type,
+    instanceNames,
+  }));
+  return { types, names };
 }
 
 function tooltipForType(s: TypeSuggestion): string {
@@ -86,7 +79,8 @@ function tooltipForName(s: NameSuggestion): string {
 
 export function HasDatasourceHelper({ value, onChange, onSubmit, onValidityChange, testId }: ConditionHelperProps) {
   const styles = useStyles2(getStyles);
-  const { types, names } = useMemo(() => loadSuggestions(), []);
+  const { dataSources } = useDataSourceList();
+  const { types, names } = useMemo(() => toSuggestions(dataSources), [dataSources]);
 
   useEffect(() => {
     onValidityChange?.(value.trim().length > 0);
