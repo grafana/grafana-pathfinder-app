@@ -67,6 +67,18 @@ for (const repair of [false, true]) {
       route.fulfill({ json: { items: writes.slice(-1) } })
     );
     await page.route(
+      (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/custom-guide'),
+      (route) => {
+        const name = new URL(route.request().url()).searchParams.get('name');
+        const stored = (writes as Array<{ metadata?: { name?: string } }>)
+          .filter((w) => w.metadata?.name === name)
+          .at(-1);
+        return stored
+          ? route.fulfill({ json: stored })
+          : route.fulfill({ status: 404, json: { message: 'not found' } });
+      }
+    );
+    await page.route(
       '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/*/interactiveguides**',
       async (route) => {
         if (route.request().method() === 'GET') {
