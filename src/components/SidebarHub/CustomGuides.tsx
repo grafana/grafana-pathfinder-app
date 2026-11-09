@@ -2,6 +2,8 @@ import React, { useEffect, useId, useState, useSyncExternalStore } from 'react';
 import { Button, Combobox, Text, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
+import { usePersistedBoolean } from '../../hooks';
+import { StorageKeys } from '../../lib/storage-keys';
 import { testIds } from '../../constants/testIds';
 import type { Milestone } from '../../types/content.types';
 import { FOUNDATIONS_TRACK_ID } from '../../types/package.types';
@@ -167,6 +169,8 @@ function CustomGuideRow({ guide, index, onLaunch }: { guide: CustomHubGuide; ind
 
 export function CustomGuides({ guides, isLoading, onLaunch }: CustomGuidesProps) {
   const styles = useStyles2(getSidebarHubStyles);
+  const [collapsed, setCollapsed] = usePersistedBoolean(StorageKeys.CUSTOM_GUIDES_COLLAPSED);
+  const contentId = useId();
   const [expanded, setExpanded] = useState(false);
 
   if (isLoading) {
@@ -185,32 +189,45 @@ export function CustomGuides({ guides, isLoading, onLaunch }: CustomGuidesProps)
     <section aria-label={t('contextPanel.customGuides', 'Custom guides')} data-testid={testIds.sidebarHub.customGuides}>
       <div className={styles.sectionHeader}>
         <Text element="h3" variant="h5">
-          {t('contextPanel.customGuides', 'Custom guides')}
+          <Button
+            variant="secondary"
+            fill="text"
+            size="sm"
+            icon={collapsed ? 'angle-down' : 'angle-up'}
+            aria-expanded={!collapsed}
+            aria-controls={contentId}
+            className={styles.otherDocsToggle}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {t('contextPanel.customGuides', 'Custom guides')}
+          </Button>
         </Text>
         <Text variant="bodySmall" color="secondary">
           {t('contextPanel.items', '{{count}} items', { count: guides.length })}
         </Text>
       </div>
-      <ul className={styles.list}>
-        {visible.map((guide, index) => (
-          <CustomGuideRow key={guide.key} guide={guide} index={index} onLaunch={onLaunch} />
-        ))}
-      </ul>
-      {guides.length > COLLAPSED_COUNT && (
-        <Button
-          variant="secondary"
-          fill="text"
-          size="sm"
-          icon={expanded ? 'angle-up' : 'angle-down'}
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-          data-testid={testIds.sidebarHub.customGuidesToggle}
-        >
-          {expanded
-            ? t('learningCard.showLess', 'Show less')
-            : t('sidebarHub.showAll', 'Show all {{total}}', { total: guides.length })}
-        </Button>
-      )}
+      <div id={contentId} hidden={collapsed}>
+        <ul className={styles.list}>
+          {visible.map((guide, index) => (
+            <CustomGuideRow key={guide.key} guide={guide} index={index} onLaunch={onLaunch} />
+          ))}
+        </ul>
+        {guides.length > COLLAPSED_COUNT && (
+          <Button
+            variant="secondary"
+            fill="text"
+            size="sm"
+            icon={expanded ? 'angle-up' : 'angle-down'}
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+            data-testid={testIds.sidebarHub.customGuidesToggle}
+          >
+            {expanded
+              ? t('learningCard.showLess', 'Show less')
+              : t('sidebarHub.showAll', 'Show all {{total}}', { total: guides.length })}
+          </Button>
+        )}
+      </div>
     </section>
   );
 }

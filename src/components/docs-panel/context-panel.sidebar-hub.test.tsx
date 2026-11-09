@@ -48,6 +48,7 @@ jest.mock('../../learning-paths', () => ({
   useMyAssignments: jest.fn(),
 }));
 jest.mock('../../hooks', () => ({
+  ...jest.requireActual('../../hooks'),
   usePathfinderPluginConfig: () => ({ config: { acceptedTermsAndConditions: true } }),
 }));
 const mockUsePublishedGuides = jest.fn();
