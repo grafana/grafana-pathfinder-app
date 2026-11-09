@@ -20,8 +20,8 @@ test('accepts the published migration', async () => {
 
 test('rejects a missing RSS package', async () => {
   await assert.rejects(
-    checkBundledTutorialPublication(async (url, options) =>
-      url.pathname.includes('first-dashboard-rss') ? { ok: false, status: 404 } : published()(url, options)
+    checkBundledTutorialPublication(async (url) =>
+      url.pathname.includes('first-dashboard-rss') ? { ok: false, status: 404 } : published()(url)
     ),
     /publish interactive-tutorials #714/
   );

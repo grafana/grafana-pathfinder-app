@@ -1716,3 +1716,43 @@ it('counts an online migrated tutorial in completed guides', () => {
   expect(markGuideCompletedMock).toHaveBeenCalledWith('first-dashboard');
   expect(journeySetMock).toHaveBeenCalledWith('bundled:first-dashboard', 100);
 });
+
+it.each(['interactive-tutorials', 'online-cdn'])(
+  'records a migrated dashboard path member with shared identity from %s',
+  async (repository) => {
+    const url = 'https://interactive-learning.grafana.net/packages/first-dashboard/content.json';
+    const metadata = {
+      title: 'First dashboard',
+      packageManifest: { id: 'first-dashboard', type: 'guide' },
+      repository,
+      learningJourney: {
+        baseUrl: 'https://interactive-learning.grafana.net/packages/getting-started/content.json',
+        currentMilestone: 1,
+        totalMilestones: 2,
+        milestones: [
+          { number: 1, title: 'First dashboard', url, isActive: true },
+          {
+            number: 2,
+            title: 'Next guide',
+            url: 'https://interactive-learning.grafana.net/packages/next-guide/content.json',
+            isActive: false,
+          },
+        ],
+      },
+    };
+    recordGuideCompletionForSurface({ currentUrl: url, contentUrl: url, metadata, contentType: 'learning-journey' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      guideSource: 'bundled',
+      guideId: 'first-dashboard',
+      guideCategory: 'learning-journey',
+    });
+    recordGuideCompletionForSurface({
+      currentUrl: 'bundled:first-dashboard',
+      contentUrl: 'bundled:first-dashboard',
+      metadata: { title: 'First dashboard' },
+    });
+    expect(emitted).toHaveLength(1);
+  }
+);
