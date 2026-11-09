@@ -22,6 +22,14 @@ Interactive learning, also called Pathfinder, displays documentation and guides 
 
 Turning off recommendations stops requests to the recommendation service. It does not turn off Interactive learning or all network requests: an online browser can still load the public catalog, guides, and documentation. If the recommendation service is unavailable, Pathfinder uses available fallback content.
 
+### Explore catalog
+
+Explore gets its public catalog from a separate recommendation-service endpoint. The service filters packages by source, platform, and package health. It does not restrict the catalog to the current page or the top recommendation results. The plugin does not read the package-health feed directly.
+
+Public discovery requires recommendations to be enabled. Otherwise, Explore shows an enablement message and keeps organization guides available. Organization guides load independently of the recommendation service.
+
+The plugin caches eligible public catalogs in browser memory for five minutes. A failed refresh keeps the last valid catalog without a warning. Without cached public content, Explore shows a retry state. It does not substitute the unfiltered public catalog. Bundled copies and curated paths cannot restore guides absent from the eligible catalog.
+
 For the controls, refer to [Administrator reference](../administrators-reference/).
 
 ## How interactive actions work

@@ -1,5 +1,7 @@
 import {
   bundledCatalog,
+  eligibleCatalog,
+  eligibleDiscoveryCatalog,
   filterCatalog,
   mergeCatalog,
   onlineCatalog,
@@ -26,6 +28,59 @@ const repository: RepositoryJson = {
 };
 
 describe('package catalog', () => {
+  it('uses eligible IDs as the authority for bundled and curated discovery', () => {
+    const bundled = bundledCatalog(repository, {});
+    const online = eligibleCatalog([
+      {
+        id: 'intro',
+        title: 'Introduction',
+        repository: 'interactive-tutorials',
+        contentUrl: 'https://interactive-learning.grafana.net/packages/intro/content.json',
+        manifestUrl: 'https://interactive-learning.grafana.net/packages/intro/manifest.json',
+        manifest: { id: 'intro', type: 'guide', estimatedMinutes: 4, stats },
+      },
+    ]);
+    const curated: CatalogPackage[] = [
+      {
+        key: 'curated:valid',
+        id: 'valid',
+        title: 'Valid path',
+        format: 'path',
+        source: 'grafana',
+        url: '',
+        memberIds: ['intro'],
+      },
+      {
+        key: 'curated:invalid',
+        id: 'invalid',
+        title: 'Invalid path',
+        format: 'path',
+        source: 'grafana',
+        url: '',
+        memberIds: ['intro', 'unknown'],
+      },
+    ];
+    expect(online[0]).toMatchObject({ estimatedMinutes: 4, activityCount: 4 });
+    expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.key)).toEqual([
+      'bundled:intro',
+      'curated:valid',
+    ]);
+    expect(eligibleDiscoveryCatalog(bundled, [], curated)).toEqual([]);
+  });
+
+  it('does not substitute a bundled path that would restore an ineligible milestone', () => {
+    const path: CatalogPackage = {
+      key: 'official:path',
+      id: 'path',
+      title: 'Path',
+      format: 'path',
+      source: 'grafana',
+      url: 'https://interactive-learning.grafana.net/path/content.json',
+    };
+    const bundledPath = { ...path, key: 'bundled:path', memberIds: ['excluded-guide'] };
+    expect(eligibleDiscoveryCatalog([bundledPath], [path], [])).toEqual([path]);
+  });
+
   it.each(['future', 42, { future: true }, 'markdown'])(
     'preserves path metadata and exact prerequisite labels for format %p',
     (format) => {

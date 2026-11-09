@@ -3,7 +3,7 @@ import { packageIdSchema } from '../types/package.schema';
 import { RuntimeManifestJsonObjectSchema } from './runtime-manifest';
 import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
 import { getManifestMemberIds, type RepositoryJson } from '../types/package.types';
-import type { CatalogFilters, CatalogPackage } from '../types/package-catalog.types';
+import type { CatalogFilters, CatalogPackage, EligibleCatalogEntry } from '../types/package-catalog.types';
 import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
 import type { CustomGuideRepositoryEntry } from './custom-guide-repository-client';
 import { buildPackageFileUrl, type PackageRecommendationsResponse } from './package-recommendations-client';
@@ -105,6 +105,60 @@ export function onlineCatalog(response: PackageRecommendationsResponse): Catalog
       },
     ];
   });
+}
+
+export function eligibleCatalog(entries: EligibleCatalogEntry[]): CatalogPackage[] {
+  return entries.flatMap((entry) => {
+    const parsed = RuntimeManifestJsonObjectSchema.safeParse(entry.manifest);
+    if (!parsed.success || !isAllowedContentUrl(entry.contentUrl) || !packageIdSchema.safeParse(entry.id).success) {
+      throw new Error('Invalid eligible catalog entry');
+    }
+    const manifest = parsed.data;
+    if (manifest.type !== 'guide' && manifest.type !== 'path' && manifest.type !== 'journey') {
+      throw new Error('Invalid eligible catalog package type');
+    }
+    return [
+      {
+        key: `${entry.repository}:${entry.id}`,
+        id: entry.id,
+        title: entry.title,
+        description: manifest.description,
+        format: manifest.type === 'guide' ? ('guide' as const) : ('path' as const),
+        source: 'grafana' as const,
+        category: manifest.category,
+        url: entry.contentUrl,
+        estimatedMinutes: positiveMinutes(manifest.estimatedMinutes),
+        activityCount: activityCount(manifest.stats),
+        memberIds: members(manifest),
+        packageInfo: {
+          packageId: entry.id,
+          packageManifest: { ...manifest, id: entry.id },
+          repository: entry.repository,
+        },
+      },
+    ];
+  });
+}
+
+export function eligibleDiscoveryCatalog(
+  bundled: CatalogPackage[],
+  online: CatalogPackage[],
+  curated: CatalogPackage[]
+): CatalogPackage[] {
+  const eligibleIds = new Set(online.map((item) => item.id));
+  return mergeCatalog(
+    bundled.filter(
+      (item) =>
+        eligibleIds.has(item.id) &&
+        [...(item.memberIds ?? []), ...getManifestMemberIds(item.packageInfo?.packageManifest)].every((id) =>
+          eligibleIds.has(id)
+        )
+    ),
+    online,
+    curated.filter((item) =>
+      item.memberIds?.length ? item.memberIds.every((id) => eligibleIds.has(id)) : eligibleIds.has(item.id)
+    )
+  );
 }
 
 export function organizationCatalog(entries: CustomGuideRepositoryEntry[]): CatalogPackage[] {
