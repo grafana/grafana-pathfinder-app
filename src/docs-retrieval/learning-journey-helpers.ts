@@ -906,7 +906,7 @@ function planSurfaceCompletion(input: SurfaceCompletionInput) {
   // trackMemberBaseUrl fallback: a guide referenced only by a Path Tracks
   // `tracks` entry (never by `milestones`) carries no `learningJourney` — see
   // its doc comment in content.types.ts — but still needs markMilestoneDone
-  // under its own identity so the cover page's per-track lock/unlock sees it.
+  // under its own identity so the cover page's per-track checkmarks see it.
   // resolveExpectedMilestoneIds(metadata?.learningJourney) below safely
   // returns [] with no `learningJourney`, so this can never satisfy
   // markMilestoneDone's whole-journey completion trigger (COMPLETION-MODEL.md

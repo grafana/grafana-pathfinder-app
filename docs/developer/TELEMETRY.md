@@ -444,6 +444,10 @@ The row sent when a reader accepts **Reset and continue** on an assignment is co
 
 `milestone_arrow_interaction_click` (from `milestone_progress_bar` and `bottom_navigation`) and `close_tab_click` on a learning-journey tab carry `completion_percentage`. Before v2.18.0 it was the navigation ordinal, `round(currentMilestone / totalMilestones * 100)`, which measured where the reader was rather than what they had done. From v2.18.0 (#1866) it is the mean of each unlocked milestone's stored percentage, floored and capped at 99 until every milestone is complete. Split any trend on this field at 2.18.0. Rows from `milestone_progress_bar` split again at v2.20.0 (#2033): from then the toolbar arrows average the sequence the reader is in, which is their active path track when they have one, and the toolbar also appears on guides that belong only to a track. From v2.18.0 through v2.19.x the toolbar arrows averaged the journey's own unlocked milestones. Bottom navigation and tab close still average the journey's own milestones.
 
+### Cover-page starts
+
+`start_learning_journey_click` from a path's cover page carries `interaction_location` `get_started_cta`, `resume_cta` or `module_row_click`, with the path's `content_url` and `total_milestones`. Before the release after v2.26.0, only the "Up next" row was clickable, so `module_row_click` meant "continued from the next incomplete milestone". From that release every published milestone row is clickable, so it also counts revisits of completed milestones and jumps ahead. A `module_row_click` from then on carries `row_state`, the row's state when it was clicked: `up_next` for the next incomplete milestone, `completed` for a revisit, `ahead` for a jump past "Up next". Rows before that release have no `row_state`; read them as `up_next`. Split any trend on it there.
+
 ### Progress resets
 
 `reset_progress_click` means the reader confirmed a reset, not that it succeeded: it fires before storage is cleared, like the per-guide reset. It carries `reset_scope`, so a re-completion can be told apart from a first completion by an earlier reset of matching scope in the reader's stream:

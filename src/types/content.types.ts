@@ -114,7 +114,7 @@ export interface ContentMetadata {
    * check). This field exists solely so `recordGuideCompletionForSurface`
    * can still route its completion through `markMilestoneDone` like a real
    * milestone — keyed on this guide's own identity, not a fake milestone
-   * index — so the cover page's per-track row lock/unlock sees it as done. `resolveExpectedMilestoneIds` never sees a real `milestones` list
+   * index — so the cover page's per-track checkmarks show it as done. `resolveExpectedMilestoneIds` never sees a real `milestones` list
    * for this path, so completing this guide can never satisfy the
    * whole-journey completion trigger (Path Tracks are not a completion
    * authority — COMPLETION-MODEL.md decision 10).
@@ -179,7 +179,7 @@ export interface Milestone {
    * The raw manifest guide id this row was resolved from (a `milestones` or
    * track `guides` entry) — the same id `getManifestMemberIds`/
    * `getAllTrackGuideIds` operate on. Threaded through click targets
-   * (GuideList's current row, the cover page's CTA) so `fetchPackageContent`
+   * (a GuideList row, the cover page's CTA) so `fetchPackageContent`
    * can classify a load by a direct id lookup against the manifest instead
    * of inferring it from a resolved-URL comparison. Optional rather than
    * required so the many existing fixtures/call sites that build a

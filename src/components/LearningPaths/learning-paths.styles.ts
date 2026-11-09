@@ -430,11 +430,13 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
     }),
-    // Separate from guideItemCurrent because the click affordance only holds
-    // where GuideList's own consumer wires up a handler for it (the cover
-    // page's shared link-handler contract) — see enableCurrentRowLink.
-    guideItemCurrentClickable: css({
+    guideItemClickable: css({
       cursor: 'pointer',
+      // An image layer, so guideItemCurrentCard's gradient can replace it with its own.
+      '&:hover': {
+        backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
+      },
+      '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
     }),
     // Same accent-card idiom as getLearningPathCardStyles.card, scoped here
     // since it decorates a GuideList row, not that component's own card.
@@ -488,6 +490,11 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(0.5),
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.disabled,
+    }),
+    guideChevron: css({
+      flexShrink: 0,
+      alignSelf: 'center',
+      color: theme.colors.text.secondary,
     }),
     guideUpNext: css({
       flexShrink: 0,
