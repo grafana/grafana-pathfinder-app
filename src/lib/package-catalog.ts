@@ -145,15 +145,31 @@ export function eligibleDiscoveryCatalog(
   online: CatalogPackage[],
   curated: CatalogPackage[]
 ): CatalogPackage[] {
-  const eligibleIds = new Set(online.map((item) => item.id));
-  const hasEligibleMembers = (item: CatalogPackage) =>
+  const onlineIds = new Set(online.map((item) => item.id));
+  const byId = new Map<string, CatalogPackage>();
+  for (const item of [...online, ...curated]) {
+    if (!byId.has(item.id)) {
+      byId.set(item.id, item);
+    }
+  }
+  const isEligible = (id: string, ancestors: Set<string> = new Set()): boolean => {
+    const item = byId.get(id);
+    if (!item || ancestors.has(id) || (!onlineIds.has(id) && !item.memberIds?.length)) {
+      return false;
+    }
+    ancestors.add(id);
+    const eligible = hasEligibleMembers(item, ancestors);
+    ancestors.delete(id);
+    return eligible;
+  };
+  const hasEligibleMembers = (item: CatalogPackage, ancestors: Set<string> = new Set()) =>
     [...(item.memberIds ?? []), ...getManifestMemberIds(item.packageInfo?.packageManifest)].every((id) =>
-      eligibleIds.has(id)
+      isEligible(id, ancestors)
     );
   return mergeCatalog(
-    bundled.filter((item) => eligibleIds.has(item.id) && hasEligibleMembers(item)),
-    online.filter(hasEligibleMembers),
-    curated.filter((item) => hasEligibleMembers(item) && (Boolean(item.memberIds?.length) || eligibleIds.has(item.id)))
+    bundled.filter((item) => isEligible(item.id) && hasEligibleMembers(item)),
+    online.filter((item) => isEligible(item.id)),
+    curated.filter((item) => isEligible(item.id) && hasEligibleMembers(item))
   );
 }
 

@@ -115,6 +115,57 @@ describe('package catalog', () => {
     }
   );
 
+  it('excludes nested online, bundled, and curated paths with an ineligible descendant', () => {
+    const entry = (id: string, type: 'guide' | 'path' | 'journey', milestones: string[]) => ({
+      id,
+      title: id,
+      repository: 'interactive-tutorials',
+      contentUrl: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+      manifestUrl: `https://interactive-learning.grafana.net/packages/${id}/manifest.json`,
+      manifest: { id, type, milestones },
+    });
+    const online = eligibleCatalog([
+      entry('healthy', 'guide', []),
+      entry('broken', 'path', ['unhealthy']),
+      entry('nested', 'journey', ['broken']),
+      entry('valid', 'path', ['healthy']),
+    ]);
+    const bundled: CatalogPackage[] = [
+      { ...online[2], key: 'bundled:nested' },
+      { ...online[3], key: 'bundled:valid' },
+    ];
+    const curated: CatalogPackage[] = [
+      { ...online[2], id: 'curated-broken', key: 'curated:broken', packageInfo: undefined },
+      {
+        ...online[2],
+        id: 'curated-parent',
+        key: 'curated:parent',
+        memberIds: ['curated-broken'],
+        packageInfo: undefined,
+      },
+      {
+        ...online[3],
+        id: 'curated-valid',
+        key: 'curated:valid',
+        packageInfo: undefined,
+      },
+      {
+        ...online[3],
+        id: 'curated-valid-parent',
+        key: 'curated:valid-parent',
+        memberIds: ['curated-valid'],
+        packageInfo: undefined,
+      },
+      { ...online[3], id: 'curated-to-broken', key: 'curated:to-broken', memberIds: ['broken'], packageInfo: undefined },
+    ];
+    expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.key)).toEqual([
+      'bundled:valid',
+      'interactive-tutorials:healthy',
+      'curated:valid',
+      'curated:valid-parent',
+    ]);
+  });
+
   it.each(['future', 42, { future: true }, 'markdown'])(
     'preserves path metadata and exact prerequisite labels for format %p',
     (format) => {
