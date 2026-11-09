@@ -1053,7 +1053,8 @@ describe('test review', () => {
 
   test('following next on changed hunks skips the unchanged lines between hunks', () => {
     const line = (index, value) => `test('case-${index}', () => expect(${value}).toBe(${value}));`;
-    const lines = (value) => Array.from({ length: 3000 }, (_, index) => line(index, index < 410 || index === 2900 ? value : 0));
+    const lines = (value) =>
+      Array.from({ length: 3000 }, (_, index) => line(index, index < 410 || index === 2900 ? value : 0));
     const { repo, base } = makeRepo({ 'src/engine.test.ts': `${lines(0).join('\n')}\n` });
     const head = commit(repo, { 'src/engine.test.ts': `${lines(1).join('\n')}\n` }, 'head');
     const runDir = prepared({ repo, base, head });
@@ -1084,7 +1085,12 @@ describe('test review', () => {
     const head = commit(repo, { 'src/old.test.ts': null, 'src/renamed.test.ts': body('old'), ...added }, 'head');
     const runDir = prepared({ repo, base, head });
     const tests = [
-      ...Object.keys(added).map((path) => ({ path, read: false, reason_kind: 'generated', reason: 'Generated fixture.' })),
+      ...Object.keys(added).map((path) => ({
+        path,
+        read: false,
+        reason_kind: 'generated',
+        reason: 'Generated fixture.',
+      })),
       {
         path: 'src/renamed.test.ts',
         read: true,
