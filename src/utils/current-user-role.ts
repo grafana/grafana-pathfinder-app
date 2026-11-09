@@ -9,7 +9,7 @@
  * product steers someone at.
  */
 
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { config } from '@grafana/runtime';
 
 import { fetchCoreUser, type CoreUser } from '../lib/grafana-core-client';
@@ -106,12 +106,19 @@ export function currentUserIsEditor(): boolean {
   return user.isGrafanaAdmin || user.role === 'Admin' || user.role === 'Editor';
 }
 
+function useCurrentUserPredicate(predicate: () => boolean): boolean {
+  useEffect(() => {
+    void ensureCurrentUser().catch(() => undefined);
+  }, []);
+  return useSyncExternalStore(subscribeToCurrentUser, predicate);
+}
+
 export function useCurrentUserIsAdmin(): boolean {
-  return useSyncExternalStore(subscribeToCurrentUser, currentUserIsAdmin);
+  return useCurrentUserPredicate(currentUserIsAdmin);
 }
 
 export function useCurrentUserIsEditor(): boolean {
-  return useSyncExternalStore(subscribeToCurrentUser, currentUserIsEditor);
+  return useCurrentUserPredicate(currentUserIsEditor);
 }
 
 export function currentUserIsOrgAdmin(): boolean {
@@ -119,5 +126,9 @@ export function currentUserIsOrgAdmin(): boolean {
 }
 
 export function useCurrentUserIsOrgAdmin(): boolean {
-  return useSyncExternalStore(subscribeToCurrentUser, currentUserIsOrgAdmin);
+  return useCurrentUserPredicate(currentUserIsOrgAdmin);
+}
+
+export function useCurrentUserRoleKnown(): boolean {
+  return useCurrentUserPredicate(isCurrentUserRoleKnown);
 }

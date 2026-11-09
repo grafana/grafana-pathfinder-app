@@ -24,6 +24,7 @@ import {
   resetCurrentUserForTests,
   useCurrentUserIsAdmin,
   useCurrentUserIsOrgAdmin,
+  useCurrentUserRoleKnown,
 } from './current-user-role';
 
 const setBootUser = (user: Record<string, unknown> | undefined) => {
@@ -34,7 +35,7 @@ describe('current user', () => {
   beforeEach(() => {
     mockPlatform = 'oss';
     resetCurrentUserForTests();
-    mockFetchCoreUser.mockReset();
+    mockFetchCoreUser.mockReset().mockResolvedValue(undefined);
     setBootUser({ id: 7, orgId: 3, isSignedIn: true, orgRole: 'Viewer', isGrafanaAdmin: false });
   });
 
@@ -131,6 +132,20 @@ describe('current user', () => {
       expect(result.current).toBe(true);
     });
 
+    it('loads the live role on mount and notifies when an unknown role becomes Viewer', async () => {
+      mockFetchCoreUser.mockResolvedValue({ role: 'Viewer', grafanaAdmin: false });
+      const { result } = renderHook(() => ({
+        known: useCurrentUserRoleKnown(),
+        admin: useCurrentUserIsAdmin(),
+      }));
+      expect(result.current).toEqual({ known: false, admin: false });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockFetchCoreUser).toHaveBeenCalledTimes(1);
+      expect(result.current).toEqual({ known: true, admin: false });
+    });
+
     it('retries a failed live read at most every 30 seconds', async () => {
       jest.useFakeTimers();
       try {
@@ -147,9 +162,9 @@ describe('current user', () => {
     });
 
     it('re-renders subscribers when the live role arrives', async () => {
+      mockFetchCoreUser.mockResolvedValue({ role: 'Admin', grafanaAdmin: false });
       const { result } = renderHook(() => useCurrentUserIsAdmin());
       expect(result.current).toBe(false);
-      mockFetchCoreUser.mockResolvedValue({ role: 'Admin', grafanaAdmin: false });
       await act(async () => {
         await refreshCurrentUser();
       });
