@@ -141,8 +141,8 @@ describe('package catalog', () => {
       ]);
       const bundled = online.map((item) => ({ ...item, key: `bundled:${item.id}` }));
       const curated: CatalogPackage[] = [
-        { ...online[1], key: 'curated:valid', id: 'curated-valid', packageInfo: undefined },
-        { ...online[2], key: 'curated:excluded', id: 'curated-excluded', packageInfo: undefined },
+        { ...online[1]!, key: 'curated:valid', id: 'curated-valid', packageInfo: undefined },
+        { ...online[2]!, key: 'curated:excluded', id: 'curated-excluded', packageInfo: undefined },
       ];
       expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.key)).toEqual([
         'bundled:healthy',
@@ -168,32 +168,38 @@ describe('package catalog', () => {
       entry('valid', 'path', ['healthy']),
     ]);
     const bundled: CatalogPackage[] = [
-      { ...online[2], key: 'bundled:nested' },
-      { ...online[3], key: 'bundled:valid' },
+      { ...online[2]!, key: 'bundled:nested' },
+      { ...online[3]!, key: 'bundled:valid' },
     ];
     const curated: CatalogPackage[] = [
-      { ...online[2], id: 'curated-broken', key: 'curated:broken', packageInfo: undefined },
+      { ...online[2]!, id: 'curated-broken', key: 'curated:broken', packageInfo: undefined },
       {
-        ...online[2],
+        ...online[2]!,
         id: 'curated-parent',
         key: 'curated:parent',
         memberIds: ['curated-broken'],
         packageInfo: undefined,
       },
       {
-        ...online[3],
+        ...online[3]!,
         id: 'curated-valid',
         key: 'curated:valid',
         packageInfo: undefined,
       },
       {
-        ...online[3],
+        ...online[3]!,
         id: 'curated-valid-parent',
         key: 'curated:valid-parent',
         memberIds: ['curated-valid'],
         packageInfo: undefined,
       },
-      { ...online[3], id: 'curated-to-broken', key: 'curated:to-broken', memberIds: ['broken'], packageInfo: undefined },
+      {
+        ...online[3]!,
+        id: 'curated-to-broken',
+        key: 'curated:to-broken',
+        memberIds: ['broken'],
+        packageInfo: undefined,
+      },
     ];
     expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.key)).toEqual([
       'bundled:valid',
