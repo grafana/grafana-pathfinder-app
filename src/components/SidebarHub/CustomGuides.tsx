@@ -196,6 +196,7 @@ export function CustomGuides({ guides, isLoading, onLaunch }: CustomGuidesProps)
             icon={collapsed ? 'angle-down' : 'angle-up'}
             aria-expanded={!collapsed}
             aria-controls={contentId}
+            className={styles.otherDocsToggle}
             onClick={() => setCollapsed((value) => !value)}
           >
             {t('contextPanel.customGuides', 'Custom guides')}
