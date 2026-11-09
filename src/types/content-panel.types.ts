@@ -110,6 +110,8 @@ export interface PersistedTabData {
 }
 
 export interface PackageOpenInfo {
+  /** Resolved owning path locator, bound to the manifest identity and source across tab restore. */
+  resolvedPath?: { id: string; repository?: string; baseUrl: string };
   packageId?: string;
   packageManifest?: Record<string, unknown>;
   /** Recommendation-level repository (sibling of manifest in the V1 wire shape;

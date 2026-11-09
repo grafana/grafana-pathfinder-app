@@ -264,6 +264,57 @@ it('awards the online path badge when both member content and path resolution fa
   }
 });
 
+it('defers path completion when an offline member has no authoritative parent locator', () => {
+  recordGuideCompletionForSurface({
+    contentUrl: 'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json',
+    currentUrl: 'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json',
+    metadata: {
+      title: 'Welcome',
+      packageManifest: { id: 'welcome-to-grafana', type: 'guide' },
+      journeyManifest: { id: 'getting-started', type: 'path' },
+      repository: 'interactive-tutorials',
+      learningJourney: { currentMilestone: 1, totalMilestones: 1, baseUrl: '', milestones: [] },
+    },
+  });
+  expect(emitted).toEqual([]);
+  expect(journeySetMock).not.toHaveBeenCalled();
+  expect(awardBadgeMock).not.toHaveBeenCalled();
+});
+
+it('does not award path completion when offline metadata leaves required members unavailable', async () => {
+  const baseUrl = 'https://interactive-learning.grafana.net/packages/getting-started/content.json';
+  const memberUrl = 'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json';
+  getPathsDataMock.mockReturnValue({
+    paths: [{ id: 'getting-started', url: baseUrl, badgeId: 'getting-started-badge' }],
+  });
+  recordGuideCompletionForSurface({
+    contentUrl: memberUrl,
+    currentUrl: memberUrl,
+    metadata: {
+      title: 'Welcome',
+      packageManifest: { id: 'welcome-to-grafana', type: 'guide' },
+      journeyManifest: { id: 'getting-started', type: 'path' },
+      repository: 'interactive-tutorials',
+      learningJourney: {
+        currentMilestone: 1,
+        totalMilestones: 2,
+        baseUrl,
+        hasUnavailableMilestones: true,
+        milestones: [
+          { id: 'welcome-to-grafana', number: 1, title: 'Welcome', url: memberUrl, isActive: false },
+          { id: 'not-cached', number: 2, title: 'Not cached', url: '', isActive: false, isLocked: true },
+        ],
+      },
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(emitted).toEqual([
+    expect.objectContaining({ kind: 'guide', guideId: 'welcome-to-grafana', pathId: 'getting-started' }),
+  ]);
+  expect(journeySetMock).not.toHaveBeenCalledWith(baseUrl, expect.anything());
+  expect(awardBadgeMock).not.toHaveBeenCalled();
+});
+
 describe('bundled guide reaching 100% (trigger class A)', () => {
   it('routes through the recorder as an interactive guide keyed on the bundled slug', () => {
     setJourneyCompletionPercentage('bundled:first-dashboard', 100);

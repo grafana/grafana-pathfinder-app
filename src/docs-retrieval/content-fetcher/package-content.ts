@@ -18,6 +18,7 @@ import {
   type ManifestTrack,
 } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
+import { resolveOfflinePathContext } from './package-fallback-context';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
@@ -165,14 +166,18 @@ async function resolvePathTracks(
   manifestId: string,
   callerManifest: Record<string, unknown> | undefined,
   pathSlug?: string
-): Promise<{ declared: ManifestTrack[]; resolved: CoverPageTrack[] }> {
+): Promise<{ declared: ManifestTrack[]; resolved: CoverPageTrack[]; authoritative: boolean }> {
   const needsPackageManifest = manifestId !== '' && callerManifest?.repository !== 'app-platform';
   const resolver = needsPackageManifest ? await getPackageResolver() : undefined;
   const resolution = resolver
     ? await resolver.resolve(manifestId, { loadContent: 'metadata-only' }).catch(() => undefined)
     : undefined;
   const declared = getManifestTracks(resolution?.ok && resolution.manifest ? resolution.manifest : callerManifest);
-  return { declared, resolved: declared.length > 0 ? await resolvePackageTracks(declared, pathSlug) : [] };
+  return {
+    declared,
+    resolved: declared.length > 0 ? await resolvePackageTracks(declared, pathSlug) : [],
+    authoritative: (resolution?.ok && isPathManifest(resolution.manifest)) || Array.isArray(callerManifest?.tracks),
+  };
 }
 
 /**
@@ -330,6 +335,7 @@ export async function fetchPackageContent(
   knownBaseUrl?: string,
   loadContext?: GuideLoadContext
 ): Promise<ContentFetchResult> {
+  let offlinePath: ReturnType<typeof resolveOfflinePathContext> | undefined;
   const fallbackKey = bundledTutorialContentKey(contentUrl);
   if (!preFetchedContent && !contentUrl.startsWith('bundled:') && fallbackKey.startsWith('bundled:')) {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -346,6 +352,18 @@ export async function fetchPackageContent(
     if (!preFetchedContent.content) {
       preFetchedContent = await fetchContent(fallbackKey, { loadContext });
       if (isPathManifest(packageManifest)) {
+        offlinePath = resolveOfflinePathContext(
+          contentUrl,
+          packageManifest!,
+          preResolvedMilestones,
+          repository,
+          explicitGuideId,
+          knownBaseUrl
+        );
+        packageManifest = offlinePath.manifest;
+        preResolvedMilestones = offlinePath.milestones;
+        knownBaseUrl = offlinePath.baseUrl;
+        explicitGuideId = offlinePath.loadedGuideId;
         if (preFetchedContent.content) {
           // Member navigation matches the requested URL, regardless of where its content came from.
           preFetchedContent = {
@@ -376,13 +394,19 @@ export async function fetchPackageContent(
 
   const [result, unmarkedMilestones, baseUrlResolution, unmarkedPathTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
-    shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
-    manifestId
+    shouldResolveMilestones && !offlinePath
+      ? resolvePackageMilestones(milestoneIds, pathSlug)
+      : Promise.resolve(undefined),
+    manifestId && !offlinePath
       ? getPackageResolver().then((resolver) =>
           resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
         )
       : Promise.resolve(undefined),
-    tracksEligible ? resolvePathTracks(manifestId, packageManifest, pathSlug) : Promise.resolve(undefined),
+    offlinePath
+      ? Promise.resolve(offlinePath.pathTracks)
+      : tracksEligible
+        ? resolvePathTracks(manifestId, packageManifest, pathSlug)
+        : Promise.resolve(undefined),
   ]);
   // Derived URLs must retain PR-test isolation from production progress.
   const prTestFetchId = getPrTestFetchId(contentUrl);
@@ -427,7 +451,9 @@ export async function fetchPackageContent(
       (milestoneIds.includes(explicitGuideId) || getAllTrackGuideIds(manifestTracks).includes(explicitGuideId))
     );
   const resolvedRepository =
-    repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ?? resolvedMember?.repository;
+    repository ??
+    (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ??
+    (offlinePath ? undefined : resolvedMember?.repository);
 
   let learningJourney: LearningJourneyMetadata | undefined;
   let trackMemberBaseUrl: string | undefined;
@@ -448,7 +474,7 @@ export async function fetchPackageContent(
           ? getAllTrackGuideIds(manifestTracks).includes(explicitGuideId)
           : tracks.some((track) => track.milestones.some((m) => !m.isLocked && m.url === contentUrl)));
 
-      if (!explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
+      if (!offlinePath && !explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
         const lockedTrackGuideIds = tracks
           .flatMap((track) => track.milestones.filter((m) => m.isLocked))
           .map((m) => m.id)
@@ -467,13 +493,16 @@ export async function fetchPackageContent(
 
         let baseUrl = contentUrl;
         if (milestoneIndex >= 0) {
-          baseUrl = baseUrlResolution?.ok ? markForPrTest(baseUrlResolution.contentUrl) : (knownBaseUrl ?? contentUrl);
+          baseUrl = baseUrlResolution?.ok
+            ? markForPrTest(baseUrlResolution.contentUrl)
+            : (knownBaseUrl ?? (offlinePath ? '' : contentUrl));
         }
 
         learningJourney = {
           currentMilestone,
           totalMilestones: milestones.length,
           milestones,
+          ...(offlinePath?.hasUnavailableMilestones && { hasUnavailableMilestones: true }),
           baseUrl,
           summary: result.content.metadata.singleDoc?.summary,
           ...(pathSlug != null && {
@@ -482,7 +511,7 @@ export async function fetchPackageContent(
         };
 
         if (currentMilestone === 0) {
-          if (tracks.length > 0) {
+          if (tracks.length > 0 || pathTracks?.authoritative) {
             learningJourney.tracks = tracks;
           }
 
@@ -496,7 +525,7 @@ export async function fetchPackageContent(
         trackMemberBaseUrl = markForPrTest(baseUrlResolution.contentUrl);
       } else if (knownBaseUrl) {
         trackMemberBaseUrl = knownBaseUrl;
-      } else if (manifestId) {
+      } else if (manifestId && !offlinePath) {
         const retriedBaseUrl = await resolvePackageUrlBypassCache(manifestId);
         if (retriedBaseUrl) {
           trackMemberBaseUrl = markForPrTest(retriedBaseUrl);
@@ -543,6 +572,7 @@ export async function fetchPackageContent(
         ...(packageManifestMetadata !== undefined && { packageManifest: packageManifestMetadata }),
         ...(isMemberLoad && packageManifest !== undefined && { journeyManifest: packageManifest }),
         ...(resolvedRepository !== undefined && { repository: resolvedRepository }),
+        ...(offlinePath && { offlinePathTracks: pathTracks?.resolved }),
         ...(learningJourney !== undefined && { learningJourney }),
         ...(trackMemberBaseUrl !== undefined && { trackMemberBaseUrl }),
       },

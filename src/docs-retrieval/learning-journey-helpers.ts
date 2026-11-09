@@ -126,7 +126,7 @@ export function getPreviousMilestoneUrl(
 
   // A track-only guide carries no learningJourney and so has no cover to
   // fall back to — staying at "no previous" is a safe no-op, not a regression.
-  return content.type === 'learning-journey' ? (content.metadata.learningJourney?.baseUrl ?? null) : null;
+  return content.type === 'learning-journey' ? content.metadata.learningJourney?.baseUrl || null : null;
 }
 
 /**
@@ -880,6 +880,9 @@ export function resolveSurfaceCompletionIdentity(
   const { metadata } = input;
   const surfaceBase = input.baseUrl || input.contentUrl;
   const journeyBase = metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl;
+  if (metadata?.journeyManifest && !journeyBase) {
+    return undefined;
+  }
   const slug = resolveActiveMilestoneSlug({ currentUrl: input.currentUrl, journeyBaseUrl: journeyBase });
   const context: CompletionContext = {
     packageManifest:
@@ -961,6 +964,10 @@ export function resolveSurfaceGuideIdentity(input: SurfaceCompletionInput): Regi
 export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
   const { metadata } = input;
   const { surfaceBase, journeyBase, slug, willMarkMilestone, completionContext } = planSurfaceCompletion(input);
+  // An offline member without its parent's locator must not earn standalone or wrong-path credit.
+  if (metadata?.journeyManifest && !journeyBase) {
+    return;
+  }
   if (isPrTestSurface(input)) {
     if (willMarkMilestone && journeyBase) {
       void markMilestoneDone(journeyBase, slug, input.currentUrl!);
@@ -980,11 +987,13 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
       journeyBase,
       slug,
       input.currentUrl!,
-      metadata?.learningJourney?.milestones?.filter((m) => !m.isLocked).map((m) => m.url),
+      metadata?.learningJourney?.hasUnavailableMilestones
+        ? undefined
+        : metadata?.learningJourney?.milestones?.filter((m) => !m.isLocked).map((m) => m.url),
       completionContext
     );
     // Recommendation cards read the persisted journey percentage, not the member evidence.
-    if (metadata?.learningJourney?.milestones) {
+    if (metadata?.learningJourney?.milestones && !metadata.learningJourney.hasUnavailableMilestones) {
       const freshJourneyProgress = journeyProgressFromMilestones(journeyBase, metadata.learningJourney.milestones);
       setJourneyCompletionPercentage(journeyBase, freshJourneyProgress, completionContext, {
         attemptEligible: false,

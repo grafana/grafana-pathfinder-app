@@ -430,3 +430,136 @@ describe('buildDocsLoadSuccessPatch', () => {
     expect(packageInfo).toEqual({ packageId: 'path-1', packageManifest: { type: 'path' } });
   });
 });
+
+describe('resolved path locator capture', () => {
+  it('retains resolved foundation rows when a matching owner refresh leaves foundations unchanged', () => {
+    const manifest = { id: 'owner', type: 'path', milestones: ['same'] };
+    const resolvedMilestones = [
+      { id: 'same', number: 1, title: 'Same', url: 'bundled:same/content.json', isActive: false },
+    ];
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ packageInfo: { packageManifest: manifest, resolvedMilestones } }),
+      requestedUrl: 'bundled:owner/content.json',
+      fetchedContent: content({
+        metadata: {
+          title: 'Owner',
+          packageManifest: { ...manifest, title: 'Updated' },
+          trackMemberBaseUrl: 'bundled:owner/content.json',
+        },
+      }),
+    });
+    expect(patch.packageInfo?.packageManifest?.title).toBe('Updated');
+    expect(patch.packageInfo?.resolvedMilestones).toBe(resolvedMilestones);
+  });
+
+  it.each([
+    { type: 'path', repository: 'interactive-tutorials', expected: ['new'] },
+    { type: 'journey', repository: 'interactive-tutorials', expected: ['new'] },
+    { type: 'guide', repository: 'interactive-tutorials', expected: ['old'] },
+    { type: 'path', repository: 'app-platform', expected: ['old'] },
+  ])('refreshes foundations only from a matching path owner: %j', ({ type, repository, expected }) => {
+    const manifest = {
+      id: 'owner',
+      type: 'path',
+      milestones: ['old'],
+      tracks: [{ trackId: 'old-track', label: 'Old', guides: ['old'] }],
+      description: 'Retained description',
+    };
+    const owner = {
+      id: 'owner',
+      type,
+      repository,
+      milestones: ['new'],
+      tracks: [{ trackId: 'new-track', label: 'New', guides: ['new'] }],
+    };
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({
+        packageInfo: { packageManifest: manifest, repository: 'interactive-tutorials', resolvedMilestones: [] },
+      }),
+      requestedUrl: 'bundled:owner/content.json',
+      fetchedContent: content({
+        metadata: {
+          title: 'Owner',
+          journeyManifest: owner,
+          trackMemberBaseUrl: 'bundled:owner/content.json',
+        },
+      }),
+    });
+    expect(patch.packageInfo?.packageManifest?.milestones).toEqual(expected);
+    expect(patch.packageInfo?.packageManifest?.tracks).toEqual(expected[0] === 'new' ? owner.tracks : manifest.tracks);
+    expect(patch.packageInfo?.packageManifest?.description).toBe('Retained description');
+    expect(patch.packageInfo?.resolvedMilestones).toEqual(expected[0] === 'new' ? undefined : []);
+    expect(manifest.milestones).toEqual(['old']);
+  });
+
+  it.each([
+    { name: 'reordered members', ids: ['b', 'a'], lockedId: undefined },
+    { name: 'removed member', ids: ['a'], lockedId: undefined },
+    { name: 'locked unresolved member', ids: ['b', 'a'], lockedId: 'b' },
+    { name: 'removed all tracks', ids: undefined, lockedId: undefined },
+  ])('persists authoritative resolved tracks with $name', ({ ids, lockedId }) => {
+    const manifest = {
+      id: 'owner',
+      type: 'path',
+      tracks: [
+        { trackId: 'advanced', label: 'Old label', guides: ['a', 'b'] },
+        { trackId: 'removed', label: 'Removed track', guides: ['c'] },
+      ],
+    };
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ packageInfo: { packageManifest: manifest } }),
+      requestedUrl: 'bundled:owner/content.json',
+      fetchedContent: content({
+        metadata: {
+          title: 'Owner',
+          packageManifest: manifest,
+          learningJourney: {
+            baseUrl: 'bundled:owner/content.json',
+            currentMilestone: 0,
+            totalMilestones: 0,
+            milestones: [],
+            tracks: ids
+              ? [
+                  {
+                    trackId: 'advanced',
+                    label: 'Current label',
+                    milestones: ids.map((id, index) => ({
+                      id,
+                      number: index + 1,
+                      title: id,
+                      url: id === lockedId ? '' : `bundled:${id}/content.json`,
+                      isActive: false,
+                      isLocked: id === lockedId,
+                    })),
+                  },
+                ]
+              : [],
+          },
+        },
+      }),
+    });
+    expect(patch.packageInfo?.packageManifest?.tracks).toEqual(
+      ids ? [{ trackId: 'advanced', label: 'Current label', guides: ids }] : []
+    );
+    expect(manifest.tracks[0]?.guides).toEqual(['a', 'b']);
+    expect(manifest.tracks).toHaveLength(2);
+  });
+
+  it.each([
+    { owner: { id: 'other', type: 'path' }, baseUrl: 'bundled:owner/content.json' },
+    { owner: { id: 'owner', type: 'path', repository: 'app-platform' }, baseUrl: 'bundled:owner/content.json' },
+    { owner: { id: 'owner', type: 'path' }, baseUrl: 'javascript:alert(1)' },
+  ])('does not capture mismatched or unsafe metadata: %j', ({ owner, baseUrl }) => {
+    const packageInfo: PackageOpenInfo = {
+      packageManifest: { id: 'owner', type: 'path' },
+      repository: 'interactive-tutorials',
+    };
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ packageInfo }),
+      requestedUrl: 'bundled:member/content.json',
+      fetchedContent: content({ metadata: { title: 'Member', journeyManifest: owner, trackMemberBaseUrl: baseUrl } }),
+    });
+    expect(patch.packageInfo).toBe(packageInfo);
+    expect(patch.packageInfo?.resolvedPath).toBeUndefined();
+  });
+});

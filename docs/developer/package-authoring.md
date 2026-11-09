@@ -510,7 +510,12 @@ Recommender resolution validates trusted content and manifest URLs and matching 
 for every package, with a 5-second aggregate deadline. The seven fallback tutorials also
 require a matching manifest ID and use a shorter 1.5-second deadline. Their recommendation
 clicks fall back locally if the CDN fails or exceeds 1.5 seconds; explicit bundled links
-stay local. Online fallback results are retried on the next open.
+stay local. Online fallback results are retried on the next open. Path-member fallback
+uses only already-resolved or cached path metadata, so parent and track lookups do not
+extend that deadline. Tabs retain the validated owning-path URL for restoration. If an
+older saved tab has neither that URL nor a cached path entry, its guide remains readable,
+but path completion waits until ownership can be resolved. Unavailable required members
+remain in the sequence and cannot accidentally shorten the path needed for a badge.
 
 Before releasing this migration, merge and publish interactive-tutorials #714 and verify
 all seven package manifests plus `first-dashboard-rss` on the CDN with

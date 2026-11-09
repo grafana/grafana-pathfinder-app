@@ -1093,6 +1093,28 @@ describe('fetchPackageContent path-type enrichment', () => {
     ]);
   });
 
+  it('emits an authoritative empty track list when all previously declared tracks were removed', async () => {
+    const owner = { id: 'first-dashboard', type: 'path', milestones: ['step-1'], tracks: [] };
+    setPackageResolver({
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          manifest: id === owner.id ? owner : { id, type: 'guide' },
+        })
+      ),
+    });
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      ...owner,
+      tracks: [{ trackId: 'removed', label: 'Removed', guides: ['old-member'] }],
+    });
+    expect(result.content?.metadata.learningJourney?.currentMilestone).toBe(0);
+    expect(result.content?.metadata.learningJourney?.tracks).toEqual([]);
+  });
+
   it('reads tracks from the package manifest when the caller manifest is a slim recommender projection', async () => {
     const packageManifest = {
       id: 'first-dashboard',
