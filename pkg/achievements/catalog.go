@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -17,6 +19,8 @@ const (
 	maxInValues       = 16
 	maxIDLen          = 64
 	maxTierIDLen      = 32
+	maxTitleRunes     = 80
+	maxDescRunes      = 280
 	unitOccurrence    = "occurrence"
 	actionCompleted   = "completed"
 	countByResource   = "resource"
@@ -165,8 +169,11 @@ func (d *Definition) validate(registry *Registry) []error {
 	if len(d.ID) > maxIDLen || !idPattern.MatchString(d.ID) {
 		fail("id must be a lowercase token of at most %d characters", maxIDLen)
 	}
-	if d.Title == "" || d.Description == "" {
-		fail("title and description are required")
+	if err := checkText(d.Title, maxTitleRunes); err != nil {
+		fail("title %v", err)
+	}
+	if err := checkText(d.Description, maxDescRunes); err != nil {
+		fail("description %v", err)
 	}
 	if len(d.Tiers) == 0 || len(d.Tiers) > maxTiers {
 		fail("needs 1 to %d tiers, got %d", maxTiers, len(d.Tiers))
@@ -218,6 +225,25 @@ func (d *Definition) validate(registry *Registry) []error {
 		}
 	}
 	return errs
+}
+
+// checkText holds display text to plain, bounded text: no control characters
+// and no bidi embedding, override or isolate, which could reorder what is shown.
+func checkText(s string, maxRunes int) error {
+	switch {
+	case s == "":
+		return errors.New("is required")
+	case !utf8.ValidString(s):
+		return errors.New("is not valid UTF-8")
+	case utf8.RuneCountInString(s) > maxRunes:
+		return fmt.Errorf("is over %d characters", maxRunes)
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) || (r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069') {
+			return fmt.Errorf("contains the control or bidi character %U", r)
+		}
+	}
+	return nil
 }
 
 // ceiling is the most units a counter records, so a tier appended later can

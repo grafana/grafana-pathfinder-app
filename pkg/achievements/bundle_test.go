@@ -228,3 +228,24 @@ func TestDefinitionsPathNamesTheFormatVersion(t *testing.T) {
 		t.Errorf("path %q, format %q, grammar %q", DefinitionsPath, FormatVersion, Grammar)
 	}
 }
+
+func TestLoadBundleSkipsAndHidesADefinitionWithUnsafeText(t *testing.T) {
+	bad := func(id, text string) string {
+		return strings.Replace(guidesDefinition(id, ""), `"title":"T"`, `"title":"`+text+`"`, 1)
+	}
+	s, err := LoadBundle(bundleOf("1.0", guidesAction,
+		bad("bidi", `\u202eT`), bad("long", strings.Repeat("t", maxTitleRunes+1)), guidesDefinition("kept", "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, skip := range s.Skipped {
+		got = append(got, skip.ID+" "+string(skip.Reason))
+	}
+	if strings.Join(got, ", ") != "bidi invalid, long invalid" {
+		t.Errorf("skipped %v", got)
+	}
+	if len(s.Display) != 1 || s.Display[0].ID != "kept" {
+		t.Errorf("display = %+v, want unsafe text never shown", s.Display)
+	}
+}

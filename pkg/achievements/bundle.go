@@ -85,8 +85,8 @@ type envelope struct {
 // top level are lenient, so additive keys need no grammar change; fields,
 // resources and definitions are decoded strictly, and each entry is validated
 // on its own. An entry this build cannot read is skipped with a reason and
-// everything else stays live. Only an unreadable envelope or another grammar
-// major fails the whole bundle.
+// everything else stays live. Only an unreadable envelope or a grammar other
+// than Grammar fails the whole bundle.
 func LoadBundle(data []byte) (*Snapshot, error) {
 	if len(data) > MaxBundleBytes {
 		return nil, fmt.Errorf("bundle: %d bytes, at most %d", len(data), MaxBundleBytes)
@@ -220,7 +220,8 @@ func (s *Snapshot) skip(what, id string, reason SkipReason, err error) {
 
 func decodeDisplay(raw json.RawMessage) (Display, bool) {
 	var d Display
-	if json.Unmarshal(raw, &d) != nil || !validID(d.ID, maxIDLen) {
+	if json.Unmarshal(raw, &d) != nil || !validID(d.ID, maxIDLen) ||
+		checkText(d.Title, maxTitleRunes) != nil || checkText(d.Description, maxDescRunes) != nil {
 		return Display{}, false
 	}
 	for _, t := range d.Tiers {

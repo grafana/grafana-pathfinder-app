@@ -42,7 +42,14 @@ func TestLoadCatalogRejects(t *testing.T) {
 		{"duplicate id", wrap(counted(dashCounter, oneTier) + "," + counted(dashCounter, oneTier)), "declared twice"},
 		{"bad id", wrap(strings.Replace(counted(dashCounter, oneTier), `"id":"x"`, `"id":"X Y"`, 1)), "id must be a lowercase token"},
 		{"revision", wrap(strings.Replace(counted(dashCounter, oneTier), `"title"`, `"revision":1,"title"`, 1)), `unknown field "revision"`},
-		{"missing title", wrap(strings.Replace(counted(dashCounter, oneTier), `"title":"X"`, `"title":""`, 1)), "title and description"},
+		{"missing title", wrap(strings.Replace(counted(dashCounter, oneTier), `"title":"X"`, `"title":""`, 1)), "title is required"},
+		{"missing description", wrap(strings.Replace(counted(dashCounter, oneTier), `"description":"X."`, `"description":""`, 1)), "description is required"},
+		{"title over 80", wrap(strings.Replace(counted(dashCounter, oneTier), `"title":"X"`, `"title":"`+strings.Repeat("é", 81)+`"`, 1)), "title is over 80 characters"},
+		{"description over 280", wrap(strings.Replace(counted(dashCounter, oneTier), `"description":"X."`, `"description":"`+strings.Repeat("a", 281)+`"`, 1)), "description is over 280 characters"},
+		{"control character", wrap(strings.Replace(counted(dashCounter, oneTier), `"title":"X"`, `"title":"X\u0007"`, 1)), "title contains the control or bidi character U+0007"},
+		{"newline", wrap(strings.Replace(counted(dashCounter, oneTier), `"description":"X."`, `"description":"X.\nY."`, 1)), "description contains the control or bidi character U+000A"},
+		{"bidi override", wrap(strings.Replace(counted(dashCounter, oneTier), `"title":"X"`, `"title":"\u202eX"`, 1)), "title contains the control or bidi character U+202E"},
+		{"bidi isolate", wrap(strings.Replace(counted(dashCounter, oneTier), `"description":"X."`, `"description":"\u2066X."`, 1)), "description contains the control or bidi character U+2066"},
 		{"no tiers", wrap(counted(dashCounter, `[]`)), "needs 1 to 10 tiers"},
 		{"eleven tiers", wrap(counted(dashCounter, elevenTiers)), "needs 1 to 10 tiers"},
 
@@ -147,6 +154,8 @@ func TestLoadCatalogAcceptsBoundaryValues(t *testing.T) {
 		"art of 64":     counted(dashCounter, `[{"id":"bronze","at":1,"art":"`+strings.Repeat("a", 64)+`"}]`),
 		"occurrence 50": counted(`{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}`, `[{"id":"bronze","at":50}]`),
 		"boolean eq":    counted(evidenceWith(`,"where":[{"field":"starred","op":"eq","value":true}]`), oneTier),
+		"title of 80 multibyte characters and description of 280": strings.Replace(strings.Replace(counted(dashCounter, oneTier),
+			`"title":"X"`, `"title":"`+strings.Repeat("é", 80)+`"`, 1), `"description":"X."`, `"description":"`+strings.Repeat("a", 280)+`"`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := loadCatalog([]byte(wrap(achievement)), mustRegistry(t)); err != nil {
