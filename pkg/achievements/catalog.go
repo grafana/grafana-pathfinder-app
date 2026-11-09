@@ -228,19 +228,18 @@ func (d *Definition) validate(registry *Registry) []error {
 }
 
 // checkText holds display text to plain, bounded text: no control characters
-// and no bidi embedding, override or isolate, which could reorder what is shown.
+// and no format (Cf) characters, which include the bidi marks and zero-width
+// characters that could reorder or hide what is shown.
 func checkText(s string, maxRunes int) error {
 	switch {
 	case s == "":
 		return errors.New("is required")
-	case !utf8.ValidString(s):
-		return errors.New("is not valid UTF-8")
 	case utf8.RuneCountInString(s) > maxRunes:
 		return fmt.Errorf("is over %d characters", maxRunes)
 	}
 	for _, r := range s {
-		if unicode.IsControl(r) || (r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069') {
-			return fmt.Errorf("contains the control or bidi character %U", r)
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return fmt.Errorf("contains the control or format character %U", r)
 		}
 	}
 	return nil
