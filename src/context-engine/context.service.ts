@@ -1,3 +1,10 @@
+import {
+  rankRecommendations,
+  sanitizeRelevance,
+  localRelevance,
+  legacyRelevance,
+  compareRelevance,
+} from '../lib/recommendation-ranking';
 import { getBackendSrv, config, locationService } from '@grafana/runtime';
 import {
   getDetectedDatasourceType,
@@ -113,17 +120,6 @@ export class ContextService {
   private static readonly CONFIDENCE_THRESHOLD = 0.5;
   private static readonly STATIC_LINK_ACCURACY = 0.7;
   private static readonly BUNDLED_INTERACTIVE_ACCURACY = 0.8;
-
-  // Content type priority for sorting (lower number = higher priority).
-  // Interactive guides have the highest user value (they teach by doing), then
-  // packages (curated sequences), then learning journeys, then plain docs pages.
-  // Used as a tiebreaker after the recommender's confidence score.
-  private static readonly TYPE_PRIORITY: Record<string, number> = {
-    interactive: 0,
-    package: 1,
-    'learning-journey': 2,
-    'docs-page': 3,
-  };
 
   static async getContextData(): Promise<ContextData> {
     // Ensure EchoSrv is initialized (fallback if onPluginStart wasn't called)
@@ -252,7 +248,7 @@ export class ContextService {
     const processedRecommendations = await this.processLearningJourneys(allRecommendations);
 
     return {
-      recommendations: processedRecommendations,
+      recommendations: rankRecommendations(processedRecommendations, contextData.currentPath),
       error: null,
     };
   }
@@ -423,9 +419,9 @@ export class ContextService {
         // would skew ok durations) but only emitted once processing succeeds.
         const okDurationMs = elapsedMs();
 
-        const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
-          this.sanitizeV1Recommendation(rec)
-        );
+        const mappedExternalRecommendations = (data.recommendations ?? [])
+          .map((rec) => this.sanitizeV1Recommendation(rec))
+          .map((rec) => ({ ...rec, relevance: rec.relevance ?? legacyRelevance(rec, contextData.currentPath) }));
 
         // SECURITY: Sanitize featured recommendations using same logic
         const mappedFeaturedRecommendations = this.promoteFeaturedPackageMatches(
@@ -442,7 +438,20 @@ export class ContextService {
           mappedFeaturedRecommendations,
           bundledRecommendations
         );
-        const allRecommendations = [...deduplicatedExternal, ...bundledRecommendations];
+        const enrichedBundled = bundledRecommendations.map((bundled) => {
+          const match = mappedExternalRecommendations.find(
+            (rec) => typeof rec.manifest?.id === 'string' && bundled.url === `bundled:${rec.manifest.id}`
+          );
+          return match && recHasStrongerEvidence(match, bundled)
+            ? {
+                ...bundled,
+                relevance: match.relevance,
+                matchedCriteria: match.matchedCriteria,
+                missingCriteria: match.missingCriteria,
+              }
+            : bundled;
+        });
+        const allRecommendations = [...deduplicatedExternal, ...enrichedBundled];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations);
 
         // Process featured recommendations separately (deduplicated against bundled)
@@ -450,11 +459,14 @@ export class ContextService {
 
         // Filter and sort recommendations
         const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
-        const sortedRecommendations = this.sortRecommendations(filteredRecommendations);
+        const sortedRecommendations = rankRecommendations(filteredRecommendations, contextData.currentPath);
 
         // Featured recommendations are curated by the server, so don't filter by confidence
         // Just keep the server order and all items
-        const filteredFeaturedRecommendations = processedFeaturedRecommendations;
+        const filteredFeaturedRecommendations = processedFeaturedRecommendations.map((rec) => ({
+          ...rec,
+          editorialFeatured: true,
+        }));
 
         // Clear any previous errors on successful call
         this.lastExternalRecommenderError = null;
@@ -574,6 +586,13 @@ export class ContextService {
     const sanitizedType = validTypes.includes(rec.type) ? rec.type : 'docs-page';
 
     const base: Recommendation = {
+      relevance: sanitizeRelevance(rec.relevance),
+      matchedCriteria: Array.isArray(rec.matchedCriteria)
+        ? rec.matchedCriteria.filter((v): v is string => typeof v === 'string').slice(0, 100)
+        : undefined,
+      missingCriteria: Array.isArray(rec.missingCriteria)
+        ? rec.missingCriteria.filter((v): v is string => typeof v === 'string').slice(0, 100)
+        : undefined,
       title: sanitizeTextForDisplay(rec.title || ''),
       url: typeof rec.url === 'string' ? rec.url : '',
       summary: sanitizeTextForDisplay(rec.description || ''),
@@ -783,7 +802,7 @@ export class ContextService {
 
     const existing = featured.find((f) => f.url?.toLowerCase() === syntheticUrl);
     if (existing) {
-      return [existing, ...featured.filter((f) => f !== existing)];
+      return [{ ...existing, placement: 'experiment' }, ...featured.filter((f) => f !== existing)];
     }
 
     if (bundled.some((b) => b.url?.toLowerCase() === syntheticUrl)) {
@@ -1085,8 +1104,9 @@ export class ContextService {
     const isCreatingOrEditingViz = this.isCreatingOrEditingVisualization(pathSegments, searchParams);
     if (isCreatingOrEditingViz) {
       const echoDetectedVizType = getDetectedVisualizationType();
-      const vizType = echoDetectedVizType || 'timeseries'; // Default to timeseries if no event detected
-      tags.push(`panel-type:${vizType}`);
+      if (echoDetectedVizType) {
+        tags.push(`panel-type:${echoDetectedVizType}`);
+      }
     }
 
     // Add selected datasource from EchoSrv events (Phase 2: Echo-based detection)
@@ -1173,6 +1193,7 @@ export class ContextService {
     const entityMap: Record<string, string> = {
       d: 'dashboard',
       dashboard: 'dashboard',
+      dashboards: 'dashboard',
       datasources: 'datasource',
       connections: 'connection',
       explore: 'explore',
@@ -1298,27 +1319,6 @@ export class ContextService {
   }
 
   /**
-   * Sort recommendations by content type priority, then by accuracy
-   * Priority: interactive > learning-journey > docs-page
-   */
-  private static sortRecommendations(recommendations: Recommendation[]): Recommendation[] {
-    return recommendations.sort((a, b) => {
-      // Primary: sort by content type priority
-      const priorityA = this.TYPE_PRIORITY[a.type ?? 'docs-page'] ?? 2;
-      const priorityB = this.TYPE_PRIORITY[b.type ?? 'docs-page'] ?? 2;
-
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
-
-      // Secondary: sort by accuracy descending
-      const accuracyA = a.matchAccuracy ?? 0;
-      const accuracyB = b.matchAccuracy ?? 0;
-      return accuracyB - accuracyA;
-    });
-  }
-
-  /**
    * Get static link recommendations from static-links/*.json files
    * Only used when recommender is disabled - provides fallback recommendations
    * Uses simple URL prefix matching only (no complex tag logic)
@@ -1365,6 +1365,7 @@ export class ContextService {
                 url: rule.url,
                 type: rule.type || 'docs-page',
                 summary: rule.description || '',
+                relevance: localRelevance(rule.match, contextData.currentPath, currentPlatform),
                 matchAccuracy: this.STATIC_LINK_ACCURACY,
               });
             });
@@ -1673,6 +1674,7 @@ export class ContextService {
           matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
           contentUrl: buildPackageFileUrl(baseUrl, entry.path, 'content.json'),
           manifestUrl: buildPackageFileUrl(baseUrl, entry.path, 'manifest.json'),
+          relevance: localRelevance(entry.targeting?.match, contextData.currentPath, contextData.platform),
           repository: 'online-cdn',
           manifest,
         };
@@ -1734,6 +1736,11 @@ export class ContextService {
             const completionPercentage = await interactiveCompletionStorage.get(contentKey);
             return {
               title: interactive.title,
+              relevance: localRelevance(
+                { urlPrefix: contextData.currentPath },
+                contextData.currentPath,
+                contextData.platform
+              ),
               url: contentKey,
               type: 'interactive' as const,
               summary: interactive.summary,
@@ -1766,4 +1773,8 @@ export class ContextService {
       );
     });
   }
+}
+
+function recHasStrongerEvidence(rec: Recommendation, bundled: Recommendation): boolean {
+  return Boolean(rec.relevance && (!bundled.relevance || compareRelevance(rec.relevance, bundled.relevance) < 0));
 }
