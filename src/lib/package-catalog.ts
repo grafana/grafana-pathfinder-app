@@ -146,18 +146,14 @@ export function eligibleDiscoveryCatalog(
   curated: CatalogPackage[]
 ): CatalogPackage[] {
   const eligibleIds = new Set(online.map((item) => item.id));
+  const hasEligibleMembers = (item: CatalogPackage) =>
+    [...(item.memberIds ?? []), ...getManifestMemberIds(item.packageInfo?.packageManifest)].every((id) =>
+      eligibleIds.has(id)
+    );
   return mergeCatalog(
-    bundled.filter(
-      (item) =>
-        eligibleIds.has(item.id) &&
-        [...(item.memberIds ?? []), ...getManifestMemberIds(item.packageInfo?.packageManifest)].every((id) =>
-          eligibleIds.has(id)
-        )
-    ),
-    online,
-    curated.filter((item) =>
-      item.memberIds?.length ? item.memberIds.every((id) => eligibleIds.has(id)) : eligibleIds.has(item.id)
-    )
+    bundled.filter((item) => eligibleIds.has(item.id) && hasEligibleMembers(item)),
+    online.filter(hasEligibleMembers),
+    curated.filter((item) => hasEligibleMembers(item) && (Boolean(item.memberIds?.length) || eligibleIds.has(item.id)))
   );
 }
 

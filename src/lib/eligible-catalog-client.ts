@@ -7,7 +7,6 @@ import { eligibleCatalog } from './package-catalog';
 import { getRecommenderStackContext } from './recommender-context';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const RETRY_DELAY_MS = 30_000;
 const responseSchema = z.object({
   packages: z.array(
     z.object({
@@ -75,7 +74,7 @@ export function fetchEligibleCatalog(
       return current.result;
     })
     .catch(() => {
-      current.nextFetch = Date.now() + RETRY_DELAY_MS;
+      current.nextFetch = 0;
       return current.result ?? { items: [], available: false };
     })
     .finally(() => {

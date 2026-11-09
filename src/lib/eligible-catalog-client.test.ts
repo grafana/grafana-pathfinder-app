@@ -63,9 +63,16 @@ it('silently retains the last valid result after expired refreshes fail', async 
   const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
   const first = await fetchEligibleCatalog(serviceUrl, 'a');
   now.mockReturnValue(301_000);
+  fetchMock.mockRejectedValue(new Error('offline'));
+  expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual(first);
+  expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual(first);
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+});
+
+it('retries a cold failure on the next request without an explicit refresh', async () => {
   fetchMock.mockRejectedValueOnce(new Error('offline'));
-  expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual(first);
-  expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual(first);
+  expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual({ items: [], available: false });
+  expect((await fetchEligibleCatalog(serviceUrl, 'a')).available).toBe(true);
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 

@@ -81,6 +81,40 @@ describe('package catalog', () => {
     expect(eligibleDiscoveryCatalog([bundledPath], [path], [])).toEqual([path]);
   });
 
+  it.each(['path', 'journey'] as const)(
+    'excludes online %s with ineligible milestones or track guides while keeping eligible paths',
+    (type) => {
+      const entry = (id: string, manifest: Record<string, unknown>) => ({
+        id,
+        title: id,
+        repository: 'interactive-tutorials',
+        contentUrl: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+        manifestUrl: `https://interactive-learning.grafana.net/packages/${id}/manifest.json`,
+        manifest: { id, ...manifest },
+      });
+      const online = eligibleCatalog([
+        entry('healthy', { type: 'guide' }),
+        entry('valid', { type, milestones: ['healthy'] }),
+        entry('excluded-milestone', { type, milestones: ['healthy', 'unhealthy'] }),
+        entry('excluded-track', {
+          type,
+          milestones: ['healthy'],
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: ['unhealthy'] }],
+        }),
+      ]);
+      const bundled = online.map((item) => ({ ...item, key: `bundled:${item.id}` }));
+      const curated: CatalogPackage[] = [
+        { ...online[1], key: 'curated:valid', id: 'curated-valid', packageInfo: undefined },
+        { ...online[2], key: 'curated:excluded', id: 'curated-excluded', packageInfo: undefined },
+      ];
+      expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.key)).toEqual([
+        'bundled:healthy',
+        'bundled:valid',
+        'curated:valid',
+      ]);
+    }
+  );
+
   it.each(['future', 42, { future: true }, 'markdown'])(
     'preserves path metadata and exact prerequisite labels for format %p',
     (format) => {
