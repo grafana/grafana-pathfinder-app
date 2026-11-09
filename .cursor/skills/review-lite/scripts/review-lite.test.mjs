@@ -333,7 +333,7 @@ describe('context', () => {
     );
     assert.throws(
       () => finishWith(runDir, result(runDir, { checks })),
-      /cannot leave governing input governing:api-contract unavailable/
+      /cannot leave governing:api-contract unresolved/
     );
   });
 
@@ -1046,6 +1046,50 @@ describe('test review', () => {
         read: true,
         scope: 'changed_hunks',
         assertions_checked: 'Each assertion would fail if its matching value changed.',
+      },
+    ];
+    assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
+  });
+
+  test('following next on changed hunks skips the unchanged lines between hunks', () => {
+    const line = (index, value) => `test('case-${index}', () => expect(${value}).toBe(${value}));`;
+    const lines = (value) => Array.from({ length: 3000 }, (_, index) => line(index, index < 410 || index === 2900 ? value : 0));
+    const { repo, base } = makeRepo({ 'src/engine.test.ts': `${lines(0).join('\n')}\n` });
+    const head = commit(repo, { 'src/engine.test.ts': `${lines(1).join('\n')}\n` }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const starts = [];
+    let range;
+    do {
+      const read = readPinnedFile({ run: runDir, path: 'src/engine.test.ts', scope: 'changed_hunks', range });
+      starts.push(read.receipt.ranges[0].start);
+      range = read.next;
+    } while (range);
+    assert.deepEqual(starts, [1, 201, 401, 2901]);
+    const tests = [
+      {
+        path: 'src/engine.test.ts',
+        read: true,
+        scope: 'changed_hunks',
+        assertions_checked: 'Each assertion would fail if its matching value changed.',
+      },
+    ];
+    assert.equal(finishWith(runDir, result(runDir, { tests, no_read_receipts: true })).headline, 'Approve');
+  });
+
+  test('a renamed test file with no content hunks can be completed with changed_hunks scope', () => {
+    const body = (name) =>
+      `${Array.from({ length: 350 }, (_, index) => `test('${name}-${index}', () => expect(${index}).toBe(${index}));`).join('\n')}\n`;
+    const { repo, base } = makeRepo({ 'src/old.test.ts': body('old') });
+    const added = Object.fromEntries(['a', 'b', 'c', 'd'].map((name) => [`src/${name}.test.ts`, body(name)]));
+    const head = commit(repo, { 'src/old.test.ts': null, 'src/renamed.test.ts': body('old'), ...added }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const tests = [
+      ...Object.keys(added).map((path) => ({ path, read: false, reason_kind: 'generated', reason: 'Generated fixture.' })),
+      {
+        path: 'src/renamed.test.ts',
+        read: true,
+        scope: 'changed_hunks',
+        assertions_checked: 'The rename changes no assertion.',
       },
     ];
     assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');

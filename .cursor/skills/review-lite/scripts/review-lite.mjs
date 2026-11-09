@@ -918,6 +918,38 @@ function packetSizes(run, selected) {
   }));
 }
 
+function appendDiscoveredObligations(obligations, path, { label, prefix, obligation, fields }) {
+  const additions = readJson(path, `reviewer-discovered ${label}s`);
+  if (!Array.isArray(additions)) {
+    throw new Error(`Reviewer-discovered ${label}s at ${path} must be an array.`);
+  }
+  const existing = new Set(obligations.map(({ id }) => id));
+  for (const candidate of additions) {
+    if (
+      !candidate ||
+      typeof candidate !== 'object' ||
+      typeof candidate.id !== 'string' ||
+      !FINDING_ID.test(candidate.id)
+    ) {
+      throw new Error(`Each reviewer-discovered ${label} needs an id matching the result identifier format.`);
+    }
+    if (fields.includes('kind') && !GOVERNING_KINDS.includes(candidate.kind)) {
+      throw new Error(`Reviewer-discovered ${label} ${candidate.id} needs kind ${GOVERNING_KINDS.join(', ')}.`);
+    }
+    for (const field of fields) {
+      if (typeof candidate[field] !== 'string' || candidate[field].trim() === '') {
+        throw new Error(`Reviewer-discovered ${label} ${candidate.id} needs a non-empty ${field}.`);
+      }
+    }
+    const id = `${prefix}:${candidate.id}`;
+    if (existing.has(id)) {
+      throw new Error(`Reviewer-discovered ${label} ${candidate.id} is already an inspection obligation.`);
+    }
+    obligations.push({ id, obligation, ...Object.fromEntries(fields.map((field) => [field, candidate[field]])) });
+    existing.add(id);
+  }
+}
+
 export function addContext({ run, concerns, governing, risk }) {
   const { selected, registry, obligations } = readRun(run);
   const requested = [
@@ -955,70 +987,22 @@ export function addContext({ run, concerns, governing, risk }) {
     }
   }
   writeJson(join(run, 'selected.json'), selected);
-  if (governing) {
-    const additions = readJson(governing, 'reviewer-discovered governing inputs');
-    if (!Array.isArray(additions)) {
-      throw new Error(`Reviewer-discovered governing inputs at ${governing} must be an array.`);
-    }
-    const existing = new Set(obligations.map(({ id }) => id));
-    for (const candidate of additions) {
-      if (
-        !candidate ||
-        typeof candidate !== 'object' ||
-        typeof candidate.id !== 'string' ||
-        !FINDING_ID.test(candidate.id)
-      ) {
-        throw new Error('Each reviewer-discovered governing input needs an id matching the result identifier format.');
-      }
-      if (!GOVERNING_KINDS.includes(candidate.kind)) {
-        throw new Error(`Governing input ${candidate.id} needs kind ${GOVERNING_KINDS.join(', ')}.`);
-      }
-      for (const field of ['source', 'reason']) {
-        if (typeof candidate[field] !== 'string' || candidate[field].trim() === '') {
-          throw new Error(`Governing input ${candidate.id} needs a non-empty ${field}.`);
-        }
-      }
-      const id = `governing:${candidate.id}`;
-      if (existing.has(id)) {
-        throw new Error(`Governing input ${candidate.id} is already an inspection obligation.`);
-      }
-      obligations.push({
-        id,
+  if (governing || risk) {
+    if (governing) {
+      appendDiscoveredObligations(obligations, governing, {
+        label: 'governing input',
+        prefix: 'governing',
         obligation: 'governing_input',
-        kind: candidate.kind,
-        source: candidate.source,
-        reason: candidate.reason,
+        fields: ['kind', 'source', 'reason'],
       });
-      existing.add(id);
     }
-    writeJson(join(run, 'obligations.json'), obligations);
-  }
-  if (risk) {
-    const additions = readJson(risk, 'reviewer-discovered risks');
-    if (!Array.isArray(additions)) {
-      throw new Error(`Reviewer-discovered risks at ${risk} must be an array.`);
-    }
-    const existing = new Set(obligations.map(({ id }) => id));
-    for (const candidate of additions) {
-      if (
-        !candidate ||
-        typeof candidate !== 'object' ||
-        typeof candidate.id !== 'string' ||
-        !FINDING_ID.test(candidate.id)
-      ) {
-        throw new Error('Each reviewer-discovered risk needs an id matching the result identifier format.');
-      }
-      for (const field of ['category', 'reason']) {
-        if (typeof candidate[field] !== 'string' || candidate[field].trim() === '') {
-          throw new Error(`Reviewer-discovered risk ${candidate.id} needs a non-empty ${field}.`);
-        }
-      }
-      const id = `risk:${candidate.id}`;
-      if (existing.has(id)) {
-        throw new Error(`Reviewer-discovered risk ${candidate.id} is already an inspection obligation.`);
-      }
-      obligations.push({ id, obligation: 'risk_verification', category: candidate.category, reason: candidate.reason });
-      existing.add(id);
+    if (risk) {
+      appendDiscoveredObligations(obligations, risk, {
+        label: 'risk',
+        prefix: 'risk',
+        obligation: 'risk_verification',
+        fields: ['category', 'reason'],
+      });
     }
     writeJson(join(run, 'obligations.json'), obligations);
   }
@@ -1055,8 +1039,7 @@ function pageForRanges(ranges, requested) {
   const cap = 200;
   const start = requested?.start ?? ranges[0]?.start ?? 1;
   const end = Math.min(requested?.end ?? start + cap - 1, start + cap - 1);
-  const revision = ranges.find((range) => start >= range.start && start <= range.end)?.revision;
-  return { start, end, revision };
+  return { start, end, revision: ranges[0]?.revision };
 }
 
 export function readPinnedFile({ run, path, scope, range }) {
@@ -1111,7 +1094,9 @@ export function readPinnedFile({ run, path, scope, range }) {
   const remaining = [...reads, receipt];
   writeJson(join(run, 'reads.json'), remaining);
   const requiredEnd = Math.max(...required.map(({ end }) => end), 0);
-  const next = actualEnd < requiredEnd ? `${actualEnd + 1}:${Math.min(actualEnd + 200, requiredEnd)}` : null;
+  const pending = required.filter(({ end }) => end > actualEnd);
+  const nextStart = Math.min(...pending.map(({ start }) => Math.max(start, actualEnd + 1)));
+  const next = pending.length > 0 ? `${nextStart}:${Math.min(nextStart + 199, requiredEnd)}` : null;
   return { content: delivered, receipt, next };
 }
 
@@ -1189,7 +1174,7 @@ function validateTestReview(errors, result, inventory, reads = [], manifest = {}
         );
         const reviewBase = manifest.mode === 'incremental' ? manifest.incremental_from : manifest.merge_base;
         const expectedRanges = file ? changedLineRanges(manifest.target_repo, reviewBase, manifest.head, file) : [];
-        if (receipts.length === 0 || !coversRanges(receipts, expectedRanges)) {
+        if (!coversRanges(receipts, expectedRanges)) {
           errors.push(
             `${label} needs pinned read receipts covering every changed head range; run review-lite.mjs read with --scope changed_hunks until next is empty`
           );
@@ -1197,10 +1182,9 @@ function validateTestReview(errors, result, inventory, reads = [], manifest = {}
       } else {
         const content =
           git(manifest.target_repo, ['show', `${manifest.head}:${entry.path}`], { allowFailure: true }) ?? '';
-        const lineCount =
-          content === '' ? 0 : content.endsWith('\n') ? content.split('\n').length - 1 : content.split('\n').length;
+        const lines = lineCount(content);
         const receipts = reads.filter((receipt) => receipt.path === entry.path && receipt.scope === 'full');
-        if (!coversRanges(receipts, lineCount === 0 ? [] : [{ start: 1, end: lineCount }])) {
+        if (!coversRanges(receipts, lines === 0 ? [] : [{ start: 1, end: lines }])) {
           errors.push(
             `${label} needs pinned full-read receipts; run review-lite.mjs read with --scope full until next is empty`
           );
@@ -1412,9 +1396,6 @@ export function validateResult(
           );
         }
       }
-      if (result.assessment === 'complete' && check.status === 'unresolved') {
-        errors.push(`a complete assessment cannot leave governing input ${check.id} unavailable`);
-      }
     }
     if (obligation.obligation === 'risk_verification') {
       if (check.status === 'checked') {
@@ -1429,9 +1410,6 @@ export function validateResult(
             `checks[${index}].verification.artifact must name an existing relative artifact in the run directory`
           );
         }
-      }
-      if (result.assessment === 'complete' && check.status === 'unresolved') {
-        errors.push(`a complete assessment cannot leave risk ${check.id} unresolved`);
       }
     }
     if (result.assessment === 'complete' && check.status === 'unresolved') {
