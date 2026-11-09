@@ -213,6 +213,6 @@
       "billed usage or cost where available; character counts and summed tokens are proxies only"
     ],
     "trials": "Repeat at least three trials per model × skill cell on a subset including clean controls; report sample size limits instead of claiming equivalence.",
-    "proposed_threshold": "Agree before scoring. Suggested: no additional adjudicated material misses, no increase in unsupported blockers, and at least 50% lower median billed cost on routine cases."
+    "proposed_threshold": "Agree before scoring. Suggested: no additional adjudicated material misses, no increase in unsupported blockers, and no material median wall-clock or billed-cost regression versus frozen review-lite on routine cases. Measure any retained cost advantage over full review separately; it is not a promotion threshold for this comparison."
   }
 }
