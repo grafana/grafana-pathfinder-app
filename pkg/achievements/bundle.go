@@ -84,11 +84,12 @@ type envelope struct {
 	Art []json.RawMessage `json:"art"`
 }
 
-// LoadBundle reads a published bundle. The envelope is lenient, so metadata can
-// grow without a grammar change, but each registry action and each definition
-// is decoded strictly and validated on its own. An entry this build cannot read
-// is skipped with a reason and everything else stays live. Only an unreadable
-// envelope or another grammar major fails the whole bundle.
+// LoadBundle reads a published bundle. The envelope and each registry action's
+// top level are lenient, so additive keys need no grammar change; fields,
+// resources and definitions are decoded strictly, and each entry is validated
+// on its own. An entry this build cannot read is skipped with a reason and
+// everything else stays live. Only an unreadable envelope or another grammar
+// major fails the whole bundle.
 func LoadBundle(data []byte) (*Snapshot, error) {
 	if len(data) > MaxBundleBytes {
 		return nil, fmt.Errorf("bundle: %d bytes, at most %d", len(data), MaxBundleBytes)

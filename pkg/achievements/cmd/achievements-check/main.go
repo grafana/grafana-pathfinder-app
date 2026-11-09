@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -142,7 +143,7 @@ func check(data []byte) []string {
 	if err != nil {
 		return []string{err.Error()}
 	}
-	var problems []string
+	problems := unknownActionKeys(data)
 	for _, skip := range s.Skipped {
 		problems = append(problems, fmt.Sprintf("%s %s skipped as %s: %s", skip.What, skip.ID, skip.Reason, skip.Detail))
 	}
@@ -154,6 +155,36 @@ func check(data []byte) []string {
 		for _, t := range d.Tiers {
 			if t.Art != "" && !slices.Contains(s.Art, t.Art) {
 				problems = append(problems, fmt.Sprintf("achievement %s tier %s: art %q has no published image", d.ID, t.ID, t.Art))
+			}
+		}
+	}
+	return problems
+}
+
+// actionKeys are the action keys this build reads. The loader ignores any other
+// as additive metadata; publishing one this build does not know is more likely
+// a typo, so the publish bar refuses it.
+var actionKeys = map[string]bool{"context": true, "resources": true}
+
+func unknownActionKeys(data []byte) []string {
+	var env struct {
+		Registry struct {
+			Entities map[string]struct {
+				Actions map[string]map[string]json.RawMessage `json:"actions"`
+			} `json:"entities"`
+		} `json:"registry"`
+	}
+	if json.Unmarshal(data, &env) != nil {
+		return nil
+	}
+	var problems []string
+	for _, entity := range slices.Sorted(maps.Keys(env.Registry.Entities)) {
+		actions := env.Registry.Entities[entity].Actions
+		for _, action := range slices.Sorted(maps.Keys(actions)) {
+			for _, key := range slices.Sorted(maps.Keys(actions[action])) {
+				if !actionKeys[key] {
+					problems = append(problems, fmt.Sprintf("action %s.%s: key %q is not one this build reads", entity, action, key))
+				}
 			}
 		}
 	}

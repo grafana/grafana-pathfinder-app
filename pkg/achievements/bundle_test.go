@@ -1,9 +1,12 @@
 package achievements
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 const guidesAction = `"completed":{
@@ -31,7 +34,7 @@ func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
 		guidesDefinition("kept", ""),
 		guidesDefinition("too-new", `,"requires":"1.1","window":{"days":7}`),
 		guidesDefinition("unknown-field", `,"streak":3`),
-		`{"id":"on-skipped-action","title":"T","description":"D.","tiers":[{"id":"bronze","or":[{"entity":"guides","action":"started"}]}]}`,
+		`{"id":"on-skipped-action","title":"T","description":"D.","counter":{"unit":"occurrence","evidence":[{"entity":"guides","action":"viewed","countBy":"occurrence"}]},"tiers":[{"id":"bronze","at":1}]}`,
 		guidesDefinition("kept", ""),
 		`{"title":"no id"}`,
 	)
@@ -42,8 +45,10 @@ func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
 	if len(s.Catalog.Achievements) != 1 || s.Catalog.Achievements[0].ID != "kept" {
 		t.Fatalf("evaluable = %+v, want only kept", s.Catalog.Achievements)
 	}
-	if _, ok := s.Registry.action("guides", "completed"); !ok {
-		t.Error("guides.completed did not load")
+	for _, name := range []string{"completed", "started"} {
+		if _, ok := s.Registry.action("guides", name); !ok {
+			t.Errorf("guides.%s did not load", name)
+		}
 	}
 
 	var got []string
@@ -54,7 +59,6 @@ func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
 		}
 	}
 	want := []string{
-		"action guides.started invalid",
 		"action guides.viewed invalid",
 		"achievement too-new too-new",
 		"achievement unknown-field invalid",
@@ -137,7 +141,10 @@ func TestLoadBundleEvaluatesWhatItLoaded(t *testing.T) {
 func TestLoadBundleSkipsEachBadEntryOnItsOwn(t *testing.T) {
 	data := []byte(`{"grammar":"1.0",
   "registry":{"entities":{
-    "guides":{"actions":{` + guidesAction + `,"started":null}},
+    "guides":{"actions":{` + guidesAction + `,"started":null,
+      "viewed":{"context":{"f":{"type":"string","format":"date"}}},
+      "opened":{"context":{"f":{"type":"string"}},"resources":[{"unit":"u","id":["f"],"weight":2}]},
+      "closed":["not","an","object"]}},
     "Bad Entity":{"actions":{"x":{"context":{}}}},
     "widgets":["not","an","object"]}},
   "catalog":{"achievements":[
@@ -158,7 +165,10 @@ func TestLoadBundleSkipsEachBadEntryOnItsOwn(t *testing.T) {
 	}
 	want := []string{
 		"entity Bad Entity invalid",
+		"action guides.closed invalid",
+		"action guides.opened invalid",
 		"action guides.started invalid",
+		"action guides.viewed invalid",
 		"entity widgets invalid",
 		"art #1 invalid",
 		"art #2 invalid",
@@ -191,5 +201,32 @@ func TestLoadBundleCapCountsOnlyEvaluableDefinitions(t *testing.T) {
 	}
 	if len(s.Skipped) != maxListedSkips+1 || s.Skipped[maxListedSkips].Detail != "50 more skipped entries not listed" {
 		t.Errorf("%d skips listed, last %+v", len(s.Skipped), s.Skipped[len(s.Skipped)-1])
+	}
+}
+
+func TestLoadBundleKeepsAnActionThatGainedAnAdditiveKey(t *testing.T) {
+	data, err := os.ReadFile("testdata/bundle.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	withSources := strings.Replace(string(data), `"completed": {`, `"completed": {
+            "sources": [{ "interaction": "grafana_guide_completed", "context": { "guideId": "id" } }],`, 1)
+	if withSources == string(data) {
+		t.Fatal("fixture no longer has the completed action")
+	}
+	s, err := LoadBundle([]byte(withSources))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Skipped) != 0 || len(s.Display) != 1 || !s.Display[0].Earnable {
+		t.Fatalf("skipped %+v display %+v, want guides-finished earnable", s.Skipped, s.Display)
+	}
+	ev := NewEvaluator(s.Catalog, newFakeStore(), &fakePolicy{}, func() time.Time { return fixedNow })
+	decisions, err := ev.Evaluate(context.Background(), testPerson, Event{
+		ID: "e", Entity: "guides", Action: "completed",
+		Context: map[string]any{"guideSource": "bundled", "guideId": "first-dashboard", "guideCategory": "interactive"},
+	})
+	if err != nil || len(decisions) != 1 || decisions[0].Decision != KindAward {
+		t.Errorf("decisions = %+v err = %v, want bronze awarded", decisions, err)
 	}
 }

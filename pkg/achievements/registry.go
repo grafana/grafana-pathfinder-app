@@ -37,9 +37,40 @@ type Entity struct {
 	Actions map[string]Action `json:"actions"`
 }
 
+// Action is one registry pair's declaration. Within a grammar major an action
+// may only gain keys that leave what it means unchanged, such as event sources,
+// so its top level ignores keys this build does not know. A key that changes
+// what an action means needs a new major. Fields and resources stay strict.
 type Action struct {
 	Context   map[string]Field `json:"context"`
 	Resources []Resource       `json:"resources,omitempty"`
+}
+
+func (a *Action) UnmarshalJSON(data []byte) error {
+	var top struct {
+		Context   map[string]json.RawMessage `json:"context"`
+		Resources []json.RawMessage          `json:"resources"`
+	}
+	if err := json.Unmarshal(data, &top); err != nil {
+		return errors.New("action must be an object with a context object and a resources list")
+	}
+	out := Action{Context: make(map[string]Field, len(top.Context))}
+	for _, name := range sortedKeys(top.Context) {
+		var f Field
+		if err := decodeStrict(top.Context[name], &f); err != nil {
+			return fmt.Errorf("field %q: %w", name, err)
+		}
+		out.Context[name] = f
+	}
+	for i, raw := range top.Resources {
+		var r Resource
+		if err := decodeStrict(raw, &r); err != nil {
+			return fmt.Errorf("resource %d: %w", i, err)
+		}
+		out.Resources = append(out.Resources, r)
+	}
+	*a = out
+	return nil
 }
 
 type Field struct {

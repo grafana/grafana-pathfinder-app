@@ -89,6 +89,7 @@ func TestBuildRejects(t *testing.T) {
 		{"undeclared pair", map[string]string{"catalog/guides-finished.json": guidesFinished, "events/guides.json": `{"actions":{"started":{"context":{}}}}`}, "", "guides.completed is not declared"},
 		{"invalid registry action", map[string]string{"events/guides.json": `{"actions":{"completed":{"context":{"at":{"type":"date"}}}}}`}, "", "action guides.completed skipped as invalid"},
 		{"entity not JSON", map[string]string{"events/guides.json": `{`}, "", "unexpected EOF"},
+		{"action key this build does not read", map[string]string{"events/guides.json": strings.Replace(guidesEntity, `"resources"`, `"resouces"`, 1)}, "", `key "resouces" is not one this build reads`},
 		{"entity with an unread field", map[string]string{"events/guides.json": strings.Replace(guidesEntity, `"owner"`, `"leak":"x","owner"`, 1)}, "", `unknown field "leak"`},
 		{"case-variant id", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"ID": "other", "title"`, 1)}, "", "declare id exactly once"},
 		{"case-variant requires", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"Requires": "1.0", "title"`, 1)}, "", "requires is computed"},
