@@ -46,6 +46,14 @@ export const PATHFINDER_ACTIVATION_PARAMS = [
 ] as const satisfies readonly PathfinderParam[];
 export type PathfinderTriggerParam = (typeof PATHFINDER_ACTIVATION_PARAMS)[number];
 
+export function hasAnyPathfinderParam(search: string): boolean {
+  if (!search) {
+    return false;
+  }
+  const params = new URLSearchParams(search);
+  return PATHFINDER_ACTIVATION_PARAMS.some((p) => params.has(p));
+}
+
 /** Tab/guide kind discriminator carried by `?type=`. */
 export type PathfinderDeepLinkType = 'learning-journey' | 'docs' | 'interactive';
 

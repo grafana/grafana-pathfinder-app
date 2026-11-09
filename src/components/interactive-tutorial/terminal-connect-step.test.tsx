@@ -415,7 +415,7 @@ describe('with gcx', () => {
     expect(onComplete).toHaveBeenCalled();
     expect(mockReportAppInteraction).toHaveBeenCalledWith(
       'gcx_setup_skipped',
-      expect.objectContaining({ state: 'needs-token', interaction_location: 'terminal_connect_step' })
+      expect.objectContaining({ state: 'needs_token', interaction_location: 'terminal_connect_step' })
     );
     expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
     expect(mockReportStepSkipped).toHaveBeenCalledWith(

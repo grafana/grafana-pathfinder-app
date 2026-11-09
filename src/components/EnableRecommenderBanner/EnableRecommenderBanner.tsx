@@ -52,7 +52,7 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
               show={!canAccessPluginSettings ? undefined : false}
             >
               <Button
-                variant="primary"
+                variant="secondary"
                 size="sm"
                 onClick={handleEnableRecommender}
                 icon="cog"

@@ -23,6 +23,7 @@ import {
   refreshCurrentUser,
   resetCurrentUserForTests,
   useCurrentUserIsAdmin,
+  useCurrentUserIsOrgAdmin,
 } from './current-user-role';
 
 const setBootUser = (user: Record<string, unknown> | undefined) => {
@@ -113,6 +114,21 @@ describe('current user', () => {
       expect(isCurrentUserRoleKnown()).toBe(true);
       expect(currentUserIsEditor()).toBe(true);
       expect(currentUserIsAdmin()).toBe(false);
+    });
+
+    it('requires a live organization admin rather than a server admin for reporting', async () => {
+      const { result } = renderHook(() => useCurrentUserIsOrgAdmin());
+      expect(result.current).toBe(false);
+      mockFetchCoreUser.mockResolvedValue({ role: 'Viewer', grafanaAdmin: true });
+      await act(async () => {
+        await refreshCurrentUser();
+      });
+      expect(result.current).toBe(false);
+      mockFetchCoreUser.mockResolvedValue({ role: 'Admin', grafanaAdmin: false });
+      await act(async () => {
+        await refreshCurrentUser();
+      });
+      expect(result.current).toBe(true);
     });
 
     it('retries a failed live read at most every 30 seconds', async () => {

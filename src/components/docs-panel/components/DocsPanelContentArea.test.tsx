@@ -1,13 +1,5 @@
 jest.mock('../../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
 
-/**
- * Tests for DocsPanelContentArea.
- *
- * Focused on the "Return to my learning" footer button, which must switch the
- * panel back to the recommendations tab in place (issue #1051) rather than
- * navigating away from the Grafana UI.
- */
-
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { config } from '@grafana/runtime';
@@ -44,23 +36,41 @@ jest.mock('../../../docs-retrieval', () => ({
     content.type === 'learning-journey' && content.metadata.learningJourney?.currentMilestone === 0,
   resolveActiveMilestoneToolbarContext: jest.requireActual('../../../docs-retrieval/active-milestone-sequence')
     .resolveActiveMilestoneToolbarContext,
+  resolveActiveMilestoneSequence: jest.requireActual('../../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneSequence,
 }));
 
 // Heavy leaf children are irrelevant to these tests — stub them out so the
 // branch renders without their dependency trees. ContentRenderer reports the
 // completion prop it was mounted with so the completion-boundary tests can read it.
 const mockRenderedCompletions: unknown[] = [];
+const mockRenderedSequences: unknown[] = [];
+const mockRenderedCompletionFlags: boolean[] = [];
+let mockContinueToNextMilestone: (() => Promise<void> | void) | undefined;
+let mockCompletionPanelVisibilityChange: ((visible: boolean) => void) | undefined;
 jest.mock('../../content-renderer/content-renderer', () => ({
   ContentRenderer: ({
     completion,
     onActiveTrackChange,
     initialActiveTrackId,
+    completionSequence,
+    completionPanelEnabled,
+    onContinueToNextMilestone,
+    onCompletionPanelVisibilityChange,
   }: {
     completion: unknown;
+    completionSequence?: unknown;
+    completionPanelEnabled?: boolean;
+    onCompletionPanelVisibilityChange?: (visible: boolean) => void;
+    onContinueToNextMilestone?: () => Promise<void> | void;
     onActiveTrackChange?: (trackId: string | null, milestones: unknown) => void;
     initialActiveTrackId?: string | null;
   }) => {
     mockRenderedCompletions.push(completion);
+    mockRenderedSequences.push(completionSequence);
+    mockRenderedCompletionFlags.push(completionPanelEnabled ?? false);
+    mockContinueToNextMilestone = onContinueToNextMilestone;
+    mockCompletionPanelVisibilityChange = onCompletionPanelVisibilityChange;
     return (
       <>
         <div data-testid="initial-active-track-id">{initialActiveTrackId ?? ''}</div>
@@ -191,6 +201,10 @@ describe('DocsPanelContentArea', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRenderedCompletions.length = 0;
+    mockRenderedSequences.length = 0;
+    mockRenderedCompletionFlags.length = 0;
+    mockContinueToNextMilestone = undefined;
+    mockCompletionPanelVisibilityChange = undefined;
   });
   it('uses the stable reset selector for docs-like guides', () => {
     const base = makeProps();
@@ -208,6 +222,51 @@ describe('DocsPanelContentArea', () => {
   });
 
   describe('Return to my learning footer button', () => {
+    it.each(['docs', 'cover', 'preview', 'in-progress'] as const)(
+      'keeps quiet home navigation on %s content with the completion panel enabled',
+      (kind) => {
+        const props = makeProps({
+          isWysiwygPreview: kind === 'preview',
+          hasInteractiveProgress: kind === 'in-progress',
+        });
+        if (kind === 'cover') {
+          props.stableContent = {
+            ...props.stableContent!,
+            type: 'learning-journey',
+            metadata: { learningJourney: { currentMilestone: 0 } },
+          } as any;
+        }
+        render(<DocsPanelContentArea {...props} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Return to my learning' }));
+
+        expect(props.model.setActiveTab).toHaveBeenCalledWith('recommendations');
+        expect(reportAppInteraction).toHaveBeenCalledWith('docs_panel_interaction', {
+          action: 'navigate_to_recommendations',
+          source: 'content_footer',
+        });
+      }
+    );
+
+    it('leaves home navigation to the completed panel and restores the footer after reset', () => {
+      render(<DocsPanelContentArea {...makeProps()} />);
+      act(() => mockCompletionPanelVisibilityChange?.(true));
+      expect(screen.queryByRole('button', { name: 'Return to my learning' })).not.toBeInTheDocument();
+
+      act(() => mockCompletionPanelVisibilityChange?.(false));
+      expect(screen.getByRole('button', { name: 'Return to my learning' })).toBeInTheDocument();
+    });
+
+    it('does not hide a newly opened guide behind the previous guide completion state', () => {
+      const props = makeProps();
+      const { rerender } = render(<DocsPanelContentArea {...props} />);
+      act(() => mockCompletionPanelVisibilityChange?.(true));
+      rerender(
+        <DocsPanelContentArea {...props} stableContent={{ ...props.stableContent!, url: 'https://example.com/next' }} />
+      );
+      expect(screen.getByRole('button', { name: 'Return to my learning' })).toBeInTheDocument();
+    });
+
     it('switches to the recommendations tab in place instead of navigating away', () => {
       const props = makeProps();
       render(<DocsPanelContentArea {...props} />);
@@ -792,4 +851,95 @@ describe('guide warning impression lifecycle', () => {
       expect.objectContaining({ guide_url: props.activeTab!.baseUrl })
     );
   });
+});
+
+describe('DocsPanelContentArea completion navigation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+  const milestones = [
+    { number: 1, title: 'First track guide', url: 'https://example.com/track/first', isActive: true },
+    { number: 2, title: 'Next track guide', url: 'https://example.com/track/next', isActive: false },
+  ];
+
+  function renderTrack(canNavigate = true, trackOnly = false) {
+    const guide: any = {
+      url: milestones[0]!.url,
+      type: 'learning-journey',
+      content: '',
+      lastFetched: '',
+      metadata: {
+        trackMemberBaseUrl: 'app-platform:private-path',
+        learningJourney: {
+          baseUrl: 'app-platform:private-path',
+          currentMilestone: 3,
+          totalMilestones: 3,
+          milestones: [{ number: 3, title: 'Base guide', url: milestones[0]!.url, isActive: true }],
+        },
+      },
+    };
+    if (trackOnly) {
+      delete guide.metadata.learningJourney;
+    }
+    const tab: any = {
+      id: 'tab-1',
+      title: 'Track guide',
+      type: 'learning-journey',
+      baseUrl: guide.url,
+      currentUrl: guide.url,
+      content: guide,
+      isLoading: false,
+      activeTrackId: 'builder',
+      activeTrackMilestones: milestones,
+    };
+    const model = makeProps().model;
+    (model.canNavigateNext as jest.Mock).mockReturnValue(canNavigate);
+    const navigation = Promise.resolve();
+    (model.navigateToNextMilestone as jest.Mock).mockReturnValue(navigation);
+    render(<DocsPanelContentArea {...makeProps({ activeTab: tab, stableContent: guide, model })} />);
+    return { model, navigation };
+  }
+
+  it('uses the active track rather than the base path and retains its private path identity', () => {
+    renderTrack();
+    expect(mockRenderedSequences.at(-1)).toEqual({
+      currentMilestone: 1,
+      milestones,
+      baseUrl: 'app-platform:private-path',
+    });
+  });
+
+  it('retains the owning path context for a track-only guide with no learning journey metadata', () => {
+    renderTrack(true, true);
+    expect(mockRenderedSequences.at(-1)).toEqual({
+      currentMilestone: 1,
+      milestones,
+      baseUrl: 'app-platform:private-path',
+    });
+  });
+
+  it('always enables the completion panel in the reader', () => {
+    renderTrack();
+    expect(mockRenderedCompletionFlags.at(-1)).toBe(true);
+    expect(mockRenderedSequences.at(-1)).toBeDefined();
+  });
+
+  it('retains navigation promises and requests real load failures', () => {
+    const { model, navigation } = renderTrack();
+    expect(mockContinueToNextMilestone?.()).toBe(navigation);
+    expect(model.navigateToNextMilestone).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(model.navigateToNextMilestone).mock.calls[0]).toEqual([{ rejectOnError: true }]);
+  });
+
+  it('does not offer continuation when the model cannot navigate', () => {
+    const { model } = renderTrack(false);
+    expect(mockContinueToNextMilestone).toBeUndefined();
+    expect(model.navigateToNextMilestone).not.toHaveBeenCalled();
+  });
+});
+
+it('omits the duplicate reader footer when the completion panel owns navigation', () => {
+  render(<DocsPanelContentArea {...makeProps()} />);
+  act(() => mockCompletionPanelVisibilityChange?.(true));
+  expect(screen.queryByRole('button', { name: 'Return to my learning' })).not.toBeInTheDocument();
 });

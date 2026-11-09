@@ -1,5 +1,6 @@
 import type { PackageOpenInfo } from './content-panel.types';
 import type { LearningPath } from './learning-paths.types';
+import type { GuideTargeting } from './package.types';
 
 export interface CatalogPackage {
   key: string;
@@ -9,6 +10,7 @@ export interface CatalogPackage {
   format: 'guide' | 'path';
   source: 'grafana' | 'organization';
   category?: string;
+  targeting?: GuideTargeting;
   url: string;
   estimatedMinutes?: number;
   activityCount?: number;

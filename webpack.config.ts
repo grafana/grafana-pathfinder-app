@@ -1,11 +1,31 @@
 import path from 'path';
-import type { Configuration } from 'webpack';
+import type { Configuration, RuleSetRule } from 'webpack';
 import { merge } from 'webpack-merge';
 import FaroSourceMapUploaderPlugin from '@grafana/faro-webpack-plugin';
 import grafanaConfig, { type Env } from './.config/webpack/webpack.config';
 
+// Grafana derives its own build target from `last 2` browser versions
+// (grafana/grafana .browserslistrc) and ships ES2022 syntax, so any browser that
+// runs Grafana parses it. The scaffolded es2015 inlines helpers into every chunk.
+export const SWC_TARGET = 'es2022';
+
+function setSwcTarget(config: Configuration, target: string): void {
+  const swcRules = (config.module?.rules ?? []).filter(
+    (rule): rule is RuleSetRule =>
+      typeof rule === 'object' && rule !== null && (rule.use as { loader?: string })?.loader === 'swc-loader'
+  );
+  if (swcRules.length === 0) {
+    throw new Error('No swc-loader rule found in the scaffolded webpack config; cannot set the SWC target');
+  }
+  for (const rule of swcRules) {
+    const use = rule.use as { options: { jsc: { target?: string } } };
+    use.options.jsc.target = target;
+  }
+}
+
 const config = async (env: Env): Promise<Configuration> => {
   const baseConfig = await grafanaConfig(env);
+  setSwcTarget(baseConfig, SWC_TARGET);
 
   // Sourced from Vault (repo/grafana/grafana-pathfinder-app/faro-connection +
   // .../FARO_SOURCEMAP_API_KEY) via CI, never hardcoded. appName is the one

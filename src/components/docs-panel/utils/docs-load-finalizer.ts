@@ -2,11 +2,13 @@ import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '.
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
 import { getPackageRenderType } from '../../../types/package.types';
+import { getInteractiveLearningUrlTitle } from '../../../utils/doc-page-title';
 
 export interface DocsLoadAlignmentInput {
   requestedUrl: string;
   packageManifest?: Record<string, unknown>;
   fetchedManifest?: Record<string, unknown>;
+  packageManifestIsFromEnclosingPath?: boolean;
   currentPath: string;
   launchSource: LaunchSource | null;
   isAdmin: boolean;
@@ -31,17 +33,26 @@ export interface PendingAlignmentDecision {
  * declares a value and only falls back where it previously resolved to null —
  * so a guide opened from inside a learning path gets the same prompt as the
  * same guide opened standalone.
+ *
+ * A path member (fetched content carries `journeyManifest`) inverts that
+ * order: `packageManifest` is then the enclosing path's, and the guide on
+ * screen is closer to the reader, so its own declaration narrows the path's.
  */
 export function resolveDocsLoadAlignment({
   requestedUrl,
   packageManifest,
   fetchedManifest,
+  packageManifestIsFromEnclosingPath,
   currentPath,
   launchSource,
   isAdmin,
   isFullScreen,
 }: DocsLoadAlignmentInput): PendingAlignmentDecision | undefined {
-  const startingLocation = resolveStartingLocation(requestedUrl, [packageManifest, fetchedManifest], { isAdmin });
+  const startingLocation = resolveStartingLocation(
+    requestedUrl,
+    packageManifestIsFromEnclosingPath ? [fetchedManifest, packageManifest] : [packageManifest, fetchedManifest],
+    { isAdmin }
+  );
   const evaluation = evaluateAlignment({
     currentPath,
     startingLocation,
@@ -67,14 +78,20 @@ export interface DocsLoadSuccessPatchInput {
   pendingAlignment?: PendingAlignment;
 }
 
-/** An `api:` open titles the tab with the resource id; take `spec.title` only while it still is. */
-export function titleFromBackendGuide(tab: LearningJourneyTab, fetchedContent: RawContent): string | undefined {
+export function titleFromLoadedContent(
+  tab: LearningJourneyTab,
+  requestedUrl: string,
+  fetchedContent: RawContent
+): string | undefined {
   const fetched = fetchedContent.metadata.title?.trim();
   if (!fetched) {
     return undefined;
   }
-  const resourceName = backendGuideResourceName(tab.baseUrl) ?? backendGuideResourceName(fetchedContent.url);
-  if (!resourceName || tab.title !== resourceName || fetched === resourceName) {
+  const placeholder =
+    backendGuideResourceName(tab.baseUrl) ??
+    backendGuideResourceName(fetchedContent.url) ??
+    (requestedUrl === tab.baseUrl ? getInteractiveLearningUrlTitle(tab.baseUrl) : undefined);
+  if (!placeholder || tab.title !== placeholder || fetched === placeholder) {
     return undefined;
   }
   return fetched;
@@ -100,7 +117,7 @@ export function buildDocsLoadSuccessPatch({
   pendingAlignment,
 }: DocsLoadSuccessPatchInput): Partial<LearningJourneyTab> {
   const learningJourney = fetchedContent.metadata.learningJourney;
-  const title = titleFromBackendGuide(tab, fetchedContent);
+  const title = titleFromLoadedContent(tab, requestedUrl, fetchedContent);
 
   return {
     content: fetchedContent,

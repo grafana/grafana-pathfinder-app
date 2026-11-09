@@ -15,6 +15,7 @@ import { detectUnknownFields } from './unknown-fields';
 import { validateChoiceReferences } from './choice-references';
 import { validateBlockConditions, type ConditionIssue } from './condition-validator';
 import { customErrorMap } from './error-map';
+import { findNestedSections, isPathAtOrAbove } from './nested-sections';
 import { normalizeJsonGuideAliases } from './normalize-guide-aliases';
 import { validateSnippetReferences } from './snippet-references';
 import { validateGuidedActions } from './guided-action-validator';
@@ -99,7 +100,12 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
   const result = JsonGuideSchema.safeParse(normalized, { error: customErrorMap });
 
   if (!result.success) {
-    return { isValid: false, errors: formatZodErrors(result.error.issues), warnings: [], guide: null };
+    // The union error for a nested section does not name the block; replace
+    // the issues it produced with one that does.
+    const nested = findNestedSections((normalized as { blocks?: unknown } | null)?.blocks);
+    const kept = result.error.issues.filter((issue) => !nested.some((n) => isPathAtOrAbove(issue.path, n.path)));
+    const nestedErrors = nested.map((n) => ({ message: n.message, path: n.path, code: 'nested_section' }));
+    return { isValid: false, errors: [...formatZodErrors(kept), ...nestedErrors], warnings: [], guide: null };
   }
 
   // 2. Unknown fields check (existing) - single traversal

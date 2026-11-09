@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+import { OrgRole } from '@grafana/data';
 import { render, screen } from '@testing-library/react';
 import { HomePanelRenderer } from './HomePanel';
 import { sidebarState } from '../../global-state/sidebar';
@@ -15,15 +16,18 @@ import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { REQUEST_FLOATING_GUIDE_EVENT, REQUEST_FULLSCREEN_GUIDE_EVENT } from '../../lib/event-names';
-import { locationService } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import type { PreparedRawContent } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
+
+jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn() }));
 
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class SceneObjectBase {},
@@ -31,10 +35,12 @@ jest.mock('@grafana/scenes', () => ({
 
 jest.mock('@grafana/runtime', () => ({
   locationService: { push: jest.fn() },
+  config: { bootData: { user: { orgRole: 'Viewer' } } },
 }));
 
 jest.mock('@grafana/ui', () => ({
   useStyles2: (fn: any) => fn(mockTheme),
+  LinkButton: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 const mockTheme = {
@@ -132,11 +138,34 @@ describe('HomePanelRenderer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     capturedOnOpenGuide = undefined;
+    jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+    config.bootData.user.orgRole = OrgRole.Viewer;
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
     (panelModeManager.getMode as jest.Mock).mockReturnValue('sidebar');
   });
 
   describe('composition', () => {
+    it('discovers insights only for current-org administrators', () => {
+      config.bootData.user.orgRole = OrgRole.Admin;
+      const { rerender } = render(<HomePanelRenderer />);
+      expect(screen.getByRole('link', { name: 'Learning insights' })).toHaveAttribute(
+        'href',
+        '/a/grafana-pathfinder-app/learning-insights'
+      );
+      config.bootData.user.orgRole = OrgRole.Viewer;
+      rerender(<HomePanelRenderer />);
+      expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
+    });
+
+    it('hides insights from admins when the rollout flag is off without hiding My learning', () => {
+      config.bootData.user.orgRole = OrgRole.Admin;
+      jest.mocked(getFeatureFlagValue).mockReturnValue(false);
+      render(<HomePanelRenderer />);
+      expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('my-learning-tab')).toBeInTheDocument();
+      expect(getFeatureFlagValue).toHaveBeenCalledWith('pathfinder.learning-insights', false);
+    });
+
     it('renders MyLearningTab', () => {
       render(<HomePanelRenderer />);
       expect(screen.getByTestId('my-learning-tab')).toBeInTheDocument();

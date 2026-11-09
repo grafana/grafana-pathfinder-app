@@ -1,5 +1,5 @@
-import { config } from '@grafana/runtime';
-import { openCatalogBrowser } from './open-catalog-browser';
+import { config, locationService, getAppEvents } from '@grafana/runtime';
+import { openCatalogBrowser, openLearningHome } from './open-catalog-browser';
 import { cancelCatalogActivation, getCatalogActivation } from '../../../global-state/package-browser';
 import { panelModeManager } from '../../../global-state/panel-mode';
 import { sidebarState } from '../../../global-state/sidebar';
@@ -8,7 +8,12 @@ import { isExtensionSidebarOwnedByOther } from '../../../lib/storage/extension-s
 import { getPathfinderSurface } from '../../../lib/telemetry/surface';
 import { OPEN_CATALOG_BROWSER_EVENT } from '../../../lib/event-names';
 
-jest.mock('@grafana/runtime', () => ({ config: { namespace: 'org-a', bootData: { user: { orgId: 1, id: 2 } } } }));
+const publish = jest.fn();
+jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'org-a', bootData: { user: { orgId: 1, id: 2 } } },
+  locationService: { push: jest.fn() },
+  getAppEvents: () => ({ publish }),
+}));
 jest.mock('../../../global-state/panel-mode', () => ({
   panelModeManager: { getMode: jest.fn(), setModeTransient: jest.fn(), setMode: jest.fn() },
 }));
@@ -85,4 +90,38 @@ it.each(['closed', 'other-owner'] as const)('opens a cold sidebar when the slot 
   expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('package_browser');
   expect(getCatalogActivation('org-a:1:2')).not.toBeNull();
   expect(linkInterceptionState.addToQueue).not.toHaveBeenCalled();
+});
+
+it.each(['', '/grafana'])('navigates the controller document to My learning under subpath %s', (appSubUrl) => {
+  jest.mocked(getPathfinderSurface).mockReturnValue('controller');
+  const URLConstructor = URL;
+  const destination = new URLConstructor('#my-learning', window.location.href);
+  config.appSubUrl = appSubUrl;
+  let actualDestination: URL | undefined;
+  const urlSpy = jest.spyOn(globalThis, 'URL').mockImplementation((input, base) => {
+    actualDestination = new URLConstructor(input, base);
+    return destination;
+  });
+  try {
+    openLearningHome({ source: 'content_completion_panel' });
+    expect(actualDestination?.href).toBe(`${window.location.origin}${appSubUrl}/a/grafana-pathfinder-app`);
+    expect(window.location.hash).toBe('#my-learning');
+    expect(locationService.push).not.toHaveBeenCalled();
+    expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('sidebar');
+    expect(getAppEvents().publish).toHaveBeenCalledWith({ type: 'close-extension-sidebar', payload: {} });
+    expect(getCatalogActivation('org-a:1:2')).toBeNull();
+  } finally {
+    urlSpy.mockRestore();
+    config.appSubUrl = '';
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+it.each(['sidebar', 'floating', 'fullscreen'] as const)('opens the actual My learning page from %s', (surface) => {
+  jest.mocked(getPathfinderSurface).mockReturnValue(surface);
+  openLearningHome({ source: 'content_completion_panel' });
+  expect(locationService.push).toHaveBeenCalledWith('/a/grafana-pathfinder-app');
+  expect(panelModeManager.setModeTransient).toHaveBeenCalledWith('sidebar');
+  expect(getAppEvents().publish).toHaveBeenCalledWith({ type: 'close-extension-sidebar', payload: {} });
+  expect(getCatalogActivation('org-a:1:2')).toBeNull();
 });

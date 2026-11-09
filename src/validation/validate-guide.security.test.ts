@@ -208,41 +208,8 @@ const code = "block";
     });
 
     it('should reject 6-level nesting', () => {
-      // Nested level 6 means: Section -> Section -> ... (6 times) -> Markdown
-      // The schema allows 5 levels of recursion.
-      // Level 0 (Root blocks) -> Section (contains Level 1)
-      // Level 1 -> Section (contains Level 2)
-      // ...
-      // Level 4 -> Section (contains Level 5)
-      // Level 5 -> CANNOT contain Section (must be NonRecursive)
-
-      // If we createDeeplyNestedGuide(6), we have 6 sections nested.
-      // The innermost section (the 6th one) will be at Level 5.
-      // But it contains 'blocks'.
-      // Wait, createDeeplyNestedGuide(1) returns { blocks: [{ type: 'section', blocks: [markdown] }] }
-      // This is 1 level of nesting.
-
-      // Let's trace createBlockSchemaWithDepth:
-      // depth(0) -> allows Section(blocks: depth(1))
-      // depth(1) -> allows Section(blocks: depth(2))
-      // ...
-      // depth(4) -> allows Section(blocks: depth(5))
-      // depth(5) -> returns NonRecursiveBlockSchema (NO Section)
-
-      // So valid structure:
-      // Guide -> Section (from depth 0) -> Section (from depth 1) -> ... -> Section (from depth 4) -> Markdown (from depth 5)
-      // Total sections: 5.
-
-      // createDeeplyNestedGuide(5) creates 5 sections. This should be VALID.
-      // createDeeplyNestedGuide(6) creates 6 sections. The 6th section (innermost) is inside the 5th section.
-      // The 5th section is validated by depth(4), which expects blocks of depth(5).
-      // Depth(5) does NOT allow Section.
-      // So the 6th section (which is a Section) will fail validation against Depth(5) schema.
-
-      const guide = createDeeplyNestedGuide(6);
-      const result = validateGuide(guide);
+      const result = validateGuide(createDeeplyNestedGuide(6));
       expect(result.isValid).toBe(false);
-      // It might fail with "invalid_union" or specific type error
     });
 
     it('should handle wide sections (100 blocks)', () => {

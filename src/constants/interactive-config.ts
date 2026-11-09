@@ -50,7 +50,7 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     // Navigation manager timing
     navigation: {
       scrollTimeout: 200, // Scroll completion detection timeout
-      scrollFallbackTimeout: 500, // Fallback timeout for scroll operations
+      scrollFallbackTimeout: 1500, // Upper bound on waiting for scrollend, which some browsers never fire
       commentExitAnimation: 200, // Comment box exit animation duration
       domSettlingDelay: 300, // Delay after scroll before highlight positioning for DOM stability
       expansionAnimationMs: 300, // Single navigation section expansion animation duration

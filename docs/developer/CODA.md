@@ -239,7 +239,7 @@ routes the step through `executeInteractiveAction`, which has no `terminal-conne
 back the controls.
 
 **The ladder is measured.** `recordGcxCredentialDegradation` emits the rung that stopped an install
-(`mint-forbidden`, `account-outranks-caller`, `account-check-unavailable`, `plugin-too-old`,
+(`mint_forbidden`, `account_outranks_caller`, `account_check_unavailable`, `plugin_too_old`,
 `refused`) and
 `gcx_credential_installed` / `gcx_setup_skipped`
 count the outcomes. The whole shape of this surface rests on how often `mint_forbidden` comes back, so

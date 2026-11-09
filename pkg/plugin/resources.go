@@ -21,6 +21,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/grafana/user", a.handleGrafanaUser)
 	mux.HandleFunc("/grafana/dashboard", a.handleGrafanaDashboard)
 	mux.HandleFunc("/grafana/dashboard-search", a.handleGrafanaDashboardSearch)
+	mux.HandleFunc("/learning-insights", a.handleLearningInsights)
 	mux.HandleFunc("/health", a.handleHealth)
 }
 

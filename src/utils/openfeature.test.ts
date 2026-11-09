@@ -163,6 +163,21 @@ describe('openfeature', () => {
       });
     });
 
+    it('pathfinder.learning-insights is a default-off boolean rollout flag', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => createMockReactSdk());
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.learning-insights']).toEqual({
+          valueType: 'boolean',
+          values: [true, false],
+          defaultValue: false,
+          trackingKey: 'learning_insights',
+        });
+      });
+    });
+
     it('pathfinder.progress-analytics is a boolean kill switch that defaults to false', () => {
       jest.isolateModules(() => {
         const mockOF = createMockOpenFeature();

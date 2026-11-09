@@ -1,5 +1,7 @@
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
+import { fetchContent } from '../../../docs-retrieval/content-fetcher';
+import { findDocPage } from '../../../utils/find-doc-page';
 import { buildDocsLoadSuccessPatch, resolveDocsLoadAlignment } from './docs-load-finalizer';
 
 function tab(overrides: Partial<LearningJourneyTab> = {}): LearningJourneyTab {
@@ -42,6 +44,28 @@ describe('resolveDocsLoadAlignment', () => {
         ...alignmentInput,
         packageManifest: { startingLocation: '/connections' },
         fetchedManifest: { startingLocation: '/alerting' },
+      })
+    ).toEqual({ startingLocation: '/connections', currentPath: '/explore', launchSource: 'home_page' });
+  });
+
+  it('prefers the fetched manifest when the package manifest comes from the enclosing path', () => {
+    expect(
+      resolveDocsLoadAlignment({
+        ...alignmentInput,
+        packageManifest: { startingLocation: '/connections' },
+        fetchedManifest: { startingLocation: '/alerting' },
+        packageManifestIsFromEnclosingPath: true,
+      })
+    ).toEqual({ startingLocation: '/alerting', currentPath: '/explore', launchSource: 'home_page' });
+  });
+
+  it('falls back to the enclosing path manifest when the fetched manifest declares none', () => {
+    expect(
+      resolveDocsLoadAlignment({
+        ...alignmentInput,
+        packageManifest: { startingLocation: '/connections' },
+        fetchedManifest: { id: 'guide-1' },
+        packageManifestIsFromEnclosingPath: true,
       })
     ).toEqual({ startingLocation: '/connections', currentPath: '/explore', launchSource: 'home_page' });
   });
@@ -134,6 +158,35 @@ describe('resolveDocsLoadAlignment', () => {
 });
 
 describe('buildDocsLoadSuccessPatch', () => {
+  it('keeps the PR-tester marker on the content key after a real load', async () => {
+    const markedUrl = 'https://interactive-learning.grafana.net/packages/guide-two/v1.0.0/content.json#pf-pr-abc123';
+    const originalFetch = global.fetch;
+    const fetchSpy = jest.fn((input: RequestInfo | URL) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        url: String(input),
+        text: async () => JSON.stringify({ id: 'guide-two', title: 'Guide two', blocks: [] }),
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+      } as Response)
+    );
+    global.fetch = fetchSpy;
+    try {
+      const { content: fetchedContent } = await fetchContent(markedUrl);
+      const patch = buildDocsLoadSuccessPatch({
+        tab: tab({ baseUrl: markedUrl, currentUrl: markedUrl }),
+        requestedUrl: markedUrl,
+        fetchedContent: fetchedContent!,
+      });
+
+      expect(patch.currentUrl).toBe(markedUrl);
+      expect(patch.content?.url).toBe(markedUrl);
+      expect(fetchSpy.mock.calls.every(([input]) => !String(input).includes('#'))).toBe(true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it.each([
     {
       name: 'keeps an existing base URL',
@@ -178,6 +231,55 @@ describe('buildDocsLoadSuccessPatch', () => {
 
     expect(patch.type).toBe('learning-journey');
     expect(patch.packageInfo).toBe(packageInfo);
+  });
+
+  it.each(['content.json', 'unstyled.html', '', 'content.json?source=website#start'])(
+    'replaces a CDN deep-link placeholder with the fetched title (%s)',
+    (suffix) => {
+      const url = `https://interactive-learning.grafana.net/packages/alerting-intro-lj/${suffix}`;
+      const page = findDocPage(url)!;
+      const patch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: page.title, baseUrl: page.url }),
+        requestedUrl: page.url,
+        fetchedContent: content({ metadata: { title: 'Getting started with alerting' } }),
+        packageInfo: { packageId: 'alerting-intro-lj', packageManifest: { type: 'path' } },
+      });
+
+      expect(patch.title).toBe('Getting started with alerting');
+    }
+  );
+
+  it.each(['', '   '])('keeps a CDN placeholder when the fetched title is empty (%j)', (title) => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Alerting Intro Lj', baseUrl: url }),
+      requestedUrl: url,
+      fetchedContent: content({ metadata: { title } }),
+    });
+
+    expect(patch.title).toBeUndefined();
+  });
+
+  it('preserves an established CDN title on reload', () => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Getting started with alerting', baseUrl: url }),
+      requestedUrl: url,
+      fetchedContent: content({ metadata: { title: 'Another title' } }),
+    });
+
+    expect(patch.title).toBeUndefined();
+  });
+
+  it('does not replace a path title with a milestone title even when it matches the URL slug', () => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Alerting Intro Lj', baseUrl: url }),
+      requestedUrl: 'https://interactive-learning.grafana.net/packages/first-rule/content.json',
+      fetchedContent: content({ metadata: { title: 'Create your first alert rule' } }),
+    });
+
+    expect(patch.title).toBeUndefined();
   });
 
   it('replaces a backend-guide resource name with the fetched guide title', () => {

@@ -100,6 +100,7 @@ import { memoryStore, resetSectionHarness, silenceSectionWarnings } from '../../
 import { publishGuideIndex, evictAllGuideIndexes } from '../../global-state/active-guide-index';
 import { computeGuideBlockIndex, type CountableBlock } from '../../lib/guide-stats';
 import { peekGuidePercentage } from '../../global-state/completion-store';
+import { sectionDoneStorage } from '../../lib/user-storage';
 
 const NON_PREVIEW_KEY = '/';
 const PREVIEW_KEY = 'block-editor://preview/test-guide';
@@ -217,6 +218,7 @@ describe('InteractiveSection — an acknowledgement moves the guide percentage',
       contentKey: NON_PREVIEW_KEY,
       index: computeGuideBlockIndex([
         { type: 'section', id: 'mixed', blocks: [{ type: 'interactive', id: MIXED_STEP_ID }, { type: 'markdown' }] },
+        { type: 'interactive', id: 'after-mixed' },
       ]),
       denominatorSource: 'live-pre-inlining',
     });
@@ -262,8 +264,9 @@ describe('InteractiveSection — an acknowledgement moves the guide percentage',
       act(() => {
         screen.getByTestId(completeBtn(MIXED_STEP_ID)).click();
       });
-      // The step is block 1 of 2; the section's trailing prose is block 2.
-      await waitFor(() => expect(guidePercentages(events)).toContain(50));
+      // The step is block 1 of 3; the section's trailing prose is block 2. A
+      // later interactive block keeps the guide from completing at the step.
+      await waitFor(() => expect(guidePercentages(events)).toContain(33));
 
       act(() => {
         screen.getByTestId(testIds.interactive.markSectionCompleteButton(MIXED_SECTION_ID)).click();
@@ -271,9 +274,9 @@ describe('InteractiveSection — an acknowledgement moves the guide percentage',
 
       // Acknowledging evidences the section's last block, so both the reported
       // and the persisted percentage have to move with it.
-      await waitFor(() => expect(guidePercentages(events)).toContain(100));
-      expect(peekGuidePercentage(NON_PREVIEW_KEY)).toBe(100);
-      expect(memoryStore.get(`interactive-completion::${NON_PREVIEW_KEY}`)).toBe(100);
+      await waitFor(() => expect(guidePercentages(events)).toContain(66));
+      expect(peekGuidePercentage(NON_PREVIEW_KEY)).toBe(66);
+      expect(memoryStore.get(`interactive-completion::${NON_PREVIEW_KEY}`)).toBe(66);
     } finally {
       unsubscribe();
     }
@@ -395,6 +398,56 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         unsubscribe();
       }
     });
+
+    it.each([false, true])(
+      'does not delay section completion behind storage (reset before resolution: %s)',
+      async (reset) => {
+        let resolveWrite!: () => void;
+        const pendingWrite = new Promise<void>((resolve) => {
+          resolveWrite = resolve;
+        });
+        jest.mocked(sectionDoneStorage.set).mockImplementationOnce(() => pendingWrite);
+        const { events, unsubscribe } = recordSectionEvents();
+
+        try {
+          renderSingleStepSection();
+          await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
+          act(() => {
+            screen.getByTestId(completeBtn(STEP_ID)).click();
+          });
+
+          await waitFor(() => expect(sectionDoneStorage.set).toHaveBeenCalledWith(NON_PREVIEW_KEY, SECTION_ID, true));
+          const completions = () =>
+            events.filter(
+              (event) =>
+                event.name === 'pathfinder:progress' && event.detail.kind === 'section' && event.detail.completed
+            );
+          if (reset) {
+            await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_ID))).toBeInTheDocument());
+            act(() => {
+              screen.getByTestId(resetButton(SECTION_ID)).click();
+            });
+            await waitFor(() => expect(document.getElementById(SECTION_ID)).not.toHaveClass('completed'));
+          } else {
+            expect(completions()).toHaveLength(1);
+          }
+          const countBeforeResolution = completions().length;
+
+          await act(async () => {
+            resolveWrite();
+            await pendingWrite;
+          });
+
+          expect(completions()).toHaveLength(countBeforeResolution);
+          if (reset) {
+            expect(document.getElementById(SECTION_ID)).not.toHaveClass('completed');
+          }
+        } finally {
+          resolveWrite();
+          unsubscribe();
+        }
+      }
+    );
 
     it('dispatches `pathfinder-step-progress` with the documented detail shape', async () => {
       const { events, unsubscribe } = recordSectionEvents();

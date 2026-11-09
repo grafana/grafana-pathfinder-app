@@ -168,7 +168,6 @@ export function NestedBlockItem({
         <div className={styles.secondaryActions} data-secondary-actions>
           <ConfirmDeleteButton
             onConfirm={onDelete ?? (() => {})}
-            className={styles.deleteButton}
             tooltip="Delete block"
             ariaLabel="Delete"
             blockType={meta?.name.toLowerCase() ?? block.type}

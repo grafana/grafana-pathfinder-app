@@ -2,6 +2,7 @@ import pluginJson from '../../plugin.json';
 import { StorageKeys } from '../storage-keys';
 import { isExtensionSidebarOwnedByPathfinder } from '../storage/extension-sidebar';
 import { KIOSK_OVERLAY_TEST_ID } from '../../constants/surface-selectors';
+import { newGuideLoadId } from '../guide-diagnostics';
 
 const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
 const CONTROLLER_ROOT_ID = 'pathfinder-controller-root';
@@ -17,6 +18,38 @@ type SurfaceListener = (surface: PathfinderSurface) => void;
 let reportedSurface: PathfinderSurface | null = null;
 let latchedColdSurface: PathfinderSurface | null = null;
 const listeners = new Set<SurfaceListener>();
+
+// In-memory and per tab by design: never written to storage, so a reload ends the session.
+let panelSessionId: string | null = null;
+// Cleared once sent: `session_started_at` rides on the first event of a session only.
+let panelSessionStartedAt: number | null = null;
+
+// Held by a kiosk launch across the gap before the sidebar opens (the launcher bounds it): a `closed`
+// report inside it must not end the session, and the release ends it if nothing opened.
+let handoffPending = false;
+
+export function setPathfinderHandoff(pending: boolean): void {
+  handoffPending = pending;
+  if (!pending && reportedSurface === 'closed') {
+    panelSessionId = null;
+  }
+}
+
+export function getPanelSessionId(): string | null {
+  return reportedSurface === 'closed' ? null : panelSessionId;
+}
+
+export function takePanelSessionProperties(): { pathfinder_session_id: string; session_started_at?: number } | null {
+  const id = getPanelSessionId();
+  if (id === null) {
+    return null;
+  }
+  const startedAt = panelSessionStartedAt;
+  panelSessionStartedAt = null;
+  return startedAt === null
+    ? { pathfinder_session_id: id }
+    : { pathfinder_session_id: id, session_started_at: startedAt };
+}
 
 // Mode literals mirror PanelMode in global-state/panel-mode — importing
 // panelModeManager here would cycle via global-state → analytics → faro.
@@ -66,6 +99,22 @@ export function reportPathfinderSurface(surface: PathfinderSurface): void {
   }
   reportedSurface = surface;
   latchedColdSurface = null;
+  if (surface === 'closed') {
+    // A mode change closes the old surface and opens the next in one task; only a close that outlives it ends the session.
+    if (!handoffPending) {
+      queueMicrotask(() => {
+        if (reportedSurface === 'closed') {
+          panelSessionId = null;
+        }
+      });
+    }
+  } else {
+    handoffPending = false;
+    if (panelSessionId === null) {
+      panelSessionId = newGuideLoadId();
+      panelSessionStartedAt = Date.now();
+    }
+  }
   for (const listener of listeners) {
     try {
       listener(surface);

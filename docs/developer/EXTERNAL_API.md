@@ -417,7 +417,7 @@ these:
 The two path rows differ, and only the cover page is a transport problem.
 
 **Path cover page — the value never arrives.** `packageInfoForPath`
-(`src/components/docs-panel/CustomGuidesSection.tsx`) builds the cover's
+(`src/utils/custom-guide-launch.ts`) builds the cover's
 `packageManifest` from the catalogue-proxy entry, and that proxy's
 `customGuideManifest` (`pkg/plugin/custom_guide_repository_client.go`) declares
 no `additionalFields`, so `encoding/json` drops the key at the wire boundary
@@ -445,6 +445,13 @@ typed field the catalogue manifest WOULD declare it, it would settle resolution
 at the first candidate, and a member would be prompted towards the cover's entry
 page. Tracked as
 [#1681](https://github.com/grafana/grafana-pathfinder-app/issues/1681).
+A guide loaded as a path member is not exposed to this, however it was opened
+(next/previous, a cover list, a recommendation card or My Learning): when the
+fetched content carries `journeyManifest`, `resolveDocsLoadAlignment` tries the
+fetched manifest first, so the member's own `startingLocation` narrows the
+path's and the path's value applies only when the member declares none. A
+member whose own `startingLocation` is present but invalid yields no prompt
+rather than falling back to the path's.
 
 Promoting a key out of `additionalFields` into a real CUE field is additive and
 safe, and is the fix for the inert rows generally.

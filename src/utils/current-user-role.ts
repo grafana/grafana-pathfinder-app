@@ -113,3 +113,11 @@ export function useCurrentUserIsAdmin(): boolean {
 export function useCurrentUserIsEditor(): boolean {
   return useSyncExternalStore(subscribeToCurrentUser, currentUserIsEditor);
 }
+
+export function currentUserIsOrgAdmin(): boolean {
+  return currentUser().role === 'Admin';
+}
+
+export function useCurrentUserIsOrgAdmin(): boolean {
+  return useSyncExternalStore(subscribeToCurrentUser, currentUserIsOrgAdmin);
+}

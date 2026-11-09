@@ -1,10 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 
 const mockGetContextData = jest.fn();
+const mockFetchRecommendations = jest.fn(async () => ({ recommendations: [], featuredRecommendations: [] }));
 jest.mock('./context.service', () => ({
   ContextService: {
     getContextData: () => mockGetContextData(),
-    fetchRecommendations: jest.fn(async () => ({ recommendations: [], featuredRecommendations: [] })),
+    fetchRecommendations: () => mockFetchRecommendations(),
   },
 }));
 jest.mock('../hooks', () => {
@@ -37,6 +38,7 @@ it('refetches context and recommendations when the auto-open guide activation ch
   mockGetContextData.mockResolvedValue({
     currentPath: '/explore',
     tags: [],
+    dataSources: [],
     isLoading: false,
     recommendations: [],
     featuredRecommendations: [],
@@ -45,6 +47,7 @@ it('refetches context and recommendations when the auto-open guide activation ch
   const delay = INTERACTIVE_CONFIG.delays.debouncing.contextRefresh;
   await act(async () => jest.advanceTimersByTimeAsync(delay));
   expect(mockGetContextData).toHaveBeenCalledTimes(1);
+  expect(mockFetchRecommendations).toHaveBeenCalledTimes(1);
 
   act(() => setAutoOpenGuideEnrollment({ variant: 'treatment', experiences: [] }));
 
@@ -52,5 +55,6 @@ it('refetches context and recommendations when the auto-open guide activation ch
   expect(mockGetContextData).toHaveBeenCalledTimes(1);
   await act(async () => jest.advanceTimersByTimeAsync(1));
   expect(mockGetContextData).toHaveBeenCalledTimes(2);
+  expect(mockFetchRecommendations).toHaveBeenCalledTimes(2);
   unmount();
 });

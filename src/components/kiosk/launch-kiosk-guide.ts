@@ -9,12 +9,24 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { PATHFINDER_PARAMS, stripPathfinderParams } from '../../utils/pathfinder-search-params';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { toAnalyticsValue } from '../../lib/analytics-values';
 import { getKioskName, getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
+import { setPathfinderHandoff } from '../../lib/telemetry/surface';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
 
 import type { KioskMode } from '../../types/kiosk-page.schema';
+
+const HANDOFF_GRACE_MS = 5000;
+let handoffTimer: ReturnType<typeof setTimeout> | undefined;
+
+// The kiosk dismisses itself before the deep-link handler opens the sidebar on a 200/500 ms timer.
+function holdPanelSessionForHandoff(): void {
+  clearTimeout(handoffTimer);
+  setPathfinderHandoff(true);
+  handoffTimer = setTimeout(() => setPathfinderHandoff(false), HANDOFF_GRACE_MS);
+}
 
 export function launchKioskGuide(
   rule: KioskRule,
@@ -52,7 +64,7 @@ export function launchKioskGuide(
         target.searchParams.set(key, value);
       }
       target.hash = destination.hash;
-      reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
+      reportKioskInteraction(mode, blockIndex, { component: 'guide_links', action: 'open_product', ruleId: rule.id });
       window.open(target.href, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -64,7 +76,7 @@ export function launchKioskGuide(
     if (subpath && (destination.pathname === subpath || destination.pathname.startsWith(`${subpath}/`))) {
       destination.pathname = destination.pathname.slice(subpath.length) || '/';
     }
-    reportKioskInteraction(mode, blockIndex, { component: 'guide-links', action: 'open_product', ruleId: rule.id });
+    reportKioskInteraction(mode, blockIndex, { component: 'guide_links', action: 'open_product', ruleId: rule.id });
     onLaunch?.();
     if (sidebarState.getIsSidebarMounted() && !isExtensionSidebarOwnedByOther(pluginJson.id)) {
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
@@ -102,7 +114,7 @@ export function launchKioskGuide(
     kiosk_name: kioskName,
     guide_url: rule.url,
     guide_title: rule.title,
-    guide_type: rule.type,
+    guide_type: rule.type === 'learning-journey' ? toAnalyticsValue(rule.type) : rule.type,
     launch_mode: mode,
     target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
   });
@@ -117,6 +129,7 @@ export function launchKioskGuide(
     url.searchParams.set('type', 'learning-journey');
   }
   if (mode === 'instance') {
+    holdPanelSessionForHandoff();
     window.__pathfinderKioskSessionId = sessionId;
     window.__pathfinderKioskName = kioskName;
     if (prepared && (panelModeManager.getMode() === 'floating' || isExtensionSidebarOwnedByOther(pluginJson.id))) {
@@ -150,7 +163,7 @@ export function launchKioskGuide(
           })
         );
       } else {
-        sidebarState.setPendingOpenSource('kiosk_session', 'auto-open');
+        sidebarState.setPendingOpenSource('kiosk_session', 'auto_open');
         sidebarState.openSidebar('Interactive learning', {
           url: prepared.url,
           title: prepared.title,

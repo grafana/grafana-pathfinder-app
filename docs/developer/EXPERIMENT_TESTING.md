@@ -146,7 +146,7 @@ Each guide is offered once per browser. Run `__pathfinderExperiment.clearAutoOpe
 | ------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `experiment_viewed` (Faro)            | Once per SDK session and assignment, at the first offer | `experiment_id: pathfinder-auto-open-guide-v1`, `variant`, `exposure_id`                                 |
 | `pathfinder_auto_open_guide_eligible` | Every offer, in both arms                               | `experiment_auto_open_guide`, `exposure_id`, `experience_index`, `opened`                                |
-| `pathfinder_docs_panel_interaction`   | Treatment, when the sidebar mounts after the pop-out    | `action: 'auto-open'`, `source: 'auto_open_guide_experiment'`, `experiments` enrichment                  |
+| `pathfinder_docs_panel_interaction`   | Treatment, when the sidebar mounts after the pop-out    | `action: 'auto_open'`, `source: 'auto_open_guide_experiment'`, `experiments` enrichment                  |
 | `pathfinder_open_resource_click`      | Treatment, when the guide auto-launches as a tab        | `trigger_source: 'auto_launch_tutorial'`, `interaction_location: 'docs_panel'`, `experiments` enrichment |
 
 After activation, every Pathfinder analytics event carries the arm in `experiments`, so guide progress and completion can be compared across arms.
@@ -266,7 +266,7 @@ Do not confuse these auto-opens with [`pathfinder.auto-open-guide-experiment`](#
 
 ### How to identify the cohort
 
-Spine: `grafanalabs-global.rudderstack.pathfinder_docs_panel_interaction` where `action = 'auto-open'` and `source` is one of:
+Spine: `grafanalabs-global.rudderstack.pathfinder_docs_panel_interaction` where `action = 'auto_open'` (`'auto-open'` before the snake_case migration, see [TELEMETRY.md](./TELEMETRY.md#value-conventions)) and `source` is one of:
 
 | `source`                   | Survey tile (`onboarding_flow_event.component_key_properties_recommendation`) | Product page                                        |
 | -------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------- |
@@ -292,7 +292,7 @@ Join `setup-guide.onboarding-plg` separately if you need the parent A/B populati
 ### Gotchas for this readout
 
 - **Never use `context_traits_org_id`** on these Rudderstack events — it is org 1. Resolve org via instance URL + `user_id` / email through `stg_grafana_instance_url_xref` (same pattern as `rpt_pathfinder_onboarding_experiment`).
-- `plg-survey-*` is an **analytics source string** set by the onboarding flow when it auto-opens the sidebar. It is not a Pathfinder `LaunchSource`, so alignment-prompt classification treats it as unknown (needs check). That does not affect the auto-open event itself.
+- `plg-survey-*` is an **analytics source string** set by the onboarding flow when it auto-opens the sidebar. It is not a Pathfinder `LaunchSource`, so alignment-prompt classification treats it as unknown (needs check). That does not affect the auto-open event itself. Analytics reports it verbatim, without the snake_case conversion applied to Pathfinder's own values.
 - Staff users should be excluded via `core_users.is_staff`, not by filtering Rudderstack traits.
 
 ## Common gotchas

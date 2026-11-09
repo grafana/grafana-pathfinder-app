@@ -75,7 +75,7 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 **Used By**:
 
 - `src/components/docs-panel/context-panel.tsx` - Context panel custom guides
-- `src/components/docs-panel/CustomGuidesSection.tsx` - Custom guides section (type import)
+- `src/components/SidebarHub/custom-guides.tsx` - Custom guides section (type import)
 
 ---
 

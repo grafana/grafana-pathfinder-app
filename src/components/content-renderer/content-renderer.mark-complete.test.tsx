@@ -44,6 +44,133 @@ jest.mock('../../docs-retrieval', () => ({
 
 const recordCompletion = jest.mocked(recordGuideCompletionForSurface);
 
+jest.mock('../completion-panel/ReaderCompletionPanel', () => ({
+  __esModule: true,
+  default: ({ onContinue }: { onContinue?: () => void }) => (
+    <div data-testid="completion-panel">
+      Guide complete
+      {onContinue && <button onClick={onContinue}>Continue to next module</button>}
+    </div>
+  ),
+}));
+
+describe('completion panel integration', () => {
+  it('forwards completed-panel visibility for a returning reader and clears it on unmount', async () => {
+    const content = makeContent();
+    await guideCompletionMarkStorage.set(content.url, true);
+    const onVisibility = jest.fn();
+    const { unmount } = render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled
+        onCompletionPanelVisibilityChange={onVisibility}
+      />
+    );
+    expect(await screen.findByTestId('completion-panel')).toBeInTheDocument();
+    expect(onVisibility).toHaveBeenLastCalledWith(true);
+    unmount();
+    expect(onVisibility).toHaveBeenLastCalledWith(false);
+  });
+
+  it.each(['preview', 'cover', 'opt-out'] as const)('does not announce a completed panel for %s', async (kind) => {
+    const content = kind === 'preview' ? makePreview() : kind === 'cover' ? makeMilestone(0) : makeContent();
+    const onVisibility = jest.fn();
+    await guideCompletionMarkStorage.set(content.url, true);
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled={kind !== 'opt-out'}
+        onCompletionPanelVisibilityChange={onVisibility}
+      />
+    );
+    await act(async () => {});
+    expect(screen.queryByTestId('completion-panel')).not.toBeInTheDocument();
+    expect(onVisibility).not.toHaveBeenCalledWith(true);
+  });
+
+  it('reports milestone analytics for a track-only member in the completion panel', async () => {
+    const content = makeContent({
+      type: 'learning-journey',
+      metadata: { title: 'Track guide', trackMemberBaseUrl: baseUrl },
+    });
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled
+        completionSequence={{ currentMilestone: 1, milestones, baseUrl }}
+        onContinueToNextMilestone={jest.fn()}
+      />
+    );
+    expect(await screen.findByRole('button', { name: 'Complete milestone' })).toBeInTheDocument();
+    await clickWhenReady();
+    expect(markCompleteEvents().at(-1)?.[1]).toEqual(
+      expect.objectContaining({
+        completion_context: 'milestone',
+        current_milestone: 1,
+        total_milestones: milestones.length,
+      })
+    );
+    expect(await screen.findByTestId('completion-panel')).toBeInTheDocument();
+  });
+
+  it('retains guide labels and analytics for an explicitly opted-out track-only reader', async () => {
+    const content = makeContent({
+      type: 'learning-journey',
+      metadata: { title: 'Track guide', trackMemberBaseUrl: baseUrl },
+    });
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled={false}
+        completionSequence={{ currentMilestone: 1, milestones, baseUrl }}
+        onContinueToNextMilestone={jest.fn()}
+      />
+    );
+    expect(await screen.findByRole('button', { name: 'Mark complete' })).toBeInTheDocument();
+    await clickWhenReady();
+    const event = markCompleteEvents().at(-1)?.[1];
+    expect(event).toEqual(expect.objectContaining({ completion_context: 'guide' }));
+    expect(event).not.toHaveProperty('current_milestone');
+    expect(event).not.toHaveProperty('total_milestones');
+    expect(screen.queryByTestId('completion-panel')).not.toBeInTheDocument();
+  });
+
+  it('keeps the completed module visible until the reader chooses the next module', async () => {
+    const content = makeMilestone();
+    const onContinue = jest.fn();
+    const onVisibility = jest.fn();
+    render(
+      <ContentRenderer
+        content={content}
+        completion={trackedCompletion(content)}
+        completionPanelEnabled
+        onCompletionPanelVisibilityChange={onVisibility}
+        onContinueToNextMilestone={onContinue}
+      />
+    );
+    const complete = await screen.findByRole('button', { name: 'Complete milestone' });
+    await waitFor(() => expect(complete).toBeEnabled());
+    fireEvent.click(complete);
+    expect(await screen.findByTestId('completion-panel')).toBeInTheDocument();
+    expect(recordCompletion).toHaveBeenCalledTimes(1);
+    expect(onVisibility).toHaveBeenLastCalledWith(true);
+    expect(onContinue).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to next module' }));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps author previews on the existing footer even when the panel is enabled', async () => {
+    render(<ContentRenderer content={makePreview()} completion={UNTRACKED_COMPLETION} completionPanelEnabled />);
+    await clickWhenReady();
+    expect(screen.queryByTestId('completion-panel')).not.toBeInTheDocument();
+    expect(recordCompletion).not.toHaveBeenCalled();
+  });
+});
+
 function markCompleteEvents(): unknown[][] {
   return reportAppInteraction.mock.calls.filter(([interaction]) => interaction === UserInteraction.MarkCompleteClicked);
 }
@@ -273,7 +400,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     [
       'milestone',
       makeMilestone(),
-      { guide_source: 'unresolved', guide_visibility: 'private' },
+      { guide_source: 'unresolved', guide_visibility: 'private', guide_id: 'set-up', guide_title: 'Demo' },
       { current_milestone: 1, total_milestones: 1 },
     ],
   ])(
@@ -292,9 +419,10 @@ describe('ContentRenderer — the universal Mark complete control', () => {
             interaction_location: 'content_footer',
             completion_context: discriminator,
             completion_percentage_before: 0,
-            block_progress_rule_version: 'block-position-v1',
+            block_progress_rule_version: 'block-position-v2',
             ...milestoneProperties,
           },
+          { privatePath: false },
         ],
       ]);
     }
@@ -310,7 +438,11 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     await clickWhenReady();
 
     expect(markCompleteEvents()).toEqual([
-      [UserInteraction.MarkCompleteClicked, expect.objectContaining({ completion_context: 'guide' })],
+      [
+        UserInteraction.MarkCompleteClicked,
+        expect.objectContaining({ completion_context: 'guide' }),
+        { privatePath: false },
+      ],
     ]);
   });
 
@@ -411,11 +543,11 @@ describe('mark-complete guide identity', () => {
       await clickWhenReady();
       expect(markCompleteEvents()[0]?.[1]).toMatchObject({
         guide_id: guideId,
-        guide_source: guideSource,
+        guide_source: guideSource.replace('-', '_'),
         guide_visibility: 'public',
         ...(guideSource === 'online-cdn' && { path_id: 'parent-path' }),
       });
-      expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_title');
+      expect(markCompleteEvents()[0]?.[1]).toHaveProperty('guide_title', content.metadata.title);
     }
   );
 
@@ -439,20 +571,24 @@ describe('mark-complete guide identity', () => {
       />
     );
     await clickWhenReady();
-    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online-cdn' });
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'configure', guide_source: 'online_cdn' });
   });
 
-  it.each(['app-platform', 'remote-repo:private-company'])('omits private identifiers for %s', async (repository) => {
-    const content = makeContent({
-      url: 'backend-guide:private-guide',
-      metadata: { title: 'Private title', repository, packageManifest: { id: 'private-guide' } },
-    });
-    window.__DocsPluginActiveTabUrl = content.url;
-    render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
-    await clickWhenReady();
-    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_visibility: 'private' });
-    expect(JSON.stringify(markCompleteEvents()[0]?.[1])).not.toMatch(/private-guide|Private title|private-company/);
-  });
+  it.each(['app-platform', 'remote-repo:private-company'])(
+    'includes private identifiers and titles for %s',
+    async (repository) => {
+      const content = makeContent({
+        url: 'backend-guide:private-guide',
+        metadata: { title: 'Private title', repository, packageManifest: { id: 'private-guide' } },
+      });
+      window.__DocsPluginActiveTabUrl = content.url;
+      render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
+      await clickWhenReady();
+      expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_visibility: 'private' });
+      expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'private-guide', guide_title: 'Private title' });
+      expect(JSON.stringify(markCompleteEvents()[0]?.[1])).not.toContain('private-company');
+    }
+  );
 
   it('does not guess a published source for an unresolved manifest', async () => {
     const content = makeContent({
@@ -463,6 +599,6 @@ describe('mark-complete guide identity', () => {
     render(<ContentRenderer content={content} completion={UNTRACKED_COMPLETION} />);
     await clickWhenReady();
     expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_source: 'unresolved', guide_visibility: 'private' });
-    expect(markCompleteEvents()[0]?.[1]).not.toHaveProperty('guide_id');
+    expect(markCompleteEvents()[0]?.[1]).toMatchObject({ guide_id: 'private-guide', guide_title: 'Private title' });
   });
 });

@@ -238,6 +238,7 @@ jest.mock('../../constants/testIds', () => ({
 }));
 
 jest.mock('../../types/package.types', () => ({
+  ...jest.requireActual('../../types/package.types'),
   getPackageRenderType: jest.fn(() => 'interactive'),
 }));
 
@@ -1105,5 +1106,112 @@ describe('CombinedLearningJourneyPanel — package resolver config source', () =
     new CombinedLearningJourneyPanel(constructorConfig);
 
     expect(jest.requireMock('../../package-engine').createCompositeResolver).toHaveBeenCalledWith(constructorConfig);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Acceptance: starting location follows the page the reader is on
+// ---------------------------------------------------------------------------
+
+describe('CombinedLearningJourneyPanel — a milestone narrows its path starting location', () => {
+  const PATH_START = '/x-start';
+  const MILESTONE_A_START = '/a-start';
+  const MILESTONE_B_START = '/b-start';
+
+  function makePathOrMilestoneContent(url: string, startingLocation: string): RawContent {
+    return {
+      content: '{"id":"guide","title":"Guide","blocks":[]}',
+      type: 'interactive',
+      url,
+      lastFetched: '2026-10-13T00:00:00.000Z',
+      metadata: {
+        title: url,
+        learningJourney: { currentMilestone: 1, totalMilestones: 2, milestones: [], baseUrl: 'bundled:x' },
+        packageManifest: { startingLocation },
+      },
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
+    jest.requireMock('../../global-state/panel-mode').panelModeManager.getMode.mockReturnValue('sidebar');
+    jest.requireMock('../../types/package.types').getPackageRenderType.mockReturnValue('learning-journey');
+    jest.requireMock('./utils').shouldUseDocsLoader.mockReturnValue(true);
+  });
+
+  async function settle() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  const ownStartingLocations: Record<string, string> = {
+    'bundled:x/content.json': PATH_START,
+    'bundled:a/content.json': MILESTONE_A_START,
+    'bundled:b/content.json': MILESTONE_B_START,
+  };
+  const pathManifest = { id: 'x', type: 'path', startingLocation: PATH_START };
+  const resolvedMilestones = [
+    { id: 'a', number: 1, title: 'A', url: 'bundled:a/content.json', isActive: false },
+    { id: 'b', number: 2, title: 'B', url: 'bundled:b/content.json', isActive: false },
+  ];
+
+  function mockPathLoader(
+    fetchPackageContent: (...args: any[]) => Promise<unknown>,
+    startingLocations: Record<string, string>
+  ) {
+    mockLoadDocsTabContentResult.mockImplementation(
+      (
+        url: string,
+        options: { packageInfo?: { packageManifest?: Record<string, unknown>; resolvedMilestones?: unknown[] } }
+      ) =>
+        fetchPackageContent(
+          url,
+          options.packageInfo?.packageManifest,
+          options.packageInfo?.resolvedMilestones,
+          undefined,
+          { content: makePathOrMilestoneContent(url, startingLocations[url]!) }
+        )
+    );
+  }
+
+  it('prompts with the milestone own start when opened directly with the path packageInfo', async () => {
+    const { fetchPackageContent } = jest.requireActual('../../docs-retrieval/content-fetcher/package-content');
+    mockPathLoader(fetchPackageContent, ownStartingLocations);
+
+    const panel = new CombinedLearningJourneyPanel();
+    const tabId = await openTabAndLoad(panel, 'bundled:a/content.json', 'home_page', {
+      packageManifest: pathManifest,
+      resolvedMilestones,
+    } as any);
+    await settle();
+
+    expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(MILESTONE_A_START);
+  });
+
+  it('prompts with X on the landing page, A on milestone A, and B on milestone B', async () => {
+    const docsRetrieval = jest.requireMock('../../docs-retrieval');
+    const { fetchPackageContent } = jest.requireActual('../../docs-retrieval/content-fetcher/package-content');
+    mockPathLoader(fetchPackageContent, ownStartingLocations);
+    docsRetrieval.getNextMilestoneUrlFromContent
+      .mockReturnValueOnce('bundled:a/content.json')
+      .mockReturnValueOnce('bundled:b/content.json');
+
+    const panel = new CombinedLearningJourneyPanel();
+    const tabId = await openTabAndLoad(panel, 'bundled:x/content.json', 'home_page', {
+      packageManifest: pathManifest,
+      resolvedMilestones,
+    } as any);
+    await settle();
+    expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(PATH_START);
+
+    await panel.navigateToNextMilestone();
+    await settle();
+    expect(getTab(panel, tabId).currentUrl).toBe('bundled:a/content.json');
+    expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(MILESTONE_A_START);
+
+    await panel.navigateToNextMilestone();
+    await settle();
+    expect(getTab(panel, tabId).currentUrl).toBe('bundled:b/content.json');
+    expect(getTab(panel, tabId).pendingAlignment?.startingLocation).toBe(MILESTONE_B_START);
   });
 });

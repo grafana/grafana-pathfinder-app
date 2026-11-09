@@ -19,12 +19,14 @@ import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { TIMEOUTS } from './constants';
 import {
+  ALL_FIXTURES,
   APP_PLATFORM_GUIDE,
   APP_PLATFORM_REPOSITORY,
   BUNDLED_GUIDE_ID,
   BUNDLED_GUIDE_TITLE,
   BUNDLED_REPOSITORY,
   FIXTURE_REPOSITORY,
+  LONG_PROSE_GUIDE,
   NO_REPOSITORY_PATH,
   PATH_FIXTURE,
   PATH_MILESTONES,
@@ -41,7 +43,6 @@ import {
   footerPercentage,
   launchDoc,
   markComplete,
-  markMilestoneCompleteAndContinue,
   openDocsPanel,
   pathPercentage,
   primeCompletionSession,
@@ -49,6 +50,7 @@ import {
   readStoredProgress,
   seedRestoredTab,
   stubAppPlatformGuide,
+  waitForFooterHydrated,
   waitForQueuedFacts,
   waitForWriteAttemptAfter,
 } from './helpers/completion.helpers';
@@ -160,6 +162,40 @@ test.describe('completion tracking', () => {
   });
 
   /**
+   * Decision 3: a prose-only guide completes when the end of its content is
+   * seen (#2258). jsdom has no layout, so only a browser can show the end is
+   * judged against the panel's scroll container: a guide whose end starts out
+   * of view must stay incomplete until the reader scrolls to it.
+   */
+  test('a long prose-only guide completes only once its end is scrolled into view', async ({ page }) => {
+    await primeCompletionSession(page);
+    await launchDoc(page, fixtureContentUrl(LONG_PROSE_GUIDE));
+    const contentUrl = fixtureContentUrl(LONG_PROSE_GUIDE);
+    const sentinel = page.getByTestId('guide-end-sentinel');
+
+    await waitForFooterHydrated(page);
+    // Guard the fixture itself: an end already on screen would complete on
+    // arrival and make the negative half below measure nothing.
+    await expect(sentinel).not.toBeInViewport();
+    // A negative cannot be polled for; give the sentinel time to arm and misfire.
+    await page.waitForTimeout(1_000);
+    expect((await readStoredProgress(page)).interactiveCompletion[contentUrl] ?? 0).toBe(0);
+    expect(await readQueuedFacts(page)).toHaveLength(0);
+
+    await page.getByTestId(testIds.markComplete.footer).first().scrollIntoViewIfNeeded();
+
+    await expect
+      .poll(async () => (await readStoredProgress(page)).interactiveCompletion[contentUrl], {
+        message: 'guide persisted at 100% once its end was seen',
+        timeout: TIMEOUTS.UI_READY,
+      })
+      .toBe(100);
+    const facts = factsFor(await waitForQueuedFacts(page, 1), FIXTURE_REPOSITORY, LONG_PROSE_GUIDE.id);
+    expect(facts).toHaveLength(1);
+    expect(facts[0]!.body.source).toBe('objectives');
+  });
+
+  /**
    * Decision 4: a path's percentage is the arithmetic mean of its milestones'
    * percentages, equally weighted.
    *
@@ -177,12 +213,27 @@ test.describe('completion tracking', () => {
     await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
     expect(await pathPercentage(page)).toBe(0);
 
-    // Milestone 1 all the way, which continues to milestone 2.
     await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
     await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
-    await markMilestoneCompleteAndContinue(page);
+    await markComplete(page);
+    await expect
+      .poll(
+        async () => (await readStoredProgress(page)).interactiveCompletion[fixtureContentUrl(PATH_MILESTONES[0]!)],
+        { message: 'completed milestone persisted at 100%', timeout: TIMEOUTS.UI_READY }
+      )
+      .toBe(100);
+    const completedFacts = await waitForQueuedFacts(page, 1);
+    expect(factsFor(completedFacts, FIXTURE_REPOSITORY, PATH_MILESTONES[0]!.id)).toHaveLength(1);
 
-    // Milestone 2 one step's worth, derived from its own counted blocks.
+    const completionPanel = page.getByTestId('completion-panel');
+    await expect(completionPanel).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+    await completionPanel
+      .getByRole('button', { name: `Continue to ${PATH_MILESTONES[1]!.title}`, exact: true })
+      .click();
+    await expect(page.getByTestId(testIds.markComplete.button).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+    expect(await footerPercentage(page)).toBe(0);
+    expect(await readQueuedFacts(page)).toHaveLength(1);
+
     const partialMilestone = PATH_MILESTONES[1]!;
     const partialPercent = expectedPercentAtPosition(partialMilestone, fixtureCompletablePosition(partialMilestone, 1));
     await completeInteractiveStep(page, 0);
@@ -329,16 +380,35 @@ test.describe('completion tracking', () => {
       await expect(page.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible({ timeout: TIMEOUTS.UI_READY });
       await page.getByTestId(testIds.docsPanel.nextMilestoneButton).click();
 
+      // Each milestone is prose-only and fits on screen, so it completes on
+      // arrival, with no click: the end of its content is visible (#2258).
       const milestoneIds = NO_REPOSITORY_PATH.milestones!;
       for (let index = 0; index < milestoneIds.length; index++) {
         await expect(page.getByTestId(testIds.markComplete.footer).first()).toBeVisible({ timeout: TIMEOUTS.UI_READY });
-        await markComplete(page);
+        const milestone = ALL_FIXTURES.find((fixture) => fixture.id === milestoneIds[index])!;
         await expect
-          .poll(async () => (await readQueuedFacts(page)).length, {
-            message: 'facts after each milestone',
+          .poll(async () => (await readStoredProgress(page)).interactiveCompletion[fixtureContentUrl(milestone)], {
+            message: `milestone ${index + 1} persisted at 100%`,
             timeout: TIMEOUTS.UI_READY,
           })
-          .toBeGreaterThan(index);
+          .toBe(100);
+        const milestoneFacts = await waitForQueuedFacts(page, index + 1);
+        const milestoneFact = factsFor(milestoneFacts, DEFAULT_GUIDE_SOURCE, milestoneIds[index]!);
+        expect(milestoneFact).toHaveLength(1);
+        expect(milestoneFact[0]!.body.source).toBe('objectives');
+        const completionPanel = page.getByTestId('completion-panel');
+        await expect(completionPanel).toBeVisible({ timeout: TIMEOUTS.UI_READY });
+
+        const nextMilestoneId = milestoneIds[index + 1];
+        if (nextMilestoneId) {
+          const nextMilestone = ALL_FIXTURES.find((fixture) => fixture.id === nextMilestoneId)!;
+          await completionPanel
+            .getByRole('button', { name: `Continue to ${nextMilestone.title}`, exact: true })
+            .click();
+        } else {
+          await expect(completionPanel.getByRole('heading', { name: 'Path complete', exact: true })).toBeVisible();
+          await expect(completionPanel.getByRole('button', { name: /^Continue to / })).toHaveCount(0);
+        }
       }
 
       // One fact per milestone, plus the whole-path record, and nothing else.

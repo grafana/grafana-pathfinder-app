@@ -357,14 +357,4 @@ export const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
       color: theme.colors.primary.contrastText,
     },
   }),
-  deleteButton: css({
-    opacity: 0.7,
-    color: theme.colors.error.text,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      opacity: 1,
-      backgroundColor: theme.colors.error.transparent,
-    },
-  }),
 });

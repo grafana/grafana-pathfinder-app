@@ -393,9 +393,7 @@ export interface GuideBlockIndex {
   completableBlockCount: number;
   /**
    * Position of the last completable counted block, or 0 when the guide has
-   * none. An authoring signal, not a rendering predicate: the foot-of-guide
-   * "Mark as complete" button is unconditional, so do not re-derive one from
-   * this field without re-opening `docs/design/COMPLETION-MODEL.md`.
+   * none. Evidence reaching it completes the guide (`guideProgressAtPosition`).
    */
   finalCompletablePosition: number;
 }

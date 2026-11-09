@@ -93,7 +93,7 @@ export interface DocsPanelModelOperations {
       source?: LaunchSource;
       /**
        * The manifest guide id `url` resolved from, when the click target
-       * already carried one (GuideList's current row, the cover-page CTA —
+       * already carried one (a GuideList row, the cover-page CTA —
        * see link-handler.hook.ts). Threaded to fetchPackageContent so it can
        * classify this load by a direct id lookup against the manifest
        * instead of comparing resolved URLs.
@@ -108,8 +108,7 @@ export interface DocsPanelModelOperations {
   /** Set the active tab by ID */
   setActiveTab(tabId: string): void;
 
-  /** Navigate to the next milestone in the current learning path */
-  navigateToNextMilestone(): Promise<void>;
+  navigateToNextMilestone(options?: { rejectOnError?: boolean }): Promise<void>;
 
   /** Navigate to the previous milestone in the current learning path */
   navigateToPreviousMilestone(): Promise<void>;

@@ -17,7 +17,12 @@ export {
 } from './tab-kinds';
 export { resolveTabGates, didGateClose } from './tab-gates';
 export type { TabGates } from './tab-gates';
-export { closeTabState, pruneGatedTabState, projectPersistedTabs } from './tab-state-transitions';
+export {
+  closeTabState,
+  pruneGatedTabState,
+  projectPersistedTabs,
+  restoredTrackGuideIds,
+} from './tab-state-transitions';
 export type { TabStateResult, TabStateSnapshot } from './tab-state-transitions';
 export {
   restoreTabsFromStorage,
@@ -28,7 +33,7 @@ export {
 export type { UrlValidator, TabRestoreOptions } from './tab-storage-restore';
 export { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-validation';
 export { loadDocsTabContentResult, UNRESOLVED_PACKAGE_ERROR } from './docs-tab-loader';
-export { resolveDocsLoadAlignment, buildDocsLoadSuccessPatch } from './docs-load-finalizer';
+export { resolveDocsLoadAlignment, buildDocsLoadSuccessPatch, titleFromLoadedContent } from './docs-load-finalizer';
 export type {
   DocsLoadAlignmentInput,
   PendingAlignmentDecision,

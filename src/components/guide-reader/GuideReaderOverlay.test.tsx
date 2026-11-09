@@ -25,6 +25,8 @@ jest.mock('../../global-state/controller-channel', () => {
   };
 });
 
+jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: (_flag: string, fallback: boolean) => fallback }));
+
 jest.mock('../../lib/telemetry/facade', () => ({
   ...jest.requireActual('../../lib/telemetry/facade'),
   recordGuideRender: jest.fn(),

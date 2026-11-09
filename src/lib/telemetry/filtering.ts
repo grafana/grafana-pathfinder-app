@@ -239,6 +239,21 @@ export function redactPageUrl(item: TransportItem<APIEvent>): TransportItem<APIE
   return redacted === url ? item : { ...item, meta: { ...item.meta, page: { ...item.meta.page, url: redacted } } };
 }
 
+export const PANEL_SESSION_META_KEY = 'pathfinderPanelSession';
+
+export function stampPanelSessionAttribute(item: TransportItem<APIEvent>): TransportItem<APIEvent> {
+  const { [PANEL_SESSION_META_KEY]: panelSessionId, ...meta } = item.meta as typeof item.meta &
+    Record<typeof PANEL_SESSION_META_KEY, unknown>;
+  if (typeof panelSessionId !== 'string') {
+    return item;
+  }
+  const session = meta.session && {
+    ...meta.session,
+    attributes: { ...meta.session.attributes, pathfinder_session_id: panelSessionId },
+  };
+  return { ...item, meta: { ...meta, ...(session && { session }) } };
+}
+
 // Latched for the rest of the page load: the sidebar-close mirror fires
 // after unmount, when the docked key is already gone.
 let pathfinderWasOpen = false;

@@ -126,8 +126,8 @@ describe('resolveAssignments', () => {
         assignment({
           targetId: 'p1',
           guides: [
-            { guideId: 'g1', completed: true },
-            { guideId: 'g2', completed: false },
+            { guideId: 'g1', guideSource: 'bundled', completed: true },
+            { guideId: 'g2', guideSource: 'bundled', completed: false },
           ],
         }),
       ],

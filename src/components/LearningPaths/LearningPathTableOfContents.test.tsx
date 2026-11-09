@@ -239,7 +239,7 @@ describe('LearningPathTableOfContents', () => {
     expect(screen.getByTestId('learning-paths-cover-hero')).toBeInTheDocument();
     expect(screen.getByText('Connect your first data source')).toBeInTheDocument();
     expect(screen.getByText('Learn how Grafana connects to data.')).toBeInTheDocument();
-    expect(screen.getByText('2 modules')).toBeInTheDocument();
+    expect(screen.getByText('2 milestones')).toBeInTheDocument();
   });
 
   it('shows the hero card from title alone, with no description and no badge', () => {
@@ -293,38 +293,80 @@ describe('LearningPathTableOfContents', () => {
     expect(hero).not.toHaveTextContent('hr');
   });
 
-  describe('sequential lock/unlock', () => {
+  describe('milestone row links', () => {
     const threeMilestones: Milestone[] = [
-      { number: 1, title: 'One', url: `${baseUrl}one/content.json`, isActive: false },
-      { number: 2, title: 'Two', url: `${baseUrl}two/content.json`, isActive: false },
-      { number: 3, title: 'Three', url: `${baseUrl}three/content.json`, isActive: false },
+      { id: 'one', number: 1, title: 'One', url: `${baseUrl}one/content.json`, isActive: false },
+      { id: 'two', number: 2, title: 'Two', url: `${baseUrl}two/content.json`, isActive: false },
+      { id: 'three', number: 3, title: 'Three', url: `${baseUrl}three/content.json`, isActive: false },
     ];
+    const rowTargets = () => Array.from(document.querySelectorAll('[data-interaction-location="module_row_click"]'));
 
-    it('locks every module after the first, unstarted one', () => {
+    it('makes every published milestone a click target, with nothing locked, before any progress', () => {
       render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
 
-      expect(screen.getAllByText('Locked')).toHaveLength(2);
-      expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(2);
+      expect(rowTargets().map((el) => el.getAttribute('data-milestone-url'))).toEqual(
+        threeMilestones.map((m) => m.url)
+      );
+      expect(screen.queryByText('Locked')).not.toBeInTheDocument();
+      expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(0);
     });
 
-    it('unlocks the next module once the previous one completes, keeping the rest locked', () => {
-      setCompletedSlugs(new Set(['one']));
-      render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
+    it('never sends a fallback ordinal id as data-milestone-id on any row when milestones carry no real id', () => {
+      setCompletedSlugs(new Set(['set-up']));
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
-      expect(screen.getAllByText('Locked')).toHaveLength(1);
-      expect(document.querySelectorAll('.guideIconBadge [data-icon="play"]')).toHaveLength(1);
+      expect(rowTargets()).toHaveLength(2);
+      rowTargets().forEach((row) => expect(row).not.toHaveAttribute('data-milestone-id'));
     });
 
-    it('treats a module completed out of order as done, not locked', () => {
-      // "Three" completed while "One"/"Two" aren't — the cursor still sits at
-      // "One", but "Three" must not be marked both completed and locked.
-      setCompletedSlugs(new Set(['three']));
+    it('keeps only publish-locked milestones locked and out of the click targets', () => {
+      const withUnpublished: Milestone[] = [
+        threeMilestones[0]!,
+        { ...threeMilestones[1]!, isLocked: true },
+        threeMilestones[2]!,
+      ];
+      render(<LearningPathTableOfContents milestones={withUnpublished} baseUrl={baseUrl} />);
+
+      expect(screen.getAllByText('Locked')).toHaveLength(1);
+      expect(screen.getByText('Two').closest('div')).not.toHaveAttribute('data-journey-start');
+      expect(rowTargets().map((el) => el.getAttribute('data-milestone-url'))).toEqual([
+        threeMilestones[0]!.url,
+        threeMilestones[2]!.url,
+      ]);
+    });
+
+    it('keeps "Up next" on the first incomplete milestone, even when a later one is done', () => {
+      setCompletedSlugs(new Set(['one', 'three']));
       render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
 
-      expect(document.querySelectorAll('.guideIconBadge [data-icon="check"]')).toHaveLength(1);
-      // Only "Two" is locked; "Three" is done and "One" is the current cursor.
-      expect(screen.getAllByText('Locked')).toHaveLength(1);
-      expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(1);
+      expect(screen.getAllByText('Up next')).toHaveLength(1);
+      expect(screen.getByRole('button', { name: 'Two, up next' })).toHaveTextContent('Up next');
+      expect(screen.getByRole('button', { name: 'One, completed' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Three, completed' })).toBeInTheDocument();
+      expect(screen.getByText('Resume').closest('button')).toHaveAttribute(
+        'data-milestone-url',
+        threeMilestones[1]!.url
+      );
+    });
+
+    it('opens a later milestone from the keyboard with Enter', () => {
+      render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
+
+      const laterRow = screen.getByRole('button', { name: 'Three' });
+      const clicked: Array<string | null> = [];
+      const containerHandler = (event: MouseEvent) => {
+        const target = (event.target as Element).closest('[data-journey-start="true"]');
+        clicked.push(target?.getAttribute('data-milestone-url') ?? null);
+      };
+      document.addEventListener('click', containerHandler);
+
+      laterRow.focus();
+      fireEvent.keyDown(laterRow, { key: 'Enter' });
+      document.removeEventListener('click', containerHandler);
+
+      expect(laterRow).toHaveFocus();
+      expect(laterRow).toHaveAttribute('data-milestone-id', 'three');
+      expect(clicked).toEqual([threeMilestones[2]!.url]);
     });
   });
 
@@ -535,14 +577,18 @@ describe('LearningPathTableOfContents', () => {
       );
     });
 
-    it('reuses the Fundamentals sequential lock/unlock mechanism for a track', () => {
+    it("makes every guide in the active track a click target, with Up next on the track's first", () => {
       setCompletedSlugs(new Set());
       render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} tracks={tracks} />);
 
       fireEvent.click(screen.getByRole('tab', { name: 'Seller' }));
 
-      expect(screen.getAllByText('Locked')).toHaveLength(1);
-      expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(1);
+      expect(screen.queryByText('Locked')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Seller one, up next' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Seller two' })).toHaveAttribute(
+        'data-milestone-url',
+        sellerMilestones[1]!.url
+      );
     });
 
     it('reflects the hero module count for the active tab, not the Fundamentals count', () => {
@@ -556,10 +602,10 @@ describe('LearningPathTableOfContents', () => {
         />
       );
 
-      expect(screen.getByText('2 modules')).toBeInTheDocument();
+      expect(screen.getByText('2 milestones')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
-      expect(screen.getByText('1 modules')).toBeInTheDocument();
+      expect(screen.getByText('1 milestone')).toBeInTheDocument();
     });
 
     // A track is a presentation ordering only, never a second completion

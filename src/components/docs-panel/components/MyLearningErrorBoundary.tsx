@@ -9,6 +9,7 @@ interface MyLearningErrorBoundaryState {
 interface MyLearningErrorBoundaryProps {
   children: ReactNode;
   fallbackMessage?: string;
+  fallbackActions?: ReactNode;
 }
 
 // eslint-disable-next-line no-restricted-syntax -- Error boundaries require componentDidCatch (no hook equivalent)
@@ -31,9 +32,11 @@ export class MyLearningErrorBoundary extends Component<MyLearningErrorBoundaryPr
         <div style={{ padding: 16, textAlign: 'center' }}>
           <Icon name="exclamation-triangle" size="xl" />
           <p style={{ marginTop: 8 }}>{this.props.fallbackMessage ?? 'Unable to load learning progress'}</p>
-          <Button size="sm" variant="secondary" onClick={() => this.setState({ hasError: false })}>
-            Try again
-          </Button>
+          {this.props.fallbackActions ?? (
+            <Button size="sm" variant="secondary" onClick={() => this.setState({ hasError: false })}>
+              Try again
+            </Button>
+          )}
         </div>
       );
     }

@@ -65,7 +65,7 @@ test('includes the concern anchor and named invariants', () => {
     concern: 'completion-records',
   });
 
-  assert.equal(context.contract_anchor.evidence, '#1411 → #1700 → #2090');
+  assert.equal(context.contract_anchor.evidence, '#1411 → #1700 → #2090 → #2218');
   assert.equal(context.named_invariants.length, 16);
   assert.equal(context.named_invariants[0].name, 'payload-boundary-normalization');
 });

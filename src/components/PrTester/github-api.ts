@@ -217,6 +217,8 @@ export async function fetchPrContentFiles(
       headers: {
         Accept: 'application/vnd.github.v3+json',
       },
+      // GitHub serves these with max-age=60, which would show the pre-push head SHA
+      cache: 'no-cache',
       signal,
     });
 
@@ -283,6 +285,7 @@ export async function fetchPrContentFiles(
       headers: {
         Accept: 'application/vnd.github.v3+json',
       },
+      cache: 'no-cache',
       signal,
     });
 
