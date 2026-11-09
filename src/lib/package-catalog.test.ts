@@ -68,6 +68,43 @@ describe('package catalog', () => {
     expect(eligibleDiscoveryCatalog(bundled, [], curated)).toEqual([]);
   });
 
+  it('excludes eligible-catalog fixtures and paths that reference them', () => {
+    const entry = (id: string, type: 'guide' | 'path', category?: string, milestones?: string[]) => ({
+      id,
+      title: id,
+      repository: 'interactive-tutorials',
+      contentUrl: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+      manifestUrl: `https://interactive-learning.grafana.net/packages/${id}/manifest.json`,
+      manifest: { id, type, category, milestones },
+    });
+    const online = eligibleCatalog([
+      entry('healthy', 'guide'),
+      entry('e2e-framework-test', 'guide'),
+      entry('json-guide-demo', 'guide'),
+      entry('other-fixture', 'guide', 'testing'),
+      entry('path-to-fixture', 'path', undefined, ['healthy', 'other-fixture']),
+    ]);
+    expect(online.map((item) => item.id)).toEqual(['healthy', 'path-to-fixture']);
+    const bundled = bundledCatalog(
+      {
+        'path-to-fixture': { type: 'path', path: 'path-to-fixture/', milestones: ['healthy', 'other-fixture'] },
+      },
+      {}
+    );
+    const curated: CatalogPackage[] = [
+      {
+        key: 'curated:fixture',
+        id: 'curated-fixture',
+        title: 'Fixture path',
+        format: 'path',
+        source: 'grafana',
+        url: '',
+        memberIds: ['json-guide-demo'],
+      },
+    ];
+    expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.id)).toEqual(['healthy']);
+  });
+
   it('does not substitute a bundled path that would restore an ineligible milestone', () => {
     const path: CatalogPackage = {
       key: 'official:path',

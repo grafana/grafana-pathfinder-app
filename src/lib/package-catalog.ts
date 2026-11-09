@@ -117,6 +117,9 @@ export function eligibleCatalog(entries: EligibleCatalogEntry[]): CatalogPackage
     if (manifest.type !== 'guide' && manifest.type !== 'path' && manifest.type !== 'journey') {
       throw new Error('Invalid eligible catalog package type');
     }
+    if (EXCLUDED_BUNDLED_IDS.has(entry.id) || manifest.category === 'testing') {
+      return [];
+    }
     return [
       {
         key: `${entry.repository}:${entry.id}`,
