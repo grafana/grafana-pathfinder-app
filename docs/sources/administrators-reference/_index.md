@@ -55,7 +55,7 @@ To keep guides available while stopping context-aware recommendation requests:
 1. Turn off **Enable context-aware recommendations**.
 1. Select **Save settings**.
 
-This is separate from **Enable interactive learning**. Bundled guides remain available, and online browsers can fetch the public guide catalog and content. For details about data usage, refer to [Terms and conditions](../terms-and-conditions/).
+This is separate from **Enable interactive learning**. Bundled guides remain available. For Explore catalog behavior, refer to [Interactive learning architecture](../architecture/#explore-catalog). For details about data usage, refer to [Terms and conditions](../terms-and-conditions/).
 
 ## Configure recommendations
 
