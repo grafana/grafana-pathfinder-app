@@ -1,5 +1,5 @@
 import { AppRootProps, GrafanaTheme2 } from '@grafana/data';
-import React, { useMemo, useEffect, Component, ReactNode } from 'react';
+import React, { useState, useEffect, Component, ReactNode } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { useCurrentUserIsOrgAdmin } from '../../utils/current-user-role';
 import { Button, useStyles2 } from '@grafana/ui';
@@ -129,21 +129,22 @@ const getErrorStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-function getSceneApp(isOrgAdmin: boolean) {
-  return new SceneApp({
-    pages: [
-      homePage,
-      docsPage,
-      fullScreenPage,
-      browsePage,
-      ...(isOrgAdmin && getFeatureFlagValue('pathfinder.learning-insights', false) ? [learningInsightsPage] : []),
-    ],
-  });
+function getScenePages(isOrgAdmin: boolean) {
+  return [
+    homePage,
+    docsPage,
+    fullScreenPage,
+    browsePage,
+    ...(isOrgAdmin && getFeatureFlagValue('pathfinder.learning-insights', false) ? [learningInsightsPage] : []),
+  ];
 }
 
 function App(props: AppRootProps) {
   const isOrgAdmin = useCurrentUserIsOrgAdmin();
-  const scene = useMemo(() => getSceneApp(isOrgAdmin), [isOrgAdmin]);
+  const [scene] = useState(() => new SceneApp({ pages: getScenePages(isOrgAdmin) }));
+  useEffect(() => {
+    scene.setState({ pages: getScenePages(isOrgAdmin) });
+  }, [scene, isOrgAdmin]);
 
   // SECURITY: Initialize plugin on mount (includes dev mode from server)
   useEffect(() => {

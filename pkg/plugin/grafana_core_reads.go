@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"unicode/utf8"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
 const (
@@ -67,13 +69,20 @@ func (a *App) handleGrafanaUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var user struct {
-		Spec grafanaUserResponse `json:"spec"`
+		Spec struct {
+			GrafanaAdmin bool `json:"grafanaAdmin"`
+		} `json:"spec"`
 	}
 	if err := json.Unmarshal(body, &user); err != nil {
 		a.writeCoreReadError(w, invalidCoreReadJSON(err), "users")
 		return
 	}
-	a.writeJSON(w, user.Spec, http.StatusOK)
+	response := grafanaUserResponse{GrafanaAdmin: user.Spec.GrafanaAdmin}
+	// Organization membership comes from Grafana's trusted RPC context, not the IAM identity resource.
+	if caller := backend.PluginConfigFromContext(r.Context()).User; caller != nil {
+		response.Role = caller.Role
+	}
+	a.writeJSON(w, response, http.StatusOK)
 }
 
 func (a *App) handleGrafanaDashboard(w http.ResponseWriter, r *http.Request) {

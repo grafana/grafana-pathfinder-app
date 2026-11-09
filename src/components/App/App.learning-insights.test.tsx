@@ -14,7 +14,7 @@ import pluginJson from '../../plugin.json';
 
 jest.mock('@grafana/runtime', () => ({ config: { bootData: { user: { orgRole: 'Admin' } } } }));
 jest.mock('@grafana/scenes', () => ({
-  SceneApp: jest.fn().mockImplementation(() => ({ Component: () => null })),
+  SceneApp: jest.fn().mockImplementation(() => ({ Component: () => null, setState: jest.fn() })),
 }));
 jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn() }));
 jest.mock('../../pages/homePage', () => ({ homePage: { title: 'Home' } }));
@@ -65,3 +65,16 @@ test.each([OrgRole.Viewer, OrgRole.Editor])(
     expect(SceneApp).toHaveBeenCalledWith({ pages: [homePage, docsPage, fullScreenPage, browsePage] });
   }
 );
+
+test('updates reporting navigation without replacing the active scene', () => {
+  jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+  config.bootData.user.orgRole = OrgRole.Viewer;
+  const view = render(<App {...({} as AppRootProps)} />);
+  const scene = jest.mocked(SceneApp).mock.results[0].value;
+  config.bootData.user.orgRole = OrgRole.Admin;
+  view.rerender(<App {...({} as AppRootProps)} />);
+  expect(SceneApp).toHaveBeenCalledTimes(1);
+  expect(scene.setState).toHaveBeenLastCalledWith({
+    pages: [homePage, docsPage, fullScreenPage, browsePage, learningInsightsPage],
+  });
+});

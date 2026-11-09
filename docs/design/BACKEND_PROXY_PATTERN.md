@@ -790,6 +790,8 @@ unchanged. Editor writes continue to use App Platform directly.
 (`pkg/plugin/grafana_core_reads.go`) use the same gate for Grafana core groups (`iam`, `dashboard`,
 `folder`) in place of legacy `/api/*` reads. Each read is per request and uncached: it is the caller's RBAC view.
 Each returns a slim projection (`{role, grafanaAdmin}`, a dashboard summary, search hits), never the raw object.
+Organization role comes from Grafana’s trusted per-request plugin RPC context; IAM supplies
+only the identity’s Grafana-admin status, not organization membership.
 
 ## Operational diagnostics
 

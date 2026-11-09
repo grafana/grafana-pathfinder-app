@@ -211,7 +211,7 @@ func TestGrafanaCoreReads_MintFailureIsBadGateway(t *testing.T) {
 }
 
 func TestGrafanaUser_ShapesCallerRole(t *testing.T) {
-	const body = `{"kind":"User","metadata":{"name":"u-1"},"spec":{"login":"alice","email":"alice@example.com","role":"Editor","grafanaAdmin":true}}`
+	const body = `{"kind":"User","metadata":{"name":"u-1"},"spec":{"login":"alice","email":"alice@example.com","grafanaAdmin":true}}`
 	route := coreReadRoutes[0]
 	app, cfg := newCoreReadStack(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != route.upstream || r.URL.RawQuery != "" {
@@ -219,7 +219,12 @@ func TestGrafanaUser_ShapesCallerRole(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(body))
 	})
-	rec := serveCoreRead(t, app, route, route.target, cfg)
+	req := customGuideRequestWithConfig(t, route.target, "user:1", cfg)
+	pc := backend.PluginConfigFromContext(req.Context())
+	pc.User = &backend.User{Role: "Editor"}
+	req = req.WithContext(backend.WithPluginContext(req.Context(), pc))
+	rec := httptest.NewRecorder()
+	app.handleGrafanaUser(rec, req)
 	const want = `{"role":"Editor","grafanaAdmin":true}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
