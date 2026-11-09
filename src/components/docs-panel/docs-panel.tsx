@@ -71,6 +71,7 @@ import {
   injectJourneyExtrasIntoJsonGuide,
   fetchPackageInfoFromUrl,
   isPackageContentUrl,
+  resolvePackageMilestones,
 } from '../../docs-retrieval';
 import { createCompositeResolver } from '../../package-engine';
 
@@ -119,6 +120,7 @@ import {
   closeTabState,
   pruneGatedTabState,
   projectPersistedTabs,
+  restoredTrackGuideIds,
   resolveDocsLoadAlignment,
   buildDocsLoadSuccessPatch,
   titleFromLoadedContent,
@@ -301,6 +303,38 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     });
 
     this.initializeRestoredActiveTab();
+    this.restoreTrackMilestones();
+  }
+
+  private restoreTrackMilestones(): void {
+    for (const tab of this.state.tabs) {
+      const guideIds = restoredTrackGuideIds(tab);
+      if (!guideIds) {
+        continue;
+      }
+      const { id, activeTrackId, activeTrackPathId } = tab;
+      resolvePackageMilestones(guideIds).then(
+        (milestones) => {
+          const current = this.state.tabs.find((candidate) => candidate.id === id);
+          // A cover that mounted meanwhile, or a new track pick, already set the sequence.
+          if (
+            milestones.length === 0 ||
+            !current ||
+            current.activeTrackId !== activeTrackId ||
+            current.activeTrackPathId !== activeTrackPathId ||
+            current.activeTrackMilestones
+          ) {
+            return;
+          }
+          this.setState({
+            tabs: this.state.tabs.map((candidate) =>
+              candidate.id === id ? { ...candidate, activeTrackMilestones: milestones } : candidate
+            ),
+          });
+        },
+        () => logger.warn('[DocsPanel] Could not restore the active track sequence')
+      );
+    }
   }
 
   /**
@@ -987,7 +1021,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       error: null,
       type: packageInfo ? getPackageRenderType(packageInfo.packageManifest) : 'docs',
       packageInfo,
-      ...(packageInfo?.trackId && { activeTrackId: packageInfo.trackId, activeTrackPathId: packageInfo.packageId }),
+      ...(packageInfo?.trackId && {
+        activeTrackId: packageInfo.trackId,
+        activeTrackPathId: packageInfo.packageId,
+        activeTrackMilestones: packageInfo.trackMilestones,
+      }),
     };
 
     this.setState({
