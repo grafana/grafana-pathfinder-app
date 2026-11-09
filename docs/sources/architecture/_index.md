@@ -15,12 +15,12 @@ Interactive learning, also called Pathfinder, displays documentation and guides 
 | Content source                 | What it provides                                                                         | Availability                                                                                                        |
 | ------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Bundled content                | Guides included with the plugin.                                                         | Available without the recommendation service. Individual guide assets or steps can still need a network connection. |
-| Grafana's public guide catalog | Additional guides, learning paths, and journeys from Grafana's content delivery network. | Requires access to the content service.                                                                             |
+| Grafana's public guide catalog | Additional guides, learning paths, and journeys from Grafana's content delivery network. | Explore requires enabled recommendations and access to the recommendation and content services.                     |
 | Context-aware recommendations  | Suggestions based on the Grafana page and features you are using.                        | Enabled by default in Grafana Cloud; requires administrator opt-in on self-managed Grafana.                         |
 | Custom guides                  | Content your organization's authors save and publish.                                    | Requires the Pathfinder storage service and appropriate permissions.                                                |
 | Grafana documentation          | Reference documentation and tutorials opened in the panel.                               | Requires access to the documentation site.                                                                          |
 
-Turning off recommendations stops requests to the recommendation service. It does not turn off Interactive learning or all network requests: an online browser can still load the public catalog, guides, and documentation. If the recommendation service is unavailable, Pathfinder uses available fallback content.
+Turning off recommendations stops requests to the recommendation service, including public discovery in Explore. It does not turn off Interactive learning. Guides and documentation can still load from their own sources.
 
 ### Explore catalog
 
@@ -28,7 +28,7 @@ Explore gets its public catalog from a separate recommendation-service endpoint.
 
 Public discovery requires recommendations to be enabled. Otherwise, Explore shows an enablement message and keeps organization guides available. Organization guides load independently of the recommendation service.
 
-The plugin caches eligible public catalogs in browser memory for five minutes. A failed refresh keeps the last valid catalog without a warning. Without cached public content, Explore shows a retry state. It does not substitute the unfiltered public catalog. Bundled copies and curated paths cannot restore guides absent from the eligible catalog.
+The plugin caches eligible public catalogs in browser memory for five minutes. If the first catalog request fails, Explore shows Retry. If a refresh fails, Explore silently keeps the last valid public catalog. It does not substitute the unfiltered public catalog. Bundled copies and curated paths cannot restore guides absent from the eligible catalog.
 
 For the controls, refer to [Administrator reference](../administrators-reference/).
 
