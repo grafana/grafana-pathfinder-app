@@ -70,7 +70,7 @@ test('updates reporting navigation without replacing the active scene', () => {
   jest.mocked(getFeatureFlagValue).mockReturnValue(true);
   config.bootData.user.orgRole = OrgRole.Viewer;
   const view = render(<App {...({} as AppRootProps)} />);
-  const scene = jest.mocked(SceneApp).mock.results[0].value;
+  const scene = jest.mocked(SceneApp).mock.results[0]!.value;
   config.bootData.user.orgRole = OrgRole.Admin;
   view.rerender(<App {...({} as AppRootProps)} />);
   expect(SceneApp).toHaveBeenCalledTimes(1);
