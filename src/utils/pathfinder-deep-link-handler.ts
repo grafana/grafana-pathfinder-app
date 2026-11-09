@@ -5,7 +5,7 @@
  * plugin importer.
  *
  * `handlePathfinderDeepLink` is idempotent and deduplicated so it can be
- * called on every navigation; `installDeepLinkNavListener` wires it up to
+ * called on every navigation; `pathfinder-deep-link-loader.ts` wires it up to
  * `locationService.getHistory().listen()` for SPA navigations
  */
 
@@ -17,11 +17,7 @@ import { panelModeManager } from '../global-state/panel-mode';
 import { sidebarState } from '../global-state/sidebar';
 import { autoLaunchChannel } from '../global-state/auto-launch';
 import { validateRedirectPath } from '../security/url-validator';
-import {
-  parsePathfinderDeepLink,
-  PATHFINDER_ACTIVATION_PARAMS,
-  stripPathfinderParams,
-} from './pathfinder-search-params';
+import { hasAnyPathfinderParam, parsePathfinderDeepLink, stripPathfinderParams } from './pathfinder-search-params';
 
 export interface DeepLinkHandlerDeps {
   attemptAutoOpen: (delay?: number) => void;
@@ -29,19 +25,31 @@ export interface DeepLinkHandlerDeps {
 
 // Dedup gate — prevents re-processing the same URL from multiple listener transports.
 let lastProcessedSearch: string | null = null;
+let rewritingUrl = false;
 
 /** Test-only escape hatch — resets dedup state between assertions. */
 export function __resetDeepLinkHandlerStateForTests(): void {
   lastProcessedSearch = null;
 }
 
-/** Mutate the current URL in place and invalidate the dedup gate — the
- *  stored search is pre-strip and would block re-arrivals at the same link. */
-function rewriteCurrentUrl(mutate: (url: URL) => void): void {
+function rewriteCurrentUrl(mutate: (url: URL) => void, deduplicateCleanup = true): void {
   const url = new URL(window.location.href);
   mutate(url);
-  window.history.replaceState({}, '', url.toString());
-  lastProcessedSearch = null;
+  // Router replacement notifies listeners synchronously, including during partial panelMode cleanup.
+  rewritingUrl = true;
+  try {
+    const location = locationService.getLocation();
+    locationService.replace({
+      pathname: location.pathname,
+      search: url.search,
+      hash: url.hash,
+      state: location.state,
+    });
+  } finally {
+    rewritingUrl = false;
+    // The async loader can deliver this cleanup notification after the synchronous guard clears.
+    lastProcessedSearch = deduplicateCleanup ? url.search : null;
+  }
 }
 
 function isFullScreenRoute(pathname: string): boolean {
@@ -51,7 +59,7 @@ function isFullScreenRoute(pathname: string): boolean {
 /** Process Pathfinder deep-link params from the current URL. Idempotent. */
 export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   const search = window.location.search;
-  if (!hasAnyPathfinderParam(search)) {
+  if (rewritingUrl || !hasAnyPathfinderParam(search)) {
     return false;
   }
 
@@ -68,6 +76,8 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   if (onFullScreenRoute && panelModeParam === undefined && kioskSessionParam === undefined) {
     return false;
   }
+  // Fullscreen owns doc-only cleanup, so its re-fire is inert and must not gate the next route.
+  const deduplicatePanelModeCleanup = !onFullScreenRoute || kioskSessionParam !== undefined;
 
   if (search === lastProcessedSearch) {
     return false;
@@ -81,10 +91,10 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 
   if (panelModeParam === 'sidebar') {
     panelModeManager.setModePersisted('sidebar');
-    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
+    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'), deduplicatePanelModeCleanup);
   } else if (panelModeParam === 'floating') {
     panelModeManager.setModePersisted('floating');
-    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
+    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'), deduplicatePanelModeCleanup);
   } else if (panelModeParam === 'fullscreen') {
     panelModeManager.setModePersisted('fullscreen');
     rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
@@ -129,7 +139,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
             '- Supported formats: api:<resourceName>, bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...',
         });
         rewriteCurrentUrl(stripPathfinderParams);
-        sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+        sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
         deps.attemptAutoOpen(200);
         return;
       }
@@ -139,7 +149,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       const isFloatingMode = currentMode === 'floating';
       const isFullScreenMode = currentMode === 'fullscreen';
 
-      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
 
       if (needsRedirect) {
         locationService.replace(redirectTarget);
@@ -162,8 +172,9 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       });
     })
     .catch((err) => {
+      lastProcessedSearch = null;
       logger.error('[Pathfinder] Failed to load find-doc-page chunk', { error: err });
-      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto-open');
+      sidebarState.setPendingOpenSource(ctx.docOpenSource, 'auto_open');
       deps.attemptAutoOpen(200);
       setTimeout(() => {
         locationService.replace('/');
@@ -174,34 +185,6 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 }
 
 /** Register a location listener that re-runs the handler on every SPA navigation. */
-export function installDeepLinkNavListener(deps: DeepLinkHandlerDeps): void {
-  const handler = () => {
-    if (!hasAnyPathfinderParam(window.location.search)) {
-      return;
-    }
-    handlePathfinderDeepLink(deps);
-  };
-
-  try {
-    const history = locationService.getHistory();
-    if (history) {
-      const unlisten = history.listen(handler);
-      window.__pathfinderDeepLinkNavUnlisten = unlisten;
-    }
-  } catch {
-    window.addEventListener('popstate', handler);
-  }
-}
-
-function hasAnyPathfinderParam(search: string): boolean {
-  if (!search) {
-    return false;
-  }
-
-  const params = new URLSearchParams(search);
-  return PATHFINDER_ACTIVATION_PARAMS.some((p) => params.has(p));
-}
-
 /** Emit the auto-launch onto `autoLaunchChannel` once whichever panel surface mounts first. */
 function installAutoLaunchOnMount(detail: { url: string; title: string; type: string; source: string }): void {
   let autoLaunched = false;

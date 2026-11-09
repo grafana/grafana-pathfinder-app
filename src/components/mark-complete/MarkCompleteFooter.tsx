@@ -21,13 +21,13 @@
  * of its own.
  */
 
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
-import { guideIdentityAnalyticsProperties, pathAnalyticsProperties } from '../../completion-records';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../completion-records';
 import { useGuideResponsesOptional, type AnalyticsCompletionIdentity } from '../../docs-retrieval';
 import {
   getGuideIndex,
@@ -42,6 +42,7 @@ import {
   UserInteraction,
 } from '../../lib/analytics';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import { isPrTestUrl } from '../../lib/pr-test-marker';
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
@@ -64,6 +65,7 @@ export type MarkCompleteContext = 'guide' | 'milestone';
 export interface MarkCompleteFooterProps {
   context: MarkCompleteContext;
   completionIdentity?: AnalyticsCompletionIdentity;
+  guideTitle?: string;
   /**
    * The rendered content's URL. Not itself the storage key — a journey's
    * `content.url` carries a `/content.json` suffix the rest of the progress
@@ -79,8 +81,9 @@ export interface MarkCompleteFooterProps {
    * marked guide that later auto-completes still records once.
    */
   onMarkComplete?: () => void;
-  /** Advance to the next milestone. Absent when there is nowhere to continue to. */
   onContinue?: () => void;
+  renderCompleted?: (celebrating: boolean) => React.ReactNode;
+  onCompletionPanelVisibilityChange?: (visible: boolean) => void;
 }
 
 const CELEBRATION_MS = 1400;
@@ -96,10 +99,13 @@ export function MarkCompleteFooter({
   context,
   contentUrl,
   completionIdentity,
+  guideTitle,
   currentMilestone,
   totalMilestones,
   onMarkComplete,
   onContinue,
+  renderCompleted,
+  onCompletionPanelVisibilityChange,
 }: MarkCompleteFooterProps) {
   const styles = useStyles2(getStyles);
   // Carries the resolved key alongside the mark and is tagged with the guide
@@ -127,9 +133,14 @@ export function MarkCompleteFooter({
     ),
     useCallback(() => (contentKey === undefined ? 0 : peekGuidePercentage(contentKey)), [contentKey])
   );
-
   const activeGuide = contentKey ? getGuideIndex(contentKey) : undefined;
   const marked = storedMarked && (!activeGuide?.choiceModel || percentage === 100);
+  const completed = marked || Boolean(renderCompleted && hydrated && percentage === 100);
+  const completionPanelVisible = Boolean(renderCompleted && completed);
+  useLayoutEffect(() => {
+    onCompletionPanelVisibilityChange?.(completionPanelVisible);
+    return () => onCompletionPanelVisibilityChange?.(false);
+  }, [completionPanelVisible, onCompletionPanelVisibilityChange]);
   const unansweredChoices =
     activeGuide?.choiceModel &&
     choicePathHasUnansweredRequiredInput(
@@ -218,16 +229,14 @@ export function MarkCompleteFooter({
   const handleClick = useCallback(() => {
     if (
       contentKey === undefined ||
-      marked ||
+      completed ||
       unansweredChoices ||
       responses?.isLoading ||
       !isGuideChoiceProgressReady(contentKey)
     ) {
       return;
     }
-    // The button the reader just activated is about to unmount, and React
-    // would drop focus to `document.body`. A return visit that hydrates an
-    // existing mark must not steal focus, so only a click claims it.
+    // Only a click transfers focus when the button unmounts; hydration must not steal it.
     const active = getGuideIndex(contentKey);
     const choiceCompletionKeys =
       active?.choiceModel && responses
@@ -247,29 +256,30 @@ export function MarkCompleteFooter({
       refreshAndNotifyGuideProgress(contentKey);
     }
 
-    // A block-editor preview is an author iterating, not a reader: it records
-    // nothing, persists nothing and stays out of the click stream, because that
-    // stream exists to measure whether real readers use the control. The narrow
-    // URL predicate, not `isPreviewContentKey`: that one's `devtools` arm is a
-    // substring test, and this key is a URL.
+    // Editor previews must not persist completions or report learner activity.
     if (!isBlockEditorPreviewUrl(contentKey)) {
-      // The completion write must not wait on the celebration: a reader who
-      // navigates away mid-animation still completed the guide.
+      // Record before the celebration in case the reader navigates away.
       onMarkComplete?.();
 
-      reportAppInteraction(UserInteraction.MarkCompleteClicked, {
-        ...(completionIdentity && {
-          ...guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity }),
-          ...pathAnalyticsProperties(completionIdentity.pathIdentity),
-        }),
-        interaction_location: 'content_footer',
-        completion_context: context,
-        completion_percentage_before: percentage,
-        block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
-        ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
-        ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
-        ...getGuideBlockCountProperties(contentKey),
-      });
+      if (!isPrTestUrl(contentKey)) {
+        const path = pathAnalytics(completionIdentity?.pathIdentity);
+        reportAppInteraction(
+          UserInteraction.MarkCompleteClicked,
+          {
+            ...(completionIdentity &&
+              guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity, guideTitle })),
+            ...path.properties,
+            interaction_location: 'content_footer',
+            completion_context: context,
+            completion_percentage_before: percentage,
+            block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
+            ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
+            ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
+            ...getGuideBlockCountProperties(contentKey),
+          },
+          path.options
+        );
+      }
       void (
         choiceCompletionKeys === undefined
           ? guideCompletionMarkStorage.set(contentKey, true)
@@ -277,31 +287,36 @@ export function MarkCompleteFooter({
       ).catch((error) => {
         logger.warn('Failed to persist guide completion mark', { error });
       });
-      // Deliberate, not a placeholder: the percentage namespace is what
-      // recommendation cards and context read, and the reader's statement that
-      // they finished belongs there too. See COMPLETION-MODEL.md, "Rolling this
-      // back".
-      void interactiveCompletionStorage.set(contentKey, 100);
-      dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+      // Publish after persistence so listeners can reread the saved percentage.
+      void (async () => {
+        try {
+          await interactiveCompletionStorage.set(contentKey, 100);
+        } catch (error) {
+          logger.warn('Failed to persist guide completion percentage', { error });
+        }
+        dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+      })();
     }
 
-    // Reduced motion means no dwell either — continuing is the reader's
-    // intent, and holding them for an animation they asked not to see is the
-    // same delay with none of the reward.
     if (prefersReducedMotion()) {
-      onContinue?.();
+      if (!renderCompleted) {
+        onContinue?.();
+      }
       return;
     }
 
     setCelebrating(true);
     celebrationTimer.current = setTimeout(() => {
       setCelebrating(false);
-      onContinue?.();
+      if (!renderCompleted) {
+        onContinue?.();
+      }
     }, CELEBRATION_MS);
   }, [
     contentKey,
     completionIdentity,
-    marked,
+    guideTitle,
+    completed,
     unansweredChoices,
     responses,
     context,
@@ -311,32 +326,44 @@ export function MarkCompleteFooter({
     totalMilestones,
     onMarkComplete,
     onContinue,
+    renderCompleted,
   ]);
 
   const label =
     context === 'milestone' && onContinue
-      ? t('markComplete.milestoneButton', 'Mark complete and continue')
+      ? renderCompleted
+        ? t('markComplete.completeMilestone', 'Complete milestone')
+        : t('markComplete.milestoneButton', 'Mark complete and continue')
       : t('markComplete.guideButton', 'Mark complete');
 
   return (
     <div
-      className={styles.footer}
+      className={renderCompleted && completed ? styles.panelFooter : styles.footer}
       data-testid={testIds.markComplete.footer}
-      // Testing contract: `pending` until the stored mark has been read. The
-      // completion percentage itself is shown by the sticky GuideProgressBar at
-      // the top of the panel; this footer only owns the Mark complete control.
       data-test-progress-state={hydrated ? 'ready' : 'pending'}
     >
-      {marked ? (
+      {renderCompleted && completed && (
+        <span role="status" className={styles.announcement}>
+          {t('markComplete.completed', 'Completed')}
+        </span>
+      )}
+      {completed ? (
         <div
           ref={completedRef}
-          role="status"
+          role={renderCompleted ? 'group' : 'status'}
+          aria-label={renderCompleted ? t('markComplete.completed', 'Completed') : undefined}
           tabIndex={-1}
-          className={celebrating ? styles.celebration : styles.completed}
+          className={renderCompleted ? styles.panelContent : celebrating ? styles.celebration : styles.completed}
           data-testid={testIds.markComplete.completed}
         >
-          <Icon name="check-circle" />
-          <span>{t('markComplete.completed', 'Completed')}</span>
+          {renderCompleted ? (
+            renderCompleted(celebrating)
+          ) : (
+            <>
+              <Icon name="check-circle" />
+              <span>{t('markComplete.completed', 'Completed')}</span>
+            </>
+          )}
         </div>
       ) : (
         <Button
@@ -375,6 +402,23 @@ function getStyles(theme: GrafanaTheme2) {
   } as const;
 
   return {
+    announcement: css({
+      position: 'absolute',
+      width: 1,
+      height: 1,
+      padding: 0,
+      margin: -1,
+      overflow: 'hidden',
+      clipPath: 'inset(50%)',
+      whiteSpace: 'nowrap',
+      border: 0,
+    }),
+    panelFooter: css({ width: '100%', minWidth: 0 }),
+    panelContent: css({
+      width: '100%',
+      minWidth: 0,
+      '&:focus-visible': { outline: `2px solid ${theme.colors.primary.border}`, outlineOffset: theme.spacing(0.5) },
+    }),
     footer: css({
       display: 'flex',
       alignItems: 'center',

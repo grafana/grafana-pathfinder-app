@@ -26,6 +26,7 @@ export const getSkeletonStyles = (theme: GrafanaTheme2) => {
         backgroundRepeat: 'no-repeat',
         backgroundSize: '1000px 100%',
         borderRadius: theme.shape.radius.default,
+        '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
       },
     }),
 

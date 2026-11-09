@@ -25,6 +25,7 @@ export interface HeaderKebabProps {
   onToggleSelectionMode: () => void;
   onNewGuide: () => void;
   onOpenGuideLibrary: () => void;
+  onOpenGuideDetails: () => void;
   onOpenImport: () => void;
   onCopy: () => void;
   onDownload: () => void;
@@ -51,6 +52,7 @@ export function HeaderKebab({
   onToggleSelectionMode,
   onNewGuide,
   onOpenGuideLibrary,
+  onOpenGuideDetails,
   onOpenImport,
   onCopy,
   onDownload,
@@ -114,6 +116,14 @@ export function HeaderKebab({
           icon="book-open"
           onClick={onOpenGuideLibrary}
           testId={testIds.blockEditor.libraryButton}
+        />
+      )}
+      {isBackendAvailable && (
+        <Menu.Item
+          label="Guide details"
+          icon="info-circle"
+          onClick={onOpenGuideDetails}
+          testId={testIds.blockEditor.guideDetailsButton}
         />
       )}
       <Menu.Divider />

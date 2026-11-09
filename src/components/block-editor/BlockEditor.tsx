@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useStyles2 } from '@grafana/ui';
+import { Alert, Button, useStyles2 } from '@grafana/ui';
 import { createInstanceId } from '../../lib/create-instance-id';
 import { useBlockEditor } from './hooks/useBlockEditor';
 import { useBlockPersistence } from './hooks/useBlockPersistence';
@@ -23,8 +23,12 @@ import { useGuideOperations } from './hooks/useGuideOperations';
 import { canMergeSelection } from './hooks/useBlockEditor.bulk-delete';
 import { useBackendGuides, hasManageableBackendGuides } from './hooks/useBackendGuides';
 import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
+import { useGuideDetails } from './hooks/useGuideDetails';
+import { authorNameToWrite, type DefaultedAuthor } from './utils/derive-manifest';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
+import { currentUserAuthorName } from '../../utils/current-user-name';
+import { EDITOR_FALLBACK_AUTHOR } from '../../types/author-defaults';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { publishEditorChromeStatus, readStoredEditorGuide, resetEditorChromeStatus } from './editor-chrome-status';
 import { BlockFormModal } from './BlockFormModal';
@@ -240,6 +244,16 @@ function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
   return false;
 }
 
+export function authorNoticeText({ name, replacedName }: DefaultedAuthor): string {
+  if (name === EDITOR_FALLBACK_AUTHOR) {
+    return 'This guide had no author and your account has no name, so it was given a placeholder author.';
+  }
+  if (replacedName) {
+    return `This guide was attributed to the placeholder ${replacedName}, so it was attributed to you instead.`;
+  }
+  return 'This guide had no author, so it was attributed to you.';
+}
+
 function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideTitleChange }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
@@ -302,7 +316,19 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
 
   // Backend guides management
   const backendGuides = useBackendGuides();
-  const backendSaveFlow = useBackendSaveFlow({ editor, backendGuides });
+  const guideDetails = useGuideDetails();
+  const backendSaveFlow = useBackendSaveFlow({
+    editor,
+    backendGuides,
+    guideDetails: guideDetails.details,
+    announceAuthor: guideDetails.announceAuthor,
+  });
+  const { resetDetails } = guideDetails;
+  const { handleClearBackendTracking } = backendSaveFlow;
+  const handleStartNewGuide = useCallback(() => {
+    handleClearBackendTracking();
+    resetDetails();
+  }, [handleClearBackendTracking, resetDetails]);
   const [isGuideLibraryOpen, setIsGuideLibraryOpen] = useState(false);
 
   // REACT: memoize excludeSelectors to prevent effect re-runs on every render (R3)
@@ -623,7 +649,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     modals,
     onCopy,
     onDownload,
-    onNewGuide: backendSaveFlow.handleClearBackendTracking,
+    onNewGuide: handleStartNewGuide,
   });
 
   // Handle block type selection from palette
@@ -691,10 +717,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
       trackLoadedGuide(guide, resourceName);
+      resetDetails();
       editor.markSaved();
     },
-    [editor, trackLoadedGuide]
+    [editor, trackLoadedGuide, resetDetails]
   );
+
+  const defaultAuthorName = authorNameToWrite(backendSaveFlow.storedAuthor, { signedInName: currentUserAuthorName() });
+  const storedTeam = (backendSaveFlow.storedAuthor as { team?: unknown } | undefined)?.team;
 
   // Open guide library
   const handleOpenGuideLibrary = useCallback(() => {
@@ -815,6 +845,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         onTitleCommit={handleTitleCommit}
         onOpenTour={() => modals.open('tour')}
         onOpenGuideLibrary={handleOpenGuideLibrary}
+        onOpenGuideDetails={() => modals.open('guideDetails')}
         onOpenImport={() => modals.open('import')}
         onCopy={guideOps.handleCopy}
         onDownload={guideOps.handleDownload}
@@ -838,6 +869,25 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         undoLabel={editor.undoLabel}
         redoLabel={editor.redoLabel}
       />
+
+      {guideDetails.authorNotice && (
+        <Alert
+          severity="info"
+          title={`Author set to ${guideDetails.authorNotice.name}`}
+          onRemove={guideDetails.dismissAuthorNotice}
+          data-testid={testIds.blockEditor.authorNotice}
+        >
+          {authorNoticeText(guideDetails.authorNotice)} Readers see this name.{' '}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => modals.open('guideDetails')}
+            data-testid={testIds.blockEditor.authorNoticeEdit}
+          >
+            Change author
+          </Button>
+        </Alert>
+      )}
 
       <BlockEditorContent
         viewMode={state.viewMode}
@@ -886,6 +936,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         hasBlocks={hasBlocks}
         onNewGuideConfirm={guideOps.handleNewGuide}
         onImportGuide={guideOps.handleImportGuide}
+        authorName={guideDetails.details.authorName ?? defaultAuthorName}
+        team={guideDetails.details.team ?? (typeof storedTeam === 'string' ? storedTeam : '')}
+        authorPlaceholder={defaultAuthorName}
+        onSaveGuideDetails={guideDetails.applyDetails}
       />
 
       {/* Guide Library Modal */}

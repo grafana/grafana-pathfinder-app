@@ -68,7 +68,7 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `description`       | `string`                             | Recommended                   | —                         | Full description for display and search                                                                                                                                                                                   |
 | `language`          | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                                                                                                                                                                             |
 | `category`          | `string`                             | **Yes** (CLI validation)      | —                         | Content category for taxonomy; any non-blank value passes `validate`, which fails on a missing or blank one. Runtime loading does not require it                                                                          |
-| `author`            | `{ name?, team? }`                   | Recommended                   | —                         | Content author or owning team                                                                                                                                                                                             |
+| `author`            | `{ name?, team? }`                   | Recommended                   | —                         | Content author or owning team; the CLI and MCP fill it (see [Author defaults](#author-defaults))                                                                                                                          |
 | `startingLocation`  | `string`                             | Recommended                   | `"/"`                     | URL path where the guide expects to begin execution                                                                                                                                                                       |
 | `depends`           | `DependencyList`                     | No                            | —                         | Hard prerequisites — must be completed first                                                                                                                                                                              |
 | `recommends`        | `DependencyList`                     | No                            | —                         | Soft prerequisites — recommended but not required                                                                                                                                                                         |
@@ -86,6 +86,17 @@ Prerequisites are display-only metadata. They do not check completion, control a
 Each prerequisite has `id: string`, `label: string`, and an optional `format: "markdown"`. Both values must be nonblank; validation preserves the retained strings exactly. IDs must be stable and unique by their exact string value within one manifest. Without the format field, labels display as literal text. With `format: "markdown"`, labels support inline links, bold, italics, and inline code. Links support only absolute HTTPS URLs without credentials. They open in a new browser tab. Unsupported destinations display as text. HTML, headings, lists, images, embeds, interactive content, and other Markdown syntax are not supported.
 
 Authoring and CLI validation reject malformed prerequisite declarations. Runtime readers omit an invalid prerequisite field without rejecting an otherwise valid guide or path. With unknown format values, otherwise valid labels display as literal text.
+
+### Author defaults
+
+`author` is never required and a missing one never fails validation. The authoring CLI and MCP fill it so a guide is never anonymous:
+
+- `pathfinder-cli create` and `pathfinder_create_package` take `authorName` and `authorTeam` (`--author-name`, `--author-team` on the command line). The MCP session carries the author to later calls, and `pathfinder_finalize_for_app_platform` fills it for a manifest that never went through create.
+- With no author supplied, the CLI and the stdio MCP use git's `user.name`; the hosted HTTP MCP never reads the server's identity. Either falls back to `pathfinder-mcp`. The OS username is not used.
+- An author already present is never overwritten, except a fallback placeholder (`pathfinder-mcp`, or the block editor's `pathfinder-block-editor`), which a real identity may replace. One fallback never replaces the other, so the value shows which surface produced the guide.
+- Only `author` is defaulted. `description`, `estimatedMinutes`, `category`, `startingLocation`, and `targeting` stay author-declared.
+
+The fallback names live in `src/types/author-defaults.ts`.
 
 ### Extension fields
 

@@ -10,6 +10,7 @@
 import { of } from 'rxjs';
 import { fetchPackageContent, setPackageResolver, setPackageResolverFactory } from './package-content';
 import { resolveSurfaceCompletionIdentity } from '../learning-journey-helpers';
+import { guideIdentityAnalyticsProperties, pathAnalytics } from '../../completion-records/completion-identity';
 import { resolveStartingLocation } from '../../recovery/starting-location';
 
 const mockFetch = jest.fn();
@@ -217,6 +218,35 @@ describe('member launch keeps the loader manifest reachable', () => {
     expect(result.content?.metadata.journeyManifest).toEqual(owningJourney);
   });
 
+  it('attributes private path members without a caller repository', async () => {
+    usePathResolver('app-platform');
+    mockFetch.mockReturnValue(backendGuideResource({}));
+    const owner = { ...pathManifest, repository: 'interactive-tutorials' };
+    const result = await fetchPackageContent('backend-guide:member-id', owner, [resolvedMember]);
+    const identity = resolveSurfaceCompletionIdentity({
+      contentUrl: result.content!.url,
+      currentUrl: result.content!.url,
+      metadata: result.content!.metadata,
+    });
+    expect(identity).toMatchObject({
+      guideSource: 'app-platform',
+      sourceConfirmed: true,
+      pathIdentity: { guideSource: 'app-platform', guideId: 'path-id', sourceConfirmed: true },
+    });
+    expect(
+      guideIdentityAnalyticsProperties({ kind: 'guide', ...identity!, guideTitle: result.content!.metadata.title })
+    ).toMatchObject({
+      guide_source: 'app_platform',
+      guide_visibility: 'private',
+      guide_id: 'member-id',
+      guide_title: 'Alerting module 1',
+    });
+    expect(pathAnalytics(identity!.pathIdentity)).toEqual({
+      properties: { path_id: 'path-id' },
+      options: { privatePath: true },
+    });
+  });
+
   it('keeps the explicitly supplied path repository as the member completion source', async () => {
     usePathResolver('base-source');
     mockFetch.mockReturnValue(backendGuideResource({}));
@@ -259,6 +289,35 @@ describe('member launch keeps the loader manifest reachable', () => {
   });
 
   describe('confirmed track membership without a member snapshot', () => {
+    it('confirms a track member on retry when the load carries a PR-tester marker', async () => {
+      const owner = {
+        ...pathManifest,
+        repository: 'owner-source',
+        tracks: [{ trackId: 'extra', label: 'Extra', guides: ['fe-alerting-01'] }],
+      };
+      mockFetch.mockReturnValue(backendGuideResource({}));
+      const resolve = jest.fn().mockImplementation((id: string, options: { bypassCache?: boolean }) => {
+        if (id === 'fe-alerting-01' && !options.bypassCache) {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'missing metadata' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `backend-guide:${id}`,
+          manifestUrl: `https://example.test/${id}/manifest.json`,
+          repository: 'base-source',
+          ...(id === owner.id && { manifest: owner }),
+        });
+      });
+      setPackageResolver({ resolve });
+
+      const result = await fetchPackageContent('backend-guide:fe-alerting-01#pf-pr-abc123', owner, [resolvedMember]);
+
+      expect(resolve).toHaveBeenCalledWith('fe-alerting-01', { loadContent: false, bypassCache: true });
+      expect(result.content?.metadata.learningJourney).toBeUndefined();
+      expect(result.content?.metadata.trackMemberBaseUrl).toBe('backend-guide:path-id#pf-pr-abc123');
+    });
+
     it.each(['retry', 'declared'] as const)(
       'preserves loaded member metadata and completion ownership for %s membership',
       async (membership) => {
@@ -415,5 +474,112 @@ describe('member launch keeps the loader manifest reachable', () => {
         result.content?.metadata.packageManifest,
       ])
     ).toBeNull();
+  });
+});
+
+describe('a milestone narrows its path starting location', () => {
+  const pathManifest = { ...slimCatalogueManifest, startingLocation: '/x-start' };
+
+  it("keeps the milestone's own starting location over the path's", async () => {
+    mockFetch.mockReturnValue(backendGuideResource({ startingLocation: '/a-start' }));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/a-start');
+    expect(result.content?.metadata.packageManifest?.id).toBe('fe-alerting-path');
+  });
+
+  it('keeps a starting location App Platform left under additionalFields over the path one', async () => {
+    mockFetch.mockReturnValue(backendGuideResource({ additionalFields: { startingLocation: '/a-start' } }));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/a-start');
+  });
+
+  it("falls back to the path's starting location when the milestone declares none", async () => {
+    mockFetch.mockReturnValue(backendGuideResource({}));
+
+    const result = await fetchPackageContent('backend-guide:fe-alerting-01', pathManifest);
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/x-start');
+  });
+});
+
+describe('a CDN milestone narrows its path starting location', () => {
+  const CDN = 'https://interactive-learning.grafana.net/packages';
+  const pathUrl = `${CDN}/x-path/content.json`;
+  const aUrl = `${CDN}/a-guide/content.json`;
+  const bUrl = `${CDN}/b-guide/content.json`;
+  const pathManifest = { id: 'x-path', type: 'path', milestones: ['a-guide', 'b-guide'], startingLocation: '/x-start' };
+  const milestones = [
+    { id: 'a-guide', number: 1, title: 'A', url: aUrl, isActive: false, startingLocation: '/a-start' },
+    { id: 'b-guide', number: 2, title: 'B', url: bUrl, isActive: false },
+  ];
+
+  afterEach(() => {
+    setPackageResolverFactory(() => Promise.reject(new Error('resolver reset')));
+  });
+
+  function cdnContent(url: string) {
+    return {
+      content: {
+        content: '{"id":"guide","title":"Guide","blocks":[]}',
+        type: 'interactive' as const,
+        url,
+        lastFetched: '2026-10-13T00:00:00.000Z',
+        metadata: { title: url },
+      },
+    };
+  }
+
+  async function startingLocationFor(url: string, explicitGuideId?: string) {
+    const result = await fetchPackageContent(
+      url,
+      pathManifest,
+      milestones,
+      undefined,
+      cdnContent(url),
+      explicitGuideId
+    );
+    return result.content?.metadata.packageManifest?.startingLocation;
+  }
+
+  it("uses the resolved milestone's own starting location when the loader attaches no manifest", async () => {
+    expect(await startingLocationFor(aUrl)).toBe('/a-start');
+    expect(await startingLocationFor(aUrl, 'a-guide')).toBe('/a-start');
+  });
+
+  it('leaves a milestone that declares none without a starting location of its own', async () => {
+    expect(await startingLocationFor(bUrl, 'b-guide')).toBeUndefined();
+  });
+
+  it("keeps the path's starting location on its own landing page", async () => {
+    expect(await startingLocationFor(pathUrl)).toBe('/x-start');
+  });
+
+  it("uses a track-only guide's own starting location over the path's", async () => {
+    const tUrl = `${CDN}/t-guide/content.json`;
+    setPackageResolver({
+      resolve: async (id: string) =>
+        id === 't-guide'
+          ? {
+              ok: true,
+              id,
+              contentUrl: tUrl,
+              manifestUrl: '',
+              repository: 'cdn',
+              manifest: { startingLocation: '/t-start' },
+            }
+          : { ok: false, id, error: { code: 'not-found', message: 'not found' } },
+    } as never);
+    const trackedPath = {
+      ...pathManifest,
+      tracks: [{ trackId: 'deep-dive', label: 'Deep dive', guides: ['t-guide'] }],
+    };
+
+    const result = await fetchPackageContent(tUrl, trackedPath, milestones, undefined, cdnContent(tUrl), 't-guide');
+
+    expect(result.content?.metadata.packageManifest?.startingLocation).toBe('/t-start');
   });
 });

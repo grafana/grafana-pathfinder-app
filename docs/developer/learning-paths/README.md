@@ -16,8 +16,8 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 | `learning-paths.hook.ts`                       | Main `useLearningPaths()` hook — unified state management                                               |
 | `streak-tracker.ts`                            | Streak calculation, milestones, and display helpers                                                     |
 | `fetch-path-guides.ts`                         | Fetches guide lists from remote `index.json` for URL-based paths                                        |
-| `useNextLearningAction.ts`                     | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar                    |
 | `useDiscoverMore.ts`                           | `useDiscoverMore()` hook — surfaces external learning paths for the My Learning "Discover more" section |
+| `hub-learning.ts`                              | Selectors for the sidebar hub: the path to resume and the tile counts                                   |
 | `learning-paths.test.ts`                       | Data-integrity tests for path, badge, and guide metadata definitions                                    |
 | `fetch-path-guides.test.ts`                    | Tests for remote guide fetching                                                                         |
 | `app-platform-paths.test.ts`                   | Tests for App Platform catalogue adaptation                                                             |
@@ -25,8 +25,8 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 | `learning-paths.hook.test.ts`                  | Tests for hook fetching, metadata resolution, and App Platform merging                                  |
 | `learning-paths.completion-round-trip.test.ts` | Integration tests for guide completion flowing back into hook state                                     |
 | `reset-path-completion.test.ts`                | Integration tests for path reset behavior                                                               |
-| `useNextLearningAction.test.ts`                | Tests for next-action computation                                                                       |
 | `useDiscoverMore.test.ts`                      | Tests for the Discover more hook                                                                        |
+| `hub-learning.test.ts`                         | Tests for the sidebar hub selectors                                                                     |
 
 ## Path types
 
@@ -214,30 +214,6 @@ The primary hook exported from the module. Returns `UseLearningPathsReturn`:
 ### `useGuideCompletion()`
 
 A convenience hook that wraps `useLearningPaths()` and returns only `{ markGuideCompleted }`. Used by guide rendering components that need to mark completion without the full learning paths state.
-
-### `useNextLearningAction()`
-
-Returns a `LearningProfileSummary` for the UserProfileBar:
-
-| Property          | Type                         | Description                        |
-| ----------------- | ---------------------------- | ---------------------------------- |
-| `badgesEarned`    | `number`                     | Count of earned non-legacy badges  |
-| `badgesTotal`     | `number`                     | Count of non-legacy badges         |
-| `guidesCompleted` | `number`                     | Total completed guide count        |
-| `streakDays`      | `number`                     | Current streak days                |
-| `isActiveToday`   | `boolean`                    | Whether user has been active today |
-| `nextAction`      | `NextLearningAction \| null` | Next recommended guide to open     |
-| `isLoading`       | `boolean`                    | Loading state                      |
-
-### `computeNextAction()`
-
-A pure function (no hooks) that computes the next learning action. It sorts paths with the following priority:
-
-1. In-progress paths, ordered by highest completion percentage first
-2. Not-started paths
-3. Completed paths are skipped
-
-From the highest-priority path, it selects the first guide with `isCurrent: true`. It prefers the path-scoped URL already resolved on that guide, which opens the actual next module for URL-based paths and uses `backend-guide:` URLs for App Platform members. It then falls back to the path URL, static metadata, or `bundled:{guideId}` in that order.
 
 ### `useDiscoverMore()`
 

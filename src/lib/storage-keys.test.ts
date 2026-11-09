@@ -87,6 +87,7 @@ describe('StorageKeys — stable string contract', () => {
       DEVTOOLS_PR_TESTER_MODE: 'pathfinder-pr-tester-mode',
       DEVTOOLS_PR_TESTER_FETCHED_FILES: 'pathfinder-pr-tester-files',
       DEVTOOLS_PR_TESTER_FETCHED_URL: 'pathfinder-pr-tester-fetched-url',
+      DEVTOOLS_PR_TESTER_FETCH_ID: 'pathfinder-pr-tester-fetch-id',
       DEVTOOLS_URL_TESTER_URL: 'pathfinder-url-tester-url',
       DEVTOOLS_PR_TESTER_EXPANDED: 'pathfinder-devtools-pr-tester-expanded',
       DEVTOOLS_URL_TESTER_EXPANDED: 'pathfinder-devtools-url-tester-expanded',

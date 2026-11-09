@@ -12,12 +12,14 @@ import { StorageEvents } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import { suggestionState, SUGGESTIONS_UPDATED_EVENT } from '../global-state/suggestion';
 import { subscribeToAutoOpenGuideEnrollment } from '../utils/experiments/auto-open-guide/state';
+import { recommendationsInputKey } from './recommendation-inputs';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
 
   const { config: pluginConfig } = usePathfinderPluginConfig();
 
+  // State
   const [contextData, setContextData] = useState<ContextData>({
     currentPath: '',
     currentUrl: '',
@@ -39,48 +41,67 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     platform: 'oss', // Default to oss, will be updated by getContextData
   });
 
-  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(true);
   const [hasFetchedRecommendations, setHasFetchedRecommendations] = useState(false);
-  const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
-  const [contextRevision, setContextRevision] = useState(0);
+  const [contextVersion, setContextVersion] = useState(0);
 
-  const contextVersion = useRef(0);
-  const recommendationVersion = useRef(0);
-  const mounted = useRef(true);
-  const lastLocationRef = useRef('');
+  // Track location changes with more detail
+  const lastLocationRef = useRef<{
+    path: string;
+    url: string;
+    vizType: string | null;
+    selectedDatasource: string | null;
+    searchParams: string;
+  }>({
+    path: '',
+    url: '',
+    vizType: null,
+    selectedDatasource: null,
+    searchParams: '',
+  });
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
+  // Use centralized timeout manager instead of local refs
   const timeoutManager = useTimeoutManager();
 
+  const contextRequestRef = useRef(0);
+  const recommendationsRequestRef = useRef(0);
+  const lastRecommendationsInputRef = useRef<{ key: string; pluginConfig: unknown } | null>(null);
+  const forceRecommendationsRef = useRef(false);
+
   const fetchContextData = useCallback(async () => {
-    const version = ++contextVersion.current;
+    const requestId = ++contextRequestRef.current;
+    const isStale = () => requestId !== contextRequestRef.current;
     try {
       setContextData((prev) => ({ ...prev, isLoading: true }));
-      setHasFetchedRecommendations(false);
       const newContextData = await ContextService.getContextData();
-      if (mounted.current && version === contextVersion.current) {
-        setContextData(newContextData);
-        setContextRevision((revision) => revision + 1);
+      if (isStale()) {
+        return;
       }
+      setContextData((prev) => ({
+        ...newContextData,
+        recommendations: prev.recommendations,
+        featuredRecommendations: prev.featuredRecommendations,
+        recommendationsError: prev.recommendationsError,
+        recommendationsErrorType: prev.recommendationsErrorType,
+        usingFallbackRecommendations: prev.usingFallbackRecommendations,
+      }));
+      setContextVersion((version) => version + 1);
     } catch (error) {
-      if (!mounted.current || version !== contextVersion.current) {
+      if (isStale()) {
         return;
       }
       logger.error('Failed to fetch context data', { error });
       setContextData((prev) => ({ ...prev, isLoading: false }));
-      setContextRevision((revision) => revision + 1);
+      if (recommendationsRequestRef.current === 0) {
+        setIsLoadingRecommendations(false);
+        setHasFetchedRecommendations(true);
+      }
     }
   }, []);
 
+  // All context changes that trigger a refresh should share this debounce to prevent repeated API calls and changes to the UI.
   const debouncedRefresh = useCallback(
     (delay?: number) => {
-      contextVersion.current++;
       timeoutManager.setDebounced('context-refresh', fetchContextData, delay, 'contextRefresh');
     },
     [fetchContextData, timeoutManager]
@@ -92,19 +113,21 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         return;
       }
 
-      const version = contextVersion.current;
-      const request = ++recommendationVersion.current;
-      const isCurrent = () =>
-        mounted.current && version === contextVersion.current && request === recommendationVersion.current;
+      const requestId = ++recommendationsRequestRef.current;
+      const isStale = () => requestId !== recommendationsRequestRef.current;
       setIsLoadingRecommendations(true);
       setHasFetchedRecommendations(false);
       try {
         const { recommendations, featuredRecommendations, error, errorType, usingFallbackRecommendations } =
           await ContextService.fetchRecommendations(contextData, pluginConfig);
-        if (!isCurrent()) {
+        if (isStale()) {
           return;
         }
+        if (error) {
+          lastRecommendationsInputRef.current = null;
+        }
 
+        // Prepend external suggestions (if any) so they appear first in the featured zone
         const suggestions = suggestionState.getSuggestions();
         const suggestionUrls = new Set(suggestions.map((s) => s.url));
         const tagged = suggestions.map((s) => ({
@@ -126,9 +149,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
           usingFallbackRecommendations,
         }));
       } catch (error) {
-        if (!isCurrent()) {
+        if (isStale()) {
           return;
         }
+        lastRecommendationsInputRef.current = null;
         logger.error('Failed to fetch recommendations', { error });
         setContextData((prev) => ({
           ...prev,
@@ -137,7 +161,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
           usingFallbackRecommendations: true,
         }));
       } finally {
-        if (isCurrent()) {
+        if (!isStale()) {
           setIsLoadingRecommendations(false);
           setHasFetchedRecommendations(true);
         }
@@ -146,33 +170,56 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     [pluginConfig]
   );
 
+  const forcedRefresh = useCallback(() => {
+    forceRecommendationsRef.current = true;
+    debouncedRefresh();
+  }, [debouncedRefresh]);
+
+  // Simplified location-based change detection (EchoSrv handles datasource/viz changes)
   useEffect(() => {
     const checkForChanges = () => {
       const location = locationService.getLocation();
-      const currentPath = location.pathname || window.location.pathname || '';
-      const key = contextLocationKey(currentPath, location.search);
-      if (lastLocationRef.current !== key) {
-        lastLocationRef.current = key;
-        // Called only because the getters expire observations bound to the previous location.
-        getDetectedDatasourceType();
-        getDetectedVisualizationType();
+      const currentPath = contextLocationKey(location.pathname || window.location.pathname || '', location.search);
+      const currentUrl = window.location.href;
+      const currentSearchParams = window.location.search;
 
+      const hasLocationChanged = lastLocationRef.current.path !== currentPath;
+
+      if (hasLocationChanged) {
+        // Reading the detectors also expires observations from the previous location.
+        const currentVizType = getDetectedVisualizationType();
+        const currentSelectedDatasource = getDetectedDatasourceType();
+
+        lastLocationRef.current = {
+          path: currentPath,
+          url: currentUrl,
+          vizType: currentVizType,
+          selectedDatasource: currentSelectedDatasource,
+          searchParams: currentSearchParams,
+        };
+
+        // Debounced refresh to avoid rapid-fire updates
         debouncedRefresh();
       }
     };
 
+    // Initial check
     checkForChanges();
 
+    // Listen for browser navigation events
     const handlePopState = () => {
       setTimeout(checkForChanges, 100); // Small delay for URL to update
     };
 
+    // Listen for Grafana location service changes
     const handleLocationChange = () => {
       setTimeout(checkForChanges, 100);
     };
 
+    // Listen for browser navigation
     window.addEventListener('popstate', handlePopState);
 
+    // Listen for Grafana location changes (if available)
     if (locationService.getHistory) {
       const history = locationService.getHistory();
       const unlisten = history.listen(handleLocationChange);
@@ -188,29 +235,36 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       window.removeEventListener('popstate', handlePopState);
       timeoutManager.clear('context-refresh');
     };
-  }, [debouncedRefresh, timeoutManager]);
+  }, [debouncedRefresh, timeoutManager]); // debouncedRefresh is stable due to useCallback
 
+  // Listen for EchoSrv-triggered context changes (datasource/viz changes)
   useEffect(() => {
     const unsubscribe = onContextChange(() => {
+      const vizType = getDetectedVisualizationType();
+      const selectedDatasource = getDetectedDatasourceType();
+      const last = lastLocationRef.current;
+      if (last.vizType === vizType && last.selectedDatasource === selectedDatasource) {
+        return;
+      }
+      lastLocationRef.current = { ...last, vizType, selectedDatasource };
       debouncedRefresh();
     });
 
     return unsubscribe;
   }, [debouncedRefresh]);
 
-  useEffect(() => subscribeToAutoOpenGuideEnrollment(debouncedRefresh), [debouncedRefresh]);
+  // The auto-open guide's Featured card depends on an activation that can land after the first fetch.
+  useEffect(() => subscribeToAutoOpenGuideEnrollment(forcedRefresh), [forcedRefresh]);
 
+  // Listen for progress cleared events to refresh recommendations
   useEffect(() => {
-    const handleProgressCleared = () => {
-      debouncedRefresh();
-    };
-
-    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, forcedRefresh);
     return () => {
-      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, forcedRefresh);
     };
-  }, [debouncedRefresh]);
+  }, [forcedRefresh]);
 
+  // Merge external suggestions into featuredRecommendations
   const applySuggestions = useCallback(() => {
     const suggestions = suggestionState.getSuggestions();
     setContextData((prev) => {
@@ -231,6 +285,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     });
   }, []);
 
+  // Apply suggestions on mount and when they change
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- apply persisted suggestions on mount; re-applied on the SUGGESTIONS_UPDATED event subscribed below
     applySuggestions();
@@ -240,28 +295,31 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     return () => document.removeEventListener(SUGGESTIONS_UPDATED_EVENT, handler);
   }, [applySuggestions]);
 
-  const tagsString = contextData.tags?.join(',') || '';
+  // Fetch recommendations when context data changes (but not when loading)
   useEffect(() => {
-    if (!contextData.isLoading && contextData.currentPath) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch when the active context changes
-      fetchRecommendations(contextData);
+    if (contextData.isLoading || !contextData.currentPath) {
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop
-  }, [
-    contextData.isLoading,
-    contextData.currentPath,
-    tagsString, // Extracted to separate variable - includes datasource tags
-    contextData.visualizationType, // Direct viz type tracking
-    contextRevision,
-    fetchRecommendations,
-  ]);
+    const key = recommendationsInputKey(contextData);
+    const last = lastRecommendationsInputRef.current;
+    if (!forceRecommendationsRef.current && last?.key === key && last.pluginConfig === pluginConfig) {
+      return;
+    }
+    forceRecommendationsRef.current = false;
+    lastRecommendationsInputRef.current = { key, pluginConfig };
+    fetchRecommendations(contextData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextVersion marks each landed context; depending on contextData would refetch on every list update
+  }, [contextVersion, contextData.isLoading, fetchRecommendations]);
 
+  // Actions
   const refreshContext = useCallback(() => {
-    lastLocationRef.current = '';
+    lastLocationRef.current = { path: '', url: '', vizType: null, selectedDatasource: null, searchParams: '' };
+    forceRecommendationsRef.current = true;
     fetchContextData();
   }, [fetchContextData]);
 
   const refreshRecommendations = useCallback(() => {
+    // Use current state at time of call, not dependency
     const currentContextData = {
       ...contextData,
       recommendations: [],
@@ -360,26 +418,22 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     locationService.push(path);
   }, []);
 
-  const toggleOtherDocsExpansion = useCallback(() => {
-    setOtherDocsExpanded((prev) => !prev);
-  }, []);
-
   return {
     contextData,
     isLoadingRecommendations,
     hasFetchedRecommendations,
-    otherDocsExpanded,
 
+    // Actions
     refreshContext,
     refreshRecommendations,
     openLearningJourney,
     openDocsPage,
     toggleSummaryExpansion,
     navigateToPath,
-    toggleOtherDocsExpansion,
   };
 }
 
+// Export individual access functions for backward compatibility
 export const useContextData = () => {
   const { contextData } = useContextPanel();
   return contextData;

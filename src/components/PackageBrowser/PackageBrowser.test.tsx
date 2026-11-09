@@ -162,7 +162,7 @@ it('expands path details in the card without preparing content or moving scroll 
   const container = screen.getByTestId('package-browser');
   container.scrollTop = 420;
   fireEvent.scroll(container);
-  const toggle = screen.getByRole('button', { name: 'Show modules' });
+  const toggle = screen.getByRole('button', { name: 'Show milestones' });
   toggle.focus();
   fireEvent.click(toggle);
   const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
@@ -174,7 +174,7 @@ it('expands path details in the card without preparing content or moving scroll 
   unmount();
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
   expect(screen.getByLabelText('Search guides and paths')).toHaveValue('Dashboard path');
-  expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Hide milestones' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 it('omits path milestones from the list and search while keeping them in path details', async () => {
@@ -192,7 +192,7 @@ it('omits path milestones from the list and search while keeping them in path de
   fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Build a dashboard' } });
   expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Dashboard path' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Show modules' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show milestones' }));
   const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
   expect(within(details).getByText('Build a dashboard')).toBeInTheDocument();
 });
@@ -590,6 +590,52 @@ it('reports a topic chosen from the filter as a filter selection', async () => {
   expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
     action: 'topic',
     topic: 'dashboards',
+    control: 'filter',
+    interaction_location: 'package_browser',
+  });
+});
+
+it('reports official catalog topics as-is and organization-only topics as other', async () => {
+  mockItems.push(
+    {
+      key: 'bundled:play-demo',
+      id: 'play-demo',
+      title: 'Tour a play demo',
+      format: 'guide',
+      source: 'grafana',
+      category: 'play-demos',
+      url: 'bundled:play-demo',
+    },
+    {
+      key: 'app-platform:payments',
+      id: 'payments',
+      title: 'Payments runbook',
+      format: 'guide',
+      source: 'organization',
+      category: 'payments-team',
+      url: 'backend-guide:payments',
+      packageInfo: { packageId: 'payments', repository: 'app-platform' },
+    }
+  );
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  const topic = screen.getByRole('combobox', { name: 'Topic' });
+  const selectTopic = async (label: string) => {
+    fireEvent.change(topic, { target: { value: label } });
+    await act(async () => {});
+    fireEvent.keyDown(topic, { key: 'ArrowDown' });
+    fireEvent.keyDown(topic, { key: 'Enter' });
+  };
+  await selectTopic('play demos');
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'topic',
+    topic: 'play-demos',
+    control: 'filter',
+    interaction_location: 'package_browser',
+  });
+  await selectTopic('payments team');
+  expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
+    action: 'topic',
+    topic: 'other',
     control: 'filter',
     interaction_location: 'package_browser',
   });

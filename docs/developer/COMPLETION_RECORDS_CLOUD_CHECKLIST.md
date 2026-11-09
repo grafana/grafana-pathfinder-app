@@ -250,7 +250,7 @@ A path has a record of its own, separate from its milestones'. It must appear wh
 
 1. Pick a path with at least three milestones that you have not progressed on this stack.
 2. Take a whole-array baseline: `var before = await completionSnapshot();` — as in step 2, do not derive the path's pair by hand.
-3. Complete every milestone except the last, using **Mark complete and continue**.
+3. Complete every milestone except the last, using **Complete milestone**, then **Continue** to open the next one. The controller overlay retains **Mark complete and continue**.
 4. Read the array again with `?refresh=1` and diff it against `before`.
 
    **Pass:** the only new or increased entries are the milestones you completed, each keyed on its own slug. **No new entry keyed on the path itself.** A path record before the last milestone is a failure, and the more damaging direction of the two: it reports readers as finished when they are not.

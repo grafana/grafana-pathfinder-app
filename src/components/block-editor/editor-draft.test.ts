@@ -65,7 +65,7 @@ it('saves and publishes a new resource without targeting a previously edited pri
   expect(result.current.publishedStatus).toBe('not-saved');
   expect(backendGuides.saveGuide).not.toHaveBeenCalled();
   await act(() => result.current.performSaveDraft());
-  expect(backendGuides.saveGuide).toHaveBeenCalledWith(guide, undefined, undefined, 'draft', false);
+  expect(backendGuides.saveGuide).toHaveBeenCalledWith(guide, undefined, undefined, 'draft', false, undefined);
   await act(() => result.current.handlePostToBackend());
-  expect(backendGuides.saveGuide).toHaveBeenLastCalledWith(guide, guide.id, undefined, 'published', false);
+  expect(backendGuides.saveGuide).toHaveBeenLastCalledWith(guide, guide.id, undefined, 'published', false, undefined);
 });

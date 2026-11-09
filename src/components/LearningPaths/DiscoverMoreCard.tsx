@@ -1,4 +1,5 @@
 import React from 'react';
+import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import { t } from '@grafana/i18n';
 import { testIds } from '../../constants/testIds';
 import type { DiscoverMoreItem, CatalogProgress } from '../../learning-paths';
@@ -30,9 +31,7 @@ export function DiscoverMoreCard({
 }: DiscoverMoreCardProps) {
   const entry = item.catalogPackage;
   const effort = [
-    item.milestoneCount != null
-      ? t('packageBrowser.modules', '{{count}} modules', { count: item.milestoneCount })
-      : undefined,
+    item.milestoneCount != null ? milestoneCountText(item.milestoneCount) : undefined,
     entry?.estimatedMinutes
       ? t('packageBrowser.time', 'About {{minutes}} min', { minutes: entry.estimatedMinutes })
       : undefined,
@@ -55,8 +54,8 @@ export function DiscoverMoreCard({
       testId={testIds.learningPaths.discoverMoreCard(item.id)}
       actionTestId={testIds.learningPaths.discoverMoreStart(item.id)}
       disclosureTestId={testIds.learningPaths.discoverMoreExpand(item.id)}
-      disclosureLabel={entry?.memberIds?.length ? t('learningCard.showModules', 'Show modules') : undefined}
-      collapseLabel={entry?.memberIds?.length ? t('learningCard.hideModules', 'Hide modules') : undefined}
+      disclosureLabel={entry?.memberIds?.length ? t('learningCard.showModules', 'Show milestones') : undefined}
+      collapseLabel={entry?.memberIds?.length ? t('learningCard.hideModules', 'Hide milestones') : undefined}
       details={
         entry?.memberIds?.length && progress ? (
           <CatalogDetails item={entry} items={items} scope={scope} progress={progress} />

@@ -1,3 +1,5 @@
+import { toAnalyticsValue } from '../lib/analytics-values';
+
 /**
  * Launch source classification for the implied 0th step (initial-state alignment).
  *
@@ -155,4 +157,10 @@ export function coerceLaunchSource(source: string | null | undefined): LaunchSou
     return null;
   }
   return KNOWN_LAUNCH_SOURCES.has(source) ? (source as LaunchSource) : null;
+}
+
+// Launch sources can arrive from outside (`?source=`, other plugins), so only
+// our own kebab-case sources are renamed and every other value passes through.
+export function toAnalyticsLaunchSource(source: string): string {
+  return source === 'learning-hub' || source === 'navigate-action' ? toAnalyticsValue(source) : source;
 }

@@ -22,6 +22,8 @@ import {
 } from '../../types/package.schema';
 import { defaultPackageId } from '../utils/auto-id';
 import { newPackageState, PackageIOError, validatePackageState, writePackage } from '../utils/package-io';
+import { resolveAuthor } from '../utils/manifest-author';
+import { readGitUserName } from '../utils/local-identity';
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
 // Every field below is the same Zod instance the artifact schemas use for
@@ -39,6 +41,20 @@ export const CreateCommand = z.object({
   type: PackageTypeSchema.default('guide').describe('Package type').meta({ role: 'content' }),
   description: ManifestJsonObjectSchema.shape.description
     .describe('Short description shown in catalogs and recommenders')
+    .meta({ role: 'content' }),
+  authorName: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Who wrote the guide (manifest.author.name). Resolve it from context; ask the user if unclear. Defaults to pathfinder-mcp when omitted'
+    )
+    .meta({ role: 'content' }),
+  authorTeam: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Team that owns the guide (manifest.author.team)')
     .meta({ role: 'content' }),
 });
 
@@ -59,7 +75,10 @@ function deriveId(title: string): string | null {
  * Returns a structured `CommandOutcome` rather than printing directly so
  * `printOutcome` owns the rendering decision (text vs --quiet vs JSON).
  */
-export async function runCreate(args: CreateInput): Promise<CommandOutcome> {
+export async function runCreate(
+  args: CreateInput,
+  options: { localAuthorName?: () => string | undefined } = {}
+): Promise<CommandOutcome> {
   const id = args.id ?? deriveId(args.title);
   if (!id) {
     return {
@@ -83,7 +102,11 @@ export async function runCreate(args: CreateInput): Promise<CommandOutcome> {
 
   let state;
   try {
-    state = newPackageState({ id, title: args.title, type: args.type, description: args.description });
+    const author = resolveAuthor(undefined, {
+      supplied: { name: args.authorName, team: args.authorTeam },
+      localName: options.localAuthorName,
+    });
+    state = newPackageState({ id, title: args.title, type: args.type, description: args.description, author });
   } catch (err) {
     return {
       status: 'error',
@@ -124,6 +147,7 @@ export async function runCreate(args: CreateInput): Promise<CommandOutcome> {
       id,
       title: args.title,
       type: args.type,
+      author: state.manifest?.author?.name ?? '',
       schemaVersion: state.content.schemaVersion ?? '',
       repository: state.manifest?.repository ?? '',
       language: state.manifest?.language ?? '',
@@ -143,5 +167,11 @@ export const createSpec = defineCommand({
   name: 'create',
   summary: 'Create a new guide package directory with content.json and manifest.json',
   schema: CreateCommand,
-  run: runCreate,
+  run: (input) => runCreate(input),
+});
+
+/** The command line's `create`: the same spec, with git's `user.name` as the author when none is given. */
+export const createCliSpec = defineCommand({
+  ...createSpec,
+  run: (input) => runCreate(input, { localAuthorName: readGitUserName }),
 });

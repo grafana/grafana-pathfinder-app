@@ -114,25 +114,25 @@ The EchoSrv subscription, inferred datasource/visualization values, and change-l
 **Key Features**:
 
 - Monitors URL location changes via browser events and Grafana LocationService
-- Subscribes to EchoSrv-triggered context changes for datasource and visualization events
+- Subscribes to EchoSrv-triggered context changes, refreshing only when the detected datasource or visualization type changes
 - Centralizes debouncing using TimeoutManager to prevent competing refresh mechanisms
 - Separates context data loading from recommendation fetching for better performance
 - Manages recommendation expansion state and error handling
 - Provides action handlers for opening learning paths and docs pages
 - Refreshes recommendations when interactive progress is cleared
+- Skips the recommendations fetch when a refreshed context leaves `RECOMMENDATION_CONTEXT_FIELDS` (`recommendation-inputs.ts`) and the plugin config unchanged; progress clears, auto-open enrollment, `refreshContext()` and error results still refetch
+- Ignores context and recommendation responses superseded by a newer request, and keeps the current list on screen until its replacement arrives
 
 **Return Shape**:
 
 - `contextData` - Current context data (path, tags, datasources, dashboard info, etc.)
-- `isLoadingRecommendations` - Whether recommendations are currently being fetched
-- `otherDocsExpanded` - Whether the "other docs" section is expanded
+- `isLoadingRecommendations` - Whether recommendations are being fetched, or have not been fetched yet
 - `refreshContext()` - Manually trigger a context refresh
 - `refreshRecommendations()` - Manually trigger a recommendations refresh
 - `openLearningJourney(url, title)` - Open a learning path in the panel
 - `openDocsPage(url, title)` - Open a docs page in the panel
 - `toggleSummaryExpansion(url)` - Toggle recommendation summary expansion
 - `navigateToPath(path)` - Navigate to a Grafana path
-- `toggleOtherDocsExpansion()` - Toggle other docs section visibility
 
 **Backward-compatible Hooks**:
 
@@ -152,7 +152,7 @@ The engine detects context through multiple sources:
    - `grafana_ds_test_datasource_clicked` - Datasource testing (workaround for edit detection)
    - `dashboards_dspicker_clicked` - Dashboard datasource selection
    - `dashboards_panel_plugin_picker_clicked` - Visualization type selection
-   - `data-request` (meta-analytics) - Active query execution in Explore or dashboards
+   - `data-request` (meta-analytics) - Active query execution in Explore or dashboards. Requests from Grafana's built-in `datasource` type (annotations, `-- Grafana --`, mixed) still notify listeners but don't change the detected datasource.
 
 3. **Backend APIs** - Fetches structured data from Grafana REST APIs:
    - `/api/datasources` - All configured datasources with types and metadata
@@ -398,7 +398,7 @@ Recommendations are filtered by accuracy and ordered by context:
 - Static links: 0.7 (good confidence)
 - Confidence threshold: 0.5 (recommendations below this are filtered out)
 
-**Ordering**: see [Contextual ordering](#contextual-ordering). Relevance evidence, completion and match accuracy decide order; content format (interactive, then learning path, then docs page) only breaks ties between otherwise equal candidates. Featured recommendations are server-curated and render in the Featured grid.
+**Ordering**: see [Contextual ordering](#contextual-ordering). Relevance evidence, completion and match accuracy decide order; content format (interactive, then learning path, then docs page) only breaks ties between otherwise equal candidates. Featured recommendations retain server order ahead of contextual matches in the sidebar hub.
 
 **Filtering Rules**:
 
@@ -483,8 +483,9 @@ remove candidates. Stronger context and completion take precedence. Content
 format, a starting location on the current page, editorial status and canonical
 identity order otherwise-ready peers. Explicit suggestions and auto-open experiment placements
 retain priority. Server-featured editorial picks (`editorialFeatured`) render in
-the Featured grid above the contextual list, as do suggestions and experiment
-placements, and report `featured_card_button`. Local matching retains its existing vocabulary
+the sidebar hub ahead of the contextual list, as do suggestions and experiment
+placements. The first visible guide reports `hub_featured_card`; subsequent rows use
+`hub_more_recommended` or `hub_other_docs` according to their visible section. Local matching retains its existing vocabulary
 and rejects unsupported predicates; its route evidence does not expand eligibility.
 
 Observed data-source and visualization selections expire after five minutes and

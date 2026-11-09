@@ -187,7 +187,7 @@ type customGuideStats struct {
 // invariant. Zero is a legitimate count, so a missing member would otherwise be
 // laundered into a plausible denominator, and a negative one is not a
 // denominator at all. Either way the stamp reads as ABSENT, the way
-// `completion-denominator-authority` requires. It reports no error, so an
+// `guide-stats-stamp-contract` requires. It reports no error, so an
 // unusable stamp degrades to an absent one instead of aborting the surrounding
 // spec the way a returned error would.
 func (s *customGuideStats) UnmarshalJSON(data []byte) error {

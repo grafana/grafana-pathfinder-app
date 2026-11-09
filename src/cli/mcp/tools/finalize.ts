@@ -28,6 +28,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { readGitUserName } from '../../utils/local-identity';
+import { withManifestAuthor } from '../../utils/manifest-author';
 import { runValidate } from '../../commands/validate';
 import { renderMachineJson } from '../../utils/output';
 import { projectManifestForCrd } from '../lib/crd-manifest';
@@ -56,9 +58,9 @@ const SessionTokenSchema = SessionTokenBase.describe(
 
 export function registerFinalizeTool(
   server: McpServer,
-  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
+  options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string; identityFromEnvironment?: boolean }
 ): void {
-  const { sessionStore, mcpSessionId } = options;
+  const { sessionStore, mcpSessionId, identityFromEnvironment } = options;
   server.registerTool(
     'pathfinder_finalize_for_app_platform',
     {
@@ -78,7 +80,7 @@ export function registerFinalizeTool(
     },
     async ({ artifact, sessionToken, status }) =>
       withToolErrorEnvelope(typeof sessionToken === 'string' ? sessionToken : undefined, 'finalize', () =>
-        finalizeImpl({ artifact, sessionToken, status, sessionStore, mcpSessionId })
+        finalizeImpl({ artifact, sessionToken, status, sessionStore, mcpSessionId, identityFromEnvironment })
       )
   );
 }
@@ -89,18 +91,18 @@ async function finalizeImpl(args: {
   status: 'draft' | 'published';
   sessionStore: AuthoringSessionStore;
   mcpSessionId: string | undefined;
+  identityFromEnvironment?: boolean;
 }): Promise<ToolResult> {
-  const { artifact, sessionToken, status, sessionStore, mcpSessionId } = args;
+  const { artifact, sessionToken, status, sessionStore, mcpSessionId, identityFromEnvironment } = args;
   const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
   if (!resolved.ok) {
     return resolved.response;
   }
   const content = resolved.content;
-  const manifest = resolved.manifest;
 
   const validation = runValidate({
     content,
-    manifest,
+    manifest: resolved.manifest,
     manifestSchemaVersionAuthored: resolved.manifestAuthored,
   });
 
@@ -118,6 +120,11 @@ async function finalizeImpl(args: {
       true
     );
   }
+
+  // Filled after validation, so missing metadata can never make a guide invalid.
+  const manifest = withManifestAuthor(resolved.manifest as Record<string, unknown> | undefined, content, {
+    localName: identityFromEnvironment ? readGitUserName : undefined,
+  });
 
   const id = String(content.id);
   const title = String(content.title ?? '');

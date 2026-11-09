@@ -3,6 +3,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2, Button } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
+import { toAnalyticsValue } from '../../lib/analytics-values';
 import { buildAssistantStorageKey } from '../../lib/storage-keys';
 import { type DatasourceMetadataArtifact } from './tools';
 import { AssistantBlockValueProvider } from './AssistantBlockValueContext';
@@ -157,7 +158,7 @@ export function AssistantBlockWrapper({
               { assistantId, assistantType, contentKey, inline: false },
               {
                 datasource_type: ctx.datasourceType,
-                block_type: ctx.blockType,
+                block_type: toAnalyticsValue(ctx.blockType),
                 original_length: defaultValue.length,
                 customized_length: customized.length,
                 used_workaround: true,
@@ -204,7 +205,7 @@ export function AssistantBlockWrapper({
       UserInteraction.AssistantCustomizeClick,
       buildAssistantCustomizableProperties(getAnalyticsContext(), {
         datasource_type: datasourceType,
-        block_type: blockType,
+        block_type: toAnalyticsValue(blockType),
       })
     );
 
@@ -300,7 +301,7 @@ Return only the customized content text.`;
               UserInteraction.AssistantCustomizeSuccess,
               buildAssistantCustomizableProperties(getAnalyticsContext(), {
                 datasource_type: datasourceType,
-                block_type: blockType,
+                block_type: toAnalyticsValue(blockType),
                 original_length: defaultValue.length,
                 customized_length: customized.length,
                 used_real_metadata: hasSupportedDatasource && metadataArtifact !== null,
@@ -322,7 +323,7 @@ Return only the customized content text.`;
           UserInteraction.AssistantCustomizeError,
           buildAssistantCustomizableProperties(getAnalyticsContext(), {
             datasource_type: datasourceType,
-            block_type: blockType,
+            block_type: toAnalyticsValue(blockType),
             error_message: errorMessage,
           })
         );
@@ -354,7 +355,7 @@ Return only the customized content text.`;
       reportAppInteraction(
         UserInteraction.AssistantRevertClick,
         buildAssistantCustomizableProperties(getAnalyticsContext(), {
-          block_type: blockType,
+          block_type: toAnalyticsValue(blockType),
         })
       );
     } catch (error) {

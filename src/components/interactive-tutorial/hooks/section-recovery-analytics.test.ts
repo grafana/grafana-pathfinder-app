@@ -50,7 +50,7 @@ it('describes a pause without selectors, naming the section only for published g
   });
 });
 
-it('sends no guide or section identity for a private guide', () => {
+it('sends a private guide id but no section id', () => {
   reportSectionRecoveryEvent(
     { kind: 'restore', outcome: 'failed', durationMs: 412, failure: 'repair_failed' },
     plan,
@@ -58,8 +58,9 @@ it('sends no guide or section identity for a private guide', () => {
     { guideSource: 'app-platform', guideId: 'internal-runbook', sourceConfirmed: true }
   );
   expect(reportAppInteraction).toHaveBeenCalledWith('section_recovery_restore', {
-    guide_source: 'app-platform',
+    guide_source: 'app_platform',
     guide_visibility: 'private',
+    guide_id: 'internal-runbook',
     step_action: 'button',
     outcome: 'failed',
     duration_ms: 412,

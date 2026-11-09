@@ -23,7 +23,7 @@ import {
   buildInteractiveStepProperties,
   type StepSkipReason,
 } from '../../lib/analytics';
-import { NavigationManager } from '../../interactive-engine';
+import { NavigationManager, performedStepPercent } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
 import {
@@ -1008,7 +1008,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             <div className="interactive-guided-progress">
               <div
                 className="interactive-guided-progress-fill"
-                style={{ width: `${(currentStepIndex / internalActions.length) * 100}%` }}
+                style={{
+                  width: `${performedStepPercent(currentStepIndex + (currentStepStatus === 'completed' ? 1 : 0), internalActions.length)}%`,
+                }}
               />
               <div
                 className="interactive-guided-progress-active"

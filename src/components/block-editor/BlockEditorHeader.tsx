@@ -42,6 +42,8 @@ export interface BlockEditorHeaderProps {
   onOpenTour: () => void;
   /** Callback to open guide library */
   onOpenGuideLibrary: () => void;
+  /** Callback to open the guide details modal (author and team) */
+  onOpenGuideDetails: () => void;
   /** Callback to open import modal */
   onOpenImport: () => void;
   /** Callback to copy JSON to clipboard */
@@ -101,6 +103,7 @@ export function BlockEditorHeader({
   onTitleCommit,
   onOpenTour,
   onOpenGuideLibrary,
+  onOpenGuideDetails,
   onOpenImport,
   onCopy,
   onDownload,
@@ -253,6 +256,7 @@ export function BlockEditorHeader({
             onToggleSelectionMode={onToggleSelectionMode}
             onNewGuide={onNewGuide}
             onOpenGuideLibrary={onOpenGuideLibrary}
+            onOpenGuideDetails={onOpenGuideDetails}
             onOpenImport={onOpenImport}
             onCopy={onCopy}
             onDownload={onDownload}

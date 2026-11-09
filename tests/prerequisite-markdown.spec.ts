@@ -64,7 +64,16 @@ const standaloneFixture: FixturePackage = {
     { id: 'standalone-docs', label: `[Open standalone docs](${DESTINATION_ORIGIN}/standalone)`, format: 'markdown' },
     { id: 'standalone-literal', label: PLAIN_LABEL },
   ],
-  blocks: [{ type: 'markdown', content: 'Standalone guide body.' }],
+  // An interactive step keeps a guide that fits on screen from completing on open.
+  blocks: [
+    { type: 'markdown', content: 'Standalone guide body.' },
+    {
+      type: 'interactive',
+      action: 'highlight',
+      reftarget: "[data-testid='data-testid Command palette trigger']",
+      content: 'Standalone interactive step.',
+    },
+  ],
 };
 
 const summaryFixture: FixturePackage = {
@@ -221,11 +230,11 @@ test.describe('restricted Markdown prerequisites', () => {
     await expect(page.getByTestId(testIds.docsPanel.container)).toBeVisible();
 
     const card = page
-      .getByTestId(/context-panel-recommendation-card-/)
+      .getByTestId(/^sidebar-hub-(featured|row-\d+)$/)
       .filter({ has: page.getByText(summaryFixture.title, { exact: true }) });
     await expect(card).toBeVisible({ timeout: 30_000 });
     expect(routes.packageFeedRequests()).toBeGreaterThan(0);
-    await card.getByTestId(/context-panel-recommendation-summary-/).click();
+    await card.getByTestId(/^sidebar-hub-(featured-toggle|row-toggle-\d+)$/).click();
 
     await expectLiteralPrerequisite(card);
     await expectSecurePopup(page, card, 'Open summary docs', `${DESTINATION_ORIGIN}/summary`);

@@ -33,6 +33,11 @@ Auth strategy by transport:
 - **Stdio.** No auth at the MCP layer. The MCP server runs as a child process of a local MCP client (Cursor, Claude Desktop) and trusts the local user. This is the same trust model every stdio-transport MCP server uses.
 - **HTTP (hosted).** Open + edge-mitigated. The dominant threat is cost (DoS / runaway compute on a public CPU-bound endpoint), not compromise — the MCP holds no privileged resource. Mitigations are autoscaling ceilings, per-IP edge rate limits, request size caps, and CPU/wallclock budgets per call. None require an identity provider, which preserves the OSS / airgapped story. If usage patterns shift, adding a token verifier later does not change the tool surface.
 
+**Guide author.** The MCP never authenticates the caller, so it never infers the author from the request. `pathfinder_create_package` takes `authorName` and `authorTeam`; the author lives in the manifest, so the session carries it to later calls. With none supplied, the author is `pathfinder-mcp`, and `pathfinder_finalize_for_app_platform` applies the same default to a manifest that never went through create. A supplied author is never overwritten; a fallback author (`pathfinder-mcp` or the block editor's `pathfinder-block-editor`) may be replaced only by a real identity. `pathfinder_authoring_start` tells the agent to resolve the author from context, ask the user when it is unclear, and accept `pathfinder-mcp` if they do not answer.
+
+- **Stdio** runs as the author, so with no author supplied it falls back to git's `user.name` before `pathfinder-mcp` (`identityFromEnvironment` in the server build options, turned on only by the stdio transport).
+- **HTTP (hosted)** never reads the server's git, OS, or environment identity — that would stamp the host's identity on a stranger's guide. The author is the supplied value or `pathfinder-mcp`; identity headers and MCP `clientInfo` are not used.
+
 Pathfinder is OSS, the authoring tools are publicly available on GitHub, and the agent's authority to write into a Grafana instance is delegated downstream through the App Platform path. There is no new identity provider, rate limiter, or tenant model introduced by the MCP layer itself.
 
 ### The MCP server does not write to App Platform — by deployment design
@@ -101,7 +106,7 @@ The two modes are mutually exclusive per call (mixing returns `INPUT_MODE_AMBIGU
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `pathfinder_authoring_start`           | **First tool.** Returns domain framing, workflow, discovery hints, and block-type names                                         |
 | `pathfinder_help`                      | Translates a bound CLI command/subcommand's help into the camelCase parameter interface imported runners receive                |
-| `pathfinder_create_package`            | Runs CLI `create` from a help-derived `opts` bag and returns the initialized artifact                                           |
+| `pathfinder_create_package`            | Runs CLI `create` from a help-derived `opts` bag (including `authorName` / `authorTeam`) and returns the initialized artifact   |
 | `pathfinder_manage_block`              | Add, edit, or remove blocks, or append steps/choices/hints, via a CLI-named `operation` plus an opaque, help-derived `opts` bag |
 | `pathfinder_manage_guide`              | Guide-level writes; currently `operation: "set-manifest"` plus an opaque `opts` bag                                             |
 | `pathfinder_read_session`              | MCP-native session reads with an explicit top-level Zod schema                                                                  |

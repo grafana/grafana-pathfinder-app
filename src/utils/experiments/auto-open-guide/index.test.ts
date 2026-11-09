@@ -144,7 +144,7 @@ it('opens the matched guide for treatment with one exposure and an attributed ou
     AUTO_OPEN_GUIDE_EXPERIMENT_GROUP,
     'treatment'
   );
-  expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('auto_open_guide_experiment', 'auto-open');
+  expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('auto_open_guide_experiment', 'auto_open');
   expect(installAutoLaunchOnMount).toHaveBeenCalledWith(expect.objectContaining({ url: 'bundled:explore-guide' }));
   expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
   expect(getAutoOpenGuideEnrollment()?.variant).toBe('treatment');

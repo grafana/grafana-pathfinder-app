@@ -29,7 +29,7 @@ import { buildGraphSpec } from './commands/build-graph';
 import { buildRepositorySpec } from './commands/build-repository';
 import { buildSnippetsSpec } from './commands/build-snippets';
 import { buildStatsSpec } from './commands/build-stats';
-import { createSpec } from './commands/create';
+import { createCliSpec } from './commands/create';
 import { e2eSpec } from './commands/e2e';
 import { editBlockSpec } from './commands/edit-block';
 import { findGuidesSpec } from './commands/find-guides';
@@ -169,7 +169,7 @@ const ENTRIES: readonly CommandEntry[] = Object.freeze([...COMMAND_MANIFEST, ...
 
 // Mount all commands from their specs and presentations.
 const RENDERED: Record<string, Command> = {
-  create: mountCommander(createSpec, PRESENTATIONS.create),
+  create: mountCommander(createCliSpec, PRESENTATIONS.create),
   'add-block': mountCommanderGroup(addBlockGroup, PRESENTATIONS['add-block']),
   'add-step': mountCommander(addStepSpec, PRESENTATIONS['add-step']),
   'add-choice': mountCommander(addChoiceSpec, PRESENTATIONS['add-choice']),

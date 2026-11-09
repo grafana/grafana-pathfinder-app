@@ -18,7 +18,6 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
       return helpNode.children.map((child) => ({
         key: child.id || child.text.toLowerCase().replace(/\s+/g, '-'),
         label: child.text,
-        icon: (child.icon || 'question-circle') as any,
         href: child.url,
         target: child.target,
         onClick: child.onClick,
@@ -40,16 +39,19 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   }
 
   return (
-    <div className={`${styles.helpFooter} ${className || ''}`} data-testid={testIds.helpFooter.container}>
-      <div className={styles.helpButtons}>
+    <div className={`${styles.compactFooter} ${className || ''}`} data-testid={testIds.helpFooter.container}>
+      <div className={styles.compactLinks}>
         {helpButtons.map((button: any, index: number) => {
+          const common = {
+            variant: 'secondary' as const,
+            size: 'sm' as const,
+            className: styles.compactLink,
+          };
           if (button.href) {
             return (
               <LinkButton
                 key={button.key}
-                variant="secondary"
-                size="sm"
-                icon={button.icon}
+                {...common}
                 href={button.href}
                 target={button.target || '_blank'}
                 data-testid={testIds.helpFooter.link(index)}
@@ -60,25 +62,14 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
           }
 
           return (
-            <Button
-              key={button.key}
-              variant="secondary"
-              size="sm"
-              icon={button.icon}
-              onClick={button.onClick}
-              data-testid={testIds.helpFooter.link(index)}
-            >
+            <Button key={button.key} {...common} onClick={button.onClick} data-testid={testIds.helpFooter.link(index)}>
               {button.label}
             </Button>
           );
         })}
       </div>
 
-      {versionInfo && (
-        <div className={styles.versionInfo}>
-          <div className={styles.versionText}>{versionInfo}</div>
-        </div>
-      )}
+      {versionInfo && <div className={styles.compactVersion}>{versionInfo}</div>}
     </div>
   );
 };

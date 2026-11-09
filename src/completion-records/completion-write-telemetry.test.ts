@@ -33,7 +33,9 @@ describe('reportCompletionWriteDegradation', () => {
     reportCompletionWriteDegradation(reason);
 
     expect(mockPushFaroEvent).toHaveBeenCalledTimes(1);
-    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_completion_write_degraded', { reason });
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_completion_write_degraded', {
+      reason: reason.replace('-', '_'),
+    });
   });
 
   it('attaches the reason class and nothing else', () => {

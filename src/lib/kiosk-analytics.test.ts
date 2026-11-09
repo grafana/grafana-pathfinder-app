@@ -31,22 +31,22 @@ it('allowlists data source interaction metadata without forwarding values or aut
 });
 
 it('reports product opens with a bounded rule id', () => {
-  reportKioskInteraction('presentation', 3, { component: 'guide-links', action: 'open_product', ruleId: 'synthetic' });
+  reportKioskInteraction('presentation', 3, { component: 'guide_links', action: 'open_product', ruleId: 'synthetic' });
   expect(reportAppInteraction).toHaveBeenLastCalledWith('kiosk_interaction', {
     launch_mode: 'presentation',
     block_index: 3,
-    component: 'guide-links',
+    component: 'guide_links',
     action: 'open_product',
     rule_id: 'synthetic',
   });
   reportKioskInteraction('instance', undefined, {
-    component: 'guide-links',
+    component: 'guide_links',
     action: 'open_product',
     ruleId: 'https://private.example/rule',
   });
   expect(reportAppInteraction).toHaveBeenLastCalledWith('kiosk_interaction', {
     launch_mode: 'instance',
-    component: 'guide-links',
+    component: 'guide_links',
     action: 'open_product',
   });
 });
@@ -54,7 +54,7 @@ it('reports product opens with a bounded rule id', () => {
 it('correlates pre-launch inputs, submit, and exit without a guide session', () => {
   const session = startKioskSession('dem');
   reportKioskInteraction('instance', 0, { component: 'input', action: 'change', inputIndex: 0, inputType: 'text' });
-  reportKioskInteraction('instance', 0, { component: 'launch-form', action: 'submit' });
+  reportKioskInteraction('instance', 0, { component: 'launch_form', action: 'submit' });
   reportKioskInteraction('instance', undefined, { component: 'kiosk', action: 'exit', method: 'escape' });
   for (const [, properties] of jest.mocked(reportAppInteraction).mock.calls.slice(-3)) {
     expect(properties).toEqual(expect.objectContaining({ kiosk_session_id: session.id, kiosk_name: 'dem' }));

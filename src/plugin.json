@@ -38,6 +38,15 @@
       "action": "grafana-pathfinder-app.docs:read",
       "addToNav": false,
       "defaultNav": false
+    },
+    {
+      "type": "page",
+      "name": "Learning insights",
+      "path": "/a/grafana-pathfinder-app/learning-insights",
+      "role": "Admin",
+      "action": "grafana-pathfinder-app.docs:read",
+      "addToNav": false,
+      "defaultNav": false
     }
   ],
   "extensions": {
@@ -72,7 +81,7 @@
     ]
   },
   "dependencies": {
-    "grafanaDependency": ">=12.3.0-0",
+    "grafanaDependency": ">=13.1.0-0",
     "plugins": []
   },
   "roles": [

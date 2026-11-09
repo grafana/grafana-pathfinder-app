@@ -97,6 +97,24 @@ describe('useMyAssignments', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it('is loaded at once without a namespace', () => {
+    mockNamespace = undefined;
+
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+
+    expect(result.current.hasLoaded).toBe(true);
+  });
+
+  it('is loaded once the first fetch settles, including when it fails', async () => {
+    mockFetchMyAssignments.mockResolvedValue({ ok: false });
+
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+
+    expect(result.current.hasLoaded).toBe(false);
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+    expect(result.current.items).toEqual([]);
+  });
+
   it('resolves a fetched assignment into notDone', async () => {
     mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'fundamentals' })] });
 

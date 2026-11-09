@@ -24,12 +24,13 @@
  */
 
 import { summarizeGuideBlocks, TRANSPARENT_CONTAINER_BLOCK_TYPES } from '../../../lib/guide-stats';
+import { EDITOR_FALLBACK_AUTHOR, isFallbackAuthorName } from '../../../types/author-defaults';
 import { ParameterizedRequirementPrefix } from '../../../types/requirements.types';
 import { readAliasedField } from '../../../validation/normalize-guide-aliases';
 import type { JsonBlock, JsonGuide } from '../types';
 
 /** Every App Platform guide is app-platform-sourced; see `repository-identity-authority`. */
-const APP_PLATFORM_REPOSITORY = 'app-platform';
+export const APP_PLATFORM_REPOSITORY = 'app-platform';
 
 const ON_PAGE_PREFIX = ParameterizedRequirementPrefix.ON_PAGE;
 
@@ -39,7 +40,7 @@ const ON_PAGE_PREFIX = ParameterizedRequirementPrefix.ON_PAGE;
  * stamp instead of a wrong one — an absent denominator is recoverable, a
  * confidently wrong one is not.
  */
-const PLAIN_GUIDE_TYPE = 'guide';
+export const PLAIN_GUIDE_TYPE = 'guide';
 
 const TRANSPARENT_CONTAINERS: ReadonlySet<string> = new Set(TRANSPARENT_CONTAINER_BLOCK_TYPES);
 
@@ -224,6 +225,99 @@ function firstOnPage(requirements: unknown): string | undefined {
   return undefined;
 }
 
+/** Author fields the guide details modal edits. An unset field means "not chosen". */
+export interface GuideDetails {
+  authorName?: string;
+  team?: string;
+}
+
+/** Who is saving, and what they explicitly chose. Read by the caller so this module stays pure. */
+export interface ManifestAuthoring {
+  /** The signed-in user's `name`, else `login`; undefined when neither is usable. */
+  signedInName?: string;
+  details?: GuideDetails;
+}
+
+/** A name a save chose itself, and the placeholder it replaced, if any. */
+export interface DefaultedAuthor {
+  name: string;
+  replacedName?: string;
+}
+
+export interface ResolvedAuthor {
+  author: Record<string, unknown>;
+  /** Set only when this save chose the name itself, rather than keeping or being handed one. */
+  defaulted?: DefaultedAuthor;
+}
+
+function nonBlank(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+/**
+ * The author to persist, or `undefined` when the inherited one needs no change.
+ *
+ * - Name chosen in the guide details modal always wins.
+ * - Otherwise an inherited name is kept, so a later editor never overwrites whoever wrote the guide.
+ * - The exception is a placeholder name (`isFallbackAuthorName`): a real signed-in identity replaces
+ *   it, but one placeholder never replaces another.
+ * - With no name at all, the signed-in user's, else the editor placeholder.
+ *
+ * `team` is only ever set or cleared from the modal. A returned `undefined` leaves the inherited
+ * manifest byte-identical, which a no-op save of an authored guide depends on.
+ */
+export function resolveAuthor(inheritedAuthor: unknown, authoring: ManifestAuthoring = {}): ResolvedAuthor | undefined {
+  const inherited = asRecord(inheritedAuthor);
+  const inheritedName = nonBlank(inherited?.name);
+  const explicitName = nonBlank(authoring.details?.authorName);
+  const explicitTeam = authoring.details?.team === undefined ? undefined : authoring.details.team.trim();
+
+  let name = inheritedName;
+  let defaulted: DefaultedAuthor | undefined;
+  if (explicitName) {
+    name = explicitName;
+  } else if (!inheritedName || (isFallbackAuthorName(inheritedName) && authoring.signedInName)) {
+    name = authoring.signedInName ?? EDITOR_FALLBACK_AUTHOR;
+    defaulted = { name, ...(inheritedName ? { replacedName: inheritedName } : {}) };
+  }
+
+  const team = explicitTeam === undefined ? inherited?.team : explicitTeam || undefined;
+
+  if (name === inheritedName && team === inherited?.team) {
+    return undefined;
+  }
+
+  const author: Record<string, unknown> = { ...(inherited ?? {}), name };
+  if (team === undefined) {
+    delete author.team;
+  } else {
+    author.team = team;
+  }
+  return { author, defaulted };
+}
+
+/** The author name the next save writes. */
+export function authorNameToWrite(inheritedAuthor: unknown, authoring?: ManifestAuthoring): string {
+  const resolved = resolveAuthor(inheritedAuthor, authoring);
+  return resolved ? String(resolved.author.name) : (nonBlank(asRecord(inheritedAuthor)?.name) ?? '');
+}
+
+/** True when an explicit details choice differs from the author stored on the guide. */
+export function detailsDifferFromAuthor(storedAuthor: unknown, details: GuideDetails = {}): boolean {
+  const stored = asRecord(storedAuthor);
+  const storedTeam = typeof stored?.team === 'string' ? stored.team : '';
+  return (
+    (details.authorName !== undefined && details.authorName !== nonBlank(stored?.name)) ||
+    (details.team !== undefined && details.team !== storedTeam)
+  );
+}
+
+/** Layers the resolved author over `manifest`; an unchanged author leaves the manifest as it was. */
+export function applyAuthor(manifest: Record<string, unknown>, authoring?: ManifestAuthoring): Record<string, unknown> {
+  const resolved = resolveAuthor(manifest.author, authoring);
+  return resolved ? { ...manifest, author: resolved.author } : manifest;
+}
+
 /**
  * Builds the manifest to persist for `guide`, layered over `inherited` — the
  * `spec.manifest` last read off the resource, when there was one.
@@ -241,6 +335,10 @@ function firstOnPage(requirements: unknown): string | undefined {
  *   guide. A path or journey's stats are a rollup over every milestone's blocks
  *   (`rollUpGuideStats`), which the editor cannot see from a cover page.
  * - `additionalFields.startingLocation` — owned CONDITIONALLY; see below.
+ *
+ * - `author` — see `resolveAuthor`. Saving never blocks on it. `email` and
+ *   `gravatarUrl` are never written; `category`, `description`,
+ *   `minGrafanaVersion`, `testEnvironment` and `targeting` are not guessed.
  *
  * Everything else in `inherited` survives byte-identical, including any
  * `additionalFields` key this function does not own.
@@ -281,11 +379,13 @@ function firstOnPage(requirements: unknown): string | undefined {
  * @param inheritedBlocks - `spec.blocks` last read off the SAME resource. Omitted
  *   means no prior content is known, which leaves any inherited
  *   `startingLocation` unowned and therefore preserved.
+ * @param authoring - the signed-in user and the author's explicit details choices.
  */
 export function deriveManifest(
   guide: JsonGuide,
   inherited?: unknown,
-  inheritedBlocks?: unknown
+  inheritedBlocks?: unknown,
+  authoring?: ManifestAuthoring
 ): Record<string, unknown> {
   const base = { ...(asRecord(inherited) ?? {}) };
 
@@ -328,7 +428,7 @@ export function deriveManifest(
     delete manifest.additionalFields;
   }
 
-  return manifest;
+  return applyAuthor(manifest, authoring);
 }
 
 /** `spec.blocks` arrives off the wire, so anything but an array is "no content". */

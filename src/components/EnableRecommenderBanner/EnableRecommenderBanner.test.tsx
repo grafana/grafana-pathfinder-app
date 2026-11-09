@@ -7,6 +7,26 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { EnableRecommenderBanner } from './EnableRecommenderBanner';
 
+jest.mock('@grafana/ui', () => {
+  const actual = jest.requireActual('@grafana/ui');
+  return {
+    ...actual,
+    Button: React.forwardRef<HTMLButtonElement, React.ComponentProps<typeof actual.Button>>(
+      function Button(props, ref) {
+        return <actual.Button {...props} ref={ref} data-button-variant={props.variant ?? 'primary'} />;
+      }
+    ),
+  };
+});
+
+it('keeps the configuration action secondary to learning actions', () => {
+  render(<EnableRecommenderBanner />);
+  expect(screen.getByRole('button', { name: /go to plugin configuration/i })).toHaveAttribute(
+    'data-button-variant',
+    'secondary'
+  );
+});
+
 // Mock @grafana/runtime with mutable config
 jest.mock('@grafana/runtime', () => {
   const mockPush = jest.fn();

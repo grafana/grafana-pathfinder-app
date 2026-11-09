@@ -130,6 +130,9 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
             "type": "guide",
           },
           "manifest": {
+            "author": {
+              "name": "pathfinder-mcp",
+            },
             "id": "snapshot-fixture",
             "repository": "interactive-tutorials",
             "schemaVersion": "1.1.0",
@@ -248,6 +251,9 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
               "additionalFields": {
                 "schemaVersion": "1.1.0",
               },
+              "author": {
+                "name": "pathfinder-mcp",
+              },
               "repository": "interactive-tutorials",
               "type": "guide",
             },
@@ -314,10 +320,32 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
       description: 'Alerting enablement',
       milestones: ['alerting-intro', 'alerting-rules'],
       depends: [['grafana-basics']],
+      author: { name: 'pathfinder-mcp' },
       additionalFields: { schemaVersion: CURRENT_SCHEMA_VERSION },
     });
     // `spec.type` is not in the CRD — the API server prunes it with a warning.
     expect(spec).not.toHaveProperty('type');
+  });
+
+  it('keeps the path type when a path artifact carries no manifest', async () => {
+    const payload = await callFinalizeWithStore(new InMemorySessionStore(), {
+      artifact: {
+        content: {
+          id: 'alerting-path',
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          title: 'Alerting enablement',
+          type: 'path',
+          blocks: [{ type: 'markdown', id: 'm-1', content: 'hello' }],
+        },
+      },
+      status: 'draft',
+    });
+
+    expect(payload.status).toBe('ready');
+    expect((payload.artifact as { manifest: Record<string, unknown> }).manifest.type).toBe('path');
+    const spec = (payload.resource as { spec: { manifest: Record<string, unknown> } }).spec;
+    expect(spec.manifest.type).toBe('path');
+    expect(spec.manifest.author).toEqual({ name: 'pathfinder-mcp' });
   });
 });
 

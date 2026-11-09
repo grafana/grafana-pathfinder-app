@@ -1,6 +1,7 @@
 import { AppRootProps, GrafanaTheme2 } from '@grafana/data';
 import React, { useMemo, useEffect, Component, ReactNode } from 'react';
 import { SceneApp } from '@grafana/scenes';
+import { config } from '@grafana/runtime';
 import { Button, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
@@ -8,7 +9,9 @@ import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
 import { fullScreenPage } from '../../pages/fullScreenPage';
 import { browsePage } from '../../pages/browsePage';
+import { learningInsightsPage } from '../../pages/learningInsightsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
+import { getFeatureFlagValue } from '../../utils/openfeature';
 import { onPluginStart } from '../../context-engine';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { pauseFaroBeforeReload, pushFaroError } from '../../lib/faro';
@@ -128,7 +131,15 @@ const getErrorStyles = (theme: GrafanaTheme2) => ({
 
 function getSceneApp() {
   return new SceneApp({
-    pages: [homePage, docsPage, fullScreenPage, browsePage],
+    pages: [
+      homePage,
+      docsPage,
+      fullScreenPage,
+      browsePage,
+      ...(config.bootData?.user?.orgRole === 'Admin' && getFeatureFlagValue('pathfinder.learning-insights', false)
+        ? [learningInsightsPage]
+        : []),
+    ],
   });
 }
 

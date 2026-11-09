@@ -420,17 +420,6 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     },
   }),
 
-  deleteButton: css({
-    opacity: 0.7,
-    color: theme.colors.error.text,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      opacity: 1,
-      backgroundColor: theme.colors.error.transparent,
-    },
-  }),
-
   recordButton: css({
     color: theme.colors.error.text,
     opacity: 0.7,

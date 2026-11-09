@@ -65,7 +65,7 @@ describe('setupConfigAutoOpen', () => {
       pluginConfig: { openPanelOnLaunch: true },
     });
 
-    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('auto_open', 'auto-open');
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('auto_open', 'auto_open');
     jest.runAllTimers();
     expect(mockPublish).toHaveBeenCalledWith(expect.objectContaining({ type: 'open-extension-sidebar' }));
   });
@@ -73,7 +73,7 @@ describe('setupConfigAutoOpen', () => {
   it('opens the sidebar when the auto-open feature flag is enabled', () => {
     setupConfigAutoOpen({ currentPath: '/dashboards', featureFlagEnabled: true, pluginConfig: {} });
 
-    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('auto_open', 'auto-open');
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('auto_open', 'auto_open');
     jest.runAllTimers();
     expect(mockPublish).toHaveBeenCalled();
   });
@@ -112,7 +112,7 @@ describe('setupConfigAutoOpen', () => {
     mockGetLocation.mockReturnValue({ pathname: '/dashboards' });
     handler();
 
-    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('auto_open', 'auto-open');
+    expect(mockSetPendingOpenSource).toHaveBeenCalledWith('auto_open', 'auto_open');
     jest.runAllTimers();
     expect(mockPublish).toHaveBeenCalled();
   });

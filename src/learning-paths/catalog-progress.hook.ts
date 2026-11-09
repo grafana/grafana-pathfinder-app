@@ -83,7 +83,7 @@ export function useCatalogProgress(items: CatalogPackage[], scope: string): Map<
       })
       .catch(() => {
         if (!cancelled) {
-          setSnapshot({ scope, values: new Map() });
+          setSnapshot({ scope, values: new Map(items.map((item) => [item.key, { percent: 0 }])) });
         }
       });
     return () => {

@@ -65,8 +65,8 @@ func TestGuideProgress_GuideAndPath(t *testing.T) {
 	done := completionsFor(path, "2026-09-14T15:00:00Z")
 
 	guide := assignmentSpec{TargetType: "guide", TargetID: path.Guides[0], TargetSource: "bundled"}
-	if satisfiedFromGuides(mustGuideProgress(t, ev, guide, done[:1])) {
-		t.Error("a guide target is not evaluated")
+	if !satisfiedFromGuides(mustGuideProgress(t, ev, guide, done[:1])) {
+		t.Error("a guide target is evaluated directly")
 	}
 
 	asg := assignmentSpec{TargetType: "path", TargetID: path.ID}
@@ -114,8 +114,12 @@ func TestGuideProgress_AcceptCompletionsFrom(t *testing.T) {
 	if met(early) {
 		t.Error("a completion before acceptCompletionsFrom does not count")
 	}
+	if met(early, late) {
+		t.Error("a later partial record is not terminal evidence")
+	}
+	late.CompletionPercent = 100
 	if !met(early, late) {
-		t.Error("a later completion counts, including one after dueAt and under 100 percent")
+		t.Error("a later terminal completion counts, including one after dueAt")
 	}
 	exact := rec("user:1", "bundled", guideID, guideID, "interactive", "", "objectives", asg.AcceptCompletionsFrom, 100)
 	if !met(exact) {
@@ -154,6 +158,10 @@ func TestGuideProgress_PartialRecordDoesNotSatisfyAssignment(t *testing.T) {
 	if met(partial, otherGuide) {
 		t.Error("a completed record for a different guide does not satisfy the assignment")
 	}
+	partial.CompletedAt = "2026-06-01T15:00:00Z"
+	if met(partial) {
+		t.Error("a timestamp without terminal percentage does not satisfy the assignment")
+	}
 	if !met(completed) {
 		t.Error("a completed record satisfies the assignment")
 	}
@@ -169,8 +177,8 @@ func TestBundledPathGuides_FallsBackToPathIndex(t *testing.T) {
 	}
 	t.Cleanup(func() { pathIndexFetch = prev })
 
-	guides, found, err := bundledPathGuides(log.DefaultLogger)(context.Background(), "linux-server-integration", "")
-	if err != nil || !found || len(guides) != 1 || guides[0] != "select-platform" {
+	guides, found, err := bundledPathGuides(log.DefaultLogger)(context.Background(), "linux-server-integration", "", "")
+	if err != nil || !found || len(guides) != 1 || guides[0] != (assignmentGuideIdentity{GuideID: "select-platform", GuideSource: "bundled"}) {
 		t.Fatalf("guides = %v, found = %v, err = %v", guides, found, err)
 	}
 }
@@ -247,7 +255,7 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 			},
 		},
 		{
-			name: "App Platform path ignores a draft member",
+			name: "App Platform path with a draft member is unresolved",
 			setup: func(t *testing.T) (string, []completionRecordSpec) {
 				path := guideEntry("fe-alerting-path", "Alerting enablement", "published", "path")
 				path.Manifest.Milestones = []string{"fe-alerting-01", "fe-alerting-draft"}
@@ -260,7 +268,6 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 					rec("user:1", "app-platform", "fe-alerting-01", "Module 1", "interactive", "fe-alerting-path", "objectives", "2026-09-14T15:00:00Z", 100),
 				}
 			},
-			wantSatisfied: true,
 		},
 		{
 			name: "App Platform path partially done reports per-guide state",
@@ -278,15 +285,17 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 				withFetcherOverride(t, func(_ context.Context, rawURL string, _ int64) ([]byte, error) {
 					switch {
 					case strings.HasSuffix(rawURL, "repository.json"):
-						return []byte(`{"online-only-path": {"path": "online-only-path/v1", "type": "path"}}`), nil
+						return []byte(`{"online-only-path": {"path": "online-only-path/v1", "type": "path"}, "online-milestone-1":{"path":"guides/online-milestone-1","type":"guide"}}`), nil
 					case strings.HasSuffix(rawURL, "/online-only-path/v1/manifest.json"):
 						return []byte(`{"id": "online-only-path", "milestones": ["online-milestone-1"]}`), nil
+					case strings.HasSuffix(rawURL, "/guides/online-milestone-1/manifest.json"):
+						return []byte(`{}`), nil
 					default:
 						return nil, fmt.Errorf("unexpected URL %q", rawURL)
 					}
 				})
 				return "online-only-path", []completionRecordSpec{
-					rec("user:1", "bundled", "online-milestone-1", "Online milestone", "interactive", "online-only-path", "objectives", "2026-09-14T15:00:00Z", 100),
+					rec("user:1", "online-cdn", "online-milestone-1", "Online milestone", "interactive", "online-only-path", "objectives", "2026-09-14T15:00:00Z", 100),
 				}
 			},
 			wantSatisfied: true,
@@ -351,12 +360,14 @@ func TestMyAssignments_SatisfactionBySource(t *testing.T) {
 					case strings.HasSuffix(rawURL, "/online-tracked-path/v1/manifest.json"):
 						return []byte(`{"id": "online-tracked-path", "type": "path", "milestones": ["online-milestone-1"],
 							"tracks": [{"trackId": "ops", "label": "Ops", "guides": ["online-track-guide"]}]}`), nil
+					case strings.HasSuffix(rawURL, "/guides/online-track-slug/manifest.json"):
+						return []byte(`{"id":"online-track-guide"}`), nil
 					default:
 						return nil, fmt.Errorf("unexpected URL %q", rawURL)
 					}
 				})
 				return "online-tracked-path", []completionRecordSpec{
-					rec("user:1", "bundled", "online-track-slug", "Online track guide", "interactive", "online-tracked-path", "objectives", "2026-09-14T15:00:00Z", 100),
+					rec("user:1", "interactive-tutorials", "online-track-slug", "Online track guide", "interactive", "online-tracked-path", "objectives", "2026-09-14T15:00:00Z", 100),
 				}
 			},
 			wantSatisfied: true,

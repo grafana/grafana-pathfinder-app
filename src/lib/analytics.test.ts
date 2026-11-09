@@ -12,6 +12,7 @@ import type { JsonBlock } from '../types/json-guide.types';
 import { createChoiceProgressModel } from './guide-stats/choice-progress';
 import { reportInteraction } from '@grafana/runtime';
 import { pushFaroUserAction } from './telemetry/bridge';
+import { reportPathfinderSurface } from './telemetry/surface';
 import { computeGuideBlockIndex, guideProgress, type CountableBlock } from './guide-stats';
 import { evictAllGuideIndexes, publishGuideIndex } from '../global-state/active-guide-index';
 import { resetContentKeyForTests, setActiveTabUrl } from '../global-state/content-key';
@@ -36,6 +37,47 @@ jest.mock('./telemetry/bridge', () => ({
 
 const mockReportInteraction = reportInteraction as jest.Mock;
 const mockPushFaroUserAction = pushFaroUserAction as jest.Mock;
+
+describe('reportAppInteraction panel session', () => {
+  beforeEach(() => {
+    mockReportInteraction.mockClear();
+    mockPushFaroUserAction.mockClear();
+    reportPathfinderSurface('closed');
+  });
+  afterAll(() => reportPathfinderSurface('closed'));
+
+  it('omits the session properties while no panel session is open', () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'open' });
+    const props = mockReportInteraction.mock.calls.at(-1)![1];
+    expect(props).not.toHaveProperty('pathfinder_session_id');
+    expect(props).not.toHaveProperty('session_started_at');
+  });
+
+  it('puts the id on every event, session_started_at on the first, and ignores spoofed values', () => {
+    reportPathfinderSurface('sidebar');
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'open', pathfinder_session_id: 'spoof' });
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'close' });
+    const [first, second] = mockReportInteraction.mock.calls.map((c) => c[1]);
+    expect(first.pathfinder_session_id).not.toBe('spoof');
+    expect(second.pathfinder_session_id).toBe(first.pathfinder_session_id);
+    expect(typeof first.session_started_at).toBe('number');
+    expect(second).not.toHaveProperty('session_started_at');
+  });
+
+  it('keeps the id in the Faro mirror, including for private guides', () => {
+    reportPathfinderSurface('sidebar');
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open',
+      guide_url: 'backend-guide:private-resource',
+      guide_id: 'private-resource',
+    });
+    const rudder = mockReportInteraction.mock.calls.at(-1)![1];
+    const faro = mockPushFaroUserAction.mock.calls.at(-1)![1];
+    expect(faro.pathfinder_session_id).toBe(rudder.pathfinder_session_id);
+    expect(faro.session_started_at).toBe(rudder.session_started_at);
+    expect(faro).not.toHaveProperty('guide_id');
+  });
+});
 
 describe('reportAppInteraction', () => {
   it('keeps the analytics outcome while the experiments SDK owns its Faro mirror', () => {
@@ -66,6 +108,88 @@ describe('reportAppInteraction', () => {
     expect(JSON.stringify(payload)).not.toContain('private-resource');
     expect(JSON.stringify(payload)).not.toContain('Private');
   });
+  it.each(['other', 'unresolved'])(
+    'keeps %s identity in RudderStack and only the operational fields in Faro',
+    (source) => {
+      const properties = {
+        guide_source: source,
+        guide_visibility: 'private',
+        guide_id: 'customer-guide',
+        guide_title: 'Customer guide',
+        path_id: 'customer-path',
+        completion_source: 'objectives',
+        completion_percentage: 100,
+        total_block_count: 12,
+        completable_block_count: 8,
+      };
+      reportAppInteraction(UserInteraction.GuideCompleted, properties);
+      expect(mockReportInteraction).toHaveBeenCalledWith(
+        'pathfinder_guide_completed',
+        expect.objectContaining(properties)
+      );
+      expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_guide_completed', {
+        plugin_version: '1.0.0-test',
+        guide_source: source,
+        guide_visibility: 'private',
+        completion_source: 'objectives',
+        completion_percentage: 100,
+        total_block_count: 12,
+        completable_block_count: 8,
+      });
+    }
+  );
+
+  it('drops private journey identity from Faro', () => {
+    reportAppInteraction(UserInteraction.JourneyCompleted, {
+      guide_source: 'unresolved',
+      guide_visibility: 'private',
+      journey_id: 'customer-journey',
+      journey_title: 'Customer journey',
+      completion_source: 'manual',
+    });
+    expect(mockPushFaroUserAction.mock.calls[0][1]).toEqual({
+      plugin_version: '1.0.0-test',
+      guide_source: 'unresolved',
+      guide_visibility: 'private',
+      completion_source: 'manual',
+    });
+  });
+
+  it('fully strips an App Platform guide completion from Faro', () => {
+    reportAppInteraction(UserInteraction.GuideCompleted, {
+      guide_source: 'app_platform',
+      guide_visibility: 'private',
+      guide_id: 'customer-guide',
+      guide_title: 'Customer guide',
+      completion_source: 'objectives',
+      total_block_count: 12,
+    });
+    expect(mockReportInteraction).toHaveBeenCalledWith(
+      'pathfinder_guide_completed',
+      expect.objectContaining({ guide_id: 'customer-guide', guide_title: 'Customer guide' })
+    );
+    expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_guide_completed', { plugin_version: '1.0.0-test' });
+  });
+
+  it('redacts a private path from Faro when its guide is public', () => {
+    reportAppInteraction(
+      UserInteraction.GuideCompleted,
+      {
+        guide_source: 'bundled',
+        guide_visibility: 'public',
+        guide_id: 'public-guide',
+        path_id: 'customer-path',
+      },
+      { privatePath: true }
+    );
+    expect(mockReportInteraction.mock.calls[0][1]).toMatchObject({
+      guide_id: 'public-guide',
+      path_id: 'customer-path',
+    });
+    expect(mockPushFaroUserAction.mock.calls[0][1]).toMatchObject({ guide_id: 'public-guide' });
+    expect(mockPushFaroUserAction.mock.calls[0][1]).not.toHaveProperty('path_id');
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     delete (window as any).__pathfinderKioskSessionId;
@@ -106,9 +230,9 @@ describe('reportAppInteraction', () => {
   it('includes the kiosk name on the panel-open event in both pipelines', () => {
     window.__pathfinderKioskSessionId = 'current-session';
     window.__pathfinderKioskName = 'customer-onboarding';
-    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'auto-open', source: 'kiosk_session' });
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, { action: 'auto_open', source: 'kiosk_session' });
     const expected = expect.objectContaining({
-      action: 'auto-open',
+      action: 'auto_open',
       source: 'kiosk_session',
       kiosk_session_id: 'current-session',
       kiosk_name: 'customer-onboarding',
@@ -141,13 +265,13 @@ describe('reportAppInteraction', () => {
 
     reportAppInteraction(UserInteraction.ShowMeButtonClick, {
       step_id: 'step-1',
-      content_type: 'interactive-guide',
+      content_type: 'interactive_guide',
     });
 
     const properties = mockReportInteraction.mock.calls[0][1];
     expect(properties.kiosk_session_id).toBe('kiosk-123');
     expect(properties.step_id).toBe('step-1');
-    expect(properties.content_type).toBe('interactive-guide');
+    expect(properties.content_type).toBe('interactive_guide');
     expect(properties.plugin_version).toBe('1.0.0-test');
   });
 });
@@ -339,12 +463,12 @@ describe('setupScrollTracking PanelScroll content_type', () => {
     fireScroll(el);
 
     const props = mockReportInteraction.mock.calls[0][1];
-    expect(props.page_type).toBe('learning-journey');
-    expect(props.content_type).toBe('learning-journey');
+    expect(props.page_type).toBe('learning_journey');
+    expect(props.content_type).toBe('learning_journey');
     cleanup();
   });
 
-  it('maps an interactive tab to the canonical interactive-guide content_type', () => {
+  it('maps an interactive tab to the canonical interactive_guide content_type', () => {
     const el = document.createElement('div');
     const activeTab = { type: 'interactive' as const, content: { url: 'https://example.com/guide' } };
 
@@ -353,7 +477,7 @@ describe('setupScrollTracking PanelScroll content_type', () => {
 
     const props = mockReportInteraction.mock.calls[0][1];
     expect(props.page_type).toBe('interactive');
-    expect(props.content_type).toBe('interactive-guide');
+    expect(props.content_type).toBe('interactive_guide');
     cleanup();
   });
 
@@ -410,7 +534,7 @@ describe('step events: block progress properties', () => {
 
     expect(props).toMatchObject({
       block_position: 2,
-      block_progress_rule_version: 'block-position-v1',
+      block_progress_rule_version: 'block-position-v2',
       guide_stats_version: 2,
       total_block_count: 6,
       completable_block_count: 2,
@@ -500,7 +624,7 @@ describe('step events: block progress properties', () => {
     });
     const properties = getGuideBlockCountProperties(GUIDE_KEY);
     expect(properties).toMatchObject({
-      block_progress_rule_version: 'choice-path-v1',
+      block_progress_rule_version: 'choice-path-v2',
       total_block_count: 2,
       active_block_count: 1,
     });
@@ -514,7 +638,7 @@ describe('step events: block progress properties', () => {
     publish();
 
     expect(getGuideBlockCountProperties(GUIDE_KEY)).toEqual({
-      block_progress_rule_version: 'block-position-v1',
+      block_progress_rule_version: 'block-position-v2',
       guide_stats_version: 2,
       total_block_count: 6,
       completable_block_count: 2,
@@ -580,7 +704,7 @@ describe('reportStepSkipped', () => {
         total_block_count: 3,
         completable_block_count: 1,
         section_count: 0,
-        block_progress_rule_version: 'block-position-v1',
+        block_progress_rule_version: 'block-position-v2',
       })
     );
   });

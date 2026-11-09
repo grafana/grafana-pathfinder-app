@@ -2,7 +2,9 @@ export * from './types';
 export * from './facade';
 export { normalizeTelemetryUrl } from './url';
 export {
+  getPanelSessionId,
   getPathfinderSurface,
+  takePanelSessionProperties,
   onPathfinderSurfaceChange,
   readPathfinderSurface,
   reportPathfinderSurface,

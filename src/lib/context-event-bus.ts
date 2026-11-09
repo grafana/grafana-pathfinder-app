@@ -15,6 +15,7 @@ interface BufferedEvent {
 
 const BUFFER_SIZE = 10;
 const BUFFER_TTL = 300000; // 5 minutes
+const BUILT_IN_DATASOURCE_TYPE = 'datasource';
 
 let echoLoggingInitialized = false;
 let currentDatasource: BufferedEvent | null = null;
@@ -209,7 +210,11 @@ export function initializeEchoLogging(): void {
           const datasourceType = event.payload?.datasourceType;
           const source = event.payload?.source;
           if (datasourceType && source) {
-            addToEventBuffer({ datasourceType, timestamp: Date.now(), source: `${source}-query` });
+            if (datasourceType === BUILT_IN_DATASOURCE_TYPE) {
+              notifyContextChange();
+            } else {
+              addToEventBuffer({ datasourceType, timestamp: Date.now(), source: `${source}-query` });
+            }
           }
         }
       },

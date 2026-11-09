@@ -1,12 +1,10 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
-// Container and layout styles
 export const getContainerStyles = (theme: GrafanaTheme2) => ({
   container: css({
     label: 'context-container',
-    backgroundColor: theme.colors.background.primary,
-    borderRadius: '0',
+    borderRadius: 0,
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -26,7 +24,7 @@ export const getContainerStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
-    padding: theme.spacing(1),
+    padding: theme.spacing(2),
     width: '100%',
     maxWidth: '100%',
     boxSizing: 'border-box',
@@ -46,50 +44,10 @@ export const getStateStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     margin: theme.spacing(1),
   }),
-  emptyContainer: css({
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
-  }),
 });
 
 // Recommendation card styles
 export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
-  recommendationsContainer: css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-  }),
-  recommendationsGrid: css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1),
-    width: '100%',
-    maxWidth: '100%',
-  }),
-  recommendationCard: css({
-    // Balanced tile padding on all sides
-    padding: theme.spacing(1.25),
-    width: '100%',
-    maxWidth: '100%',
-    boxSizing: 'border-box',
-    display: 'flex',
-    flexDirection: 'column',
-    minHeight: '100px',
-    // Visual definition for card elevation
-    backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-    '&:hover': {
-      borderColor: theme.colors.border.medium,
-      boxShadow: theme.shadows.z1,
-    },
-  }),
   compactCard: css({
     // Keep compact but balanced
     padding: theme.spacing(1),
@@ -292,29 +250,6 @@ export const getCardMetadataStyles = (theme: GrafanaTheme2) => ({
 
     // Special styling for 0% completion (not started)
     '&[data-completion="0"]': {
-      color: theme.colors.text.secondary,
-    },
-  }),
-  summaryButton: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    backgroundColor: 'transparent',
-    border: 'none',
-    padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
-    borderRadius: theme.shape.radius.default,
-    cursor: 'pointer',
-    color: theme.colors.text.link,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightRegular,
-    transition: 'all 0.2s ease',
-    '&:hover:not(:disabled)': {
-      backgroundColor: theme.colors.action.hover,
-      color: theme.colors.text.primary,
-    },
-    '&:disabled': {
-      opacity: 0.6,
-      cursor: 'not-allowed',
       color: theme.colors.text.secondary,
     },
   }),
@@ -547,261 +482,6 @@ export const getStepsStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-export const getFeaturedStyles = (theme: GrafanaTheme2) => ({
-  featuredSection: css({ marginBottom: theme.spacing(2), minWidth: 0 }),
-  featuredHeader: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    marginBottom: theme.spacing(1.5),
-  }),
-  featuredIcon: css({ color: theme.colors.warning.text }),
-  featuredTitle: css({
-    margin: 0,
-    fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    color: theme.colors.text.primary,
-  }),
-  featuredGrid: css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-    minWidth: 0,
-    width: '100%',
-  }),
-});
-
-export const getCustomGuidesStyles = (theme: GrafanaTheme2) => ({
-  customGuidesSection: css({
-    backgroundColor: 'transparent',
-  }),
-  customGuidesHeader: css({
-    padding: theme.spacing(0.5, 0),
-  }),
-  customGuidesToggle: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    width: '100%',
-    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.text.primary,
-    cursor: 'pointer',
-    fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.2s ease',
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
-  customGuidesCount: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.25),
-    marginLeft: 'auto',
-    marginRight: theme.spacing(1),
-    fontSize: '11px',
-    fontWeight: theme.typography.fontWeightRegular,
-    color: theme.colors.text.secondary,
-    backgroundColor: theme.colors.background.secondary,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
-    borderRadius: '12px',
-    border: 'none',
-    opacity: 0.8,
-  }),
-  customGuidesExpansion: css({
-    padding: theme.spacing(0),
-  }),
-  customGuidesLoading: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-  }),
-  customGuidesList: css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(0.75),
-  }),
-  customGuideItem: css({
-    // Kept for compatibility; custom guides now reuse recommendation card styles.
-  }),
-  customGuideCard: css({
-    borderColor: theme.isDark ? 'rgba(120, 189, 255, 0.35)' : 'rgba(31, 98, 192, 0.28)',
-    boxShadow: theme.isDark ? 'inset 0 0 0 1px rgba(120, 189, 255, 0.08)' : 'inset 0 0 0 1px rgba(31, 98, 192, 0.06)',
-  }),
-  customGuideTag: css({
-    display: 'inline-block',
-    fontSize: '11px',
-    fontWeight: theme.typography.fontWeightMedium,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
-    borderRadius: theme.shape.radius.pill,
-    width: 'fit-content',
-    lineHeight: 1.4,
-    backgroundColor: theme.isDark ? 'rgba(120, 189, 255, 0.16)' : 'rgba(31, 98, 192, 0.12)',
-    border: `1px solid ${theme.isDark ? 'rgba(120, 189, 255, 0.3)' : 'rgba(31, 98, 192, 0.24)'}`,
-    color: theme.isDark ? '#9cccff' : '#1f62c0',
-  }),
-  suggestedGuidesHeader: css({
-    padding: theme.spacing(0.5, 0),
-  }),
-  suggestedGuidesHeaderInner: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    width: '100%',
-    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
-    backgroundColor: 'transparent',
-    color: theme.colors.text.primary,
-    fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-  }),
-  suggestedGuidesToggle: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    width: '100%',
-    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.text.primary,
-    cursor: 'pointer',
-    fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.2s ease',
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
-  suggestedGuidesCount: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.25),
-    marginLeft: 'auto',
-    fontSize: '11px',
-    fontWeight: theme.typography.fontWeightRegular,
-    color: theme.colors.text.secondary,
-    backgroundColor: theme.colors.background.secondary,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
-    borderRadius: '12px',
-    border: 'none',
-    opacity: 0.8,
-  }),
-  // Sub-heading above the orphan-guide fallback list when a stack has both
-  // path/journey cards and standalone guides that belong to no path.
-  orphanGuidesHeading: css({
-    margin: theme.spacing(1.5, 0, 0.75, 0),
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    color: theme.colors.text.secondary,
-  }),
-});
-
-// Other docs section styles
-export const getOtherDocsStyles = (theme: GrafanaTheme2) => ({
-  otherDocsSection: css({
-    backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    overflow: 'hidden',
-  }),
-  otherDocsHeader: css({
-    backgroundColor: theme.colors.background.canvas,
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
-    padding: theme.spacing(1),
-  }),
-  otherDocsToggle: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    width: '100%',
-    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.text.primary,
-    cursor: 'pointer',
-    fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.2s ease',
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
-  otherDocsCount: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.25),
-    marginLeft: 'auto',
-    marginRight: theme.spacing(1),
-    fontSize: '11px',
-    fontWeight: theme.typography.fontWeightRegular,
-    color: theme.colors.text.secondary,
-    backgroundColor: theme.colors.background.secondary,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
-    borderRadius: '12px',
-    border: 'none',
-    opacity: 0.8,
-  }),
-  otherDocsExpansion: css({
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.background.secondary,
-  }),
-  otherDocsList: css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(0.75),
-  }),
-  otherDocItem: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1),
-    borderRadius: theme.shape.radius.default,
-    transition: 'background-color 0.2s ease',
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
-  docIcon: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '20px',
-    height: '20px',
-    color: theme.colors.text.secondary,
-    flexShrink: 0,
-  }),
-  docContent: css({
-    flex: 1,
-    minWidth: 0,
-  }),
-  docLink: css({
-    color: theme.colors.primary.main,
-    textDecoration: 'none',
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    lineHeight: 1.3,
-    backgroundColor: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    padding: 0,
-    textAlign: 'left',
-    width: '100%',
-    '&:hover': {
-      textDecoration: 'underline',
-      color: theme.colors.primary.shade,
-    },
-  }),
-  docActions: css({
-    display: 'flex',
-    alignItems: 'center',
-    color: theme.colors.text.secondary,
-    flexShrink: 0,
-  }),
-});
-
 // Debug section styles
 export const getDebugStyles = (theme: GrafanaTheme2) => ({
   debugSection: css({
@@ -822,8 +502,5 @@ export const getStyles = (theme: GrafanaTheme2) => ({
   ...getMilestoneStyles(theme),
   ...getDeferredSkeletonStyles(theme),
   ...getStepsStyles(theme),
-  ...getFeaturedStyles(theme),
-  ...getCustomGuidesStyles(theme),
-  ...getOtherDocsStyles(theme),
   ...getDebugStyles(theme),
 });

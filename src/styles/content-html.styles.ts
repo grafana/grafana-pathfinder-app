@@ -809,7 +809,7 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
   // Journey-specific standalone code blocks
   '& pre.journey-standalone-code': {
     backgroundColor: theme.colors.background.secondary,
-    borderLeft: `3px solid ${theme.colors.primary.main}`,
+    borderLeft: `3px solid ${theme.colors.accent?.main ?? theme.colors.primary.main}`,
     maxWidth: '100%',
     overflow: 'hidden',
     overflowX: 'auto',
@@ -1246,7 +1246,7 @@ const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
   // Docs-specific standalone code blocks
   '& pre.docs-standalone-code': {
     backgroundColor: theme.colors.background.secondary,
-    borderLeft: `3px solid ${theme.colors.primary.main}`,
+    borderLeft: `3px solid ${theme.colors.accent?.main ?? theme.colors.primary.main}`,
     maxWidth: '100%',
     overflow: 'hidden',
     overflowX: 'auto',

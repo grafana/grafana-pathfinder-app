@@ -138,7 +138,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 **Tier 4 — UI:**
 
 - `components/` — React + Scenes UI. Major panels: `App/App.tsx` (root), `docs-panel/docs-panel.tsx` (the panel hub), `Home/`, `interactive-tutorial/`, `LearningPaths/`, `LiveSession/`, `block-editor/`, `floating-panel/`, `full-screen/`, `kiosk/`, `PrTester/`.
-- `pages/` — Grafana Scenes routing. Entries: `homePage.ts`, `docsPage.ts`. Both registered by `App.tsx`.
+- `pages/` — Grafana Scenes routing. Entries: `homePage.ts`, `docsPage.ts`, and `learningInsightsPage.tsx` (current-org admin reporting at `/a/grafana-pathfinder-app/learning-insights`). Learning insights consumes `hooks/useLearningInsights.ts` and source-qualified reporting types; see `docs/developer/LEARNING_INSIGHTS.md` for metric and access semantics.
 
 **Excluded from tier analysis** (not subject to import-graph rules):
 
@@ -188,6 +188,13 @@ token itself. Completion records add the write half of that shape: a POST create
 coordinate, with identity stamped server-side and a deterministic idempotent name. The canonical
 pattern — including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
 
+Learning insights (`learning_insights.go`) is a deliberate reporting exception: `GET /learning-insights`
+requires the trusted current-org Admin role plus verified namespace-bound identity, reads as the caller
+via OBO, and never mutates assignment status. Every request makes fresh bounded reads; there is no
+reporting cache or stale replay (`Cache-Control: no-store`). Partial reads and unresolved assignments
+remain explicit, not false zero/outstanding. Broad raw GAP grants remain a known separate issue.
+For the full contract and read-only smoke procedure, see `docs/developer/LEARNING_INSIGHTS.md`.
+
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
 
@@ -201,7 +208,8 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `main.go`                           | Plugin entrypoint. Calls `app.Manage("grafana-pathfinder-app", plugin.NewApp, ...)`                                |
 | `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the per-user rate limiter (completion writes and `GET /assignments/my`). |
-| `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`.                      |
+| `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`; includes admin-only `GET /learning-insights`. |
+| `plugin/learning_insights.go`        | Read-only current-org reporting: fresh bounded namespace LISTs, terminal evidence deduplication in [from, to), recorded people union, and current assignment snapshot independent of chart period. No reporting cache. |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory). Owns `timeNow`. |
 | `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`): per-user collation of a namespace LIST behind a single-flight TTL cache with stale-serve. Backend proxy pattern §4-§7. |
 | `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform client for `completionrecords`: supplies group/version + resource, decodes each `items[].spec` for LISTs, and issues the create (POST) for the write path. |
@@ -222,7 +230,8 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 **Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
 
 `/package-recommendations`, `/completion-records` (POST create), `/completion-records/my`,
-`/completion-records/capability`, `/assignments/my`, `/custom-guide-repository`, `/health`.
+`/completion-records/capability`, `/assignments/my`, `/learning-insights` (GET, current-org Admin),
+`/custom-guide-repository`, `/health`.
 
 **Security boundaries:**
 

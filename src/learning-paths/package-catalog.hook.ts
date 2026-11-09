@@ -22,7 +22,8 @@ const ABSENT_ORGANIZATION_CAPABILITIES = new Set([
   'identity-unverifiable',
 ]);
 
-export function usePackageCatalog() {
+export function usePackageCatalog(options: { enabled?: boolean; publicOnly?: boolean } = {}) {
+  const { enabled = true, publicOnly = false } = options;
   const namespace = config.namespace || '';
   const scope = `${namespace}:${config.bootData?.user?.orgId ?? ''}:${config.bootData?.user?.id ?? ''}`;
   const local = useMemo(() => {
@@ -50,6 +51,9 @@ export function usePackageCatalog() {
   });
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     let cancelled = false;
     const publicRequest = fetchOnlinePackageRecommendations({ refresh: revision > 0 }).then((response) => {
       if (!cancelled) {
@@ -70,26 +74,28 @@ export function usePackageCatalog() {
         }));
       }
     });
-    const privateRequest = fetchCustomGuideCatalogue(namespace, { refresh: revision > 0 }).then((response) => {
-      if (!cancelled) {
-        setRemote((current) => ({
-          ...(current.scope === scope
-            ? current
-            : {
-                scope,
-                online: [],
-                organization: [],
-                loading: true,
-                publicUnavailable: false,
-                privateUnavailable: false,
-              }),
-          scope,
-          organization: organizationCatalog(response.entries),
-          privateUnavailable:
-            response.available === false && !ABSENT_ORGANIZATION_CAPABILITIES.has(response.reason ?? ''),
-        }));
-      }
-    });
+    const privateRequest = publicOnly
+      ? Promise.resolve()
+      : fetchCustomGuideCatalogue(namespace, { refresh: revision > 0 }).then((response) => {
+          if (!cancelled) {
+            setRemote((current) => ({
+              ...(current.scope === scope
+                ? current
+                : {
+                    scope,
+                    online: [],
+                    organization: [],
+                    loading: true,
+                    publicUnavailable: false,
+                    privateUnavailable: false,
+                  }),
+              scope,
+              organization: organizationCatalog(response.entries),
+              privateUnavailable:
+                response.available === false && !ABSENT_ORGANIZATION_CAPABILITIES.has(response.reason ?? ''),
+            }));
+          }
+        });
     void Promise.allSettled([publicRequest, privateRequest]).then(() => {
       if (!cancelled) {
         setRemote((current) => ({ ...current, scope, loading: false }));
@@ -98,7 +104,7 @@ export function usePackageCatalog() {
     return () => {
       cancelled = true;
     };
-  }, [namespace, scope, revision]);
+  }, [namespace, scope, revision, enabled, publicOnly]);
 
   const current = remote.scope === scope ? remote : undefined;
   const retry = useCallback(() => {
@@ -106,13 +112,21 @@ export function usePackageCatalog() {
     setRevision((value) => value + 1);
   }, []);
   const items = useMemo(
-    () => mergeCatalog(local.bundled, current?.online ?? [], local.curated, current?.organization ?? []),
-    [local, current]
+    () =>
+      enabled
+        ? mergeCatalog(
+            local.bundled,
+            current?.online ?? [],
+            local.curated,
+            publicOnly ? [] : (current?.organization ?? [])
+          )
+        : [],
+    [local, current, enabled, publicOnly]
   );
   return {
     scope,
     items,
-    loading: current?.loading ?? true,
+    loading: enabled && (current?.loading ?? true),
     publicUnavailable: current?.publicUnavailable ?? false,
     privateUnavailable: current?.privateUnavailable ?? false,
     retry,

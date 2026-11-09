@@ -1,5 +1,85 @@
 # Changelog
 
+## 2.26.0
+
+### Added
+
+- **Automatic guide completion**: Guides complete at their last completable block. Prose-only guides complete when the end of the guide is visible. (#2262)
+
+### Fixed
+
+- **Fresh, isolated PR previews**: PR previews fetch updated content after a push and keep preview progress separate from real guide completion records. (#2275)
+- **Completion after a reset**: A late objectives check from before a reset no longer completes a step twice or changes its completion origin. (#2292)
+- **Existing objectives on guide load**: With passive completion off, objectives already met when a guide opens no longer count as new learner progress. (#2256)
+- **Deep-link tab titles**: Learning paths opened from website links replace temporary tab titles with the fetched content title. (#2282)
+- **Sidebar hub spacing**: The Recommended tab uses the same page padding as Explore. (#2287)
+- **Guided steps across tabs**: Guided commands with a `noop` substep now reach the live tab instead of being rejected. (#2253)
+- **Reliable authoring selectors**: The element picker keeps the original selector if cleaning makes it stop uniquely matching the selected element. (#2268)
+- **Spanish translations**: Spanish navigation labels use sentence case. Interactive learning actions and settings now have Spanish text instead of empty or English strings. (#2303)
+
+### Security
+
+- **Go dependency security updates**: Update Go JOSE and related dependencies, including the follow-up RSA key validation fix. (#2187, #2277)
+- **Glob cancellation fix**: Update glob to address filesystem traversal that continues after cancellation. (#2272)
+- **Container base image updates**: Refresh Node.js and CA trust base images with security updates. (#2296, #2300, #2301)
+
+### Chore
+
+- **Sidebar hub enabled for everyone**: Remove the sidebar hub feature flag. The Recommended tab always uses the hub layout. (#2286)
+
+## 2.25.0
+
+### Added
+
+- **Admin learning insights**: Admins get a full-page Learning insights view of recorded learning across the organization, combining completion trends and assignment follow-up. A learner evidence panel explains which guides have credit and why. (#2218)
+- **Next step after a guide**: Finishing a guide shows an inline completion panel that celebrates the milestone and offers an explicit next step, such as continuing to the next milestone, without advancing automatically. (#2151)
+- **Sidebar learning hub**: With the feature flag on, the Recommended tab shows a welcome header, a My learning button, the top recommended course, a resume option, and progress tiles. (#2184)
+- **Automatic recovery for drifted sections**: When a learner drifts out of the state a section's steps set up, the section pauses with a single Restore button that puts the state back. (#2138)
+- **Sticky guide progress bar**: A progress bar pinned to the top of the guide panel shows overall completion at a glance. (#1973)
+- **Guide authors on save**: Guides saved from the block editor carry `manifest.author`, defaulting to the signed-in user, with a notice that lets the author change the name. (#2209)
+- **Author defaults in the authoring CLI and MCP**: Guide-producing tools fill in a default manifest author. (#2206)
+- **Author inheritance for learning-path guides**: `build-repository` gives a guide with no `author.name` the name from the nearest enclosing path or journey. (#2225)
+- **Profiles and Traces Drilldown paths**: The Cloud catalog includes the Profiles and Traces Drilldown journeys, so completing them counts in My learning and awards badges. (#2201)
+- **Session identifier for analytics**: Every `pathfinder_*` analytics event carries a `pathfinder_session_id` that spans one panel session. (#2223)
+- **Toggle step lint in the block editor**: Authors are nudged to declare a target state on button and highlight steps that target a toggle control. (#2157)
+
+### Fixed
+
+- **Nested sections rejected**: Schema validation rejects sections nested inside sections, including through conditional and assistant branches. (#2260)
+- **Guided tour progress**: The progress bar on guided tours now reaches 100%. (#1942)
+- **Closed tours stay closed**: Consumed guide deep links no longer re-enter Grafana router state, so a closed dashboard tour does not reopen when a user edits a panel or changes the time range. (#2239)
+- **Show me below the fold**: The page scrolls when a target sits in a sideways-scrolling wrapper that is below the fold, so the highlight is no longer drawn off-screen. (#2243)
+- **Progress after Mark complete**: Progress is dispatched only after the completion write has settled, so consumers see the updated state. (#2234)
+- **Command checks**: Automatic requirement and objective checks no longer run sandbox commands; they run only on an explicit action such as Check my work. (#2193)
+- **Suggested guides flicker**: The suggested guides list no longer blinks on navigation or dashboard auto-refresh. (#2213)
+- **Milestone starting location**: A milestone's own `startingLocation` takes precedence over its path's. (#2137)
+- **Two-tab links**: Ordinary links to Grafana pages open in the paired main tab and keep the reader on its guide. (#2192)
+- **Interactive window button**: The Open in interactive window button stays available after a guide loads during tab restoration. (#2181)
+- **Terminal reconnection**: Sandbox terminals reconnect automatically to the same VM after a plugin reload, with bounded retries and preserved scrollback. (#2149)
+- **Hidden item notes**: The hidden-item warning appears as a separate note below the tooltip instruction instead of being prepended to it. (#2136)
+- **Grafana visual refresh**: Learning surfaces follow Grafana's visual refresh, and destructive icon buttons use the standard destructive variant. (#2237, #2238)
+- **Featured descriptions**: Featured card descriptions show in full unless the card opts in to expanding. (#2219)
+- **Profiles Drilldown recommendation**: The Profiles Drilldown learning journey is recommended on Cloud. (#2195)
+- **Pyroscope docs matching**: Pyroscope connection docs match on both Echo datasource tags. (#2214)
+- **Terminal credential requests**: Terminal guide blocks use validated `credentials` requests instead of the dropped `gcx` field. (#2197)
+- **Kiosk catalog reporting**: Rejected catalog rules are counted in the load event and logged once per tier. (#2199)
+- **Analytics values**: Property values are reported in snake_case, public catalog topics are reported unbucketed, and private guide completions include guide identity. (#2222, #2221, #2196)
+- **Bundle size**: `module.js` is back under the entry bundle budget with an ES2022 target and lazy enablement imports. (#2250)
+- **CI and tooling**: Grafana 12 E2E startup timeouts, main-branch Playwright failure alerts, Windows `npm run check` launch, and BigQuery load failures are fixed. (#2182, #2180, #2049, #2217, #2215)
+- **Review-lite reports**: Stale reports and state are cleared before finish reads the result. (#2207)
+
+### Security
+
+- **CA trust base images**: Update the CA trust base images to pick up a security digest. (#2227)
+
+### Chore
+
+- **BigQuery catalog load**: The package catalog loads into BigQuery daily, scheduled at 02:07 UTC. (#2212, #2220, #2248)
+- **Review-lite skill**: Add a lighter single-reviewer review skill alongside `/review`. (#2200)
+- **Concern routing audit**: Fix concern routing and add learning-paths and kiosk-mode concerns. (#2208)
+- **Test coverage**: Cover section completion, nested visibility gates, Browse flag sync, and scheme precedence, and loosen a flaky parse-time bound. (#2242, #2202, #2185, #2186, #2249)
+- **E2E docs**: Document the runner-only fixture and RudderStack suppression helper. (#2161)
+
 ## 2.24.0
 
 ### Added

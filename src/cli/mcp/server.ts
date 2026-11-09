@@ -50,6 +50,13 @@ export interface BuildServerOptions {
    * mismatch surfaces as SESSION_NOT_FOUND. See `lib/session-pin.ts`.
    */
   mcpSessionId?: string;
+  /**
+   * Let guide-producing tools fall back to the host's git `user.name` when the
+   * caller names no author. Off by default: a hosted server must never read its
+   * own host's identity into a user's guide. Only the stdio transport, where the
+   * server runs as the author, turns it on.
+   */
+  identityFromEnvironment?: boolean;
 }
 
 export function buildServer(options: BuildServerOptions = {}): McpServer {
@@ -71,7 +78,11 @@ export function buildServer(options: BuildServerOptions = {}): McpServer {
   }
 
   const sessionStore = options.sessionStore ?? new InMemorySessionStore();
-  registerAuthoringTools(server, { sessionStore, mcpSessionId: options.mcpSessionId });
+  registerAuthoringTools(server, {
+    sessionStore,
+    mcpSessionId: options.mcpSessionId,
+    identityFromEnvironment: options.identityFromEnvironment === true,
+  });
 
   return server;
 }

@@ -17,6 +17,7 @@ const action = { targetAction: 'highlight' as const, refTarget: '#target' };
 
 function setup() {
   const navigation = {
+    getOwnedCommentBox: jest.fn(() => null),
     ensureNavigationOpen: jest.fn(),
     ensureElementVisible: jest.fn(),
     expandParentNavigationSection: jest.fn(),

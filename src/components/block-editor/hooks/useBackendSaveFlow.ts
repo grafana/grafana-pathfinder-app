@@ -13,6 +13,7 @@ import type { JsonGuide } from '../types';
 import { BACKEND_TRACKING_STORAGE_KEY } from '../constants';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
+import { detailsDifferFromAuthor, type DefaultedAuthor, type GuideDetails } from '../utils/derive-manifest';
 
 /**
  * Normalize a guide id or title into a Kubernetes-style resource name:
@@ -51,7 +52,7 @@ export interface BackendSaveFlowEditorInterface {
 /** A backend-tracked guide entry, as returned by useBackendGuides. */
 export interface BackendSaveFlowGuideEntry {
   metadata: { name: string; [key: string]: unknown };
-  spec: { title: string; status?: 'draft' | 'published' };
+  spec: { title: string; status?: 'draft' | 'published'; manifest?: Record<string, unknown> };
 }
 
 /** Minimal interface for backend guide management needed by this hook. */
@@ -62,8 +63,9 @@ export interface BackendSaveFlowGuidesInterface {
     existingResourceName?: string,
     existingMetadata?: any,
     status?: 'draft' | 'published',
-    replacesForeignResource?: boolean
-  ) => Promise<void>;
+    replacesForeignResource?: boolean,
+    details?: GuideDetails
+  ) => Promise<{ defaultedAuthor?: DefaultedAuthor } | void>;
   refreshGuides: () => Promise<BackendSaveFlowGuideEntry[]>;
   unpublishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
 }
@@ -73,6 +75,10 @@ export interface UseBackendSaveFlowOptions {
   editor: BackendSaveFlowEditorInterface;
   /** Backend guide list/save/refresh/unpublish operations */
   backendGuides: BackendSaveFlowGuidesInterface;
+  /** Author choices from the guide details modal, written at the next save. */
+  guideDetails?: GuideDetails;
+  /** Called with the name a save chose for a guide that had no real author, so the editor can say so. */
+  announceAuthor?: (defaulted: DefaultedAuthor) => void;
 }
 
 /**
@@ -105,8 +111,10 @@ export interface UseBackendSaveFlowReturn {
   publishedStatus: 'not-saved' | 'draft' | 'published';
   /** Guide JSON as of the last successful backend save (draft or published) */
   lastPublishedJson: string | null;
-  /** True when local content differs from the last backend save */
+  /** True when local content or guide details differ from the last backend save */
   hasUnsyncedChanges: boolean;
+  /** `spec.manifest.author` of the tracked guide as last read from the backend */
+  storedAuthor: unknown;
   /** Overwrite-conflict prompt state */
   confirmModal: BackendSaveFlowConfirmModal;
   /** Dismiss the confirm modal, invoking its onCancel */
@@ -126,7 +134,12 @@ export interface UseBackendSaveFlowReturn {
 /**
  * Backend draft/publish/unpublish orchestration for the block editor.
  */
-export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
+export function useBackendSaveFlow({
+  editor,
+  backendGuides,
+  guideDetails,
+  announceAuthor,
+}: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
   const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(
     () => readBackendTracking().resourceName
   );
@@ -135,12 +148,12 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
   );
   const [confirmModal, setConfirmModal] = useState<BackendSaveFlowConfirmModal>(CLOSED_CONFIRM_MODAL);
 
-  const currentGuideMetadata = currentGuideResourceName
-    ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.metadata ?? null)
-    : null;
-  const currentGuideBackendStatus = currentGuideResourceName
-    ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.spec.status ?? null)
-    : null;
+  const currentGuideEntry = currentGuideResourceName
+    ? backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)
+    : undefined;
+  const currentGuideMetadata = currentGuideEntry?.metadata ?? null;
+  const currentGuideBackendStatus = currentGuideEntry?.spec.status ?? null;
+  const storedAuthor = currentGuideEntry?.spec.manifest?.author;
 
   const publishedStatus: 'not-saved' | 'draft' | 'published' = !currentGuideResourceName
     ? 'not-saved'
@@ -150,7 +163,9 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
 
   const currentJson = JSON.stringify(editor.getGuide());
   const hasUnsyncedChanges =
-    publishedStatus !== 'not-saved' && lastPublishedJson !== null && currentJson !== lastPublishedJson;
+    publishedStatus !== 'not-saved' &&
+    ((lastPublishedJson !== null && currentJson !== lastPublishedJson) ||
+      detailsDifferFromAuthor(storedAuthor, guideDetails));
 
   // Persist backend tracking state to localStorage whenever it changes.
   useEffect(() => {
@@ -201,7 +216,17 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
         throw new Error('Guide title or ID must contain at least one alphanumeric character');
       }
 
-      await backendGuides.saveGuide(guide, resourceName, metadata, status, replacesForeignResource);
+      const saved = await backendGuides.saveGuide(
+        guide,
+        resourceName,
+        metadata,
+        status,
+        replacesForeignResource,
+        guideDetails
+      );
+      if (saved?.defaultedAuthor) {
+        announceAuthor?.(saved.defaultedAuthor);
+      }
 
       // Track the content that was last synced to the backend
       setLastPublishedJson(JSON.stringify(guide));
@@ -218,7 +243,7 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
         notify('success', isUpdate ? 'Draft updated.' : 'Guide saved as draft.');
       }
     },
-    [backendGuides]
+    [backendGuides, guideDetails, announceAuthor]
   );
 
   /**
@@ -353,6 +378,7 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
     publishedStatus,
     lastPublishedJson,
     hasUnsyncedChanges,
+    storedAuthor,
     confirmModal,
     closeConfirmModal,
     performSaveDraft,

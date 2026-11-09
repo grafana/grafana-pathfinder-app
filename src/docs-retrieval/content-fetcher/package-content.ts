@@ -21,6 +21,8 @@ import { buildBackendGuideContent, type BackendGuideResource } from './backend-g
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
+import { getPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
+import { readDeclaredStartingLocation } from '../../recovery/starting-location';
 import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
 export { setPackageResolver, setPackageResolverFactory };
@@ -102,7 +104,7 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
     // already doing double duty as the title fallback above.
     const description = resolution.manifest?.description !== title ? resolution.manifest?.description : undefined;
     const estimatedMinutes = resolution.manifest?.estimatedMinutes;
-    const startingLocation = resolution.manifest?.startingLocation;
+    const startingLocation = readDeclaredStartingLocation(resolution.manifest);
 
     milestones.push({
       id,
@@ -114,7 +116,7 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
       ...(resolution.repository != null && { repository: resolution.repository }),
       ...(description != null && { description }),
       ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
-      ...(typeof startingLocation === 'string' && { startingLocation }),
+      ...(startingLocation != null && { startingLocation }),
       ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
     });
   }
@@ -313,7 +315,7 @@ async function resolvePackageUrlBypassCache(packageId: string): Promise<string |
  * @param preResolvedMilestones - Optional milestones already resolved by the caller (avoids redundant resolution)
  * @param repository - Resolved source repository, stamped onto `metadata.repository` so completion keys on the true source rather than the manifest default; falls back to the baseUrl resolution's own repository when omitted
  * @param preFetchedContent - Optional content the caller already fetched (avoids re-issuing an identical request)
- * @param explicitGuideId - The manifest guide id this load's click target already carried (GuideList's current row, the cover page's CTA — threaded through link-handler.hook.ts / docs-panel.tsx). When present, classification is a direct id lookup against `milestones`/`tracks` instead of comparing resolved URLs — see the comment on `milestoneIndex` below. Absent for loads with no click behind them (the initial cover-page open, a deep link, a bookmark), which fall back to a direct match against each track's own resolved guide URL (with one bypass-cache retry for a track guide whose own resolve failed) rather than any URL comparison against the path's own resolved base.
+ * @param explicitGuideId - The manifest guide id this load's click target already carried (a GuideList row, the cover page's CTA — threaded through link-handler.hook.ts / docs-panel.tsx). When present, classification is a direct id lookup against `milestones`/`tracks` instead of comparing resolved URLs — see the comment on `milestoneIndex` below. Absent for loads with no click behind them (the initial cover-page open, a deep link, a bookmark), which fall back to a direct match against each track's own resolved guide URL (with one bypass-cache retry for a track guide whose own resolve failed) rather than any URL comparison against the path's own resolved base.
  * @param knownBaseUrl - The owning path's own base URL, when the caller already has it (docs-panel.tsx carries forward the cover page's own `learningJourney.baseUrl`/`trackMemberBaseUrl` from the tab's outgoing content when a track member is clicked FROM that same cover — the only way a track-exclusive guide is reached WITH a prior cover-page click behind it). Used as a fallback for `trackMemberBaseUrl` when this SAME request's own `baseUrlResolution` fails. A direct or deep-link load has no `knownBaseUrl` either — that case falls through one more time to {@link resolvePackageUrlBypassCache} before falling back to this guide's own `contentUrl`.
  * @param loadContext - Diagnostic context for the guide-load telemetry pipeline. Identified here directly (not only inside `fetchContent`) so a `preFetchedContent` caller — which never calls `fetchContent` at all — still gets its load identified; `identifyGuideLoad` is idempotent (a no-op once `context.source` is no longer `'other'`), so the second identification inside `fetchContent` below is safe.
  */
@@ -360,7 +362,7 @@ export async function fetchPackageContent(
   // resolver fetched ahead of this array) so a cold resolver's chunk fetch
   // overlaps fetchContent(contentUrl, { loadContext }) instead of
   // serializing in front of it.
-  const [result, resolvedMilestones, baseUrlResolution, pathTracks] = await Promise.all([
+  const [result, unmarkedMilestones, baseUrlResolution, unmarkedPathTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId
@@ -370,6 +372,23 @@ export async function fetchPackageContent(
       : Promise.resolve(undefined),
     tracksEligible ? resolvePathTracks(manifestId, packageManifest, pathSlug) : Promise.resolve(undefined),
   ]);
+  // A PR-tester load keeps every URL it derives under the same per-fetch marker,
+  // so catalog-resolved members never read or write the production guide's records.
+  const prTestFetchId = getPrTestFetchId(contentUrl);
+  const markForPrTest = (url: string) => (prTestFetchId && url ? withPrTestMarker(url, prTestFetchId) : url);
+  const markMilestonesForPrTest = (list: Milestone[]) => list.map((m) => ({ ...m, url: markForPrTest(m.url) }));
+  const resolvedMilestones =
+    unmarkedMilestones && prTestFetchId ? markMilestonesForPrTest(unmarkedMilestones) : unmarkedMilestones;
+  const pathTracks =
+    unmarkedPathTracks && prTestFetchId
+      ? {
+          ...unmarkedPathTracks,
+          resolved: unmarkedPathTracks.resolved.map((track) => ({
+            ...track,
+            milestones: markMilestonesForPrTest(track.milestones),
+          })),
+        }
+      : unmarkedPathTracks;
   const manifestTracks = pathTracks?.declared ?? [];
 
   if (!result.content) {
@@ -416,7 +435,7 @@ export async function fetchPackageContent(
       // — inferring identity from a resolved URL (a side-channel) rather
       // than checking the identity itself is the failure mode this replaces.
       // `explicitGuideId` IS that identity, threaded from the click target
-      // (GuideList's current row, the cover page's CTA) through
+      // (a GuideList row, the cover page's CTA) through
       // link-handler.hook.ts and docs-panel.tsx, so this is a plain string
       // membership check against `milestoneIds`/`manifestTracks` — both raw
       // manifest data, already in scope, no resolve involved.
@@ -452,7 +471,7 @@ export async function fetchPackageContent(
           .filter((id): id is string => id != null);
         if (lockedTrackGuideIds.length > 0) {
           const retriedUrls = await Promise.all(lockedTrackGuideIds.map((id) => resolvePackageUrlBypassCache(id)));
-          isConfirmedTrackMember = retriedUrls.includes(contentUrl);
+          isConfirmedTrackMember = retriedUrls.some((url) => url !== undefined && markForPrTest(url) === contentUrl);
         }
       }
 
@@ -481,7 +500,7 @@ export async function fetchPackageContent(
 
         let baseUrl = contentUrl;
         if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {
-          baseUrl = baseUrlResolution.contentUrl;
+          baseUrl = markForPrTest(baseUrlResolution.contentUrl);
         }
 
         learningJourney = {
@@ -513,7 +532,7 @@ export async function fetchPackageContent(
           );
         }
       } else if (baseUrlResolution && baseUrlResolution.ok) {
-        trackMemberBaseUrl = baseUrlResolution.contentUrl;
+        trackMemberBaseUrl = markForPrTest(baseUrlResolution.contentUrl);
       } else if (knownBaseUrl) {
         // This SAME request's own re-resolve of manifestId failed, but the
         // caller already knows the answer (the cover page this guide was
@@ -528,7 +547,7 @@ export async function fetchPackageContent(
         // chance before this guide's completion is dropped for real.
         const retriedBaseUrl = await resolvePackageUrlBypassCache(manifestId);
         if (retriedBaseUrl) {
-          trackMemberBaseUrl = retriedBaseUrl;
+          trackMemberBaseUrl = markForPrTest(retriedBaseUrl);
         } else {
           // Even the retry came up empty. Falling back to this guide's own
           // contentUrl still preserves a completion identity rather than
@@ -551,6 +570,9 @@ export async function fetchPackageContent(
   }
 
   let packageManifestMetadata: Record<string, unknown> | undefined;
+  // The loaded guide's own starting location narrows an enclosing path's.
+  const ownStartingLocation =
+    readDeclaredStartingLocation(result.content.metadata.packageManifest) ?? (resolvedMember?.startingLocation || null);
   if (isMemberLoad) {
     if (result.content.metadata.packageManifest || resolvedMember?.packageManifest) {
       packageManifestMetadata = {
@@ -560,6 +582,12 @@ export async function fetchPackageContent(
     }
   } else if (packageManifest !== undefined) {
     packageManifestMetadata = { ...result.content.metadata.packageManifest, ...packageManifest };
+  }
+  if (ownStartingLocation) {
+    packageManifestMetadata = {
+      ...(packageManifestMetadata ?? result.content.metadata.packageManifest),
+      startingLocation: ownStartingLocation,
+    };
   }
 
   return {

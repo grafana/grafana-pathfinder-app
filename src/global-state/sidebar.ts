@@ -2,6 +2,7 @@ import { getAppEvents } from '@grafana/runtime';
 import { BusEventBase, BusEventWithPayload } from '@grafana/data';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 import { clearExtensionSidebarDocked } from '../lib/storage/extension-sidebar';
+import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
 import pluginJson from '../plugin.json';
 import { panelModeManager } from './panel-mode';
 import { autoLaunchChannel } from './auto-launch';
@@ -23,7 +24,7 @@ export class CloseExtensionSidebarEvent extends BusEventBase {
 /**
  * Action types for sidebar open analytics
  */
-export type OpenAction = 'open' | 'auto-open' | 'restore';
+export type OpenAction = 'open' | 'auto_open' | 'restore';
 
 /**
  * Pending open info for analytics tracking
@@ -59,7 +60,7 @@ class GlobalSidebarState {
    * This is consumed by the sidebar mount analytics and cleared after use.
    *
    * @param source - The source identifier for analytics
-   * @param action - The action type: 'open' (user-initiated), 'auto-open' (programmatic), or 'restore' (browser cache)
+   * @param action - The action type: 'open' (user-initiated), 'auto_open' (programmatic), or 'restore' (browser cache)
    */
   public setPendingOpenSource(source: string, action: OpenAction = 'open'): void {
     this._pendingOpenInfo = { source, action };
@@ -90,6 +91,7 @@ class GlobalSidebarState {
     }
 
     this.setIsSidebarMounted(true);
+    reportPathfinderSurface('sidebar');
 
     getAppEvents().publish(
       new OpenExtensionSidebarEvent({
@@ -109,7 +111,7 @@ class GlobalSidebarState {
    * @param guideId - The bundled guide ID (e.g. 'prometheus-grafana-101')
    */
   public openWithGuide(guideId: string): void {
-    this.setPendingOpenSource('mcp_launch', 'auto-open');
+    this.setPendingOpenSource('mcp_launch', 'auto_open');
 
     let dispatched = false;
     const dispatch = () => {
@@ -157,14 +159,17 @@ class GlobalSidebarState {
     clearExtensionSidebarDocked();
   }
 
+  // Only clears the mounted flag while the sidebar is still the active mode: during a
+  // sidebar -> floating/fullscreen handoff the incoming surface may already have set it.
   public closeSidebar(): void {
-    this.setIsSidebarMounted(false);
-
+    if (panelModeManager.getMode() === 'sidebar') {
+      this.setIsSidebarMounted(false);
+    }
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'close',
-      source: 'sidebar_unmount',
-      timestamp: Date.now(),
+      source: 'sidebar_toggle',
     });
+    reportPathfinderSurfaceClosed('sidebar');
   }
 }
 

@@ -1,3 +1,4 @@
+import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useStyles2, Icon, TabsBar, Tab } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -140,9 +141,6 @@ export function LearningPathTableOfContents({
   // "Get started" targets the first unlocked milestone at 0% progress; once
   // underway, "Resume" targets the actual next incomplete one so returning to
   // the cover mid-path (e.g. via Previous) doesn't restart it from module 1.
-  // Every later milestone is sequentially locked — it isn't reachable yet
-  // regardless of its own publish-lock state, which stays authoritative for
-  // "unpublished" (locked even once its turn comes).
   const cursor = activeMilestones.findIndex((m) => !m.isLocked && !completedUrls.has(m.url));
 
   const guides: PathGuide[] = activeMilestones.map((milestone, index) => {
@@ -164,7 +162,7 @@ export function LearningPathTableOfContents({
       estimatedMinutes: milestone.estimatedMinutes,
       completed,
       isCurrent: cursor >= 0 && index === cursor,
-      locked: milestone.isLocked || (!completed && cursor >= 0 && index > cursor),
+      locked: milestone.isLocked,
       url: milestone.url,
     };
   });
@@ -198,7 +196,7 @@ export function LearningPathTableOfContents({
           <div className={styles.heroMeta}>
             <span className={styles.heroMetaItem}>
               <Icon name="list-ul" size="sm" />
-              {t('coverPage.moduleCount', '{{count}} modules', { count: activeMilestones.length })}
+              {milestoneCountText(activeMilestones.length)}
             </span>
             {totalEstimatedMinutes != null && (
               <span className={styles.heroMetaItem}>
@@ -279,7 +277,7 @@ export function LearningPathTableOfContents({
             )}
           </div>
         </div>
-        <GuideList guides={guides} enableCurrentRowLink />
+        <GuideList guides={guides} enableRowLinks />
       </div>
     </>
   );

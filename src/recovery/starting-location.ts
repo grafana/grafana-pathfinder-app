@@ -84,14 +84,9 @@ function resolveCandidate(url: string, packageManifests: Array<Record<string, un
   // promoted CUE field is the more specific declaration, and `additionalFields`
   // is where a value waits for that promotion.
   for (const packageManifest of packageManifests) {
-    const fromManifest = packageManifest?.startingLocation;
-    if (typeof fromManifest === 'string' && fromManifest.length > 0) {
-      return fromManifest;
-    }
-
-    const fromAdditional = readAdditionalStartingLocation(packageManifest);
-    if (fromAdditional) {
-      return fromAdditional;
+    const declared = readDeclaredStartingLocation(packageManifest);
+    if (declared) {
+      return declared;
     }
   }
 
@@ -100,6 +95,14 @@ function resolveCandidate(url: string, packageManifests: Array<Record<string, un
   }
 
   return null;
+}
+
+export function readDeclaredStartingLocation(packageManifest?: Record<string, unknown>): string | null {
+  const fromManifest = packageManifest?.startingLocation;
+  if (typeof fromManifest === 'string' && fromManifest.length > 0) {
+    return fromManifest;
+  }
+  return readAdditionalStartingLocation(packageManifest);
 }
 
 function readAdditionalStartingLocation(packageManifest?: Record<string, unknown>): string | null {

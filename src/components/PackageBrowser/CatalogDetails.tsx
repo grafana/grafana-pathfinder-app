@@ -46,8 +46,8 @@ export function CatalogDetails({
     <div role="region" aria-label={t('packageBrowser.detailsLabel', 'Details for {{title}}', { title: item.title })}>
       {item.memberIds?.length ? (
         <>
-          <h4>{t('packageBrowser.modulesTitle', 'Modules')}</h4>
-          {loading && <p role="status">{t('packageBrowser.membersLoading', 'Loading modules…')}</p>}
+          <h4>{t('packageBrowser.modulesTitle', 'Milestones')}</h4>
+          {loading && <p role="status">{t('packageBrowser.membersLoading', 'Loading milestones…')}</p>}
           <LearningModuleList
             modules={item.memberIds.map((id, index) => {
               const member = members[index];
@@ -71,7 +71,7 @@ export function CatalogDetails({
           />
           {error && (
             <div role="alert">
-              <p>{t('packageBrowser.membersError', 'Could not load module details.')}</p>
+              <p>{t('packageBrowser.membersError', 'Could not load milestone details.')}</p>
               <Button
                 size="sm"
                 variant="secondary"
