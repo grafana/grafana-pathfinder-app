@@ -670,6 +670,39 @@ describe('CombinedLearningJourneyPanel.loadDocsTabContent — knownBaseUrl fallb
     );
   });
 
+  it.each([
+    ['online-cdn', 'interactive-tutorials'],
+    ['interactive-tutorials', 'online-cdn'],
+    [undefined, 'interactive-tutorials'],
+  ])('carries outgoing public base across source aliases %s / %s', async (repository, ownerRepository) => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [
+        {
+          ...makeTab('journey-tab'),
+          content: {
+            ...preparedContent,
+            metadata: {
+              title: 'Owner',
+              journeyManifest: { id: 'the-path', type: 'path', repository: ownerRepository },
+              trackMemberBaseUrl: 'bundled:the-path/content.json',
+            },
+          },
+        },
+      ],
+    });
+    await panel.loadTab('journey-tab', 'bundled:member/content.json', {
+      packageInfo: {
+        packageManifest: { id: 'the-path', type: 'path' },
+        repository,
+      },
+    });
+    expect(loadDocsTabContentResult).toHaveBeenCalledWith(
+      'bundled:member/content.json',
+      expect.objectContaining({ knownBaseUrl: 'bundled:the-path/content.json' })
+    );
+  });
+
   it('reuses matching existing package context without a new package argument', async () => {
     const panel = new CombinedLearningJourneyPanel();
     const manifest = { id: 'the-path', type: 'path', repository: 'interactive-tutorials' };

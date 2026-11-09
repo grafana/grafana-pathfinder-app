@@ -1,3 +1,4 @@
+import { isSamePackageRepository } from '../../../types/package.types';
 import { isAllowedContentUrl } from '../../../security';
 import type { GuideLoadContext } from '../../../types/guide-diagnostics.types';
 import { fetchContent, fetchPackageById, fetchPackageContent } from '../../../docs-retrieval';
@@ -81,7 +82,7 @@ function matchingPersistedPathBaseUrl(packageInfo: PackageOpenInfo): string | un
     !resolvedPath ||
     (packageManifest?.type !== 'path' && packageManifest?.type !== 'journey') ||
     resolvedPath.id !== packageManifest.id ||
-    resolvedPath.repository !== ownerRepository ||
+    !isSamePackageRepository(resolvedPath.repository, ownerRepository) ||
     typeof resolvedPath.baseUrl !== 'string' ||
     !isAllowedContentUrl(resolvedPath.baseUrl)
   ) {

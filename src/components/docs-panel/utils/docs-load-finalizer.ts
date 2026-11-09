@@ -2,7 +2,7 @@ import { isAllowedContentUrl } from '../../../security';
 import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../../recovery';
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
-import { getPackageRenderType } from '../../../types/package.types';
+import { getPackageRenderType, isSamePackageRepository } from '../../../types/package.types';
 import { getInteractiveLearningUrlTitle } from '../../../utils/doc-page-title';
 
 export interface DocsLoadAlignmentInput {
@@ -152,7 +152,7 @@ function retainResolvedPath(
     (manifest.type !== 'path' && manifest.type !== 'journey') ||
     typeof manifest.id !== 'string' ||
     owner?.id !== manifest.id ||
-    (owner.repository !== undefined && owner.repository !== repository) ||
+    (owner.repository !== undefined && !isSamePackageRepository(owner.repository, repository)) ||
     !baseUrl ||
     !isAllowedContentUrl(baseUrl)
   ) {
@@ -164,7 +164,7 @@ function retainResolvedPath(
     label: track.label,
     guides: track.milestones.flatMap((milestone) => (milestone.id ? [milestone.id] : [])),
   }));
-  const packageManifest = {
+  const packageManifest: Record<string, unknown> = {
     ...manifest,
     ...((owner.type === 'path' || owner.type === 'journey') && owner),
     ...(tracks !== undefined && { tracks }),

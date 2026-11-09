@@ -149,7 +149,7 @@ import {
 
 // Import centralized types
 import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
-import { getPackageRenderType } from '../../types/package.types';
+import { getPackageRenderType, isSamePackageRepository } from '../../types/package.types';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
@@ -1073,7 +1073,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         (incomingOwner?.type === 'path' || incomingOwner?.type === 'journey') &&
         typeof incomingOwner.id === 'string' &&
         outgoingOwner?.id === incomingOwner.id &&
-        outgoingRepository === incomingRepository;
+        isSamePackageRepository(outgoingRepository, incomingRepository);
       const knownBaseUrl = sameOwner
         ? (outgoingMetadata?.learningJourney?.baseUrl ?? outgoingMetadata?.trackMemberBaseUrl)
         : undefined;

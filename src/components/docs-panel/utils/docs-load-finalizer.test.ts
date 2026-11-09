@@ -432,6 +432,28 @@ describe('buildDocsLoadSuccessPatch', () => {
 });
 
 describe('resolved path locator capture', () => {
+  it.each([
+    ['online-cdn', 'interactive-tutorials'],
+    ['interactive-tutorials', 'online-cdn'],
+    [undefined, 'interactive-tutorials'],
+  ])('captures public owner across source aliases %s / %s', (repository, ownerRepository) => {
+    const manifest = { id: 'owner', type: 'path' };
+    const baseUrl = 'https://interactive-learning.grafana.net/custom-path/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ packageInfo: { packageManifest: manifest, repository } }),
+      requestedUrl: baseUrl,
+      fetchedContent: content({
+        metadata: {
+          title: 'Owner',
+          packageManifest: { ...manifest, repository: ownerRepository, milestones: ['new'] },
+          trackMemberBaseUrl: baseUrl,
+        },
+      }),
+    });
+    expect(patch.packageInfo?.resolvedPath).toEqual({ id: 'owner', repository, baseUrl });
+    expect(patch.packageInfo?.packageManifest?.milestones).toEqual(['new']);
+  });
+
   it('retains resolved foundation rows when a matching owner refresh leaves foundations unchanged', () => {
     const manifest = { id: 'owner', type: 'path', milestones: ['same'] };
     const resolvedMilestones = [

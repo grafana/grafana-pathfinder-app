@@ -180,6 +180,24 @@ it('classifies an empty docs URL before attempting a fetch', async () => {
 });
 
 describe('persisted path context', () => {
+  it.each([
+    ['online-cdn', 'interactive-tutorials'],
+    ['interactive-tutorials', 'online-cdn'],
+    [undefined, 'interactive-tutorials'],
+    ['interactive-tutorials', undefined],
+  ])('restores public owner across source aliases %s / %s', async (repository, savedRepository) => {
+    mockFetchPackageContent.mockClear();
+    const baseUrl = 'https://interactive-learning.grafana.net/custom-path/content.json';
+    await loadDocsTabContentResult('bundled:member/content.json', {
+      packageInfo: {
+        packageManifest: { id: 'owner', type: 'path' },
+        repository,
+        resolvedPath: { id: 'owner', repository: savedRepository, baseUrl },
+      },
+    });
+    expect(mockFetchPackageContent.mock.calls[0]?.[6]).toBe(baseUrl);
+  });
+
   const pathUrl = 'https://interactive-learning.grafana.net/custom/index-path/content.json';
   const memberUrl = 'https://interactive-learning.grafana.net/packages/member/content.json';
   const manifest = { id: 'owner', type: 'path', milestones: ['member'] };
