@@ -29,6 +29,7 @@ import {
   getTotalMilestones,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
+  resolveSurfaceGuideIdentity,
 } from './learning-journey-helpers';
 import {
   fetchCustomGuideRepository,
@@ -442,6 +443,136 @@ describe('fetchPackageContent error handling', () => {
       expect(JSON.parse(result.content!.content).id).toBe('first-dashboard');
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['blocked', 'welcome-to-grafana'],
+    ['hung', 'welcome-to-grafana'],
+    ['blocked', undefined],
+    ['hung', undefined],
+  ])('preserves path navigation when the CDN is %s and the explicit member is %s', async (mode, explicitGuideId) => {
+    jest.useFakeTimers();
+    global.fetch =
+      mode === 'hung'
+        ? jest.fn(() => new Promise(() => {}))
+        : jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const manifest = {
+      id: 'getting-started',
+      type: 'path',
+      milestones: ['first-dashboard', 'welcome-to-grafana', 'prometheus-grafana-101'],
+    };
+    const baseUrl = 'https://interactive-learning.grafana.net/packages/getting-started/content.json';
+    const milestones = manifest.milestones.map((id, index) => ({
+      id,
+      number: index + 1,
+      title: id,
+      url: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+      isActive: false,
+      packageManifest: { id, type: 'guide' },
+    }));
+    setPackageResolver(
+      makeResolver(
+        makeSuccessResolution({
+          id: manifest.id,
+          contentUrl: baseUrl,
+          repository: 'interactive-tutorials',
+        })
+      )
+    );
+
+    try {
+      const pending = fetchPackageContent(
+        milestones[1]!.url,
+        manifest,
+        milestones,
+        'interactive-tutorials',
+        undefined,
+        explicitGuideId,
+        baseUrl
+      );
+      await jest.advanceTimersByTimeAsync(1_500);
+      const { content } = await pending;
+
+      expect(content).not.toBeNull();
+      expect(content!.url).toBe('https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json');
+      expect(JSON.parse(content!.content).id).toBe('welcome-to-grafana');
+      expect(content!.type).toBe('learning-journey');
+      expect(content!.metadata).toMatchObject({
+        repository: 'interactive-tutorials',
+        packageManifest: { id: 'welcome-to-grafana', type: 'guide' },
+        journeyManifest: manifest,
+        learningJourney: { currentMilestone: 2, totalMilestones: 3, milestones, baseUrl },
+      });
+      expect(isJourneyCoverPage(content!)).toBe(false);
+      expect(getPreviousMilestoneUrl(content!)).toBe(milestones[0]!.url);
+      expect(getNextMilestoneUrl(content!)).toBe(milestones[2]!.url);
+      expect(
+        resolveSurfaceGuideIdentity({
+          contentUrl: content!.url,
+          currentUrl: content!.url,
+          metadata: content!.metadata,
+        })
+      ).toBeNull();
+    } finally {
+      jest.useRealTimers();
+      setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+    }
+  });
+
+  it('preserves a track member and its known path base when the CDN and path resolver fail', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const manifest = {
+      id: 'getting-started',
+      type: 'path',
+      milestones: ['first-dashboard'],
+      tracks: [{ trackId: 'extra', label: 'Extra', guides: ['welcome-to-grafana', 'prometheus-grafana-101'] }],
+    };
+    const baseUrl = 'https://interactive-learning.grafana.net/packages/getting-started/content.json';
+    const milestones = [
+      { id: 'first-dashboard', number: 1, title: 'First dashboard', url: 'bundled:first-dashboard', isActive: false },
+    ];
+    setPackageResolver(
+      makeResolver({ ok: false, id: 'unavailable', error: { code: 'not-found', message: 'offline' } })
+    );
+    try {
+      const { content } = await fetchPackageContent(
+        'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json',
+        manifest,
+        milestones,
+        'interactive-tutorials',
+        undefined,
+        'welcome-to-grafana',
+        baseUrl
+      );
+
+      expect(content).not.toBeNull();
+      expect(content!.url).toBe('https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json');
+      expect(JSON.parse(content!.content).id).toBe('welcome-to-grafana');
+      expect(content!.metadata).toMatchObject({
+        repository: 'interactive-tutorials',
+        packageManifest: { id: 'welcome-to-grafana', type: 'guide' },
+        journeyManifest: manifest,
+        trackMemberBaseUrl: baseUrl,
+      });
+      expect(content!.metadata.learningJourney).toBeUndefined();
+      const activeTrackMilestones = manifest.tracks[0]!.guides.map((id, index) => ({
+        id,
+        number: index + 1,
+        title: id,
+        url: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+        isActive: false,
+      }));
+      expect(getNextMilestoneUrl(content!, 'extra', activeTrackMilestones)).toBe(activeTrackMilestones[1]!.url);
+      expect(
+        resolveSurfaceGuideIdentity({
+          contentUrl: content!.url,
+          currentUrl: content!.url,
+          metadata: content!.metadata,
+        })
+      ).toBeNull();
+    } finally {
+      setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
     }
   });
 

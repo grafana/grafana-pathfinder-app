@@ -344,16 +344,20 @@ export async function fetchPackageContent(
       clearTimeout(timer);
     }
     if (!preFetchedContent.content) {
-      return fetchPackageContent(
-        fallbackKey,
-        undefined,
-        undefined,
-        'bundled',
-        undefined,
-        undefined,
-        undefined,
-        loadContext
-      );
+      preFetchedContent = await fetchContent(fallbackKey, { loadContext });
+      if (isPathManifest(packageManifest)) {
+        if (preFetchedContent.content) {
+          // Member navigation matches the requested URL, regardless of where its content came from.
+          preFetchedContent = {
+            ...preFetchedContent,
+            content: { ...preFetchedContent.content, url: contentUrl },
+          };
+        }
+      } else {
+        contentUrl = fallbackKey;
+        packageManifest = undefined;
+        repository = 'bundled';
+      }
     }
   }
   identifyGuideLoad(loadContext, contentUrl);
@@ -462,8 +466,8 @@ export async function fetchPackageContent(
         const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
 
         let baseUrl = contentUrl;
-        if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {
-          baseUrl = markForPrTest(baseUrlResolution.contentUrl);
+        if (milestoneIndex >= 0) {
+          baseUrl = baseUrlResolution?.ok ? markForPrTest(baseUrlResolution.contentUrl) : (knownBaseUrl ?? contentUrl);
         }
 
         learningJourney = {

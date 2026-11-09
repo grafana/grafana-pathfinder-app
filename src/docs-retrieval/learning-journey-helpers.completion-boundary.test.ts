@@ -106,8 +106,10 @@ import { of } from 'rxjs';
 import { config, setBackendSrv, type BackendSrv } from '@grafana/runtime';
 import { completionAnalytics } from '../completion-records/completion-analytics';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
+import { fetchPackageContent, setPackageResolver } from './content-fetcher/package-content';
 import {
   recordStandaloneGuideCompletion,
+  getPreviousMilestoneUrl,
   setJourneyCompletionPercentage,
   setJourneyCompletionPercentageAsync,
   setMilestoneCompletionPercentage,
@@ -193,6 +195,73 @@ test('milestone manifests are not mistaken for their own parent journey', async 
     packageManifest: { id: 'm1', type: 'guide', repository: 'app-platform' },
   });
   expect(emitted[0]?.pathId).toBeUndefined();
+});
+
+it('awards the online path badge when both member content and path resolution fall back', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+  const baseUrl = 'https://interactive-learning.grafana.net/packages/getting-started/content.json';
+  const manifest = {
+    id: 'getting-started',
+    type: 'path',
+    milestones: ['welcome-to-grafana', 'prometheus-grafana-101'],
+  };
+  const milestones = manifest.milestones.map((id, index) => ({
+    id,
+    number: index + 1,
+    title: id,
+    url: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+    isActive: false,
+  }));
+  setPackageResolver({
+    resolve: jest.fn().mockResolvedValue({
+      ok: false,
+      id: manifest.id,
+      error: { code: 'not-found', message: 'offline' },
+    }),
+  });
+  seedMilestoneComplete(milestones[1]!.url);
+  getPathsDataMock.mockReturnValue({ paths: [{ id: manifest.id, url: baseUrl, badgeId: 'getting-started-badge' }] });
+
+  try {
+    const { content } = await fetchPackageContent(
+      milestones[0]!.url,
+      manifest,
+      milestones,
+      'interactive-tutorials',
+      undefined,
+      'welcome-to-grafana',
+      baseUrl
+    );
+    expect(content).not.toBeNull();
+    expect(content!.metadata.learningJourney?.baseUrl).toBe(baseUrl);
+    expect(getPreviousMilestoneUrl(content!)).toBe(baseUrl);
+    recordGuideCompletionForSurface({
+      contentUrl: content!.url,
+      currentUrl: content!.url,
+      contentType: content!.type,
+      metadata: content!.metadata,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(emitted.filter((fact) => fact.kind === 'guide')).toEqual([
+      expect.objectContaining({
+        guideId: 'welcome-to-grafana',
+        guideSource: 'bundled',
+        guideCategory: 'learning-journey',
+        pathId: manifest.id,
+      }),
+    ]);
+    expect(emitted.filter((fact) => fact.kind === 'journey')).toEqual([
+      expect.objectContaining({ guideId: manifest.id, guideSource: 'interactive-tutorials' }),
+    ]);
+    expect(awardBadgeMock).toHaveBeenCalledWith('getting-started-badge');
+  } finally {
+    global.fetch = originalFetch;
+    setPackageResolver({
+      resolve: jest.fn().mockResolvedValue({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }),
+    });
+  }
 });
 
 describe('bundled guide reaching 100% (trigger class A)', () => {
