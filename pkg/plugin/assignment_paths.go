@@ -31,7 +31,7 @@ func assignmentGuideMatchesCompletion(guide assignmentGuideIdentity, rec complet
 	}
 	if constants.IsBundledTutorial(guide.GuideID) && publicTutorialSource(guide.GuideSource) && publicTutorialSource(rec.GuideSource) {
 		// Historical online first-dashboard records describe the RSS tutorial, not the migrated guide.
-		return guide.GuideID != "first-dashboard" || rec.GuideSource == "bundled"
+		return constants.LegacyOnlineTutorialID(guide.GuideID) == "" || rec.GuideSource == "bundled"
 	}
 	return guide.matchesSource(rec.GuideSource)
 }

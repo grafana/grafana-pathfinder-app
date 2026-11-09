@@ -11,6 +11,7 @@
 import { logger } from '../lib/logging';
 import { getFeatureFlagValue } from '../utils/openfeature';
 import { isPreviewContentKey } from '../global-state/completion-store';
+import { isPrTestUrl } from '../lib/pr-test-marker';
 import { subscribeProgressEvent, type ProgressEventDetail } from '../global-state/progress-events';
 
 import { hasEmittedGuideCompletion } from './completion-recorder';
@@ -39,7 +40,13 @@ function trackProgress(detail: ProgressEventDetail): void {
       return;
     }
     const { contentKey, percentage } = detail;
-    if (!Number.isFinite(percentage) || percentage < 1 || percentage > 99 || isPreviewContentKey(contentKey)) {
+    if (
+      !Number.isFinite(percentage) ||
+      percentage < 1 ||
+      percentage > 99 ||
+      isPreviewContentKey(contentKey) ||
+      isPrTestUrl(contentKey)
+    ) {
       return;
     }
     const identity = lookupGuideIdentity(contentKey);

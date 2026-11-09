@@ -1,13 +1,15 @@
 import { t } from '@grafana/i18n';
 import { GuideStatsSummarySchema } from '../../types/guide-stats.schema';
 import { GUIDE_STATS_VERSION } from '../../lib/guide-stats/summary';
+import { getManifestMemberIds } from '../../types/package.types';
 
 export function learningEffort(manifest: Record<string, unknown> | undefined, kind: 'guide' | 'path' | 'docs'): string {
   const stats = GuideStatsSummarySchema.safeParse(manifest?.stats);
   const minutes = manifest?.estimatedMinutes;
+  const memberCount = kind === 'path' ? getManifestMemberIds(manifest).length : 0;
   return [
-    kind === 'path' && Array.isArray(manifest?.milestones)
-      ? milestoneCountText(manifest.milestones.length)
+    kind === 'path' && (Array.isArray(manifest?.milestones) || memberCount > 0)
+      ? milestoneCountText(memberCount)
       : kind === 'guide' && stats.success && stats.data.version === GUIDE_STATS_VERSION
         ? t('learningCard.activities', '{{count}} activities', { count: stats.data.completableBlockCount })
         : undefined,

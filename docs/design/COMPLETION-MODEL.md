@@ -54,7 +54,7 @@ In the sidebar, floating and full-screen readers, completion and continuation ar
 
 The completion panel has no rollout flag: it is a bounded UI change using existing completion evidence and storage, with no migration or irreversible writes. Reverting the UI change does not require a data rollback. The package-browser flag still controls catalog suggestions and Explore links.
 
-The panel uses established completed state, not scroll position. Path completion follows the existing best-of-sequences calculation in decision 4, including selected tracks and exclusion of locked entries. Reaching the last milestone alone does not establish completion. Related suggestions do not create enrollment or progress, and author previews retain the existing footer.
+The panel uses established completed state, not scroll position. Path completion follows the existing best-of-sequences calculation in decision 4, including selected tracks and exclusion of locked entries. Reaching the last milestone alone does not establish completion. Related suggestions do not create enrollment or progress, and author previews retain the existing footer. A PR-tester preview carries a per-fetch `#pf-pr-<fetchId>` URL marker (`src/lib/pr-test-marker.ts`): its progress is keyed per fetch and never matches a real guide's records, and it writes no learning progress, badge, or durable completion record, so the merged guide starts uncompleted.
 
 After path navigation, authored `suggests` can offer related content. Their order is preserved, alternative groups offer one eligible member, and completed groups are skipped. `depends` and `recommends` remain hard and soft prerequisite metadata, respectively; neither is used or resolved as next-content selection. A milestone's manifest and its owning path's manifest remain distinct; terminal path recommendations can use both without treating the parent's metadata as the milestone's own.
 
@@ -557,6 +557,9 @@ guarantee that a private guide's progress can never surface as a bundled
 member's — only that the join's own scheme fallback will not cause it.
 The seven guides in `src/constants/bundled-tutorials.json` are the content-resolution
 exception: they prefer the enabled recommender but retain shared bundled progress identity.
+Their frozen block index is scoped to the authored block-tree revision: loading a different
+online or offline revision republishes its own positions and denominator. Load-time
+recalculation does not lower the persisted shared percentage; explicit resets still do.
 
 **A present but unreadable record is excluded too, not scored zero.** The
 persisted record is unchecked `JSON.parse` output, so a key may be present and

@@ -53,16 +53,19 @@ export class RecommenderPackageResolver implements PackageResolver {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<PackageResolution>((resolve) => {
-      timer = setTimeout(() => {
-        controller.abort();
-        resolve(
-          failure(packageId, 'network-error', 'Package resolution timed out', {
-            source: 'cdn',
-            stage: 'fetch',
-            reason: 'timeout',
-          })
-        );
-      }, 5_000);
+      timer = setTimeout(
+        () => {
+          controller.abort();
+          resolve(
+            failure(packageId, 'network-error', 'Package resolution timed out', {
+              source: 'cdn',
+              stage: 'fetch',
+              reason: 'timeout',
+            })
+          );
+        },
+        isBundledTutorial(packageId) ? 1_500 : 5_000
+      );
     });
     try {
       return await Promise.race([this.resolveWithSignal(packageId, controller.signal, options), deadline]);

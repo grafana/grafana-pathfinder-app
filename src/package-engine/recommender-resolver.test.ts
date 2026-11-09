@@ -464,7 +464,7 @@ describe('bounded recommender requests', () => {
     mockFetch.mockReset().mockImplementation(() => new Promise(() => {}));
     try {
       const pending = new RecommenderPackageResolver(BASE_URL).resolve('first-dashboard', { loadContent: true });
-      await jest.advanceTimersByTimeAsync(5_000);
+      await jest.advanceTimersByTimeAsync(1_500);
       expect(await pending).toMatchObject({ ok: false, error: { diagnostic: { reason: 'timeout' } } });
       expect(mockFetch.mock.calls[0]![1].signal.aborted).toBe(true);
     } finally {
@@ -478,5 +478,46 @@ describe('bounded recommender requests', () => {
       ok: false,
       error: { code: 'validation-error' },
     });
+  });
+});
+
+describe('recommender response validation', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    fetchOnlinePackageRecommendationsMock.mockResolvedValue({ baseUrl: '', packages: [] });
+  });
+
+  it.each(['contentUrl', 'manifestUrl'])('rejects an untrusted %s before fetching it', async (field) => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ...FIXTURE_RESOLUTION, [field]: 'https://evil.example/content.json' }),
+    });
+    expect(await new RecommenderPackageResolver(BASE_URL).resolve('alerting-101', { loadContent: true })).toMatchObject(
+      { ok: false, error: { code: 'validation-error' } }
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects content belonging to another guide', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => FIXTURE_RESOLUTION })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...FIXTURE_CONTENT, id: 'different' }) });
+    expect(await new RecommenderPackageResolver(BASE_URL).resolve('alerting-101', { loadContent: true })).toMatchObject(
+      { ok: false, error: { code: 'validation-error' } }
+    );
+  });
+
+  it.each([undefined, 'different'])('rejects a tutorial manifest with id %s', async (id) => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...FIXTURE_RESOLUTION, id: 'first-dashboard' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...FIXTURE_CONTENT, id: 'first-dashboard' }) })
+      .mockResolvedValueOnce({
+        ok: Boolean(id),
+        status: id ? 200 : 404,
+        json: async () => ({ ...FIXTURE_MANIFEST, id }),
+      });
+    expect(
+      await new RecommenderPackageResolver(BASE_URL).resolve('first-dashboard', { loadContent: true })
+    ).toMatchObject({ ok: false, error: { code: 'validation-error' } });
   });
 });

@@ -1,4 +1,8 @@
-import { bundledTutorialContentKey, bundledTutorialCompletionSource } from './bundled-tutorial-identity';
+import {
+  bundledTutorialContentKey,
+  bundledTutorialCompletionSource,
+  legacyOnlineTutorialId,
+} from './bundled-tutorial-identity';
 import { resolveCompletionIdentity } from '../completion-records/completion-identity';
 import { journeyCompletionStorage, interactiveStepStorage } from './user-storage';
 import { migrateBundledTutorialProgress } from './storage/progress-keys';
@@ -56,4 +60,9 @@ it('migrates legacy bundled step keys, shares new steps and clears both sources'
   expect(await interactiveStepStorage.getCompleted(local, 'intro')).toEqual(new Set(['step-1', 'step-2']));
   await interactiveStepStorage.clearAllForContent(online);
   expect(await interactiveStepStorage.getCompleted(local, 'intro')).toEqual(new Set());
+});
+
+it('keeps historical online identity in the shared catalog', () => {
+  expect(legacyOnlineTutorialId('first-dashboard')).toBe('first-dashboard-rss');
+  expect(legacyOnlineTutorialId('welcome-to-grafana')).toBeUndefined();
 });

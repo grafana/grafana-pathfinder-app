@@ -30,6 +30,9 @@ func migratedTutorialIDs(t *testing.T) []string {
 
 func TestBundledTutorialAllowlistParity(t *testing.T) {
 	ids := migratedTutorialIDs(t)
+	if constants.LegacyOnlineTutorialID("first-dashboard") != "first-dashboard-rss" {
+		t.Fatal("historical RSS identity must come from the shared catalog")
+	}
 	if len(ids) != 7 {
 		t.Fatalf("expected seven migrated tutorials, got %v", ids)
 	}

@@ -506,6 +506,19 @@ The sync validates all selected packages before replacing any copies, regenerate
 the indexes, and records the source commit only when generated content changes.
 Run `npm run test:sync-bundled-tutorials` to test the sync without network access.
 
+Recommender resolution validates trusted content and manifest URLs and matching content IDs
+for every package, with a 5-second aggregate deadline. The seven fallback tutorials also
+require a matching manifest ID and use a shorter 1.5-second deadline. Their recommendation
+clicks fall back locally if the CDN fails or exceeds 1.5 seconds; explicit bundled links
+stay local. Online fallback results are retried on the next open.
+
+Before releasing this migration, merge and publish interactive-tutorials #714 and verify
+all seven package manifests plus `first-dashboard-rss` on the CDN with
+`npm run check:bundled-tutorial-publication` (also enforced by the release workflow). Confirm that
+`first-dashboard/content.json` is the Explore/dashboard tutorial, not the RSS tutorial.
+Audit existing public `first-dashboard` assignments before release: historical online
+completion evidence belongs to RSS and cannot satisfy the migrated dashboard target.
+
 ### Enable the daily sync
 
 Register `.github/workflows/sync-bundled-tutorials.yml` for the `updater-for-ci`

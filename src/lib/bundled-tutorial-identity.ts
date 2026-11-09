@@ -26,3 +26,7 @@ export function bundledTutorialContentKey(value: string): string {
 export function bundledTutorialCompletionSource(source: string, id: string): string {
   return ids.has(id) && (source === 'interactive-tutorials' || source === 'online-cdn') ? 'bundled' : source;
 }
+
+export function legacyOnlineTutorialId(id: string): string | undefined {
+  return tutorials.find((tutorial) => tutorial.id === id)?.legacyOnlineId;
+}

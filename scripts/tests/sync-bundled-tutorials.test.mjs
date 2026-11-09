@@ -125,3 +125,32 @@ test('restores a missing bundled tutorial and remains idempotent', (t) => {
   assert.equal(JSON.parse(readFileSync(join(f.root, 'src/bundled-interactives/intro/content.json'))).title, 'Intro');
   assert.deepEqual(syncBundledTutorials(f.source, f).changed, []);
 });
+
+test('a second invalid tutorial leaves the first staged update and generated files untouched', (t) => {
+  const f = fixture(t);
+  f.write(join(f.root, 'src/constants/bundled-tutorials.json'), [
+    { id: 'intro', url: ['/'] },
+    { id: 'second', url: ['/'] },
+  ]);
+  f.write(join(f.source, 'second/content.json'), { id: 'second', title: 'Second', blocks: [] });
+  f.write(join(f.source, 'second/manifest.json'), { id: 'second', type: 'guide', description: 'Second' });
+  f.revision = f.commit();
+  let validated = 0;
+  f.validate = () => {
+    if (++validated === 2) {
+      throw new Error('second package invalid');
+    }
+  };
+  const paths = [
+    'src/bundled-interactives/intro/content.json',
+    'src/bundled-interactives/index.json',
+    'src/bundled-interactives/repository.json',
+  ];
+  const before = paths.map((path) => readFileSync(join(f.root, path), 'utf8'));
+  assert.throws(() => syncBundledTutorials(f.source, f), /second package invalid/);
+  assert.equal(validated, 2);
+  assert.deepEqual(
+    paths.map((path) => readFileSync(join(f.root, path), 'utf8')),
+    before
+  );
+});

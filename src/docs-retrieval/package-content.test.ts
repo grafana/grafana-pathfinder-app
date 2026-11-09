@@ -421,6 +421,30 @@ describe('fetchPackageContent error handling', () => {
     global.fetch = originalFetch;
   });
 
+  it.each(['blocked', 'hung'])('opens the bundled copy when a recommendation CDN is %s', async (mode) => {
+    jest.useFakeTimers();
+    global.fetch =
+      mode === 'hung'
+        ? jest.fn(() => new Promise(() => {}))
+        : jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    try {
+      const pending = fetchPackageContent(
+        'https://interactive-learning.grafana.net/packages/first-dashboard/content.json',
+        { id: 'first-dashboard', type: 'guide', repository: 'interactive-tutorials' },
+        undefined,
+        'interactive-tutorials'
+      );
+      await jest.advanceTimersByTimeAsync(1_500);
+      const result = await pending;
+      expect(result.content).not.toBeNull();
+      expect(result.content?.url).toBe('bundled:first-dashboard');
+      expect(result.content?.metadata.repository).toBe('bundled');
+      expect(JSON.parse(result.content!.content).id).toBe('first-dashboard');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('returns an error result when CDN fetch rejects with a network error', async () => {
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
@@ -895,6 +919,49 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(journey.tracks![0]!.milestones[0]!.title).toBe('Milestone: builder-1');
   });
 
+  it("keeps a PR-tester load, its catalog-resolved tracks, and its base URL under the load's marker", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `https://cdn.example/packages/${id}/content.json`,
+          manifestUrl: `https://cdn.example/packages/${id}/manifest.json`,
+          repository: 'interactive-tutorials',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+    const manifest = {
+      id: 'first-dashboard',
+      type: 'path',
+      milestones: ['step-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    };
+    const coverUrl = 'https://cdn.example/packages/first-dashboard/content.json#pf-pr-abc';
+    const preFetched = {
+      content: {
+        content: JSON.stringify({ id: 'first-dashboard', title: 'Cover', blocks: [] }),
+        metadata: { title: 'Cover' },
+        type: 'interactive',
+        url: coverUrl,
+        lastFetched: new Date().toISOString(),
+      },
+    } as unknown as Awaited<ReturnType<typeof fetchContent>>;
+
+    const result = await fetchPackageContent(coverUrl, manifest, undefined, undefined, preFetched);
+
+    const journey = result.content!.metadata.learningJourney!;
+    expect(journey.milestones.map((m) => m.url)).toEqual([
+      'https://cdn.example/packages/step-1/content.json#pf-pr-abc',
+    ]);
+    expect(journey.tracks![0]!.milestones.map((m) => m.url)).toEqual([
+      'https://cdn.example/packages/builder-1/content.json#pf-pr-abc',
+    ]);
+  });
+
   it('reads tracks from the package manifest when the caller manifest is a slim recommender projection', async () => {
     const packageManifest = {
       id: 'first-dashboard',
@@ -1065,7 +1132,7 @@ describe('fetchPackageContent path-type enrichment', () => {
 
   // Classification is a direct id lookup against `milestones`/`tracks`,
   // not a URL comparison: `explicitGuideId` is the manifest guide id the
-  // click target already carried (GuideList's current row, the cover
+  // click target already carried (a GuideList row, the cover
   // page's CTA). This single test exercises all three classifications
   // against the SAME manifest: a real cover-page load (no explicitGuideId
   // — the load behind no click, e.g. the initial open), a track-exclusive

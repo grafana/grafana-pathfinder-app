@@ -330,9 +330,10 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
     );
     expect(alerting).toBeDefined();
 
-    // welcome-to-grafana should not appear twice (deduplication by title)
     const welcomeRecs = result.recommendations.filter((r) => r.title.toLowerCase().includes('welcome to grafana'));
-    expect(welcomeRecs.length).toBe(1);
+    expect(welcomeRecs).toHaveLength(1);
+    expect(welcomeRecs[0]?.repository).toBe('interactive-tutorials');
+    expect(welcomeRecs[0]?.type).toBe('package');
   });
 });
 

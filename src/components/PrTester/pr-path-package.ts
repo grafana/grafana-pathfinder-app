@@ -11,6 +11,7 @@
 import type { Milestone } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { buildPackageFileUrl, type OnlinePackageEntry } from '../../lib/package-recommendations-client';
+import { withPrTestMarker } from '../../lib/pr-test-marker';
 import type { PrJsonFile } from './github-api';
 
 /** Where a single milestone's content comes from. */
@@ -39,6 +40,8 @@ export interface PathPackageBuildInputs {
   catalogById: ReadonlyMap<string, OnlinePackageEntry>;
   /** Catalog `baseUrl` for building CDN file URLs. */
   catalogBaseUrl: string;
+  /** The PR tester's per-fetch id; every URL handed out carries it so progress stays per fetch. */
+  fetchId: string;
 }
 
 /** A milestone row for the path-mode preview, annotated with its source. */
@@ -131,7 +134,9 @@ function resolveMilestone(
  * is resolvable from neither source.
  */
 export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackageBuildResult {
-  const { pathId, description, milestoneIds, coverFromPr, packageManifest, catalogById, catalogBaseUrl } = inputs;
+  const { pathId, description, milestoneIds, coverFromPr, packageManifest, catalogById, catalogBaseUrl, fetchId } =
+    inputs;
+  const mark = (url: string) => withPrTestMarker(url, fetchId);
 
   if (milestoneIds.length === 0) {
     return { ok: false, reason: 'no_milestones' };
@@ -161,7 +166,7 @@ export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackag
       id,
       number: index + 1,
       title: resolved.title,
-      url: resolved.url,
+      url: mark(resolved.url),
       isActive: false,
     });
     preview.push({ id, title: resolved.title, source: resolved.source });
@@ -180,5 +185,5 @@ export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackag
     resolvedMilestones: milestones,
   };
 
-  return { ok: true, coverUrl, title, packageInfo, preview };
+  return { ok: true, coverUrl: mark(coverUrl), title, packageInfo, preview };
 }

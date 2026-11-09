@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.26.1
+
+### Fixed
+
+- **Custom path milestones in the hub**: Expand custom learning paths to open any published milestone directly, switch tracks, and return to the next incomplete milestone. Track navigation survives a reload. (#2314)
+- **Open any published milestone**: Learning path cover pages let readers revisit completed milestones or jump ahead without completing earlier modules. Unavailable milestones remain locked. (#2313)
+- **Dashboard guide launches after fullscreen**: Guides launch correctly when navigating from a fullscreen guide to a dashboard after panel mode parameters are cleared. (#2315)
+- **Progress from reader actions**: Sections without their own objectives no longer start an attempt merely because their steps were already satisfied when the guide loaded. (#2297)
+
+### Chore
+
+- **Editor metadata regression coverage**: Add integration tests that verify guide metadata survives visual and JSON edits, publish changes, and restored drafts. (#2316)
+- **Review convergence**: Light reviews account for the review round when judging merge readiness while retaining serious-harm blockers. (#2226)
+
+## 2.26.0
+
+### Added
+
+- **Automatic guide completion**: Guides complete at their last completable block. Prose-only guides complete when the end of the guide is visible. (#2262)
+
+### Fixed
+
+- **Fresh, isolated PR previews**: PR previews fetch updated content after a push and keep preview progress separate from real guide completion records. (#2275)
+- **Completion after a reset**: A late objectives check from before a reset no longer completes a step twice or changes its completion origin. (#2292)
+- **Existing objectives on guide load**: With passive completion off, objectives already met when a guide opens no longer count as new learner progress. (#2256)
+- **Deep-link tab titles**: Learning paths opened from website links replace temporary tab titles with the fetched content title. (#2282)
+- **Sidebar hub spacing**: The Recommended tab uses the same page padding as Explore. (#2287)
+- **Guided steps across tabs**: Guided commands with a `noop` substep now reach the live tab instead of being rejected. (#2253)
+- **Reliable authoring selectors**: The element picker keeps the original selector if cleaning makes it stop uniquely matching the selected element. (#2268)
+- **Spanish translations**: Spanish navigation labels use sentence case. Interactive learning actions and settings now have Spanish text instead of empty or English strings. (#2303)
+
+### Security
+
+- **Go dependency security updates**: Update Go JOSE and related dependencies, including the follow-up RSA key validation fix. (#2187, #2277)
+- **Glob cancellation fix**: Update glob to address filesystem traversal that continues after cancellation. (#2272)
+- **Container base image updates**: Refresh Node.js and CA trust base images with security updates. (#2296, #2300, #2301)
+
+### Chore
+
+- **Sidebar hub enabled for everyone**: Remove the sidebar hub feature flag. The Recommended tab always uses the hub layout. (#2286)
+
 ## 2.25.0
 
 ### Added

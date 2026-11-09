@@ -25,6 +25,7 @@
   },
   {
     "id": "first-dashboard",
+    "legacyOnlineId": "first-dashboard-rss",
     "url": ["/"],
     "targetPlatform": "oss"
   },
