@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const testRegistryJSON = `{"schemaVersion":1,"entities":{
+const testRegistryJSON = `{"entities":{
   "dashboards":{"actions":{"created":{
     "context":{"resourceId":{"type":"string"},"numPanels":{"type":"number"},"starred":{"type":"boolean"}},
     "resources":[{"unit":"dashboard","id":["resourceId"]}]}}},
@@ -20,7 +20,7 @@ const testRegistryJSON = `{"schemaVersion":1,"entities":{
   "alert-rules":{"actions":{"created":{"context":{}}}}
 }}`
 
-const testCatalogJSON = `{"schemaVersion":1,"achievements":[
+const testCatalogJSON = `{"achievements":[
   {"id":"dash-builder","title":"Dashboard builder","description":"Create dashboards.",
    "counter":{"unit":"dashboard","evidence":[
      {"entity":"dashboards","action":"created","countBy":"resource","where":[{"field":"numPanels","op":"gte","value":1}]}]},
@@ -46,7 +46,7 @@ var fixedNow = time.Date(2026, 11, 2, 9, 30, 0, 0, time.FixedZone("test", 3600))
 
 func mustRegistry(t testing.TB) *Registry {
 	t.Helper()
-	r, err := LoadRegistry([]byte(testRegistryJSON))
+	r, err := loadRegistry([]byte(testRegistryJSON))
 	if err != nil {
 		t.Fatalf("test registry: %v", err)
 	}
@@ -55,7 +55,7 @@ func mustRegistry(t testing.TB) *Registry {
 
 func mustCatalog(t testing.TB) *Catalog {
 	t.Helper()
-	c, err := LoadCatalog([]byte(testCatalogJSON), mustRegistry(t))
+	c, err := loadCatalog([]byte(testCatalogJSON), mustRegistry(t))
 	if err != nil {
 		t.Fatalf("test catalog: %v", err)
 	}

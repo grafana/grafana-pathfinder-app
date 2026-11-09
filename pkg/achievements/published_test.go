@@ -3,15 +3,30 @@ package achievements
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
 
-func TestBundledDefinitionIsGuidesFinished(t *testing.T) {
-	registry, catalog, err := LoadBundled()
+func loadTestBundle(t testing.TB) *Snapshot {
+	t.Helper()
+	data, err := os.ReadFile("testdata/bundle.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	s, err := LoadBundle(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Skipped) != 0 {
+		t.Fatalf("testdata/bundle.json skipped %+v", s.Skipped)
+	}
+	return s
+}
+
+func TestPublishedDefinitionIsGuidesFinished(t *testing.T) {
+	s := loadTestBundle(t)
+	registry, catalog := s.Registry, s.Catalog
 	if len(catalog.Achievements) != 1 {
 		t.Fatalf("%d achievements, want the single guides-finished definition", len(catalog.Achievements))
 	}
@@ -36,11 +51,8 @@ func TestBundledDefinitionIsGuidesFinished(t *testing.T) {
 	}
 }
 
-func TestBundledDefinitionCountsDistinctGuides(t *testing.T) {
-	_, catalog, err := LoadBundled()
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestPublishedDefinitionCountsDistinctGuides(t *testing.T) {
+	catalog := loadTestBundle(t).Catalog
 	store := newFakeStore()
 	ev := NewEvaluator(catalog, store, &fakePolicy{}, func() time.Time { return fixedNow })
 	finish := func(source, id string) Decision {
@@ -66,11 +78,8 @@ func TestBundledDefinitionCountsDistinctGuides(t *testing.T) {
 	}
 }
 
-func TestBundledDefinitionReachesEveryShippedTier(t *testing.T) {
-	_, catalog, err := LoadBundled()
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestPublishedDefinitionReachesEveryShippedTier(t *testing.T) {
+	catalog := loadTestBundle(t).Catalog
 	store := newFakeStore()
 	ev := NewEvaluator(catalog, store, &fakePolicy{}, func() time.Time { return fixedNow })
 	finish := func(n int) Decision {
@@ -128,11 +137,8 @@ func TestBundledDefinitionReachesEveryShippedTier(t *testing.T) {
 	}
 }
 
-func TestBundledDefinitionCountsTheRecordersLongestGuideID(t *testing.T) {
-	_, catalog, err := LoadBundled()
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestPublishedDefinitionCountsTheRecordersLongestGuideID(t *testing.T) {
+	catalog := loadTestBundle(t).Catalog
 	ev := NewEvaluator(catalog, newFakeStore(), &fakePolicy{}, func() time.Time { return fixedNow })
 	decisions, err := ev.Evaluate(context.Background(), testPerson, Event{
 		ID: "long", Entity: "guides", Action: "completed",

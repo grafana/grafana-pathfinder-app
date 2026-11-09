@@ -227,7 +227,7 @@ func TestEvaluateDoesNotMutateStoredLedger(t *testing.T) {
 
 func TestEvaluateLedgerStopsAtTheCeiling(t *testing.T) {
 	registry := mustRegistry(t)
-	catalog, err := LoadCatalog([]byte(`{"schemaVersion":1,"achievements":[
+	catalog, err := loadCatalog([]byte(`{"achievements":[
 	  {"id":"small","title":"Small","description":"Small.",
 	   "counter":{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},
 	   "tiers":[{"id":"bronze","at":1},{"id":"silver","at":2}]}]}`), registry)
@@ -314,7 +314,7 @@ func TestCatalogRoundTripsThroughJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := LoadCatalog(out, registry)
+	again, err := loadCatalog(out, registry)
 	if err != nil {
 		t.Fatalf("re-loading a marshalled catalog: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestCatalogRoundTripsThroughJSON(t *testing.T) {
 	}
 }
 
-const guideUnitCatalogJSON = `{"schemaVersion":1,"achievements":[
+const guideUnitCatalogJSON = `{"achievements":[
   {"id":"guides","title":"Guides","description":"Finish guides.",
    "counter":{"unit":"guide","evidence":[{"entity":"guides","action":"completed","countBy":"resource"}]},
    "tiers":[{"id":"bronze","at":1},{"id":"silver","at":2}]}]}`
@@ -333,7 +333,7 @@ func guideFinished(source, id string) Event {
 }
 
 func TestEvaluateCompoundUnitIDsCannotCollide(t *testing.T) {
-	catalog, err := LoadCatalog([]byte(guideUnitCatalogJSON), mustRegistry(t))
+	catalog, err := loadCatalog([]byte(guideUnitCatalogJSON), mustRegistry(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,7 @@ func TestEvaluateCompoundUnitIDsCannotCollide(t *testing.T) {
 }
 
 func TestEvaluateCountsTheRecordersLongestGuideID(t *testing.T) {
-	catalog, err := LoadCatalog([]byte(guideUnitCatalogJSON), mustRegistry(t))
+	catalog, err := loadCatalog([]byte(guideUnitCatalogJSON), mustRegistry(t))
 	if err != nil {
 		t.Fatal(err)
 	}

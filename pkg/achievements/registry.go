@@ -10,8 +10,6 @@ import (
 )
 
 const (
-	SchemaVersion = 1
-
 	maxTokenLen      = 32
 	maxContextFields = 12
 )
@@ -32,8 +30,7 @@ var (
 // Registry declares which entity.action pairs are valid and the context each
 // carries (RFC §6.1).
 type Registry struct {
-	SchemaVersion int               `json:"schemaVersion"`
-	Entities      map[string]Entity `json:"entities"`
+	Entities map[string]Entity `json:"entities"`
 }
 
 type Entity struct {
@@ -57,7 +54,7 @@ type Resource struct {
 	ID   []string `json:"id"`
 }
 
-func LoadRegistry(data []byte) (*Registry, error) {
+func loadRegistry(data []byte) (*Registry, error) {
 	var r Registry
 	if err := decodeStrict(data, &r); err != nil {
 		return nil, err
@@ -78,9 +75,6 @@ func (r *Registry) action(entity, action string) (Action, bool) {
 }
 
 func (r *Registry) validate() error {
-	if r.SchemaVersion != SchemaVersion {
-		return fmt.Errorf("registry: schemaVersion must be %d, got %d", SchemaVersion, r.SchemaVersion)
-	}
 	if len(r.Entities) == 0 {
 		return errors.New("registry: no entities")
 	}

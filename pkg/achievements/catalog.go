@@ -34,14 +34,16 @@ type Pair struct {
 
 // Catalog is the closed-grammar list of achievement definitions (RFC §6.2).
 type Catalog struct {
-	SchemaVersion int          `json:"schemaVersion"`
-	Achievements  []Definition `json:"achievements"`
+	Achievements []Definition `json:"achievements"`
 }
 
 // Definition with a Counter counts distinct units toward tiers with an At
 // threshold. Without one it is a milestone: each tier is earned by an Or route.
 type Definition struct {
-	ID          string   `json:"id"`
+	ID string `json:"id"`
+	// Requires is the lowest grammar version with every construct the
+	// definition uses. The build computes it; authors never write it.
+	Requires    string   `json:"requires,omitempty"`
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	Counter     *Counter `json:"counter,omitempty"`
@@ -130,10 +132,9 @@ func (c CountBy) MarshalJSON() ([]byte, error) {
 	}
 }
 
-// LoadCatalog parses a catalog and validates it against the registry. A
-// definition that uses anything outside the §6.2 grammar, including an earn
-// window, is rejected.
-func LoadCatalog(data []byte, registry *Registry) (*Catalog, error) {
+// loadCatalog parses a whole catalog strictly and rejects it on any problem,
+// including an earn window. Published bundles go through LoadBundle instead.
+func loadCatalog(data []byte, registry *Registry) (*Catalog, error) {
 	var c Catalog
 	if err := decodeStrict(data, &c); err != nil {
 		return nil, fmt.Errorf("catalog: %w", err)
@@ -145,9 +146,6 @@ func LoadCatalog(data []byte, registry *Registry) (*Catalog, error) {
 }
 
 func (c *Catalog) validate(registry *Registry) error {
-	if c.SchemaVersion != SchemaVersion {
-		return fmt.Errorf("catalog: schemaVersion must be %d, got %d", SchemaVersion, c.SchemaVersion)
-	}
 	var errs []error
 	seen := map[string]bool{}
 	for i := range c.Achievements {
@@ -169,6 +167,9 @@ func (d *Definition) validate(registry *Registry) []error {
 	}
 	if len(d.ID) > maxIDLen || !idPattern.MatchString(d.ID) {
 		fail("id must be a lowercase token of at most %d characters", maxIDLen)
+	}
+	if d.Requires != "" && !supported(d.Requires) {
+		fail("requires %q is not a grammar this build reads (%d.0 to %d.%d)", d.Requires, GrammarMajor, GrammarMajor, GrammarMinor)
 	}
 	if d.Title == "" || d.Description == "" {
 		fail("title and description are required")

@@ -27,6 +27,9 @@ type Event struct {
 	Context    map[string]any
 }
 
+// SchemaVersion versions the stored progress row's shape, not the grammar.
+const SchemaVersion = 1
+
 // Progress is one person's stored state for one achievement.
 type Progress struct {
 	AchievementID string
