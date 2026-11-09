@@ -116,6 +116,7 @@ jest.mock('./link-handler.hook', () => ({
 }));
 
 jest.mock('../../security', () => ({
+  isAllowedContentUrl: jest.requireActual('../../security/url-validator').isAllowedContentUrl,
   isInteractiveLearningUrl: jest.requireActual('../../security/url-validator').isInteractiveLearningUrl,
   parseUrlSafely: jest.fn((url: string) => {
     try {
@@ -223,6 +224,7 @@ jest.mock('../../constants/testIds', () => ({
 }));
 
 jest.mock('../../types/package.types', () => ({
+  ...jest.requireActual('../../types/package.types'),
   getPackageRenderType: jest.fn(),
 }));
 
@@ -577,6 +579,7 @@ describe('CombinedLearningJourneyPanel — milestone toolbar navigation threads 
 describe('CombinedLearningJourneyPanel.loadDocsTabContent — knownBaseUrl fallback', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(true);
     (loadDocsTabContentResult as jest.Mock).mockResolvedValue({ content: null, error: 'x', errorType: 'other' });
   });
 
@@ -587,6 +590,7 @@ describe('CombinedLearningJourneyPanel.loadDocsTabContent — knownBaseUrl fallb
       content: {
         url: 'bundled:the-path/content.json',
         metadata: {
+          packageManifest: { id: 'the-path', type: 'path' },
           learningJourney: {
             baseUrl: 'bundled:the-path/content.json',
             currentMilestone: 0,
@@ -615,7 +619,10 @@ describe('CombinedLearningJourneyPanel.loadDocsTabContent — knownBaseUrl fallb
       ...makeTab('journey-tab'),
       content: {
         url: 'bundled:t-only-a/content.json',
-        metadata: { trackMemberBaseUrl: 'bundled:the-path/content.json' },
+        metadata: {
+          journeyManifest: { id: 'the-path', type: 'path' },
+          trackMemberBaseUrl: 'bundled:the-path/content.json',
+        },
       },
     };
     panel.setState({ tabs: [trackOnlyTab as any], activeTabId: 'journey-tab' });
@@ -627,6 +634,97 @@ describe('CombinedLearningJourneyPanel.loadDocsTabContent — knownBaseUrl fallb
 
     expect(loadDocsTabContentResult as jest.Mock).toHaveBeenCalledWith(
       'bundled:t-only-b/content.json',
+      expect.objectContaining({ knownBaseUrl: 'bundled:the-path/content.json' })
+    );
+  });
+  it.each([
+    { id: 'different-path', repository: 'interactive-tutorials' },
+    { id: 'the-path', repository: 'app-platform' },
+  ])('does not reuse outgoing context for another owner: %j', async (incoming) => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [
+        {
+          ...makeTab('journey-tab'),
+          content: {
+            ...preparedContent,
+            metadata: {
+              title: 'Previous path',
+              journeyManifest: { id: 'the-path', type: 'path' },
+              repository: 'interactive-tutorials',
+              trackMemberBaseUrl: 'bundled:the-path/content.json',
+            },
+          },
+        },
+      ],
+    });
+    await panel.loadTab('journey-tab', 'bundled:member/content.json', {
+      packageInfo: {
+        packageManifest: { id: incoming.id, type: 'path' },
+        repository: incoming.repository,
+      },
+    });
+    expect(loadDocsTabContentResult).toHaveBeenCalledWith(
+      'bundled:member/content.json',
+      expect.objectContaining({ knownBaseUrl: undefined })
+    );
+  });
+
+  it.each([
+    ['online-cdn', 'interactive-tutorials'],
+    ['interactive-tutorials', 'online-cdn'],
+    [undefined, 'interactive-tutorials'],
+  ])('carries outgoing public base across source aliases %s / %s', async (repository, ownerRepository) => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [
+        {
+          ...makeTab('journey-tab'),
+          content: {
+            ...preparedContent,
+            metadata: {
+              title: 'Owner',
+              journeyManifest: { id: 'the-path', type: 'path', repository: ownerRepository },
+              trackMemberBaseUrl: 'bundled:the-path/content.json',
+            },
+          },
+        },
+      ],
+    });
+    await panel.loadTab('journey-tab', 'bundled:member/content.json', {
+      packageInfo: {
+        packageManifest: { id: 'the-path', type: 'path' },
+        repository,
+      },
+    });
+    expect(loadDocsTabContentResult).toHaveBeenCalledWith(
+      'bundled:member/content.json',
+      expect.objectContaining({ knownBaseUrl: 'bundled:the-path/content.json' })
+    );
+  });
+
+  it('reuses matching existing package context without a new package argument', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const manifest = { id: 'the-path', type: 'path', repository: 'interactive-tutorials' };
+    panel.setState({
+      tabs: [
+        {
+          ...makeTab('journey-tab'),
+          packageInfo: { packageManifest: manifest },
+          content: {
+            ...preparedContent,
+            metadata: {
+              title: 'Previous member',
+              journeyManifest: manifest,
+              trackMemberBaseUrl: 'bundled:the-path/content.json',
+            },
+          },
+        },
+      ],
+    });
+    await panel.loadTab('journey-tab', 'bundled:member/content.json');
+    expect(loadDocsTabContentResult).toHaveBeenCalledWith(
+      'bundled:member/content.json',
       expect.objectContaining({ knownBaseUrl: 'bundled:the-path/content.json' })
     );
   });
@@ -858,7 +956,10 @@ describe('reader return loader routing', () => {
       expect(loadDocsTabContentResult).toHaveBeenLastCalledWith(
         milestone.url,
         expect.objectContaining({
-          packageInfo,
+          packageInfo: expect.objectContaining({
+            repository: packageInfo.repository,
+            packageManifest: expect.objectContaining(manifest),
+          }),
           explicitGuideId: 'three',
         })
       );

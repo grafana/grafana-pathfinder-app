@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey, isBundledTutorial } from '../../lib/bundled-tutorial-identity';
 import { identifyGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 // Package content integration (Phase 4g).
@@ -17,6 +18,7 @@ import {
   type ManifestTrack,
 } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
+import { resolveOfflinePathContext } from './package-fallback-context';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
@@ -164,14 +166,18 @@ async function resolvePathTracks(
   manifestId: string,
   callerManifest: Record<string, unknown> | undefined,
   pathSlug?: string
-): Promise<{ declared: ManifestTrack[]; resolved: CoverPageTrack[] }> {
+): Promise<{ declared: ManifestTrack[]; resolved: CoverPageTrack[]; authoritative: boolean }> {
   const needsPackageManifest = manifestId !== '' && callerManifest?.repository !== 'app-platform';
   const resolver = needsPackageManifest ? await getPackageResolver() : undefined;
   const resolution = resolver
     ? await resolver.resolve(manifestId, { loadContent: 'metadata-only' }).catch(() => undefined)
     : undefined;
   const declared = getManifestTracks(resolution?.ok && resolution.manifest ? resolution.manifest : callerManifest);
-  return { declared, resolved: declared.length > 0 ? await resolvePackageTracks(declared, pathSlug) : [] };
+  return {
+    declared,
+    resolved: declared.length > 0 ? await resolvePackageTracks(declared, pathSlug) : [],
+    authoritative: (resolution?.ok && isPathManifest(resolution.manifest)) || Array.isArray(callerManifest?.tracks),
+  };
 }
 
 /**
@@ -329,51 +335,80 @@ export async function fetchPackageContent(
   knownBaseUrl?: string,
   loadContext?: GuideLoadContext
 ): Promise<ContentFetchResult> {
+  let offlinePath: ReturnType<typeof resolveOfflinePathContext> | undefined;
+  const fallbackKey = bundledTutorialContentKey(contentUrl);
+  if (!preFetchedContent && !contentUrl.startsWith('bundled:') && fallbackKey.startsWith('bundled:')) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      preFetchedContent = await Promise.race([
+        fetchContent(contentUrl, { loadContext }).catch(() => ({ content: null })),
+        new Promise<ContentFetchResult>((resolve) => {
+          timer = setTimeout(() => resolve({ content: null }), 1_500);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!preFetchedContent.content) {
+      preFetchedContent = await fetchContent(fallbackKey, { loadContext });
+      if (isPathManifest(packageManifest)) {
+        offlinePath = resolveOfflinePathContext(
+          contentUrl,
+          packageManifest!,
+          preResolvedMilestones,
+          repository,
+          explicitGuideId,
+          knownBaseUrl
+        );
+        packageManifest = offlinePath.manifest;
+        preResolvedMilestones = offlinePath.milestones;
+        knownBaseUrl = offlinePath.baseUrl;
+        explicitGuideId = offlinePath.loadedGuideId;
+        if (preFetchedContent.content) {
+          // Member navigation matches the requested URL, regardless of where its content came from.
+          preFetchedContent = {
+            ...preFetchedContent,
+            content: { ...preFetchedContent.content, url: contentUrl },
+          };
+        }
+      } else {
+        contentUrl = fallbackKey;
+        packageManifest = undefined;
+        repository = 'bundled';
+      }
+    }
+  }
   identifyGuideLoad(loadContext, contentUrl);
   const renderType = getPackageRenderType(packageManifest);
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
 
   const manifestId = needsMilestones && typeof packageManifest?.id === 'string' ? packageManifest.id : '';
-  // Only public packages have a grafana.com docs page. Suppressing the slug for
-  // private App Platform paths here keeps every downstream websiteUrl synthesis
-  // (path cover + per-milestone) from fabricating a public URL the toolbar would
-  // `window.open` to a 404 and report to analytics (unretractable).
+  // Private packages have no public documentation URL.
   const pathSlug =
     manifestId && packageManifest?.repository !== 'app-platform' ? derivePathSlug(manifestId) : undefined;
   const milestoneIds = needsMilestones ? getManifestMilestoneIds(packageManifest) : [];
   const shouldResolveMilestones =
     needsMilestones && (!preResolvedMilestones || preResolvedMilestones.length === 0) && milestoneIds.length > 0;
-  // Resolved unconditionally, not only for the cover page: currentMilestone
-  // below must know whether the loaded URL belongs to a track before it can
-  // safely conclude "not in milestones" means "this is the cover page" — a
-  // guide referenced only by a track (never by milestones, which the RFC
-  // explicitly allows) would otherwise be misclassified as index 0 and
-  // render as the path's cover instead of as itself.
-  //
-  // Gated to type === 'path' specifically, not needsMilestones (also true
-  // for journey): RFC §6.1 / schema Rule 3 restrict tracks to paths, but
-  // that rule only runs in superRefine, which many runtime loaders skip.
+  // Track-only direct opens need classification even without a cover-page click.
   const tracksEligible = needsMilestones && packageManifest?.type === 'path';
 
-  // Run content fetch, milestone resolution, track resolution, and baseUrl
-  // resolution in parallel. These are independent: the page body doesn't
-  // need milestones/tracks and milestones/tracks don't need the page body.
-  // The baseUrl branch awaits getPackageResolver() itself (rather than a
-  // resolver fetched ahead of this array) so a cold resolver's chunk fetch
-  // overlaps fetchContent(contentUrl, { loadContext }) instead of
-  // serializing in front of it.
   const [result, unmarkedMilestones, baseUrlResolution, unmarkedPathTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
-    shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
-    manifestId
+    shouldResolveMilestones && !offlinePath
+      ? resolvePackageMilestones(milestoneIds, pathSlug)
+      : Promise.resolve(undefined),
+    manifestId && !offlinePath
       ? getPackageResolver().then((resolver) =>
           resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
         )
       : Promise.resolve(undefined),
-    tracksEligible ? resolvePathTracks(manifestId, packageManifest, pathSlug) : Promise.resolve(undefined),
+    offlinePath
+      ? Promise.resolve(offlinePath.pathTracks)
+      : tracksEligible
+        ? resolvePathTracks(manifestId, packageManifest, pathSlug)
+        : Promise.resolve(undefined),
   ]);
-  // A PR-tester load keeps every URL it derives under the same per-fetch marker,
-  // so catalog-resolved members never read or write the production guide's records.
+  // Derived URLs must retain PR-test isolation from production progress.
   const prTestFetchId = getPrTestFetchId(contentUrl);
   const markForPrTest = (url: string) => (prTestFetchId && url ? withPrTestMarker(url, prTestFetchId) : url);
   const markMilestonesForPrTest = (list: Milestone[]) => list.map((m) => ({ ...m, url: markForPrTest(m.url) }));
@@ -416,13 +451,11 @@ export async function fetchPackageContent(
       (milestoneIds.includes(explicitGuideId) || getAllTrackGuideIds(manifestTracks).includes(explicitGuideId))
     );
   const resolvedRepository =
-    repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ?? resolvedMember?.repository;
+    repository ??
+    (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined) ??
+    (offlinePath ? undefined : resolvedMember?.repository);
 
   let learningJourney: LearningJourneyMetadata | undefined;
-  // Set only for a track-only member (see the isTrackOnlyMember branch
-  // below) — carries just enough for recordGuideCompletionForSurface to
-  // route its completion through markMilestoneDone under
-  // this guide's own identity, without resurrecting a fake milestone index.
   let trackMemberBaseUrl: string | undefined;
   let contentString = result.content.content;
 
@@ -430,41 +463,18 @@ export async function fetchPackageContent(
     const tracks = pathTracks?.resolved ?? [];
 
     if (milestones && milestones.length > 0) {
-      // Structural classification: a direct id lookup against the manifest's
-      // own `milestones`/`tracks` arrays, not a comparison of resolved URLs
-      // — inferring identity from a resolved URL (a side-channel) rather
-      // than checking the identity itself is the failure mode this replaces.
-      // `explicitGuideId` IS that identity, threaded from the click target
-      // (a GuideList row, the cover page's CTA) through
-      // link-handler.hook.ts and docs-panel.tsx, so this is a plain string
-      // membership check against `milestoneIds`/`manifestTracks` — both raw
-      // manifest data, already in scope, no resolve involved.
+      // The clicked member ID is authoritative; resolved URLs can differ across delivery sources.
       const milestoneIndex = explicitGuideId
         ? milestoneIds.indexOf(explicitGuideId)
         : milestones.findIndex((m) => m.url === contentUrl);
 
-      // Only reachable with no `explicitGuideId` — a load with no click
-      // behind it (the initial cover-page open, a deep link, a bookmark).
-      // Confirmed by a direct match against a track's own resolved guide
-      // URL, retried once for a track guide whose OWN resolve failed (a
-      // locked placeholder, url ''). Deliberately NOT confirmed by comparing
-      // this load's URL against baseUrlResolution's: a raw or PR-tester
-      // cover URL differs, byte for byte, from the resolver's own canonical
-      // URL for the SAME manifestId just as reliably as a genuine track
-      // guide's URL does, so that comparison alone proves nothing. When
-      // neither the direct match nor its retry confirms a track member,
-      // this defaults to the cover page — the same default as before
-      // tracks existed.
       let isConfirmedTrackMember =
         milestoneIndex < 0 &&
         (explicitGuideId
           ? getAllTrackGuideIds(manifestTracks).includes(explicitGuideId)
           : tracks.some((track) => track.milestones.some((m) => !m.isLocked && m.url === contentUrl)));
 
-      if (!explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
-        // `id` is optional on `Milestone` in general, but `resolveGuideIdsToMilestones`
-        // — the only producer of a `CoverPageTrack`'s milestones — always sets it,
-        // for both a locked placeholder and a resolved entry alike.
+      if (!offlinePath && !explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
         const lockedTrackGuideIds = tracks
           .flatMap((track) => track.milestones.filter((m) => m.isLocked))
           .map((m) => m.id)
@@ -478,53 +488,33 @@ export async function fetchPackageContent(
       isMemberLoad = isMemberLoad || milestoneIndex >= 0 || isConfirmedTrackMember;
       const isCoverPageLoad = milestoneIndex < 0 && !isConfirmedTrackMember;
 
-      // A guide that is neither a milestone nor the cover page isn't part of
-      // the Foundations sequence a track is layered on top of
-      // (COMPLETION-MODEL.md: a track is a presentation ordering only, not a
-      // second completion authority) — it has no real position in
-      // `milestones` to report. Earlier this synthesized a -1 sentinel
-      // currentMilestone to dodge the cover-page branch below, but that
-      // sentinel leaked into every consumer that assumes any non-zero value
-      // is a real step: the docs-panel step label showed "Step -1 of N",
-      // Previous stayed disabled, and Next jumped into Foundations module 1.
-      // Leaving learningJourney undefined instead — the same, already-
-      // supported state a path with zero resolved milestones produces —
-      // renders this guide as a plain guide: no Foundations step label, no
-      // Previous/Next milestone arrows. trackMemberBaseUrl below is what
-      // keeps its completion write alive despite that (see its own doc
-      // comment in content.types.ts): without it, a second bug — this
-      // guide's completion never being recorded at
-      // all — would replace the one this branch fixes.
       if (milestoneIndex >= 0 || isCoverPageLoad) {
         const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
 
         let baseUrl = contentUrl;
-        if (milestoneIndex >= 0 && baseUrlResolution && baseUrlResolution.ok) {
-          baseUrl = markForPrTest(baseUrlResolution.contentUrl);
+        if (milestoneIndex >= 0) {
+          baseUrl = baseUrlResolution?.ok
+            ? markForPrTest(baseUrlResolution.contentUrl)
+            : (knownBaseUrl ?? (offlinePath ? '' : contentUrl));
         }
 
         learningJourney = {
           currentMilestone,
           totalMilestones: milestones.length,
           milestones,
+          ...(offlinePath?.hasUnavailableMilestones && { hasUnavailableMilestones: true }),
           baseUrl,
           summary: result.content.metadata.singleDoc?.summary,
-          // pathSlug is already suppressed for private packages at derivation, so a
-          // non-null slug means this is a public path with a grafana.com docs page.
           ...(pathSlug != null && {
             websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
           }),
         };
 
         if (currentMilestone === 0) {
-          if (tracks.length > 0) {
+          if (tracks.length > 0 || pathTracks?.authoritative) {
             learningJourney.tracks = tracks;
           }
 
-          // skipReadyToBegin: true — the React cover-page TOC (LearningPathTableOfContents)
-          // renders its own Start/Resume CTA against real progress data; the
-          // legacy HTML button always says "Ready to Begin" and always targets
-          // milestone 1, so leaving both on would show two conflicting CTAs.
           contentString = injectJourneyExtrasIntoJsonGuide(
             ensureNonEmptyCoverContent(contentString),
             learningJourney,
@@ -534,31 +524,12 @@ export async function fetchPackageContent(
       } else if (baseUrlResolution && baseUrlResolution.ok) {
         trackMemberBaseUrl = markForPrTest(baseUrlResolution.contentUrl);
       } else if (knownBaseUrl) {
-        // This SAME request's own re-resolve of manifestId failed, but the
-        // caller already knows the answer (the cover page this guide was
-        // just clicked from) — use it rather than dropping the guide's
-        // completion entirely for a transient resolver hiccup.
         trackMemberBaseUrl = knownBaseUrl;
-      } else if (manifestId) {
-        // Neither of the above had an answer — most commonly a direct or
-        // deep-link load of a track-only guide, which never went through a
-        // cover-page click and so was never given a `knownBaseUrl`. One more
-        // independent resolve gives a transient resolver hiccup a second
-        // chance before this guide's completion is dropped for real.
+      } else if (manifestId && !offlinePath) {
         const retriedBaseUrl = await resolvePackageUrlBypassCache(manifestId);
         if (retriedBaseUrl) {
           trackMemberBaseUrl = markForPrTest(retriedBaseUrl);
         } else {
-          // Even the retry came up empty. Falling back to this guide's own
-          // contentUrl still preserves a completion identity rather than
-          // dropping the write: for a track-only guide, `trackMemberBaseUrl`
-          // is read back only as the truthiness gate
-          // `resolveActiveMilestoneSlug` checks, while the actual write key
-          // (`markMilestoneDone`) and the cover page's read
-          // (`journeyMilestonePercentages`) both key on THIS guide's own
-          // resolved URL, never on `trackMemberBaseUrl`'s value — so any
-          // truthy fallback round-trips through the same key a successful
-          // resolve would have produced.
           trackMemberBaseUrl = contentUrl;
           logger.warn(
             `[fetchPackageContent] Could not resolve path base URL for track-only guide; using its own contentUrl as a fallback completion identity: ${contentUrl}`,
@@ -570,7 +541,6 @@ export async function fetchPackageContent(
   }
 
   let packageManifestMetadata: Record<string, unknown> | undefined;
-  // The loaded guide's own starting location narrows an enclosing path's.
   const ownStartingLocation =
     readDeclaredStartingLocation(result.content.metadata.packageManifest) ?? (resolvedMember?.startingLocation || null);
   if (isMemberLoad) {
@@ -601,10 +571,8 @@ export async function fetchPackageContent(
         ...result.content.metadata,
         ...(packageManifestMetadata !== undefined && { packageManifest: packageManifestMetadata }),
         ...(isMemberLoad && packageManifest !== undefined && { journeyManifest: packageManifest }),
-        // Fall back to the repository the baseUrl resolution already carries, so
-        // an entry path that supplies no explicit one still keys the durable
-        // completion on the true source instead of the manifest schema default.
         ...(resolvedRepository !== undefined && { repository: resolvedRepository }),
+        ...(offlinePath && { offlinePathTracks: pathTracks?.resolved }),
         ...(learningJourney !== undefined && { learningJourney }),
         ...(trackMemberBaseUrl !== undefined && { trackMemberBaseUrl }),
       },
@@ -637,12 +605,13 @@ export async function fetchPackageById(
     };
   }
 
-  // verifyPublished: the content fetch that follows has no publish-status gate
-  // of its own (backend-guide.ts serves drafts on purpose, for share links and
-  // tab restore), so a draft opened by bare id is only caught here. The baseUrl
-  // hydration resolve() in fetchPackageContent stays unverified — it runs on
-  // every milestone fetch and its id is already known-good.
-  const resolution = await resolver.resolve(packageId, { loadContent: false, verifyPublished: true, loadContext });
+  // Private bare-ID opens must verify publish status; share links intentionally permit drafts.
+  const bundledTutorial = isBundledTutorial(packageId);
+  const resolution = await resolver.resolve(packageId, {
+    loadContent: bundledTutorial,
+    verifyPublished: true,
+    loadContext,
+  });
 
   if (!resolution.ok) {
     return {
@@ -655,18 +624,29 @@ export async function fetchPackageById(
 
   // The probe already GET the resource to read its status; build content from
   // it rather than re-issuing the identical request.
-  const preFetched = resolution.probedResource
-    ? buildBackendGuideContent(resolution.probedResource as BackendGuideResource, resolution.contentUrl, packageId)
-    : undefined;
+  const preFetched: ContentFetchResult | undefined =
+    bundledTutorial && resolution.content
+      ? {
+          content: {
+            content: JSON.stringify(resolution.content),
+            metadata: { title: resolution.content.title },
+            type: 'interactive',
+            url: resolution.contentUrl,
+            lastFetched: new Date().toISOString(),
+            isNativeJson: true,
+          },
+        }
+      : resolution.probedResource
+        ? buildBackendGuideContent(resolution.probedResource as BackendGuideResource, resolution.contentUrl, packageId)
+        : undefined;
 
-  // Prefer an explicit caller-supplied repository, but fall back to the
-  // resolver's own source so a bare-ID open still keys the durable completion
-  // on the true repository instead of the manifest schema default.
   return fetchPackageContent(
     resolution.contentUrl,
-    packageManifest,
+    bundledTutorial
+      ? ((resolution.manifest as Record<string, unknown> | undefined) ?? packageManifest)
+      : packageManifest,
     undefined,
-    repository ?? resolution.repository,
+    bundledTutorial ? resolution.repository : (repository ?? resolution.repository),
     preFetched,
     undefined,
     undefined,

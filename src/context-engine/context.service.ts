@@ -202,7 +202,10 @@ export class ContextService {
         // recommendations hostage — a timed-out fetch keeps running and the
         // next recommendations cycle picks its result up from the cache.
         const onlinePackageRecommendations = await this.getOnlinePackageRecommendations(contextData);
-        const merged = [...bundledRecommendations, ...onlinePackageRecommendations];
+        const merged = [
+          ...bundledRecommendations,
+          ...this.deduplicateRecommendations(onlinePackageRecommendations, bundledRecommendations),
+        ];
         const fallbackResult = await this.getFallbackRecommendations(contextData, merged);
         return {
           ...fallbackResult,
@@ -429,16 +432,11 @@ export class ContextService {
           mappedExternalRecommendations
         );
 
-        // Deduplicate: bundled content always wins for packages that exist locally
-        const deduplicatedExternal = this.deduplicateRecommendations(
-          mappedExternalRecommendations,
-          bundledRecommendations
-        );
-        const deduplicatedFeatured = this.deduplicateRecommendations(
-          mappedFeaturedRecommendations,
-          bundledRecommendations
-        );
-        const enrichedBundled = bundledRecommendations.map((bundled) => {
+        const remainingBundled = this.deduplicateRecommendations(bundledRecommendations, [
+          ...this.filterUsefulRecommendations(mappedExternalRecommendations),
+          ...mappedFeaturedRecommendations,
+        ]);
+        const enrichedBundled = remainingBundled.map((bundled) => {
           const match = mappedExternalRecommendations.find(
             (rec) => typeof rec.manifest?.id === 'string' && bundled.url === `bundled:${rec.manifest.id}`
           );
@@ -451,11 +449,9 @@ export class ContextService {
               }
             : bundled;
         });
-        const allRecommendations = [...deduplicatedExternal, ...enrichedBundled];
+        const allRecommendations = [...mappedExternalRecommendations, ...enrichedBundled];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations);
-
-        // Process featured recommendations separately (deduplicated against bundled)
-        const processedFeaturedRecommendations = await this.processLearningJourneys(deduplicatedFeatured);
+        const processedFeaturedRecommendations = await this.processLearningJourneys(mappedFeaturedRecommendations);
 
         // Filter and sort recommendations
         const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
@@ -812,36 +808,26 @@ export class ContextService {
     return [synthetic, ...featured];
   }
 
-  /**
-   * Deduplicate external recommendations against bundled ones.
-   * Matches on manifest.id (for package-backed) or title (for all types).
-   * External recommendations that duplicate a bundled one are dropped —
-   * bundled content always wins.
-   */
-  static deduplicateRecommendations(externalRecs: Recommendation[], bundledRecs: Recommendation[]): Recommendation[] {
-    const bundledIds = new Set<string>();
-    const bundledTitles = new Set<string>();
-
-    for (const rec of bundledRecs) {
-      bundledTitles.add(rec.title.toLowerCase());
-      const url = rec.url;
-      if (url?.startsWith('bundled:')) {
-        const id = url.replace('bundled:', '');
-        bundledIds.add(id);
+  static deduplicateRecommendations(candidates: Recommendation[], preferred: Recommendation[]): Recommendation[] {
+    const identity = (rec: Recommendation): string | undefined => {
+      if (rec.url?.startsWith('bundled:')) {
+        return rec.url.slice('bundled:'.length).replace(/\/content\.json$/, '');
       }
-    }
-
-    return externalRecs.filter((rec) => {
       const manifest = rec.manifest as Record<string, unknown> | undefined;
-      if (manifest && typeof manifest.id === 'string') {
-        if (bundledIds.has(manifest.id)) {
-          return false;
-        }
+      if (
+        rec.type === 'package' &&
+        rec.contentUrl &&
+        (rec.repository === 'interactive-tutorials' || rec.repository === 'online-cdn') &&
+        typeof manifest?.id === 'string'
+      ) {
+        return manifest.id;
       }
-      if (bundledTitles.has(rec.title.toLowerCase())) {
-        return false;
-      }
-      return true;
+      return undefined;
+    };
+    const preferredIds = new Set(preferred.map(identity).filter((id) => id !== undefined));
+    return candidates.filter((rec) => {
+      const id = identity(rec);
+      return id === undefined || !preferredIds.has(id);
     });
   }
 

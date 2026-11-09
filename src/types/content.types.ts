@@ -82,6 +82,9 @@ export interface ContentMetadata {
   /** Learning journey specific metadata (only present for learning journeys) */
   learningJourney?: LearningJourneyMetadata;
 
+  /** Locally resolved tracks keep restored member navigation available during a CDN outage. */
+  offlinePathTracks?: CoverPageTrack[];
+
   /** Single doc specific metadata (only present for single docs) */
   singleDoc?: SingleDocMetadata;
 
@@ -131,6 +134,9 @@ export interface LearningJourneyMetadata {
 
   /** All milestones for this journey */
   milestones: Milestone[];
+
+  /** Offline misses must not shrink the set required for path completion. */
+  hasUnavailableMilestones?: boolean;
 
   /** Journey summary from first few paragraphs */
   summary?: string;

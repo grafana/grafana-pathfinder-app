@@ -1,3 +1,4 @@
+import { isBundledTutorial } from '../../lib/bundled-tutorial-identity';
 import { CompletionObservationProvider } from './completion-observation-provider';
 import type { CompletionSource } from '../../completion-records/types';
 
@@ -992,24 +993,7 @@ function ContentProcessor({
     }
   }, [rawGuide, html, countingSource]);
 
-  // The frozen block index (docs/design/COMPLETION-MODEL.md, decision 1):
-  // one traversal over the PRE-inlining tree — `countingGuide`, not whichever
-  // render tree arrived — published once per content key and never
-  // recomputed for the life of that key. `publishGuideIndex` is itself
-  // idempotent, so a re-render or an unrelated prop change is a no-op here.
-  // It owns both the denominator and the numerator's positions so they can
-  // never come from two traversals and disagree.
-  //
-  // The eviction revision is a dependency because this is the only
-  // producer: a reset that evicts the index while this guide stays mounted
-  // would otherwise leave it with no index for the rest of the session, and
-  // no percentage with it.
-  //
-  // Passive effect, not `useMemo`/`useLayoutEffect`, for the same reason
-  // MarkCompleteFooter resolves its key in one: both producers of the
-  // content key publish it from a layout effect, so resolving during
-  // render (or in a child layout effect, which runs first) would publish
-  // the PREVIOUS milestone's key and leave this one with no index at all.
+  // Resets evict the index while mounted; this seam must publish the pre-inlining tree again.
   const guideIndexEvictionRevision = useSyncExternalStore(
     subscribeGuideIndexEvictions,
     getGuideIndexEvictionRevision,
@@ -1058,6 +1042,9 @@ function ContentProcessor({
     const index = computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId });
     publishGuideIndex({
       contentKey,
+      ...(contentKey.startsWith('bundled:') && isBundledTutorial(contentKey.slice('bundled:'.length))
+        ? { contentRevision: JSON.stringify(countingGuide.blocks) }
+        : {}),
       index,
       denominatorSource: 'live-pre-inlining',
       choiceModel: createChoiceProgressModel(countingGuide.blocks, index),
@@ -1082,7 +1069,7 @@ function ContentProcessor({
     const key = resolveGuideContentKey(baseUrl);
     if (!responsesLoading && getGuideIndex(key)?.choiceModel) {
       setGuideChoiceResponses(key, responses);
-      refreshAndNotifyGuideProgress(key);
+      refreshAndNotifyGuideProgress(key, getGuideIndex(key)?.contentRevision ? 'load' : undefined);
     }
   }, [responses, responsesLoading, baseUrl, rawGuide, guideIndexEvictionRevision]);
 

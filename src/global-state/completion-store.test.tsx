@@ -821,6 +821,41 @@ describe('completion-store', () => {
   //   - `reconcileSection` drops orphans from storage on first mount.
   //   - unmatched evidence resolves to position 0 rather than
   //     inflating anything, and the position clamp covers the rest.
+  it('scores changed tutorial copies against their own revision and preserves completion on reload', async () => {
+    const local = 'bundled:first-dashboard';
+    const online = 'https://interactive-learning.grafana.net/packages/first-dashboard/content.json';
+    const publish = (key: string, ids: string[]) => {
+      const blocks = ids.map((id) => ({ type: 'markdown', id }));
+      publishGuideIndex({
+        contentKey: key,
+        index: computeGuideBlockIndex(blocks),
+        contentRevision: JSON.stringify(blocks),
+        denominatorSource: 'live-pre-inlining',
+      });
+    };
+    publish(local, ['a', 'b']);
+    storedCompleted.set(pairKey(local, 'intro'), new Set(['b']));
+    expect(peekGuidePercentage(local)).toBe(100);
+    guidePercentages.set(local, 100);
+    publish(online, ['a', 'b', 'c']);
+    expect(peekGuidePercentage(online)).toBe(66);
+    refreshGuidePercentageOnLoad(online);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(guidePercentages.get(local)).toBe(100);
+    storedCompleted.set(pairKey(local, 'intro'), new Set(['c']));
+    expect(peekGuidePercentage(online)).toBe(100);
+    publish(local, ['a', 'b']);
+    expect(peekGuidePercentage(local)).toBe(0);
+    storedCompleted.delete(pairKey(local, 'intro'));
+    refreshAndNotifyGuideProgress(local);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(guidePercentages.get(local)).toBe(0);
+  });
+
   describe('roster reconciliation + percentage clamp', () => {
     it('reconcileSection drops storage IDs not present in the roster', async () => {
       storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-a', 'step-b', 'orphan']));

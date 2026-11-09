@@ -178,3 +178,123 @@ it('classifies an empty docs URL before attempting a fetch', async () => {
   const result = await loadDocsTabContentResult('  ');
   expect(result.diagnostic).toEqual({ source: 'other', stage: 'resolve', reason: 'invalid-url' });
 });
+
+describe('persisted path context', () => {
+  it.each([
+    ['online-cdn', 'interactive-tutorials'],
+    ['interactive-tutorials', 'online-cdn'],
+    [undefined, 'interactive-tutorials'],
+    ['interactive-tutorials', undefined],
+  ])('restores public owner across source aliases %s / %s', async (repository, savedRepository) => {
+    mockFetchPackageContent.mockClear();
+    const baseUrl = 'https://interactive-learning.grafana.net/custom-path/content.json';
+    await loadDocsTabContentResult('bundled:member/content.json', {
+      packageInfo: {
+        packageManifest: { id: 'owner', type: 'path' },
+        repository,
+        resolvedPath: { id: 'owner', repository: savedRepository, baseUrl },
+      },
+    });
+    expect(mockFetchPackageContent.mock.calls[0]?.[6]).toBe(baseUrl);
+  });
+
+  const pathUrl = 'https://interactive-learning.grafana.net/custom/index-path/content.json';
+  const memberUrl = 'https://interactive-learning.grafana.net/packages/member/content.json';
+  const manifest = { id: 'owner', type: 'path', milestones: ['member'] };
+
+  it.each(['cover', 'milestone', 'track'] as const)(
+    'retains the resolved owner through %s load, persistence and a content-free restore',
+    async (kind) => {
+      const { buildDocsLoadSuccessPatch } = await import('./docs-load-finalizer');
+      const { projectPersistedTabs } = await import('./tab-state-transitions');
+      const memberFirst = kind !== 'cover';
+      const tab: import('../../../types/content-panel.types').LearningJourneyTab = {
+        id: 'tab',
+        title: 'Path',
+        type: 'interactive',
+        baseUrl: memberFirst ? memberUrl : pathUrl,
+        currentUrl: memberFirst ? memberUrl : pathUrl,
+        content: null,
+        isLoading: false,
+        error: null,
+        packageInfo: { packageManifest: manifest, repository: 'interactive-tutorials' },
+      };
+      const loaded = buildDocsLoadSuccessPatch({
+        tab,
+        requestedUrl: tab.currentUrl!,
+        fetchedContent: {
+          content: '{}',
+          type: 'interactive',
+          url: tab.currentUrl!,
+          lastFetched: '2026-11-09T00:00:00Z',
+          metadata: {
+            title: 'Path',
+            packageManifest: memberFirst ? { id: 'member', type: 'guide' } : manifest,
+            ...(memberFirst && { journeyManifest: manifest }),
+            ...(kind === 'track'
+              ? { trackMemberBaseUrl: pathUrl }
+              : {
+                  learningJourney: {
+                    baseUrl: pathUrl,
+                    currentMilestone: memberFirst ? 1 : 0,
+                    totalMilestones: 1,
+                    milestones: [],
+                    tracks: [
+                      {
+                        trackId: 'advanced',
+                        label: 'Advanced',
+                        milestones: [
+                          { id: 'track-member', number: 1, title: 'Track member', url: memberUrl, isActive: false },
+                        ],
+                      },
+                    ],
+                  },
+                }),
+          },
+        },
+      });
+      const [restored] = JSON.parse(
+        JSON.stringify(projectPersistedTabs([{ ...tab, ...loaded, currentUrl: memberUrl }]))
+      );
+      expect(restored.content).toBeUndefined();
+      expect(restored.packageInfo.resolvedPath).toEqual({
+        id: 'owner',
+        repository: 'interactive-tutorials',
+        baseUrl: pathUrl,
+      });
+      if (kind === 'cover') {
+        expect(restored.packageInfo.packageManifest.tracks).toEqual([
+          { trackId: 'advanced', label: 'Advanced', guides: ['track-member'] },
+        ]);
+      }
+      mockFetchPackageContent.mockClear();
+      await loadDocsTabContentResult(restored.currentUrl, { packageInfo: restored.packageInfo });
+      expect(mockFetchPackageContent.mock.calls[0]?.[6]).toBe(pathUrl);
+    }
+  );
+
+  it.each([
+    { id: 'other', repository: 'interactive-tutorials', baseUrl: pathUrl },
+    { id: 'owner', repository: 'app-platform', baseUrl: pathUrl },
+    { id: 'owner', repository: 'interactive-tutorials', baseUrl: 'javascript:alert(1)' },
+    { id: 'owner', repository: 'interactive-tutorials', baseUrl: 'https://evil.example/content.json' },
+  ])('rejects a stale or unsafe persisted locator: %j', async (resolvedPath) => {
+    mockFetchPackageContent.mockClear();
+    await loadDocsTabContentResult(memberUrl, {
+      packageInfo: { packageManifest: manifest, repository: 'interactive-tutorials', resolvedPath },
+    });
+    expect(mockFetchPackageContent.mock.calls[0]?.[6]).toBeUndefined();
+  });
+
+  it('prefers an explicit locator over persisted context', async () => {
+    mockFetchPackageContent.mockClear();
+    await loadDocsTabContentResult(memberUrl, {
+      packageInfo: {
+        packageManifest: manifest,
+        resolvedPath: { id: 'owner', baseUrl: pathUrl },
+      },
+      knownBaseUrl: 'bundled:owner/content.json',
+    });
+    expect(mockFetchPackageContent.mock.calls[0]?.[6]).toBe('bundled:owner/content.json');
+  });
+});

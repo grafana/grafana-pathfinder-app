@@ -37,6 +37,7 @@ export interface BoundedRecordStorage {
 }
 
 export interface BoundedRecordStorageConfig {
+  normalizeKey?: (key: string) => string;
   storageKey: string;
   limit: number;
   /** Short label used in diagnostic console messages, e.g. `'journey completion'`. */
@@ -55,6 +56,19 @@ export interface BoundedRecordStorageConfig {
 
 export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): BoundedRecordStorage {
   const { storageKey, limit, label, createStorage, onQuotaExceeded } = config;
+  const normalizeKey = config.normalizeKey ?? ((key: string) => key);
+  const normalizeRecord = (data: Record<string, number>): Record<string, number> => {
+    if (!config.normalizeKey) {
+      return data;
+    }
+    const result: Record<string, number> = {};
+    for (const [key, value] of Object.entries(data)) {
+      // Legacy online first-dashboard progress belongs to RSS; only migrate bundled aliases.
+      const target = key.startsWith('bundled:') ? normalizeKey(key) : key;
+      result[target] = Math.max(result[target] ?? 0, value);
+    }
+    return result;
+  };
 
   // Serializes every mutation this store instance makes: set/clear/clearMany/
   // cleanup/clearAll all read the whole record at `storageKey`, mutate it, and
@@ -112,7 +126,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
   const cleanupInternal = async (): Promise<void> => {
     try {
       const storage = createStorage();
-      const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+      const data = normalizeRecord((await storage.getItem<Record<string, number>>(storageKey)) || {});
       if (Object.keys(data).length > limit) {
         await writeWithCap(data);
       }
@@ -122,12 +136,13 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
   };
 
   const setInternal = async (key: string, percentage: number, hasRetried: boolean): Promise<void> => {
+    key = normalizeKey(key);
     try {
       const storage = createStorage();
-      const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+      const data = normalizeRecord((await storage.getItem<Record<string, number>>(storageKey)) || {});
       // Delete before re-adding so the key moves to the end of the record's
       // key order, which is what `trimToLimit` reads as write recency.
-      delete data[key];
+      delete data[normalizeKey(key)];
       data[key] = Math.max(0, Math.min(100, percentage));
       await writeWithCap(data);
     } catch (error) {
@@ -153,7 +168,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
       try {
         const storage = createStorage();
         const data = await storage.getItem<Record<string, number>>(storageKey);
-        return data?.[key] || 0;
+        return normalizeRecord(data ?? {})[normalizeKey(key)] || 0;
       } catch {
         return 0;
       }
@@ -166,7 +181,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
           return {};
         }
         const data = JSON.parse(raw) as unknown;
-        return data && typeof data === 'object' ? (data as Record<string, number>) : {};
+        return data && typeof data === 'object' ? normalizeRecord(data as Record<string, number>) : {};
       } catch {
         return {};
       }
@@ -180,8 +195,8 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
       await serialize(async () => {
         try {
           const storage = createStorage();
-          const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
-          delete data[key];
+          const data = normalizeRecord((await storage.getItem<Record<string, number>>(storageKey)) || {});
+          delete data[normalizeKey(key)];
           await storage.setItem(storageKey, data);
         } catch (error) {
           logger.warn(`Failed to clear ${label}`, { error });
@@ -193,9 +208,9 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
       await serialize(async () => {
         try {
           const storage = createStorage();
-          const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+          const data = normalizeRecord((await storage.getItem<Record<string, number>>(storageKey)) || {});
           for (const key of keys) {
-            delete data[key];
+            delete data[normalizeKey(key)];
           }
           await storage.setItem(storageKey, data);
         } catch (error) {
@@ -207,7 +222,7 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
     async getAll(): Promise<Record<string, number>> {
       try {
         const storage = createStorage();
-        return (await storage.getItem<Record<string, number>>(storageKey)) || {};
+        return normalizeRecord((await storage.getItem<Record<string, number>>(storageKey)) || {});
       } catch {
         return {};
       }

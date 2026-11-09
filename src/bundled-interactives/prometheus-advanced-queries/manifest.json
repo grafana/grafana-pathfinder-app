@@ -3,7 +3,7 @@
   "type": "guide",
   "repository": "bundled",
   "description": "Practice advanced PromQL in Explore: aggregation, joins, time comparisons, histograms, and rule expressions. Customize queries for your data with Grafana Assistant.",
-  "category": "querying",
+  "category": "explore-and-queries",
   "author": {
     "name": "Interactive Learning",
     "team": "Grafana Developer Advocacy"

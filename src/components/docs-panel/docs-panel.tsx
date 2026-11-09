@@ -149,7 +149,7 @@ import {
 
 // Import centralized types
 import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
-import { getPackageRenderType } from '../../types/package.types';
+import { getPackageRenderType, isSamePackageRepository } from '../../types/package.types';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
@@ -1051,10 +1051,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     loadContext?: GuideLoadContext,
     keepContentVisible = false
   ): Promise<TabLoadOutcome> {
-    // Outgoing content preserves track identity if this load's path resolution fails.
     const outgoingContent = this.state.tabs.find((t) => t.id === tabId)?.content;
-    const knownBaseUrl =
-      outgoingContent?.metadata?.learningJourney?.baseUrl ?? outgoingContent?.metadata?.trackMemberBaseUrl;
 
     if (!keepContentVisible) {
       this.setTabLoading(tabId);
@@ -1067,6 +1064,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       if (!prefetched && !packageInfo && isPackageContentUrl(url)) {
         packageInfo = await fetchPackageInfoFromUrl(url, loadContext);
       }
+      const outgoingMetadata = outgoingContent?.metadata;
+      const outgoingOwner = outgoingMetadata?.journeyManifest ?? outgoingMetadata?.packageManifest;
+      const incomingOwner = packageInfo?.packageManifest;
+      const outgoingRepository = outgoingOwner?.repository ?? outgoingMetadata?.repository;
+      const incomingRepository = packageInfo?.repository ?? incomingOwner?.repository;
+      const sameOwner =
+        (incomingOwner?.type === 'path' || incomingOwner?.type === 'journey') &&
+        typeof incomingOwner.id === 'string' &&
+        outgoingOwner?.id === incomingOwner.id &&
+        isSamePackageRepository(outgoingRepository, incomingRepository);
+      const knownBaseUrl = sameOwner
+        ? (outgoingMetadata?.learningJourney?.baseUrl ?? outgoingMetadata?.trackMemberBaseUrl)
+        : undefined;
       // skipReadyToBegin cannot alter already-prefetched content.
       if (prefetched && skipReadyToBegin) {
         logger.warn('[DocsPanel] skipReadyToBegin ignored for prefetched content');

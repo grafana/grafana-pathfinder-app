@@ -1,7 +1,8 @@
+import { isAllowedContentUrl } from '../../../security';
 import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../../recovery';
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
-import { getPackageRenderType } from '../../../types/package.types';
+import { getPackageRenderType, isSamePackageRepository } from '../../../types/package.types';
 import { getInteractiveLearningUrlTitle } from '../../../utils/doc-page-title';
 
 export interface DocsLoadAlignmentInput {
@@ -130,8 +131,53 @@ export function buildDocsLoadSuccessPatch({
         : fetchedContent.type === 'interactive'
           ? 'interactive'
           : tab.type,
-    packageInfo: packageInfo ?? tab.packageInfo,
+    packageInfo: retainResolvedPath(packageInfo ?? tab.packageInfo, fetchedContent),
     pathContext: learningJourney ? { learningJourney } : undefined,
     pendingAlignment,
+  };
+}
+
+function retainResolvedPath(
+  packageInfo: PackageOpenInfo | undefined,
+  content: RawContent
+): PackageOpenInfo | undefined {
+  const manifest = packageInfo?.packageManifest;
+  const metadata = content.metadata;
+  const owner = metadata.journeyManifest ?? metadata.packageManifest;
+  const baseUrl = metadata.learningJourney?.baseUrl ?? metadata.trackMemberBaseUrl;
+  const repository = packageInfo?.repository ?? manifest?.repository;
+  if (
+    !packageInfo ||
+    !manifest ||
+    (manifest.type !== 'path' && manifest.type !== 'journey') ||
+    typeof manifest.id !== 'string' ||
+    owner?.id !== manifest.id ||
+    (owner.repository !== undefined && !isSamePackageRepository(owner.repository, repository)) ||
+    !baseUrl ||
+    !isAllowedContentUrl(baseUrl)
+  ) {
+    return packageInfo;
+  }
+  const resolvedTracks = metadata.learningJourney?.tracks;
+  const tracks = resolvedTracks?.map((track) => ({
+    trackId: track.trackId,
+    label: track.label,
+    guides: track.milestones.flatMap((milestone) => (milestone.id ? [milestone.id] : [])),
+  }));
+  const packageManifest: Record<string, unknown> = {
+    ...manifest,
+    ...((owner.type === 'path' || owner.type === 'journey') && owner),
+    ...(tracks !== undefined && { tracks }),
+  };
+  const foundationsChanged = JSON.stringify(packageManifest.milestones) !== JSON.stringify(manifest.milestones);
+  return {
+    ...packageInfo,
+    packageManifest,
+    ...(foundationsChanged && { resolvedMilestones: undefined }),
+    resolvedPath: {
+      id: manifest.id,
+      ...(typeof repository === 'string' && { repository }),
+      baseUrl,
+    },
   };
 }

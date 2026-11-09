@@ -33,6 +33,7 @@ const STEPS = [
   'test:review-contract',
   'test:review-lite',
   'test:scripts',
+  'test:sync-bundled-tutorials',
 ];
 
 const root = path.resolve(__dirname, '..');
