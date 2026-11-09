@@ -41,18 +41,19 @@ const PLACEHOLDER_REASONS = new Set(['', 'n/a', 'na', 'none', 'not applicable', 
 export class UsageError extends Error {}
 
 const HELP = {
-  prepare: `Usage: review-lite.mjs prepare --repo DIR --base REV --head REV --review-key KEY --out DIR [--prior FILE] [--knowledge DIR]
+  prepare: `Usage: review-lite.mjs prepare --repo DIR --base REV --head REV --review-key KEY --round N --out DIR [--prior FILE] [--knowledge DIR]
 
 Resolves the base and head commits in the target repository, inventories the merge-base-to-head
 diff, copies the concern registries from the trusted tooling checkout (or --knowledge DIR), and
 writes routing candidates plus the always-on checklist into a new, empty run directory.
 --prior takes state.json from an earlier trusted review-lite run; it enables incremental review
 when the review key, comparison base, and registries match and the reviewed head is an ancestor.
+--round is the positive review round, independent of full or incremental inspection.
 
 Example:
   node .cursor/skills/review-lite/scripts/review-lite.mjs prepare \\
     --repo /abs/target-repo --base 1a2b3c4 --head 5d6e7f8 \\
-    --review-key grafana/grafana-pathfinder-app#123 --out /abs/runs/pr-123-r1`,
+    --review-key grafana/grafana-pathfinder-app#123 --round 1 --out /abs/runs/pr-123-r1`,
   context: `Usage: review-lite.mjs context --run DIR --concerns ID[,ID...]
 
 Writes compact packets for the named concerns into DIR/context/ and records them as selected.
@@ -72,7 +73,7 @@ Example:
 };
 
 const FLAGS = {
-  prepare: { required: ['repo', 'base', 'head', 'review-key', 'out'], optional: ['prior', 'knowledge'] },
+  prepare: { required: ['repo', 'base', 'head', 'review-key', 'round', 'out'], optional: ['prior', 'knowledge'] },
   context: { required: ['run', 'concerns'], optional: [] },
   finish: { required: ['run', 'input'], optional: [] },
 };
@@ -518,7 +519,7 @@ function validateFindingRecord(errors, finding, label, knownConcerns, { strict =
       requireString(
         errors,
         finding.why_not_blocker,
-        `${label}.why_not_blocker (required for a follow-up: say which blocker trigger you checked and why it does not apply)`
+        `${label}.why_not_blocker (required for a follow-up: explain deferral given consequence, scope, and round)`
       );
     }
   } else if (nit) {
@@ -557,6 +558,9 @@ export function validateState(state) {
     return [`state.version must be ${STATE_VERSION}; got ${JSON.stringify(state.version)}`];
   }
   requireString(errors, state.review_key, 'state.review_key');
+  if (state.round !== undefined && (!Number.isSafeInteger(state.round) || state.round < 1)) {
+    errors.push('state.round must be a positive safe integer when present');
+  }
   for (const field of ['reviewed_head', 'base', 'merge_base']) {
     if (typeof state[field] !== 'string' || !COMMIT_SHA.test(state[field])) {
       errors.push(`state.${field} must be a full commit SHA`);
@@ -635,6 +639,10 @@ export function assessPrior({ repo, priorPath, reviewKey, head, mergeBase, regis
 
 export function prepare(options) {
   const { repo, out } = options;
+  const round = Number(options.round);
+  if (!Number.isSafeInteger(round) || round < 1) {
+    throw new UsageError('--round must be a positive safe integer.');
+  }
   if (existsSync(out) && readdirSync(out).length > 0) {
     throw new Error(`Run directory ${out} is not empty. Use a new directory for each preparation.`);
   }
@@ -722,6 +730,7 @@ export function prepare(options) {
   const manifest = {
     version: STATE_VERSION,
     review_key: options['review-key'],
+    round,
     base,
     head,
     merge_base: mergeBase,
@@ -1086,6 +1095,7 @@ export function deriveState(result, { manifest, prior }) {
   return {
     version: STATE_VERSION,
     review_key: manifest.review_key,
+    round: manifest.round,
     reviewed_head: manifest.head,
     base: manifest.base,
     merge_base: manifest.merge_base,
@@ -1134,13 +1144,10 @@ export function renderReport(result, { manifest, prior }) {
     ...carried.filter(({ disposition }) => disposition === 'follow_up').map((finding) => ({ finding, carried: true })),
   ];
   const headline =
-    result.assessment === 'incomplete'
-      ? 'Review incomplete'
-      : blockers.length > 0
-        ? 'Changes requested'
-        : 'No blocking findings';
+    result.assessment === 'incomplete' ? 'Review incomplete' : blockers.length > 0 ? 'Changes requested' : 'Approve';
 
   const scope = [
+    ...(manifest.round === undefined ? [] : [`- Round: ${manifest.round}`]),
     `- Review: ${manifest.review_key}, ${manifest.mode} review of ${short(manifest.merge_base)}..${short(manifest.head)} (${manifest.files_changed} files)${manifest.mode === 'incremental' ? `, increment since ${short(manifest.incremental_from)}` : ''}`,
   ];
   if (manifest.fallback_reason) {
