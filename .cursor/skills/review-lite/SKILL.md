@@ -47,6 +47,8 @@ node $H context --run /abs/run-dir --concerns concern-a --governing /abs/governi
 
 The JSON is an array of `{id, kind, source, reason}`; `kind` is `normative_spec`, `external_schema`, or `fixture_contract`. A material governing input must get a `checks` decision. `checked` records its source, pin, and applicability; `unresolved` means the assessment is incomplete. Dismiss only an input that is actually irrelevant to the changed behavior.
 
+Register a material risk the bounded scan missed with `--risk /abs/risks.json`, an array of `{id, category, reason}`. It becomes the same required `risk_verification` obligation as a generated nomination, so a checked decision needs the discriminating verification record; it is not a separate review phase.
+
 For each selected concern, inspect this round's changed behavior and affected consumers at head, comparing with the merge base to establish attribution. Read the direct consumers of exports changed this round and the relevant tests. A diff-only skim is not a review, and loading a packet is not evidence that you reviewed the concern.
 
 ### Sync nominations
@@ -118,4 +120,4 @@ Write one result object as specified in `.cursor/skills/review-lite/references/r
 node $H finish --run /abs/run-dir --input /abs/run-dir/result.json
 ```
 
-Every mandatory obligation needs a `checks` entry; an unselected candidate needs a dismissal. `finish` rejects missing decisions or unresolved checks in a complete assessment. Coverage lists every concern in `selected.json`, which `context` extends. Fix every validation error `finish` lists. The helper checks structure, not truth. Mark the assessment `incomplete` only when missing evidence prevents a material conclusion; lack of delegation alone is not a reason. Complete reviews render `Changes requested` or `Approve`, never COMMENT. An incomplete review needs more evidence before publication. Give the user `report.md` as written, plus the run directory path.
+Every mandatory obligation needs a `checks` entry; an unselected candidate needs a dismissal. `finish` rejects missing decisions or unresolved checks in a complete assessment. Coverage lists every concern in `selected.json`, which `context` extends. Fix every validation error `finish` lists. The helper checks structure, not truth. Mark the assessment `incomplete` only when missing evidence prevents a material conclusion; lack of delegation alone is not a reason. Complete reviews render `Changes requested` or `Approve`, never COMMENT. An incomplete review needs more evidence before publication. Give the author-facing `report.md` as written; when present, `maintainer-queue.md` holds separate work and is not merge homework.

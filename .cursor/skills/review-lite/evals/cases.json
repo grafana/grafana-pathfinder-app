@@ -177,15 +177,19 @@
   ],
   "adoption_benchmark": {
     "status": "proposed; not run as part of the prototype",
-    "arms": [
-      { "id": "generic", "description": "The same model with a generic code-review prompt and no concern workflow." },
-      { "id": "review-lite", "description": "The same model with this prototype skill." },
+    "skills": [
       {
-        "id": "review-full",
-        "description": "The current /review pipeline. Without independent skeptics it is a constrained variant, not a faithful baseline; record subagent availability per run."
+        "id": "review-lite-frozen",
+        "description": "The pre-evidence-gates review-lite revision, retained unchanged for comparison."
+      },
+      {
+        "id": "review-lite-revised",
+        "description": "This evidence-gated review-lite revision; do not promote it by plan alone."
       }
     ],
-    "controls": "Same model, revision, tools, knowledge snapshot (pass --knowledge pinned to one registry revision), and execution permissions across arms. Disclose possible future-knowledge leakage for historical PRs.",
+    "models": ["Record each selected model version exactly; include the target contemporary models."],
+    "design": "Fully cross every frozen/revised skill with every selected model on the same pinned fixture or PR revision. This is a controlled model × skill promotion test, not a comparison with /review.",
+    "controls": "Hold revision, tools, knowledge snapshot (pass --knowledge pinned to one registry revision), execution permissions, and adjudication rubric constant within each model × skill cell. Disclose possible future-knowledge leakage for historical PRs.",
     "historical_candidates": [
       { "pr": 2009, "claim": "A shortcut review missed three blocking regressions that the full pipeline found." },
       { "pr": 1971, "claim": "Validation-adding PR: most 'boundary widened' findings were inverted." },
@@ -208,7 +212,7 @@
       "wall-clock latency",
       "billed usage or cost where available; character counts and summed tokens are proxies only"
     ],
-    "trials": "Repeat at least three trials per arm on a subset including clean controls; report sample size limits instead of claiming equivalence.",
+    "trials": "Repeat at least three trials per model × skill cell on a subset including clean controls; report sample size limits instead of claiming equivalence.",
     "proposed_threshold": "Agree before scoring. Suggested: no additional adjudicated material misses, no increase in unsupported blockers, and at least 50% lower median billed cost on routine cases."
   }
 }

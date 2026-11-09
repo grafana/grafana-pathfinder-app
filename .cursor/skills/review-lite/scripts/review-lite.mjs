@@ -59,12 +59,13 @@ Example:
   node .cursor/skills/review-lite/scripts/review-lite.mjs prepare \\
     --repo /abs/target-repo --base 1a2b3c4 --head 5d6e7f8 \\
     --review-key grafana/grafana-pathfinder-app#123 --round 1 --out /abs/runs/pr-123-r1`,
-  context: `Usage: review-lite.mjs context --run DIR --concerns ID[,ID...] [--governing FILE]
+  context: `Usage: review-lite.mjs context --run DIR --concerns ID[,ID...] [--governing FILE] [--risk FILE]
 
 Writes compact packets for the named concerns into DIR/context/ and records them as selected.
 Any concern in the run's registry may be requested, not only the routing candidates. --governing
 adds reviewer-discovered material inputs (a JSON array of {id, kind, source, reason}) as required
-inspection obligations; use it for a PR-cited RFC or an unchanged contract anchor the scan missed.
+inspection obligations; --risk adds reviewer-discovered risky behavior (a JSON array of {id, category, reason}).
+Use them for a PR-cited RFC, an unchanged contract anchor, or a risk the bounded scan missed.
 
 Example:
   node .cursor/skills/review-lite/scripts/review-lite.mjs context \\
@@ -90,11 +91,11 @@ Example:
 
 const FLAGS = {
   prepare: { required: ['repo', 'base', 'head', 'review-key', 'round', 'out'], optional: ['prior', 'knowledge'] },
-  context: { required: ['run', 'concerns'], optional: ['governing'] },
+  context: { required: ['run', 'concerns'], optional: ['governing', 'risk'] },
   read: { required: ['run', 'path', 'scope'], optional: ['range'] },
   finish: { required: ['run', 'input'], optional: [] },
 };
-const PATH_FLAGS = new Set(['repo', 'out', 'prior', 'knowledge', 'run', 'input', 'governing']);
+const PATH_FLAGS = new Set(['repo', 'out', 'prior', 'knowledge', 'run', 'input', 'governing', 'risk']);
 
 function topHelp() {
   return `Usage: review-lite.mjs <prepare|context|read|finish> [options]\n\n${Object.values(HELP).join('\n\n')}`;
@@ -917,7 +918,7 @@ function packetSizes(run, selected) {
   }));
 }
 
-export function addContext({ run, concerns, governing }) {
+export function addContext({ run, concerns, governing, risk }) {
   const { selected, registry, obligations } = readRun(run);
   const requested = [
     ...new Set(
@@ -988,6 +989,35 @@ export function addContext({ run, concerns, governing }) {
         source: candidate.source,
         reason: candidate.reason,
       });
+      existing.add(id);
+    }
+    writeJson(join(run, 'obligations.json'), obligations);
+  }
+  if (risk) {
+    const additions = readJson(risk, 'reviewer-discovered risks');
+    if (!Array.isArray(additions)) {
+      throw new Error(`Reviewer-discovered risks at ${risk} must be an array.`);
+    }
+    const existing = new Set(obligations.map(({ id }) => id));
+    for (const candidate of additions) {
+      if (
+        !candidate ||
+        typeof candidate !== 'object' ||
+        typeof candidate.id !== 'string' ||
+        !FINDING_ID.test(candidate.id)
+      ) {
+        throw new Error('Each reviewer-discovered risk needs an id matching the result identifier format.');
+      }
+      for (const field of ['category', 'reason']) {
+        if (typeof candidate[field] !== 'string' || candidate[field].trim() === '') {
+          throw new Error(`Reviewer-discovered risk ${candidate.id} needs a non-empty ${field}.`);
+        }
+      }
+      const id = `risk:${candidate.id}`;
+      if (existing.has(id)) {
+        throw new Error(`Reviewer-discovered risk ${candidate.id} is already an inspection obligation.`);
+      }
+      obligations.push({ id, obligation: 'risk_verification', category: candidate.category, reason: candidate.reason });
       existing.add(id);
     }
     writeJson(join(run, 'obligations.json'), obligations);
@@ -1319,9 +1349,11 @@ export function validateResult(
       errors.push(`${label}.id ${finding.id} belongs to a prior item; reuse it only with a reopen decision`);
     }
   });
-  const nitCount = findings.filter((finding) => finding?.disposition === 'nit').length;
-  if (nitCount > MAX_NITS) {
-    errors.push(`at most ${MAX_NITS} nits are allowed; got ${nitCount}. Keep the ones a maintainer would act on.`);
+  const optionalCount = findings.filter((finding) => ['nit', 'suggestion'].includes(finding?.disposition)).length;
+  if (optionalCount > MAX_NITS) {
+    errors.push(
+      `at most ${MAX_NITS} optional suggestions are allowed; got ${optionalCount}. Keep the ones a maintainer would act on.`
+    );
   }
   requireArray(errors, result.clearances, 'clearances').forEach((clearance, index) => {
     const label = `clearances[${index}]`;
@@ -1527,12 +1559,6 @@ export function renderReport(result, { manifest, prior }) {
     ...result.findings.filter(({ disposition }) => disposition === 'blocker').map((finding) => ({ finding })),
     ...carried.filter(({ disposition }) => disposition === 'blocker').map((finding) => ({ finding, carried: true })),
   ];
-  const separateWork = [
-    ...result.findings.filter(({ disposition }) => disposition === 'separate_work').map((finding) => ({ finding })),
-    ...carried
-      .filter(({ disposition }) => ['separate_work', 'follow_up'].includes(disposition))
-      .map((finding) => ({ finding, carried: true })),
-  ];
   const headline =
     result.assessment === 'incomplete' ? 'Review incomplete' : blockers.length > 0 ? 'Changes requested' : 'Approve';
 
@@ -1576,13 +1602,6 @@ export function renderReport(result, { manifest, prior }) {
   if (blockers.length > 0) {
     sections.push('## Blocking findings', ...blockers.map((entry) => findingBlock(entry.finding, entry)));
   }
-  if (separateWork.length > 0) {
-    sections.push(
-      '## Separate work',
-      'These items are not author work before this merge. A maintainer can track them separately; none is a filed issue.',
-      ...separateWork.map((entry) => findingBlock(entry.finding, entry))
-    );
-  }
   const suggestions = result.findings.filter(({ disposition }) => ['suggestion', 'nit'].includes(disposition));
   if (suggestions.length > 0) {
     sections.push(
@@ -1622,9 +1641,24 @@ export function renderReport(result, { manifest, prior }) {
   return `${sections.join('\n\n')}\n`;
 }
 
+export function renderMaintainerQueue(result, { manifest, prior }) {
+  const decisions = new Map(result.prior_decisions.map((decision) => [decision.id, decision]));
+  const carried = prior.items.filter((item) => item.kind === 'finding' && decisions.get(item.id)?.action === 'carry');
+  const separateWork = [
+    ...result.findings.filter(({ disposition }) => disposition === 'separate_work').map((finding) => ({ finding })),
+    ...carried
+      .filter(({ disposition }) => ['separate_work', 'follow_up'].includes(disposition))
+      .map((finding) => ({ finding, carried: true })),
+  ];
+  if (separateWork.length === 0) {
+    return null;
+  }
+  return `# Maintainer queue\n\nReview: ${manifest.review_key}, round ${manifest.round}\n\nThese are maintainer-owned items outside the author approval report. None is filed automatically.\n\n${separateWork.map((entry) => findingBlock(entry.finding, entry)).join('\n\n')}\n`;
+}
+
 export function finish({ run, input }) {
   const context = readRun(run);
-  ['report.md', 'state.json'].forEach((name) => rmSync(join(run, name), { force: true }));
+  ['report.md', 'maintainer-queue.md', 'state.json'].forEach((name) => rmSync(join(run, name), { force: true }));
   const result = readJson(input, 'result');
   const errors = validateResult(result, { ...context, run });
   if (errors.length > 0) {
@@ -1632,6 +1666,10 @@ export function finish({ run, input }) {
   }
   const report = renderReport(result, context);
   writeFileSync(join(run, 'report.md'), report);
+  const maintainerQueue = renderMaintainerQueue(result, context);
+  if (maintainerQueue) {
+    writeFileSync(join(run, 'maintainer-queue.md'), maintainerQueue);
+  }
   if (resolve(input) !== resolve(join(run, 'result.json'))) {
     writeJson(join(run, 'result.json'), result);
   }
@@ -1642,7 +1680,7 @@ export function finish({ run, input }) {
   } else {
     rmSync(join(run, 'state.json'), { force: true });
   }
-  return { report, state, headline: report.split('\n')[0].replace(/^## /, '') };
+  return { report, state, maintainerQueue, headline: report.split('\n')[0].replace(/^## /, '') };
 }
 
 function formatCharacters(value) {
@@ -1708,9 +1746,9 @@ export function main(argv) {
       code: 0,
     };
   }
-  const { headline, state } = finish(options);
+  const { headline, state, maintainerQueue } = finish(options);
   return {
-    output: `${headline}. Report: ${join(options.run, 'report.md')}${state ? `; state: ${join(options.run, 'state.json')}` : '; no state written (incomplete)'}`,
+    output: `${headline}. Report: ${join(options.run, 'report.md')}${maintainerQueue ? `; maintainer queue: ${join(options.run, 'maintainer-queue.md')}` : ''}${state ? `; state: ${join(options.run, 'state.json')}` : '; no state written (incomplete)'}`,
     code: 0,
   };
 }

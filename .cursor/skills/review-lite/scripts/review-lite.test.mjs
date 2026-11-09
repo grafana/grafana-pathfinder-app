@@ -336,6 +336,32 @@ describe('context', () => {
       /cannot leave governing input governing:api-contract unavailable/
     );
   });
+
+  test('turns a reviewer-discovered risk into a required verification obligation', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(repo, { 'src/engine.ts': 'export const v = 2;\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const input = join(runDir, 'risk.json');
+    writeFileSync(
+      input,
+      JSON.stringify([
+        { id: 'reload', category: 'compatibility retry', reason: 'The PR description names a reload path.' },
+      ])
+    );
+    addContext({ run: runDir, concerns: 'security', risk: input });
+    const obligation = readJson(join(runDir, 'obligations.json')).find(({ id }) => id === 'risk:reload');
+    assert.deepEqual(obligation, {
+      id: 'risk:reload',
+      obligation: 'risk_verification',
+      category: 'compatibility retry',
+      reason: 'The PR description names a reload path.',
+    });
+    assert.throws(
+      () =>
+        finishWith(runDir, result(runDir, { checks: result(runDir).checks.filter(({ id }) => id !== obligation.id) })),
+      /missing inspection decision: risk:reload/
+    );
+  });
 });
 
 describe('finish', () => {
@@ -353,7 +379,8 @@ describe('finish', () => {
     assert.equal(finishWith(runDir, result(runDir, { findings: [separateWork] })).headline, 'Approve');
     const blocked = finishWith(runDir, result(runDir, { findings: [blocker, separateWork] }));
     assert.equal(blocked.headline, 'Changes requested');
-    assert.match(blocked.report, /not author work before this merge/);
+    assert.doesNotMatch(blocked.report, /Separate work|Maintainer next action/);
+    assert.match(readFileSync(join(runDir, 'maintainer-queue.md'), 'utf8'), /outside the author approval report/);
     assert.deepEqual(
       blocked.state.findings.map(({ id, disposition }) => [id, disposition]),
       [
@@ -540,7 +567,10 @@ describe('continuity', () => {
       outcome.report,
       /Resolved since the prior review\n\n- step-index-base: step-index.ts returns 0 again at head\./
     );
-    assert.match(outcome.report, /step-index-test: .*\(carried from a prior round\)/);
+    assert.match(
+      readFileSync(join(runDir, 'maintainer-queue.md'), 'utf8'),
+      /step-index-test: .*\(carried from a prior round\)/
+    );
     assert.match(
       outcome.report,
       /## Explicit clearances\n\n- runner-cancel \(`interactive-engine`, carried\): The runner remains cancellable\./
@@ -714,7 +744,10 @@ describe('continuity', () => {
       })
     );
     assert.equal(outcome.state.findings.find(({ id }) => id === separateWork.id).disposition, 'follow_up');
-    assert.match(outcome.report, /Legacy follow-up retained without a new deferral basis/);
+    assert.match(
+      readFileSync(join(runDir, 'maintainer-queue.md'), 'utf8'),
+      /Legacy follow-up retained without a new deferral basis/
+    );
   });
 });
 
@@ -751,8 +784,12 @@ describe('optional suggestions and separate-work attribution', () => {
       () => finishWith(runDir, result(runDir, { findings: [{ ...nit, next_action: '' }] })),
       /next_action \(the suggested change, required for a nit\)/
     );
-    const many = Array.from({ length: 6 }, (_, index) => ({ ...nit, id: `nit-${index}` }));
-    assert.throws(() => finishWith(runDir, result(runDir, { findings: many })), /at most 5 nits/);
+    const many = Array.from({ length: 6 }, (_, index) => ({
+      ...nit,
+      id: `nit-${index}`,
+      disposition: index % 2 ? 'suggestion' : 'nit',
+    }));
+    assert.throws(() => finishWith(runDir, result(runDir, { findings: many })), /at most 5 optional suggestions/);
   });
 
   test('separate work must say whether the PR introduced, newly exposed, or inherited the gap', () => {
@@ -778,8 +815,8 @@ describe('separate-work calibration and test scope', () => {
       /deferral_reason/
     );
     const outcome = finishWith(runDir, result(runDir, { findings: [separateWork] }));
-    assert.match(outcome.report, /## Separate work/);
-    assert.match(outcome.report, /not author work before this merge/);
+    assert.doesNotMatch(outcome.report, /Separate work|Maintainer next action/);
+    assert.match(readFileSync(join(runDir, 'maintainer-queue.md'), 'utf8'), /Maintainer next action/);
     assert.equal(outcome.state.findings[0].deferral_basis, 'pre_existing');
   });
 

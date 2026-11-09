@@ -1,6 +1,6 @@
 # review-lite result format
 
-`finish` reads one JSON object. It validates structure and identifiers, derives the headline, and writes `report.md` plus, for a complete assessment, `state.json`. It cannot tell whether evidence is true. Never write a claim you did not check.
+`finish` reads one JSON object. It validates structure and identifiers, derives the author-facing `report.md`, writes `maintainer-queue.md` when separate work exists, and writes `state.json` for a complete assessment. It cannot tell whether evidence is true. Never write a claim you did not check.
 
 ## Fields
 
@@ -42,7 +42,7 @@
 
 ## Suggestions, separate work, and state
 
-Suggestions/nits render under `## Optional suggestions`, never change the headline, and are not written to `state.json`. Separate work renders as maintainer-owned work outside this merge and is carried in state. Legacy `follow_up` state remains readable and is rendered explicitly as legacy, without silently granting it a new deferral basis. State also records the review `round` from preparation.
+Suggestions/nits render under `## Optional suggestions`, never change the headline, and are not written to `state.json`. Separate work renders only in `maintainer-queue.md`, is carried in state, and is not author merge homework. Legacy `follow_up` state remains readable and is rendered explicitly as legacy in that queue, without silently granting it a new deferral basis. State also records the review `round` from preparation.
 
 ## Headline
 
