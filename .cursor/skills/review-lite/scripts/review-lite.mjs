@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, matchesGlob, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,10 +30,14 @@ const GENERATED_PATTERNS = [
 const FINDING_ID = /^[A-Za-z][A-Za-z0-9-]{0,31}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const MAX_NITS = 5;
+const MAX_READ_BYTES = 30_000;
 const TEST_SCOPES = ['full', 'changed_hunks'];
 const UNREAD_KINDS = ['binary', 'generated', 'not_in_head', 'tooling_blocked'];
 const EFFORT_REASON = /\b(effort|save time|to save|too (large|big|long|many)|large file|big file|budget|cost)\b/i;
 const ATTRIBUTIONS = ['introduced', 'newly_exposed', 'pre_existing'];
+const GOVERNING_KINDS = ['normative_spec', 'external_schema', 'fixture_contract'];
+const RISK_METHODS = ['targeted_test', 'probe', 'mutation', 'contract_comparison', 'static_trace'];
+const DEFERRED_BASES = ['pre_existing', 'accepted_scope', 'late_round_convergence'];
 const BASE_PATH_LINE = /[\w@./-]+\.[A-Za-z0-9]+:\d+/;
 const NIT_TEXT_FIELDS = ['title', 'location', 'evidence'];
 const PLACEHOLDER_REASONS = new Set(['', 'n/a', 'na', 'none', 'not applicable', '-', 'no', 'nothing']);
@@ -54,14 +58,25 @@ Example:
   node .cursor/skills/review-lite/scripts/review-lite.mjs prepare \\
     --repo /abs/target-repo --base 1a2b3c4 --head 5d6e7f8 \\
     --review-key grafana/grafana-pathfinder-app#123 --round 1 --out /abs/runs/pr-123-r1`,
-  context: `Usage: review-lite.mjs context --run DIR --concerns ID[,ID...]
+  context: `Usage: review-lite.mjs context --run DIR --concerns ID[,ID...] [--governing FILE]
 
 Writes compact packets for the named concerns into DIR/context/ and records them as selected.
-Any concern in the run's registry may be requested, not only the routing candidates.
+Any concern in the run's registry may be requested, not only the routing candidates. --governing
+adds reviewer-discovered material inputs (a JSON array of {id, kind, source, reason}) as required
+inspection obligations; use it for a PR-cited RFC or an unchanged contract anchor the scan missed.
 
 Example:
   node .cursor/skills/review-lite/scripts/review-lite.mjs context \\
     --run /abs/runs/pr-123-r1 --concerns interactive-engine,requirements-manager`,
+  read: `Usage: review-lite.mjs read --run DIR --path REPOSITORY_PATH --scope full|changed_hunks [--range START:END]
+
+Reads at most 200 pinned-head lines and records exactly what the helper delivered. Without --range,
+it starts at the first required range. Use the returned next range until all required ranges are read.
+Use changed_hunks only for a scope allowed by the test-size rule; a deletion-only hunk includes adjacent head lines.
+
+Example:
+  node .cursor/skills/review-lite/scripts/review-lite.mjs read \\
+    --run /abs/runs/pr-123-r1 --path src/engine/runner.test.ts --scope changed_hunks`,
   finish: `Usage: review-lite.mjs finish --run DIR --input FILE
 
 Validates the reviewer's result object (see references/result-format.md), then writes
@@ -74,13 +89,14 @@ Example:
 
 const FLAGS = {
   prepare: { required: ['repo', 'base', 'head', 'review-key', 'round', 'out'], optional: ['prior', 'knowledge'] },
-  context: { required: ['run', 'concerns'], optional: [] },
+  context: { required: ['run', 'concerns'], optional: ['governing'] },
+  read: { required: ['run', 'path', 'scope'], optional: ['range'] },
   finish: { required: ['run', 'input'], optional: [] },
 };
-const PATH_FLAGS = new Set(['repo', 'out', 'prior', 'knowledge', 'run', 'input']);
+const PATH_FLAGS = new Set(['repo', 'out', 'prior', 'knowledge', 'run', 'input', 'governing']);
 
 function topHelp() {
-  return `Usage: review-lite.mjs <prepare|context|finish> [options]\n\n${Object.values(HELP).join('\n\n')}`;
+  return `Usage: review-lite.mjs <prepare|context|read|finish> [options]\n\n${Object.values(HELP).join('\n\n')}`;
 }
 
 export function parseArgs(command, argv) {
@@ -243,6 +259,102 @@ function diffLines(repo, from, to, file) {
     }
   }
   return lines;
+}
+
+function changedLineRanges(repo, from, to, file) {
+  const paths = file.old_path ? [file.old_path, file.path] : [file.path];
+  const patch = git(repo, [
+    'diff',
+    '--no-ext-diff',
+    '--no-textconv',
+    '--no-color',
+    '-M',
+    '-U0',
+    from,
+    to,
+    '--',
+    ...paths,
+  ]);
+  const headLines = lineCount(git(repo, ['show', `${to}:${file.path}`], { allowFailure: true }) ?? '');
+  const ranges = [];
+  for (const line of patch.split('\n')) {
+    const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+    if (!match) {
+      continue;
+    }
+    const oldStart = Number(match[1]);
+    const oldCount = match[2] === undefined ? 1 : Number(match[2]);
+    const start = Number(match[3]);
+    const count = match[4] === undefined ? 1 : Number(match[4]);
+    if (count > 0) {
+      ranges.push({ start, end: start + count - 1 });
+    } else if (headLines > 0) {
+      const nearbyStart = Math.max(1, Math.min(start - 1, headLines));
+      ranges.push({ start: nearbyStart, end: Math.min(headLines, start + 1) });
+    } else if (oldCount > 0) {
+      ranges.push({ start: oldStart, end: oldStart + oldCount - 1, revision: 'base' });
+    }
+  }
+  return ranges;
+}
+
+function isReviewableSource(file) {
+  return !file.binary && !isTestPath(file.path) && !file.path.startsWith('docs/') && !file.path.startsWith('.cursor/');
+}
+
+function governingInputCandidates(files, diffs) {
+  const candidates = [];
+  for (const file of files.filter(isReviewableSource)) {
+    const text = (diffs.get(file.path) ?? []).map(({ text: line }) => line).join('\n');
+    const fixture =
+      /(?:^|\/)(?:fixtures?|testdata)(?:\/|$)|(?:contract|schema|openapi|crd)[^/]*\.(?:json|ya?ml)$/i.test(file.path);
+    const normative = /\b(?:RFC|OpenAPI|CRD|specification|contract\s+(?:spec|fixture|schema))\b/i.test(text);
+    if (!fixture && !normative) {
+      continue;
+    }
+    candidates.push({
+      id: `governing:${candidates.length}`,
+      obligation: 'governing_input',
+      kind:
+        /\b(?:OpenAPI|CRD)\b/i.test(text) || /(?:openapi|crd)/i.test(file.path)
+          ? 'external_schema'
+          : fixture
+            ? 'fixture_contract'
+            : 'normative_spec',
+      path: file.path,
+      reason: fixture
+        ? 'Changed fixture or contract-shaped artifact; compare it with the source that defines the deployed contract.'
+        : 'Changed text names a governing specification or contract; decide whether it defines this behavior.',
+    });
+  }
+  return candidates;
+}
+
+function riskCandidates(files, diffs) {
+  const patterns = [
+    ['persistence', /\b(?:persist|save|store|record|migration)\w*/i],
+    ['trust-boundary', /\b(?:auth|authoriz|permission|token|identity|credential)\w*/i],
+    ['compatibility', /\b(?:compatib|schema|contract|version|migration)\w*/i],
+    ['irreversible-effect', /\b(?:delete|irreversible|publish|award|charge)\w*/i],
+    ['error-retry', /\b(?:retry|backoff|conflict|retryable|attempt)\w*/i],
+  ];
+  const candidates = [];
+  for (const [category, pattern] of patterns) {
+    const paths = files
+      .filter(isReviewableSource)
+      .filter((file) => (diffs.get(file.path) ?? []).some(({ text }) => pattern.test(text)))
+      .map((file) => file.path);
+    if (paths.length > 0) {
+      candidates.push({
+        id: `risk:${category}`,
+        obligation: 'risk_verification',
+        category,
+        paths,
+        reason: `Changed code has ${category.replace('-', ' ')} signals. Decide whether a discriminating verification is needed.`,
+      });
+    }
+  }
+  return candidates;
 }
 
 export function inventoryDiff(repo, from, to) {
@@ -483,7 +595,7 @@ function requireArray(errors, value, label) {
 
 const FINDING_TEXT_FIELDS = ['title', 'location', 'evidence', 'consequence', 'base_comparison'];
 
-function validateFindingRecord(errors, finding, label, knownConcerns, { strict = false } = {}) {
+function validateFindingRecord(errors, finding, label, knownConcerns, { strict = false, round } = {}) {
   if (!finding || typeof finding !== 'object') {
     errors.push(`${label} must be an object`);
     return;
@@ -494,17 +606,22 @@ function validateFindingRecord(errors, finding, label, knownConcerns, { strict =
   if (!knownConcerns.has(finding.concern_id)) {
     errors.push(`${label}.concern_id ${JSON.stringify(finding.concern_id)} is not a known concern`);
   }
-  const nit = strict && finding.disposition === 'nit';
-  for (const field of nit ? NIT_TEXT_FIELDS : FINDING_TEXT_FIELDS) {
+  const optional = strict && ['nit', 'suggestion'].includes(finding.disposition);
+  for (const field of optional ? NIT_TEXT_FIELDS : FINDING_TEXT_FIELDS) {
     requireString(errors, finding[field], `${label}.${field}`);
   }
   if (finding.disposition === 'blocker') {
     requireString(errors, finding.required_invariant, `${label}.required_invariant (required for a blocker)`);
     requireString(errors, finding.merge_reason, `${label}.merge_reason (required for a blocker)`);
-  } else if (finding.disposition === 'follow_up') {
-    requireString(errors, finding.next_action, `${label}.next_action (required for a follow-up)`);
+  } else if (finding.disposition === 'separate_work' || (!strict && finding.disposition === 'follow_up')) {
+    const legacy = finding.disposition === 'follow_up';
+    requireString(
+      errors,
+      finding.next_action,
+      `${label}.next_action (required for ${legacy ? 'a legacy follow-up' : 'separate work'})`
+    );
     if (strict && !ATTRIBUTIONS.includes(finding.attribution)) {
-      errors.push(`${label}.attribution must be one of ${ATTRIBUTIONS.join(', ')} (required for a follow-up)`);
+      errors.push(`${label}.attribution must be one of ${ATTRIBUTIONS.join(', ')} (required for separate work)`);
     }
     if (
       strict &&
@@ -512,22 +629,45 @@ function validateFindingRecord(errors, finding, label, knownConcerns, { strict =
       !BASE_PATH_LINE.test(String(finding.base_comparison ?? ''))
     ) {
       errors.push(
-        `${label}.base_comparison must cite the base code as path:line for a pre_existing follow-up and say whether the PR changed what that path does to stored state; a bare "same as base" is rejected`
+        `${label}.base_comparison must cite the base code as path:line for pre_existing separate work and say whether the PR changed what that path does to stored state; a bare "same as base" is rejected`
       );
     }
     if (strict) {
       requireString(
         errors,
-        finding.why_not_blocker,
-        `${label}.why_not_blocker (required for a follow-up: explain deferral given consequence, scope, and round)`
+        finding.deferral_reason,
+        `${label}.deferral_reason (required for separate work: explain why it belongs outside this merge)`
       );
+      if (!DEFERRED_BASES.includes(finding.deferral_basis)) {
+        errors.push(`${label}.deferral_basis must be one of ${DEFERRED_BASES.join(', ')}`);
+      } else if (finding.deferral_basis === 'pre_existing' && finding.attribution !== 'pre_existing') {
+        errors.push(`${label}.deferral_basis pre_existing requires attribution pre_existing`);
+      } else if (finding.deferral_basis === 'accepted_scope') {
+        requireString(errors, finding.scope_decision, `${label}.scope_decision (the accepted scope boundary)`);
+      } else if (finding.deferral_basis === 'late_round_convergence' && (!Number.isSafeInteger(round) || round < 3)) {
+        errors.push(`${label}.deferral_basis late_round_convergence is only available in round 3 or later`);
+      }
     }
-  } else if (nit) {
-    requireString(errors, finding.next_action, `${label}.next_action (the suggested change, required for a nit)`);
+  } else if (optional) {
+    requireString(
+      errors,
+      finding.next_action,
+      `${label}.next_action (the suggested change, required for a ${finding.disposition})`
+    );
   } else {
-    errors.push(`${label}.disposition must be ${strict ? 'blocker, follow_up, or nit' : 'blocker or follow_up'}`);
+    errors.push(
+      `${label}.disposition must be ${strict ? 'blocker, separate_work, suggestion, or nit' : 'blocker, separate_work, or follow_up'}`
+    );
   }
-  for (const field of ['required_invariant', 'merge_reason', 'next_action', 'why_not_blocker']) {
+  for (const field of [
+    'required_invariant',
+    'merge_reason',
+    'next_action',
+    'deferral_reason',
+    'deferral_basis',
+    'scope_decision',
+    'why_not_blocker',
+  ]) {
     if (finding[field] !== undefined && typeof finding[field] !== 'string') {
       errors.push(`${label}.${field} must be a string when present`);
     }
@@ -681,6 +821,7 @@ export function prepare(options) {
     candidates: 'candidates.json',
     sync_hits: 'sync-hits.json',
     delta_triggers: 'delta-triggers.json',
+    reads: 'reads.json',
     prior: 'prior.json',
     obligations: 'obligations.json',
   };
@@ -703,6 +844,8 @@ export function prepare(options) {
   const linesByPath = new Map([...diffs].map(([path, entries]) => [path, entries.map(({ text }) => text)]));
   const routing = routeCandidates(registry, reviewFiles, linesByPath);
   const checklist = renderAlwaysOnChecklist(registry);
+  const governingInputs = governingInputCandidates(reviewFiles, diffs);
+  const risks = riskCandidates(reviewFiles, diffs);
 
   writeJson(join(out, 'inventory.json'), { files, review_files: reviewFiles, incremental_files: incrementalFiles });
   writeJson(join(out, 'candidates.json'), routing);
@@ -719,7 +862,10 @@ export function prepare(options) {
     ),
     ...sync.doc_gaps.map((_, index) => ({ id: `doc-gap:${index}`, source: `sync-hits.json doc_gaps[${index}]` })),
     ...delta.triggers.map(({ id }) => ({ id: `delta:${id}`, source: 'delta-triggers.json' })),
+    ...governingInputs,
+    ...risks,
   ]);
+  writeJson(join(out, 'reads.json'), []);
   writeJson(join(out, 'prior.json'), prior);
   writeFileSync(join(out, 'context', 'always-on.md'), checklist.text);
   writeJson(join(out, 'selected.json'), {
@@ -739,11 +885,12 @@ export function prepare(options) {
     ...(prior.reason ? { fallback_reason: prior.reason } : {}),
     prior_status: prior.status,
     registry: registryIdentity,
+    target_repo: repo,
     files_changed: files.length,
     artifacts,
   };
   writeJson(join(out, 'manifest.json'), manifest);
-  return { manifest, routing, files, sync, delta, checklistCharacters: checklist.text.length };
+  return { manifest, routing, files, sync, delta, governingInputs, risks, checklistCharacters: checklist.text.length };
 }
 
 function readRun(run) {
@@ -756,6 +903,7 @@ function readRun(run) {
     selected: readJson(join(run, 'selected.json'), 'run selection'),
     prior: readJson(join(run, 'prior.json'), 'run prior state'),
     inventory: existsSync(join(run, 'inventory.json')) ? readJson(join(run, 'inventory.json'), 'run inventory') : null,
+    reads: existsSync(join(run, 'reads.json')) ? readJson(join(run, 'reads.json'), 'pinned read receipts') : [],
     registry: readRegistry(run),
   };
 }
@@ -768,8 +916,8 @@ function packetSizes(run, selected) {
   }));
 }
 
-export function addContext({ run, concerns }) {
-  const { selected, registry } = readRun(run);
+export function addContext({ run, concerns, governing }) {
+  const { selected, registry, obligations } = readRun(run);
   const requested = [
     ...new Set(
       concerns
@@ -805,9 +953,135 @@ export function addContext({ run, concerns }) {
     }
   }
   writeJson(join(run, 'selected.json'), selected);
+  if (governing) {
+    const additions = readJson(governing, 'reviewer-discovered governing inputs');
+    if (!Array.isArray(additions)) {
+      throw new Error(`Reviewer-discovered governing inputs at ${governing} must be an array.`);
+    }
+    const existing = new Set(obligations.map(({ id }) => id));
+    for (const candidate of additions) {
+      if (
+        !candidate ||
+        typeof candidate !== 'object' ||
+        typeof candidate.id !== 'string' ||
+        !FINDING_ID.test(candidate.id)
+      ) {
+        throw new Error('Each reviewer-discovered governing input needs an id matching the result identifier format.');
+      }
+      if (!GOVERNING_KINDS.includes(candidate.kind)) {
+        throw new Error(`Governing input ${candidate.id} needs kind ${GOVERNING_KINDS.join(', ')}.`);
+      }
+      for (const field of ['source', 'reason']) {
+        if (typeof candidate[field] !== 'string' || candidate[field].trim() === '') {
+          throw new Error(`Governing input ${candidate.id} needs a non-empty ${field}.`);
+        }
+      }
+      const id = `governing:${candidate.id}`;
+      if (existing.has(id)) {
+        throw new Error(`Governing input ${candidate.id} is already an inspection obligation.`);
+      }
+      obligations.push({
+        id,
+        obligation: 'governing_input',
+        kind: candidate.kind,
+        source: candidate.source,
+        reason: candidate.reason,
+      });
+      existing.add(id);
+    }
+    writeJson(join(run, 'obligations.json'), obligations);
+  }
   const sizes = packetSizes(run, selected);
   const total = sizes.reduce((sum, { characters }) => sum + characters, 0);
   return { selected: selected.concerns, sizes, total, notes };
+}
+
+function testFileForRead(inventory, path) {
+  return (inventory?.review_files ?? inventory?.files ?? []).find(
+    (file) => file.path === path && file.status !== 'D' && !file.binary && isTestPath(file.path)
+  );
+}
+
+function requestedRange(value) {
+  if (value === undefined) {
+    return null;
+  }
+  const match = String(value).match(/^(\d+):(\d+)$/);
+  if (!match || Number(match[1]) < 1 || Number(match[2]) < Number(match[1])) {
+    throw new UsageError('--range must be START:END with positive ascending line numbers.');
+  }
+  return { start: Number(match[1]), end: Number(match[2]) };
+}
+
+function lineCount(text) {
+  if (text === '') {
+    return 0;
+  }
+  return text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length;
+}
+
+function pageForRanges(ranges, requested) {
+  const cap = 200;
+  const start = requested?.start ?? ranges[0]?.start ?? 1;
+  const end = Math.min(requested?.end ?? start + cap - 1, start + cap - 1);
+  const revision = ranges.find((range) => start >= range.start && start <= range.end)?.revision;
+  return { start, end, revision };
+}
+
+export function readPinnedFile({ run, path, scope, range }) {
+  const { manifest, inventory, reads } = readRun(run);
+  const file = testFileForRead(inventory, path);
+  if (!file) {
+    throw new Error(`${path} is not a changed, readable test file in this run.`);
+  }
+  if (!TEST_SCOPES.includes(scope)) {
+    throw new UsageError(`--scope must be one of ${TEST_SCOPES.join(', ')}.`);
+  }
+  const reviewBase = manifest.mode === 'incremental' ? manifest.incremental_from : manifest.merge_base;
+  const ranges = changedLineRanges(manifest.target_repo, reviewBase, manifest.head, file);
+  const headLineCount = lineCount(
+    git(manifest.target_repo, ['show', `${manifest.head}:${path}`], { allowFailure: true }) ?? ''
+  );
+  const required = scope === 'full' ? (headLineCount === 0 ? [] : [{ start: 1, end: headLineCount }]) : ranges;
+  if (required.length === 0) {
+    return { content: '', receipt: { path, scope, ranges: [], bytes: 0, truncated: false }, next: null };
+  }
+  const page = pageForRanges(required, requestedRange(range));
+  const revision = page.revision === 'base' ? reviewBase : manifest.head;
+  const content = git(manifest.target_repo, ['show', `${revision}:${path}`], { allowFailure: true }) ?? '';
+  const lines = content.split('\n');
+  const availableEnd = Math.min(page.end, lineCount(content));
+  const selectedLines = lines.slice(page.start - 1, availableEnd);
+  const emittedLines = [];
+  let bytes = 0;
+  for (const line of selectedLines) {
+    const nextBytes = Buffer.byteLength(`${line}\n`);
+    if (emittedLines.length === 0 && nextBytes > MAX_READ_BYTES) {
+      throw new Error(
+        `${path}:${page.start} exceeds the ${MAX_READ_BYTES}-byte read cap; inspect it with a local tool and record the limitation.`
+      );
+    }
+    if (emittedLines.length > 0 && bytes + nextBytes > MAX_READ_BYTES) {
+      break;
+    }
+    emittedLines.push(line);
+    bytes += nextBytes;
+  }
+  const delivered = emittedLines.join('\n');
+  const actualEnd = page.start + emittedLines.length - 1;
+  const truncated = actualEnd < availableEnd;
+  const receipt = {
+    path,
+    scope,
+    ranges: actualEnd >= page.start ? [{ ...page, end: actualEnd }] : [],
+    bytes: Buffer.byteLength(delivered),
+    truncated,
+  };
+  const remaining = [...reads, receipt];
+  writeJson(join(run, 'reads.json'), remaining);
+  const requiredEnd = Math.max(...required.map(({ end }) => end), 0);
+  const next = actualEnd < requiredEnd ? `${actualEnd + 1}:${Math.min(actualEnd + 200, requiredEnd)}` : null;
+  return { content: delivered, receipt, next };
 }
 
 function priorItemsById(prior) {
@@ -830,7 +1104,27 @@ export function fullReadLines(inventory) {
     .reduce((sum, lines) => sum + lines, 0);
 }
 
-function validateTestReview(errors, result, inventory) {
+function coversRanges(receipts, expected) {
+  return expected.every((required) => {
+    let cursor = required.start;
+    const ranges = receipts
+      .flatMap((receipt) => receipt.ranges ?? [])
+      .filter((range) => range.revision === required.revision)
+      .sort((left, right) => left.start - right.start || left.end - right.end);
+    for (const range of ranges) {
+      if (range.end < cursor || range.start > cursor) {
+        continue;
+      }
+      cursor = Math.max(cursor, range.end + 1);
+      if (cursor > required.end) {
+        return true;
+      }
+    }
+    return cursor > required.end;
+  });
+}
+
+function validateTestReview(errors, result, inventory, reads = [], manifest = {}) {
   const required = changedTestPaths(inventory);
   const overBudget = fullReadLines(inventory) > TEST_LINE_BUDGET;
   if (required.length === 0 && result.tests === undefined) {
@@ -857,6 +1151,29 @@ function validateTestReview(errors, result, inventory) {
         errors.push(
           `${label}.scope changed_hunks is only allowed for a test file with more than ${LARGE_FILE_LINES} changed lines, or when the test files you would read in full total more than ${TEST_LINE_BUDGET} changed lines; read ${entry.path} in full`
         );
+      }
+      if (entry.scope === 'changed_hunks') {
+        const receipts = reads.filter(
+          (candidate) => candidate.path === entry.path && candidate.scope === 'changed_hunks' && !candidate.truncated
+        );
+        const reviewBase = manifest.mode === 'incremental' ? manifest.incremental_from : manifest.merge_base;
+        const expectedRanges = file ? changedLineRanges(manifest.target_repo, reviewBase, manifest.head, file) : [];
+        if (receipts.length === 0 || !coversRanges(receipts, expectedRanges)) {
+          errors.push(
+            `${label} needs pinned read receipts covering every changed head range; run review-lite.mjs read with --scope changed_hunks until next is empty`
+          );
+        }
+      } else {
+        const content =
+          git(manifest.target_repo, ['show', `${manifest.head}:${entry.path}`], { allowFailure: true }) ?? '';
+        const lineCount =
+          content === '' ? 0 : content.endsWith('\n') ? content.split('\n').length - 1 : content.split('\n').length;
+        const receipts = reads.filter((receipt) => receipt.path === entry.path && receipt.scope === 'full');
+        if (!coversRanges(receipts, lineCount === 0 ? [] : [{ start: 1, end: lineCount }])) {
+          errors.push(
+            `${label} needs pinned full-read receipts; run review-lite.mjs read with --scope full until next is empty`
+          );
+        }
       }
       requireString(
         errors,
@@ -889,7 +1206,40 @@ function validateTestReview(errors, result, inventory) {
   }
 }
 
-export function validateResult(result, { selected, prior, registry, inventory, obligations = [] }) {
+function hasRelativeRunArtifact(run, artifact) {
+  if (
+    typeof artifact !== 'string' ||
+    artifact === '' ||
+    artifact.startsWith('/') ||
+    artifact.split('/').includes('..') ||
+    !existsSync(join(run, artifact))
+  ) {
+    return false;
+  }
+  return statSync(join(run, artifact)).isFile();
+}
+
+function hasResolvableGoverningSource(manifest, source, pin) {
+  const local = String(source).match(/^(head|base):(.+)$/);
+  if (local) {
+    const revision = local[1] === 'head' ? manifest.head : manifest.merge_base;
+    return (
+      pin === revision &&
+      git(manifest.target_repo, ['cat-file', '-e', `${revision}:${local[2]}`], { allowFailure: true }) !== null
+    );
+  }
+  try {
+    const url = new URL(String(source));
+    return url.protocol === 'https:' && String(pin).length >= 7 && String(source).includes(String(pin));
+  } catch {
+    return false;
+  }
+}
+
+export function validateResult(
+  result,
+  { selected, prior, registry, inventory, obligations = [], reads = [], manifest = {}, run }
+) {
   const errors = [];
   if (!result || typeof result !== 'object' || Array.isArray(result)) {
     return ['result must be an object'];
@@ -953,7 +1303,7 @@ export function validateResult(result, { selected, prior, registry, inventory, o
   const findings = requireArray(errors, result.findings, 'findings');
   findings.forEach((finding, index) => {
     const label = `findings[${index}]`;
-    validateFindingRecord(errors, finding, label, knownConcerns, { strict: true });
+    validateFindingRecord(errors, finding, label, knownConcerns, { strict: true, round: manifest.round });
     if (knownConcerns.has(finding?.concern_id) && !selectedConcerns.has(finding.concern_id)) {
       errors.push(
         `${label}.concern_id ${finding.concern_id} was never selected; load it with the context command first`
@@ -989,15 +1339,6 @@ export function validateResult(result, { selected, prior, registry, inventory, o
       errors.push(`prior item ${id} is reopened, so findings must restate it with the same id and the new evidence`);
     }
   }
-  requireArray(errors, result.escalations, 'escalations').forEach((escalation, index) => {
-    for (const field of ['trigger', 'action', 'outcome']) {
-      requireString(errors, escalation?.[field], `escalations[${index}].${field}`);
-    }
-    if (typeof escalation?.independent !== 'boolean') {
-      errors.push(`escalations[${index}].independent must be a boolean`);
-    }
-  });
-
   const expected = new Map(obligations.map((entry) => [entry.id, entry]));
   const checked = new Set();
   requireArray(errors, result.checks ?? [], 'checks').forEach((check, index) => {
@@ -1023,6 +1364,42 @@ export function validateResult(result, { selected, prior, registry, inventory, o
     ) {
       errors.push(`unselected concern ${obligation.concern_id} needs a dismissal reason`);
     }
+    if (obligation.obligation === 'governing_input') {
+      if (check.status === 'checked') {
+        if (!GOVERNING_KINDS.includes(check.governing?.kind)) {
+          errors.push(`checks[${index}].governing.kind must be one of ${GOVERNING_KINDS.join(', ')}`);
+        }
+        for (const field of ['source', 'pin', 'applicability']) {
+          requireString(errors, check.governing?.[field], `checks[${index}].governing.${field}`);
+        }
+        if (!hasResolvableGoverningSource(manifest, check.governing?.source, check.governing?.pin)) {
+          errors.push(
+            `checks[${index}].governing source and pin must resolve as head:path/base:path at its pinned revision, or be an immutable https reference`
+          );
+        }
+      }
+      if (result.assessment === 'complete' && check.status === 'unresolved') {
+        errors.push(`a complete assessment cannot leave governing input ${check.id} unavailable`);
+      }
+    }
+    if (obligation.obligation === 'risk_verification') {
+      if (check.status === 'checked') {
+        for (const field of ['invariant', 'falsifying_scenario', 'expected', 'observed', 'artifact']) {
+          requireString(errors, check.verification?.[field], `checks[${index}].verification.${field}`);
+        }
+        if (!RISK_METHODS.includes(check.verification?.method)) {
+          errors.push(`checks[${index}].verification.method must be one of ${RISK_METHODS.join(', ')}`);
+        }
+        if (!hasRelativeRunArtifact(run, check.verification?.artifact)) {
+          errors.push(
+            `checks[${index}].verification.artifact must name an existing relative artifact in the run directory`
+          );
+        }
+      }
+      if (result.assessment === 'complete' && check.status === 'unresolved') {
+        errors.push(`a complete assessment cannot leave risk ${check.id} unresolved`);
+      }
+    }
     if (result.assessment === 'complete' && check.status === 'unresolved') {
       errors.push(`a complete assessment cannot leave ${check.id} unresolved`);
     }
@@ -1034,7 +1411,7 @@ export function validateResult(result, { selected, prior, registry, inventory, o
       }
     }
   }
-  validateTestReview(errors, result, inventory);
+  validateTestReview(errors, result, inventory, reads, manifest);
 
   if (result.assessment === 'complete') {
     const uncovered = selected.concerns.filter((id) => !covered.has(id));
@@ -1072,6 +1449,9 @@ const STATE_FINDING_FIELDS = [
   'merge_reason',
   'next_action',
   'attribution',
+  'deferral_basis',
+  'deferral_reason',
+  'scope_decision',
   'why_not_blocker',
   'recorded_at_head',
 ];
@@ -1083,7 +1463,7 @@ export function deriveState(result, { manifest, prior }) {
   const findings = [
     ...carried.filter(({ kind }) => kind === 'finding').map((item) => pick(item, STATE_FINDING_FIELDS)),
     ...result.findings
-      .filter(({ disposition }) => disposition !== 'nit')
+      .filter(({ disposition }) => ['blocker', 'separate_work'].includes(disposition))
       .map((finding) => pick({ ...finding, recorded_at_head: manifest.head }, STATE_FINDING_FIELDS)),
   ];
   const clearances = [
@@ -1119,11 +1499,17 @@ function findingBlock(finding, { carried = false } = {}) {
   lines.push(`- Consequence: ${finding.consequence}`, `- Base comparison: ${finding.base_comparison}`);
   if (finding.disposition === 'blocker') {
     lines.push(`- Required invariant: ${finding.required_invariant}`, `- Why it blocks: ${finding.merge_reason}`);
+  } else if (finding.disposition === 'separate_work' || finding.disposition === 'follow_up') {
+    lines.push(`- Maintainer next action: ${finding.next_action}`);
+    lines.push(
+      `- Deferral: ${
+        finding.disposition === 'follow_up'
+          ? `Legacy follow-up retained without a new deferral basis${finding.why_not_blocker ? `; ${finding.why_not_blocker}` : ''}`
+          : `${finding.deferral_basis}: ${finding.deferral_reason}`
+      }`
+    );
   } else {
-    lines.push(`- Proposed next action: ${finding.next_action}`);
-    if (finding.why_not_blocker) {
-      lines.push(`- Why not a blocker: ${finding.why_not_blocker}`);
-    }
+    lines.push(`- Suggested change: ${finding.next_action}`);
   }
   return lines.join('\n');
 }
@@ -1139,9 +1525,11 @@ export function renderReport(result, { manifest, prior }) {
     ...result.findings.filter(({ disposition }) => disposition === 'blocker').map((finding) => ({ finding })),
     ...carried.filter(({ disposition }) => disposition === 'blocker').map((finding) => ({ finding, carried: true })),
   ];
-  const followUps = [
-    ...result.findings.filter(({ disposition }) => disposition === 'follow_up').map((finding) => ({ finding })),
-    ...carried.filter(({ disposition }) => disposition === 'follow_up').map((finding) => ({ finding, carried: true })),
+  const separateWork = [
+    ...result.findings.filter(({ disposition }) => disposition === 'separate_work').map((finding) => ({ finding })),
+    ...carried
+      .filter(({ disposition }) => ['separate_work', 'follow_up'].includes(disposition))
+      .map((finding) => ({ finding, carried: true })),
   ];
   const headline =
     result.assessment === 'incomplete' ? 'Review incomplete' : blockers.length > 0 ? 'Changes requested' : 'Approve';
@@ -1181,29 +1569,24 @@ export function renderReport(result, { manifest, prior }) {
   for (const limitation of result.limitations) {
     scope.push(`- Limitation: ${limitation}`);
   }
-  for (const escalation of result.escalations) {
-    scope.push(
-      `- Escalated (${escalation.independent ? 'independent reviewer' : 'same reviewer, not independent'}): ${escalation.trigger}: ${escalation.action.replace(/\.+\s*$/, '')}. ${escalation.outcome}`
-    );
-  }
 
   const sections = [`## ${headline}`, scope.join('\n')];
   if (blockers.length > 0) {
     sections.push('## Blocking findings', ...blockers.map((entry) => findingBlock(entry.finding, entry)));
   }
-  if (followUps.length > 0) {
+  if (separateWork.length > 0) {
     sections.push(
-      '## Proposed follow-ups',
-      'These are outside the merge requirements. A proposed follow-up is not a filed issue.',
-      ...followUps.map((entry) => findingBlock(entry.finding, entry))
+      '## Separate work',
+      'These items are not author work before this merge. A maintainer can track them separately; none is a filed issue.',
+      ...separateWork.map((entry) => findingBlock(entry.finding, entry))
     );
   }
-  const nits = result.findings.filter(({ disposition }) => disposition === 'nit');
-  if (nits.length > 0) {
+  const suggestions = result.findings.filter(({ disposition }) => ['suggestion', 'nit'].includes(disposition));
+  if (suggestions.length > 0) {
     sections.push(
-      '## Nits',
-      'Nits never block a merge and are not follow-ups. Take them or leave them.',
-      bulletList(nits.map(nitLine))
+      '## Optional suggestions',
+      'These are optional and do not change the merge decision.',
+      bulletList(suggestions.map(nitLine))
     );
   }
   const resolved = result.prior_decisions.filter(({ action }) => action === 'resolved');
@@ -1241,7 +1624,7 @@ export function finish({ run, input }) {
   const context = readRun(run);
   ['report.md', 'state.json'].forEach((name) => rmSync(join(run, name), { force: true }));
   const result = readJson(input, 'result');
-  const errors = validateResult(result, context);
+  const errors = validateResult(result, { ...context, run });
   if (errors.length > 0) {
     throw new Error(`Result is invalid; no report or state was written:\n- ${errors.join('\n- ')}`);
   }
@@ -1311,6 +1694,17 @@ export function main(argv) {
   }
   if (command === 'context') {
     return { output: contextSummary(addContext(options)), code: 0 };
+  }
+  if (command === 'read') {
+    const { content, receipt, next } = readPinnedFile(options);
+    return {
+      output: `${content}\n\n[review-lite read: ${receipt.path} ${receipt.scope} ${receipt.ranges
+        .map(({ start, end, revision }) => `${revision === 'base' ? 'base:' : ''}${start}-${end}`)
+        .join(
+          ', '
+        )}; ${receipt.bytes} bytes emitted; helper cannot attest downstream display truncation${next ? `; next range: ${next}` : ''}]`,
+      code: 0,
+    };
   }
   const { headline, state } = finish(options);
   return {
