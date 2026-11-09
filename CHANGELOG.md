@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.26.1
+
+### Fixed
+
+- **Custom path milestones in the hub**: Expand custom learning paths to open any published milestone directly, switch tracks, and return to the next incomplete milestone. Track navigation survives a reload. (#2314)
+- **Open any published milestone**: Learning path cover pages let readers revisit completed milestones or jump ahead without completing earlier modules. Unavailable milestones remain locked. (#2313)
+- **Dashboard guide launches after fullscreen**: Guides launch correctly when navigating from a fullscreen guide to a dashboard after panel mode parameters are cleared. (#2315)
+- **Progress from reader actions**: Sections without their own objectives no longer start an attempt merely because their steps were already satisfied when the guide loaded. (#2297)
+
+### Chore
+
+- **Editor metadata regression coverage**: Add integration tests that verify guide metadata survives visual and JSON edits, publish changes, and restored drafts. (#2316)
+- **Review convergence**: Light reviews account for the review round when judging merge readiness while retaining serious-harm blockers. (#2226)
+
 ## 2.26.0
 
 ### Added
