@@ -73,7 +73,7 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 	for range maxAttempts {
 		out := evaluate(d, current, ev)
 		switch {
-		case !out.changed && len(awarded) == 0:
+		case !out.changed && (len(awarded) == 0 || out.decision.Reason.Transient()):
 			return out.decision
 		case !out.changed:
 			out.next = current

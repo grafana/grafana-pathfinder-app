@@ -374,6 +374,24 @@ func TestEvaluateRecordNewerIsTransientAndUntouched(t *testing.T) {
 	}
 }
 
+func TestEvaluateRecordNewerOnAConflictReRunStaysTransient(t *testing.T) {
+	store := newFakeStore()
+	store.beforeSave = func(s *fakeStore, attempt int) {
+		if attempt == 1 {
+			s.seed(Progress{AchievementID: "dash-builder", SchemaVersion: SchemaVersion + 1})
+		}
+	}
+	ev := newTestEvaluator(t, store, &fakePolicy{})
+	decisions, _ := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
+	d := decisionFor(t, decisions, "dash-builder")
+	if d.Reason != ReasonRecordNewer || !Retry(decisions) {
+		t.Errorf("decision = %+v retry=%v, want record_newer and a retry", d, Retry(decisions))
+	}
+	if row := store.progress["dash-builder"]; len(row.Units) != 0 || store.saves != 1 {
+		t.Errorf("row = %+v saves = %d, want the newer row left untouched", row, store.saves)
+	}
+}
+
 func TestEvaluateUnmatchedEventStillCreatesTheRow(t *testing.T) {
 	store := newFakeStore()
 	ev := newTestEvaluator(t, store, &fakePolicy{})
