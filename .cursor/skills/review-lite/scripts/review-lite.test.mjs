@@ -995,9 +995,69 @@ describe('test review', () => {
     );
     assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
   });
+  test('a large test file whose pages hit the byte cap can be completed by following next', () => {
+    const filler = 'x'.repeat(180);
+    const body = `${Array.from({ length: 450 }, (_, index) => `test('case-${index}', () => expect('${filler}').toBe('${filler}'));`).join('\n')}\n`;
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(repo, { 'src/engine.ts': 'export const v = 2;\n', 'src/engine.test.ts': body }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const first = readPinnedFile({ run: runDir, path: 'src/engine.test.ts', scope: 'changed_hunks' });
+    assert.equal(first.receipt.truncated, true);
+    const tests = [
+      {
+        path: 'src/engine.test.ts',
+        read: true,
+        scope: 'changed_hunks',
+        assertions_checked: 'Each assertion would fail if its matching value changed.',
+      },
+    ];
+    assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
+  });
 });
 
 describe('governing and risk obligations', () => {
+  test('an external governing source must carry a revision pin as a whole URL segment', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(repo, { 'src/engine.ts': 'export const v = 2;\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const input = join(runDir, 'governing.json');
+    writeFileSync(
+      input,
+      JSON.stringify([
+        { id: 'schema', kind: 'external_schema', source: 'https://schemas.example.invalid', reason: 'Cited schema.' },
+      ])
+    );
+    addContext({ run: runDir, concerns: 'security', governing: input });
+    const withSource = (source, pin) =>
+      result(runDir).checks.map((check) =>
+        check.id === 'governing:schema'
+          ? {
+              ...check,
+              status: 'checked',
+              governing: { kind: 'external_schema', source, pin, applicability: 'Defines the loaded shape.' },
+            }
+          : check
+      );
+    for (const [source, pin] of [
+      ['https://schemas.example.invalid/packages/v2/latest', 'schemas'],
+      ['https://schemas.example.invalid/packages/v2/latest', 'https:/'],
+      ['https://schemas.example.invalid/packages/v2/9f4a3b7e', '9f4a3b7'],
+      ['http://schemas.example.invalid/packages/9f4a3b7', '9f4a3b7'],
+    ]) {
+      assert.throws(
+        () => finishWith(runDir, result(runDir, { checks: withSource(source, pin) })),
+        /governing source and pin must resolve/,
+        `${source} with pin ${pin}`
+      );
+    }
+    for (const [source, pin] of [
+      ['https://schemas.example.invalid/packages/v2/9f4a3b7', '9f4a3b7'],
+      ['https://schemas.example.invalid/packages/schema.json?ref=v2.1.0', 'v2.1.0'],
+    ]) {
+      assert.equal(finishWith(runDir, result(runDir, { checks: withSource(source, pin) })).headline, 'Approve');
+    }
+  });
+
   test('a generated risk obligation cannot disappear and checked verification needs falsifying evidence', () => {
     const { repo, base } = makeRepo({ 'src/store.ts': 'export const current = 0;\n' });
     const head = commit(repo, { 'src/store.ts': 'export const saveProgress = () => write();\n' }, 'head');

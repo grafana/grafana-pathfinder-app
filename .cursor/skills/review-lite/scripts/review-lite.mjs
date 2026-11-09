@@ -31,6 +31,7 @@ const FINDING_ID = /^[A-Za-z][A-Za-z0-9-]{0,31}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const MAX_NITS = 5;
 const MAX_READ_BYTES = 30_000;
+const REVISION_PIN = /^(?:[0-9a-f]{7,64}|v?\d+(?:\.\d+)+(?:-[0-9A-Za-z.]+)?)$/;
 const TEST_SCOPES = ['full', 'changed_hunks'];
 const UNREAD_KINDS = ['binary', 'generated', 'not_in_head', 'tooling_blocked'];
 const EFFORT_REASON = /\b(effort|save time|to save|too (large|big|long|many)|large file|big file|budget|cost)\b/i;
@@ -1154,7 +1155,7 @@ function validateTestReview(errors, result, inventory, reads = [], manifest = {}
       }
       if (entry.scope === 'changed_hunks') {
         const receipts = reads.filter(
-          (candidate) => candidate.path === entry.path && candidate.scope === 'changed_hunks' && !candidate.truncated
+          (candidate) => candidate.path === entry.path && candidate.scope === 'changed_hunks'
         );
         const reviewBase = manifest.mode === 'incremental' ? manifest.incremental_from : manifest.merge_base;
         const expectedRanges = file ? changedLineRanges(manifest.target_repo, reviewBase, manifest.head, file) : [];
@@ -1230,7 +1231,8 @@ function hasResolvableGoverningSource(manifest, source, pin) {
   }
   try {
     const url = new URL(String(source));
-    return url.protocol === 'https:' && String(pin).length >= 7 && String(source).includes(String(pin));
+    const segments = [...url.pathname.split('/'), ...url.searchParams.values()];
+    return url.protocol === 'https:' && REVISION_PIN.test(String(pin)) && segments.includes(String(pin));
   } catch {
     return false;
   }
