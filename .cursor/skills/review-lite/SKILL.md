@@ -76,7 +76,7 @@ Failures are not the only way a change hurts. For every selected concern, and fo
 
 An answer of "no change" needs the line you read. Clear harmless deltas without a finding; reserve optional suggestions for concrete but nonbinding polish. Record each delta obligation in `checks` with its status and base/head evidence. A loss of a capability, delayed signal, or blank state inside the intended deliverable is a required fix unless there is explicit accepted scope or a supported late-round convergence decision.
 
-For a generated risk-verification obligation, use `checked` only with a discriminating verification record: the invariant, a falsifying scenario, expected and observed result, method, and a relative artifact in the run directory. A green broad suite is not itself that record. Use a targeted test or probe when permitted; otherwise a meaningful static or contract comparison can qualify. Do not invent a probe quota or an independent-review requirement. A material unresolved risk makes the assessment incomplete.
+For a generated risk-verification obligation, use `checked` only with a discriminating verification record: the invariant, a falsifying scenario, expected and observed result, method, and an artifact you wrote under `evidence/` in the run directory (helper-written files such as `changes.patch` do not count). A green broad suite is not itself that record. Use a targeted test or probe when permitted; otherwise a meaningful static or contract comparison can qualify. Do not invent a probe quota or an independent-review requirement. A material unresolved risk makes the assessment incomplete.
 
 ### Tests
 

@@ -1100,6 +1100,55 @@ describe('test review', () => {
     ];
     assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
   });
+
+  test('a full-read entry fails closed when the run cannot read the head blob', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(
+      repo,
+      { 'src/engine.ts': 'export const v = 2;\n', 'src/engine.test.ts': "test('v', () => expect(2).toBe(2));\n" },
+      'head'
+    );
+    const tests = [{ path: 'src/engine.test.ts', read: true, scope: 'full', assertions_checked: 'Pins v.' }];
+    const withManifest = (change) => {
+      const runDir = prepared({ repo, base, head });
+      const manifest = readJson(join(runDir, 'manifest.json'));
+      writeFileSync(join(runDir, 'manifest.json'), JSON.stringify(change(manifest)));
+      return runDir;
+    };
+    const legacy = withManifest(({ target_repo, ...manifest }) => manifest);
+    assert.throws(
+      () => finishWith(legacy, result(legacy, { tests, no_read_receipts: true })),
+      /manifest has no target_repo/
+    );
+    const moved = withManifest((manifest) => ({ ...manifest, target_repo: join(scratch, 'missing-repo') }));
+    assert.throws(() => finishWith(moved, result(moved, { tests, no_read_receipts: true })), /git show failed/);
+  });
+
+  test('a line over the byte cap points the reviewer at a tooling_blocked entry that finish accepts', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(
+      repo,
+      {
+        'src/engine.ts': 'export const v = 2;\n',
+        'src/engine.test.ts': `const fixture = '${'x'.repeat(31_000)}';\n`,
+      },
+      'head'
+    );
+    const runDir = prepared({ repo, base, head });
+    assert.throws(
+      () => readPinnedFile({ run: runDir, path: 'src/engine.test.ts', scope: 'full' }),
+      /read: false with reason_kind tooling_blocked/
+    );
+    const tests = [
+      {
+        path: 'src/engine.test.ts',
+        read: false,
+        reason_kind: 'tooling_blocked',
+        reason: 'Line 1 is one inline fixture string that the pinned read helper cannot emit.',
+      },
+    ];
+    assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
+  });
 });
 
 describe('governing and risk obligations', () => {
@@ -1167,24 +1216,41 @@ describe('governing and risk obligations', () => {
     );
     mkdirSync(join(runDir, 'evidence'));
     writeFileSync(join(runDir, 'evidence', 'save-progress.txt'), 'A malformed value is rejected before persistence.\n');
-    const verified = baseline.map((check) =>
-      check.id === risk.id
-        ? {
-            ...check,
-            status: 'checked',
-            evidence: 'Targeted persistence scenario was inspected.',
-            verification: {
-              invariant: 'Invalid progress is never persisted.',
-              falsifying_scenario: 'Attempt to save malformed progress.',
-              expected: 'The write is rejected.',
-              observed: 'The recorded probe rejected the write.',
-              method: 'probe',
-              artifact: 'evidence/save-progress.txt',
-            },
-          }
-        : check
+    const verifiedWith = (artifact) =>
+      baseline.map((check) =>
+        check.id === risk.id
+          ? {
+              ...check,
+              status: 'checked',
+              evidence: 'Targeted persistence scenario was inspected.',
+              verification: {
+                invariant: 'Invalid progress is never persisted.',
+                falsifying_scenario: 'Attempt to save malformed progress.',
+                expected: 'The write is rejected.',
+                observed: 'The recorded probe rejected the write.',
+                method: 'probe',
+                artifact,
+              },
+            }
+          : check
+      );
+    for (const artifact of [
+      'changes.patch',
+      'manifest.json',
+      'context/always-on.md',
+      'evidence/../reads.json',
+      'evidence',
+    ]) {
+      assert.throws(
+        () => finishWith(runDir, result(runDir, { checks: verifiedWith(artifact) })),
+        /verification\.artifact must name an existing file under evidence\//,
+        artifact
+      );
+    }
+    assert.equal(
+      finishWith(runDir, result(runDir, { checks: verifiedWith('evidence/save-progress.txt') })).headline,
+      'Approve'
     );
-    assert.equal(finishWith(runDir, result(runDir, { checks: verified })).headline, 'Approve');
   });
 });
 

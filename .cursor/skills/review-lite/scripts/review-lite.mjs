@@ -277,7 +277,7 @@ function changedLineRanges(repo, from, to, file) {
     '--',
     ...paths,
   ]);
-  const headLines = lineCount(git(repo, ['show', `${to}:${file.path}`], { allowFailure: true }) ?? '');
+  const headLines = lineCount(git(repo, ['show', `${to}:${file.path}`]));
   const ranges = [];
   for (const line of patch.split('\n')) {
     const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
@@ -1053,16 +1053,14 @@ export function readPinnedFile({ run, path, scope, range }) {
   }
   const reviewBase = manifest.mode === 'incremental' ? manifest.incremental_from : manifest.merge_base;
   const ranges = changedLineRanges(manifest.target_repo, reviewBase, manifest.head, file);
-  const headLineCount = lineCount(
-    git(manifest.target_repo, ['show', `${manifest.head}:${path}`], { allowFailure: true }) ?? ''
-  );
+  const headLineCount = lineCount(git(manifest.target_repo, ['show', `${manifest.head}:${path}`]));
   const required = scope === 'full' ? (headLineCount === 0 ? [] : [{ start: 1, end: headLineCount }]) : ranges;
   if (required.length === 0) {
     return { content: '', receipt: { path, scope, ranges: [], bytes: 0, truncated: false }, next: null };
   }
   const page = pageForRanges(required, requestedRange(range));
-  const revision = page.revision === 'base' ? reviewBase : manifest.head;
-  const content = git(manifest.target_repo, ['show', `${revision}:${path}`], { allowFailure: true }) ?? '';
+  const blob = page.revision === 'base' ? `${reviewBase}:${file.old_path ?? path}` : `${manifest.head}:${path}`;
+  const content = git(manifest.target_repo, ['show', blob]);
   const lines = content.split('\n');
   const availableEnd = Math.min(page.end, lineCount(content));
   const selectedLines = lines.slice(page.start - 1, availableEnd);
@@ -1072,7 +1070,7 @@ export function readPinnedFile({ run, path, scope, range }) {
     const nextBytes = Buffer.byteLength(`${line}\n`);
     if (emittedLines.length === 0 && nextBytes > MAX_READ_BYTES) {
       throw new Error(
-        `${path}:${page.start} exceeds the ${MAX_READ_BYTES}-byte read cap; inspect it with a local tool and record the limitation.`
+        `${path}:${page.start} exceeds the ${MAX_READ_BYTES}-byte read cap; inspect it with a local tool and record the file in tests as read: false with reason_kind tooling_blocked, naming this line in reason.`
       );
     }
     if (emittedLines.length > 0 && bytes + nextBytes > MAX_READ_BYTES) {
@@ -1168,7 +1166,11 @@ function validateTestReview(errors, result, inventory, reads = [], manifest = {}
           `${label}.scope changed_hunks is only allowed for a test file with more than ${LARGE_FILE_LINES} changed lines, or when the test files you would read in full total more than ${TEST_LINE_BUDGET} changed lines; read ${entry.path} in full`
         );
       }
-      if (entry.scope === 'changed_hunks') {
+      if (!manifest.target_repo) {
+        errors.push(
+          `${label} cannot be checked against pinned read receipts because the run manifest has no target_repo; prepare a new run`
+        );
+      } else if (entry.scope === 'changed_hunks') {
         const receipts = reads.filter(
           (candidate) => candidate.path === entry.path && candidate.scope === 'changed_hunks'
         );
@@ -1180,9 +1182,7 @@ function validateTestReview(errors, result, inventory, reads = [], manifest = {}
           );
         }
       } else {
-        const content =
-          git(manifest.target_repo, ['show', `${manifest.head}:${entry.path}`], { allowFailure: true }) ?? '';
-        const lines = lineCount(content);
+        const lines = lineCount(git(manifest.target_repo, ['show', `${manifest.head}:${entry.path}`]));
         const receipts = reads.filter((receipt) => receipt.path === entry.path && receipt.scope === 'full');
         if (!coversRanges(receipts, lines === 0 ? [] : [{ start: 1, end: lines }])) {
           errors.push(
@@ -1221,11 +1221,10 @@ function validateTestReview(errors, result, inventory, reads = [], manifest = {}
   }
 }
 
-function hasRelativeRunArtifact(run, artifact) {
+function hasRunEvidenceArtifact(run, artifact) {
   if (
     typeof artifact !== 'string' ||
-    artifact === '' ||
-    artifact.startsWith('/') ||
+    !artifact.startsWith('evidence/') ||
     artifact.split('/').includes('..') ||
     !existsSync(join(run, artifact))
   ) {
@@ -1405,9 +1404,9 @@ export function validateResult(
         if (!RISK_METHODS.includes(check.verification?.method)) {
           errors.push(`checks[${index}].verification.method must be one of ${RISK_METHODS.join(', ')}`);
         }
-        if (!hasRelativeRunArtifact(run, check.verification?.artifact)) {
+        if (!hasRunEvidenceArtifact(run, check.verification?.artifact)) {
           errors.push(
-            `checks[${index}].verification.artifact must name an existing relative artifact in the run directory`
+            `checks[${index}].verification.artifact must name an existing file under evidence/ in the run directory, not a helper-written artifact`
           );
         }
       }
