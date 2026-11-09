@@ -66,7 +66,7 @@ describe('loadDocsTabContentResult', () => {
   });
 
   // Regression: the manifest guide id a click target already carried
-  // (GuideList's current row, the cover-page CTA) must reach
+  // (a GuideList row, the cover-page CTA) must reach
   // fetchPackageContent so it can classify the load structurally instead of
   // comparing resolved URLs.
   it('threads explicitGuideId through to fetchPackageContent', async () => {

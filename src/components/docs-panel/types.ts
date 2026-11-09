@@ -93,7 +93,7 @@ export interface DocsPanelModelOperations {
       source?: LaunchSource;
       /**
        * The manifest guide id `url` resolved from, when the click target
-       * already carried one (GuideList's current row, the cover-page CTA —
+       * already carried one (a GuideList row, the cover-page CTA —
        * see link-handler.hook.ts). Threaded to fetchPackageContent so it can
        * classify this load by a direct id lookup against the manifest
        * instead of comparing resolved URLs.

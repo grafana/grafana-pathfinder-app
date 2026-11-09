@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.25.0",
+  "version": "2.26.0",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -58,11 +58,11 @@
   "devDependencies": {
     "@grafana/eslint-config": "^10.0.0",
     "@grafana/faro-webpack-plugin": "^0.14.0",
-    "@grafana/plugin-e2e": "^3.14.0",
+    "@grafana/plugin-e2e": "^4.0.0",
     "@grafana/sign-plugin": "^4.0.0",
     "@grafana/tsconfig": "^2.2.0",
     "@jest/test-sequencer": "^30.5.2",
-    "@playwright/test": "~1.64.0",
+    "@playwright/test": "~1.65.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@swc/core": "^1.16.13",
     "@swc/helpers": "^0.5.23",
@@ -184,5 +184,5 @@
     ],
     "*.{json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
-  "packageManager": "npm@12.2.1"
+  "packageManager": "npm@12.2.2"
 }

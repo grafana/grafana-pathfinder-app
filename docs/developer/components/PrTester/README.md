@@ -173,6 +173,7 @@ The PR Tester stores:
 - **Test Mode**: Selected mode (single/all/path)
 - **Fetched Files**: Content file list from PR
 - **Fetched URL**: URL that generated current file list
+- **Fetch ID**: Per-fetch id behind the `#pf-pr-<fetchId>` progress marker
 - **Selected File**: Current selection (single mode)
 - **Ordered Files**: User's file order (path mode)
 
@@ -182,6 +183,7 @@ All data stored in browser localStorage with these keys:
 - `pathfinder-pr-tester-mode`
 - `pathfinder-pr-tester-files`
 - `pathfinder-pr-tester-fetched-url`
+- `pathfinder-pr-tester-fetch-id`
 - `pathfinder-pr-tester-selected`
 - `pathfinder-pr-tester-ordered-files`
 
@@ -238,8 +240,8 @@ GET /repos/{owner}/{repo}/contents/{path}?ref={branch}
 
 - Public API: 60 requests/hour (unauthenticated)
 - Errors displayed if rate limit exceeded
-- Uses conditional requests where possible
-- Caches file lists to reduce API calls
+- PR metadata and file-list requests use `cache: 'no-cache'`, because GitHub serves them with `max-age=60` and a re-fetch would otherwise return the pre-push head
+- Caches the fetched file list in localStorage
 
 ### PR URL Format
 
@@ -316,6 +318,8 @@ Extracted information:
 4. Refresh PR tester (re-fetch)
 5. Test updated guides
 6. Repeat until approved
+
+Each fetch mints a new fetch id, and every URL the tester opens carries a `#pf-pr-<fetchId>` fragment (`src/lib/pr-test-marker.ts`). Progress is kept per fetch and never touches the real guide's records, so re-fetching is how you reset a preview. See `docs/design/COMPLETION-MODEL.md`.
 
 ## See Also
 

@@ -1,3 +1,5 @@
+import { stripPrTestMarker } from './pr-test-marker';
+
 const JOURNEY_BASE_URL_PATTERNS = [
   /^(https?:\/\/[^/]+\/docs\/learning-journeys\/[^/]+)/,
   /^(https?:\/\/[^/]+\/docs\/learning-paths\/[^/]+)/,
@@ -15,7 +17,8 @@ export function getLearningJourneyBaseUrl(url: string): string {
   return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
 
-export function getMilestoneSlug(url: string): string {
+export function getMilestoneSlug(rawUrl: string): string {
+  const url = stripPrTestMarker(rawUrl);
   // Private App Platform members are addressed as `backend-guide:<id>` — an
   // opaque scheme with no path to split on. Return the bare id so completion is
   // keyed the same way the read side (LearningPath.guides holds bare ids)

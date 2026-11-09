@@ -39,6 +39,7 @@ import {
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
 import { getMilestoneSlug } from '../lib/learning-journey-url';
+import { isPrTestUrl } from '../lib/pr-test-marker';
 export { getMilestoneSlug };
 
 import { resolveActiveMilestoneSequence, resolveActiveMilestoneToolbarContext } from './active-milestone-sequence';
@@ -865,9 +866,16 @@ export function resolveActiveMilestoneSlug(input: {
   return slug && input.journeyBaseUrl ? slug : undefined;
 }
 
+function isPrTestSurface(input: SurfaceCompletionInput): boolean {
+  return isPrTestUrl(input.currentUrl) || isPrTestUrl(input.contentUrl) || isPrTestUrl(input.baseUrl);
+}
+
 export function resolveSurfaceCompletionIdentity(
   input: SurfaceCompletionInput
 ): AnalyticsCompletionIdentity | undefined {
+  if (isPrTestSurface(input)) {
+    return undefined;
+  }
   const { metadata } = input;
   const surfaceBase = input.baseUrl || input.contentUrl;
   const journeyBase = metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl;
@@ -898,7 +906,7 @@ function planSurfaceCompletion(input: SurfaceCompletionInput) {
   // trackMemberBaseUrl fallback: a guide referenced only by a Path Tracks
   // `tracks` entry (never by `milestones`) carries no `learningJourney` — see
   // its doc comment in content.types.ts — but still needs markMilestoneDone
-  // under its own identity so the cover page's per-track lock/unlock sees it.
+  // under its own identity so the cover page's per-track checkmarks see it.
   // resolveExpectedMilestoneIds(metadata?.learningJourney) below safely
   // returns [] with no `learningJourney`, so this can never satisfy
   // markMilestoneDone's whole-journey completion trigger (COMPLETION-MODEL.md
@@ -952,6 +960,12 @@ export function resolveSurfaceGuideIdentity(input: SurfaceCompletionInput): Regi
 export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
   const { metadata } = input;
   const { surfaceBase, journeyBase, slug, willMarkMilestone, completionContext } = planSurfaceCompletion(input);
+  if (isPrTestSurface(input)) {
+    if (willMarkMilestone && journeyBase) {
+      void markMilestoneDone(journeyBase, slug, input.currentUrl!);
+    }
+    return;
+  }
   if (surfaceBase?.startsWith('bundled:')) {
     if (willMarkMilestone) {
       setMilestoneCompletionPercentage(surfaceBase, 100);
@@ -1057,6 +1071,10 @@ export async function markMilestoneDone(
   // Order terminal writes after queued legacy backfills.
   await queueMilestoneCompletionWrite(contentKey, 100);
   dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
+  // PR-tester progress stays in the per-fetch content key; the writes below are slug-keyed and real.
+  if (isPrTestUrl(milestoneUrl) || isPrTestUrl(journeyBaseUrl)) {
+    return;
+  }
   await markGuideCompleted(milestoneSlug);
 
   // Same-source milestone slugs still share a durable key across journeys.

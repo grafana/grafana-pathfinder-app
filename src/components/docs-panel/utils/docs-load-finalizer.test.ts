@@ -1,5 +1,6 @@
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
+import { fetchContent } from '../../../docs-retrieval/content-fetcher';
 import { findDocPage } from '../../../utils/find-doc-page';
 import { buildDocsLoadSuccessPatch, resolveDocsLoadAlignment } from './docs-load-finalizer';
 
@@ -157,6 +158,35 @@ describe('resolveDocsLoadAlignment', () => {
 });
 
 describe('buildDocsLoadSuccessPatch', () => {
+  it('keeps the PR-tester marker on the content key after a real load', async () => {
+    const markedUrl = 'https://interactive-learning.grafana.net/packages/guide-two/v1.0.0/content.json#pf-pr-abc123';
+    const originalFetch = global.fetch;
+    const fetchSpy = jest.fn((input: RequestInfo | URL) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        url: String(input),
+        text: async () => JSON.stringify({ id: 'guide-two', title: 'Guide two', blocks: [] }),
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+      } as Response)
+    );
+    global.fetch = fetchSpy;
+    try {
+      const { content: fetchedContent } = await fetchContent(markedUrl);
+      const patch = buildDocsLoadSuccessPatch({
+        tab: tab({ baseUrl: markedUrl, currentUrl: markedUrl }),
+        requestedUrl: markedUrl,
+        fetchedContent: fetchedContent!,
+      });
+
+      expect(patch.currentUrl).toBe(markedUrl);
+      expect(patch.content?.url).toBe(markedUrl);
+      expect(fetchSpy.mock.calls.every(([input]) => !String(input).includes('#'))).toBe(true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it.each([
     {
       name: 'keeps an existing base URL',

@@ -132,6 +132,7 @@ import {
   reconcileSection,
   refreshAndNotifyGuideProgress,
   refreshGuidePercentageOnLoad,
+  sectionHasChangeCompletion,
   resetSection as resetSectionStore,
   getSectionSkippedSteps,
   resetSteps,
@@ -721,7 +722,10 @@ export function InteractiveSection({
         hasEmittedGuideCompletionRef.current = true;
         const hydrated =
           (isCompletedByObjectives && objectivesOrigin === 'load') ||
-          (storedCompletion === 'complete' && !hydrationSpentRef.current && doneVia !== 'objectives');
+          (storedCompletion === 'complete' && !hydrationSpentRef.current && doneVia !== 'objectives') ||
+          (!hasSectionObjectives &&
+            doneVia === 'no-gate-needed' &&
+            !sectionHasChangeCompletion(getContentKey(), sectionId));
         dispatchProgress({
           kind: 'section',
           contentKey: resolveOwnerContentKey?.() ?? '',
@@ -765,6 +769,7 @@ export function InteractiveSection({
     isPreviewMode,
     gateAnalysis.isAllPassive,
     resolveOwnerContentKey,
+    hasSectionObjectives,
   ]);
 
   // PRE-COMPUTE eligibility for ALL steps once (React best practice)

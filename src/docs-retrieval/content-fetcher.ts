@@ -16,6 +16,7 @@ import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
+import { getPrTestFetchId, stripPrTestMarker, withPrTestMarker } from '../lib/pr-test-marker';
 import { recordContentFetch, recordContentFetchFallback, type ContentFetchTier } from '../lib/telemetry';
 
 // Re-exported to keep the barrel surface stable: `injectJourneyExtrasIntoJsonGuide`
@@ -53,6 +54,14 @@ function wrapContentAsJsonGuide(content: string, url: string, title: string): st
   return JSON.stringify(jsonGuide);
 }
 
+function restorePrTestMarker(result: ContentFetchResult, markedUrl: string): ContentFetchResult {
+  const fetchId = getPrTestFetchId(markedUrl);
+  if (!fetchId || !result.content) {
+    return result;
+  }
+  return { ...result, content: { ...result.content, url: withPrTestMarker(result.content.url, fetchId) } };
+}
+
 /**
  * Main unified content fetcher
  * Determines content type and fetches accordingly
@@ -76,15 +85,11 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
       if (url.startsWith('bundled:')) {
         tier = 'bundled';
-        const result = await fetchBundledInteractive(url);
-
-        return result;
+        return restorePrTestMarker(await fetchBundledInteractive(stripPrTestMarker(url)), url);
       }
       if (url.startsWith('backend-guide:')) {
         tier = 'backend-guide';
-        const result = await fetchBackendInteractive(url, options.loadContext);
-
-        return result;
+        return restorePrTestMarker(await fetchBackendInteractive(stripPrTestMarker(url), options.loadContext), url);
       }
 
       // SECURITY: Validate URL is from a trusted source before fetching
@@ -107,8 +112,10 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         };
       }
 
-      const hashFragment = parseHashFragment(url);
+      const hashFragment = parseHashFragment(stripPrTestMarker(url));
       const cleanUrl = removeHashFragment(url);
+      const prTestFetchId = getPrTestFetchId(url);
+      const contentUrl = (resolved: string) => (prTestFetchId ? withPrTestMarker(resolved, prTestFetchId) : resolved);
 
       // SECURITY: Enforce HTTPS to prevent MITM attacks
       if (!enforceHttps(cleanUrl)) {
@@ -229,7 +236,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
               content: jsonContent,
               metadata: htmlMetadata,
               type: contentType,
-              url: htmlUrl,
+              url: contentUrl(htmlUrl),
               lastFetched: new Date().toISOString(),
               hashFragment,
               isNativeJson: false,
@@ -285,7 +292,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         content: jsonContent,
         metadata,
         type: contentType,
-        url: finalUrl, // Use final URL to correctly resolve relative links
+        url: contentUrl(finalUrl),
         lastFetched: new Date().toISOString(),
         hashFragment,
         isNativeJson,

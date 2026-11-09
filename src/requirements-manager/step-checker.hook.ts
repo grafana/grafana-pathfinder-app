@@ -189,7 +189,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // REACT: Track mounted state to prevent state updates after unmount (R4)
   const isMountedRef = useRef(true);
   // Mirrors the passive coordinator's baseline: objectives met on their first
-  // answered check describe state the reader already had, so they save as 'load'.
+  // answered check save as 'load', on the assumption the reader already had them.
   // A reset swaps in a new baseline, so a check started before it cannot mark it.
   const objectivesBaselineRef = useRef({ seenUnmet: false });
   const [objectivesOrigin, setObjectivesOrigin] = useState<ProgressOrigin>('change');
@@ -217,6 +217,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // The async checkStep function can be mid-execution when eligibility changes, causing it to
   // use a stale captured value. This ref always has the current value.
   const isEligibleRef = useRef(isEligibleForChecking);
+  const isCheckingRef = useRef(state.isChecking);
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref: checkStep omits state from its deps, so a rebuild mid-check must not keep isChecking true after a reset
+  isCheckingRef.current = state.isChecking;
   /** A terminal status change seen while a check was running, still to be acted on. */
   const pendingTerminalRecheckRef = useRef(false);
   // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref read by async checkStep to avoid stale closures
@@ -467,7 +470,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * 3. Requirements (validate if eligible)
    */
   const checkStep = useCallback(async () => {
-    if (state.isChecking) {
+    if (state.isChecking && isCheckingRef.current) {
       return;
     }
 
@@ -529,6 +532,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
 
       if (decision === 'completed') {
+        if (objectivesBaseline !== objectivesBaselineRef.current) {
+          return;
+        }
         const finalState = createObjectivesCompletedState(skippable);
         if (isMountedRef.current) {
           setObjectivesOrigin(objectivesBaseline.seenUnmet ? 'change' : 'load');
@@ -982,9 +988,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   // Track state values in refs to avoid re-subscribing when they change during checks.
   /* eslint-disable react-hooks/refs -- intentional latest-value refs; read asynchronously by checkStep and event callbacks to avoid stale closures */
-  const isCheckingRef = useRef(state.isChecking);
-  isCheckingRef.current = state.isChecking;
-
   const isCompletedRef = useRef(state.isCompleted);
   isCompletedRef.current = state.isCompleted;
 
