@@ -112,5 +112,16 @@ test('workflow updates one signed PR and keeps the schedule gated', () => {
   assert.match(workflow, /branch: codex\/sync-bundled-tutorials/);
   assert.match(workflow, /BUNDLED_TUTORIAL_SYNC_ENABLED == 'true'/);
   assert.match(workflow, /sign-commits: true/);
+  assert.match(workflow, /grafana\/shared-workflows\/actions\/create-github-app-token@/);
+  assert.doesNotMatch(workflow, /private-key:|BUNDLED_TUTORIAL_SYNC_PRIVATE_KEY/);
+  assert.match(workflow, /id-token: write/);
   assert.match(workflow, /cron: '17 6 \* \* \*'/);
+});
+
+test('restores a missing bundled tutorial and remains idempotent', (t) => {
+  const f = fixture(t);
+  rmSync(join(f.root, 'src/bundled-interactives/intro'), { recursive: true });
+  assert.deepEqual(syncBundledTutorials(f.source, f).changed, ['intro']);
+  assert.equal(JSON.parse(readFileSync(join(f.root, 'src/bundled-interactives/intro/content.json'))).title, 'Intro');
+  assert.deepEqual(syncBundledTutorials(f.source, f).changed, []);
 });

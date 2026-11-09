@@ -508,9 +508,14 @@ Run `npm run test:sync-bundled-tutorials` to test the sync without network acces
 
 ### Enable the daily sync
 
-Install a GitHub App on `grafana/grafana-pathfinder-app` with Contents and Pull
-requests write permissions. Configure repository variable
-`BUNDLED_TUTORIAL_SYNC_APP_ID` and secret `BUNDLED_TUTORIAL_SYNC_PRIVATE_KEY`.
+Register `.github/workflows/sync-bundled-tutorials.yml` for the `updater-for-ci`
+GitHub App Token Broker in deployment_tools at
+`terraform/repositories/grafana-pathfinder-app/github-app-configs/config.yaml`.
+Scope its token to this repository with Contents and Pull requests write permissions,
+main-branch schedule and workflow_dispatch events. Merge and apply that broker
+configuration before enabling the workflow. The workflow uses short-lived OIDC
+credentials in a separate PR job; package installation and generation have no token
+minting permission. No GitHub App private key belongs in repository secrets.
 After the upstream migration is merged and its seven packages are published,
 set repository variable `BUNDLED_TUTORIAL_SYNC_ENABLED` to `true` and manually run
 **Sync bundled tutorials**. Confirm it opens or updates the signed

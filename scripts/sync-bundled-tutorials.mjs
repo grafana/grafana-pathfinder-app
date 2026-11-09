@@ -147,7 +147,7 @@ export function syncBundledTutorials(source, { root = appRoot, revision, validat
       );
     }
     for (const entry of config) {
-      if (digest(join(stage, entry.id)) !== digest(join(bundled, entry.id))) {
+      if (!existsSync(join(bundled, entry.id)) || digest(join(stage, entry.id)) !== digest(join(bundled, entry.id))) {
         changed.push(entry.id);
       }
     }
@@ -158,7 +158,7 @@ export function syncBundledTutorials(source, { root = appRoot, revision, validat
       return { revision: sha, changed: [] };
     }
     for (const entry of config) {
-      rmSync(join(bundled, entry.id), { recursive: true });
+      rmSync(join(bundled, entry.id), { recursive: true, force: true });
       cpSync(join(stage, entry.id), join(bundled, entry.id), { recursive: true });
     }
     for (const name of ['index.json', 'repository.json']) {
