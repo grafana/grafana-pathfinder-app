@@ -37,10 +37,11 @@ type Entity struct {
 	Actions map[string]Action `json:"actions"`
 }
 
-// Action is one registry pair's declaration. Within a grammar major an action
+// Action is one registry pair's declaration. Within a format version an action
 // may only gain keys that leave what it means unchanged, such as event sources,
 // so its top level ignores keys this build does not know. A key that changes
-// what an action means needs a new major. Fields and resources stay strict.
+// what an action means needs a new format version. Fields and resources stay
+// strict.
 type Action struct {
 	Context   map[string]Field `json:"context"`
 	Resources []Resource       `json:"resources,omitempty"`

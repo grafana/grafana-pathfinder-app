@@ -25,7 +25,6 @@
     "achievements": [
       {
         "id": "guides-finished",
-        "requires": "1.0",
         "title": "Guide finisher",
         "description": "Finish guides in Grafana.",
         "counter": {

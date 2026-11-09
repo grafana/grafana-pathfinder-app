@@ -43,7 +43,7 @@ func runCmd(args ...string) (code int, stdout, stderr string) {
 	return code, out.String(), errOut.String()
 }
 
-func TestBuildComputesRequiresAndLoads(t *testing.T) {
+func TestBuildWritesABundleThatLoads(t *testing.T) {
 	src := sourceTree(t, map[string]string{
 		"events/guides.json":           guidesEntity,
 		"catalog/guides-finished.json": guidesFinished,
@@ -61,7 +61,7 @@ func TestBuildComputesRequiresAndLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Skipped) != 0 || len(s.Catalog.Achievements) != 1 || s.Catalog.Achievements[0].Requires != "1.0" || s.Grammar != "1.0" {
+	if len(s.Skipped) != 0 || len(s.Catalog.Achievements) != 1 || s.Grammar != "1.0" {
 		t.Errorf("snapshot = %+v", s)
 	}
 	if strings.Join(s.Art, ",") != "guides-finished-1" || !strings.Contains(string(data), `"commit": "abc"`) {
@@ -82,7 +82,7 @@ func TestBuildRejects(t *testing.T) {
 		omit  string
 		want  string
 	}{
-		{"authored requires", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"requires": "1.0", "title"`, 1)}, "", "requires is computed"},
+		{"per-definition version", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"requires": "1.0", "title"`, 1)}, "", `unknown field "requires"`},
 		{"file name differs from id", map[string]string{"catalog/other.json": guidesFinished}, "", `file name "other"`},
 		{"unknown field", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"streak": 3, "title"`, 1)}, "", `unknown field "streak"`},
 		{"art without an image", map[string]string{"catalog/guides-finished.json": guidesFinished}, "art/guides-finished-1.svg", `art "guides-finished-1" has no published image`},
@@ -92,7 +92,6 @@ func TestBuildRejects(t *testing.T) {
 		{"action key this build does not read", map[string]string{"events/guides.json": strings.Replace(guidesEntity, `"resources"`, `"resouces"`, 1)}, "", `key "resouces" is not one this build reads`},
 		{"entity with an unread field", map[string]string{"events/guides.json": strings.Replace(guidesEntity, `"owner"`, `"leak":"x","owner"`, 1)}, "", `unknown field "leak"`},
 		{"case-variant id", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"ID": "other", "title"`, 1)}, "", "declare id exactly once"},
-		{"case-variant requires", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"Requires": "1.0", "title"`, 1)}, "", "requires is computed"},
 		{"bad entity file name", map[string]string{"events/Bad Name.json": `{"actions":{"x":{"context":{}}}}`}, "", "entity Bad Name skipped"},
 		{"bad art file name", map[string]string{"art/Weird KEY.svg": ""}, "", "art #0 skipped"},
 		{"another extension", map[string]string{"catalog/notes.md": "x"}, "", "unexpected file"},
@@ -186,21 +185,17 @@ func TestBuildRefusesToWriteThroughALink(t *testing.T) {
 	}
 }
 
-func TestValidateRefusesARequiresThatIsNotComputed(t *testing.T) {
+func TestValidateRefusesAnUnpublishedArtKey(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "bundle.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, body := range map[string]string{
-		"missing":      strings.Replace(string(data), `"requires": "1.0",`, ``, 1),
-		"art unlisted": strings.Replace(string(data), `"art": ["guides-finished-1", `, `"art": [`, 1),
-	} {
-		path := filepath.Join(t.TempDir(), "bundle.json")
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if code, _, _ := runCmd("validate", path); code != exitProblems {
-			t.Errorf("%s: validate = %d, want problems", name, code)
-		}
+	path := filepath.Join(t.TempDir(), "bundle.json")
+	body := strings.Replace(string(data), `"art": ["guides-finished-1", `, `"art": [`, 1)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := runCmd("validate", path); code != exitProblems || !strings.Contains(stderr, `art "guides-finished-1" has no published image`) {
+		t.Errorf("validate = %d: %s", code, stderr)
 	}
 }

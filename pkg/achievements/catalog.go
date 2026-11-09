@@ -40,10 +40,7 @@ type Catalog struct {
 // Definition with a Counter counts distinct units toward tiers with an At
 // threshold. Without one it is a milestone: each tier is earned by an Or route.
 type Definition struct {
-	ID string `json:"id"`
-	// Requires is the lowest grammar version with every construct the
-	// definition uses. The build computes it; authors never write it.
-	Requires    string   `json:"requires,omitempty"`
+	ID          string   `json:"id"`
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	Counter     *Counter `json:"counter,omitempty"`
@@ -167,9 +164,6 @@ func (d *Definition) validate(registry *Registry) []error {
 	}
 	if len(d.ID) > maxIDLen || !idPattern.MatchString(d.ID) {
 		fail("id must be a lowercase token of at most %d characters", maxIDLen)
-	}
-	if d.Requires != "" && !supported(d.Requires) {
-		fail("requires %q is not a grammar this build reads (%d.0 to %d.%d)", d.Requires, GrammarMajor, GrammarMajor, GrammarMinor)
 	}
 	if d.Title == "" || d.Description == "" {
 		fail("title and description are required")

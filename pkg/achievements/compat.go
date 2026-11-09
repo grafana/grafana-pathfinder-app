@@ -3,7 +3,6 @@ package achievements
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"slices"
 )
 
@@ -23,23 +22,12 @@ func BundleBreaks(live, next []byte) ([]string, error) {
 	if err := json.Unmarshal(next, &after); err != nil {
 		return nil, fmt.Errorf("next bundle: %w", err)
 	}
-	wasMajor, wasMinor, err := parseGrammar(before.Grammar)
-	if err != nil {
-		return nil, fmt.Errorf("live bundle: %w", err)
-	}
-	isMajor, isMinor, err := parseGrammar(after.Grammar)
-	if err != nil {
-		return nil, fmt.Errorf("next bundle: %w", err)
-	}
-	if wasMajor != isMajor {
-		return nil, fmt.Errorf("grammar major changed from %d to %d; another major publishes beside this one", wasMajor, isMajor)
+	if before.Grammar != after.Grammar {
+		return nil, fmt.Errorf("grammar changed from %q to %q; another format version publishes beside this one", before.Grammar, after.Grammar)
 	}
 	problems, err := catalogBreaks(orEmpty(before.Catalog), orEmpty(after.Catalog))
 	if err != nil {
 		return nil, err
-	}
-	if isMinor < wasMinor {
-		problems = append(problems, fmt.Sprintf("grammar went back from %s to %s", before.Grammar, after.Grammar))
 	}
 	registry, err := registryBreaks(orEmpty(before.Registry), orEmpty(after.Registry))
 	if err != nil {
@@ -54,19 +42,6 @@ func BundleBreaks(live, next []byte) ([]string, error) {
 	return problems, nil
 }
 
-// requiresMinor reads a missing requires as the first minor; LoadBundle rejects
-// a malformed one, so it compares as the newest.
-func requiresMinor(v string) int {
-	if v == "" {
-		return 0
-	}
-	_, minor, err := parseGrammar(v)
-	if err != nil {
-		return math.MaxInt
-	}
-	return minor
-}
-
 func orEmpty(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 || string(raw) == "null" {
 		return json.RawMessage("{}")
@@ -75,9 +50,8 @@ func orEmpty(raw json.RawMessage) json.RawMessage {
 }
 
 type achievementIdentity struct {
-	ID       string `json:"id"`
-	Requires string `json:"requires"`
-	Counter  *struct {
+	ID      string `json:"id"`
+	Counter *struct {
 		Unit string `json:"unit"`
 	} `json:"counter"`
 	Tiers []struct {
@@ -127,9 +101,6 @@ func catalogBreaks(live, next []byte) ([]string, error) {
 		}
 		if was.unit() != is.unit() {
 			problems = append(problems, fmt.Sprintf("achievement %q counter unit changed from %q to %q", was.ID, was.unit(), is.unit()))
-		}
-		if requiresMinor(is.Requires) > requiresMinor(was.Requires) {
-			problems = append(problems, fmt.Sprintf("achievement %q requires grammar %s, up from %s, so plugins that read only the older grammar stop evaluating it; add a new achievement instead", was.ID, is.Requires, was.Requires))
 		}
 		problems = append(problems, orderBreaks(fmt.Sprintf("achievement %q tier", was.ID), was.tierIDs(), is.tierIDs())...)
 	}

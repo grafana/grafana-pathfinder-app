@@ -7,6 +7,10 @@
 //
 // The source directory holds catalog/<achievement-id>.json (one definition per
 // file), events/<entity>.json (one registry entity per file) and art/<key>.svg.
+// build writes the file for achievements.FormatVersion, published at
+// achievements/<FormatVersion>/definitions.json. Every source definition must be
+// expressible in that format; once several versions are published, each
+// version's file leaves out the achievements it cannot express.
 package main
 
 import (
@@ -137,7 +141,7 @@ func report(w io.Writer, problems []string) bool {
 }
 
 // check holds a bundle to the publish bar: everything loads, nothing is
-// skipped, every requires is the computed one and every art key is published.
+// skipped and every art key is published.
 func check(data []byte) []string {
 	s, err := achievements.LoadBundle(data)
 	if err != nil {
@@ -149,9 +153,6 @@ func check(data []byte) []string {
 	}
 	for i := range s.Catalog.Achievements {
 		d := &s.Catalog.Achievements[i]
-		if want := d.RequiredGrammar(); d.Requires != want {
-			problems = append(problems, fmt.Sprintf("achievement %s: requires is %q, computed %q", d.ID, d.Requires, want))
-		}
 		for _, t := range d.Tiers {
 			if t.Art != "" && !slices.Contains(s.Art, t.Art) {
 				problems = append(problems, fmt.Sprintf("achievement %s tier %s: art %q has no published image", d.ID, t.ID, t.Art))
@@ -191,10 +192,6 @@ func unknownActionKeys(data []byte) []string {
 	return problems
 }
 
-func grammar() string {
-	return fmt.Sprintf("%d.%d", achievements.GrammarMajor, achievements.GrammarMinor)
-}
-
 type builtFrom struct {
 	Repo   string `json:"repo,omitempty"`
 	Commit string `json:"commit,omitempty"`
@@ -216,7 +213,7 @@ type bundle struct {
 // the source tree reaches the bundle unread. Problems are content errors for
 // the author; err is a source tree that is not there.
 func build(src, repo, commit string) ([]byte, []string, error) {
-	b := bundle{Grammar: grammar(), BuiltFrom: builtFrom{Repo: repo, Commit: commit}, Art: []string{}}
+	b := bundle{Grammar: achievements.Grammar, BuiltFrom: builtFrom{Repo: repo, Commit: commit}, Art: []string{}}
 	b.Registry.Entities = map[string]json.RawMessage{}
 	b.Catalog.Achievements = []json.RawMessage{}
 	var problems []string
@@ -284,9 +281,8 @@ func readEntity(path string) (json.RawMessage, string) {
 	return out, ""
 }
 
-// readDefinition stamps the computed requires on an authored definition,
-// keeping the author's field order. Keys are matched without regard to case,
-// as the loader matches them.
+// readDefinition keeps the author's text and field order. Keys are matched
+// without regard to case, as the loader matches them.
 func readDefinition(stem, path string) (json.RawMessage, string) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -298,10 +294,7 @@ func readDefinition(stem, path string) (json.RawMessage, string) {
 	}
 	ids := 0
 	for k := range keys {
-		switch {
-		case strings.EqualFold(k, "requires"):
-			return nil, "requires is computed by the build; remove it"
-		case strings.EqualFold(k, "id"):
+		if strings.EqualFold(k, "id") {
 			ids++
 		}
 	}
@@ -317,8 +310,7 @@ func readDefinition(stem, path string) (json.RawMessage, string) {
 	if d.ID != stem {
 		return nil, fmt.Sprintf("id %q must match the file name %q", d.ID, stem)
 	}
-	trimmed := bytes.TrimSpace(raw)
-	return json.RawMessage(`{"requires":"` + d.RequiredGrammar() + `",` + string(trimmed[1:])), ""
+	return json.RawMessage(raw), ""
 }
 
 type sourceFile struct{ path, stem string }

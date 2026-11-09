@@ -78,7 +78,7 @@ func TestBundleBreaks(t *testing.T) {
 	  "art":["guides-1","guides-2"]}`
 	cases := []struct{ name, next, want string }{
 		{"unchanged", live, ""},
-		{"a newer minor that only adds", strings.Replace(strings.Replace(live, `"1.0"`, `"1.4"`, 1), `"guides-2"]`, `"guides-2","guides-3"]`, 1), ""},
+		{"an art key added", strings.Replace(live, `"guides-2"]`, `"guides-2","guides-3"]`, 1), ""},
 		{"art key removed", strings.Replace(live, `,"guides-2"`, ``, 1), `art key "guides-2" was removed`},
 		{"tier removed", strings.Replace(live, `[{"id":"bronze"}]`, `[]`, 1), `achievement "guides" tier "bronze" was removed or renamed`},
 		{"field removed", strings.Replace(live, `"guideId":{"type":"string"}`, ``, 1), `guides.completed field "guideId" was removed`},
@@ -97,7 +97,7 @@ func TestBundleBreaks(t *testing.T) {
 	}
 }
 
-func TestBundleBreaksRefusesToCompareMajors(t *testing.T) {
+func TestBundleBreaksRefusesToCompareFormats(t *testing.T) {
 	for _, next := range []string{`{"grammar":"2.0"}`, `{"catalog":{}}`, `not json`} {
 		if _, err := BundleBreaks([]byte(`{"grammar":"1.0"}`), []byte(next)); err == nil {
 			t.Errorf("next %s: no error", next)
@@ -105,13 +105,11 @@ func TestBundleBreaksRefusesToCompareMajors(t *testing.T) {
 	}
 }
 
-func TestBundleBreaksGuardsRequiresGrammarAndDuplicates(t *testing.T) {
-	live := `{"grammar":"1.2","catalog":{"achievements":[{"id":"a","requires":"1.0","tiers":[{"id":"bronze"}]}]}}`
+func TestBundleBreaksGuardsDuplicates(t *testing.T) {
+	live := `{"grammar":"1.0","catalog":{"achievements":[{"id":"a","tiers":[{"id":"bronze"}]}]}}`
 	cases := []struct{ name, next, want string }{
-		{"requires unchanged, field order and other text free", `{"grammar":"1.2","catalog":{"achievements":[{"tiers":[{"id":"bronze"}],"id":"a","requires":"1.0"}]}}`, ""},
-		{"requires raised", `{"grammar":"1.2","catalog":{"achievements":[{"id":"a","requires":"1.1","tiers":[{"id":"bronze"}]}]}}`, `achievement "a" requires grammar 1.1, up from 1.0`},
-		{"grammar went back", `{"grammar":"1.1","catalog":{"achievements":[{"id":"a","requires":"1.0","tiers":[{"id":"bronze"}]}]}}`, "grammar went back from 1.2 to 1.1"},
-		{"duplicate hides a break", `{"grammar":"1.2","catalog":{"achievements":[{"id":"a","requires":"1.0","tiers":[]},{"id":"a","requires":"1.0","tiers":[{"id":"bronze"}]}]}}`, `achievement "a" is declared more than once`},
+		{"field order and other text free", `{"grammar":"1.0","catalog":{"achievements":[{"tiers":[{"id":"bronze"}],"title":"New","id":"a"}]}}`, ""},
+		{"duplicate hides a break", `{"grammar":"1.0","catalog":{"achievements":[{"id":"a","tiers":[]},{"id":"a","tiers":[{"id":"bronze"}]}]}}`, `achievement "a" is declared more than once`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -7,30 +7,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
 )
 
-// The grammar this build reads. A published bundle's major is also in its path
-// (achievements/v<major>/definitions.json); within a major the grammar only
-// grows, so a definition that requires a newer minor is skipped, not misread.
+// FormatVersion is the catalog format this build reads, fetched from
+// DefinitionsPath. The publisher builds one file per format version from one
+// source catalog and leaves out of each file any achievement that version
+// cannot express, so a definition this build cannot read is a publisher bug
+// and is skipped as invalid. A file's envelope names its format as Grammar.
 const (
-	GrammarMajor = 1
-	GrammarMinor = 0
+	FormatVersion   = "v1"
+	Grammar         = "1.0"
+	DefinitionsPath = "achievements/" + FormatVersion + "/definitions.json"
 
 	MaxBundleBytes = 1 << 20
 	maxDefinitions = 200
 	maxListedSkips = 200
 )
 
-var grammarPattern = regexp.MustCompile(`^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$`)
-
 type SkipReason string
 
-const (
-	SkipTooNew  SkipReason = "too-new"
-	SkipInvalid SkipReason = "invalid"
-)
+const SkipInvalid SkipReason = "invalid"
 
 // Skip names an entry LoadBundle left out: an "entity", an "action" (ID is
 // entity.action), an "art" key or an "achievement". Past maxListedSkips, one
@@ -43,7 +39,8 @@ type Skip struct {
 }
 
 // Display is what a definition shows, kept even when this build cannot
-// evaluate it, so awards from a newer catalog keep their names after a rollback.
+// evaluate it, so a definition skipped as invalid still has a name for awards
+// already earned.
 type Display struct {
 	ID          string        `json:"id"`
 	Title       string        `json:"title"`
@@ -98,12 +95,8 @@ func LoadBundle(data []byte) (*Snapshot, error) {
 	if err := json.Unmarshal(data, &env); err != nil {
 		return nil, fmt.Errorf("bundle: %w", err)
 	}
-	major, _, err := parseGrammar(env.Grammar)
-	if err != nil {
-		return nil, fmt.Errorf("bundle: %w", err)
-	}
-	if major != GrammarMajor {
-		return nil, fmt.Errorf("bundle: grammar %s is not major %d", env.Grammar, GrammarMajor)
+	if env.Grammar != Grammar {
+		return nil, fmt.Errorf("bundle: grammar %q is not %s, the format this build reads", env.Grammar, Grammar)
 	}
 
 	sum := sha256.Sum256(data)
@@ -180,8 +173,7 @@ func loadAction(entity, name string, raw json.RawMessage) (Action, error) {
 
 func (s *Snapshot) addDefinition(i int, raw json.RawMessage, seen map[string]bool) {
 	var head struct {
-		ID       string `json:"id"`
-		Requires any    `json:"requires"`
+		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(raw, &head); err != nil || head.ID == "" {
 		s.skip("achievement", fmt.Sprintf("#%d", i), SkipInvalid, errors.New("not an object with a string id"))
@@ -200,18 +192,6 @@ func (s *Snapshot) addDefinition(i int, raw json.RawMessage, seen map[string]boo
 		}
 	}
 
-	if head.Requires != nil {
-		requires, _ := head.Requires.(string)
-		major, minor, err := parseGrammar(requires)
-		switch {
-		case err != nil || major != GrammarMajor:
-			reject(SkipInvalid, fmt.Errorf("requires %v is not a %d.<minor> grammar", head.Requires, GrammarMajor))
-			return
-		case minor > GrammarMinor:
-			reject(SkipTooNew, fmt.Errorf("requires grammar %s; this build reads %d.%d", requires, GrammarMajor, GrammarMinor))
-			return
-		}
-	}
 	if len(s.Catalog.Achievements) >= maxDefinitions {
 		reject(SkipInvalid, fmt.Errorf("over the cap of %d evaluable definitions", maxDefinitions))
 		return
@@ -257,26 +237,4 @@ func decodeDisplay(raw json.RawMessage) (Display, bool) {
 
 func validID(s string, limit int) bool {
 	return len(s) <= limit && idPattern.MatchString(s)
-}
-
-func parseGrammar(v string) (major, minor int, err error) {
-	m := grammarPattern.FindStringSubmatch(v)
-	if m == nil {
-		return 0, 0, fmt.Errorf("grammar %q is not <major>.<minor>", v)
-	}
-	major, _ = strconv.Atoi(m[1])
-	minor, _ = strconv.Atoi(m[2])
-	return major, minor, nil
-}
-
-func supported(v string) bool {
-	major, minor, err := parseGrammar(v)
-	return err == nil && major == GrammarMajor && minor <= GrammarMinor
-}
-
-// RequiredGrammar is the lowest grammar version with every construct d uses.
-// Every construct today is in 1.0; a construct added in a later minor raises
-// the result here, in the same change that teaches the loader to read it.
-func (d *Definition) RequiredGrammar() string {
-	return fmt.Sprintf("%d.%d", GrammarMajor, 0)
 }

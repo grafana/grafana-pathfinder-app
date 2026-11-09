@@ -27,12 +27,12 @@ func bundleOf(grammar, actions string, definitions ...string) []byte {
 }
 
 func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
-	data := bundleOf("1.3",
+	data := bundleOf("1.0",
 		guidesAction+`,
   "started":{"context":{},"sources":[{"interaction":"x"}]},
   "viewed":{"context":{"at":{"type":"date"}}}`,
 		guidesDefinition("kept", ""),
-		guidesDefinition("too-new", `,"requires":"1.1","window":{"days":7}`),
+		guidesDefinition("versioned", `,"requires":"1.1","window":{"days":7}`),
 		guidesDefinition("unknown-field", `,"streak":3`),
 		`{"id":"on-skipped-action","title":"T","description":"D.","counter":{"unit":"occurrence","evidence":[{"entity":"guides","action":"viewed","countBy":"occurrence"}]},"tiers":[{"id":"bronze","at":1}]}`,
 		guidesDefinition("kept", ""),
@@ -60,7 +60,7 @@ func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
 	}
 	want := []string{
 		"action guides.viewed invalid",
-		"achievement too-new too-new",
+		"achievement versioned invalid",
 		"achievement unknown-field invalid",
 		"achievement on-skipped-action invalid",
 		"achievement kept invalid",
@@ -74,12 +74,12 @@ func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
 	for _, d := range s.Display {
 		earnable[d.ID] = d.Earnable
 	}
-	wantDisplay := map[string]bool{"kept": true, "too-new": false, "unknown-field": false, "on-skipped-action": false}
+	wantDisplay := map[string]bool{"kept": true, "versioned": false, "unknown-field": false, "on-skipped-action": false}
 	if fmt.Sprint(earnable) != fmt.Sprint(wantDisplay) || len(s.Display) != len(wantDisplay) {
 		t.Errorf("display earnable = %v, want %v", earnable, wantDisplay)
 	}
-	if d := s.Display[1]; d.ID != "too-new" || d.Title != "T" || len(d.Tiers) != 2 || d.Tiers[0].Art != "too-new-1" || *d.Tiers[1].At != 5 {
-		t.Errorf("too-new display = %+v, want its title and tiers kept", d)
+	if d := s.Display[1]; d.ID != "versioned" || d.Title != "T" || len(d.Tiers) != 2 || d.Tiers[0].Art != "versioned-1" || *d.Tiers[1].At != 5 {
+		t.Errorf("versioned display = %+v, want its title and tiers kept", d)
 	}
 }
 
@@ -89,9 +89,10 @@ func TestLoadBundleRefusesTheWholeBundleOnlyForTheEnvelope(t *testing.T) {
 		data []byte
 		want string
 	}{
-		{"another major", bundleOf("2.0", guidesAction, guidesDefinition("a", "")), "not major 1"},
+		{"another format version", bundleOf("2.0", guidesAction, guidesDefinition("a", "")), `grammar "2.0" is not 1.0`},
+		{"another grammar within the version", bundleOf("1.1", guidesAction, guidesDefinition("a", "")), `grammar "1.1" is not 1.0`},
 		{"no grammar", []byte(`{"catalog":{"achievements":[]}}`), `grammar ""`},
-		{"malformed grammar", bundleOf("1", guidesAction), `grammar "1"`},
+		{"malformed grammar", bundleOf("1", guidesAction), `grammar "1" is not`},
 		{"not JSON", []byte(`{"grammar":`), "bundle"},
 		{"catalog of the wrong shape", []byte(`{"grammar":"1.0","catalog":{"achievements":{}}}`), "bundle"},
 		{"too large", []byte(`{"grammar":"1.0","pad":"` + strings.Repeat("x", MaxBundleBytes) + `"}`), "at most"},
@@ -133,9 +134,6 @@ func TestLoadBundleEvaluatesWhatItLoaded(t *testing.T) {
 	if s.Grammar != "1.0" || len(s.Art) != 3 || len(s.Display) != 1 || !s.Display[0].Earnable {
 		t.Errorf("snapshot = %+v", s)
 	}
-	if got := s.Catalog.Achievements[0].RequiredGrammar(); got != s.Catalog.Achievements[0].Requires {
-		t.Errorf("published requires %q, computed %q", s.Catalog.Achievements[0].Requires, got)
-	}
 }
 
 func TestLoadBundleSkipsEachBadEntryOnItsOwn(t *testing.T) {
@@ -148,12 +146,9 @@ func TestLoadBundleSkipsEachBadEntryOnItsOwn(t *testing.T) {
     "Bad Entity":{"actions":{"x":{"context":{}}}},
     "widgets":["not","an","object"]}},
   "catalog":{"achievements":[
-    ` + guidesDefinition("malformed", `,"requires":"1"`) + `,
-    ` + guidesDefinition("numeric", `,"requires":1.0`) + `,
-    ` + guidesDefinition("other-major", `,"requires":"2.0"`) + `,
     ` + guidesDefinition("dup", `,"streak":1`) + `,
     ` + guidesDefinition("dup", "") + `,
-    ` + guidesDefinition("kept", `,"requires":"1.0"`) + `]},
+    ` + guidesDefinition("kept", "") + `]},
   "art":["ok-key",7,"../X Y"]}`)
 	s, err := LoadBundle(data)
 	if err != nil {
@@ -172,9 +167,6 @@ func TestLoadBundleSkipsEachBadEntryOnItsOwn(t *testing.T) {
 		"entity widgets invalid",
 		"art #1 invalid",
 		"art #2 invalid",
-		"achievement malformed invalid",
-		"achievement numeric invalid",
-		"achievement other-major invalid",
 		"achievement dup invalid",
 		"achievement dup invalid",
 	}
@@ -228,5 +220,11 @@ func TestLoadBundleKeepsAnActionThatGainedAnAdditiveKey(t *testing.T) {
 	})
 	if err != nil || len(decisions) != 1 || decisions[0].Decision != KindAward {
 		t.Errorf("decisions = %+v err = %v, want bronze awarded", decisions, err)
+	}
+}
+
+func TestDefinitionsPathNamesTheFormatVersion(t *testing.T) {
+	if DefinitionsPath != "achievements/v1/definitions.json" || !strings.HasPrefix(Grammar, strings.TrimPrefix(FormatVersion, "v")+".") {
+		t.Errorf("path %q, format %q, grammar %q", DefinitionsPath, FormatVersion, Grammar)
 	}
 }

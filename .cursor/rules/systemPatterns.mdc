@@ -197,10 +197,11 @@ For the full contract and read-only smoke procedure, see `docs/developer/LEARNIN
 
 `pkg/achievements` is the achievements evaluator. Given an event, it uses the catalog and event registry to
 decide which tiers the user earns and what progress to record. Definitions are not bundled with the plugin:
-they are published from grafana/interactive-tutorials as one bundle, `achievements/v1/definitions.json`, which
-`LoadBundle` reads, skipping with a reason any entry this build cannot read (an unknown field, or a `requires`
-grammar newer than its own). `cmd/achievements-check` builds that bundle, computing each definition's
-`requires`, which authors never write, and validates and compares it with the same loader. The package does no I/O: storage and admission are interfaces for the plugin's App Platform store to
+they are published from grafana/interactive-tutorials, one file per catalog format version built from one
+source catalog, and each plugin build reads the version it was compiled for (`FormatVersion`, at
+`achievements/<FormatVersion>/definitions.json`). `LoadBundle` reads that file and skips with a reason any
+entry this build cannot read. `cmd/achievements-check` builds, validates and compares the file with the same
+loader. The package does no I/O: storage and admission are interfaces for the plugin's App Platform store to
 implement, so it is tested on its own with golden tables and `testdata/bundle.json`.
 
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
