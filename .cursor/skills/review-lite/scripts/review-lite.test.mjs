@@ -6,7 +6,15 @@ import { dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { addContext, finish, fullReadLines, prepare, TEST_LINE_BUDGET, validateState } from './review-lite.mjs';
+import {
+  addContext,
+  finish,
+  fullReadLines,
+  prepare,
+  readPinnedFile,
+  TEST_LINE_BUDGET,
+  validateState,
+} from './review-lite.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./review-lite.mjs', import.meta.url));
 const TOOLING_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -82,20 +90,32 @@ function result(runDir, overrides = {}) {
     assessment: 'complete',
     limitations: [],
     coverage: coverageFor(runDir),
-    checks: readJson(join(runDir, 'obligations.json')).map(({ id, concern_id }) => ({
+    checks: readJson(join(runDir, 'obligations.json')).map(({ id, concern_id, obligation }) => ({
       id,
-      status: concern_id ? 'irrelevant' : 'checked',
+      status: concern_id || ['governing_input', 'risk_verification'].includes(obligation) ? 'irrelevant' : 'checked',
       evidence: 'Fixture inspection found no affected contract or behavior.',
     })),
     findings: [],
     prior_decisions: [],
     clearances: [],
-    escalations: [],
     ...overrides,
   };
 }
 
 function finishWith(runDir, value) {
+  if (!value.no_read_receipts) {
+    for (const entry of value.tests ?? []) {
+      if (!entry.read) {
+        continue;
+      }
+      let range;
+      do {
+        const read = readPinnedFile({ run: runDir, path: entry.path, scope: entry.scope, range });
+        range = read.next;
+      } while (range);
+    }
+  }
+  delete value.no_read_receipts;
   const input = join(runDir, 'result.json');
   writeFileSync(input, JSON.stringify(value));
   return finish({ run: runDir, input });
@@ -113,18 +133,20 @@ const blocker = {
   required_invariant: 'Every caller indexing steps receives a 0-based index.',
   merge_reason: 'Every guide run regresses on the shipped path.',
 };
-const followUp = {
+const separateWork = {
   id: 'step-index-test',
   concern_id: 'testing-and-verification',
-  disposition: 'follow_up',
+  disposition: 'separate_work',
   attribution: 'pre_existing',
-  why_not_blocker: 'The PR does not worsen this pre-existing test gap; a separate runner test is sufficient.',
+  deferral_basis: 'pre_existing',
+  deferral_reason:
+    'The PR does not worsen this pre-existing test gap; the maintainer may track a runner test separately.',
   title: 'No test pins the runner and index helper together',
   location: 'src/interactive-engine/runner.ts',
   evidence: 'Only the helper has a unit test.',
   consequence: 'A future base change could regress silently.',
   base_comparison: 'Base had the same gap at src/interactive-engine/runner.ts:40; the PR does not touch stored state.',
-  next_action: 'Add a runner test that executes the first step.',
+  next_action: 'Maintainer: add a runner test that executes the first step.',
 };
 const clearance = {
   id: 'runner-cancel',
@@ -277,6 +299,69 @@ describe('context', () => {
       /Unknown concern ID\(s\): not-a-concern\. Valid IDs: security/
     );
   });
+
+  test('turns reviewer-discovered governing inputs into normalized required obligations', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n', 'contracts/api.md': 'version one\n' });
+    const head = commit(repo, { 'src/engine.ts': 'export const v = 2;\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const input = join(runDir, 'governing.json');
+    writeFileSync(
+      input,
+      JSON.stringify([
+        {
+          id: 'api-contract',
+          obligation: 'risk_verification',
+          kind: 'normative_spec',
+          source: 'head:contracts/api.md',
+          reason: 'The PR description cites this unchanged compatibility contract.',
+        },
+      ])
+    );
+    addContext({ run: runDir, concerns: 'security', governing: input });
+    const obligation = readJson(join(runDir, 'obligations.json')).find(({ id }) => id === 'governing:api-contract');
+    assert.deepEqual(obligation, {
+      id: 'governing:api-contract',
+      obligation: 'governing_input',
+      kind: 'normative_spec',
+      source: 'head:contracts/api.md',
+      reason: 'The PR description cites this unchanged compatibility contract.',
+    });
+    const checks = result(runDir).checks.map((check) =>
+      check.id === obligation.id
+        ? { ...check, status: 'unresolved', evidence: 'The contract host was unavailable.' }
+        : check
+    );
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { checks })),
+      /cannot leave governing:api-contract unresolved/
+    );
+  });
+
+  test('turns a reviewer-discovered risk into a required verification obligation', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(repo, { 'src/engine.ts': 'export const v = 2;\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const input = join(runDir, 'risk.json');
+    writeFileSync(
+      input,
+      JSON.stringify([
+        { id: 'reload', category: 'compatibility retry', reason: 'The PR description names a reload path.' },
+      ])
+    );
+    addContext({ run: runDir, concerns: 'security', risk: input });
+    const obligation = readJson(join(runDir, 'obligations.json')).find(({ id }) => id === 'risk:reload');
+    assert.deepEqual(obligation, {
+      id: 'risk:reload',
+      obligation: 'risk_verification',
+      category: 'compatibility retry',
+      reason: 'The PR description names a reload path.',
+    });
+    assert.throws(
+      () =>
+        finishWith(runDir, result(runDir, { checks: result(runDir).checks.filter(({ id }) => id !== obligation.id) })),
+      /missing inspection decision: risk:reload/
+    );
+  });
 });
 
 describe('finish', () => {
@@ -291,15 +376,16 @@ describe('finish', () => {
   test('derives the headline from assessment and blocker count without changing findings', () => {
     const { runDir } = interactiveRun();
     assert.equal(finishWith(runDir, result(runDir)).headline, 'Approve');
-    assert.equal(finishWith(runDir, result(runDir, { findings: [followUp] })).headline, 'Approve');
-    const blocked = finishWith(runDir, result(runDir, { findings: [blocker, followUp] }));
+    assert.equal(finishWith(runDir, result(runDir, { findings: [separateWork] })).headline, 'Approve');
+    const blocked = finishWith(runDir, result(runDir, { findings: [blocker, separateWork] }));
     assert.equal(blocked.headline, 'Changes requested');
-    assert.match(blocked.report, /outside the merge requirements/);
+    assert.doesNotMatch(blocked.report, /Separate work|Maintainer next action/);
+    assert.match(readFileSync(join(runDir, 'maintainer-queue.md'), 'utf8'), /outside the author approval report/);
     assert.deepEqual(
       blocked.state.findings.map(({ id, disposition }) => [id, disposition]),
       [
         ['step-index-base', 'blocker'],
-        ['step-index-test', 'follow_up'],
+        ['step-index-test', 'separate_work'],
       ]
     );
   });
@@ -325,8 +411,14 @@ describe('finish', () => {
         result(runDir, { findings: [{ ...blocker, merge_reason: undefined }] }),
         /merge_reason \(required for a blocker\)/,
       ],
-      [result(runDir, { findings: [{ ...followUp, next_action: '' }] }), /next_action \(required for a follow-up\)/],
-      [result(runDir, { findings: [{ ...blocker, disposition: 'cosmetic' }] }), /blocker, follow_up, or nit/],
+      [
+        result(runDir, { findings: [{ ...separateWork, next_action: '' }] }),
+        /next_action \(required for separate work\)/,
+      ],
+      [
+        result(runDir, { findings: [{ ...blocker, disposition: 'cosmetic' }] }),
+        /blocker, separate_work, suggestion, or nit/,
+      ],
       [
         result(runDir, {
           coverage: coverageFor(runDir).map((entry) =>
@@ -402,7 +494,7 @@ describe('finish', () => {
 
   test('repeated finish on identical input produces identical report and state', () => {
     const { runDir } = interactiveRun();
-    const value = result(runDir, { findings: [blocker, followUp], clearances: [clearance] });
+    const value = result(runDir, { findings: [blocker, separateWork], clearances: [clearance] });
     finishWith(runDir, value);
     const first = [readFileSync(join(runDir, 'report.md'), 'utf8'), readFileSync(join(runDir, 'state.json'), 'utf8')];
     finishWith(runDir, value);
@@ -420,7 +512,7 @@ describe('continuity', () => {
     const head = commit(repo, { 'src/interactive-engine/step-index.ts': 'export const i = 1;\n' }, 'pr r1');
     const runDir = prepared({ repo, base, head });
     addContext({ run: runDir, concerns: 'interactive-engine' });
-    finishWith(runDir, result(runDir, { findings: [blocker, followUp], clearances: [clearance] }));
+    finishWith(runDir, result(runDir, { findings: [blocker, separateWork], clearances: [clearance] }));
     return { repo, base, head, statePath: join(runDir, 'state.json'), reportPath: join(runDir, 'report.md') };
   }
 
@@ -430,7 +522,7 @@ describe('continuity', () => {
     return runDir;
   }
 
-  test('a fix round resolves the blocker, carries the follow-up and clearance, and ignores report edits', () => {
+  test('a fix round resolves the blocker, carries separate work and clearance, and ignores report edits', () => {
     const round = firstRound();
     writeFileSync(
       round.reportPath,
@@ -454,7 +546,7 @@ describe('continuity', () => {
       result(runDir, {
         prior_decisions: [
           { id: 'step-index-base', action: 'resolved', evidence: 'step-index.ts returns 0 again at head.' },
-          { id: 'step-index-test', action: 'carry', evidence: 'Still no runner test; accepted deferral.' },
+          { id: 'step-index-test', action: 'carry', evidence: 'Still no runner test; maintainer-owned separate work.' },
           { id: 'runner-cancel', action: 'carry', evidence: 'runner.ts is unchanged in the increment.' },
         ],
       })
@@ -475,7 +567,10 @@ describe('continuity', () => {
       outcome.report,
       /Resolved since the prior review\n\n- step-index-base: step-index.ts returns 0 again at head\./
     );
-    assert.match(outcome.report, /step-index-test: .*\(carried from a prior round\)/);
+    assert.match(
+      readFileSync(join(runDir, 'maintainer-queue.md'), 'utf8'),
+      /step-index-test: .*\(carried from a prior round\)/
+    );
     assert.match(
       outcome.report,
       /## Explicit clearances\n\n- runner-cancel \(`interactive-engine`, carried\): The runner remains cancellable\./
@@ -491,7 +586,7 @@ describe('continuity', () => {
       result(runDir, {
         prior_decisions: [
           { id: 'step-index-base', action: 'carry', evidence: 'step-index.ts is unchanged.' },
-          { id: 'step-index-test', action: 'carry', evidence: 'Still deferred.' },
+          { id: 'step-index-test', action: 'carry', evidence: 'Still maintainer-owned separate work.' },
           { id: 'runner-cancel', action: 'carry', evidence: 'runner.ts unchanged.' },
         ],
       })
@@ -509,7 +604,7 @@ describe('continuity', () => {
     const runDir = secondRun(round, head);
     const decisions = [
       { id: 'step-index-base', action: 'carry', evidence: 'Unchanged.' },
-      { id: 'step-index-test', action: 'carry', evidence: 'Still deferred.' },
+      { id: 'step-index-test', action: 'carry', evidence: 'Still maintainer-owned separate work.' },
       { id: 'runner-cancel', action: 'reopen', evidence: 'runner.ts now ignores the signal.' },
     ];
     assert.throws(
@@ -541,10 +636,11 @@ describe('continuity', () => {
     const runDir = secondRun(prior, prior.head, { round: 3 });
     const deferred = {
       ...blocker,
-      disposition: 'follow_up',
+      disposition: 'separate_work',
       attribution: 'introduced',
-      why_not_blocker: 'Fixture exercises an explicit deferral, not the substantive policy judgment.',
-      next_action: 'Track the remaining fix separately.',
+      deferral_basis: 'late_round_convergence',
+      deferral_reason: 'This round-three fixture models a deliberate convergence decision with evidence.',
+      next_action: 'Maintainer: track the remaining fix separately.',
     };
     const outcome = finishWith(
       runDir,
@@ -552,14 +648,14 @@ describe('continuity', () => {
         findings: [deferred],
         prior_decisions: [
           { id: blocker.id, action: 'reopen', evidence: 'Unfixed; explicitly deferred.' },
-          { id: followUp.id, action: 'carry', evidence: 'Still deferred.' },
+          { id: separateWork.id, action: 'carry', evidence: 'Still maintainer-owned separate work.' },
           { id: clearance.id, action: 'carry', evidence: 'Unchanged and rechecked.' },
         ],
       })
     );
     assert.equal(outcome.headline, 'Approve');
     assert.equal(outcome.state.round, 3);
-    assert.equal(outcome.state.findings.find(({ id }) => id === blocker.id).disposition, 'follow_up');
+    assert.equal(outcome.state.findings.find(({ id }) => id === blocker.id).disposition, 'separate_work');
   });
 
   test('rewritten history falls back to a full review that still requires reconciliation', () => {
@@ -623,6 +719,36 @@ describe('continuity', () => {
     const legacyRun = prepared({ repo: round.repo, base: round.base, head, prior: legacy });
     assert.match(readJson(join(legacyRun, 'manifest.json')).fallback_reason, /state.version must be review-lite-v1/);
   });
+
+  test('a trusted legacy follow-up carries visibly without being silently reclassified', () => {
+    const round = firstRound();
+    const legacy = readJson(round.statePath);
+    const finding = legacy.findings.find(({ id }) => id === separateWork.id);
+    finding.disposition = 'follow_up';
+    finding.why_not_blocker = 'Legacy review deferred this pre-existing test gap.';
+    delete finding.deferral_basis;
+    delete finding.deferral_reason;
+    const legacyPath = freshDir('legacy-follow-up.json');
+    writeFileSync(legacyPath, JSON.stringify(legacy));
+    const head = commit(round.repo, { 'README.md': 'docs\n' }, 'unrelated');
+    const runDir = prepared({ repo: round.repo, base: round.base, head, prior: legacyPath, round: 2 });
+    addContext({ run: runDir, concerns: 'interactive-engine' });
+    const outcome = finishWith(
+      runDir,
+      result(runDir, {
+        prior_decisions: [
+          { id: blocker.id, action: 'carry', evidence: 'The required fix is unchanged.' },
+          { id: separateWork.id, action: 'carry', evidence: 'The legacy deferral remains unchanged.' },
+          { id: clearance.id, action: 'carry', evidence: 'The cancellation check is unchanged.' },
+        ],
+      })
+    );
+    assert.equal(outcome.state.findings.find(({ id }) => id === separateWork.id).disposition, 'follow_up');
+    assert.match(
+      readFileSync(join(runDir, 'maintainer-queue.md'), 'utf8'),
+      /Legacy follow-up retained without a new deferral basis/
+    );
+  });
 });
 
 const nit = {
@@ -635,7 +761,7 @@ const nit = {
   next_action: 'Rename the test to say Read only.',
 };
 
-describe('nits and follow-up attribution', () => {
+describe('optional suggestions and separate-work attribution', () => {
   function interactiveRun() {
     const { repo, base } = makeRepo({ 'src/interactive-engine/step-index.ts': 'export const i = 0;\n' });
     const head = commit(repo, { 'src/interactive-engine/step-index.ts': 'export const i = 1;\n' }, 'head');
@@ -643,11 +769,11 @@ describe('nits and follow-up attribution', () => {
     return { runDir };
   }
 
-  test('nits render in their own section, never change the headline, and are not carried in state', () => {
+  test('optional suggestions render separately, never change the headline, and are not carried in state', () => {
     const { runDir } = interactiveRun();
     const outcome = finishWith(runDir, result(runDir, { findings: [nit] }));
     assert.equal(outcome.headline, 'Approve');
-    assert.match(outcome.report, /## Nits\n\nNits never block a merge/);
+    assert.match(outcome.report, /## Optional suggestions\n\nThese are optional and do not change the merge decision/);
     assert.match(outcome.report, /step-index-name/);
     assert.deepEqual(outcome.state.findings, []);
   });
@@ -658,48 +784,58 @@ describe('nits and follow-up attribution', () => {
       () => finishWith(runDir, result(runDir, { findings: [{ ...nit, next_action: '' }] })),
       /next_action \(the suggested change, required for a nit\)/
     );
-    const many = Array.from({ length: 6 }, (_, index) => ({ ...nit, id: `nit-${index}` }));
-    assert.throws(() => finishWith(runDir, result(runDir, { findings: many })), /at most 5 nits/);
+    const many = Array.from({ length: 6 }, (_, index) => ({
+      ...nit,
+      id: `nit-${index}`,
+      disposition: index % 2 ? 'suggestion' : 'nit',
+    }));
+    assert.throws(() => finishWith(runDir, result(runDir, { findings: many })), /at most 5 optional suggestions/);
   });
 
-  test('a follow-up must say whether the PR introduced, newly exposed, or inherited the gap', () => {
+  test('separate work must say whether the PR introduced, newly exposed, or inherited the gap', () => {
     const { runDir } = interactiveRun();
     assert.throws(
-      () => finishWith(runDir, result(runDir, { findings: [{ ...followUp, attribution: undefined }] })),
+      () => finishWith(runDir, result(runDir, { findings: [{ ...separateWork, attribution: undefined }] })),
       /attribution must be one of introduced, newly_exposed, pre_existing/
     );
-    const outcome = finishWith(runDir, result(runDir, { findings: [{ ...followUp, attribution: 'introduced' }] }));
-    assert.equal(outcome.state.findings[0].attribution, 'introduced');
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { findings: [{ ...separateWork, attribution: 'introduced' }] })),
+      /deferral_basis pre_existing requires attribution pre_existing/
+    );
   });
 });
 
-describe('follow-up calibration and test scope', () => {
-  test('a follow-up must explain why deferral is appropriate', () => {
+describe('separate-work calibration and test scope', () => {
+  test('separate work must have an explicit allowed basis and stays maintainer-owned', () => {
     const { repo, base } = makeRepo({ 'src/interactive-engine/step-index.ts': 'export const i = 0;\n' });
     const head = commit(repo, { 'src/interactive-engine/step-index.ts': 'export const i = 1;\n' }, 'head');
     const runDir = prepared({ repo, base, head });
     assert.throws(
-      () => finishWith(runDir, result(runDir, { findings: [{ ...followUp, why_not_blocker: undefined }] })),
-      /why_not_blocker/
+      () => finishWith(runDir, result(runDir, { findings: [{ ...separateWork, deferral_reason: undefined }] })),
+      /deferral_reason/
     );
-    const outcome = finishWith(runDir, result(runDir, { findings: [followUp] }));
-    assert.match(outcome.report, /Why not a blocker: The PR does not worsen this pre-existing test gap/);
-    assert.equal(outcome.state.findings[0].why_not_blocker, followUp.why_not_blocker);
+    const outcome = finishWith(runDir, result(runDir, { findings: [separateWork] }));
+    assert.doesNotMatch(outcome.report, /Separate work|Maintainer next action/);
+    assert.match(readFileSync(join(runDir, 'maintainer-queue.md'), 'utf8'), /Maintainer next action/);
+    assert.equal(outcome.state.findings[0].deferral_basis, 'pre_existing');
   });
 
-  test('a pre_existing follow-up must cite the base code as path:line, not just say same as base', () => {
+  test('pre_existing separate work must cite the base code as path:line, not just say same as base', () => {
     const { repo, base } = makeRepo({ 'src/interactive-engine/step-index.ts': 'export const i = 0;\n' });
     const head = commit(repo, { 'src/interactive-engine/step-index.ts': 'export const i = 1;\n' }, 'head');
     const runDir = prepared({ repo, base, head });
     for (const bare of ['Same as base.', 'Base had the same gap.', 'See file.ts for details.']) {
       assert.throws(
-        () => finishWith(runDir, result(runDir, { findings: [{ ...followUp, base_comparison: bare }] })),
+        () => finishWith(runDir, result(runDir, { findings: [{ ...separateWork, base_comparison: bare }] })),
         /base_comparison must cite the base code as path:line/
       );
     }
-    finishWith(runDir, result(runDir, { findings: [followUp] }));
-    const introduced = { ...followUp, attribution: 'introduced', base_comparison: 'Base had no such helper.' };
-    finishWith(runDir, result(runDir, { findings: [introduced] }));
+    finishWith(runDir, result(runDir, { findings: [separateWork] }));
+    const inScope = { ...separateWork, attribution: 'introduced', deferral_basis: 'pre_existing' };
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { findings: [inScope] })),
+      /requires attribution pre_existing/
+    );
   });
 
   test('changed_hunks scope is only allowed for a test file over 400 changed lines', () => {
@@ -814,7 +950,7 @@ describe('test review', () => {
           runDir,
           result(runDir, { tests: [{ path: 'src/other.test.ts', read: true, scope: 'full', assertions_checked: 'x' }] })
         ),
-      /not a changed test file in this run/
+      /not a changed, readable test file in this run/
     );
   });
 
@@ -868,6 +1004,252 @@ describe('test review', () => {
     assert.match(
       unread.report,
       /Limitation: test file .*step-index\.test\.ts was not read in full: Generated fixture\./
+    );
+  });
+
+  test('a wholly added test file cannot be completed from a partial or absent pinned read', () => {
+    const body = `${Array.from({ length: 450 }, (_, index) => `test('case-${index}', () => expect(${index}).toBe(${index}));`).join('\n')}\n`;
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(repo, { 'src/engine.ts': 'export const v = 2;\n', 'src/engine.test.ts': body }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const tests = [
+      {
+        path: 'src/engine.test.ts',
+        read: true,
+        scope: 'changed_hunks',
+        assertions_checked: 'Each assertion would fail if its matching value changed.',
+      },
+    ];
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { tests, no_read_receipts: true })),
+      /needs pinned read receipts covering every changed head range/
+    );
+    const first = readPinnedFile({ run: runDir, path: 'src/engine.test.ts', scope: 'changed_hunks' });
+    assert.match(first.next, /^\d+:\d+$/);
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { tests, no_read_receipts: true })),
+      /needs pinned read receipts covering every changed head range/
+    );
+    assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
+  });
+  test('a large test file whose pages hit the byte cap can be completed by following next', () => {
+    const filler = 'x'.repeat(180);
+    const body = `${Array.from({ length: 450 }, (_, index) => `test('case-${index}', () => expect('${filler}').toBe('${filler}'));`).join('\n')}\n`;
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(repo, { 'src/engine.ts': 'export const v = 2;\n', 'src/engine.test.ts': body }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const first = readPinnedFile({ run: runDir, path: 'src/engine.test.ts', scope: 'changed_hunks' });
+    assert.equal(first.receipt.truncated, true);
+    const tests = [
+      {
+        path: 'src/engine.test.ts',
+        read: true,
+        scope: 'changed_hunks',
+        assertions_checked: 'Each assertion would fail if its matching value changed.',
+      },
+    ];
+    assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
+  });
+
+  test('following next on changed hunks skips the unchanged lines between hunks', () => {
+    const line = (index, value) => `test('case-${index}', () => expect(${value}).toBe(${value}));`;
+    const lines = (value) =>
+      Array.from({ length: 3000 }, (_, index) => line(index, index < 410 || index === 2900 ? value : 0));
+    const { repo, base } = makeRepo({ 'src/engine.test.ts': `${lines(0).join('\n')}\n` });
+    const head = commit(repo, { 'src/engine.test.ts': `${lines(1).join('\n')}\n` }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const starts = [];
+    let range;
+    do {
+      const read = readPinnedFile({ run: runDir, path: 'src/engine.test.ts', scope: 'changed_hunks', range });
+      starts.push(read.receipt.ranges[0].start);
+      range = read.next;
+    } while (range);
+    assert.deepEqual(starts, [1, 201, 401, 2901]);
+    const tests = [
+      {
+        path: 'src/engine.test.ts',
+        read: true,
+        scope: 'changed_hunks',
+        assertions_checked: 'Each assertion would fail if its matching value changed.',
+      },
+    ];
+    assert.equal(finishWith(runDir, result(runDir, { tests, no_read_receipts: true })).headline, 'Approve');
+  });
+
+  test('a renamed test file with no content hunks can be completed with changed_hunks scope', () => {
+    const body = (name) =>
+      `${Array.from({ length: 350 }, (_, index) => `test('${name}-${index}', () => expect(${index}).toBe(${index}));`).join('\n')}\n`;
+    const { repo, base } = makeRepo({ 'src/old.test.ts': body('old') });
+    const added = Object.fromEntries(['a', 'b', 'c', 'd'].map((name) => [`src/${name}.test.ts`, body(name)]));
+    const head = commit(repo, { 'src/old.test.ts': null, 'src/renamed.test.ts': body('old'), ...added }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const tests = [
+      ...Object.keys(added).map((path) => ({
+        path,
+        read: false,
+        reason_kind: 'generated',
+        reason: 'Generated fixture.',
+      })),
+      {
+        path: 'src/renamed.test.ts',
+        read: true,
+        scope: 'changed_hunks',
+        assertions_checked: 'The rename changes no assertion.',
+      },
+    ];
+    assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
+  });
+
+  test('a full-read entry fails closed when the run cannot read the head blob', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(
+      repo,
+      { 'src/engine.ts': 'export const v = 2;\n', 'src/engine.test.ts': "test('v', () => expect(2).toBe(2));\n" },
+      'head'
+    );
+    const tests = [{ path: 'src/engine.test.ts', read: true, scope: 'full', assertions_checked: 'Pins v.' }];
+    const withManifest = (change) => {
+      const runDir = prepared({ repo, base, head });
+      const manifest = readJson(join(runDir, 'manifest.json'));
+      writeFileSync(join(runDir, 'manifest.json'), JSON.stringify(change(manifest)));
+      return runDir;
+    };
+    const legacy = withManifest(({ target_repo, ...manifest }) => manifest);
+    assert.throws(
+      () => finishWith(legacy, result(legacy, { tests, no_read_receipts: true })),
+      /manifest has no target_repo/
+    );
+    const moved = withManifest((manifest) => ({ ...manifest, target_repo: join(scratch, 'missing-repo') }));
+    assert.throws(() => finishWith(moved, result(moved, { tests, no_read_receipts: true })), /git show failed/);
+  });
+
+  test('a line over the byte cap points the reviewer at a tooling_blocked entry that finish accepts', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(
+      repo,
+      {
+        'src/engine.ts': 'export const v = 2;\n',
+        'src/engine.test.ts': `const fixture = '${'x'.repeat(31_000)}';\n`,
+      },
+      'head'
+    );
+    const runDir = prepared({ repo, base, head });
+    assert.throws(
+      () => readPinnedFile({ run: runDir, path: 'src/engine.test.ts', scope: 'full' }),
+      /read: false with reason_kind tooling_blocked/
+    );
+    const tests = [
+      {
+        path: 'src/engine.test.ts',
+        read: false,
+        reason_kind: 'tooling_blocked',
+        reason: 'Line 1 is one inline fixture string that the pinned read helper cannot emit.',
+      },
+    ];
+    assert.equal(finishWith(runDir, result(runDir, { tests })).headline, 'Approve');
+  });
+});
+
+describe('governing and risk obligations', () => {
+  test('an external governing source must carry a revision pin as a whole URL segment', () => {
+    const { repo, base } = makeRepo({ 'src/engine.ts': 'export const v = 1;\n' });
+    const head = commit(repo, { 'src/engine.ts': 'export const v = 2;\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const input = join(runDir, 'governing.json');
+    writeFileSync(
+      input,
+      JSON.stringify([
+        { id: 'schema', kind: 'external_schema', source: 'https://schemas.example.invalid', reason: 'Cited schema.' },
+      ])
+    );
+    addContext({ run: runDir, concerns: 'security', governing: input });
+    const withSource = (source, pin) =>
+      result(runDir).checks.map((check) =>
+        check.id === 'governing:schema'
+          ? {
+              ...check,
+              status: 'checked',
+              governing: { kind: 'external_schema', source, pin, applicability: 'Defines the loaded shape.' },
+            }
+          : check
+      );
+    for (const [source, pin] of [
+      ['https://schemas.example.invalid/packages/v2/latest', 'schemas'],
+      ['https://schemas.example.invalid/packages/v2/latest', 'https:/'],
+      ['https://schemas.example.invalid/packages/v2/9f4a3b7e', '9f4a3b7'],
+      ['http://schemas.example.invalid/packages/9f4a3b7', '9f4a3b7'],
+    ]) {
+      assert.throws(
+        () => finishWith(runDir, result(runDir, { checks: withSource(source, pin) })),
+        /governing source and pin must resolve/,
+        `${source} with pin ${pin}`
+      );
+    }
+    for (const [source, pin] of [
+      ['https://schemas.example.invalid/packages/v2/9f4a3b7', '9f4a3b7'],
+      ['https://schemas.example.invalid/packages/schema.json?ref=v2.1.0', 'v2.1.0'],
+    ]) {
+      assert.equal(finishWith(runDir, result(runDir, { checks: withSource(source, pin) })).headline, 'Approve');
+    }
+  });
+
+  test('a generated risk obligation cannot disappear and checked verification needs falsifying evidence', () => {
+    const { repo, base } = makeRepo({ 'src/store.ts': 'export const current = 0;\n' });
+    const head = commit(repo, { 'src/store.ts': 'export const saveProgress = () => write();\n' }, 'head');
+    const runDir = prepared({ repo, base, head });
+    const risk = readJson(join(runDir, 'obligations.json')).find(
+      ({ obligation }) => obligation === 'risk_verification'
+    );
+    assert.ok(risk, 'persistence change should nominate a risk verification');
+    const baseline = result(runDir).checks;
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { checks: baseline.filter(({ id }) => id !== risk.id) })),
+      new RegExp(`missing inspection decision: ${risk.id}`)
+    );
+    const checkedWithoutEvidence = baseline.map((check) =>
+      check.id === risk.id ? { ...check, status: 'checked' } : check
+    );
+    assert.throws(
+      () => finishWith(runDir, result(runDir, { checks: checkedWithoutEvidence })),
+      /verification\.falsifying_scenario/
+    );
+    mkdirSync(join(runDir, 'evidence'));
+    writeFileSync(join(runDir, 'evidence', 'save-progress.txt'), 'A malformed value is rejected before persistence.\n');
+    const verifiedWith = (artifact) =>
+      baseline.map((check) =>
+        check.id === risk.id
+          ? {
+              ...check,
+              status: 'checked',
+              evidence: 'Targeted persistence scenario was inspected.',
+              verification: {
+                invariant: 'Invalid progress is never persisted.',
+                falsifying_scenario: 'Attempt to save malformed progress.',
+                expected: 'The write is rejected.',
+                observed: 'The recorded probe rejected the write.',
+                method: 'probe',
+                artifact,
+              },
+            }
+          : check
+      );
+    for (const artifact of [
+      'changes.patch',
+      'manifest.json',
+      'context/always-on.md',
+      'evidence/../reads.json',
+      'evidence',
+    ]) {
+      assert.throws(
+        () => finishWith(runDir, result(runDir, { checks: verifiedWith(artifact) })),
+        /verification\.artifact must name an existing file under evidence\//,
+        artifact
+      );
+    }
+    assert.equal(
+      finishWith(runDir, result(runDir, { checks: verifiedWith('evidence/save-progress.txt') })).headline,
+      'Approve'
     );
   });
 });
