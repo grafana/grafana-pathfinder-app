@@ -54,6 +54,8 @@ import { HeroStats } from './sections/HeroStats';
 import { MyCoursesSection } from './sections/MyCoursesSection';
 import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
+import { AchievementsSection } from '../Achievements/AchievementsSection';
+import { useLegacyBadgesHidden } from '../Achievements/useLegacyBadgesHidden';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
 import { useCatalogLaunch } from './useCatalogLaunch';
 import { ContinueLearningSection } from './sections/ContinueLearningSection';
@@ -428,6 +430,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const totalGuidesCompleted = progress.completedGuides.length;
   const totalBadgesEarned = progress.earnedBadges.length;
+  const legacyBadgesHidden = useLegacyBadgesHidden();
 
   const pathsForProgress = useMemo(() => paths.map((p) => ({ id: p.id, guides: p.guides })), [paths]);
 
@@ -482,7 +485,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     <div className={styles.container}>
       <HeroStats
         guidesCompleted={totalGuidesCompleted}
-        badgesEarned={totalBadgesEarned}
+        badgesEarned={legacyBadgesHidden ? null : totalBadgesEarned}
         streakDays={streakInfo.days}
         styles={styles}
       />
@@ -514,14 +517,18 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
             styles={styles}
           />
 
-          <BadgesSection
-            badges={sortedBadges}
-            completedGuides={progress.completedGuides}
-            streakDays={progress.streakDays}
-            paths={pathsForProgress}
-            onSelect={setSelectedBadge}
-            styles={styles}
-          />
+          {legacyBadgesHidden ? (
+            <AchievementsSection styles={styles} />
+          ) : (
+            <BadgesSection
+              badges={sortedBadges}
+              completedGuides={progress.completedGuides}
+              streakDays={progress.streakDays}
+              paths={pathsForProgress}
+              onSelect={setSelectedBadge}
+              styles={styles}
+            />
+          )}
         </div>
       </div>
 
@@ -572,7 +579,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       </div>
 
       {/* Badge Detail Card Overlay */}
-      {selectedBadge && (
+      {selectedBadge && !legacyBadgesHidden && (
         <BadgeDetailCard
           badge={selectedBadge}
           progress={selectedBadgeProgress}

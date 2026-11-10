@@ -13,7 +13,8 @@ import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
 interface HeroStatsProps {
   guidesCompleted: number;
-  badgesEarned: number;
+  /** Null hides the legacy badge count. */
+  badgesEarned: number | null;
   streakDays: number;
   styles: ReturnType<typeof getMyLearningStyles>;
 }
@@ -32,11 +33,15 @@ export function HeroStats({ guidesCompleted, badgesEarned, streakDays, styles }:
           <div className={styles.statValue}>{guidesCompleted}</div>
           <div className={styles.statLabel}>{t('myLearning.guidesCompleted', 'Guides completed')}</div>
         </div>
-        <div className={styles.statDivider} />
-        <div className={styles.statItem}>
-          <div className={styles.statValueBadges}>{badgesEarned}</div>
-          <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
-        </div>
+        {badgesEarned !== null && (
+          <>
+            <div className={styles.statDivider} />
+            <div className={styles.statItem}>
+              <div className={styles.statValueBadges}>{badgesEarned}</div>
+              <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
+            </div>
+          </>
+        )}
         <div className={styles.statDivider} />
         <div className={styles.statItem}>
           <div className={styles.statValueStreak}>

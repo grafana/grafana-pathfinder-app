@@ -204,6 +204,11 @@ jest.mock('../../lib/user-storage', () => ({
   guideCompletionMarkStorage: { clearAllWithPrefix: jest.fn() },
 }));
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
+const mockLegacyBadgesHidden = jest.fn(() => false);
+jest.mock('../Achievements/useLegacyBadgesHidden', () => ({ useLegacyBadgesHidden: () => mockLegacyBadgesHidden() }));
+jest.mock('../Achievements/AchievementsSection', () => ({
+  AchievementsSection: () => <section data-testid="my-learning-achievements-section" />,
+}));
 
 const prepareMock = prepareGuideLaunch as jest.MockedFunction<typeof prepareGuideLaunch>;
 const pushFaroLogMock = pushFaroLog as jest.Mock;
@@ -560,6 +565,25 @@ describe('MyLearningTab launch flow', () => {
     expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
     expect(screen.getByTestId(testIds.learningPaths.discoverMoreSection)).toBeInTheDocument();
     expect(screen.getByTestId(testIds.learningPaths.completedSection)).toBeInTheDocument();
+  });
+
+  it('keeps the legacy badges and shows no achievements while achievements are not available', () => {
+    mockLegacyBadgesHidden.mockReturnValue(false);
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
+    expect(screen.getByText('Badges earned')).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.achievements.hubSection)).not.toBeInTheDocument();
+  });
+
+  it('replaces the legacy badges section and badge count with achievements once they are available', () => {
+    mockLegacyBadgesHidden.mockReturnValue(true);
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.queryByTestId(testIds.learningPaths.badgesSection)).not.toBeInTheDocument();
+    expect(screen.queryByText('Badges earned')).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.achievements.hubSection)).toBeInTheDocument();
+    mockLegacyBadgesHidden.mockReturnValue(false);
   });
 
   it('shows the assigned track, counts guides over it, and launches the cover on that track', async () => {

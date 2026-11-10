@@ -191,9 +191,26 @@ plugin.init = function () {
   }
 
   // Grafana does not await init; navigation listeners must register synchronously.
-  void retryChunkImport(() => import('./completion-records/completion-write-hook'))
-    .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
+  // The achievements observer arms first so the recorder's startup replay reaches it as well.
+  void Promise.all([
+    retryChunkImport(() => import('./completion-records/achievements/achievement-events-hook')).catch((err) => {
+      logger.error('[Pathfinder] Failed to arm achievement events', { error: err });
+      return null;
+    }),
+    retryChunkImport(() => import('./completion-records/completion-write-hook')),
+  ])
+    .then(([achievements, { armCompletionWriteHook }]) => {
+      achievements?.armAchievementEvents();
+      armCompletionWriteHook();
+    })
     .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
+
+  if (getFeatureFlagValue('pathfinder.achievements', false)) {
+    void ensurePluginTranslations()
+      .then(() => retryChunkImport(() => import('./components/Achievements/mount-announcement-host')))
+      .then(({ mountAchievementAnnouncementHost }) => mountAchievementAnnouncementHost())
+      .catch((err) => logger.error('[Pathfinder] Failed to mount achievement announcements', { error: err }));
+  }
 
   setPackageResolverFactory(async () => {
     const config = await waitForPathfinderPluginConfig();

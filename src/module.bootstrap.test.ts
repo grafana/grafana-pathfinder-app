@@ -131,6 +131,18 @@ describe('module bootstrap arms the durable completion-write hook', () => {
   });
 });
 
+describe('module bootstrap arms achievement events with the completion-write hook', () => {
+  const ACHIEVEMENTS_MODULE = './completion-records/achievements/achievement-events-hook';
+
+  it('arms the achievements observer in the same statement, before the write hook, so both see the startup replay', () => {
+    const statement = findPluginInitBody().find(isArmCall)!;
+    const text = statement.getText(sourceFile);
+    expect(text).toContain(`import('${ACHIEVEMENTS_MODULE}')`);
+    expect(text.indexOf('armAchievementEvents()')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('armAchievementEvents()')).toBeLessThan(text.indexOf('armCompletionWriteHook()'));
+  });
+});
+
 describe('module bootstrap loads deep-link handling outside the entry bundle', () => {
   const handlerModule = './utils/pathfinder-deep-link-handler';
 

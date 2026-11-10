@@ -1,4 +1,20 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "Achievement earned",
+      "dismiss": "Dismiss",
+      "final": "Final tier reached",
+      "tierUp": "Tier up"
+    },
+    "hub": {
+      "empty": "Finish a guide to earn your first achievement.",
+      "progress": "{{units}} of {{next}} toward the next tier",
+      "progressLabel": "Progress toward the next tier",
+      "title": "Achievements",
+      "truncated": "Some achievements could not be loaded.",
+      "unavailable": "Achievements cannot be shown right now. Try again later."
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "Docs page",
     "categoryInteractiveGuide": "Interactive guide",
