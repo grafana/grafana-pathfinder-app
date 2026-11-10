@@ -1,4 +1,21 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "",
+      "dismiss": "",
+      "final": "",
+      "progress": "",
+      "tierUp": ""
+    },
+    "hub": {
+      "empty": "",
+      "progress": "",
+      "progressLabel": "",
+      "title": "",
+      "truncated": "",
+      "unavailable": ""
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "Stránka dokumentace",
     "categoryInteractiveGuide": "Interaktivní průvodce",

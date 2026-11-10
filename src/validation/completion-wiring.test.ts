@@ -57,6 +57,7 @@ const SEAM_ENTRY_POINTS: Readonly<Record<string, string>> = {
   clearAttempt: 'completion-records/guide-attempts.ts',
   clearAllAttempts: 'completion-records/guide-attempts.ts',
   discardQueuedCompletionWrites: 'completion-records/completion-write-hook.ts',
+  discardQueuedAchievementEvents: 'completion-records/achievements/achievement-events-hook.ts',
   resetGuideProgress: 'components/docs-panel/hooks/resetGuideProgress.ts',
 };
 
@@ -99,6 +100,11 @@ const ALLOWED_SEAM_USES: readonly AllowedArchitectureEntry[] = [
     violation: 'discardQueuedCompletionWrites used in components/LearningPaths/MyLearningTab.tsx',
     reason:
       'Reset-all drops queued partials before any await, because a scheduled drain can fire between the reset and the clear.',
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+  {
+    violation: 'discardQueuedAchievementEvents used in components/LearningPaths/MyLearningTab.tsx',
+    reason: 'Reset-all also withdraws unsent achievement events, before any await, for the guides it clears.',
     tracking: ARCHITECTURE_BY_DESIGN,
   },
   {

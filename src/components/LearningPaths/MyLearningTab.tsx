@@ -44,7 +44,11 @@ import {
   guideCompletionMarkStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
-import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
+import {
+  discardQueuedAchievementEvents,
+  discardQueuedCompletionWrites,
+  invalidateAllEmittedCompletions,
+} from '../../completion-records';
 import type { EarnedBadge } from '../../types';
 
 import { getBadgeProgress } from './badge-utils';
@@ -54,6 +58,8 @@ import { HeroStats } from './sections/HeroStats';
 import { MyCoursesSection } from './sections/MyCoursesSection';
 import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
+import { AchievementsSection } from '../Achievements/AchievementsSection';
+import { useLegacyBadgesHidden } from '../Achievements/useLegacyBadgesHidden';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
 import { useCatalogLaunch } from './useCatalogLaunch';
 import { ContinueLearningSection } from './sections/ContinueLearningSection';
@@ -380,12 +386,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
-      // Durable completion writes that are queued but not yet sent are dropped
-      // first, before any await below yields: a drain scheduled before the reset
-      // would otherwise fire inside that window and mint records for exactly the
-      // guides the user just asked us to forget — and the dialog gives them no
-      // second lever to stop it.
+      // Before any await, so a drain scheduled earlier cannot send these for the guides being reset.
       discardQueuedCompletionWrites();
+      discardQueuedAchievementEvents();
 
       reportAppInteraction(UserInteraction.ResetProgressClick, {
         reset_scope: 'all' satisfies ResetScope,
@@ -428,6 +431,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const totalGuidesCompleted = progress.completedGuides.length;
   const totalBadgesEarned = progress.earnedBadges.length;
+  const legacyBadgesHidden = useLegacyBadgesHidden();
 
   const pathsForProgress = useMemo(() => paths.map((p) => ({ id: p.id, guides: p.guides })), [paths]);
 
@@ -482,7 +486,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     <div className={styles.container}>
       <HeroStats
         guidesCompleted={totalGuidesCompleted}
-        badgesEarned={totalBadgesEarned}
+        badgesEarned={legacyBadgesHidden ? null : totalBadgesEarned}
         streakDays={streakInfo.days}
         styles={styles}
       />
@@ -514,14 +518,18 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
             styles={styles}
           />
 
-          <BadgesSection
-            badges={sortedBadges}
-            completedGuides={progress.completedGuides}
-            streakDays={progress.streakDays}
-            paths={pathsForProgress}
-            onSelect={setSelectedBadge}
-            styles={styles}
-          />
+          {legacyBadgesHidden ? (
+            <AchievementsSection styles={styles} />
+          ) : (
+            <BadgesSection
+              badges={sortedBadges}
+              completedGuides={progress.completedGuides}
+              streakDays={progress.streakDays}
+              paths={pathsForProgress}
+              onSelect={setSelectedBadge}
+              styles={styles}
+            />
+          )}
         </div>
       </div>
 
@@ -572,7 +580,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       </div>
 
       {/* Badge Detail Card Overlay */}
-      {selectedBadge && (
+      {selectedBadge && !legacyBadgesHidden && (
         <BadgeDetailCard
           badge={selectedBadge}
           progress={selectedBadgeProgress}

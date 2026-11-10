@@ -45,6 +45,9 @@ export const StorageKeys = {
   // Learning paths and badges progress
   LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
   COMPLETION_WRITE_QUEUE_PREFIX: 'grafana-pathfinder-app-completion-write-queue-v2:',
+  ACHIEVEMENT_EVENT_QUEUE_PREFIX: 'grafana-pathfinder-app-achievement-event-queue-v1:',
+  // Dynamic: `{owner}:{achievementId}:{tierId}`. Marks an award already displayed in some tab.
+  ACHIEVEMENT_ANNOUNCED_PREFIX: 'grafana-pathfinder-app-achievement-announced-v1:',
   // Guide responses from input blocks (user-entered values for variables)
   GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
   // Persistent dedup for experiment exposure events. Used with `{hostname}:{flagKey}:{variant}`

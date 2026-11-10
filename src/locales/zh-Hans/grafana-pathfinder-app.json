@@ -1,4 +1,21 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "",
+      "dismiss": "",
+      "final": "",
+      "progress": "",
+      "tierUp": ""
+    },
+    "hub": {
+      "empty": "",
+      "progress": "",
+      "progressLabel": "",
+      "title": "",
+      "truncated": "",
+      "unavailable": ""
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "文档页面",
     "categoryInteractiveGuide": "交互式指南",

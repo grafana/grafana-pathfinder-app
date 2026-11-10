@@ -340,6 +340,17 @@ export const testIds = {
     tracksTab: (trackId: string) => `learning-paths-toc-track-${trackId}`,
   },
 
+  achievements: {
+    hubSection: 'my-learning-achievements-section',
+    hubEmpty: 'my-learning-achievements-empty',
+    hubUnavailable: 'my-learning-achievements-unavailable',
+    hubRow: (achievementId: string) => `my-learning-achievement-${achievementId}`,
+    toast: (achievementId: string) => `achievement-toast-${achievementId}`,
+    toastDismiss: 'achievement-toast-dismiss',
+    overlay: 'achievement-tier-up-overlay',
+    overlayDismiss: 'achievement-tier-up-overlay-dismiss',
+  },
+
   // Live Session
   liveSession: {
     startButton: 'live-session-start',
