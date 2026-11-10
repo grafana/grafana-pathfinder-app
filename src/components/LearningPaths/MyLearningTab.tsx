@@ -44,7 +44,11 @@ import {
   guideCompletionMarkStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
-import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
+import {
+  discardQueuedAchievementEvents,
+  discardQueuedCompletionWrites,
+  invalidateAllEmittedCompletions,
+} from '../../completion-records';
 import type { EarnedBadge } from '../../types';
 
 import { getBadgeProgress } from './badge-utils';
@@ -382,12 +386,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
-      // Durable completion writes that are queued but not yet sent are dropped
-      // first, before any await below yields: a drain scheduled before the reset
-      // would otherwise fire inside that window and mint records for exactly the
-      // guides the user just asked us to forget — and the dialog gives them no
-      // second lever to stop it.
+      // Before any await, so a drain scheduled earlier cannot send these for the guides being reset.
       discardQueuedCompletionWrites();
+      discardQueuedAchievementEvents();
 
       reportAppInteraction(UserInteraction.ResetProgressClick, {
         reset_scope: 'all' satisfies ResetScope,

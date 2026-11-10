@@ -27,6 +27,7 @@ export interface EventQueue {
   isDisarmed(): boolean;
   snapshot(): QueuedEvent[];
   subscribe(listener: () => void): () => void;
+  clear(): void;
 }
 
 // The completion write queue's bounds (RFC §6.6).
@@ -190,6 +191,10 @@ export function createEventQueue(deps: EventQueueDeps): EventQueue {
     isDisarmed: () => disarmed,
     snapshot: () => items.map((i) => ({ ...i })),
     subscribe: (listener) => storage.subscribe(listener),
+    clear: () => {
+      items = [];
+      storage.clear();
+    },
   };
 }
 

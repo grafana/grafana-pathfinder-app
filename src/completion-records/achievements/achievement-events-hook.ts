@@ -94,6 +94,11 @@ class AchievementEventsController {
       .then((enabled) => this.resolveFlag(enabled));
   }
 
+  discardQueued(): void {
+    this.buffered = [];
+    this.queue?.clear();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.unsubscribeFacts?.();
@@ -206,6 +211,19 @@ export function armAchievementEvents(overrides?: Partial<AchievementEventsDeps>)
   }
   controller = new AchievementEventsController(deps, ownerKey);
   controller.start();
+}
+
+/** Backs "Reset all learning progress": unsent events for the guides being reset are the user's to withdraw. */
+export function discardQueuedAchievementEvents(overrides?: Partial<AchievementEventsDeps>): void {
+  if (controller) {
+    controller.discardQueued();
+    return;
+  }
+  const deps = { ...defaultDeps, ...overrides };
+  const ownerKey = deps.ownerKey();
+  if (ownerKey) {
+    deps.storage(ownerKey).clear();
+  }
 }
 
 export function __resetAchievementEventsForTests(): void {

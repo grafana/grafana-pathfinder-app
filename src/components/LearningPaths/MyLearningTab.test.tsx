@@ -30,7 +30,11 @@ import {
   learningProgressStorage,
   milestoneCompletionStorage,
 } from '../../lib/user-storage';
-import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
+import {
+  discardQueuedAchievementEvents,
+  discardQueuedCompletionWrites,
+  invalidateAllEmittedCompletions,
+} from '../../completion-records';
 
 jest.mock('../../lib/telemetry/facade', () => ({
   ...jest.requireActual('../../lib/telemetry/facade'),
@@ -52,6 +56,7 @@ jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
 // reset reaches it at all.
 jest.mock('../../completion-records', () => ({
   discardQueuedCompletionWrites: jest.fn(),
+  discardQueuedAchievementEvents: jest.fn(),
   invalidateAllEmittedCompletions: jest.fn(),
 }));
 
@@ -1445,8 +1450,10 @@ describe('MyLearningTab — reset all learning progress', () => {
 
     await waitFor(() => expect(learningProgressStorage.clear).toHaveBeenCalledTimes(1));
     const discardOrder = (discardQueuedCompletionWrites as jest.Mock).mock.invocationCallOrder[0]!;
+    const achievementDiscardOrder = (discardQueuedAchievementEvents as jest.Mock).mock.invocationCallOrder[0]!;
     const firstClearOrder = (learningProgressStorage.clear as jest.Mock).mock.invocationCallOrder[0]!;
     expect(discardOrder).toBeLessThan(firstClearOrder);
+    expect(achievementDiscardOrder).toBeLessThan(firstClearOrder);
     confirmSpy.mockRestore();
   });
 
@@ -1458,6 +1465,7 @@ describe('MyLearningTab — reset all learning progress', () => {
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(discardQueuedCompletionWrites).not.toHaveBeenCalled();
+    expect(discardQueuedAchievementEvents).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 

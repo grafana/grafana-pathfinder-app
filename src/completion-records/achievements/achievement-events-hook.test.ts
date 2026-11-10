@@ -10,6 +10,7 @@ import type { CompletionFact, GuideCompletionFact } from '../types';
 
 import {
   armAchievementEvents,
+  discardQueuedAchievementEvents,
   toGuideCompletedEvent,
   __resetAchievementEventsForTests,
 } from './achievement-events-hook';
@@ -54,7 +55,7 @@ function guideFact(overrides: Partial<GuideCompletionFact> = {}): GuideCompletio
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function arm(enabled: Promise<boolean>) {
+function arm(enabled: Promise<boolean>, outcome?: EventOutcome) {
   const sent: AchievementEventBody[] = [];
   const evaluated = jest.fn();
   let id = 0;
@@ -64,7 +65,7 @@ function arm(enabled: Promise<boolean>) {
     storage: (owner) => createQueueStorage<AchievementEventBody>('test-events:', owner, 'tab'),
     send: async (body): Promise<EventOutcome> => {
       sent.push(body);
-      return { kind: 'evaluated', response: { eventId: body.eventId, retry: false, decisions: [] } };
+      return outcome ?? { kind: 'evaluated', response: { eventId: body.eventId, retry: false, decisions: [] } };
     },
     onEvaluated: evaluated,
     newId: () => `event-${++id}`,
@@ -160,6 +161,55 @@ describe('armAchievementEvents', () => {
     const { sent } = arm(Promise.resolve(true));
     onCompletionRecorded(() => true);
     recordJourneyCompletion({ ...guideFact(), kind: 'journey' });
+    await flush();
+    await flush();
+    expect(sent).toEqual([]);
+  });
+
+  it.each(['route-missing', 'forbidden'] as const)(
+    'on %s stops sending for the session but keeps later events for a later load',
+    async (kind) => {
+      const { sent } = arm(Promise.resolve(true), { kind });
+      onCompletionRecorded(() => true);
+      recordGuideCompletion(guideFact({ guideId: 'first' }));
+      await flush();
+      await flush();
+      recordGuideCompletion(guideFact({ guideId: 'second' }));
+      await flush();
+      await flush();
+      expect(sent.map((b) => b.context.guideId)).toEqual(['first']);
+      const persisted = createQueueStorage<AchievementEventBody>('test-events:', 'user-1:org-1', 'other-tab').list();
+      expect(persisted.map((i) => i.body.context.guideId).sort()).toEqual(['first', 'second']);
+
+      __resetAchievementEventsForTests();
+      const later = arm(Promise.resolve(true));
+      await flush();
+      await flush();
+      expect(later.sent.map((b) => b.context.guideId).sort()).toEqual(['first', 'second']);
+    }
+  );
+
+  it('holds at most 50 facts while the flag is unresolved', async () => {
+    let resolve!: (on: boolean) => void;
+    const { sent } = arm(new Promise((r) => (resolve = r)));
+    onCompletionRecorded(() => true);
+    for (let i = 0; i < 55; i++) {
+      recordGuideCompletion(guideFact({ guideId: `guide-${i}` }));
+    }
+    resolve(true);
+    for (let i = 0; i < 12; i++) {
+      await flush();
+    }
+    expect(sent).toHaveLength(50);
+  });
+
+  it('discards queued and held events on a progress reset', async () => {
+    let resolve!: (on: boolean) => void;
+    const { sent } = arm(new Promise((r) => (resolve = r)));
+    onCompletionRecorded(() => true);
+    recordGuideCompletion(guideFact());
+    discardQueuedAchievementEvents();
+    resolve(true);
     await flush();
     await flush();
     expect(sent).toEqual([]);

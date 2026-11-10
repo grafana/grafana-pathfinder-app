@@ -1,4 +1,4 @@
-export { armAchievementEvents } from './achievement-events-hook';
+export { armAchievementEvents, discardQueuedAchievementEvents } from './achievement-events-hook';
 export {
   achievementArtUrl,
   achievementsAvailability,

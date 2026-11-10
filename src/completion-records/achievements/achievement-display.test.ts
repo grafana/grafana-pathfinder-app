@@ -109,6 +109,67 @@ describe('announceEvaluated', () => {
   });
 });
 
+describe('announcements across tabs', () => {
+  function fakeChannel() {
+    const posted: unknown[] = [];
+    let deliver: ((message: unknown) => void) | null = null;
+    return {
+      posted,
+      receive: (message: unknown) => deliver?.(message),
+      channel: {
+        post: (message: unknown) => posted.push(message),
+        subscribe: (listener: (message: unknown) => void) => {
+          deliver = listener;
+          return () => (deliver = null);
+        },
+      },
+    };
+  }
+
+  it('hands the award to another tab instead of showing it when this tab is hidden', async () => {
+    const relay = fakeChannel();
+    __setAchievementDisplayDepsForTests({
+      fetchDefinitions: async () => definitions,
+      isVisible: () => false,
+      openChannel: () => relay.channel,
+    });
+    const seen = jest.fn();
+    onAchievementAnnounced(seen);
+    await announceEvaluated(tierUp('silver'));
+    expect(seen).not.toHaveBeenCalled();
+    expect(relay.posted).toEqual([
+      { achievementId: 'guides-finished', tierId: 'silver', kind: 'tier_up', final: false },
+    ]);
+  });
+
+  it('shows a relayed award once in a visible tab and refreshes the hub', () => {
+    const relay = fakeChannel();
+    __setAchievementDisplayDepsForTests({ isVisible: () => true, openChannel: () => relay.channel });
+    const seen = jest.fn();
+    const changed = jest.fn();
+    onAchievementAnnounced(seen);
+    onAchievementsChanged(changed);
+    const message = { achievementId: 'guides-finished', tierId: 'silver', kind: 'tier_up', final: false };
+    relay.receive(message);
+    relay.receive(message);
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a relayed award while hidden, and ignores malformed messages', () => {
+    let visible = false;
+    const relay = fakeChannel();
+    __setAchievementDisplayDepsForTests({ isVisible: () => visible, openChannel: () => relay.channel });
+    const seen = jest.fn();
+    onAchievementAnnounced(seen);
+    relay.receive({ achievementId: 'guides-finished', tierId: 'silver', kind: 'tier_up', final: false });
+    visible = true;
+    relay.receive({ achievementId: 'guides-finished', tierId: 'silver', kind: 'bogus', final: false });
+    relay.receive('not an announcement');
+    expect(seen).not.toHaveBeenCalled();
+  });
+});
+
 describe('loadAchievementDefinitions', () => {
   it('keeps one copy per page and refetches when a different version is asked for', async () => {
     const fetchDefinitions = jest.fn(async () => definitions);

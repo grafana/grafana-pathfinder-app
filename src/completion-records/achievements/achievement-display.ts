@@ -1,6 +1,7 @@
 import { logger } from '../../lib/logging';
 import { isInteractiveLearningUrl, parseUrlSafely } from '../../security/url-validator';
 import type { AchievementEventsResponseWire } from '../../types/backend-api.schema';
+import { currentCompletionQueueOwnerKey } from '../completion-write-storage';
 
 import {
   selectAnnouncements,
@@ -10,13 +11,43 @@ import {
 } from './achievement-announcements';
 import { fetchAchievementDefinitions, fetchMyAchievements, type MyAchievementsResult } from './achievements-client';
 
+export interface AnnouncementChannel {
+  post(announcement: AchievementAnnouncement): void;
+  subscribe(listener: (message: unknown) => void): () => void;
+}
+
 export interface DisplayDeps {
   fetchDefinitions: typeof fetchAchievementDefinitions;
   fetchMy: typeof fetchMyAchievements;
+  isVisible: () => boolean;
+  openChannel: () => AnnouncementChannel | null;
 }
 
-const defaultDeps: DisplayDeps = { fetchDefinitions: fetchAchievementDefinitions, fetchMy: fetchMyAchievements };
+function openBroadcastChannel(): AnnouncementChannel | null {
+  const owner = currentCompletionQueueOwnerKey();
+  if (!owner || typeof BroadcastChannel !== 'function') {
+    return null;
+  }
+  const channel = new BroadcastChannel(`pathfinder-achievements:${owner}`);
+  return {
+    post: (announcement) => channel.postMessage(announcement),
+    subscribe: (listener) => {
+      const onMessage = (event: MessageEvent) => listener(event.data);
+      channel.addEventListener('message', onMessage);
+      return () => channel.removeEventListener('message', onMessage);
+    },
+  };
+}
+
+const defaultDeps: DisplayDeps = {
+  fetchDefinitions: fetchAchievementDefinitions,
+  fetchMy: fetchMyAchievements,
+  isVisible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  openChannel: openBroadcastChannel,
+};
 let deps = defaultDeps;
+let channel: AnnouncementChannel | null | undefined;
+let unsubscribeChannel: (() => void) | null = null;
 
 let definitions: AchievementDefinitions | null = null;
 let definitionsInflight: Promise<AchievementDefinitions | null> | null = null;
@@ -92,7 +123,19 @@ export function onAchievementsAvailabilityChanged(listener: () => void): () => v
   };
 }
 
+function announcementChannel(): AnnouncementChannel | null {
+  if (channel === undefined) {
+    try {
+      channel = deps.openChannel();
+    } catch {
+      channel = null;
+    }
+  }
+  return channel;
+}
+
 export function onAchievementAnnounced(listener: (announcement: AchievementAnnouncement) => void): () => void {
+  unsubscribeChannel ??= announcementChannel()?.subscribe(receiveRelayed) ?? null;
   announcementListeners.add(listener);
   return () => {
     announcementListeners.delete(listener);
@@ -124,13 +167,15 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
     const loaded = await loadAchievementDefinitions();
     if (loaded) {
       for (const announcement of selectAnnouncements(response.decisions, loaded, held)) {
-        const key = `${announcement.achievementId}:${announcement.tierId}`;
-        if (announced.has(key)) {
+        if (!markAnnounced(announcement)) {
           continue;
         }
-        announced.add(key);
-        held = [...held, { achievementId: announcement.achievementId, tierId: announcement.tierId }];
-        notify(announcementListeners, announcement);
+        // Whichever tab drains the shared queue sends the event, so a hidden one hands the award to a visible one.
+        if (deps.isVisible()) {
+          notify(announcementListeners, announcement);
+        } else {
+          announcementChannel()?.post(announcement);
+        }
       }
     } else {
       logger.info('achievements: definitions unavailable, award not announced');
@@ -139,6 +184,37 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
   if (changed) {
     notify(changeListeners, undefined);
   }
+}
+
+function markAnnounced(announcement: AchievementAnnouncement): boolean {
+  const key = `${announcement.achievementId}:${announcement.tierId}`;
+  if (announced.has(key)) {
+    return false;
+  }
+  announced.add(key);
+  held = [...held, { achievementId: announcement.achievementId, tierId: announcement.tierId }];
+  return true;
+}
+
+function receiveRelayed(message: unknown): void {
+  if (!isAnnouncement(message) || !deps.isVisible() || !markAnnounced(message)) {
+    return;
+  }
+  notify(announcementListeners, message);
+  notify(changeListeners, undefined);
+}
+
+function isAnnouncement(value: unknown): value is AchievementAnnouncement {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const a = value as Partial<AchievementAnnouncement>;
+  return (
+    typeof a.achievementId === 'string' &&
+    typeof a.tierId === 'string' &&
+    (a.kind === 'award' || a.kind === 'tier_up') &&
+    typeof a.final === 'boolean'
+  );
 }
 
 const ART_KEY = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -161,6 +237,9 @@ export function __setAchievementDisplayDepsForTests(overrides: Partial<DisplayDe
 
 export function __resetAchievementDisplayForTests(): void {
   deps = defaultDeps;
+  unsubscribeChannel?.();
+  unsubscribeChannel = null;
+  channel = undefined;
   definitions = null;
   definitionsInflight = null;
   held = [];
