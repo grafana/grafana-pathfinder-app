@@ -18,8 +18,9 @@ const (
 	customGuideGroupVersion = appPlatformGroup + "/v1alpha1"
 	customGuideResource     = "interactiveguides"
 
-	// customGuideListPageSize bounds each upstream LIST page. The proxy drains
-	// all pages, so this only trades round-trips against per-response size.
+	// customGuideListPageSize is the first LIST page size of a drain. The proxy
+	// drains all pages, so this only trades round-trips against per-response
+	// size, and ListPage halves it whenever a page overflows customGuideListMaxBytes.
 	customGuideListPageSize = 500
 
 	// customGuideListMaxBytes bounds an individual page body so a pathological
@@ -263,6 +264,10 @@ type customGuideHTTPClient struct {
 	// this client serves, so the budget bounds the whole catalogue rather than
 	// resetting per page.
 	decodeWarns int
+
+	// pageSize is the LIST limit for the rest of this drain: it starts at
+	// customGuideListPageSize and only ever halves (see ListPage).
+	pageSize int
 }
 
 // newCustomGuideHTTPClient builds a lister that calls appURL as the user the
@@ -273,7 +278,7 @@ type customGuideHTTPClient struct {
 // custom_guide_repository.go). A caller lacking list permission gets a 401/403,
 // surfaced as an identity-scoped terminal error.
 func newCustomGuideHTTPClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *customGuideHTTPClient {
-	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger)}
+	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger), pageSize: customGuideListPageSize}
 }
 
 func (c *customGuideHTTPClient) finalizeDrain(namespace string) {
@@ -286,9 +291,24 @@ func (c *customGuideHTTPClient) finalizeDrain(namespace string) {
 
 // ListPage fetches one page of InteractiveGuides for the namespace and shapes
 // each spec into a slim entry, dropping spec.blocks.
+//
+// Pages carry full specs, so a fixed page size would let a namespace of large
+// guides overflow customGuideListMaxBytes on every attempt and lose the whole
+// catalogue. Instead an overflowing page is re-read from the same continue
+// token at half the size, down to one guide, and the smaller size holds for the
+// rest of the drain. Only a single guide over the cap still fails, and
+// /custom-guide?name= could not read that guide either.
 func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continueToken string) (*customGuidePage, error) {
-	page, err := c.inner.listPage(ctx, customGuideGroupVersion, namespace,
-		customGuideResource, continueToken, customGuideListPageSize, customGuideListMaxBytes)
+	var page *appPlatformListPage
+	var err error
+	for {
+		page, err = c.inner.listPage(ctx, customGuideGroupVersion, namespace,
+			customGuideResource, continueToken, c.pageSize, customGuideListMaxBytes)
+		if err == nil || c.pageSize <= 1 || !isResponseTooLarge(err) {
+			break
+		}
+		c.pageSize = max(c.pageSize/2, 1)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -331,4 +351,11 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 		entries = append(entries, entry)
 	}
 	return &customGuidePage{Entries: entries, Continue: page.Metadata.Continue}, nil
+}
+
+// isResponseTooLarge reports whether an upstream read overflowed its byte cap.
+// The same request overflows the same way every time, so it never fixes itself.
+func isResponseTooLarge(err error) bool {
+	var typed *guideProxyError
+	return errors.As(err, &typed) && typed.diagnostic.Reason == "response-too-large"
 }

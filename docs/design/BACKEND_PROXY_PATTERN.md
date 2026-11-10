@@ -781,7 +781,16 @@ The block editor's library lists from `/custom-guide-repository` too. Each entry
 saves by resource name, which can differ from `spec.id`. A guide's full resource, including
 the `resourceVersion` an update must echo back, comes only from `/custom-guide?name=`.
 There is no full-resource LIST route: `/custom-guides` was removed because its 32 MiB
-budget truncated the list silently. Editor writes continue to use App Platform directly.
+budget cut the list off without telling the client. Editor writes continue to use App
+Platform directly.
+
+The catalogue's limits are an aggregate budget of 50,000 entries, past which the list is
+truncated with a logged warning, and 8 MiB per LIST page. Pages carry full specs, so the
+page size starts at 500 and halves, re-reading the same continue token, whenever a page
+would exceed 8 MiB. The smaller size holds for the rest of the drain. Large guides
+therefore cost round trips, not the catalogue: only a single guide over 8 MiB still fails,
+and since `/custom-guide?name=` shares that cap and cannot read it either, it is served as
+the terminal soft-200 `available:false` with reason `guide-too-large`, not a retryable 503.
 
 ## Operational diagnostics
 

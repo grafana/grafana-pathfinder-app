@@ -57,8 +57,9 @@ export interface CustomGuideRepositoryEntry {
  * (no signing-keys endpoint answered at all, which points at the configured
  * address rather than at the caller), `feature-toggle-disabled`,
  * `obo-unavailable` (no provisioned on-behalf-of token — check this first when
- * the surface is unexpectedly empty), or `upstream-<status>` for an upstream
- * error.
+ * the surface is unexpectedly empty), `guide-too-large` (one stored guide alone
+ * exceeds the proxy's 8 MiB LIST page cap), or `upstream-<status>` for an
+ * upstream error.
  *
  * The identity gate runs before the backend resolver, so that resolver's
  * `namespace-unavailable` and `app-url-unavailable` are unreachable on this

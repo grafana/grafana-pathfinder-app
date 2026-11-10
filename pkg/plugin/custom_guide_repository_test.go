@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -499,6 +502,89 @@ func TestCustomGuideHTTPClient_CarriesMetadataNameAndCreationTimestamp(t *testin
 	want := `{"id":"fe-alerting-path","name":"alerting-enablement","creationTimestamp":"2026-10-01T00:00:00Z"}`
 	if string(raw) != want {
 		t.Errorf("entry = %s, want %s", raw, want)
+	}
+}
+
+// pagingGuideServer serves guides with the given block sizes the way a
+// Kubernetes LIST pages: `limit` items from the offset in `continue`. It
+// records every limit it is asked for.
+func pagingGuideServer(t *testing.T, sizes []int) (*httptest.Server, func() []int) {
+	t.Helper()
+	var mu sync.Mutex
+	var limits []int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		offset, _ := strconv.Atoi(r.URL.Query().Get("continue"))
+		mu.Lock()
+		limits = append(limits, limit)
+		mu.Unlock()
+		end := min(offset+limit, len(sizes))
+		items := make([]map[string]any, 0, end-offset)
+		for i := offset; i < end; i++ {
+			id := fmt.Sprintf("guide-%d", i)
+			items = append(items, map[string]any{
+				"metadata": map[string]any{"name": id},
+				"spec": map[string]any{"id": id, "blocks": []map[string]any{
+					{"type": "markdown", "content": strings.Repeat("x", sizes[i])},
+				}},
+			})
+		}
+		next := ""
+		if end < len(sizes) {
+			next = strconv.Itoa(end)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"continue": next}, "items": items})
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []int {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(limits)
+	}
+}
+
+// 300 guides of 40 KiB total about 12 MiB, so a 500-guide page overflows the
+// 8 MiB page cap on every attempt. The drain must shrink the page and keep
+// going rather than lose the whole catalogue.
+func TestCustomGuideHTTPClient_LargeGuidesDrainAcrossSmallerPages(t *testing.T) {
+	sizes := make([]int, 300)
+	for i := range sizes {
+		sizes[i] = 40 * 1024
+	}
+	srv, limits := pagingGuideServer(t, sizes)
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+
+	entries, _, err := drainCustomGuides(context.Background(), testNamespace, c, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	if len(entries) != len(sizes) || entries[0].ID != "guide-0" || entries[len(entries)-1].ID != "guide-299" {
+		t.Fatalf("drained %d entries, want all %d in order", len(entries), len(sizes))
+	}
+	// Halved twice, then the smaller size held for the rest of the drain.
+	if got, want := limits(), []int{500, 250, 125, 125, 125}; !slices.Equal(got, want) {
+		t.Errorf("page limits = %v, want %v", got, want)
+	}
+}
+
+// A guide over the page cap on its own is the one thing shrinking cannot fix,
+// and /custom-guide?name= cannot read it either. It must not read as a
+// retryable blip.
+func TestCustomGuide_GuideOverPageCapIsTerminal(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	srv, limits := pagingGuideServer(t, []int{customGuideListMaxBytes + 1})
+	withGuideLister(t, newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger))
+
+	rr, body := doCustomGuide(t, "/custom-guide-repository", "user:1")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want the soft-200 envelope", rr.Code)
+	}
+	if body.Capability.Available || body.Capability.Reason != reasonGuideTooLarge {
+		t.Errorf("capability = %+v, want unavailable with %q", body.Capability, reasonGuideTooLarge)
+	}
+	if got := limits(); got[len(got)-1] != 1 {
+		t.Errorf("page limits = %v, want the drain to reach a one-guide page before giving up", got)
 	}
 }
 
