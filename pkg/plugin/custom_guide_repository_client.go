@@ -278,7 +278,9 @@ type customGuideHTTPClient struct {
 // custom_guide_repository.go). A caller lacking list permission gets a 401/403,
 // surfaced as an identity-scoped terminal error.
 func newCustomGuideHTTPClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *customGuideHTTPClient {
-	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger), pageSize: customGuideListPageSize}
+	inner := newAppPlatformListClient(appURL, minter, idToken, logger)
+	inner.shrinksOnOverflow = true
+	return &customGuideHTTPClient{inner: inner, pageSize: customGuideListPageSize}
 }
 
 func (c *customGuideHTTPClient) finalizeDrain(namespace string) {
@@ -307,6 +309,8 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 		if err == nil || c.pageSize <= 1 || !isResponseTooLarge(err) {
 			break
 		}
+		c.inner.logger.Info("custom guide repository: page overflowed the byte cap, shrinking",
+			"namespace", namespace, "pageSize", c.pageSize, "maxBytes", customGuideListMaxBytes)
 		c.pageSize = max(c.pageSize/2, 1)
 	}
 	if err != nil {
@@ -351,11 +355,4 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 		entries = append(entries, entry)
 	}
 	return &customGuidePage{Entries: entries, Continue: page.Metadata.Continue}, nil
-}
-
-// isResponseTooLarge reports whether an upstream read overflowed its byte cap.
-// The same request overflows the same way every time, so it never fixes itself.
-func isResponseTooLarge(err error) bool {
-	var typed *guideProxyError
-	return errors.As(err, &typed) && typed.diagnostic.Reason == "response-too-large"
 }

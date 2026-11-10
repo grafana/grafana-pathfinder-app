@@ -552,7 +552,8 @@ func TestCustomGuideHTTPClient_LargeGuidesDrainAcrossSmallerPages(t *testing.T) 
 		sizes[i] = 40 * 1024
 	}
 	srv, limits := pagingGuideServer(t, sizes)
-	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	logger := newCapturingLogger()
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", logger)
 
 	entries, _, err := drainCustomGuides(context.Background(), testNamespace, c, log.DefaultLogger)
 	if err != nil {
@@ -565,6 +566,23 @@ func TestCustomGuideHTTPClient_LargeGuidesDrainAcrossSmallerPages(t *testing.T) 
 	if got, want := limits(), []int{500, 250, 125, 125, 125}; !slices.Equal(got, want) {
 		t.Errorf("page limits = %v, want %v", got, want)
 	}
+	// Proxy-failure warnings drive alerting, so a drain that recovered must not emit them.
+	if logger.warnedWith("Pathfinder proxy operation failed") {
+		t.Errorf("a recovered overflow logged a proxy failure: %+v", *logger.lines)
+	}
+	if got := countLines(logger, "info", "shrinking"); got != 2 {
+		t.Errorf("shrink info lines = %d, want one per halving (2)", got)
+	}
+}
+
+func countLines(l capturingLogger, level, substr string) int {
+	n := 0
+	for _, line := range *l.lines {
+		if line.level == level && strings.Contains(line.msg, substr) {
+			n++
+		}
+	}
+	return n
 }
 
 // A guide over the page cap on its own is the one thing shrinking cannot fix,
@@ -573,7 +591,8 @@ func TestCustomGuideHTTPClient_LargeGuidesDrainAcrossSmallerPages(t *testing.T) 
 func TestCustomGuide_GuideOverPageCapIsTerminal(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	srv, limits := pagingGuideServer(t, []int{customGuideListMaxBytes + 1})
-	withGuideLister(t, newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger))
+	logger := newCapturingLogger()
+	withGuideLister(t, newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", logger))
 
 	rr, body := doCustomGuide(t, "/custom-guide-repository", "user:1")
 
@@ -585,6 +604,10 @@ func TestCustomGuide_GuideOverPageCapIsTerminal(t *testing.T) {
 	}
 	if got := limits(); got[len(got)-1] != 1 {
 		t.Errorf("page limits = %v, want the drain to reach a one-guide page before giving up", got)
+	}
+	// Only the one-guide overflow is a real failure; the shrink steps before it are not.
+	if got := countLines(logger, "warn", "Pathfinder proxy operation failed"); got != 1 {
+		t.Errorf("proxy failure warnings = %d, want exactly 1", got)
 	}
 }
 

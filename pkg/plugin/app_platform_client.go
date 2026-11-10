@@ -151,6 +151,10 @@ type appPlatformListClient struct {
 	logger     log.Logger
 	attempt    int
 
+	// shrinksOnOverflow marks a caller that re-reads an overflowing LIST page at
+	// a smaller size, so an overflow it will retry is not logged as a failure.
+	shrinksOnOverflow bool
+
 	// Object calls share one token per request; LIST drains may outlive a token.
 	objectTokenMu sync.Mutex
 	objectToken   string
@@ -196,7 +200,12 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 }
 
 func (c *appPlatformListClient) listPageInto(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64, page any) (err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", c.attempt, err) }()
+	defer func() {
+		if c.shrinksOnOverflow && pageSize > 1 && isResponseTooLarge(err) {
+			return
+		}
+		logAppPlatformResult(c.logger, namespace, resource, "list", c.attempt, err)
+	}()
 	if namespace == "" {
 		return fmt.Errorf("app platform list: empty namespace")
 	}
@@ -521,6 +530,13 @@ func isTerminalUpstreamError(err error) bool {
 		return !isTransientUpstreamStatus(ue.status)
 	}
 	return false
+}
+
+// isResponseTooLarge reports whether an upstream read overflowed its byte cap.
+// The same request overflows the same way every time, so it never fixes itself.
+func isResponseTooLarge(err error) bool {
+	var typed *guideProxyError
+	return errors.As(err, &typed) && typed.diagnostic.Reason == "response-too-large"
 }
 
 // isNamespaceGlobalUpstreamError reports whether an upstream failure is a
