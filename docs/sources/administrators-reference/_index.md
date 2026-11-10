@@ -55,13 +55,15 @@ To keep guides available while stopping context-aware recommendation requests:
 1. Turn off **Enable context-aware recommendations**.
 1. Select **Save settings**.
 
-This is separate from **Enable interactive learning**. Bundled guides remain available. For Explore catalog behavior, refer to [Interactive learning architecture](../architecture/#explore-catalog). For details about data usage, refer to [Terms and conditions](../terms-and-conditions/).
+This is separate from **Enable interactive learning**. Other learning surfaces still provide access to bundled guides. Explore hides public guides, bundled copies, and curated paths until recommendation consent is enabled and the first catalog request succeeds. Organization guides remain available independently. For Explore catalog behavior, refer to [Interactive learning architecture](../architecture/#explore-catalog). For details about data usage, refer to [Terms and conditions](../terms-and-conditions/).
 
 ## Configure recommendations
 
 Context-aware recommendations use the current Grafana page and other contextual information to suggest relevant documentation and guides.
 
-The service is enabled by default in Grafana Cloud. On self-managed Grafana, an administrator must review the data usage notice and enable **Enable context-aware recommendations** on the **Recommendations** tab, then select **Save settings**.
+The service is enabled by default in Grafana Cloud. Recommendations are off by default on open source Grafana (OSS). Explore initially shows “Enable recommendations to browse public guides and learning paths.” plus any available organization guides.
+
+On self-managed Grafana, an administrator must review the data usage notice. Enable **Enable context-aware recommendations** on the **Recommendations** tab, then select **Save settings**.
 
 For an overview of content sources and data handling, refer to [Interactive learning architecture](../architecture/).
 

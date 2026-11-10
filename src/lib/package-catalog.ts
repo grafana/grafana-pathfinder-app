@@ -1,8 +1,9 @@
+import { z } from 'zod';
 import { isAllowedContentUrl } from '../security';
 import { packageIdSchema } from '../types/package.schema';
 import { RuntimeManifestJsonObjectSchema } from './runtime-manifest';
 import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
-import { getManifestMemberIds, type RepositoryJson } from '../types/package.types';
+import { getManifestMemberIds, getManifestTracks, type RepositoryJson } from '../types/package.types';
 import type { CatalogFilters, CatalogPackage, EligibleCatalogEntry } from '../types/package-catalog.types';
 import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
 import type { CustomGuideRepositoryEntry } from './custom-guide-repository-client';
@@ -107,16 +108,27 @@ export function onlineCatalog(response: PackageRecommendationsResponse): Catalog
   });
 }
 
-export function eligibleCatalog(entries: EligibleCatalogEntry[]): CatalogPackage[] {
-  return entries.flatMap((entry) => {
-    const parsed = RuntimeManifestJsonObjectSchema.safeParse(entry.manifest);
-    if (!parsed.success || !isAllowedContentUrl(entry.contentUrl) || !packageIdSchema.safeParse(entry.id).success) {
-      throw new Error('Invalid eligible catalog entry');
+const eligibleCatalogEntrySchema = z.object({
+  id: packageIdSchema,
+  title: z.string().min(1),
+  contentUrl: z.string().refine(isAllowedContentUrl),
+  manifestUrl: z.string().refine(isAllowedContentUrl),
+  repository: z.string().min(1),
+  manifest: RuntimeManifestJsonObjectSchema.refine(
+    (manifest) =>
+      getManifestTracks(manifest).length === (manifest.tracks?.length ?? 0) &&
+      [...(manifest.milestones ?? []), ...(manifest.tracks ?? []).flatMap((track) => track.guides)].every(isPublicId)
+  ),
+}) satisfies z.ZodType<EligibleCatalogEntry>;
+
+export function eligibleCatalog(entries: unknown[]): CatalogPackage[] {
+  return entries.flatMap((candidate) => {
+    const parsed = eligibleCatalogEntrySchema.safeParse(candidate);
+    if (!parsed.success) {
+      return [];
     }
-    const manifest = parsed.data;
-    if (manifest.type !== 'guide' && manifest.type !== 'path' && manifest.type !== 'journey') {
-      throw new Error('Invalid eligible catalog package type');
-    }
+    const entry = parsed.data;
+    const manifest = entry.manifest;
     if (EXCLUDED_BUNDLED_IDS.has(entry.id) || manifest.category === 'testing') {
       return [];
     }

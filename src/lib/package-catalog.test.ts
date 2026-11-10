@@ -105,6 +105,54 @@ describe('package catalog', () => {
     expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.id)).toEqual(['healthy']);
   });
 
+  it.each(['', '../malformed', 'x'.repeat(254)])(
+    'omits a public path with malformed track-only member ID %p',
+    (memberId) => {
+      const entry = (id: string, manifest: Record<string, unknown>) => ({
+        id,
+        title: id,
+        repository: 'interactive-tutorials',
+        contentUrl: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+        manifestUrl: `https://interactive-learning.grafana.net/packages/${id}/manifest.json`,
+        manifest: { id, ...manifest },
+      });
+      const online = eligibleCatalog([
+        entry('healthy', { type: 'guide' }),
+        entry('broken-path', {
+          type: 'path',
+          milestones: ['healthy'],
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: [memberId] }],
+        }),
+        entry('nested', { type: 'journey', milestones: ['broken-path'] }),
+      ]);
+      expect(online.map((item) => item.id)).toEqual(['healthy', 'nested']);
+      const bundled = bundledCatalog(
+        {
+          'broken-path': {
+            type: 'path',
+            path: 'broken-path/',
+            milestones: ['healthy'],
+            tracks: [{ trackId: 'extra', label: 'Extra', guides: [memberId] }],
+          },
+          nested: { type: 'journey', path: 'nested/', milestones: ['broken-path'] },
+        },
+        {}
+      );
+      const curated: CatalogPackage[] = [
+        {
+          key: 'curated:parent',
+          id: 'parent',
+          title: 'Parent',
+          format: 'path',
+          source: 'grafana',
+          url: '',
+          memberIds: ['nested'],
+        },
+      ];
+      expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.id)).toEqual(['healthy']);
+    }
+  );
+
   it('does not substitute a bundled path that would restore an ineligible milestone', () => {
     const path: CatalogPackage = {
       key: 'official:path',

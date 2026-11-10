@@ -1,24 +1,13 @@
 import { z } from 'zod';
 import { ALLOWED_RECOMMENDER_DOMAINS, DEFAULT_RECOMMENDER_TIMEOUT } from '../constants';
 import type { CatalogPackage } from '../types/package-catalog.types';
-import { isAllowedContentUrl, parseUrlSafely } from '../security';
+import { parseUrlSafely } from '../security';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { eligibleCatalog } from './package-catalog';
 import { getRecommenderStackContext } from './recommender-context';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const responseSchema = z.object({
-  packages: z.array(
-    z.object({
-      id: z.string().min(1),
-      title: z.string().min(1),
-      contentUrl: z.string().refine(isAllowedContentUrl),
-      manifestUrl: z.string().refine(isAllowedContentUrl),
-      repository: z.string().min(1),
-      manifest: z.record(z.string(), z.unknown()),
-    })
-  ),
-});
+const responseSchema = z.object({ packages: z.array(z.unknown()) });
 
 interface CatalogResult {
   items: CatalogPackage[];

@@ -4,6 +4,7 @@ import { PackageBrowser } from './PackageBrowser';
 import { updateCatalogView } from '../../global-state/package-browser';
 import { fetchCustomGuideCatalogue } from '../../lib/custom-guide-repository-client';
 import { fetchEligibleCatalog } from '../../lib/eligible-catalog-client';
+import catalogResponse from '../../lib/testdata/eligible-catalog-response.json';
 
 let mockConsent = true;
 jest.mock('../../hooks/usePathfinderPluginConfig', () => ({
@@ -91,6 +92,30 @@ it('keeps private guides usable when the first public catalog request fails and 
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByText('Create your first dashboard')).toBeInTheDocument();
   expect(screen.queryByText('Some content is unavailable')).not.toBeInTheDocument();
+});
+
+it('shows a valid guide from a mixed service response without a public catalog warning', async () => {
+  const client = jest.requireActual<typeof import('../../lib/eligible-catalog-client')>(
+    '../../lib/eligible-catalog-client'
+  );
+  client.resetEligibleCatalogCacheForTests();
+  jest.mocked(fetchEligibleCatalog).mockImplementationOnce(client.fetchEligibleCatalog);
+  jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({ available: true, entries: [] });
+  const originalFetch = global.fetch;
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => catalogResponse });
+  try {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    expect(await screen.findByText('Standalone guide')).toBeInTheDocument();
+    expect(screen.getByText('Valid path')).toBeInTheDocument();
+    expect(screen.queryByText('Broken guide')).not.toBeInTheDocument();
+    expect(screen.queryByText('Broken path')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nested journey')).not.toBeInTheDocument();
+    expect(screen.queryByText('Public learning content could not be loaded. Try again.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  } finally {
+    global.fetch = originalFetch;
+    client.resetEligibleCatalogCacheForTests();
+  }
 });
 
 it('does not search raw bundled guides absent from the eligible catalog', async () => {

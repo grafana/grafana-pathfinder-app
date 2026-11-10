@@ -1,5 +1,7 @@
 import { fetchEligibleCatalog, resetEligibleCatalogCacheForTests } from './eligible-catalog-client';
 import { getRecommenderStackContext } from './recommender-context';
+import { eligibleDiscoveryCatalog } from './package-catalog';
+import catalogResponse from './testdata/eligible-catalog-response.json';
 
 jest.mock('./recommender-context', () => ({
   getRecommenderStackContext: jest.fn(),
@@ -84,14 +86,134 @@ it('does not reuse another scope’s results and permits explicit retry after a 
   expect(fetchMock).toHaveBeenCalledTimes(3);
 });
 
+it.each([null, [], {}, { packages: null }, { packages: {} }, { packages: 'invalid' }])(
+  'retains a valid snapshot for malformed envelope %p and retries',
+  async (invalid) => {
+    const first = await fetchEligibleCatalog(serviceUrl, 'a');
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => invalid });
+    expect(await fetchEligibleCatalog(serviceUrl, 'a', { refresh: true })).toEqual(first);
+    expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  }
+);
+
+it.each([null, {}, { packages: null }, { packages: {} }])(
+  'treats malformed envelope %p as a cold failure and retries',
+  async (invalid) => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => invalid });
+    expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual({ items: [], available: false });
+    expect((await fetchEligibleCatalog(serviceUrl, 'a')).available).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  }
+);
+
+it('maps a mixed service response and recursively prunes paths with an omitted track-only member', async () => {
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => catalogResponse });
+  const result = await fetchEligibleCatalog(serviceUrl, 'a');
+  expect(result.available).toBe(true);
+  expect(result.items.map((item) => item.id)).toEqual([
+    'healthy-guide',
+    'track-guide',
+    'valid-path',
+    'broken-path',
+    'nested-journey',
+    'standalone-guide',
+  ]);
+  const validPath = result.items.find((item) => item.id === 'valid-path');
+  expect(validPath).toMatchObject({
+    key: 'interactive-tutorials:valid-path',
+    title: 'Valid path',
+    description: 'Learn with valid-path.',
+    category: 'dashboards',
+    estimatedMinutes: 5,
+    url: catalogResponse.packages[2]!.contentUrl,
+    packageInfo: {
+      repository: 'interactive-tutorials',
+      packageManifest: {
+        id: 'valid-path',
+        type: 'path',
+        milestones: ['healthy-guide'],
+        tracks: [{ trackId: 'extra', label: 'Extra practice', guides: ['track-guide'] }],
+      },
+    },
+  });
+  const bundled = result.items.map((item) => ({ ...item, key: `bundled:${item.id}` }));
+  const curated = result.items
+    .filter((item) => item.format === 'path')
+    .map((item) => ({
+      ...item,
+      id: `curated-${item.id}`,
+      key: `curated:${item.id}`,
+    }));
+  expect(eligibleDiscoveryCatalog(bundled, result.items, curated).map((item) => item.key)).toEqual([
+    'bundled:healthy-guide',
+    'bundled:track-guide',
+    'bundled:valid-path',
+    'bundled:standalone-guide',
+    'curated:valid-path',
+  ]);
+});
+
 it.each([
-  { packages: null },
-  { packages: [{ ...payload.packages[0], contentUrl: 'https://evil.example/content.json' }] },
-  { packages: [{ ...payload.packages[0], manifest: { id: 'healthy-guide', type: 'unsupported' } }] },
-])('rejects a malformed catalog without replacing a valid snapshot', async (invalid) => {
+  null,
+  42,
+  {},
+  { ...payload.packages[0], id: '../invalid' },
+  { ...payload.packages[0], id: 'x'.repeat(254) },
+  { ...payload.packages[0], contentUrl: 'https://evil.example/content.json' },
+  { ...payload.packages[0], manifestUrl: 'https://evil.example/manifest.json' },
+  { ...payload.packages[0], title: '' },
+  { ...payload.packages[0], repository: '' },
+  { ...payload.packages[0], manifest: null },
+  { ...payload.packages[0], manifest: { id: '../invalid', type: 'guide' } },
+  {
+    ...payload.packages[0],
+    manifest: {
+      id: 'healthy-guide',
+      type: 'path',
+      tracks: [{ trackId: 'extra', label: '', guides: ['ineligible-guide'] }],
+    },
+  },
+  { ...payload.packages[0], manifest: { id: 'healthy-guide', type: 'unsupported' } },
+  { ...payload.packages[0], manifest: { id: 'healthy-guide', type: 'path', milestones: [42] } },
+  { ...payload.packages[0], manifest: { id: 'healthy-guide', type: 'path', tracks: [{ guides: [42] }] } },
+])('skips malformed entry %p without marking the catalog unavailable', async (invalid) => {
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ packages: [invalid, ...payload.packages] }) });
+  const result = await fetchEligibleCatalog(serviceUrl, 'a');
+  expect(result.available).toBe(true);
+  expect(result.items.map((item) => item.id)).toEqual(['healthy-guide']);
+});
+
+it('replaces a warm snapshot with a successful valid subset after individual entry errors', async () => {
+  await fetchEligibleCatalog(serviceUrl, 'a');
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => catalogResponse });
+  const result = await fetchEligibleCatalog(serviceUrl, 'a', { refresh: true });
+  expect(result.available).toBe(true);
+  expect(result.items.some((item) => item.id === 'valid-path')).toBe(true);
+  expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual(result);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it('uses an empty successful snapshot when every entry is malformed, without restoring bundled or curated content', async () => {
   const first = await fetchEligibleCatalog(serviceUrl, 'a');
-  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => invalid });
-  expect(await fetchEligibleCatalog(serviceUrl, 'a', { refresh: true })).toEqual(first);
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ packages: [null, {}] }) });
+  const result = await fetchEligibleCatalog(serviceUrl, 'a', { refresh: true });
+  expect(result).toEqual({ items: [], available: true });
+  expect(
+    eligibleDiscoveryCatalog(first.items, result.items, [
+      {
+        key: 'curated:path',
+        id: 'path',
+        title: 'Path',
+        format: 'path',
+        source: 'grafana',
+        url: '',
+        memberIds: ['healthy-guide'],
+      },
+    ])
+  ).toEqual([]);
+  expect(await fetchEligibleCatalog(serviceUrl, 'a')).toEqual(result);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
 it.each([

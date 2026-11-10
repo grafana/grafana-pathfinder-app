@@ -36,7 +36,9 @@ export const TERMS_AND_CONDITIONS_CONTENT = `
 <ul>
 <li>You can disable the context-aware recommendations feature at any time in the plugin configuration.</li>
 <li>When disabled, Interactive learning doesn't send any contextual data, user identifiers, or Grafana instance information to the recommendation service.</li>
-<li>When disabled, Interactive learning displays bundled examples and documentation by default. Explore does not request public guides or learning paths from the recommendation service. Organization guides remain available independently. Other features can still fetch public guide files and catalog data from Grafana's content delivery network (interactive-learning.grafana.net) when your browser is online. These CDN fetches do not include user identifiers, dashboard data, or other contextual information beyond standard HTTP request metadata such as your IP address and browser User-Agent. Air-gapped installations and browsers reporting offline status make no such fetches.</li>
+<li>Explore hides public guides, bundled copies, and curated paths while recommendation consent is off or unresolved. If the first public catalog request fails, Explore also hides this content and offers Retry. Organization guides remain available independently.</li>
+<li>Recommendations are off by default on open source Grafana (OSS). Explore initially shows “Enable recommendations to browse public guides and learning paths.” plus any available organization guides.</li>
+<li>Other learning surfaces still provide access to bundled guides and documentation without recommendations. When your browser is online, these features can fetch public guide files and catalog data from Grafana's content delivery network (interactive-learning.grafana.net). These CDN fetches do not include user identifiers, dashboard data, or other contextual information beyond standard HTTP request metadata. This metadata includes your IP address and browser User-Agent. Air-gapped installations and browsers reporting offline status make no such fetches.</li>
 </ul>
 
 <h3>Changes to data usage</h3>
