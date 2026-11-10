@@ -21,13 +21,13 @@ import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-laun
 import type { PreparedRawContent } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { testIds } from '../../constants/testIds';
-import { getFeatureFlagValue } from '../../utils/openfeature';
+import { getFeatureFlagValue, useBooleanFlag } from '../../utils/openfeature';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn() }));
+jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(), useBooleanFlag: jest.fn() }));
 
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class SceneObjectBase {},
@@ -147,6 +147,7 @@ describe('HomePanelRenderer', () => {
     jest.clearAllMocks();
     capturedOnOpenGuide = undefined;
     jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+    jest.mocked(useBooleanFlag).mockReturnValue(true);
     config.bootData.user.orgRole = OrgRole.Viewer;
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
     (panelModeManager.getMode as jest.Mock).mockReturnValue('sidebar');
@@ -173,9 +174,17 @@ describe('HomePanelRenderer', () => {
       config.bootData.user.orgRole = OrgRole.Admin;
       jest.mocked(getFeatureFlagValue).mockReturnValue(false);
       render(<HomePageActions />);
-      expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Explore learning' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Learning insights' })).not.toBeInTheDocument();
       expect(getFeatureFlagValue).toHaveBeenCalledWith('pathfinder.learning-insights', false);
+    });
+
+    it('hides Explore when browsing is disabled while keeping enabled admin insights', () => {
+      config.bootData.user.orgRole = OrgRole.Admin;
+      jest.mocked(useBooleanFlag).mockReturnValue(false);
+      render(<HomePageActions />);
+      expect(screen.getByRole('link', { name: 'Learning insights' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Explore learning' })).not.toBeInTheDocument();
     });
 
     it('renders MyLearningTab', () => {

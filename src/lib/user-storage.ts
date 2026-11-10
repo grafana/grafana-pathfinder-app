@@ -79,13 +79,15 @@ const LearningProgressSchema = z.object({
   pendingCelebrations: z.array(z.string()),
 });
 
-const DEFAULT_PROGRESS: LearningProgress = {
-  completedGuides: [],
-  earnedBadges: [],
-  streakDays: 0,
-  lastActivityDate: '',
-  pendingCelebrations: [],
-};
+function createEmptyLearningProgress(): LearningProgress {
+  return {
+    completedGuides: [],
+    earnedBadges: [],
+    streakDays: 0,
+    lastActivityDate: '',
+    pendingCelebrations: [],
+  };
+}
 
 // ============================================================================
 // GUIDE RESPONSES SCHEMA (for input block variable storage)
@@ -1796,7 +1798,7 @@ export const learningProgressStorage = {
       const stored = await storage.getItem<unknown>(StorageKeys.LEARNING_PROGRESS);
 
       if (!stored) {
-        return DEFAULT_PROGRESS;
+        return createEmptyLearningProgress();
       }
 
       // Validate stored data against schema to protect against corruption
@@ -1807,9 +1809,9 @@ export const learningProgressStorage = {
 
       // Log validation failure for debugging but return defaults gracefully
       logger.warn('Learning progress validation failed, using defaults', { issues: parsed.error.issues });
-      return DEFAULT_PROGRESS;
+      return createEmptyLearningProgress();
     } catch {
-      return DEFAULT_PROGRESS;
+      return createEmptyLearningProgress();
     }
   },
 

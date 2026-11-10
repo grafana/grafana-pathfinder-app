@@ -47,7 +47,11 @@ export function LearningCardPreview({
         />
       )}
       {typeof estimatedMinutes === 'number' && Number.isFinite(estimatedMinutes) && estimatedMinutes > 0 && (
-        <Badge color="darkgrey" text={`${estimatedMinutes} min`} className={styles.durationBadge} />
+        <Badge
+          color="darkgrey"
+          text={t('coverPage.estimatedMinutes', '{{count}} min', { count: estimatedMinutes })}
+          className={styles.durationBadge}
+        />
       )}
     </div>
   );

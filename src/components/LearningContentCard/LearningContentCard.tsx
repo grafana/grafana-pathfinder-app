@@ -333,7 +333,9 @@ export function LearningContentCard({
               {presentation !== 'compact' &&
                 !imageDuration &&
                 typeof estimatedMinutes === 'number' &&
-                estimatedMinutes > 0 && <span>About {estimatedMinutes} min</span>}
+                estimatedMinutes > 0 && (
+                  <span>{t('packageBrowser.time', 'About {{minutes}} min', { minutes: estimatedMinutes })}</span>
+                )}
             </span>
           </div>
         </div>

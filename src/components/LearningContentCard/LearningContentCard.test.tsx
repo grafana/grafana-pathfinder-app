@@ -88,15 +88,12 @@ describe.each([getLearningContentCardStyles, getCompletionPanelStyles])('feature
   });
 });
 
-it('uses host card surfaces and radius for ordinary cards', () => {
+it('uses the primary host surface and large radius for ordinary cards', () => {
   const theme = createTheme();
   theme.shape.radius.lg = '11px';
-  for (const enabled of [false, true]) {
-    theme.flags.visualDesignRefresh = enabled;
-    const styles = getLearningContentCardStyles(theme);
-    expect(cache.registered[styles.card]).toContain('border-radius:11px');
-    expect(cache.registered[styles.card]).toContain(`background:${theme.colors.background.primary}`);
-  }
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.card]).toContain('border-radius:11px');
+  expect(cache.registered[styles.card]).toContain(`background:${theme.colors.background.primary}`);
 });
 
 it('leaves launch button height and padding to the Grafana Button component', () => {

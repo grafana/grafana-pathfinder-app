@@ -171,6 +171,7 @@ export function LearningPathCard({
           className={presentation === 'resume' ? styles.resumePreview : undefined}
         />
       )}
+      {/* A button role would hide the nested actions from assistive technology. */}
       <div
         data-learning-card-body={tile ? true : undefined}
         className={styles.header}
@@ -252,7 +253,9 @@ export function LearningPathCard({
                   {isLoadingGuides
                     ? t('learningCard.loadingGuides', 'Loading guides…')
                     : presentation === 'resume' || presentation === 'compact'
-                      ? t('myLearning.summaryGuides', '{{count}} guides', { count: guides.length })
+                      ? guides.length === 1
+                        ? t('myLearning.summaryOneGuide', '1 guide')
+                        : t('myLearning.summaryGuides', '{{count}} guides', { count: guides.length })
                       : t('myLearning.guidesProgress', '{{completed}}/{{total}} guides', {
                           completed: completedCount,
                           total: guides.length,

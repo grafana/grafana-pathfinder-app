@@ -1,5 +1,5 @@
 import React from 'react';
-import { useStyles2, Icon, TextLink } from '@grafana/ui';
+import { useStyles2, Icon, TextLink, Portal } from '@grafana/ui';
 
 import { testIds } from '../../constants/testIds';
 import type { EarnedBadge } from '../../types';
@@ -40,79 +40,85 @@ export function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardPro
     : getBadgeRequirementText(badge);
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.card} onClick={(e) => e.stopPropagation()} data-testid={testIds.learningPaths.badgesModal}>
-        <button className={styles.closeButton} onClick={onClose} data-testid={testIds.learningPaths.badgesModalClose}>
-          <Icon name="times" size="lg" />
-        </button>
-
-        <div className={styles.medallion}>
-          <BadgeMedallion badge={badge} size="lg" />
-        </div>
-
-        <h3 className={styles.title}>{badge.title}</h3>
-
+    <Portal>
+      <div className={styles.overlay} onClick={onClose}>
         <div
-          className={`${styles.statusBadge} ${isLegacy ? styles.statusLegacy : isEarned ? styles.statusEarned : styles.statusLocked}`}
+          className={styles.card}
+          onClick={(e) => e.stopPropagation()}
+          data-testid={testIds.learningPaths.badgesModal}
         >
-          {isLegacy ? '📜 Legacy' : isEarned ? '✨ Unlocked' : '🔒 Locked'}
-        </div>
+          <button className={styles.closeButton} onClick={onClose} data-testid={testIds.learningPaths.badgesModalClose}>
+            <Icon name="times" size="lg" />
+          </button>
 
-        {isEarned && badge.earnedAt ? (
-          <p className={styles.earnedDate}>
-            Earned on{' '}
-            {new Date(badge.earnedAt).toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric',
-            })}
-          </p>
-        ) : !isLegacy ? (
-          <p className={styles.description}>{badge.description}</p>
-        ) : null}
-
-        <div className={styles.requirementSection}>
-          <div className={styles.requirementLabel}>{isLegacy ? 'Note' : isEarned ? 'Completed' : 'Requirement'}</div>
-          <div className={styles.requirementText}>
-            {pathHref && path && pathUrl ? (
-              <>
-                Complete all guides in the &quot;
-                <TextLink
-                  href={pathHref}
-                  variant="bodySmall"
-                  inline={false}
-                  onClick={(event) => {
-                    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                      return;
-                    }
-                    event.preventDefault();
-                    onClose();
-                    openGuideInSidebar({ url: pathUrl, title: path.title, source: 'content_link' });
-                  }}
-                >
-                  {path.title}
-                </TextLink>
-                &quot; learning path
-              </>
-            ) : (
-              requirementText
-            )}
+          <div className={styles.medallion}>
+            <BadgeMedallion badge={badge} size="lg" />
           </div>
-        </div>
 
-        {!isEarned && !isLegacy && progress && progress.total > 0 && (
-          <div className={styles.progressSection}>
-            <div className={styles.progressHeader}>
-              <span className={styles.progressLabel}>Progress</span>
-              <span className={styles.progressValue}>
-                {progress.current}/{progress.total} {progress.label}
-              </span>
+          <h3 className={styles.title}>{badge.title}</h3>
+
+          <div
+            className={`${styles.statusBadge} ${isLegacy ? styles.statusLegacy : isEarned ? styles.statusEarned : styles.statusLocked}`}
+          >
+            {isLegacy ? '📜 Legacy' : isEarned ? '✨ Unlocked' : '🔒 Locked'}
+          </div>
+
+          {isEarned && badge.earnedAt ? (
+            <p className={styles.earnedDate}>
+              Earned on{' '}
+              {new Date(badge.earnedAt).toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </p>
+          ) : !isLegacy ? (
+            <p className={styles.description}>{badge.description}</p>
+          ) : null}
+
+          <div className={styles.requirementSection}>
+            <div className={styles.requirementLabel}>{isLegacy ? 'Note' : isEarned ? 'Completed' : 'Requirement'}</div>
+            <div className={styles.requirementText}>
+              {pathHref && path && pathUrl ? (
+                <>
+                  Complete all guides in the &quot;
+                  <TextLink
+                    href={pathHref}
+                    variant="bodySmall"
+                    inline={false}
+                    onClick={(event) => {
+                      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                        return;
+                      }
+                      event.preventDefault();
+                      onClose();
+                      openGuideInSidebar({ url: pathUrl, title: path.title, source: 'content_link' });
+                    }}
+                  >
+                    {path.title}
+                  </TextLink>
+                  &quot; learning path
+                </>
+              ) : (
+                requirementText
+              )}
             </div>
-            <BadgeProgress progress={progress} ariaLabel={badge.title} showCount={false} />
-            <div className={styles.progressPercentage}>{progress.percentage}%</div>
           </div>
-        )}
+
+          {!isEarned && !isLegacy && progress && progress.total > 0 && (
+            <div className={styles.progressSection}>
+              <div className={styles.progressHeader}>
+                <span className={styles.progressLabel}>Progress</span>
+                <span className={styles.progressValue}>
+                  {progress.current}/{progress.total} {progress.label}
+                </span>
+              </div>
+              <BadgeProgress progress={progress} ariaLabel={badge.title} showCount={false} />
+              <div className={styles.progressPercentage}>{progress.percentage}%</div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }

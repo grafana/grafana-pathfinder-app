@@ -78,7 +78,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
         if (fetched.ok) {
           setRawAssignments(fetched.assignments);
         }
-        setHasError(!fetched.ok);
+        setHasError(!fetched.ok && fetched.reason !== 'capability-unavailable');
         setHasLoaded(true);
       }
     } while (pendingRef.current && isMountedRef.current);
@@ -119,7 +119,6 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   const [onlineResolution, setOnlineResolution] = useState<{
     assignments: AssignmentEntry[];
     unresolvedKey: string;
-    hasUnresolvedTargets: boolean;
   } | null>(null);
   useEffect(() => {
     const unresolvedIds = unresolvedKey ? unresolvedKey.split('\n') : [];
@@ -141,7 +140,6 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
       setOnlineResolution({
         assignments: rawAssignments,
         unresolvedKey,
-        hasUnresolvedTargets: stillUnresolved.length > 0,
       });
       const emitKey = [...stillUnresolved].sort().join('\n');
       if (stillUnresolved.length === 0) {
@@ -231,7 +229,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     getPathGuides: getPathGuidesWithOnline,
     hasLoaded,
     isLoading: !hasLoaded || isFetching || (unresolvedKey.length > 0 && !hasResolvedOnlineTargets),
-    hasError: hasError || (hasResolvedOnlineTargets && Boolean(onlineResolution?.hasUnresolvedTargets)),
+    hasError,
     retry: refresh,
   };
 }

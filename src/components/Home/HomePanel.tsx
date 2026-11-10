@@ -11,7 +11,7 @@ import { MyLearningErrorBoundary } from '../docs-panel/components';
 import { openPreparedGuide } from '../docs-panel/utils/open-prepared-guide';
 import { getHomePageStyles } from './home.styles';
 import { testIds } from '../../constants/testIds';
-import { getFeatureFlagValue } from '../../utils/openfeature';
+import { getFeatureFlagValue, useBooleanFlag } from '../../utils/openfeature';
 import { getFirstName } from '../SidebarHub/user-first-name';
 
 interface HomePanelState extends SceneObjectState {}
@@ -38,6 +38,7 @@ function HomePageHeader({ children }: { children: React.ReactNode }) {
 
 export function HomePageActions() {
   const styles = useStyles2(getHomePageStyles);
+  const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
   return (
     <nav aria-label={t('myLearning.pageActions', 'Learning pages')} className={styles.pageActions}>
       {config.bootData?.user?.orgRole === 'Admin' && getFeatureFlagValue('pathfinder.learning-insights', false) && (
@@ -51,15 +52,17 @@ export function HomePageActions() {
           {t('myLearning.learningInsights', 'Learning insights')}
         </LinkButton>
       )}
-      <LinkButton
-        href={`${prefixRoute(ROUTES.Browse)}?view=all`}
-        variant="secondary"
-        fill="outline"
-        icon="compass"
-        size="md"
-      >
-        {t('myLearning.exploreLearning', 'Explore learning')}
-      </LinkButton>
+      {browseEnabled && (
+        <LinkButton
+          href={`${prefixRoute(ROUTES.Browse)}?view=all`}
+          variant="secondary"
+          fill="outline"
+          icon="compass"
+          size="md"
+        >
+          {t('myLearning.exploreLearning', 'Explore learning')}
+        </LinkButton>
+      )}
     </nav>
   );
 }

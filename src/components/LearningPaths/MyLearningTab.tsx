@@ -15,6 +15,7 @@ import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-
 import { getPackageBrowserStyles } from '../PackageBrowser/package-browser.styles';
 import { prefixRoute } from '../../utils/utils.routing';
 import { ROUTES } from '../../constants';
+import { useBooleanFlag } from '../../utils/openfeature';
 import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
@@ -90,6 +91,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const getStyles = useCallback((theme: GrafanaTheme2) => getMyLearningStyles(theme, homepage), [homepage]);
   const styles = useStyles2(getStyles);
   const exploreStyles = useStyles2(getPackageBrowserStyles);
+  const browseEnabled = useBooleanFlag('pathfinder.package-browser', true);
   // Guards against a second launch while the first is still fetching/classifying.
   const launchInFlightRef = useRef(false);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
@@ -203,9 +205,20 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const homeContinuePaths = homeUnassignedPaths
     .filter((entry) => entry.percent > 0 && entry.percent < 100)
     .sort((a, b) => b.percent - a.percent);
+  const homePathMemberKeys = new Set(
+    homePathEntries.flatMap((entry) =>
+      entry.guides.map((guide) => `${entry.path.isPrivate ? 'organization' : 'grafana'}:${guide.id}`)
+    )
+  );
   const homeContinueGuides = catalog.items.filter((item) => {
     const percent = catalogProgress.get(item.key)?.percent ?? 0;
-    return item.format === 'guide' && Number.isFinite(percent) && percent > 0 && percent < 100;
+    return (
+      item.format === 'guide' &&
+      !homePathMemberKeys.has(catalogIdentity(item)) &&
+      Number.isFinite(percent) &&
+      percent > 0 &&
+      percent < 100
+    );
   });
   const homeAvailablePaths = homeUnassignedPaths.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
   const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress, {
@@ -736,7 +749,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
             />
           )}
 
-          {homepage && (
+          {homepage && browseEnabled && (
             <section className={styles.openSection}>
               <div className={styles.sectionHeader}>
                 <span className={styles.sectionIcon}>

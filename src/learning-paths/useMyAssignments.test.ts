@@ -127,6 +127,15 @@ describe('useMyAssignments', () => {
     expect(result.current.items).toEqual([]);
   });
 
+  it('settles an unavailable assignments capability without a retry error', async () => {
+    mockFetchMyAssignments.mockResolvedValue({ ok: false, reason: 'capability-unavailable' });
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+    expect(result.current.items).toEqual([]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.hasError).toBe(false);
+  });
+
   it('resolves a fetched assignment into notDone', async () => {
     mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'fundamentals' })] });
 
@@ -160,7 +169,7 @@ describe('useMyAssignments', () => {
 
     expect(result.current.notDone).toEqual([]);
     expect(result.current.isLoading).toBe(false);
-    expect(result.current.hasError).toBe(true);
+    expect(result.current.hasError).toBe(false);
     expect(logger.warn).toHaveBeenCalledWith('[assignments] unresolvable target', {
       reason: 'unresolvable-target',
       count: 1,
@@ -170,7 +179,7 @@ describe('useMyAssignments', () => {
     expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledWith(1);
   });
 
-  it('keeps loading until online assignment resolution settles, then reports an unresolved target as an error', async () => {
+  it('keeps loading until online assignment resolution settles, then logs an unresolved target without a fetch error', async () => {
     let finishCatalog: (value: { baseUrl: string; packages: [] }) => void = () => {};
     mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'online-path' })] });
     mockFetchOnlinePackageRecommendations.mockReturnValue(
@@ -186,16 +195,17 @@ describe('useMyAssignments', () => {
     await act(async () => {
       finishCatalog({ baseUrl: '', packages: [] });
     });
+    expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledWith(1);
     expect(result.current.isLoading).toBe(false);
-    expect(result.current.hasError).toBe(true);
+    expect(result.current.hasError).toBe(false);
   });
 
-  it('clears an unresolved-target error when the path becomes available in the catalogue', async () => {
+  it('resolves a previously missing target when the path becomes available in the catalogue', async () => {
     mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'new-path' })] });
     const { result, rerender } = renderHook(({ paths }) => useMyAssignments({ ...baseOptions, paths }), {
       initialProps: { paths: [] as LearningPath[] },
     });
-    await waitFor(() => expect(result.current.hasError).toBe(true));
+    await waitFor(() => expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledWith(1));
     await act(async () => {
       rerender({ paths: [path({ id: 'new-path', title: 'New path' })] });
     });

@@ -90,6 +90,8 @@ jest.mock('@grafana/i18n', () => ({
 
 // Style keys come back as their own names so tests can assert on composition.
 jest.mock('@grafana/ui', () => ({
+  Portal: jest.requireActual('@grafana/ui').Portal,
+  Tooltip: jest.requireActual('@grafana/ui').Tooltip,
   InteractiveTable: ({ columns, data, getRowId }: any) => (
     <table>
       <thead>
@@ -895,33 +897,28 @@ describe('MyLearningTab launch flow', () => {
     expect(screen.queryByTestId(testIds.learningPaths.discoverMoreExpand('pkg-described'))).not.toBeInTheDocument();
   });
 
-  it('keeps the badge overlay outside the container-query context', () => {
-    mockBadges = [
-      {
-        id: 'first-steps',
-        title: 'First steps',
-        description: 'Complete a guide',
-        earnedAt: 1,
-        trigger: { type: 'guide-completed' },
-      },
-    ];
-
-    const { container } = render(<MyLearningTab onOpenGuide={jest.fn()} />);
-    const queryContext = container.querySelector('.columnsContainer');
-    expect(queryContext).not.toBeNull();
-    expect(queryContext).toContainElement(screen.getByTestId(testIds.learningPaths.badgesSection));
-
-    // Open the real overlay rather than asserting on layout alone: `container-type`
-    // implies layout containment, which makes the element a containing block for
-    // `position: fixed` descendants, so an overlay nested inside would be trapped
-    // in the panel instead of covering the viewport.
-    fireEvent.click(screen.getByTestId(testIds.learningPaths.badgeItem('first-steps')));
-
-    const overlay = container.querySelector('.overlay');
-    expect(overlay).not.toBeNull();
-    expect(overlay).toHaveTextContent('First steps');
-    expect(queryContext).not.toContainElement(overlay as HTMLElement);
-  });
+  it.each([false, true])(
+    'keeps badge details outside the page layout and supports dismissal (homepage=%s)',
+    (homepage) => {
+      mockBadges = [
+        {
+          id: 'first-steps',
+          title: 'First steps',
+          description: 'Complete a guide',
+          earnedAt: 1,
+          trigger: { type: 'guide-completed' },
+        },
+      ];
+      const { container } = render(<MyLearningTab homepage={homepage} onOpenGuide={jest.fn()} />);
+      expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId(testIds.learningPaths.badgeItem('first-steps')));
+      const details = screen.getByTestId(testIds.learningPaths.badgesModal);
+      expect(details).toHaveTextContent('First steps');
+      expect(container).not.toContainElement(details);
+      fireEvent.click(screen.getByTestId(testIds.learningPaths.badgesModalClose));
+      expect(screen.queryByTestId(testIds.learningPaths.badgesModal)).not.toBeInTheDocument();
+    }
+  );
 
   it('toggles a My paths card from the keyboard without firing its actions', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
@@ -1559,7 +1556,7 @@ describe('homepage path launches', () => {
         })
       );
       render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
-      const secondTitle = firstTitle === 'Known path' ? 'Catalogue guide' : 'Known path';
+      const secondTitle = firstTitle === 'Known path' ? 'Catalogue path' : 'Known path';
 
       fireEvent.click(screen.getByRole('button', { name: firstTitle }));
       fireEvent.click(screen.getByRole('button', { name: secondTitle }));
@@ -1817,7 +1814,7 @@ it('homepage separates started paths from the restored available path list', () 
   );
 });
 
-it('homepage puts badges above learning content and links topic cards to filtered Explore', () => {
+it('homepage keeps badges above topics and updates Explore links with the browsing flag', () => {
   mockCatalogItems = [
     {
       key: 'bundled:topic-guide',
@@ -1829,12 +1826,20 @@ it('homepage puts badges above learning content and links topic cards to filtere
       url: 'bundled:topic-guide',
     },
   ];
-  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const { rerender } = render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
   const topic = screen.getByRole('link', { name: /Dashboards 1 guides and learning paths/ });
   expect(topic).toHaveAttribute('href', expect.stringContaining('topic=dashboards'));
   const explore = screen.getByRole('heading', { name: 'What would you like to learn?' });
   const badges = screen.getByRole('region', { name: 'Badges' });
   expect(badges.compareDocumentPosition(explore) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+  jest.requireMock('../../utils/openfeature').useBooleanFlag.mockReturnValue(false);
+  rerender(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('heading', { name: 'Your assignments' })).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Badges' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'What would you like to learn?' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /^Explore all/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /Dashboards 1 guides and learning paths/ })).not.toBeInTheDocument();
 });
 
 it('homepage retains an unstarted assigned path alongside started paths', () => {
@@ -2246,4 +2251,39 @@ it('homepage gives one active course a Resume action and keeps every other cours
     expect(resumed.getByRole('button', { name: `Active path ${index}` })).toBeInTheDocument();
     expect(resumed.queryByText(`Path overview ${index}`)).not.toBeInTheDocument();
   }
+});
+
+it('homepage omits a member guide beside its visible path but keeps standalone guides and members of hidden paths', () => {
+  mockCatalogItems = [
+    {
+      key: 'bundled:guide-1',
+      id: 'guide-1',
+      title: 'Member guide',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:guide-1',
+    },
+    {
+      key: 'bundled:standalone',
+      id: 'standalone',
+      title: 'Standalone guide',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:standalone',
+    },
+    {
+      key: 'bundled:guide-2',
+      id: 'guide-2',
+      title: 'Revisited guide',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:guide-2',
+    },
+  ];
+  mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 25 }]));
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('heading', { name: 'Started path' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Standalone guide' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Revisited guide' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Member guide' })).not.toBeInTheDocument();
 });

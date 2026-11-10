@@ -247,19 +247,19 @@ A header refactor that renames or removes these rows must update `tests/block-ed
 
 ---
 
-## My learning page contract
+## Learn page contract
 
-The My learning page exposes stable section and action testids so E2E tests can assert progress partitioning and launch specific Discover more paths without depending on text or DOM structure:
+The Learn Home page uses `home-page-container` (`testIds.homePage.container`). Its content is assignments first, followed by Continue learning when there is progress, available learning paths, and topic links to full-page Explore. When `pathfinder.package-browser` is false, Home hides its Explore action and topic section.
 
-- **`my-learning-courses-section`** (`testIds.learningPaths.myCoursesSection`): the My courses section boundary.
-- **`my-learning-badges-section`** (`testIds.learningPaths.badgesSection`): the badges section boundary.
-- **`my-learning-discover-section`** (`testIds.learningPaths.discoverMoreSection`): the Discover more section boundary.
-- **`my-learning-completed-section`** (`testIds.learningPaths.completedSection`): the completed-paths section boundary.
-- **`discover-more-card-${id}`** (`testIds.learningPaths.discoverMoreCard(id)`): a Discover more card keyed by its upstream package ID.
-- **`discover-more-start-${id}`** (`testIds.learningPaths.discoverMoreStart(id)`): the start action for that upstream package ID.
-- **`discover-more-expand-${id}`** (`testIds.learningPaths.discoverMoreExpand(id)`): the description disclosure for that upstream package ID. Only rendered when the package index supplies a description — there is nothing to reveal otherwise.
+- **`learning-path-card-${pathId}`** (`testIds.learningPaths.card(pathId)`): a learning path card.
+- **`my-learning-badges-section`** (`testIds.learningPaths.badgesSection`): the Home badge summary or full Badges page collection.
+- **`learning-paths-badges-modal`** and **`learning-paths-badges-modal-close`**: badge details and its close control. Details render through a portal outside the page layout.
+- **`package-browser`**: the Explore catalogue. Page mode exposes search and filters directly and opens content in the sidebar.
+- **`learning-paths-reset-progress`**: the global reset action.
 
-A My learning layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+`my-learning-courses-section`, `my-learning-private-paths-section`, `my-learning-discover-section`, `my-learning-completed-section`, and the `discover-more-*` actions belong to the legacy `MyLearningTab` layout (`homepage=false`). The shipped Home page does not render those sections; passing legacy tests does not verify Home's layout.
+
+A Learn layout or selector refactor must preserve its current selectors or update the E2E selectors and this document in the same change.
 
 ---
 
