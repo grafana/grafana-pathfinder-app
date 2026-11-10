@@ -312,7 +312,7 @@ export function LearningContentCard({
               )}
               {kind !== 'docs' && (
                 <span>
-                  <strong>
+                  <span>
                     {busy ? (
                       <span role="status">{t('learningCard.opening', 'Opening…')}</span>
                     ) : kind === 'path' ? (
@@ -320,8 +320,8 @@ export function LearningContentCard({
                     ) : (
                       t('learningCard.guide', 'Guide')
                     )}
-                  </strong>
-                  {kind === 'path' && effort && (
+                  </span>
+                  {effort && (
                     <>
                       <span aria-hidden="true">·</span>
                       {effort}
@@ -329,7 +329,7 @@ export function LearningContentCard({
                   )}
                 </span>
               )}
-              {kind !== 'path' && effort && <span>{effort}</span>}
+              {kind === 'docs' && effort && <span>{effort}</span>}
               {presentation !== 'compact' &&
                 !imageDuration &&
                 typeof estimatedMinutes === 'number' &&

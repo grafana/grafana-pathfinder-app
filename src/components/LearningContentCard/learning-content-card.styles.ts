@@ -141,14 +141,12 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
     }),
     tileMetadata: css({
       ...theme.typography.sm,
-      fontWeight: theme.typography.fontWeightRegular,
       color: theme.colors.text.secondary,
       display: 'flex',
       flexWrap: 'wrap',
       columnGap: theme.spacing(1.5),
       rowGap: theme.spacing(0.5),
       '& > span': { display: 'inline-flex', alignItems: 'center', gap: theme.spacing(0.5) },
-      '& strong': { fontWeight: theme.typography.fontWeightMedium },
     }),
     completedLabel: css({ color: theme.colors.success.text }),
     tileFooter: css({

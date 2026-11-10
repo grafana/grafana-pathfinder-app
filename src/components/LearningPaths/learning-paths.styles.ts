@@ -283,7 +283,6 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       columnGap: theme.spacing(1.5),
       rowGap: theme.spacing(0.5),
       '& > span': { display: 'inline-flex', alignItems: 'center', gap: theme.spacing(0.5) },
-      '& strong': { fontWeight: theme.typography.fontWeightMedium },
     }),
     titleButton: css({
       font: 'inherit',

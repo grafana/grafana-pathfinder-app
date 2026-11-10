@@ -248,7 +248,7 @@ export function LearningPathCard({
                   <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
                 )}
                 <span>
-                  <strong>{t('learningCard.path', 'Learning path')}</strong>
+                  <span>{t('learningCard.path', 'Learning path')}</span>
                   <span aria-hidden="true">·</span>
                   {isLoadingGuides
                     ? t('learningCard.loadingGuides', 'Loading guides…')
