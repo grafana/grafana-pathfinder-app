@@ -71,6 +71,7 @@ import {
   injectJourneyExtrasIntoJsonGuide,
   fetchPackageInfoFromUrl,
   isPackageContentUrl,
+  resolvePackageMilestones,
 } from '../../docs-retrieval';
 import { createCompositeResolver } from '../../package-engine';
 
@@ -119,6 +120,7 @@ import {
   closeTabState,
   pruneGatedTabState,
   projectPersistedTabs,
+  restoredTrackGuideIds,
   resolveDocsLoadAlignment,
   buildDocsLoadSuccessPatch,
   titleFromLoadedContent,
@@ -147,7 +149,7 @@ import {
 
 // Import centralized types
 import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
-import { getPackageRenderType } from '../../types/package.types';
+import { getPackageRenderType, isSamePackageRepository } from '../../types/package.types';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
@@ -301,6 +303,38 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     });
 
     this.initializeRestoredActiveTab();
+    this.restoreTrackMilestones();
+  }
+
+  private restoreTrackMilestones(): void {
+    for (const tab of this.state.tabs) {
+      const guideIds = restoredTrackGuideIds(tab);
+      if (!guideIds) {
+        continue;
+      }
+      const { id, activeTrackId, activeTrackPathId } = tab;
+      resolvePackageMilestones(guideIds).then(
+        (milestones) => {
+          const current = this.state.tabs.find((candidate) => candidate.id === id);
+          // A cover that mounted meanwhile, or a new track pick, already set the sequence.
+          if (
+            milestones.length === 0 ||
+            !current ||
+            current.activeTrackId !== activeTrackId ||
+            current.activeTrackPathId !== activeTrackPathId ||
+            current.activeTrackMilestones
+          ) {
+            return;
+          }
+          this.setState({
+            tabs: this.state.tabs.map((candidate) =>
+              candidate.id === id ? { ...candidate, activeTrackMilestones: milestones } : candidate
+            ),
+          });
+        },
+        () => logger.warn('[DocsPanel] Could not restore the active track sequence')
+      );
+    }
   }
 
   /**
@@ -987,7 +1021,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       error: null,
       type: packageInfo ? getPackageRenderType(packageInfo.packageManifest) : 'docs',
       packageInfo,
-      ...(packageInfo?.trackId && { activeTrackId: packageInfo.trackId, activeTrackPathId: packageInfo.packageId }),
+      ...(packageInfo?.trackId && {
+        activeTrackId: packageInfo.trackId,
+        activeTrackPathId: packageInfo.packageId,
+        activeTrackMilestones: packageInfo.trackMilestones,
+      }),
     };
 
     this.setState({
@@ -1013,10 +1051,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     loadContext?: GuideLoadContext,
     keepContentVisible = false
   ): Promise<TabLoadOutcome> {
-    // Outgoing content preserves track identity if this load's path resolution fails.
     const outgoingContent = this.state.tabs.find((t) => t.id === tabId)?.content;
-    const knownBaseUrl =
-      outgoingContent?.metadata?.learningJourney?.baseUrl ?? outgoingContent?.metadata?.trackMemberBaseUrl;
 
     if (!keepContentVisible) {
       this.setTabLoading(tabId);
@@ -1029,6 +1064,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       if (!prefetched && !packageInfo && isPackageContentUrl(url)) {
         packageInfo = await fetchPackageInfoFromUrl(url, loadContext);
       }
+      const outgoingMetadata = outgoingContent?.metadata;
+      const outgoingOwner = outgoingMetadata?.journeyManifest ?? outgoingMetadata?.packageManifest;
+      const incomingOwner = packageInfo?.packageManifest;
+      const outgoingRepository = outgoingOwner?.repository ?? outgoingMetadata?.repository;
+      const incomingRepository = packageInfo?.repository ?? incomingOwner?.repository;
+      const sameOwner =
+        (incomingOwner?.type === 'path' || incomingOwner?.type === 'journey') &&
+        typeof incomingOwner.id === 'string' &&
+        outgoingOwner?.id === incomingOwner.id &&
+        isSamePackageRepository(outgoingRepository, incomingRepository);
+      const knownBaseUrl = sameOwner
+        ? (outgoingMetadata?.learningJourney?.baseUrl ?? outgoingMetadata?.trackMemberBaseUrl)
+        : undefined;
       // skipReadyToBegin cannot alter already-prefetched content.
       if (prefetched && skipReadyToBegin) {
         logger.warn('[DocsPanel] skipReadyToBegin ignored for prefetched content');

@@ -5,6 +5,7 @@ import {
   STANDALONE_SECTION_ID,
   evictAllContentCaches,
   evictContentCache,
+  evictSectionCacheForKey,
   markStepCompleted,
   markStepsCompleted,
   peekGuidePercentage,
@@ -15,6 +16,7 @@ import {
   resetSection,
   resetStep,
   resetSteps,
+  sectionHasChangeCompletion,
   subscribeProgress,
   useStepCompletion,
 } from './completion-store';
@@ -819,6 +821,41 @@ describe('completion-store', () => {
   //   - `reconcileSection` drops orphans from storage on first mount.
   //   - unmatched evidence resolves to position 0 rather than
   //     inflating anything, and the position clamp covers the rest.
+  it('scores changed tutorial copies against their own revision and preserves completion on reload', async () => {
+    const local = 'bundled:first-dashboard';
+    const online = 'https://interactive-learning.grafana.net/packages/first-dashboard/content.json';
+    const publish = (key: string, ids: string[]) => {
+      const blocks = ids.map((id) => ({ type: 'markdown', id }));
+      publishGuideIndex({
+        contentKey: key,
+        index: computeGuideBlockIndex(blocks),
+        contentRevision: JSON.stringify(blocks),
+        denominatorSource: 'live-pre-inlining',
+      });
+    };
+    publish(local, ['a', 'b']);
+    storedCompleted.set(pairKey(local, 'intro'), new Set(['b']));
+    expect(peekGuidePercentage(local)).toBe(100);
+    guidePercentages.set(local, 100);
+    publish(online, ['a', 'b', 'c']);
+    expect(peekGuidePercentage(online)).toBe(66);
+    refreshGuidePercentageOnLoad(online);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(guidePercentages.get(local)).toBe(100);
+    storedCompleted.set(pairKey(local, 'intro'), new Set(['c']));
+    expect(peekGuidePercentage(online)).toBe(100);
+    publish(local, ['a', 'b']);
+    expect(peekGuidePercentage(local)).toBe(0);
+    storedCompleted.delete(pairKey(local, 'intro'));
+    refreshAndNotifyGuideProgress(local);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(guidePercentages.get(local)).toBe(0);
+  });
+
   describe('roster reconciliation + percentage clamp', () => {
     it('reconcileSection drops storage IDs not present in the roster', async () => {
       storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-a', 'step-b', 'orphan']));
@@ -1085,5 +1122,64 @@ describe('completion-store', () => {
       // not-completed.
       expect(screen.getByTestId('completed').textContent).toBe('false');
     });
+  });
+});
+
+describe('sectionHasChangeCompletion', () => {
+  const contentKey = 'https://example.com/origin-guide/content.json';
+  const sectionId = 'origin-section';
+
+  beforeEach(() => {
+    resetCompletionStoreForTests();
+    setActiveTabUrl(contentKey);
+  });
+
+  it('is true for a reader write and false for a load write, single or bulk', () => {
+    markStepCompleted('a', sectionId, 'objectives', contentKey, 'load');
+    expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(false);
+    markStepsCompleted(['b'], sectionId, 'objectives', 'load');
+    expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(false);
+
+    markStepsCompleted(['c'], sectionId);
+    expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(true);
+  });
+
+  it('keeps a reader write when objectives later report the same step as load', () => {
+    markStepCompleted('a', sectionId, 'manual', contentKey);
+    markStepCompleted('a', sectionId, 'objectives', contentKey, 'load');
+
+    expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(true);
+  });
+
+  it.each([
+    ['resetStep', () => resetStep('a', sectionId)],
+    ['resetSteps', () => resetSteps(['a'], sectionId)],
+    ['resetSection', () => resetSection(sectionId)],
+    ['reconcileSection', () => reconcileSection(sectionId, ['b'])],
+  ])('forgets a reader write once %s removes the step', (_name, remove) => {
+    markStepCompleted('a', sectionId, 'manual', contentKey);
+    remove();
+    expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(false);
+
+    markStepCompleted('a', sectionId, 'objectives', contentKey, 'load');
+    expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(false);
+  });
+
+  it('keeps a reader write when a section eviction is followed by a load write', () => {
+    markStepCompleted('a', sectionId, 'manual', contentKey);
+    evictSectionCacheForKey(contentKey, sectionId);
+    markStepCompleted('a', sectionId, 'objectives', contentKey, 'load');
+
+    expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(true);
+  });
+
+  it('forgets only the evicted content key', () => {
+    const otherKey = `${contentKey}::other`;
+    markStepCompleted('a', sectionId, 'manual', contentKey);
+    markStepCompleted('a', sectionId, 'manual', otherKey);
+    evictContentCache(contentKey);
+
+    expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(false);
+    expect(sectionHasChangeCompletion(otherKey, sectionId)).toBe(true);
   });
 });

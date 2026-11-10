@@ -172,6 +172,7 @@
     "showAll": "Show all {{total}}",
     "start": "Start",
     "subtitle": "Learn Grafana at your own pace",
+    "track": "Track",
     "welcomeBack": "Welcome back",
     "welcomeBackName": "Welcome back, {{- name}}"
   },

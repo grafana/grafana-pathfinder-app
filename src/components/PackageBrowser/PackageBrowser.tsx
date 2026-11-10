@@ -12,7 +12,7 @@ import { Alert, Button, Icon, Input, Combobox, EmptyState, RadioButtonGroup, use
 import { t } from '@grafana/i18n';
 import { ControlsLabel } from '@grafana/scenes';
 
-import { useLearningPageScroll } from '../../hooks';
+import { useLearningPageScroll, usePathfinderPluginConfig } from '../../hooks';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
 import { milestoneCountText } from '../LearningContentCard/learning-effort';
 import {
@@ -42,6 +42,7 @@ import { useLearningCardSelection } from '../LearningContentCard/useLearningCard
 import { getLearningPreview } from '../LearningContentCard/learning-previews';
 import { CatalogDetails } from './CatalogDetails';
 import { LearningTopicIcon } from '../LearningContentCard/LearningTopicIcon';
+import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 
 const SEARCH_REPORT_COOLDOWN_MS = 5000;
 
@@ -122,7 +123,11 @@ function PackageBrowserContent({
   pageLearning?: { learning: ReturnType<typeof useLearningPaths>; assignments: ReturnType<typeof useMyAssignments> };
 }) {
   const styles = useStyles2(getPackageBrowserStyles);
-  const catalog = usePackageCatalog();
+  const { config: pluginConfig, isResolved } = usePathfinderPluginConfig();
+  const recommendationsEnabled = isResolved && pluginConfig.acceptedTermsAndConditions;
+  const catalog = usePackageCatalog({
+    discovery: { enabled: recommendationsEnabled, serviceUrl: pluginConfig.recommenderServiceUrl },
+  });
   const { selectedCardKey, selectCard } = useLearningCardSelection(catalog.scope);
   const viewScope = page ? `${catalog.scope}:homepage-explore` : catalog.scope;
   const snapshot = useCallback(() => getCatalogView(catalog.scope), [catalog.scope]);
@@ -475,6 +480,14 @@ function PackageBrowserContent({
             </span>
           )}
         </div>
+        {isResolved && !recommendationsEnabled && (
+          <EnableRecommenderBanner
+            description={t(
+              'packageBrowser.enablePublicCatalog',
+              'Enable recommendations to browse public guides and learning paths.'
+            )}
+          />
+        )}
         {!page && searchControl}
         {!page && (
           <div className={styles.navigation} role="group" aria-label={t('packageBrowser.browseView', 'Browse view')}>
@@ -607,10 +620,7 @@ function PackageBrowserContent({
           <Alert severity="warning" title={t('packageBrowser.sourceUnavailable', 'Some content is unavailable')}>
             <p>
               {catalog.publicUnavailable
-                ? t(
-                    'packageBrowser.publicUnavailable',
-                    'Online Grafana content could not be loaded. Bundled guides remain available.'
-                  )
+                ? t('packageBrowser.publicUnavailable', 'Public learning content could not be loaded. Try again.')
                 : t('packageBrowser.privateUnavailable', 'Organization content could not be loaded.')}
             </p>
             <Button size="sm" variant="secondary" disabled={catalog.loading} onClick={catalog.retry}>

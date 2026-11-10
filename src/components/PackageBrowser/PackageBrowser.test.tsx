@@ -64,6 +64,13 @@ afterAll(() => {
   canvasSpy.mockRestore();
 });
 
+jest.mock('../../hooks/usePathfinderPluginConfig', () => ({
+  usePathfinderPluginConfig: () => ({
+    isResolved: true,
+    config: { acceptedTermsAndConditions: true, recommenderServiceUrl: 'https://recommender.grafana.com' },
+  }),
+}));
+
 jest.mock('../../lib/analytics', () => ({
   ...jest.requireActual('../../lib/analytics'),
   reportAppInteraction: jest.fn(),

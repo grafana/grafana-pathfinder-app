@@ -42,7 +42,7 @@
     {
       "id": "first-dashboard",
       "title": "Create your first dashboard",
-      "summary": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more",
+      "summary": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more.",
       "filename": "first-dashboard/content.json",
       "url": ["/"],
       "targetPlatform": "oss"
@@ -50,7 +50,7 @@
     {
       "id": "first-dashboard-cloud",
       "title": "Create your first dashboard in Grafana Cloud",
-      "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more",
+      "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more.",
       "filename": "first-dashboard-cloud/content.json",
       "url": ["/"],
       "targetPlatform": "cloud"

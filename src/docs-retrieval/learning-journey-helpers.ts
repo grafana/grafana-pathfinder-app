@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
 import { summarizeGuideBlockIndex } from '../lib/guide-stats/summary';
 import { getGuideIndex } from '../global-state/active-guide-index';
 import type { CompletionSource, CompletionFact } from '../completion-records/types';
@@ -125,7 +126,7 @@ export function getPreviousMilestoneUrl(
 
   // A track-only guide carries no learningJourney and so has no cover to
   // fall back to — staying at "no previous" is a safe no-op, not a regression.
-  return content.type === 'learning-journey' ? (content.metadata.learningJourney?.baseUrl ?? null) : null;
+  return content.type === 'learning-journey' ? content.metadata.learningJourney?.baseUrl || null : null;
 }
 
 /**
@@ -589,10 +590,10 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
   return content + conclusionImageHtml;
 }
 
-// Next/Previous visibility can't be decided here — this runs at
+// Next/Previous disabled state can't be decided here — this runs at
 // content-fetch time, before a tab's active Path Track is known. Both
 // always render; useLinkClickHandler's live, track-aware sync decides real
-// visibility after mount.
+// disabled state after mount.
 function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
   const navigationHtml = `
     <div class="journey-bottom-navigation">
@@ -879,6 +880,9 @@ export function resolveSurfaceCompletionIdentity(
   const { metadata } = input;
   const surfaceBase = input.baseUrl || input.contentUrl;
   const journeyBase = metadata?.learningJourney?.baseUrl ?? metadata?.trackMemberBaseUrl;
+  if (metadata?.journeyManifest && !journeyBase) {
+    return undefined;
+  }
   const slug = resolveActiveMilestoneSlug({ currentUrl: input.currentUrl, journeyBaseUrl: journeyBase });
   const context: CompletionContext = {
     packageManifest:
@@ -906,7 +910,7 @@ function planSurfaceCompletion(input: SurfaceCompletionInput) {
   // trackMemberBaseUrl fallback: a guide referenced only by a Path Tracks
   // `tracks` entry (never by `milestones`) carries no `learningJourney` — see
   // its doc comment in content.types.ts — but still needs markMilestoneDone
-  // under its own identity so the cover page's per-track lock/unlock sees it.
+  // under its own identity so the cover page's per-track checkmarks see it.
   // resolveExpectedMilestoneIds(metadata?.learningJourney) below safely
   // returns [] with no `learningJourney`, so this can never satisfy
   // markMilestoneDone's whole-journey completion trigger (COMPLETION-MODEL.md
@@ -960,17 +964,22 @@ export function resolveSurfaceGuideIdentity(input: SurfaceCompletionInput): Regi
 export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
   const { metadata } = input;
   const { surfaceBase, journeyBase, slug, willMarkMilestone, completionContext } = planSurfaceCompletion(input);
+  // An offline member without its parent's locator must not earn standalone or wrong-path credit.
+  if (metadata?.journeyManifest && !journeyBase) {
+    return;
+  }
   if (isPrTestSurface(input)) {
     if (willMarkMilestone && journeyBase) {
       void markMilestoneDone(journeyBase, slug, input.currentUrl!);
     }
     return;
   }
-  if (surfaceBase?.startsWith('bundled:')) {
+  const progressBase = surfaceBase && bundledTutorialContentKey(surfaceBase);
+  if (progressBase?.startsWith('bundled:')) {
     if (willMarkMilestone) {
-      setMilestoneCompletionPercentage(surfaceBase, 100);
+      setMilestoneCompletionPercentage(progressBase, 100);
     } else {
-      setJourneyCompletionPercentage(surfaceBase, 100, completionContext);
+      setJourneyCompletionPercentage(progressBase, 100, completionContext);
     }
   }
   if (willMarkMilestone && journeyBase) {
@@ -978,33 +987,19 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
       journeyBase,
       slug,
       input.currentUrl!,
-      metadata?.learningJourney?.milestones?.filter((m) => !m.isLocked).map((m) => m.url),
+      metadata?.learningJourney?.hasUnavailableMilestones
+        ? undefined
+        : metadata?.learningJourney?.milestones?.filter((m) => !m.isLocked).map((m) => m.url),
       completionContext
     );
-    // The recommendation card reads journeyCompletionStorage directly
-    // (context.service.ts), never the shared calculation, and the only other
-    // writer is the content-load seam (docs-panel.tsx) — so without this, the
-    // card's number trails by however much was earned since the journey was
-    // last opened, for every journey shape except backend-guide (which gets
-    // its own refresh on full completion). Refreshing here on every milestone
-    // keeps it live for the rest too (journey-percentage-diverges-on
-    // -recommendation-card). A no-op for a backend-guide base, which
-    // persistJourneyCompletionPercentage already declines to write.
-    // Guards on `milestones` itself, not just `learningJourney` — a
-    // malformed manifest (present journey, missing milestones array) must
-    // skip this refresh entirely rather than compute a 0% mean over an empty
-    // list and overwrite whatever real percentage was already stored here.
-    // Guards on `milestones` itself, not just `learningJourney` — a
-    // malformed manifest (present journey, missing milestones array) must
-    // skip this refresh entirely rather than compute a 0% mean over an empty
-    // list and overwrite whatever real percentage was already stored here.
-    if (metadata?.learningJourney?.milestones) {
+    // Recommendation cards read the persisted journey percentage, not the member evidence.
+    if (metadata?.learningJourney?.milestones && !metadata.learningJourney.hasUnavailableMilestones) {
       const freshJourneyProgress = journeyProgressFromMilestones(journeyBase, metadata.learningJourney.milestones);
       setJourneyCompletionPercentage(journeyBase, freshJourneyProgress, completionContext, {
         attemptEligible: false,
       });
     }
-  } else if (!surfaceBase?.startsWith('bundled:')) {
+  } else if (!progressBase?.startsWith('bundled:')) {
     recordStandaloneGuideCompletion(completionContext);
   }
 }

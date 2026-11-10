@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from '../bundled-tutorial-identity';
 /**
  * Keys for the per-section progress namespaces — interactive steps, skipped steps,
  * section collapse, section acknowledgement, section done.
@@ -38,7 +39,7 @@ export interface RawProgressEntry {
 
 /** The key one section's progress is read from and written to. */
 export function progressSectionKey(prefix: string, contentKey: string, sectionId: string): string {
-  return buildVersionedSectionStorageKey(prefix, contentKey, sectionId);
+  return buildVersionedSectionStorageKey(prefix, bundledTutorialContentKey(contentKey), sectionId);
 }
 
 function stripTimestampCompanion(key: string): string {
@@ -53,6 +54,7 @@ function stripTimestampCompanion(key: string): string {
  * its name this one's name happens to be.
  */
 export function listProgressEntries(prefix: string, contentKey: string): RawProgressEntry[] {
+  contentKey = bundledTutorialContentKey(contentKey);
   const entries: RawProgressEntry[] = [];
   try {
     for (let index = 0; index < localStorage.length; index++) {
@@ -139,4 +141,34 @@ export function sweepDiscardedProgressRecords(): number {
     logger.warn('Failed to sweep discarded progress records', { error, removed });
   }
   return removed;
+}
+
+export function migrateBundledTutorialProgress(): void {
+  const prefixes = [...PROGRESS_SECTION_PREFIXES, StorageKeys.GUIDE_COMPLETION_MARK_PREFIX];
+  for (const prefix of prefixes) {
+    for (const key of collectKeysByPrefix(localStorage, prefix)) {
+      const parsed = parseVersionedStorageKey(prefix, key);
+      if (!parsed?.contentKey.startsWith('bundled:') || key.endsWith(HYBRID_TIMESTAMP_SUFFIX)) {
+        continue;
+      }
+      const canonical = bundledTutorialContentKey(parsed.contentKey);
+      if (canonical === parsed.contentKey) {
+        continue;
+      }
+      const target = `${prefix}${canonical.length}:${canonical}${parsed.sectionId ? `:${parsed.sectionId}` : ''}`;
+      try {
+        const previous = JSON.parse(localStorage.getItem(key) ?? 'null');
+        const current = JSON.parse(localStorage.getItem(target) ?? 'null');
+        const merged =
+          Array.isArray(previous) && Array.isArray(current)
+            ? [...new Set([...previous, ...current])]
+            : (current ?? previous);
+        localStorage.setItem(target, JSON.stringify(merged));
+        localStorage.removeItem(key);
+        localStorage.removeItem(`${key}${HYBRID_TIMESTAMP_SUFFIX}`);
+      } catch (error) {
+        logger.warn('Failed to migrate bundled tutorial progress', { error });
+      }
+    }
+  }
 }

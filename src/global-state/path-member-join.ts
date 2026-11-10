@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
 /**
  * The content-key join for a path member.
  *
@@ -15,9 +16,9 @@
  *    and each keeps its own step progress, so within a scheme the FURTHEST
  *    record wins.
  *  - Across schemes the same id may be two DIFFERENT guides, so schemes are
- *    consulted in `createCompositeResolver` precedence (bundled first) and the
- *    first holding a record answers. A maximum here could report a private App
- *    Platform guide's progress as a bundled member's.
+ *    consulted bundled-first for local progress; the first holding a record answers. A maximum here could report a private App
+ *    Platform guide's progress as a bundled member's. The seven migrated
+ *    tutorials share bundled progress even when their content resolves online-first.
  *  - A supplied `url` is trusted verbatim and forms one group: this module is
  *    pure and cannot consult the bundled repository to second-guess it.
  *  - A candidate key must survive `sanitizeContentKey` unchanged. That map is
@@ -185,7 +186,7 @@ function bundledLaunchShapes(url: string): readonly string[] {
 
 /**
  * The member's candidate keys grouped by the guide they identify, schemes in
- * `createCompositeResolver` precedence order. Keys within a group are launch
+ * bundled-first progress ownership order. Keys within a group are launch
  * shapes of one guide and rank by percentage; groups rank by precedence. A
  * supplied `url` is one group — it is trusted as the guide the caller
  * resolved.
@@ -197,7 +198,8 @@ function bundledLaunchShapes(url: string): readonly string[] {
  * then find nothing and score a real record as an unopened zero.
  */
 function pathMemberContentKeyGroups(member: PathMember, pathBaseUrl?: string): ReadonlyArray<readonly string[]> {
-  const groups = member.url ? [bundledLaunchShapes(member.url)] : pathBaseUrl ? [] : idSchemeKeyGroups(member.id);
+  const url = member.url && !member.url.startsWith('bundled:') ? bundledTutorialContentKey(member.url) : member.url;
+  const groups = url ? [bundledLaunchShapes(url)] : pathBaseUrl ? [] : idSchemeKeyGroups(member.id);
   if (!groups.every((group) => group.every(isNormalizedCandidate))) {
     return [];
   }

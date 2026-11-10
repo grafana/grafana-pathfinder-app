@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey, isBundledTutorial } from '../lib/bundled-tutorial-identity';
 /**
  * Step completion store.
  *
@@ -76,6 +77,8 @@ const entries = new Map<string, Map<string, Map<string, StepCompletionEntry>>>()
 const hydratedSections = new Set<string>();
 const loadCompletionCrossings = new Set<string>();
 const pendingLoadBaselines = new Map<string, number>();
+/** Steps this tab completed as a reader's change. Outlives a cross-tab eviction of `entries`, not a reload. */
+const changeCompletions = new Map<string, Map<string, Set<string>>>();
 const listenersByContent = new Map<string, Set<() => void>>();
 
 /**
@@ -248,6 +251,7 @@ export async function readStepCompletion(
   sectionId: string | undefined,
   contentKey: string
 ): Promise<boolean> {
+  contentKey = bundledTutorialContentKey(contentKey);
   const section = sectionId ?? STANDALONE_SECTION_ID;
   await ensureHydrated(contentKey, section);
   return entries.get(contentKey)?.get(section)?.get(stepId)?.completed ?? false;
@@ -259,6 +263,7 @@ export async function readStepCompletion(
  * progress the reader would find on a real guide.
  */
 export function isPreviewContentKey(contentKey: string): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   return contentKey.indexOf('devtools') > -1 || isBlockEditorPreviewUrl(contentKey);
 }
 
@@ -283,6 +288,7 @@ const previewAcknowledgedSections = new Map<string, Set<string>>();
 
 /** Called by `useSectionPersistence`'s preview branch in place of the storage write it skips. */
 export function notePreviewSectionAcknowledged(contentKey: string, sectionId: string, acknowledged: boolean): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   if (!acknowledged) {
     previewAcknowledgedSections.get(contentKey)?.delete(sectionId);
   } else {
@@ -505,6 +511,10 @@ async function persistAndAnnounceGuidePercentage(
   origin?: ProgressOrigin
 ): Promise<void> {
   try {
+    const sharedTutorial = contentKey.startsWith('bundled:') && isBundledTutorial(contentKey.slice('bundled:'.length));
+    const previous =
+      sharedTutorial && origin === 'load' ? (interactiveCompletionStorage.peekAll()[contentKey] ?? 0) : 0;
+    progress = { ...progress, percent: Math.max(previous, progress.percent) };
     await interactiveCompletionStorage.set(contentKey, progress.percent);
   } catch (error) {
     // Announce regardless: the derived number moved whether or not the record
@@ -521,6 +531,7 @@ async function persistAndAnnounceGuidePercentage(
  * `'change'` only for a write the reader just made; omit it for a reset.
  */
 export function refreshAndNotifyGuideProgress(contentKey: string, origin?: ProgressOrigin): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   refreshGuidePercentage(contentKey, origin);
   notify(contentKey);
 }
@@ -541,6 +552,7 @@ export function refreshAndNotifyGuideProgress(contentKey: string, origin?: Progr
  * every load, competing with real readers' progress for the same bound.
  */
 export function refreshGuidePercentageOnLoad(contentKey: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   if (collectEvidence(contentKey).length === 0) {
     return;
   }
@@ -557,6 +569,7 @@ export function refreshGuidePercentageOnLoad(contentKey: string): void {
  * per crossing.
  */
 export function takeLoadCompletionCrossing(contentKey: string): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   return loadCompletionCrossings.delete(contentKey);
 }
 
@@ -601,6 +614,9 @@ export function markStepCompleted(
   ) {
     return;
   }
+  if (origin === 'change') {
+    noteChangeCompletion(contentKey, resolvedSection, stepId);
+  }
   bySteps.set(stepId, { completed: true, reason, completedAt: Date.now() });
   bumpSectionVersion(contentKey, resolvedSection);
   persistSection(contentKey, resolvedSection, origin);
@@ -614,6 +630,24 @@ export function markStepCompleted(
   });
 }
 
+function noteChangeCompletion(contentKey: string, sectionId: string, stepId: string): void {
+  const bySection = changeCompletions.get(contentKey) ?? new Map<string, Set<string>>();
+  changeCompletions.set(contentKey, bySection);
+  bySection.set(sectionId, (bySection.get(sectionId) ?? new Set()).add(stepId));
+}
+
+function forgetChangeCompletions(contentKey: string, sectionId: string, stepIds: readonly string[]): void {
+  const changed = changeCompletions.get(contentKey)?.get(sectionId);
+  stepIds.forEach((stepId) => changed?.delete(stepId));
+}
+
+/** Whether a step still completed in this section was completed as a reader's change in this tab. */
+export function sectionHasChangeCompletion(contentKey: string, sectionId: string): boolean {
+  const steps = entries.get(contentKey)?.get(sectionId);
+  const changed = changeCompletions.get(contentKey)?.get(sectionId);
+  return !!steps && !!changed && [...changed].some((stepId) => steps.get(stepId)?.completed);
+}
+
 export function resetStep(stepId: string, sectionId: string | undefined = STANDALONE_SECTION_ID): void {
   const contentKey = getContentKey();
   const resolvedSection = sectionId ?? STANDALONE_SECTION_ID;
@@ -621,6 +655,7 @@ export function resetStep(stepId: string, sectionId: string | undefined = STANDA
   // pending hydration snapshot may still contain this ID even when the
   // in-memory cache doesn't have it yet.
   noteHydrationClear(contentKey, resolvedSection, [stepId]);
+  forgetChangeCompletions(contentKey, resolvedSection, [stepId]);
   const bySteps = stepsFor(contentKey, resolvedSection);
   if (!bySteps.has(stepId)) {
     return;
@@ -648,6 +683,7 @@ export function resetStep(stepId: string, sectionId: string | undefined = STANDA
  * countable blocks at all.
  */
 export function peekGuidePercentage(contentKey: string): number {
+  contentKey = bundledTutorialContentKey(contentKey);
   return computeGuideProgress(contentKey)?.percent ?? 0;
 }
 
@@ -658,6 +694,7 @@ export function peekGuidePercentage(contentKey: string): number {
  * Returns whether the mark was written; it is readable synchronously on return.
  */
 export function markGuideEndViewed(contentKey: string, expectsBlockIndex: boolean): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   if (isPreviewContentKey(contentKey) || guideCompletionMarkStorage.isMarked(contentKey)) {
     return false;
   }
@@ -684,6 +721,7 @@ export function markGuideEndViewed(contentKey: string, expectsBlockIndex: boolea
 }
 
 export function getGuideCompletionSource(contentKey: string): 'manual' | 'skipped' | 'objectives' {
+  contentKey = bundledTutorialContentKey(contentKey);
   // Seeing the end is the completion criterion of a guide with no completable block.
   if (guideCompletionMarkStorage.isViewed(contentKey)) {
     return 'objectives';
@@ -712,6 +750,7 @@ export function getSectionSkippedSteps(sectionId: string, completed: ReadonlySet
 
 /** Subscribe to per-content progress changes. Returns an unsubscribe function. */
 export function subscribeProgress(contentKey: string, listener: () => void): () => void {
+  contentKey = bundledTutorialContentKey(contentKey);
   return subscribeToContent(contentKey, listener);
 }
 
@@ -787,6 +826,7 @@ export function resetSection(sectionId: string): void {
   // Note the clear before inspecting the cache — pending hydration's
   // snapshot may still contain IDs even when the in-memory cache is empty.
   noteHydrationClear(contentKey, sectionId, 'all');
+  changeCompletions.get(contentKey)?.delete(sectionId);
   const bySteps = entries.get(contentKey)?.get(sectionId);
   const hadEntries = bySteps !== undefined && bySteps.size > 0;
   // Pending hydration: the in-memory cache may be empty even though the
@@ -868,6 +908,7 @@ export function reconcileSection(sectionId: string, roster: readonly string[]): 
     return;
   }
   orphaned.forEach((stepId) => bySteps.delete(stepId));
+  forgetChangeCompletions(contentKey, sectionId, orphaned);
   bumpSectionVersion(contentKey, sectionId);
   persistSection(contentKey, sectionId, 'load');
   notify(contentKey);
@@ -899,6 +940,7 @@ export function evictSectionCache(sectionId: string): void {
  * re-adds the key before the old `.then` runs).
  */
 export function evictSectionCacheForKey(contentKey: string, sectionId: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   const bySection = entries.get(contentKey);
   if (bySection) {
     bySection.delete(sectionId);
@@ -939,6 +981,7 @@ export function evictSectionCacheForKey(contentKey: string, sectionId: string): 
  * remain mounted under it, use `evictAllContentCaches()` instead.
  */
 export function evictContentCache(contentKey: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   // Otherwise the next load for this key would find the old frozen block
   // index still published and skip recomputing it (publishGuideIndex is
   // idempotent per content key), serving stale positions after a reset.
@@ -947,6 +990,7 @@ export function evictContentCache(contentKey: string): void {
   loadCompletionCrossings.delete(contentKey);
   pendingLoadBaselines.delete(contentKey);
   entries.delete(contentKey);
+  changeCompletions.delete(contentKey);
   const prefix = `${contentKey}::`;
   for (const key of Array.from(hydratedSections)) {
     if (key.startsWith(prefix)) {
@@ -986,6 +1030,7 @@ export function resetSteps(stepIds: readonly string[], sectionId: string): void 
   // Note the clear before the deletes — even IDs absent from the
   // in-memory cache may still be in the pending storage snapshot.
   noteHydrationClear(contentKey, sectionId, stepIds);
+  forgetChangeCompletions(contentKey, sectionId, stepIds);
   const bySteps = entries.get(contentKey)?.get(sectionId);
   if (!bySteps) {
     return;
@@ -1040,6 +1085,9 @@ export function markStepsCompleted(
   stepIds.forEach((id) => {
     const existing = bySteps.get(id);
     if (!existing || !existing.completed) {
+      if (origin === 'change') {
+        noteChangeCompletion(contentKey, sectionId, id);
+      }
       bySteps.set(id, { completed: true, reason, completedAt: now });
       changed = true;
       newlyCompleted.push(id);
@@ -1081,6 +1129,7 @@ export function evictAllContentCaches(): void {
   previewAcknowledgedSections.clear();
   loadCompletionCrossings.clear();
   pendingLoadBaselines.clear();
+  changeCompletions.clear();
   const contentKeys = Array.from(listenersByContent.keys());
   // Bump every existing hydration version BEFORE clearing the maps so
   // any in-flight hydration cycle drops its merge on resolve. Clearing
@@ -1112,6 +1161,7 @@ export function resetCompletionStoreForTests(): void {
   previewAcknowledgedSections.clear();
   loadCompletionCrossings.clear();
   pendingLoadBaselines.clear();
+  changeCompletions.clear();
   evictAllGuideIndexes();
 }
 

@@ -76,6 +76,23 @@ describe('fetchBackendInteractive — missing required fields', () => {
 });
 
 describe('fetchBackendInteractive — schema validation', () => {
+  it('returns a load error when external blocks are malformed before conversion', async () => {
+    mockFetch.mockReturnValue(
+      of(okResource({ spec: { title: 'Broken', blocks: [{ content: PERSISTED_DIVIDER_MARKDOWN }] } }))
+    );
+
+    const result = await fetchBackendInteractive('backend-guide:my-guide');
+
+    expect(result.content).toBeNull();
+    expect(result.error).toContain('Invalid custom guide');
+    expect(result.diagnostic).toMatchObject({
+      source: 'app-platform',
+      stage: 'validate',
+      reason: 'schema-invalid',
+    });
+    expect(mockValidateGuide).not.toHaveBeenCalled();
+  });
+
   it('errors when the assembled guide fails schema validation', async () => {
     mockFetch.mockReturnValue(of(okResource()));
     mockValidateGuide.mockReturnValue({ isValid: false, errors: [{ message: 'bad block at index 0' }] });
@@ -112,6 +129,32 @@ describe('fetchBackendInteractive — happy path', () => {
       schemaVersion: '1.0',
       blocks: [{ type: 'markdown', content: 'hi' }],
     });
+  });
+
+  it('preserves legacy action aliases as canonical fields', async () => {
+    mockFetch.mockReturnValue(
+      of(
+        okResource({
+          spec: {
+            id: 'guide-id',
+            title: 'Legacy guide',
+            blocks: [
+              {
+                type: 'multistep',
+                content: 'Configure it',
+                steps: [{ targetAction: 'button', refTarget: 'Save', targetState: true }],
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const result = await fetchBackendInteractive('backend-guide:my-guide');
+    const guide = JSON.parse(result.content!.content);
+
+    expect(guide.blocks[0].steps[0]).toEqual({ action: 'button', reftarget: 'Save', targetstate: 'true' });
+    expect(mockValidateGuide).toHaveBeenCalledWith(expect.objectContaining({ blocks: guide.blocks }));
   });
 
   it('falls back to the resource name for the id when spec.id and metadata.name are absent', async () => {

@@ -1,10 +1,10 @@
+import { isBundledTutorial } from '../lib/bundled-tutorial-identity';
 import type { GuideDiagnostic } from '../types/guide-diagnostics.types';
 /**
  * Composite Package Resolver
  *
  * Combines multiple PackageResolver implementations into a single resolver.
- * Resolution order: bundled first, recommender second. Bundled content
- * always wins for packages that exist locally, providing offline/OSS support.
+ * Only migrated tutorials prefer the enabled recommender; other IDs stay bundled-first.
  *
  * The composite preserves the PackageResolver interface — callers don't
  * know which tier resolved.
@@ -40,7 +40,10 @@ export class CompositePackageResolver implements PackageResolver {
   private readonly resolvers: PackageResolver[];
   private readonly cache = new Map<string, Promise<PackageResolution>>();
 
-  constructor(resolvers: PackageResolver[]) {
+  constructor(
+    resolvers: PackageResolver[],
+    private readonly preferOnlineFor?: (packageId: string) => boolean
+  ) {
     this.resolvers = resolvers;
   }
 
@@ -63,23 +66,16 @@ export class CompositePackageResolver implements PackageResolver {
     const promise = this.resolveUncached(packageId, options);
     this.cache.set(cacheKey, promise);
 
-    // App Platform is a mutable repository (§6.8) — neither a successful
-    // resolution NOR a failure may be served stale on a later call. A
-    // not-found for a not-yet-published member must re-resolve once it's
-    // published, so we evict on failure too (app-platform failures carry
-    // `repository`; static-tier failures don't, so their negative caching is
-    // preserved). Evict right after it settles: truly concurrent callers still
-    // share this in-flight promise (dedup preserved), but the next call
-    // re-fetches fresh. Both handlers go to one `.then`, so each eviction
-    // registers on this promise's own first-hop reaction rather than on a
-    // derived promise a microtask later, and cannot be outrun by a caller
-    // reacting to the same rejection. Handling the rejection here only silences
-    // the derived promise; a rejected `promise` still propagates to whoever
-    // awaits the `resolve()` call itself.
+    // Mutable private packages and online failures must be retried after this in-flight request.
     promise.then(
       (result) => {
-        if (result.repository && UNCACHEABLE_REPOSITORIES.has(result.repository)) {
-          this.cache.delete(cacheKey);
+        if (
+          (this.preferOnlineFor?.(packageId) && (!result.ok || result.repository === 'bundled')) ||
+          (result.repository && UNCACHEABLE_REPOSITORIES.has(result.repository))
+        ) {
+          if (this.cache.get(cacheKey) === promise) {
+            this.cache.delete(cacheKey);
+          }
         }
       },
       () => this.cache.delete(cacheKey)
@@ -92,7 +88,10 @@ export class CompositePackageResolver implements PackageResolver {
     let lastFailure: PackageResolution | undefined;
     let attemptedDiagnostic: GuideDiagnostic | undefined;
 
-    for (const resolver of this.resolvers) {
+    const [bundled, online, ...remaining] = this.resolvers;
+    const resolvers =
+      this.preferOnlineFor?.(packageId) && bundled && online ? [online, bundled, ...remaining] : this.resolvers;
+    for (const resolver of resolvers) {
       const result = await resolver.resolve(packageId, options);
       if (result.ok) {
         return result;
@@ -122,29 +121,14 @@ export class CompositePackageResolver implements PackageResolver {
   }
 }
 
-/**
- * Create the standard composite resolver for the plugin:
- * 1. Bundled content (always present, works offline/OSS)
- * 2. Online recommender (when enabled) — preferred for stack-aware resolution
- * 3. Online CDN index (when recommender disabled) — lets bare IDs from CDN
- *    learning journeys (milestones, recommends, suggests) resolve so the
- *    rich rendering matches the recommender-on experience.
- * 4. App Platform (always last) — private, namespace-scoped custom guides.
- *    Bundled/CDN win any ID collision so today's fallback behavior is
- *    preserved; private guide IDs are expected to carry an `fe-`-style
- *    prefix by convention to make collisions vanishingly unlikely.
- */
 export function createCompositeResolver(pluginConfig: PathfinderPluginConfig): CompositePackageResolver {
-  const resolvers: PackageResolver[] = [createBundledResolver()];
-
-  if (isRecommenderEnabled(pluginConfig)) {
-    const configWithDefaults = getConfigWithDefaults(pluginConfig);
-    resolvers.push(new RecommenderPackageResolver(configWithDefaults.recommenderServiceUrl));
-  } else {
-    resolvers.push(new OnlineCdnPackageResolver());
-  }
-
-  resolvers.push(new AppPlatformPackageResolver());
-
-  return new CompositePackageResolver(resolvers);
+  const enabled = isRecommenderEnabled(pluginConfig);
+  const resolvers: PackageResolver[] = [
+    createBundledResolver(),
+    enabled
+      ? new RecommenderPackageResolver(getConfigWithDefaults(pluginConfig).recommenderServiceUrl)
+      : new OnlineCdnPackageResolver(),
+    new AppPlatformPackageResolver(),
+  ];
+  return new CompositePackageResolver(resolvers, enabled ? isBundledTutorial : undefined);
 }

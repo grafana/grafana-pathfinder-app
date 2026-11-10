@@ -1,0 +1,99 @@
+name: Sync bundled tutorials
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-bundled-tutorials
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'grafana/grafana-pathfinder-app' && vars.BUNDLED_TUTORIAL_SYNC_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+      revision: ${{ steps.sync.outputs.revision }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: grafana/interactive-tutorials
+          ref: main
+          path: upstream-tutorials
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npm run build:cli
+      - name: Generate and validate bundled copies
+        id: sync
+        run: |
+          revision=$(git -C upstream-tutorials rev-parse HEAD)
+          node scripts/sync-bundled-tutorials.mjs upstream-tutorials "$revision"
+          npm run validate:packages
+          npm run repository:check
+      - name: Prepare validated patch
+        if: steps.sync.outputs.changed != ''
+        run: |
+          git add -- src/bundled-interactives src/constants/bundled-tutorials-source.json
+          git diff --cached --binary -- src/bundled-interactives src/constants/bundled-tutorials-source.json > bundled-tutorials.patch
+      - name: Upload validated copies
+        if: steps.sync.outputs.changed != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: bundled-tutorials
+          path: bundled-tutorials.patch
+          retention-days: 1
+
+  pull-request:
+    needs: sync
+    if: needs.sync.outputs.changed != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: bundled-tutorials
+          path: sync-artifact
+      - name: Apply validated copies
+        run: git apply --index --include='src/bundled-interactives/**' --include='src/constants/bundled-tutorials-source.json' sync-artifact/bundled-tutorials.patch
+      - name: Create repository-scoped token
+        id: app
+        uses: grafana/shared-workflows/actions/create-github-app-token@5bbb526b1728ca57fbe1750c4c27ab6ab06171c2 # create-github-app-token/v1.0
+        with:
+          github_app: updater-for-ci
+      - name: Open or update sync PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          token: ${{ steps.app.outputs.token }}
+          branch: codex/sync-bundled-tutorials
+          base: main
+          sign-commits: true
+          add-paths: |
+            src/bundled-interactives
+            src/constants/bundled-tutorials-source.json
+          commit-message: 'docs: sync bundled tutorials from interactive-tutorials'
+          title: 'docs: sync bundled tutorials from interactive-tutorials'
+          body: |
+            Updates the offline tutorial copies from [interactive-tutorials](https://github.com/grafana/interactive-tutorials/commit/${{ needs.sync.outputs.revision }}).
+
+            Changed guides: ${{ needs.sync.outputs.changed }}.
+
+            Package validation and repository freshness checks passed. Review and merge normally; this workflow does not auto-merge.

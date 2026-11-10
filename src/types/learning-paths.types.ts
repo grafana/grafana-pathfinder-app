@@ -60,7 +60,7 @@ export interface PathGuide {
   completed: boolean;
   /** Whether this is the current/next guide to complete */
   isCurrent: boolean;
-  /** Sequentially locked — some earlier guide in the same path isn't done yet */
+  /** Unavailable: the guide's package couldn't be resolved (see `Milestone.isLocked`) */
   locked?: boolean;
   /**
    * Resolved URL for this guide within the parent path, or `undefined` for

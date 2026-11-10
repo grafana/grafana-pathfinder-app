@@ -103,6 +103,26 @@ test('records the docs retrieval and rendering ownership chain', () => {
   assert.match(context.contract_anchor.contract, /legacy `loadTabContent` arm is a known accepted residual/);
 });
 
+test('records the App Platform compatibility facade invariant', () => {
+  const context = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'package-engine',
+  });
+
+  assert.equal(context.contract_anchor.evidence, '#1714 → #1720');
+  assert.match(context.contract_anchor.contract, /app-platform-guide-compat\.ts/);
+  assert.match(
+    context.contract_anchor.contract,
+    /Every repository-owned full-content reader validates unknown resource blocks/
+  );
+  assert.match(
+    context.contract_anchor.contract,
+    /the editor, MCP finalize tool, and shell publishing scripts recursively encode canonical dividers/
+  );
+  assert.match(context.contract_anchor.contract, /Terraform applies raw specs/);
+});
+
 test('records the review orchestration contract under ai-subsystem', () => {
   const context = extractConcernContext({
     routingMarkdown: concerns,

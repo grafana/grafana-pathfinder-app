@@ -179,7 +179,7 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 - Step events built by `buildInteractiveStepProperties` (`step_auto_completed`, `show_me_button_click`, `do_it_button_click` and others): `source_document` is the active tab URL, `backend-guide:` keys included.
 - `learning_path_progress`: `path_id` and `path_title`.
 - `alignment_prompt_shown`, `alignment_prompt_confirmed` and `alignment_prompt_dismissed`: `guide_url` and `guide_title`.
-- `jump_into_milestone_click`: `content_url`, which is `backend-guide:<path id>` for an App Platform path, and the path and milestone titles.
+- `jump_into_milestone_click`: `content_url`, which is `backend-guide:<path id>` for an App Platform path, and the path and milestone titles. The hub's custom path milestone list (`interaction_location: hub_custom_milestone_list`) is the exception: it follows the resume card's rule for organization content and omits titles, URLs and ids, sending only `milestone_number`, `total_milestones` and `interaction_location`.
 - `open_resource_click` from the custom guides section: `content_url` (`backend-guide:<guide id>`) and `content_title`.
 - `close_tab_click`: `content_url` and `tab_title`.
 - `milestone_arrow_interaction_click`: `content_url` and `content_title`.
@@ -443,6 +443,10 @@ The row sent when a reader accepts **Reset and continue** on an assignment is co
 ### Journey navigation percentage
 
 `milestone_arrow_interaction_click` (from `milestone_progress_bar` and `bottom_navigation`) and `close_tab_click` on a learning-journey tab carry `completion_percentage`. Before v2.18.0 it was the navigation ordinal, `round(currentMilestone / totalMilestones * 100)`, which measured where the reader was rather than what they had done. From v2.18.0 (#1866) it is the mean of each unlocked milestone's stored percentage, floored and capped at 99 until every milestone is complete. Split any trend on this field at 2.18.0. Rows from `milestone_progress_bar` split again at v2.20.0 (#2033): from then the toolbar arrows average the sequence the reader is in, which is their active path track when they have one, and the toolbar also appears on guides that belong only to a track. From v2.18.0 through v2.19.x the toolbar arrows averaged the journey's own unlocked milestones. Bottom navigation and tab close still average the journey's own milestones.
+
+### Cover-page starts
+
+`start_learning_journey_click` from a path's cover page carries `interaction_location` `get_started_cta`, `resume_cta` or `module_row_click`, with the path's `content_url` and `total_milestones`. Before the release after v2.26.0, only the "Up next" row was clickable, so `module_row_click` meant "continued from the next incomplete milestone". From that release every published milestone row is clickable, so it also counts revisits of completed milestones and jumps ahead. A `module_row_click` from then on carries `row_state`, the row's state when it was clicked: `up_next` for the next incomplete milestone, `completed` for a revisit, `ahead` for a jump past "Up next". Rows before that release have no `row_state`; read them as `up_next`. Split any trend on it there.
 
 ### Progress resets
 

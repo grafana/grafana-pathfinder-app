@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
 /**
  * Maps a rendered guide's content key to its durable completion identity.
  *
@@ -27,6 +28,7 @@ const registrations = new Map<string, Registration[]>();
 
 /** The latest mounted surface wins; its cleanup restores any remaining owner. */
 export function registerGuideIdentity(contentKey: string, identity: RegisteredGuideIdentity): () => void {
+  contentKey = bundledTutorialContentKey(contentKey);
   const token = Symbol(contentKey);
   registrations.set(contentKey, [...(registrations.get(contentKey) ?? []), { token, identity: { ...identity } }]);
   return () => {
@@ -40,7 +42,7 @@ export function registerGuideIdentity(contentKey: string, identity: RegisteredGu
 }
 
 export function lookupGuideIdentity(contentKey: string): RegisteredGuideIdentity | null {
-  return registrations.get(contentKey)?.at(-1)?.identity ?? null;
+  return registrations.get(bundledTutorialContentKey(contentKey))?.at(-1)?.identity ?? null;
 }
 
 export function __resetGuideIdentityRegistryForTests(): void {

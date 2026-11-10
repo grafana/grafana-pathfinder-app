@@ -22,8 +22,8 @@ const BASE_URL = 'https://recommender.example.com';
 
 const FIXTURE_RESOLUTION = {
   id: 'alerting-101',
-  contentUrl: 'https://cdn.example.com/packages/alerting-101/content.json',
-  manifestUrl: 'https://cdn.example.com/packages/alerting-101/manifest.json',
+  contentUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+  manifestUrl: 'https://interactive-learning.grafana.net/packages/alerting-101/manifest.json',
   repository: 'interactive-tutorials',
 };
 
@@ -281,7 +281,7 @@ describe('RecommenderPackageResolver', () => {
         }
         expect(mockFetch).toHaveBeenCalledTimes(loadContent === true ? 3 : 2);
         expect(fetchOnlinePackageRecommendationsMock).toHaveBeenCalledTimes(1);
-        expect(mockFetch).toHaveBeenLastCalledWith(FIXTURE_RESOLUTION.manifestUrl);
+        expect(mockFetch).toHaveBeenLastCalledWith(FIXTURE_RESOLUTION.manifestUrl, { signal: expect.any(AbortSignal) });
       }
     );
 
@@ -457,3 +457,67 @@ declare global {
     }
   }
 }
+
+describe('bounded recommender requests', () => {
+  it('aborts a hung request and returns a fallback-compatible failure', async () => {
+    jest.useFakeTimers();
+    mockFetch.mockReset().mockImplementation(() => new Promise(() => {}));
+    try {
+      const pending = new RecommenderPackageResolver(BASE_URL).resolve('first-dashboard', { loadContent: true });
+      await jest.advanceTimersByTimeAsync(1_500);
+      expect(await pending).toMatchObject({ ok: false, error: { diagnostic: { reason: 'timeout' } } });
+      expect(mockFetch.mock.calls[0]![1].signal.aborted).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('rejects a response for a different package', async () => {
+    mockFetch.mockReset().mockResolvedValue({ ok: true, json: async () => FIXTURE_RESOLUTION });
+    expect(await new RecommenderPackageResolver(BASE_URL).resolve('first-dashboard')).toMatchObject({
+      ok: false,
+      error: { code: 'validation-error' },
+    });
+  });
+});
+
+describe('recommender response validation', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    fetchOnlinePackageRecommendationsMock.mockResolvedValue({ baseUrl: '', packages: [] });
+  });
+
+  it.each(['contentUrl', 'manifestUrl'])('rejects an untrusted %s before fetching it', async (field) => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ...FIXTURE_RESOLUTION, [field]: 'https://evil.example/content.json' }),
+    });
+    expect(await new RecommenderPackageResolver(BASE_URL).resolve('alerting-101', { loadContent: true })).toMatchObject(
+      { ok: false, error: { code: 'validation-error' } }
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects content belonging to another guide', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => FIXTURE_RESOLUTION })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...FIXTURE_CONTENT, id: 'different' }) });
+    expect(await new RecommenderPackageResolver(BASE_URL).resolve('alerting-101', { loadContent: true })).toMatchObject(
+      { ok: false, error: { code: 'validation-error' } }
+    );
+  });
+
+  it.each([undefined, 'different'])('rejects a tutorial manifest with id %s', async (id) => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...FIXTURE_RESOLUTION, id: 'first-dashboard' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...FIXTURE_CONTENT, id: 'first-dashboard' }) })
+      .mockResolvedValueOnce({
+        ok: Boolean(id),
+        status: id ? 200 : 404,
+        json: async () => ({ ...FIXTURE_MANIFEST, id }),
+      });
+    expect(
+      await new RecommenderPackageResolver(BASE_URL).resolve('first-dashboard', { loadContent: true })
+    ).toMatchObject({ ok: false, error: { code: 'validation-error' } });
+  });
+});
