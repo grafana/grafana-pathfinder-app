@@ -590,10 +590,10 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
   return content + conclusionImageHtml;
 }
 
-// Next/Previous visibility can't be decided here — this runs at
+// Next/Previous disabled state can't be decided here — this runs at
 // content-fetch time, before a tab's active Path Track is known. Both
 // always render; useLinkClickHandler's live, track-aware sync decides real
-// visibility after mount.
+// disabled state after mount.
 function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
   const navigationHtml = `
     <div class="journey-bottom-navigation">
