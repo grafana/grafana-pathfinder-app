@@ -211,7 +211,7 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
         const displayed = canDisplay() && deps.claim(keyOf(announcement));
         if (displayed) {
           notify(announcementListeners, announcement);
-        } else {
+        } else if (announcement.kind !== 'progress') {
           pending.set(keyOf(announcement), announcement);
         }
         announcementChannel()?.post({ ...announcement, displayed });
@@ -276,7 +276,12 @@ function receiveRelayed(message: unknown): void {
     return;
   }
   if (!message.displayed) {
-    queueForDisplay(announcement);
+    // Progress is only worth showing now; a count held until later would be stale.
+    if (announcement.kind !== 'progress') {
+      queueForDisplay(announcement);
+    } else if (canDisplay() && deps.claim(keyOf(announcement))) {
+      notify(announcementListeners, announcement);
+    }
   }
   notify(changeListeners, undefined);
 }

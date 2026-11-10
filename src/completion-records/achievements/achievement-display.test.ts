@@ -222,6 +222,28 @@ describe('announcements across tabs', () => {
     expect(t.seen).not.toHaveBeenCalled();
   });
 
+  it('does not hold progress for later when no tab can show it now', async () => {
+    const drainer = tab({ visible: false, claims: new Set() });
+    await announceEvaluated({
+      eventId: 'e',
+      retry: false,
+      decisions: [
+        { achievementId: 'guides-finished', decision: 'increment', awarded: [], final: false, units: 2, next: 5 },
+      ],
+    });
+    expect(drainer.posted).toEqual([
+      { achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5, displayed: false },
+    ]);
+    drainer.show();
+    expect(drainer.seen).not.toHaveBeenCalled();
+
+    __resetAchievementDisplayForTests();
+    const receiver = tab({ visible: false, claims: new Set() });
+    receiver.receive({ achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5, displayed: false });
+    receiver.show();
+    expect(receiver.seen).not.toHaveBeenCalled();
+  });
+
   it('relays progress and shows it in a visible tab once', () => {
     const t = tab({ visible: true, claims: new Set() });
     const progress = { achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5 };
