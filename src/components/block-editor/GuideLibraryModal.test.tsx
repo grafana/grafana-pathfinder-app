@@ -34,6 +34,13 @@ describe('GuideLibraryModal', () => {
     expect(screen.queryByText(/blocks/)).not.toBeInTheDocument();
   });
 
+  it('shows only the error, not the empty-library prompt, when the catalogue is unavailable', () => {
+    renderLibrary({ error: 'The guide library is unavailable (obo-unavailable).' });
+
+    expect(screen.getByText('The guide library is unavailable (obo-unavailable).')).toBeInTheDocument();
+    expect(screen.queryByText('No guides in library.')).not.toBeInTheDocument();
+  });
+
   it('reads the selected guide by resource name when loaded', async () => {
     const blocks = [{ type: 'markdown', content: 'Hello' }];
     const readGuide = jest.fn().mockResolvedValue({
@@ -53,7 +60,8 @@ describe('GuideLibraryModal', () => {
     expect(readGuide).toHaveBeenCalledWith('team-guide-v2');
     expect(onLoadGuide).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'team-guide', title: 'Team guide', blocks }),
-      'team-guide-v2'
+      'team-guide-v2',
+      await readGuide.mock.results[0]!.value
     );
   });
 
@@ -71,7 +79,9 @@ describe('GuideLibraryModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Load' }));
 
-    await waitFor(() => expect(onLoadGuide).toHaveBeenCalledWith(expect.objectContaining({ blocks }), 'draft'));
+    await waitFor(() =>
+      expect(onLoadGuide).toHaveBeenCalledWith(expect.objectContaining({ blocks }), 'draft', expect.anything())
+    );
     expect(lintGuide(onLoadGuide.mock.calls[0][0]).forPath(['blocks', 0, 'steps'])).toEqual(
       expect.arrayContaining([expect.objectContaining({ severity: 'error' })])
     );

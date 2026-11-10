@@ -128,7 +128,7 @@ export interface UseBackendSaveFlowReturn {
   /** Reset backend tracking state (e.g. when starting a new guide) */
   handleClearBackendTracking: () => void;
   /** Track a guide freshly loaded from the backend library */
-  trackLoadedGuide: (guide: JsonGuide, resourceName: string) => void;
+  trackLoadedGuide: (guide: JsonGuide, resourceName: string, stored: BackendSaveFlowGuideEntry) => void;
 }
 
 /**
@@ -153,9 +153,11 @@ export function useBackendSaveFlow({
   const [storedGuide, setStoredGuide] = useState<BackendSaveFlowGuideEntry | undefined>();
   const { readGuide } = backendGuides;
   const readSeq = useRef(0);
+  const syncedName = useRef<string | null>(null);
   const syncStoredGuide = useCallback(
-    (resourceName: string): Promise<void> => {
+    (resourceName: string, written?: 'draft' | 'published'): Promise<void> => {
       const seq = ++readSeq.current;
+      syncedName.current = resourceName;
       return readGuide(resourceName).then(
         (stored) => {
           if (seq === readSeq.current) {
@@ -164,17 +166,22 @@ export function useBackendSaveFlow({
         },
         (error: unknown) => {
           logger.warn('[BlockEditor] Failed to read the tracked guide', { error });
-          // After a write, the old entry's resourceVersion is certainly stale and would 409 every save.
-          if (seq === readSeq.current) {
-            setStoredGuide(undefined);
+          if (seq !== readSeq.current || !written) {
+            return;
           }
+          // The write landed, so its status stands, but the old resourceVersion is stale and would 409 every save.
+          setStoredGuide((prev) => {
+            const spec = prev?.metadata.name === resourceName ? prev.spec : { title: '' };
+            return { metadata: { name: resourceName }, spec: { ...spec, status: written } };
+          });
         }
       );
     },
     [readGuide]
   );
+  // Only a restored name needs this read: loads seed the entry and writes re-read their own.
   useEffect(() => {
-    if (currentGuideResourceName) {
+    if (currentGuideResourceName && syncedName.current !== currentGuideResourceName) {
       void syncStoredGuide(currentGuideResourceName);
     }
   }, [currentGuideResourceName, syncStoredGuide]);
@@ -261,7 +268,7 @@ export function useBackendSaveFlow({
       setLastPublishedJson(JSON.stringify(guide));
 
       // Re-read for the new resourceVersion, which the next save must carry.
-      await syncStoredGuide(generatedResourceName);
+      await syncStoredGuide(generatedResourceName, status);
       setCurrentGuideResourceName(generatedResourceName);
 
       if (status === 'published') {
@@ -370,7 +377,7 @@ export function useBackendSaveFlow({
     try {
       await backendGuides.unpublishGuide(currentGuideResourceName);
 
-      await syncStoredGuide(currentGuideResourceName);
+      await syncStoredGuide(currentGuideResourceName, 'draft');
       // Keep lastPublishedJson set — guide content is unchanged, only status changed.
       // This allows change detection to work correctly for the guide now in draft state.
       setLastPublishedJson(JSON.stringify(editor.getGuide()));
@@ -392,8 +399,12 @@ export function useBackendSaveFlow({
     setLastPublishedJson(null);
   }, []);
 
-  // Track a guide freshly loaded from the backend library
-  const trackLoadedGuide = useCallback((guide: JsonGuide, resourceName: string) => {
+  // Track a guide freshly loaded from the backend library. Its stored resource is what the content came
+  // from, so it seeds the status and the resourceVersion the next save carries, with no second read.
+  const trackLoadedGuide = useCallback((guide: JsonGuide, resourceName: string, stored: BackendSaveFlowGuideEntry) => {
+    readSeq.current++;
+    syncedName.current = resourceName;
+    setStoredGuide(stored);
     setCurrentGuideResourceName(resourceName);
     // Normalize to match getGuide() output (id, title, blocks — no schemaVersion or extra fields)
     setLastPublishedJson(JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks }));

@@ -14,10 +14,17 @@ import { formatPath } from '../../validation/errors';
 import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
 import type { CustomGuideRepositoryEntry } from '../../lib/custom-guide-repository-client';
 
-/** The fields loading reads from a stored guide; `blocks` is unknown because a stored guide can be malformed. */
-interface StoredGuide {
-  metadata: { name: string };
-  spec: { id: string; title: string; schemaVersion?: string; blocks?: unknown };
+/** A stored guide as read for loading; `blocks` is unknown because a stored guide can be malformed. */
+export interface StoredGuide {
+  metadata: { name: string; [key: string]: unknown };
+  spec: {
+    id: string;
+    title: string;
+    schemaVersion?: string;
+    blocks?: unknown;
+    status?: 'draft' | 'published';
+    manifest?: Record<string, unknown>;
+  };
 }
 
 export interface GuideLibraryModalProps {
@@ -28,7 +35,8 @@ export interface GuideLibraryModalProps {
   error: string | null;
   /** Resolves undefined only when the guide no longer exists. */
   readGuide: (resourceName: string) => Promise<StoredGuide | undefined>;
-  onLoadGuide: (guide: JsonGuide, resourceName: string) => void;
+  /** `stored` is the resource the guide was decoded from, so the save flow knows its status and version. */
+  onLoadGuide: (guide: JsonGuide, resourceName: string, stored: StoredGuide) => void;
   onDeleteGuide: (resourceName: string) => Promise<void>;
   onRefresh: () => void;
 }
@@ -176,7 +184,7 @@ export function GuideLibraryModal({
       schemaVersion: backendGuide.spec.schemaVersion || '1.0',
       blocks: decoded.blocks,
     };
-    onLoadGuide(guide, backendGuide.metadata.name);
+    onLoadGuide(guide, backendGuide.metadata.name, backendGuide);
     onClose();
   };
 
@@ -243,7 +251,7 @@ export function GuideLibraryModal({
             <div className={styles.loadingState}>
               <Spinner size="lg" />
             </div>
-          ) : guides.length === 0 ? (
+          ) : guides.length === 0 && !error ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyStateIcon}>📚</div>
               <p>No guides in library.</p>

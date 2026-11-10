@@ -33,7 +33,7 @@ import { getBlockEditorStyles } from './block-editor.styles';
 import { publishEditorChromeStatus, readStoredEditorGuide, resetEditorChromeStatus } from './editor-chrome-status';
 import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
-import { GuideLibraryModal } from './GuideLibraryModal';
+import { GuideLibraryModal, type StoredGuide } from './GuideLibraryModal';
 import { useActionRecorder } from '../../utils/devtools';
 import type { JsonGuide, JsonBlock, BlockOperations, BlockType, EditorBlock, PreviewTarget } from './types';
 import { isSectionBlock, isConditionalBlock, type JsonSectionBlock } from '../../types/json-guide.types';
@@ -714,9 +714,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
   }, [publishedStatus, hasUnsyncedChanges, isContentReady]);
 
   const handleLoadGuideFromBackend = useCallback(
-    (guide: JsonGuide, resourceName: string) => {
+    (guide: JsonGuide, resourceName: string, stored: StoredGuide) => {
       editor.loadGuide(guide);
-      trackLoadedGuide(guide, resourceName);
+      trackLoadedGuide(guide, resourceName, stored);
       resetDetails();
       editor.markSaved();
     },

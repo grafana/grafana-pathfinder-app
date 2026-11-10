@@ -350,7 +350,25 @@ describe('useBackendSaveFlow — resourceVersion', () => {
     });
 
     const [, second] = (backendGuides.saveGuide as jest.Mock).mock.calls;
-    expect(second[2]).toBeUndefined();
+    expect(second[2]).toEqual({ name: 'g1' });
+    warnSpy.mockRestore();
+  });
+
+  it('keeps a just-published guide published when its re-read fails, so Save cannot unpublish it', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const { g, entry } = trackedAt('7');
+    const backendGuides = makeBackendGuides([entry]);
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+    await flushReads();
+    expect(result.current.publishedStatus).toBe('draft');
+    (backendGuides.readGuide as jest.Mock).mockRejectedValueOnce(new Error('blip'));
+
+    await act(async () => {
+      await result.current.handlePostToBackend();
+    });
+
+    expect(result.current.publishedStatus).toBe('published');
+    expect(result.current.currentGuideMetadata).toEqual({ name: 'g1' });
     warnSpy.mockRestore();
   });
 });
@@ -540,13 +558,29 @@ describe('useBackendSaveFlow — trackLoadedGuide / handleClearBackendTracking',
 
     const loaded = guide({ id: 'loaded-guide', title: 'Loaded' });
     act(() => {
-      result.current.trackLoadedGuide(loaded, 'loaded-guide');
+      result.current.trackLoadedGuide(loaded, 'loaded-guide', makeGuideEntry('loaded-guide', 'Loaded'));
     });
 
     expect(result.current.currentGuideResourceName).toBe('loaded-guide');
     expect(result.current.lastPublishedJson).toBe(
       JSON.stringify({ id: loaded.id, title: loaded.title, blocks: loaded.blocks })
     );
+  });
+
+  it('trackLoadedGuide takes status and version from the loaded resource at once, without a second read', async () => {
+    const backendGuides = makeBackendGuides();
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => guide() }, backendGuides }));
+    const stored = makeGuideEntry('loaded-guide', 'Loaded', 'published');
+    stored.metadata.resourceVersion = '12';
+
+    act(() => {
+      result.current.trackLoadedGuide(guide({ id: 'loaded-guide' }), 'loaded-guide', stored);
+    });
+
+    expect(result.current.publishedStatus).toBe('published');
+    expect(result.current.currentGuideMetadata).toMatchObject({ resourceVersion: '12' });
+    await flushReads();
+    expect(backendGuides.readGuide).not.toHaveBeenCalled();
   });
 
   it('handleClearBackendTracking resets tracking to not-saved and clears localStorage', async () => {
