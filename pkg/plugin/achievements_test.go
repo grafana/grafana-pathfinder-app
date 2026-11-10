@@ -144,11 +144,11 @@ func (m *memAchievements) rowsFor(user string) (awards, progress int) {
 
 func newAchievementsTestApp(t *testing.T, mem *memAchievements) *App {
 	t.Helper()
-	app := newTestApp(t)
+	app := newTestAppWithOBO(t)
 	app.definitions = staticDefinitions{snap: loadAchievementsTestBundle(t, achievementsTestBundleJSON)}
 	app.achievementEventsRateLimiter = newUserRateLimiter(achievementEventsRateBurst, achievementEventsRateRefillPerSec)
 	if mem != nil {
-		app.achievementsBackendFor = func(*http.Request) (achievementsBackend, string) {
+		app.achievementsBackendFor = func(*http.Request, achievements.Person, *achievements.Catalog) (achievementsBackend, string) {
 			return achievementsBackend{store: mem, reader: mem}, ""
 		}
 	}
@@ -428,7 +428,7 @@ func TestAchievementRoutes_StructurallyUnavailable(t *testing.T) {
 	})
 	t.Run("backend reason is echoed", func(t *testing.T) {
 		app := newAchievementsTestApp(t, newMemAchievements())
-		app.achievementsBackendFor = func(*http.Request) (achievementsBackend, string) {
+		app.achievementsBackendFor = func(*http.Request, achievements.Person, *achievements.Catalog) (achievementsBackend, string) {
 			return achievementsBackend{}, reasonOBOUnavailable
 		}
 		rr := postAchievementEvent(t, app, achievementsTestUser, dashboardEventBody("e", "u"))
@@ -453,6 +453,22 @@ func TestAchievementRoutes_StructurallyUnavailable(t *testing.T) {
 			t.Fatalf("capability %+v", body.Capability)
 		}
 	})
+}
+
+// Without OBO credentials the routes must disarm even while the definitions are down.
+func TestAchievementRoutes_NoOBORefusesBeforeReadingDefinitions(t *testing.T) {
+	app := newAchievementsTestApp(t, newMemAchievements())
+	app.oboExchanger = nil
+	app.definitions = staticDefinitions{retryAfter: time.Minute}
+
+	rr := postAchievementEvent(t, app, achievementsTestUser, dashboardEventBody("e", "u"))
+	if rr.Code != http.StatusNotFound || errorToken(t, rr) != "achievements-unavailable/"+reasonOBOUnavailable {
+		t.Fatalf("events: status %d body %s", rr.Code, rr.Body.String())
+	}
+	my, body := getMyAchievements(t, app, achievementsTestUser)
+	if my.Code != http.StatusOK || body.Capability.Available || body.Capability.Reason != reasonOBOUnavailable {
+		t.Fatalf("my: status %d capability %+v", my.Code, body.Capability)
+	}
 }
 
 // A 401 here would retry queued events instead of disarming the session.
@@ -494,7 +510,7 @@ func TestAchievementEvent_StandingConditionsDisarm(t *testing.T) {
 			mem := newMemAchievements()
 			app := newAchievementsTestApp(t, mem)
 			builds := 0
-			app.achievementsBackendFor = func(*http.Request) (achievementsBackend, string) {
+			app.achievementsBackendFor = func(*http.Request, achievements.Person, *achievements.Catalog) (achievementsBackend, string) {
 				builds++
 				return achievementsBackend{store: mem, reader: mem}, ""
 			}
@@ -580,6 +596,16 @@ func TestMyAchievements_AwardsFollowCatalogRankWithUnknownTiersLast(t *testing.T
 	}
 }
 
+func TestMyAchievements_NextSkipsATierAwardedBeforeTheRowRecordedIt(t *testing.T) {
+	mem := newMemAchievements()
+	mem.put(achievements.Person{ID: achievementsTestUser}, achievements.Progress{AchievementID: "dash-builder", TierIDs: []string{}, Units: []string{"u1"}, SchemaVersion: 1})
+	mem.awards[achievementsTestUser+"/dash-builder/bronze"] = achievements.Award{AchievementID: "dash-builder", TierID: "bronze", Entity: "dashboards", EarnedAt: timeNow()}
+	_, body := getMyAchievements(t, newAchievementsTestApp(t, mem), achievementsTestUser)
+	if len(body.Progress) != 1 || body.Progress[0].Next == nil || *body.Progress[0].Next != 3 {
+		t.Fatalf("progress = %+v, want next at silver's threshold 3", body.Progress)
+	}
+}
+
 func TestMyAchievements_EmptyRowsAreEmptyArrays(t *testing.T) {
 	rr, _ := getMyAchievements(t, newAchievementsTestApp(t, newMemAchievements()), "user:nobody")
 	for _, want := range []string{`"awards":[]`, `"progress":[]`, `"legacy":[]`, `"truncated":false`} {
@@ -638,8 +664,8 @@ func TestNewAppReadsThePublishedDefinitionsLazily(t *testing.T) {
 	if source.current.Load() != nil || source.flight != nil {
 		t.Error("NewApp fetched definitions; the first request should")
 	}
-	if app.achievementsBackendFor != nil {
-		t.Fatal("no store adapter is wired yet")
+	if app.achievementsBackendFor == nil {
+		t.Fatal("NewApp left the achievements store unwired")
 	}
 }
 
