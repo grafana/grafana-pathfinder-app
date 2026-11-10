@@ -1,8 +1,3 @@
-/**
- * Fetches the caller's assignments on mount and after each published
- * completion, and owns the path state derived from them. A failed fetch keeps
- * the last good assignments.
- */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { config } from '@grafana/runtime';
 
@@ -45,6 +40,9 @@ interface UseMyAssignmentsResult {
   getPathGuides: (pathId: string) => PathGuide[];
   /** True once the first fetch has settled, whether or not it succeeded. */
   hasLoaded: boolean;
+  isLoading: boolean;
+  hasError: boolean;
+  retry: () => Promise<void>;
 }
 
 export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignmentsResult {
@@ -52,6 +50,8 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   const [rawAssignments, setRawAssignments] = useState<AssignmentEntry[]>([]);
   const namespace = config.namespace;
   const [hasLoaded, setHasLoaded] = useState(!namespace);
+  const [isFetching, setIsFetching] = useState(Boolean(namespace));
+  const [hasError, setHasError] = useState(false);
   const isMountedRef = useRef(true);
   const inFlightRef = useRef(false);
   const pendingRef = useRef(false);
@@ -70,6 +70,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
       return;
     }
     inFlightRef.current = true;
+    setIsFetching(true);
     do {
       pendingRef.current = false;
       const fetched = await fetchMyAssignments(namespace);
@@ -77,10 +78,14 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
         if (fetched.ok) {
           setRawAssignments(fetched.assignments);
         }
+        setHasError(!fetched.ok && fetched.reason !== 'capability-unavailable');
         setHasLoaded(true);
       }
     } while (pendingRef.current && isMountedRef.current);
     inFlightRef.current = false;
+    if (isMountedRef.current) {
+      setIsFetching(false);
+    }
   }, [namespace]);
 
   const hasInitiallyLoaded = useRef(false);
@@ -111,6 +116,10 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   // Targets missing from `paths` are retried against the online catalogue; only
   // those still unresolved warn, and targetIds stay off the warn (they bridge to Faro).
   const [onlineCards, setOnlineCards] = useState<OnlineAssignmentCard[]>([]);
+  const [onlineResolution, setOnlineResolution] = useState<{
+    assignments: AssignmentEntry[];
+    unresolvedKey: string;
+  } | null>(null);
   useEffect(() => {
     const unresolvedIds = unresolvedKey ? unresolvedKey.split('\n') : [];
     const unresolvedIdSet = new Set(unresolvedIds);
@@ -128,6 +137,10 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
 
       const resolvedOnlineIds = new Set(cards.map((card) => card.resolved.targetId));
       const stillUnresolved = unresolvedIds.filter((id) => !resolvedOnlineIds.has(id));
+      setOnlineResolution({
+        assignments: rawAssignments,
+        unresolvedKey,
+      });
       const emitKey = [...stillUnresolved].sort().join('\n');
       if (stillUnresolved.length === 0) {
         emittedUnresolvedKeyRef.current = '';
@@ -205,5 +218,18 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     [onlineCardsById, getPathGuides, completedGuides, pathsById, assignmentByTargetId]
   );
 
-  return { items, notDone, assignmentByTargetId, onlinePaths, getPathGuides: getPathGuidesWithOnline, hasLoaded };
+  const hasResolvedOnlineTargets =
+    onlineResolution?.assignments === rawAssignments && onlineResolution.unresolvedKey === unresolvedKey;
+
+  return {
+    items,
+    notDone,
+    assignmentByTargetId,
+    onlinePaths,
+    getPathGuides: getPathGuidesWithOnline,
+    hasLoaded,
+    isLoading: !hasLoaded || isFetching || (unresolvedKey.length > 0 && !hasResolvedOnlineTargets),
+    hasError,
+    retry: refresh,
+  };
 }

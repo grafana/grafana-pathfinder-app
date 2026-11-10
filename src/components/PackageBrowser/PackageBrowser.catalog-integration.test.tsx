@@ -15,9 +15,22 @@ jest.mock('../../hooks/usePathfinderPluginConfig', () => ({
 }));
 jest.mock('../EnableRecommenderBanner', () => ({ EnableRecommenderBanner: () => <div>Enable recommendations</div> }));
 
+jest.mock('@grafana/scenes', () => ({
+  ControlsLabel: ({ label, htmlFor }: { label: string; htmlFor?: string }) => <label htmlFor={htmlFor}>{label}</label>,
+}));
+
 jest.mock('../../learning-paths', () => ({
+  catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   usePackageCatalog: jest.requireActual('../../learning-paths/package-catalog.hook').usePackageCatalog,
   useCatalogProgress: () => new Map(),
+  useLearningPaths: () => ({
+    paths: [],
+    getPathProgress: () => 0,
+    getPathGuides: () => [],
+    progress: { completedGuides: [] },
+  }),
+  useMyAssignments: () => ({ onlinePaths: [], assignmentByTargetId: new Map(), getPathGuides: () => [] }),
 }));
 jest.mock('../../learning-paths/paths-data', () => ({ getPathsData: () => ({ paths: [], guideMetadata: {} }) }));
 jest.mock('../../lib/custom-guide-repository-client', () => ({ fetchCustomGuideCatalogue: jest.fn() }));
@@ -69,30 +82,34 @@ beforeEach(() => {
   });
 });
 
-it('shows private guides and an enablement CTA when recommendations are disabled', async () => {
+it.each([false, true])('shows private guides and an enablement CTA without consent (page=%s)', async (page) => {
   mockConsent = false;
   jest
     .mocked(fetchCustomGuideCatalogue)
     .mockResolvedValue({ available: true, entries: [{ id: 'team-guide', title: 'Team guide', status: 'published' }] });
-  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  render(<PackageBrowser page={page} onOpenGuide={jest.fn()} />);
   expect(await screen.findByText('Team guide')).toBeInTheDocument();
   expect(screen.getByText('Enable recommendations')).toBeInTheDocument();
   expect(fetchEligibleCatalog).not.toHaveBeenCalled();
   expect(screen.queryByText('Create your first dashboard')).not.toBeInTheDocument();
 });
 
-it('keeps private guides usable when the first public catalog request fails and offers Retry', async () => {
-  jest.mocked(fetchEligibleCatalog).mockResolvedValueOnce({ available: false, items: [] });
-  jest
-    .mocked(fetchCustomGuideCatalogue)
-    .mockResolvedValue({ available: true, entries: [{ id: 'team-guide', title: 'Team guide', status: 'published' }] });
-  render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  expect(await screen.findByText('Team guide')).toBeInTheDocument();
-  expect(await screen.findByText('Public learning content could not be loaded. Try again.')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-  expect(await screen.findByText('Create your first dashboard')).toBeInTheDocument();
-  expect(screen.queryByText('Some content is unavailable')).not.toBeInTheDocument();
-});
+it.each([false, true])(
+  'keeps private guides usable and retries a failed public catalog request (page=%s)',
+  async (page) => {
+    jest.mocked(fetchEligibleCatalog).mockResolvedValueOnce({ available: false, items: [] });
+    jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
+      available: true,
+      entries: [{ id: 'team-guide', title: 'Team guide', status: 'published' }],
+    });
+    render(<PackageBrowser page={page} onOpenGuide={jest.fn()} />);
+    expect(await screen.findByText('Team guide')).toBeInTheDocument();
+    expect(await screen.findByText('Public learning content could not be loaded. Try again.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Create your first dashboard')).toBeInTheDocument();
+    expect(screen.queryByText('Some content is unavailable')).not.toBeInTheDocument();
+  }
+);
 
 it('shows a valid guide from a mixed service response without a public catalog warning', async () => {
   const client = jest.requireActual<typeof import('../../lib/eligible-catalog-client')>(
@@ -123,7 +140,7 @@ it('does not search raw bundled guides absent from the eligible catalog', async 
   jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({ available: true, entries: [] });
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
   await waitFor(() => expect(screen.getByRole('status')).not.toHaveTextContent('Loading more content'));
-  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and paths' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and learning paths' }), {
     target: { value: 'dashboard' },
   });
   expect(screen.getByText('No guides match these filters')).toBeInTheDocument();

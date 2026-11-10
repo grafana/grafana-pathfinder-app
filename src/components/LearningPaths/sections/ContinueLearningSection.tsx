@@ -43,14 +43,18 @@ export function ContinueLearningSection({
       data-testid="continue-learning-section"
     >
       <div className={styles.sectionHeader}>
-        <Icon name="play" size="md" className={styles.sectionIcon} />
-        <h2 id="continue-learning-title" className={styles.sectionTitle}>
-          {t('myLearning.continueLearning', 'Continue learning')}
-        </h2>
+        <span className={styles.sectionIcon}>
+          <Icon name="play" size="lg" />
+        </span>
+        <div className={styles.sectionHeadingText}>
+          <h2 id="continue-learning-title" className={styles.sectionTitle}>
+            {t('myLearning.continueLearning', 'Continue learning')}
+          </h2>
+          <p className={styles.sectionDescription}>
+            {t('myLearning.continueLearningDescription', 'Pick up guides and paths you have started.')}
+          </p>
+        </div>
       </div>
-      <p className={styles.sectionDescription}>
-        {t('myLearning.continueLearningDescription', 'Pick up guides and paths you have started.')}
-      </p>
       <div
         ref={listRef}
         className={cx(styles.discoverList, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}

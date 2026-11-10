@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { t } from '@grafana/i18n';
 import type { CatalogPackage } from '../../types/package-catalog.types';
-import type { CatalogProgress } from '../../learning-paths';
+import { getPathsData, type CatalogProgress } from '../../learning-paths';
+import { resolvePackageNavLinks } from '../../docs-retrieval';
 import { AppPlatformPackageResolver } from '../../package-engine';
 import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
@@ -13,6 +14,8 @@ type CatalogInteractionLocation =
   'package_browser' | 'my_learning_discover_more' | 'my_learning_continue' | 'content_completion_panel';
 
 interface CatalogLaunchOptions {
+  launchLock?: RefObject<boolean>;
+  loadInSidebar?: boolean;
   onOpenGuide?: (launch: PreparedGuideLaunch) => void;
   onAcceptedLaunch?: (item: CatalogPackage) => void;
   interactionLocation?: CatalogInteractionLocation;
@@ -26,7 +29,8 @@ export function useCatalogLaunch(
 ) {
   const mounted = useRef(true);
   const currentScope = useRef(scope);
-  const lock = useRef(false);
+  const localLock = useRef(false);
+  const lock = options.launchLock ?? localLock;
   const preparingLoad = useRef<GuideLoadContext | undefined>(undefined);
   const [pending, setPending] = useState<{ scope: string; key: string } | null>(null);
   const [error, setError] = useState<{ scope: string; key: string; message: string } | null>(null);
@@ -67,21 +71,51 @@ export function useCatalogLaunch(
         if (!result.ok) {
           throw new Error('unavailable');
         }
-        packageInfo = { packageId: item.id, packageManifest: result.manifest, repository: 'app-platform' };
+        packageInfo = {
+          ...packageInfo,
+          packageId: item.id,
+          packageManifest: result.manifest,
+          repository: 'app-platform',
+        };
+        url ||= `backend-guide:${item.id}`;
       }
-      if (item.curatedPath && !url) {
+      if (item.curatedPath?.manifest && !url) {
+        const [cover] = await resolvePackageNavLinks([item.id]);
+        if (
+          !cover?.contentUrl ||
+          cover.repository === 'app-platform' ||
+          cover.contentUrl.startsWith('backend-guide:')
+        ) {
+          throw new Error('unavailable');
+        }
+        url = cover.contentUrl;
+        packageInfo = {
+          ...packageInfo,
+          packageId: item.id,
+          packageManifest: { ...(cover.manifest ?? item.curatedPath.manifest), id: item.id },
+          repository: cover.repository ?? packageInfo?.repository,
+        };
+      } else if (item.curatedPath && !url && item.source === 'grafana') {
         const nextId = progress.get(item.key)?.nextId ?? item.memberIds?.[0];
         const member = items.find(
           (candidate) => candidate.id === nextId && candidate.source === 'grafana' && candidate.format === 'guide'
         );
-        if (!member) {
+        const metadata = !member && nextId ? getPathsData().guideMetadata[nextId] : undefined;
+        if (!member && !metadata) {
           throw new Error('unavailable');
         }
-        url = member.url;
-        title = member.title;
-        packageInfo = member.packageInfo;
+        url = member?.url ?? metadata?.url ?? `bundled:${nextId}`;
+        title = member?.title ?? metadata?.title ?? item.title;
+        packageInfo = member?.packageInfo;
+      }
+      if (!url) {
+        throw new Error('unavailable');
       }
       if (!stillCurrent()) {
+        return;
+      }
+      if (options.loadInSidebar) {
+        openGuideInSidebar({ url, title, source: 'package_browser', packageInfo });
         return;
       }
       const loadContext = beginGuideLoad(url);

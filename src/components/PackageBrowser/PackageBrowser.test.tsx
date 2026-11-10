@@ -1,12 +1,20 @@
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { LearningPath, PathGuide, GuideMetadataEntry } from '../../types/learning-paths.types';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import { PackageBrowser } from './PackageBrowser';
-import { updateCatalogView } from '../../global-state/package-browser';
+import { getCatalogView, updateCatalogView } from '../../global-state/package-browser';
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { AppPlatformPackageResolver } from '../../package-engine';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
+import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
+
+jest.mock('../docs-panel/utils/open-prepared-guide', () => ({ openGuideInSidebar: jest.fn() }));
+
+jest.mock('@grafana/scenes', () => ({
+  ControlsLabel: ({ label, htmlFor }: { label: string; htmlFor?: string }) => <label htmlFor={htmlFor}>{label}</label>,
+}));
 
 const mockItems: CatalogPackage[] = [
   {
@@ -32,6 +40,11 @@ const mockItems: CatalogPackage[] = [
   },
 ];
 let mockScope = 'test';
+let mockProgress = new Map<string, { percent: number }>();
+let mockLocalPaths: LearningPath[] = [];
+let mockLocalGuides: PathGuide[] = [];
+let mockGuideMetadata: Record<string, GuideMetadataEntry> = {};
+let mockLocalPercent = 0;
 const mockRetry = jest.fn();
 const mockResolve = jest.fn();
 const originalObserver = global.IntersectionObserver;
@@ -64,7 +77,17 @@ jest.mock('../../lib/analytics', () => ({
 }));
 
 jest.mock('../../learning-paths', () => ({
-  useCatalogProgress: () => new Map(),
+  catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
+  useCatalogProgress: () => mockProgress,
+  getPathsData: () => ({ guideMetadata: mockGuideMetadata }),
+  useLearningPaths: () => ({
+    paths: mockLocalPaths,
+    getPathProgress: () => mockLocalPercent,
+    getPathGuides: () => [],
+    progress: { completedGuides: [] },
+  }),
+  useMyAssignments: () => ({ onlinePaths: [], assignmentByTargetId: new Map(), getPathGuides: () => mockLocalGuides }),
   usePackageCatalog: () => ({
     scope: mockScope,
     items: mockItems,
@@ -94,6 +117,11 @@ jest.mock('@grafana/i18n', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockScope = 'test';
+  mockProgress = new Map();
+  mockLocalPaths = [];
+  mockLocalGuides = [];
+  mockGuideMetadata = {};
+  mockLocalPercent = 0;
   mockItems.splice(2);
   updateCatalogView('test', {
     mode: 'all',
@@ -123,7 +151,7 @@ it('renders a bounded batch while search covers the entire catalog', () => {
   expect(screen.getAllByRole('article')).toHaveLength(24);
   fireEvent.click(screen.getByText('Show more'));
   expect(screen.getAllByRole('article')).toHaveLength(48);
-  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Extra guide 64' } });
+  fireEvent.change(screen.getByLabelText('Search guides and learning paths'), { target: { value: 'Extra guide 64' } });
   expect(screen.getAllByRole('article')).toHaveLength(1);
   expect(screen.getByText('Extra guide 64')).toBeInTheDocument();
 });
@@ -141,7 +169,7 @@ it('searches and filters sparse organization content without readiness badges', 
   expect(screen.queryByText('Build a dashboard')).not.toBeInTheDocument();
   expect(screen.getByText('Team guide')).toBeInTheDocument();
   expect(screen.queryByText('Requirements unknown')).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'missing' } });
+  fireEvent.change(screen.getByLabelText('Search guides and learning paths'), { target: { value: 'missing' } });
   expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
   fireEvent.click(screen.getByText('Clear filters'));
   expect(screen.getByText('Build a dashboard')).toBeInTheDocument();
@@ -165,7 +193,7 @@ it('expands path details in the card without preparing content or moving scroll 
     },
   });
   const { unmount } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Dashboard path' } });
+  fireEvent.change(screen.getByLabelText('Search guides and learning paths'), { target: { value: 'Dashboard path' } });
   const container = screen.getByTestId('package-browser');
   container.scrollTop = 420;
   fireEvent.scroll(container);
@@ -180,7 +208,7 @@ it('expands path details in the card without preparing content or moving scroll 
   expect(screen.getByRole('button', { name: 'Start path' })).toBeEnabled();
   unmount();
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  expect(screen.getByLabelText('Search guides and paths')).toHaveValue('Dashboard path');
+  expect(screen.getByLabelText('Search guides and learning paths')).toHaveValue('Dashboard path');
   expect(screen.getByRole('button', { name: 'Hide milestones' })).toHaveAttribute('aria-expanded', 'true');
 });
 
@@ -196,9 +224,11 @@ it('omits path milestones from the list and search while keeping them in path de
   });
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
   expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Build a dashboard' } });
+  fireEvent.change(screen.getByLabelText('Search guides and learning paths'), {
+    target: { value: 'Build a dashboard' },
+  });
   expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Dashboard path' } });
+  fireEvent.change(screen.getByLabelText('Search guides and learning paths'), { target: { value: 'Dashboard path' } });
   fireEvent.click(screen.getByRole('button', { name: 'Show milestones' }));
   const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
   expect(within(details).getByText('Build a dashboard')).toBeInTheDocument();
@@ -292,7 +322,7 @@ it('starts with curated introductions and topic shortcuts rather than the full c
   expect(screen.getByText('Prefer a single guide?')).toBeInTheDocument();
   expect(screen.getByText('3 to explore')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Explore learning' })).toBeInTheDocument();
-  expect(screen.getByText('Find something to learn or build in Grafana.')).toBeInTheDocument();
+  expect(screen.getByText('Browse all guides and learning paths.')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Explore by topic' })).toBeInTheDocument();
   expect(screen.queryByText('Team guide')).not.toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Format' })).not.toBeInTheDocument();
@@ -314,7 +344,7 @@ it('topic shortcuts include category aliases and retain their selection on retur
   });
   updateCatalogView('test', { mode: 'explore' });
   const { unmount } = render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Dashboards 2 guides and paths' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Dashboards 2 guides and learning paths' }));
   expect(screen.getAllByRole('article')).toHaveLength(2);
   expect(screen.queryByText('Team guide')).not.toBeInTheDocument();
   const container = screen.getByTestId('package-browser');
@@ -330,7 +360,7 @@ it('topic shortcuts include category aliases and retain their selection on retur
 it('search from Explore searches the whole catalog and opens All content', () => {
   updateCatalogView('test', { mode: 'explore' });
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
-  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'Team' } });
+  fireEvent.change(screen.getByLabelText('Search guides and learning paths'), { target: { value: 'Team' } });
   expect(screen.getByText('Team guide')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'All content' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.queryByRole('heading', { name: 'Explore by topic' })).not.toBeInTheDocument();
@@ -372,8 +402,8 @@ describe('search analytics', () => {
   const searchEvents = () =>
     jest.mocked(reportAppInteraction).mock.calls.filter(([, properties]) => properties?.action === 'search');
   const edit = (value: string) =>
-    fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value } });
-  const commit = () => fireEvent.keyDown(screen.getByLabelText('Search guides and paths'), { key: 'Enter' });
+    fireEvent.change(screen.getByLabelText('Search guides and learning paths'), { target: { value } });
+  const commit = () => fireEvent.keyDown(screen.getByLabelText('Search guides and learning paths'), { key: 'Enter' });
 
   it('waits for Enter or blur even during slow typing, then reports once without raw text', () => {
     render(<PackageBrowser onOpenGuide={jest.fn()} />);
@@ -383,7 +413,7 @@ describe('search analytics', () => {
     }
     expect(searchEvents()).toHaveLength(0);
     commit();
-    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    fireEvent.blur(screen.getByLabelText('Search guides and learning paths'));
     act(() => jest.advanceTimersByTime(10000));
     expect(searchEvents()).toEqual([
       [
@@ -402,7 +432,7 @@ describe('search analytics', () => {
     edit('dashboard for alice@example.com');
     act(() => jest.advanceTimersByTime(10000));
     expect(searchEvents()).toHaveLength(0);
-    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    fireEvent.blur(screen.getByLabelText('Search guides and learning paths'));
     expect(searchEvents()).toEqual([
       [
         UserInteraction.CatalogInteraction,
@@ -435,7 +465,7 @@ describe('search analytics', () => {
     act(() => jest.advanceTimersByTime(1000));
     edit('tempo');
     commit();
-    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    fireEvent.blur(screen.getByLabelText('Search guides and learning paths'));
     act(() => jest.advanceTimersByTime(2999));
     expect(searchEvents()).toHaveLength(1);
     act(() => jest.advanceTimersByTime(1));
@@ -462,7 +492,7 @@ describe('search analytics', () => {
     edit('logs');
     commit();
     edit('metrics');
-    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    fireEvent.blur(screen.getByLabelText('Search guides and learning paths'));
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
     edit('logs');
     commit();
@@ -490,7 +520,7 @@ describe('search analytics', () => {
   it('does not commit Enter used for input composition', () => {
     render(<PackageBrowser onOpenGuide={jest.fn()} />);
     edit('logs');
-    fireEvent.keyDown(screen.getByLabelText('Search guides and paths'), { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(screen.getByLabelText('Search guides and learning paths'), { key: 'Enter', isComposing: true });
     expect(searchEvents()).toHaveLength(0);
     commit();
     expect(searchEvents()).toHaveLength(1);
@@ -499,7 +529,7 @@ describe('search analytics', () => {
   it('does not report restored searches or queries deleted before committing', () => {
     updateCatalogView('test', { query: 'metrics' });
     render(<PackageBrowser onOpenGuide={jest.fn()} />);
-    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    fireEvent.blur(screen.getByLabelText('Search guides and learning paths'));
     edit('tempo');
     edit('');
     commit();
@@ -528,7 +558,7 @@ describe('search analytics', () => {
     updateCatalogView(mockScope, { mode: 'all', query: 'tempo' });
     rerender(<PackageBrowser onOpenGuide={jest.fn()} />);
     act(() => jest.advanceTimersByTime(10000));
-    fireEvent.blur(screen.getByLabelText('Search guides and paths'));
+    fireEvent.blur(screen.getByLabelText('Search guides and learning paths'));
     expect(searchEvents()).toHaveLength(1);
   });
 });
@@ -565,7 +595,7 @@ it('reports explicit source and view changes and topic shortcuts', () => {
     previous_view: 'all',
     interaction_location: 'package_browser',
   });
-  fireEvent.click(screen.getByRole('button', { name: /Dashboards.*guides and paths/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Dashboards.*guides and learning paths/ }));
   expect(reportAppInteraction).toHaveBeenLastCalledWith(UserInteraction.CatalogInteraction, {
     action: 'topic',
     topic: 'dashboards',
@@ -580,7 +610,7 @@ it('reports no view change for reselecting the active view or for the switch a s
   expect(reportAppInteraction).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
   jest.mocked(reportAppInteraction).mockClear();
-  fireEvent.change(screen.getByLabelText('Search guides and paths'), { target: { value: 'dashboard' } });
+  fireEvent.change(screen.getByLabelText('Search guides and learning paths'), { target: { value: 'dashboard' } });
   expect(screen.getByRole('button', { name: 'All content' })).toHaveAttribute('aria-pressed', 'true');
   expect(jest.mocked(reportAppInteraction).mock.calls.some(([, properties]) => properties?.action === 'view')).toBe(
     false
@@ -646,4 +676,211 @@ it('reports official catalog topics as-is and organization-only topics as other'
     control: 'filter',
     interaction_location: 'package_browser',
   });
+});
+
+it('page exploration keeps its filters separate from the sidebar', () => {
+  updateCatalogView(mockScope, { query: 'team', mode: 'all' });
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and learning paths' }), {
+    target: { value: 'dashboard' },
+  });
+  expect(screen.getByRole('textbox', { name: 'Search guides and learning paths' })).toHaveValue('dashboard');
+  expect(getCatalogView(mockScope).query).toBe('team');
+  expect(screen.getByRole('heading', { name: 'Explore learning', level: 1 })).toBeInTheDocument();
+});
+
+it('reports full-page search submission and Source and Topic selections exactly once each', async () => {
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  const search = screen.getByRole('textbox', { name: 'Search guides and learning paths' });
+  fireEvent.change(search, { target: { value: 'dashboard' } });
+  fireEvent.keyDown(search, { key: 'Enter' });
+  fireEvent.blur(search);
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+
+  for (const [name, value] of [
+    ['Source', 'Official'],
+    ['Topic', 'Dashboards'],
+  ]) {
+    const filter = screen.getByRole('combobox', { name });
+    fireEvent.change(filter, { target: { value } });
+    await act(async () => {});
+    fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    fireEvent.keyDown(filter, { key: 'Enter' });
+    expect(filter).toHaveValue(value);
+  }
+
+  expect(jest.mocked(reportAppInteraction).mock.calls).toEqual([
+    [
+      UserInteraction.CatalogInteraction,
+      {
+        action: 'search',
+        interaction_location: 'package_browser',
+        search_topic: 'dashboards',
+      },
+    ],
+    [
+      UserInteraction.CatalogInteraction,
+      {
+        action: 'source',
+        interaction_location: 'package_browser',
+        content_source: 'grafana',
+        previous_content_source: 'all',
+      },
+    ],
+    [
+      UserInteraction.CatalogInteraction,
+      {
+        action: 'topic',
+        interaction_location: 'package_browser',
+        topic: 'dashboards',
+        control: 'filter',
+      },
+    ],
+  ]);
+});
+
+it('keeps page scrolling out of React updates and resets scroll when searching', () => {
+  mockProgress = new Map([['bundled:dashboard', { percent: 25 }]]);
+  const onRender = jest.fn();
+  render(
+    <React.Profiler id="explore" onRender={onRender}>
+      <PackageBrowser page onOpenGuide={jest.fn()} />
+    </React.Profiler>
+  );
+  const container = screen.getByTestId('package-browser');
+  const renders = onRender.mock.calls.length;
+
+  for (const scrollTop of [120, 240, 420]) {
+    container.scrollTop = scrollTop;
+    fireEvent.scroll(container);
+    expect(container.scrollTop).toBe(scrollTop);
+  }
+
+  expect(onRender).toHaveBeenCalledTimes(renders);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and learning paths' }), {
+    target: { value: 'team' },
+  });
+  expect(container.scrollTop).toBe(0);
+  expect(screen.getByRole('heading', { name: 'Team guide' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and learning paths' }), {
+    target: { value: '' },
+  });
+  container.scrollTop = 240;
+  fireEvent.scroll(container);
+  fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
+  expect(container.scrollTop).toBe(0);
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Team guide' })).not.toBeInTheDocument();
+});
+
+it('opens a topic link directly in the page catalogue', () => {
+  window.history.replaceState({}, '', '/?topic=dashboards');
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  expect(screen.queryByRole('group', { name: 'Browse view' })).not.toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Topic' })).toHaveValue('Dashboards');
+  window.history.replaceState({}, '', '/');
+});
+
+it('page catalogue shows filters immediately without the extra landing tabs', () => {
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  expect(screen.getByRole('combobox', { name: 'Format' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Source' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Browse view' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Start with the essentials' })).not.toBeInTheDocument();
+});
+
+it('filters the page by recorded progress without affecting the sidebar', () => {
+  mockProgress = new Map([
+    ['bundled:dashboard', { percent: 25 }],
+    ['app-platform:team', { percent: 100 }],
+  ]);
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Team guide' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
+  expect(screen.getByRole('heading', { name: 'Team guide' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
+  expect(within(screen.getByRole('article')).getByText('Completed')).toBeInTheDocument();
+  expect(within(screen.getByRole('article')).getByText('Guide', { exact: true })).toBeInTheDocument();
+});
+
+it('includes started and completed path-member guides in the page status views', () => {
+  mockItems.push({
+    key: 'bundled:parent',
+    id: 'parent',
+    title: 'Parent path',
+    format: 'path',
+    source: 'grafana',
+    url: 'bundled:parent',
+    memberIds: ['dashboard'],
+  });
+  mockProgress = new Map([['bundled:dashboard', { percent: 25 }]]);
+  const { rerender } = render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  expect(screen.queryByRole('heading', { name: 'Build a dashboard' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+  mockProgress = new Map([['bundled:dashboard', { percent: 100 }]]);
+  rerender(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+});
+
+it('uses the same local path progress as the homepage even when catalogue progress is missing', () => {
+  mockLocalPaths = [
+    { id: 'local-path', title: 'Started local path', description: 'A local path', guides: ['dashboard'], badgeId: '' },
+  ];
+  mockLocalPercent = 28;
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
+  expect(screen.getByRole('heading', { name: 'Started local path' })).toBeInTheDocument();
+  expect(screen.getByText('28%')).toBeInTheDocument();
+});
+
+it('resumes a local bundled path whose guides are missing from the catalog', async () => {
+  mockLocalPaths = [{ id: 'local-path', title: 'Local course', description: '', guides: ['old', 'next'], badgeId: '' }];
+  mockLocalGuides = [
+    { id: 'old', title: 'Completed guide', completed: true, isCurrent: false },
+    { id: 'next', title: 'Next guide', completed: false, isCurrent: true },
+  ];
+  mockGuideMetadata = { next: { title: 'Next guide', estimatedMinutes: 5 } };
+  mockLocalPercent = 50;
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Local course' }));
+
+  await waitFor(() =>
+    expect(openGuideInSidebar).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'bundled:next', title: 'Next guide' })
+    )
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('opens a missing-catalog organization path instead of a public guide with a matching member ID', async () => {
+  const manifest = { id: 'team-path', type: 'path', milestones: ['dashboard'] };
+  mockLocalPaths = [
+    {
+      id: 'team-path',
+      title: 'Team course',
+      description: '',
+      guides: ['dashboard'],
+      badgeId: '',
+      isPrivate: true,
+      manifest,
+    },
+  ];
+  mockResolve.mockResolvedValue({ ok: true, manifest });
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Team course' }));
+
+  await waitFor(() =>
+    expect(openGuideInSidebar).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'backend-guide:team-path', title: 'Team course' })
+    )
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

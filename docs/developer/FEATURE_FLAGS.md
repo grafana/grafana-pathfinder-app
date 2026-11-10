@@ -20,7 +20,7 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 **Default**: `true`
 
-Controls the sidebar Browse entry and Browse all links. Set it to `false` to hide browsing during rollout. Browse offers starter content, topic shortcuts, and the full catalog. The browser uses existing package metadata and performs no prerequisite assessment. The `/browse` route opens the sidebar browser and returns to My learning.
+Controls the sidebar Browse entry, Browse all links, and the content of the full-page `/browse` route. Set it to `false` to hide browsing during rollout; the route shows an unavailable message. Sidebar Browse offers starter content, topic shortcuts, and the full catalog. The `/browse` route renders Explore learning as a full page, with search and filters, and opens selected content in the side panel. Both views use existing package metadata and perform no prerequisite assessment.
 
 **Tracking key**: `package_browser`
 
