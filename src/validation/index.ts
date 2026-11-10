@@ -39,3 +39,5 @@ export {
   validateBlockConditions,
   type ConditionIssue,
 } from './condition-validator';
+
+export { validateGrotGuideBlock, validateGrotGuideGraphs, type GrotGuideIssue } from './grot-guide-validator';
