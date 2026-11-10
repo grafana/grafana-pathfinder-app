@@ -33,13 +33,14 @@ export function useLearningPageScroll(ref: RefObject<HTMLElement | null>, enable
       return true;
     };
     const onScroll = (event: Event) => {
-      if (syncContainer()) {
-        return;
-      }
       if (
         event.target === container ||
         (container === (document.scrollingElement ?? document.documentElement) && event.target === document)
       ) {
+        // Grafana can reset the old container before ResizeObserver announces the switch.
+        if (container.scrollTop === 0 && scrollTop > 0 && syncContainer()) {
+          return;
+        }
         scrollTop = container.scrollTop;
       }
     };

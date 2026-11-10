@@ -48,30 +48,41 @@ function setup() {
   return { main, ...result };
 }
 
-it('preserves document scroll when opening the sidebar changes the scroll container', () => {
-  const { main, unmount } = setup();
-  document.documentElement.scrollTop = 514;
-  fireEvent.scroll(document);
-  main.style.overflowY = 'auto';
-  document.documentElement.scrollTop = 0;
-  act(() => resize([], {} as ResizeObserver));
-  expect(main.scrollTop).toBe(514);
-  unmount();
-  expect(disconnect).toHaveBeenCalledTimes(1);
-  main.remove();
-});
+it.each(['observer', 'window resize'])(
+  'preserves document scroll when the sidebar changes the container (%s)',
+  (trigger) => {
+    const { main, unmount } = setup();
+    document.documentElement.scrollTop = 514;
+    fireEvent.scroll(document);
+    main.style.overflowY = 'auto';
+    document.documentElement.scrollTop = 0;
+    if (trigger === 'observer') {
+      act(() => resize([], {} as ResizeObserver));
+    } else {
+      fireEvent.resize(window);
+    }
+    expect(main.scrollTop).toBe(514);
+    unmount();
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    main.remove();
+  }
+);
 
-it('restores the current page position when closing the sidebar and ignores reader scrolling', () => {
+it('restores the page position on sidebar close without layout reads during page or reader scrolling', () => {
   const { main, getByTestId, unmount } = setup();
   document.documentElement.scrollTop = 400;
   fireEvent.scroll(document);
   main.style.overflowY = 'auto';
   act(() => resize([], {} as ResizeObserver));
+  expect(main.scrollTop).toBe(400);
+  const styleReads = jest.spyOn(window, 'getComputedStyle');
   main.scrollTop = 620;
   fireEvent.scroll(main);
   const reader = getByTestId('reader');
   reader.scrollTop = 90;
   fireEvent.scroll(reader);
+  expect(styleReads).not.toHaveBeenCalled();
+  styleReads.mockRestore();
   main.style.overflowY = 'visible';
   act(() => resize([], {} as ResizeObserver));
   expect(document.documentElement.scrollTop).toBe(620);
@@ -88,6 +99,20 @@ it('keeps an intentional scroll to the top when the layout later changes', () =>
   main.style.overflowY = 'auto';
   act(() => resize([], {} as ResizeObserver));
   expect(main.scrollTop).toBe(0);
+  unmount();
+  main.remove();
+});
+
+it('preserves scroll when Grafana resets the old container before the resize observer runs', () => {
+  const { main, unmount } = setup();
+  document.documentElement.scrollTop = 514;
+  fireEvent.scroll(document);
+  main.style.overflowY = 'auto';
+  document.documentElement.scrollTop = 0;
+  fireEvent.scroll(document);
+  expect(main.scrollTop).toBe(514);
+  act(() => resize([], {} as ResizeObserver));
+  expect(main.scrollTop).toBe(514);
   unmount();
   main.remove();
 });
