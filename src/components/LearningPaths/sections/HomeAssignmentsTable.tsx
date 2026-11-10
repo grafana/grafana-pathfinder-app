@@ -15,6 +15,9 @@ export function HomeAssignmentsTable({
   entries,
   onView,
   selectedCardKey,
+  launchingKey,
+  launchDisabled = false,
+  launchError,
   isLoading = false,
   hasError = false,
   onRetry,
@@ -22,6 +25,9 @@ export function HomeAssignmentsTable({
   entries: LearningPathEntry[];
   onView: (entry: LearningPathEntry) => void;
   selectedCardKey?: string | null;
+  launchingKey?: string | null;
+  launchDisabled?: boolean;
+  launchError?: { key: string; message: string } | null;
   isLoading?: boolean;
   hasError?: boolean;
   onRetry?: () => void;
@@ -41,9 +47,13 @@ export function HomeAssignmentsTable({
               data-assignment-key={entry.key}
               aria-current={selectedCardKey === entry.key ? 'true' : undefined}
               onClick={() => onView(entry)}
+              disabled={launchDisabled}
+              aria-busy={launchingKey === entry.key || undefined}
             >
               {entry.path.title}
             </button>
+            {launchingKey === entry.key && <span role="status">{t('learningCard.opening', 'Opening…')}</span>}
+            {launchError?.key === entry.key && <span role="alert">{launchError.message}</span>}
             {entry.assignment?.trackLabel && (
               <span className={cx(styles.track, styles.truncated)} title={entry.assignment.trackLabel}>
                 {t('myLearning.assignedTrack', 'Track')} {entry.assignment.trackLabel}
@@ -101,7 +111,7 @@ export function HomeAssignmentsTable({
         ),
       },
     ],
-    [onView, selectedCardKey, styles]
+    [onView, selectedCardKey, launchingKey, launchDisabled, launchError, styles]
   );
   const error = hasError && (
     <div role="alert">
@@ -117,7 +127,7 @@ export function HomeAssignmentsTable({
       role="presentation"
       className={styles.container}
       onClick={(event) => {
-        if (!(event.target instanceof Element) || event.target.closest('button')) {
+        if (launchDisabled || !(event.target instanceof Element) || event.target.closest('button')) {
           return;
         }
         const button = event.target
@@ -229,6 +239,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     textAlign: 'left',
     cursor: 'pointer',
     '&:hover': { textDecoration: 'underline' },
+    '&:disabled': { color: theme.colors.text.disabled, cursor: 'wait', textDecoration: 'none' },
     '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
   }),
   courseCell: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(1), minWidth: 0 }),

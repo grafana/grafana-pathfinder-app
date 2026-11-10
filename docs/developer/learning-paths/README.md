@@ -236,7 +236,7 @@ Static guide completion flows through `markGuideCompleted()` in `badge-coordinat
 
 ### UI components (`src/components/LearningPaths/`)
 
-The components consume these hooks to render Learn Home, full-page Explore, and the Badges page. Home places assignments first and hides member guides when their parent path is already shown. Badge details render outside the page layout through a portal. Home and Explore open content in the sidebar. The legacy `MyLearningTab` layout still renders `PrivatePathsSection` for incomplete organization paths. The module provides data and actions; the components handle rendering and user interaction.
+The components consume these hooks to render Learn Home, full-page Explore, and the Badges page. Home places assignments first and hides member guides when their parent path is already shown. Badge details render outside the page layout through a portal. Home prepares content before choosing its surface: reading-only guides open full screen and guides that drive Grafana open beside it. Explore opens content in the sidebar. The legacy `MyLearningTab` layout still renders `PrivatePathsSection` for incomplete organization paths. The module provides data and actions; the components handle rendering and user interaction.
 
 ### Content system (`src/docs-retrieval/`)
 

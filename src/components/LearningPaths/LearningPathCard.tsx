@@ -27,6 +27,7 @@ export function LearningPathCard({
   defaultExpanded = false,
   isLaunching = false,
   launchDisabled = false,
+  launchError,
   assignment,
   tile = false,
   selected = false,
@@ -44,6 +45,7 @@ export function LearningPathCard({
   onViewPath?: () => void;
   showOrganization?: boolean;
   topic?: string;
+  launchError?: string;
 }) {
   const styles = useStyles2(getLearningPathCardStyles);
   const topicMetadata = getLearningTopicMetadata(topic, 'path');
@@ -130,8 +132,14 @@ export function LearningPathCard({
     path.estimatedMinutes > 0;
   const resumeAction = tile && presentation === 'resume' && (
     <div className={styles.resumeAction}>
-      <Button icon="play" size="md" variant="primary" onClick={onViewPath}>
-        {t('learningCard.resume', 'Resume')}
+      <Button
+        icon={isLaunching ? 'spinner' : 'play'}
+        size="md"
+        variant="primary"
+        onClick={onViewPath}
+        disabled={launchDisabled}
+      >
+        {isLaunching ? t('learningCard.opening', 'Opening…') : t('learningCard.resume', 'Resume')}
       </Button>
     </div>
   );
@@ -150,12 +158,14 @@ export function LearningPathCard({
       onClick={
         tile
           ? (event) => {
-              if (!(event.target as HTMLElement).closest('button, a, input')) {
+              if (!launchDisabled && !(event.target as HTMLElement).closest('button, a, input')) {
                 onViewPath?.();
               }
             }
           : undefined
       }
+      aria-busy={tile && isLaunching ? true : undefined}
+      aria-disabled={tile && launchDisabled ? true : undefined}
       data-learning-card={tile ? true : undefined}
       data-selected={tile && selected ? true : undefined}
       data-learning-resume={tile && presentation === 'resume' ? true : undefined}
@@ -198,6 +208,7 @@ export function LearningPathCard({
                 type="button"
                 className={styles.titleButton}
                 onClick={onViewPath}
+                disabled={launchDisabled}
                 aria-current={selected || undefined}
               >
                 {path.title}
@@ -248,7 +259,11 @@ export function LearningPathCard({
                   <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
                 )}
                 <span>
-                  <span>{t('learningCard.path', 'Learning path')}</span>
+                  {isLaunching && presentation !== 'resume' ? (
+                    <span role="status">{t('learningCard.opening', 'Opening…')}</span>
+                  ) : (
+                    <span>{t('learningCard.path', 'Learning path')}</span>
+                  )}
                   <span aria-hidden="true">·</span>
                   {isLoadingGuides
                     ? t('learningCard.loadingGuides', 'Loading guides…')
@@ -271,6 +286,11 @@ export function LearningPathCard({
             </div>
             {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
           </div>
+        )}
+        {tile && launchError && (
+          <p role="alert" className={styles.launchError}>
+            {launchError}
+          </p>
         )}
         {(!tile || isCompleted) && (
           <div className={styles.actions}>

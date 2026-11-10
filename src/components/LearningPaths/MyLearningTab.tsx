@@ -225,9 +225,18 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const homeAvailablePaths = homeUnassignedPaths.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
   const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress, {
     launchLock: launchInFlightRef,
-    loadInSidebar: homepage,
+    onOpenGuide: homepage ? onOpenGuide : undefined,
     onAcceptedLaunch: (item) => selectCard(catalogIdentity(item)),
   });
+  const homeLaunchDisabled = launchingId !== null || catalogLaunch.launchingKey !== null;
+  const failedCatalogItem = catalog.items.find((item) => item.key === catalogLaunch.launchError?.key);
+  const homeLaunchState = {
+    launchingKey: homeLaunchDisabled ? selectedCardKey : null,
+    launchDisabled: homeLaunchDisabled,
+    launchError: catalogLaunch.launchError
+      ? { ...catalogLaunch.launchError, key: failedCatalogItem ? catalogIdentity(failedCatalogItem) : '' }
+      : null,
+  };
   const continueItems = useMemo(
     () =>
       selectContinueLearning(
@@ -422,7 +431,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         effectiveGuides.find((guide) => guide.isCurrent && !guide.completed) ??
         effectiveGuides.find((guide) => !guide.completed) ??
         effectiveGuides[0];
-      handleOpenGuide(nextGuide?.id ?? '', entry.path.id, { path: entry.path, inSidebar: true });
+      handleOpenGuide(nextGuide?.id ?? '', entry.path.id, { path: entry.path, inSidebar: false });
     }
   };
 
@@ -442,6 +451,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
     if (!pendingAssignment || launchInFlightRef.current) {
       return;
     }
+    selectCard(pendingAssignment.entry.key);
     launchInFlightRef.current = true;
     setLaunchingId(pendingAssignment.entry.path.id);
     let resetSucceeded = false;
@@ -646,6 +656,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
           description={t('myLearning.assignmentsDescription', 'Guides and learning paths assigned to you.')}
           icon="user"
           entries={homeAssignedPaths}
+          {...homeLaunchState}
           selectedCardKey={selectedCardKey}
           assignmentsLoading={assignmentsLoading}
           assignmentsError={assignmentsError}
@@ -675,6 +686,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
           description={t('myLearning.pickUpLearningDescription', 'Your guides and learning paths in progress.')}
           icon="play"
           entries={homeContinuePaths}
+          {...homeLaunchState}
           selectedCardKey={selectedCardKey}
           onView={handleHomePathView}
           styles={styles}
@@ -745,6 +757,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
               description={t('myLearning.findNextPathDescription', 'Build your Grafana skills, one step at a time.')}
               icon="book-open"
               entries={homeAvailablePaths}
+              {...homeLaunchState}
               selectedCardKey={selectedCardKey}
               onView={handleHomePathView}
               styles={styles}

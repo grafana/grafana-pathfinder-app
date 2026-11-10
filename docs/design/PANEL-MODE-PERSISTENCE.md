@@ -18,14 +18,14 @@ them is the source of every bug this document exists to prevent:
   load restores.
 
 They diverge because automatic launches can select a surface without changing
-the user's durable preference. Learn Home and Explore launches use the sidebar
-policy below. The legacy `MyLearningTab` layout (`homepage=false`) still classifies
-path content (prose → full screen; interactive → beside Grafana).
+the user's durable preference. Learn Home classifies content before opening it:
+reading-only guides open full screen, while guides that drive Grafana open beside
+it. Explore and the other catalogue surfaces use the sidebar policy below.
 
 ## Catalog card launches
 
-Start and Resume from Learn Home, Explore, recommendations and legacy catalogue
-discovery open in the sidebar through `openGuideInSidebar`, including
+Start and Resume from Explore, recommendations and legacy catalogue discovery
+open in the sidebar through `openGuideInSidebar`, including
 reading-only content. This gives discovery cards a consistent destination.
 Floating and full-screen views render the guide reader or editor; they do not
 provide recommendations or Browse navigation.
@@ -34,7 +34,7 @@ Launching from a discovery card while another reader is floating or full-screen
 returns to the sidebar. The launch uses `setModeTransient`, so it preserves the
 stored surface preference. Readers can still choose floating or full-screen
 after opening the guide. Legacy path launches through `openPreparedGuide` retain
-their content-based surface selection; shipped Home paths open in the sidebar.
+their content-based surface selection, as do shipped Learn Home launches.
 
 ## The two axes and the three mutators
 

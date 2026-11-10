@@ -284,6 +284,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       rowGap: theme.spacing(0.5),
       '& > span': { display: 'inline-flex', alignItems: 'center', gap: theme.spacing(0.5) },
     }),
+    launchError: css({ ...theme.typography.sm, color: theme.colors.error.text, margin: 0 }),
     titleButton: css({
       font: 'inherit',
       color: 'inherit',
@@ -297,6 +298,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       overflow: 'hidden',
       textAlign: 'left',
       cursor: 'pointer',
+      '&:disabled': { color: theme.colors.text.disabled, cursor: 'wait' },
       '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
     }),
     tileDescription: css({

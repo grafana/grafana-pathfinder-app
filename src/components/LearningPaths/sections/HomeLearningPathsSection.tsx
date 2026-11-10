@@ -22,6 +22,9 @@ export function HomeLearningPathsSection({
   styles,
   presentation,
   selectedCardKey,
+  launchingKey,
+  launchDisabled,
+  launchError,
   assignmentsLoading,
   assignmentsError,
   onRetryAssignments,
@@ -35,6 +38,9 @@ export function HomeLearningPathsSection({
   styles: ReturnType<typeof getMyLearningStyles>;
   presentation?: 'continue' | 'assigned';
   selectedCardKey?: string | null;
+  launchingKey?: string | null;
+  launchDisabled?: boolean;
+  launchError?: { key: string; message: string } | null;
   assignmentsLoading?: boolean;
   assignmentsError?: boolean;
   onRetryAssignments?: () => void;
@@ -70,7 +76,10 @@ export function HomeLearningPathsSection({
       <LearningPathCard
         key={entry.key}
         tile
-        selected={selectedCardKey === entry.key}
+        selected={selectedCardKey === entry.key && launchError?.key !== entry.key}
+        isLaunching={launchingKey === entry.key}
+        launchDisabled={launchDisabled}
+        launchError={launchError?.key === entry.key ? launchError.message : undefined}
         presentation={presentation === 'continue' ? (index === 0 ? 'resume' : 'compact') : undefined}
         preview={entry.path.isPrivate ? undefined : getLearningPreview(entry.path.id)}
         showOrganization
@@ -116,6 +125,9 @@ export function HomeLearningPathsSection({
             entries={entries}
             onView={onView}
             selectedCardKey={selectedCardKey}
+            launchingKey={launchingKey}
+            launchDisabled={launchDisabled}
+            launchError={launchError}
             isLoading={assignmentsLoading}
             hasError={assignmentsError}
             onRetry={onRetryAssignments}

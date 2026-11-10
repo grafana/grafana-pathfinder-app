@@ -22,7 +22,10 @@ import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
+import { openGuideInSidebar, openPreparedGuide } from '../docs-panel/utils/open-prepared-guide';
+import { panelModeManager } from '../../global-state/panel-mode';
+import { guideLaunchStore } from '../../global-state/guide-launch';
+import { locationService } from '@grafana/runtime';
 import { openCatalogBrowser } from '../docs-panel/utils/open-catalog-browser';
 import type { CatalogPackage } from '../../types/package-catalog.types';
 import type { Badge } from '../../types';
@@ -40,7 +43,29 @@ jest.mock('../../lib/telemetry/facade', () => ({
   recordGuideRequest: jest.fn(),
 }));
 
-jest.mock('../docs-panel/utils/open-prepared-guide', () => ({ openGuideInSidebar: jest.fn() }));
+jest.mock('../docs-panel/utils/open-prepared-guide', () => ({
+  ...jest.requireActual('../docs-panel/utils/open-prepared-guide'),
+  openGuideInSidebar: jest.fn(),
+}));
+jest.mock('../../global-state/panel-mode', () => ({
+  panelModeManager: {
+    getMode: jest.fn(() => 'sidebar'),
+    setModeTransient: jest.fn(),
+    setPendingGuide: jest.fn(),
+    capturePriorPath: jest.fn(),
+  },
+}));
+jest.mock('../../global-state/sidebar', () => ({
+  sidebarState: {
+    getIsSidebarMounted: jest.fn(() => true),
+    setIsSidebarMounted: jest.fn(),
+    setPendingOpenSource: jest.fn(),
+    openSidebar: jest.fn(),
+  },
+}));
+jest.mock('../../global-state/guide-launch', () => ({ guideLaunchStore: { stage: jest.fn(() => 'launch-key') } }));
+jest.mock('../../global-state/link-interception', () => ({ linkInterceptionState: { addToQueue: jest.fn() } }));
+jest.mock('../../lib/storage/extension-sidebar', () => ({ isExtensionSidebarOwnedByOther: jest.fn(() => false) }));
 jest.mock('../docs-panel/utils/open-catalog-browser', () => ({ openCatalogBrowser: jest.fn() }));
 jest.mock('../PackageBrowser/CatalogDetails', () => ({ CatalogDetails: () => <p>Module list</p> }));
 jest.mock('../../package-engine', () => ({ AppPlatformPackageResolver: jest.fn() }));
@@ -74,6 +99,7 @@ jest.mock('../../docs-retrieval', () => ({
 const publishMock = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   getAppEvents: () => ({ publish: publishMock }),
+  locationService: { push: jest.fn() },
 }));
 
 jest.mock('@grafana/i18n', () => ({
@@ -114,7 +140,7 @@ jest.mock('@grafana/ui', () => ({
   ),
   Badge: ({ text }: any) => <span>{text}</span>,
   LinkButton: ({ children, href }: any) => <a href={href}>{children}</a>,
-  Button: ({ children, icon: _icon, size: _size, variant: _variant, ...props }: any) => (
+  Button: ({ children, icon: _icon, size: _size, variant: _variant, fullWidth: _fullWidth, ...props }: any) => (
     <button {...props}>{children}</button>
   ),
   useStyles2: () => new Proxy({}, { get: (_target, prop) => String(prop) }),
@@ -277,6 +303,20 @@ const okResult: PrepareGuideLaunchResult = {
 beforeEach(() => {
   jest.requireMock('../../utils/openfeature').useBooleanFlag.mockReturnValue(true);
   jest.clearAllMocks();
+  prepareMock.mockImplementation(async (url, context) =>
+    okResult.ok
+      ? {
+          ok: true,
+          launch: {
+            ...okResult.launch,
+            url,
+            title: context.title,
+            source: context.source,
+            packageInfo: context.packageInfo,
+          },
+        }
+      : okResult
+  );
   // Default: the repartition fixture — one URL-based path in progress, two at
   // the 1%/99% boundaries, one untouched, one complete.
   mockPaths = [
@@ -1505,8 +1545,157 @@ describe('MyLearningTab — reset all learning progress', () => {
 });
 
 describe('homepage path launches', () => {
-  beforeEach(() => {
-    prepareMock.mockResolvedValue(okResult);
+  it.each(
+    (['path', 'assignment', 'catalogue path', 'guide'] as const).flatMap((origin) =>
+      [false, true].map((requiresGrafanaUi) => ({ origin, requiresGrafanaUi }))
+    )
+  )(
+    'routes a Home $origin click using the prepared content classification (requires Grafana: $requiresGrafanaUi)',
+    async ({ origin, requiresGrafanaUi }) => {
+      const url = 'https://grafana.com/docs/learning-paths/path-1/';
+      const title = 'Home learning';
+      mockPaths =
+        origin === 'path' || origin === 'assignment' ? [{ id: 'path-1', title, guides: ['guide-1'], url }] : [];
+      mockAssignments =
+        origin === 'assignment'
+          ? [{ targetType: 'path', targetId: 'path-1', title, overdue: false, satisfied: false, progress: 50 }]
+          : [];
+      mockCatalogItems =
+        origin === 'catalogue path' || origin === 'guide'
+          ? [
+              {
+                key: 'online-cdn:home',
+                id: 'home',
+                title,
+                source: 'grafana',
+                format: origin === 'guide' ? 'guide' : 'path',
+                url,
+              },
+            ]
+          : [];
+      mockCatalogProgress = new Map([['online-cdn:home', { percent: 50 }]]);
+      prepareMock.mockImplementation(async (launchUrl, context) =>
+        okResult.ok
+          ? {
+              ok: true,
+              launch: {
+                ...okResult.launch,
+                url: launchUrl,
+                title: context.title,
+                source: context.source,
+                requiresGrafanaUi,
+              },
+            }
+          : okResult
+      );
+      render(<MyLearningTab homepage onOpenGuide={openPreparedGuide} />);
+
+      fireEvent.click(screen.getByRole('button', { name: title }));
+
+      const surface = requiresGrafanaUi ? 'sidebar' : 'fullscreen';
+      await waitFor(() => expect(panelModeManager.setModeTransient).toHaveBeenCalledWith(surface));
+      expect(prepareMock).toHaveBeenCalledTimes(1);
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.GuideLaunchSurfaceChosen,
+        expect.objectContaining({ surface, requires_grafana_ui: requiresGrafanaUi })
+      );
+      if (requiresGrafanaUi) {
+        expect(guideLaunchStore.stage).toHaveBeenCalledWith(
+          expect.objectContaining({ url, preparedContent: expect.anything() })
+        );
+        expect(locationService.push).not.toHaveBeenCalled();
+      } else {
+        expect(locationService.push).toHaveBeenCalledTimes(1);
+        expect(panelModeManager.setPendingGuide).toHaveBeenCalledWith(
+          expect.objectContaining({ url, preparedContent: expect.anything() })
+        );
+        expect(guideLaunchStore.stage).not.toHaveBeenCalled();
+      }
+    }
+  );
+
+  it.each(['resolution', 'preparation'])('shows a retryable catalogue path error when %s fails', async (failure) => {
+    mockPaths = [];
+    mockCatalogItems = [
+      {
+        key: 'online-cdn:catalogue-path',
+        id: 'catalogue-path',
+        title: 'Catalogue path',
+        source: 'grafana',
+        format: 'path',
+        url: '',
+        memberIds: ['guide-1'],
+        curatedPath: {
+          id: 'catalogue-path',
+          title: 'Catalogue path',
+          description: '',
+          guides: ['guide-1'],
+          badgeId: '',
+          manifest: { type: 'path' },
+        },
+      },
+    ];
+    mockCatalogProgress = new Map([['online-cdn:catalogue-path', { percent: 25 }]]);
+    const cover = [
+      { contentUrl: 'https://grafana.com/docs/learning-paths/catalogue-path/', repository: 'interactive-tutorials' },
+    ];
+    resolvePackageNavLinksMock.mockResolvedValue(cover);
+    if (failure === 'resolution') {
+      resolvePackageNavLinksMock.mockRejectedValueOnce(new Error('private resolution details'));
+    } else {
+      prepareMock.mockResolvedValueOnce({ ok: false, error: 'private preparation details', errorCode: 'fetch-failed' });
+    }
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+    const title = screen.getByRole('button', { name: 'Catalogue path' });
+
+    fireEvent.click(title);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not open this guide. It may have been removed or unpublished. Try again.'
+    );
+    expect(title).toBeEnabled();
+    expect(screen.queryByText(/private .* details/)).not.toBeInTheDocument();
+    expect(onOpenGuide).not.toHaveBeenCalled();
+
+    fireEvent.click(title);
+
+    await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows an assignment as opening and disables competing row and card launches until preparation settles', async () => {
+    mockAssignments = [
+      { targetType: 'path', targetId: 'path-1', title: 'Started path', overdue: false, satisfied: false, progress: 50 },
+      { targetType: 'path', targetId: 'path-new', title: 'New path', overdue: false, satisfied: false, progress: 0 },
+    ];
+    const pending = deferred();
+    prepareMock.mockReturnValueOnce(pending.promise);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+    const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
+    const first = assigned.getByRole('button', { name: 'Started path' });
+    const other = assigned.getByRole('button', { name: 'New path' });
+    const path = screen.getByRole('button', { name: 'Almost done' });
+
+    fireEvent.click(first);
+
+    expect(assigned.getByRole('status')).toHaveTextContent('Opening…');
+    expect(first).toHaveAttribute('aria-busy', 'true');
+    expect(first).toBeDisabled();
+    expect(other).toBeDisabled();
+    expect(path).toBeDisabled();
+    fireEvent.click(other.closest('tr')!.querySelectorAll('td')[2]!);
+    fireEvent.click(path.closest('[data-learning-card]')!);
+    expect(prepareMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => pending.resolve(okResult));
+
+    await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(1));
+    expect(first).toBeEnabled();
+    expect(other).toBeEnabled();
+    expect(path).toBeEnabled();
+    expect(assigned.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it.each(['Known path', 'Catalogue path'])(
@@ -1555,21 +1744,25 @@ describe('homepage path launches', () => {
           finishResolve = resolve;
         })
       );
-      render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+      const onOpenGuide = jest.fn();
+      render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
       const secondTitle = firstTitle === 'Known path' ? 'Catalogue path' : 'Known path';
 
       fireEvent.click(screen.getByRole('button', { name: firstTitle }));
       fireEvent.click(screen.getByRole('button', { name: secondTitle }));
 
+      expect(screen.getByRole('button', { name: firstTitle })).toBeDisabled();
+      expect(screen.getByRole('button', { name: secondTitle })).toBeDisabled();
+      expect(screen.getByText('Opening…')).toBeInTheDocument();
       expect(resolvePackageNavLinksMock).toHaveBeenCalledTimes(1);
-      expect(openGuideInSidebar).not.toHaveBeenCalled();
+      expect(onOpenGuide).not.toHaveBeenCalled();
       await act(async () => finishResolve(cover));
-      expect(openGuideInSidebar).toHaveBeenCalledTimes(1);
-      expect(openGuideInSidebar).toHaveBeenCalledWith(expect.objectContaining({ title: firstTitle }));
+      await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(1));
+      expect(onOpenGuide).toHaveBeenCalledWith(expect.objectContaining({ title: firstTitle }));
 
       resolvePackageNavLinksMock.mockResolvedValue(cover);
       fireEvent.click(screen.getByRole('button', { name: secondTitle }));
-      await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(2));
     }
   );
 
@@ -1580,14 +1773,13 @@ describe('homepage path launches', () => {
       { id: 'next', title: 'Next guide', completed: false, isCurrent: true },
     ]);
     mockGetGuideUrlForPath.mockImplementation((id: string) => `bundled:${id}`);
-    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
 
     await waitFor(() =>
-      expect(openGuideInSidebar).toHaveBeenCalledWith(
-        expect.objectContaining({ url: 'bundled:next', title: 'Next guide' })
-      )
+      expect(onOpenGuide).toHaveBeenCalledWith(expect.objectContaining({ url: 'bundled:next', title: 'Next guide' }))
     );
   });
 
@@ -1599,13 +1791,15 @@ describe('homepage path launches', () => {
 
     fireEvent.click(screen.getByRole('button', { name: target === 'title' ? 'Started path' : 'Resume' }));
 
-    await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(1));
-    expect(openGuideInSidebar).toHaveBeenCalledWith({
-      url,
-      title: 'Started path',
-      source: 'home_page',
-      packageInfo: undefined,
-    });
+    await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(1));
+    expect(onOpenGuide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url,
+        title: 'Started path',
+        source: 'home_page',
+        packageInfo: undefined,
+      })
+    );
     expect(
       jest.mocked(reportAppInteraction).mock.calls.filter(([type]) => type === UserInteraction.OpenResourceClick)
     ).toEqual([
@@ -1620,13 +1814,13 @@ describe('homepage path launches', () => {
         },
       ],
     ]);
-    expect(prepareMock).not.toHaveBeenCalled();
-    expect(onOpenGuide).not.toHaveBeenCalled();
+    expect(prepareMock).toHaveBeenCalledTimes(1);
   });
 
   it('does not track or open a duplicate click while a Home launch is pending', async () => {
     mockPaths = [mockPaths[0]];
-    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
     const title = screen.getByRole('button', { name: 'Started path' });
 
     await act(async () => {
@@ -1634,13 +1828,13 @@ describe('homepage path launches', () => {
       fireEvent.click(title);
     });
 
-    expect(openGuideInSidebar).toHaveBeenCalledTimes(1);
+    expect(onOpenGuide).toHaveBeenCalledTimes(1);
     expect(
       jest.mocked(reportAppInteraction).mock.calls.filter(([type]) => type === UserInteraction.OpenResourceClick)
     ).toHaveLength(1);
   });
 
-  it('opens the first bundled guide in the side panel when the path has no cover', async () => {
+  it('prepares the first bundled guide when the path has no cover', async () => {
     mockPaths = [{ id: 'path-new', title: 'New path', guides: ['guide-new'] }];
     mockGetGuideUrlForPath.mockReturnValue(undefined);
     const onOpenGuide = jest.fn();
@@ -1648,15 +1842,16 @@ describe('homepage path launches', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'New path' }));
 
-    await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(1));
-    expect(openGuideInSidebar).toHaveBeenCalledWith({
-      url: 'bundled:guide-new',
-      title: 'New guide',
-      source: 'home_page',
-      packageInfo: undefined,
-    });
-    expect(prepareMock).not.toHaveBeenCalled();
-    expect(onOpenGuide).not.toHaveBeenCalled();
+    await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(1));
+    expect(onOpenGuide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'bundled:guide-new',
+        title: 'New guide',
+        source: 'home_page',
+        packageInfo: undefined,
+      })
+    );
+    expect(prepareMock).toHaveBeenCalledTimes(1);
     expect(reportAppInteraction).toHaveBeenCalledWith(
       UserInteraction.OpenResourceClick,
       expect.objectContaining({ content_url: 'bundled:guide-new' })
@@ -1671,7 +1866,7 @@ describe('homepage path launches', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Empty path' }));
 
-    expect(openGuideInSidebar).not.toHaveBeenCalled();
+    expect(onOpenGuide).not.toHaveBeenCalled();
     expect(prepareMock).not.toHaveBeenCalled();
     expect(onOpenGuide).not.toHaveBeenCalled();
     expect(reportAppInteraction).not.toHaveBeenCalled();
@@ -1685,12 +1880,13 @@ describe('homepage path launches', () => {
     const url = 'https://grafana.com/docs/learning-paths/path-1/';
     mockPaths = [{ id: 'path-1', title: 'Started path', guides: [], url }];
     mockGetPathGuides.mockReturnValue([]);
-    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Started path' }));
 
     await waitFor(() =>
-      expect(openGuideInSidebar).toHaveBeenCalledWith(expect.objectContaining({ url, title: 'Started path' }))
+      expect(onOpenGuide).toHaveBeenCalledWith(expect.objectContaining({ url, title: 'Started path' }))
     );
     expect(publishMock).not.toHaveBeenCalled();
   });
@@ -1709,17 +1905,20 @@ describe('homepage path launches', () => {
     resolvePackageNavLinksMock.mockResolvedValue([
       { packageId: 'path-1', title: 'Organization path', contentUrl: 'backend-guide:path-1' },
     ]);
-    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Organization path' }));
 
-    await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(1));
-    expect(openGuideInSidebar).toHaveBeenCalledWith({
-      url: 'backend-guide:path-1',
-      title: 'Organization path',
-      source: 'home_page',
-      packageInfo: { packageId: 'path-1', packageManifest: manifest, trackId: undefined },
-    });
+    await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(1));
+    expect(onOpenGuide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'backend-guide:path-1',
+        title: 'Organization path',
+        source: 'home_page',
+        packageInfo: { packageId: 'path-1', packageManifest: manifest, trackId: undefined },
+      })
+    );
   });
 });
 
@@ -1748,16 +1947,17 @@ describe('homepage assignment progress mismatch', () => {
   });
 
   it('lets the learner cancel without resetting or opening anything', () => {
-    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
     fireEvent.click(screen.getByRole('button', { name: 'Assigned path' }));
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('Guide one');
-    expect(openGuideInSidebar).not.toHaveBeenCalled();
+    expect(onOpenGuide).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     expect(mockResetPathGuides).not.toHaveBeenCalled();
-    expect(openGuideInSidebar).not.toHaveBeenCalled();
+    expect(onOpenGuide).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
@@ -1768,33 +1968,33 @@ describe('homepage assignment progress mismatch', () => {
         finishReset = resolve;
       })
     );
-    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
     fireEvent.click(screen.getByRole('button', { name: 'Assigned path' }));
     const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset and continue' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(mockResetPathGuides).toHaveBeenCalledTimes(1);
     expect(mockResetPathGuides).toHaveBeenCalledWith('path-new', [expect.objectContaining({ id: 'guide-1' })]);
-    expect(openGuideInSidebar).not.toHaveBeenCalled();
+    expect(onOpenGuide).not.toHaveBeenCalled();
 
     await act(async () => finishReset());
 
     await waitFor(() =>
-      expect(openGuideInSidebar).toHaveBeenCalledWith(
-        expect.objectContaining({ url: 'bundled:guide-1', title: 'Guide one' })
-      )
+      expect(onOpenGuide).toHaveBeenCalledWith(expect.objectContaining({ url: 'bundled:guide-1', title: 'Guide one' }))
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('keeps the confirmation open and does not launch when reset fails', async () => {
     mockResetPathGuides.mockRejectedValue(new Error('Reset failed'));
-    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const onOpenGuide = jest.fn();
+    render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
     fireEvent.click(screen.getByRole('button', { name: 'Assigned path' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset and continue' }));
 
     await waitFor(() => expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' })));
-    expect(openGuideInSidebar).not.toHaveBeenCalled();
+    expect(onOpenGuide).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });
@@ -1990,13 +2190,14 @@ it('opens the assigned path from any row cell, preserves its track, and clears s
   ];
   const coverUrl = 'backend-guide:path-1';
   resolvePackageNavLinksMock.mockResolvedValue([{ packageId: 'path-1', title: 'Started path', contentUrl: coverUrl }]);
-  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const onOpenGuide = jest.fn();
+  render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
   const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
   const title = assigned.getByRole('button', { name: 'Started path' });
   fireEvent.click(assigned.getAllByRole('cell')[2]!);
   expect(title).toHaveAttribute('aria-current', 'true');
   await waitFor(() =>
-    expect(openGuideInSidebar).toHaveBeenCalledWith(
+    expect(onOpenGuide).toHaveBeenCalledWith(
       expect.objectContaining({
         url: coverUrl,
         packageInfo: expect.objectContaining({ packageId: 'path-1', trackId: 'builder' }),
@@ -2009,7 +2210,7 @@ it('opens the assigned path from any row cell, preserves its track, and clears s
   expect(title).not.toHaveAttribute('aria-current');
   fireEvent.click(title);
   expect(title).toHaveAttribute('aria-current', 'true');
-  await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(2));
 });
 
 it('transfers selection between assignments and learning cards while the panel stays open', async () => {
@@ -2027,7 +2228,8 @@ it('transfers selection between assignments and learning cards while the panel s
     },
   ];
   mockCatalogProgress = new Map([['bundled:other', { percent: 25 }]]);
-  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const onOpenGuide = jest.fn();
+  render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
   const assignment = within(screen.getByRole('region', { name: 'Your assignments' })).getByRole('button', {
     name: 'Started path',
   });
@@ -2035,15 +2237,15 @@ it('transfers selection between assignments and learning cards while the panel s
   act(() => reportPathfinderSurface('sidebar'));
   fireEvent.click(assignment);
   expect(assignment).toHaveAttribute('aria-current', 'true');
-  await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(1));
   fireEvent.click(guide);
   expect(assignment).not.toHaveAttribute('aria-current');
   expect(guide).toHaveAttribute('aria-current', 'true');
-  await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(2));
   fireEvent.click(assignment);
   expect(guide).not.toHaveAttribute('aria-current');
   expect(assignment).toHaveAttribute('aria-current', 'true');
-  await waitFor(() => expect(openGuideInSidebar).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(onOpenGuide).toHaveBeenCalledTimes(3));
 });
 
 it('uses completed guides for badge progress instead of partial course progress', () => {
