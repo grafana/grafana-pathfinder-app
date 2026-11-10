@@ -24,6 +24,8 @@ import type {
 } from './types';
 
 const listeners = new Set<CompletionListener>();
+// Observers see every emitted fact but never count as durable acceptance and never end the startup buffer.
+const observers = new Set<(fact: CompletionFact) => void>();
 
 // Facts recorded before any listener is armed, replayed on the first
 // `onCompletionRecorded`. Scoped to the queue owner (user/stack): an owner
@@ -90,6 +92,13 @@ function emit(fact: CompletionFact): boolean {
     } catch (error) {
       // A misbehaving subscriber must never break the completion path.
       logger.warn('Completion listener threw', { error });
+    }
+  }
+  for (const observer of observers) {
+    try {
+      observer(fact);
+    } catch (error) {
+      logger.warn('Completion observer threw', { error });
     }
   }
   return accepted;
@@ -208,6 +217,13 @@ export function onCompletionRecorded(listener: CompletionListener): () => void {
   };
 }
 
+export function onCompletionObserved(observer: (fact: CompletionFact) => void): () => void {
+  observers.add(observer);
+  return () => {
+    observers.delete(observer);
+  };
+}
+
 // Legacy /content.json identities remain valid until their durable records are retired.
 function identityKeys(guideSource: string, guideId: string): string[] {
   const kinds: readonly CompletionKind[] = ['guide', 'journey'];
@@ -261,5 +277,6 @@ export function __resetRecorderForTests(): void {
   emitted.clear();
   reported.clear();
   listeners.clear();
+  observers.clear();
   __resetAttemptsForTests();
 }

@@ -8,23 +8,25 @@ import { LEASE_TTL_MS } from './completion-write-timing';
 
 export { LEASE_TTL_MS } from './completion-write-timing';
 
-export interface QueuedWrite {
+export interface QueuedItem<Body> {
   id: string;
-  body: CompletionWriteBody;
+  body: Body;
   attempts: number;
   createdAt: number;
   nextAttemptAt: number;
 }
+
+export type QueuedWrite = QueuedItem<CompletionWriteBody>;
 
 export interface LeaseResult {
   acquired: boolean;
   retryAfterMs: number;
 }
 
-export interface CompletionWriteStorage {
-  list(): QueuedWrite[];
+export interface QueueStorage<Body> {
+  list(): Array<QueuedItem<Body>>;
   /** `true` when the item reached localStorage, `false` on the volatile fallback that a reload loses. */
-  put(item: QueuedWrite): boolean;
+  put(item: QueuedItem<Body>): boolean;
   remove(id: string): void;
   clear(): void;
   acquireLease(now: number): LeaseResult;
@@ -32,6 +34,8 @@ export interface CompletionWriteStorage {
   releaseLease(): void;
   subscribe(listener: () => void): () => void;
 }
+
+export type CompletionWriteStorage = QueueStorage<CompletionWriteBody>;
 
 interface StoredLease {
   tabId: string;
@@ -48,24 +52,28 @@ export function currentCompletionQueueOwnerKey(): string | null {
 }
 
 export function createCompletionWriteStorage(ownerKey: string, tabId = randomId()): CompletionWriteStorage {
-  const ownerPrefix = `${StorageKeys.COMPLETION_WRITE_QUEUE_PREFIX}${ownerKey}:`;
+  return createQueueStorage<CompletionWriteBody>(StorageKeys.COMPLETION_WRITE_QUEUE_PREFIX, ownerKey, tabId);
+}
+
+export function createQueueStorage<Body>(keyPrefix: string, ownerKey: string, tabId = randomId()): QueueStorage<Body> {
+  const ownerPrefix = `${keyPrefix}${ownerKey}:`;
   const itemPrefix = `${ownerPrefix}item:`;
   const leaseKey = `${ownerPrefix}lease`;
-  const volatileItems = new Map<string, QueuedWrite>();
+  const volatileItems = new Map<string, QueuedItem<Body>>();
   // True only while this tab has a lease it actually persisted, so renewLease
   // can tell a vanished lease from one that was never written.
   let leasePersisted = false;
 
-  function list(): QueuedWrite[] {
+  function list(): Array<QueuedItem<Body>> {
     // Load the persisted copies first, then overlay volatile entries so a newer
     // in-memory item (e.g. one whose backoff `put` failed and fell back to
     // volatile) wins over its stale persisted twin — never the reverse. Seeding
     // from volatile and letting localStorage overwrite would revert a fresher
     // retry state (attempts/nextAttemptAt) to the old persisted one.
-    const result = new Map<string, QueuedWrite>();
+    const result = new Map<string, QueuedItem<Body>>();
     try {
       for (const key of collectKeysByPrefix(localStorage, itemPrefix)) {
-        const item = parseQueuedWrite(localStorage.getItem(key));
+        const item = parseQueuedItem<Body>(localStorage.getItem(key));
         if (!item) {
           continue;
         }
@@ -93,7 +101,7 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
     return Array.from(result.values());
   }
 
-  function put(item: QueuedWrite): boolean {
+  function put(item: QueuedItem<Body>): boolean {
     try {
       localStorage.setItem(`${itemPrefix}${item.id}`, JSON.stringify(item));
       volatileItems.delete(item.id);
@@ -197,7 +205,7 @@ function randomId(): string {
   }
 }
 
-function parseQueuedWrite(raw: string | null): QueuedWrite | null {
+function parseQueuedItem<Body>(raw: string | null): QueuedItem<Body> | null {
   if (!raw) {
     return null;
   }
@@ -213,7 +221,7 @@ function parseQueuedWrite(raw: string | null): QueuedWrite | null {
     ) {
       return null;
     }
-    return value as unknown as QueuedWrite;
+    return value as unknown as QueuedItem<Body>;
   } catch {
     return null;
   }
