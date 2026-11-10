@@ -689,6 +689,56 @@ it('page exploration keeps its filters separate from the sidebar', () => {
   expect(screen.getByRole('heading', { name: 'Explore learning', level: 1 })).toBeInTheDocument();
 });
 
+it('reports full-page search submission and Source and Topic selections exactly once each', async () => {
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  const search = screen.getByRole('textbox', { name: 'Search guides and learning paths' });
+  fireEvent.change(search, { target: { value: 'dashboard' } });
+  fireEvent.keyDown(search, { key: 'Enter' });
+  fireEvent.blur(search);
+  expect(screen.getByRole('heading', { name: 'Build a dashboard' })).toBeInTheDocument();
+
+  for (const [name, value] of [
+    ['Source', 'Official'],
+    ['Topic', 'Dashboards'],
+  ]) {
+    const filter = screen.getByRole('combobox', { name });
+    fireEvent.change(filter, { target: { value } });
+    await act(async () => {});
+    fireEvent.keyDown(filter, { key: 'ArrowDown' });
+    fireEvent.keyDown(filter, { key: 'Enter' });
+    expect(filter).toHaveValue(value);
+  }
+
+  expect(jest.mocked(reportAppInteraction).mock.calls).toEqual([
+    [
+      UserInteraction.CatalogInteraction,
+      {
+        action: 'search',
+        interaction_location: 'package_browser',
+        search_topic: 'dashboards',
+      },
+    ],
+    [
+      UserInteraction.CatalogInteraction,
+      {
+        action: 'source',
+        interaction_location: 'package_browser',
+        content_source: 'grafana',
+        previous_content_source: 'all',
+      },
+    ],
+    [
+      UserInteraction.CatalogInteraction,
+      {
+        action: 'topic',
+        interaction_location: 'package_browser',
+        topic: 'dashboards',
+        control: 'filter',
+      },
+    ],
+  ]);
+});
+
 it('keeps page scrolling out of React updates and resets scroll when searching', () => {
   mockProgress = new Map([['bundled:dashboard', { percent: 25 }]]);
   const onRender = jest.fn();
