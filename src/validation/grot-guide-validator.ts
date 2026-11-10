@@ -159,7 +159,10 @@ export function validateGrotGuideBlock(block: JsonGrotGuideBlock, blockPath: Arr
   return issues;
 }
 
-export function validateGrotGuideGraphs(guide: JsonGuide): GrotGuideIssue[] {
+export function validateGrotGuideGraphsInBlocks(
+  blocks: readonly JsonBlock[],
+  basePath: Array<string | number> = ['blocks']
+): GrotGuideIssue[] {
   const issues: GrotGuideIssue[] = [];
 
   function visitBlock(block: JsonBlock, path: Array<string | number>): void {
@@ -187,11 +190,15 @@ export function validateGrotGuideGraphs(guide: JsonGuide): GrotGuideIssue[] {
     }
   }
 
-  if (Array.isArray(guide.blocks)) {
-    guide.blocks.forEach((block, i) => {
-      visitBlock(block, ['blocks', i]);
+  if (Array.isArray(blocks)) {
+    blocks.forEach((block, i) => {
+      visitBlock(block, [...basePath, i]);
     });
   }
 
   return issues;
+}
+
+export function validateGrotGuideGraphs(guide: JsonGuide): GrotGuideIssue[] {
+  return validateGrotGuideGraphsInBlocks(guide.blocks);
 }

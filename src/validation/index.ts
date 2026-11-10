@@ -40,4 +40,9 @@ export {
   type ConditionIssue,
 } from './condition-validator';
 
-export { validateGrotGuideBlock, validateGrotGuideGraphs, type GrotGuideIssue } from './grot-guide-validator';
+export {
+  validateGrotGuideBlock,
+  validateGrotGuideGraphs,
+  validateGrotGuideGraphsInBlocks,
+  type GrotGuideIssue,
+} from './grot-guide-validator';
