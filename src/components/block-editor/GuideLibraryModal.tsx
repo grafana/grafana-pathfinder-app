@@ -1,7 +1,7 @@
 /**
  * Guide Library Modal
  *
- * Displays a list of guides from the backend and allows loading them for editing
+ * Lists the private guides from the slim catalogue and reads the full guide only when loaded for editing
  */
 
 import React, { useState } from 'react';
@@ -12,30 +12,22 @@ import type { JsonGuide } from './types';
 import { ConfirmModal, AlertModal } from './NotificationModals';
 import { formatPath } from '../../validation/errors';
 import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
+import type { CustomGuideRepositoryEntry } from '../../lib/custom-guide-repository-client';
 
-interface BackendGuide {
-  metadata: {
-    name: string;
-    namespace: string;
-    creationTimestamp?: string;
-    uid?: string;
-    resourceVersion?: string;
-  };
-  spec: {
-    id: string;
-    title: string;
-    schemaVersion?: string;
-    blocks?: unknown;
-    status?: 'draft' | 'published';
-  };
+/** The fields loading reads from a stored guide; `blocks` is unknown because a stored guide can be malformed. */
+interface StoredGuide {
+  metadata: { name: string };
+  spec: { id: string; title: string; schemaVersion?: string; blocks?: unknown };
 }
 
 export interface GuideLibraryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  guides: BackendGuide[];
+  guides: CustomGuideRepositoryEntry[];
   isLoading: boolean;
   error: string | null;
+  /** Resolves undefined only when the guide no longer exists. */
+  readGuide: (resourceName: string) => Promise<StoredGuide | undefined>;
   onLoadGuide: (guide: JsonGuide, resourceName: string) => void;
   onDeleteGuide: (resourceName: string) => Promise<void>;
   onRefresh: () => void;
@@ -119,12 +111,14 @@ export function GuideLibraryModal({
   guides,
   isLoading,
   error,
+  readGuide,
   onLoadGuide,
   onDeleteGuide,
   onRefresh,
 }: GuideLibraryModalProps) {
   const styles = useStyles2(getStyles);
   const [deletingGuide, setDeletingGuide] = useState<string | null>(null);
+  const [loadingGuide, setLoadingGuide] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -139,7 +133,23 @@ export function GuideLibraryModal({
     resourceName: '',
   });
 
-  const handleLoadGuide = (backendGuide: BackendGuide) => {
+  const handleLoadGuide = async (entry: CustomGuideRepositoryEntry) => {
+    setLoadingGuide(entry.name);
+    try {
+      const stored = await readGuide(entry.name);
+      if (!stored) {
+        setLoadError(`Cannot load guide: "${entry.name}" was not found on the server`);
+        return;
+      }
+      loadStoredGuide(stored);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setLoadingGuide(null);
+    }
+  };
+
+  const loadStoredGuide = (backendGuide: StoredGuide) => {
     if (!backendGuide.spec.blocks || !Array.isArray(backendGuide.spec.blocks)) {
       setLoadError('Cannot load guide: missing or invalid blocks array');
       return;
@@ -170,12 +180,12 @@ export function GuideLibraryModal({
     onClose();
   };
 
-  const handleDeleteGuide = async (guide: BackendGuide) => {
+  const handleDeleteGuide = async (guide: CustomGuideRepositoryEntry) => {
     setDeleteConfirm({
       isOpen: true,
-      guideName: guide.metadata.name,
-      guideTitle: guide.spec.title,
-      resourceName: guide.metadata.name,
+      guideName: guide.name,
+      guideTitle: guide.title || guide.name,
+      resourceName: guide.name,
     });
   };
 
@@ -241,13 +251,13 @@ export function GuideLibraryModal({
             </div>
           ) : (
             guides.map((guide) => {
-              const guideStatus: 'draft' | 'published' = guide.spec.status === 'published' ? 'published' : 'draft';
-              const isActioning = deletingGuide === guide.metadata.name;
+              const guideStatus: 'draft' | 'published' = guide.status === 'published' ? 'published' : 'draft';
+              const isActioning = deletingGuide === guide.name;
               return (
-                <div key={guide.metadata.uid || guide.metadata.name} className={styles.guideItem}>
+                <div key={guide.name} className={styles.guideItem}>
                   <div className={styles.guideInfo}>
                     <div className={styles.guideTitle}>
-                      {guide.spec.title}{' '}
+                      {guide.title || guide.name}{' '}
                       {guideStatus === 'published' ? (
                         <Tooltip content="Published and visible to users">
                           <Badge text="Published" color="green" icon="cloud-upload" />
@@ -260,14 +270,10 @@ export function GuideLibraryModal({
                     </div>
                     <div className={styles.guideMeta}>
                       <span>
-                        <Icon name="cube" /> {guide.metadata.name}
+                        <Icon name="cube" /> {guide.name}
                       </span>
                       <span>
-                        <Icon name="clock-nine" /> {formatDate(guide.metadata.creationTimestamp)}
-                      </span>
-                      <span>
-                        <Icon name="apps" /> {Array.isArray(guide.spec.blocks) ? guide.spec.blocks.length : 'Invalid'}{' '}
-                        blocks
+                        <Icon name="clock-nine" /> {formatDate(guide.creationTimestamp)}
                       </span>
                     </div>
                   </div>
@@ -277,6 +283,7 @@ export function GuideLibraryModal({
                       size="sm"
                       icon="pen"
                       onClick={() => handleLoadGuide(guide)}
+                      disabled={loadingGuide !== null}
                       tooltip="Load guide for editing"
                     >
                       Load
@@ -289,7 +296,7 @@ export function GuideLibraryModal({
                       disabled={isActioning}
                       tooltip="Delete guide"
                     >
-                      {deletingGuide === guide.metadata.name ? <Spinner size="sm" /> : null}
+                      {deletingGuide === guide.name ? <Spinner size="sm" /> : null}
                     </Button>
                   </div>
                 </div>

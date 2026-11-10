@@ -64,7 +64,10 @@ it('never displays an old organization response after the scope changes', async 
   rerender();
   await waitFor(() => expect(result.current.loading).toBe(false));
   await act(async () => {
-    finish({ available: true, entries: [{ id: 'old-private-guide', status: 'published', title: 'Private title' }] });
+    finish({
+      available: true,
+      entries: [{ id: 'old-private-guide', name: 'old-private-guide', status: 'published', title: 'Private title' }],
+    });
   });
   expect(result.current.items.some((item) => item.id === 'old-private-guide')).toBe(false);
   expect(result.current.scope).toMatch(/^org-b:/);

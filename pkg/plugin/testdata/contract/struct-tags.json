@@ -452,6 +452,20 @@
       "omitempty": false
     },
     {
+      "field": "Name",
+      "json": "name",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "CreationTimestamp",
+      "json": "creationTimestamp",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
       "field": "Title",
       "json": "title",
       "type": "string",
@@ -537,15 +551,6 @@
       "json": "finalCompletablePosition",
       "type": "int",
       "wire": "integer",
-      "omitempty": false
-    }
-  ],
-  "customGuidesResponse": [
-    {
-      "field": "Items",
-      "json": "items",
-      "type": "[]json.RawMessage",
-      "wire": "array<json>",
       "omitempty": false
     }
   ],

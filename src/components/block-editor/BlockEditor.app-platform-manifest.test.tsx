@@ -11,6 +11,7 @@ import { buildServer } from '../../cli/mcp/server';
 import { BlockEditor } from './BlockEditor';
 
 const mockFetch = jest.fn();
+const mockGet = jest.fn();
 
 jest.mock('@grafana/runtime', () => {
   const actual = jest.requireActual('@grafana/runtime');
@@ -25,7 +26,7 @@ jest.mock('@grafana/runtime', () => {
         user: { name: 'Sam Rivera', login: 'sam', email: 'sam@example.com' },
       },
     },
-    getBackendSrv: () => ({ fetch: mockFetch }),
+    getBackendSrv: () => ({ fetch: mockFetch, get: mockGet }),
     getAppEvents: () => ({ publish: jest.fn() }),
   };
 });
@@ -241,10 +242,17 @@ beforeEach(() => {
     if (url.pathname.endsWith('/custom-guide') && url.searchParams.get('name') === storedResource.metadata.name) {
       return of({ data: clone(storedResource) });
     }
-    if (url.pathname.endsWith('/custom-guides')) {
-      return of({ data: { items: [clone(storedResource)] } });
-    }
     return of({ data: {} });
+  });
+  mockGet.mockReset().mockImplementation(async (url: string) => {
+    if (!url.endsWith('/custom-guide-repository')) {
+      return {};
+    }
+    const { metadata, spec } = storedResource;
+    return {
+      capability: { available: true },
+      guides: [{ id: spec.id, name: metadata.name, title: spec.title, status: spec.status }],
+    };
   });
 });
 

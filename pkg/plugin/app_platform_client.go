@@ -75,21 +75,15 @@ type appPlatformListPage struct {
 	Items []appPlatformListItem `json:"items"`
 }
 
-type appPlatformRawListPage struct {
-	Metadata struct {
-		Continue string `json:"continue"`
-	} `json:"metadata"`
-	Items []json.RawMessage `json:"items"`
-}
-
 // appPlatformListItem is one LIST element. metadata.name addresses the
 // object; resourceVersion is what a subsequent status update must echo back.
 // spec and status stay raw so each kind decodes its own schema.
 type appPlatformListItem struct {
 	Metadata struct {
-		Name            string            `json:"name"`
-		ResourceVersion string            `json:"resourceVersion"`
-		Annotations     map[string]string `json:"annotations"`
+		Name              string            `json:"name"`
+		ResourceVersion   string            `json:"resourceVersion"`
+		CreationTimestamp string            `json:"creationTimestamp"`
+		Annotations       map[string]string `json:"annotations"`
 	} `json:"metadata"`
 	Spec   json.RawMessage `json:"spec"`
 	Status json.RawMessage `json:"status"`
@@ -196,14 +190,6 @@ var createDiagOnce sync.Once
 func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (*appPlatformListPage, error) {
 	page := &appPlatformListPage{}
 	if err := c.listPageInto(ctx, groupVersion, namespace, resource, continueToken, pageSize, maxBytes, page); err != nil {
-		return nil, err
-	}
-	return page, nil
-}
-
-func (c *appPlatformListClient) listRawPage(ctx context.Context, namespace, continueToken string) (*appPlatformRawListPage, error) {
-	page := &appPlatformRawListPage{}
-	if err := c.listPageInto(ctx, customGuideGroupVersion, namespace, customGuideResource, continueToken, customGuidesPageSize, customGuideListMaxBytes, page); err != nil {
 		return nil, err
 	}
 	return page, nil

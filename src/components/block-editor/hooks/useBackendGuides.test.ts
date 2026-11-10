@@ -22,8 +22,8 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
-jest.mock('../../../utils/fetchBackendGuides', () => ({
-  fetchBackendGuides: jest.fn(),
+jest.mock('../../../lib/custom-guide-repository-client', () => ({
+  fetchCustomGuideCatalogue: jest.fn(),
 }));
 
 jest.mock('../../../lib/analytics', () => ({
@@ -38,7 +38,7 @@ jest.mock('../../../lib/logging', () => ({
 import { getBackendSrv } from '@grafana/runtime';
 import { of, throwError } from 'rxjs';
 
-import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import { fetchCustomGuideCatalogue } from '../../../lib/custom-guide-repository-client';
 import { logger } from '../../../lib/logging';
 import { reportAppInteraction } from '../../../lib/analytics';
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
@@ -130,9 +130,18 @@ function writes() {
   return mockFetch.mock.calls.map(([request]) => request).filter((request) => request.method !== 'GET');
 }
 
+/** The slim catalogue entry the library lists for a stored guide: no blocks, no resourceVersion. */
+function catalogueEntry(guide: StoredGuide) {
+  return { id: guide.spec.id, name: guide.metadata.name, title: guide.spec.title, status: guide.spec.status };
+}
+
+function serveCatalogue(items: StoredGuide[]) {
+  (fetchCustomGuideCatalogue as jest.Mock).mockResolvedValue({ available: true, entries: items.map(catalogueEntry) });
+}
+
 async function renderLoaded(items: StoredGuide[], server: StoredGuide[] = items) {
   serverGuides = server;
-  (fetchBackendGuides as jest.Mock).mockResolvedValue(items);
+  serveCatalogue(items);
   const { result } = renderHook(() => useBackendGuides());
   await waitFor(() => expect(result.current.hasLoaded).toBe(true));
   return result;
@@ -268,9 +277,13 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(writes()).toHaveLength(0);
   });
 
-  it('refuses without touching the list, so a live error and the guide-library entry both survive', async () => {
+  it('refuses without touching the catalogue, so a live error and the guide-library entry both survive', async () => {
     const resource = pathCoverPage();
-    (fetchBackendGuides as jest.Mock).mockRejectedValueOnce(new Error('list unavailable'));
+    (fetchCustomGuideCatalogue as jest.Mock).mockResolvedValueOnce({
+      available: false,
+      reason: 'obo-unavailable',
+      entries: [],
+    });
     const { result } = renderHook(() => useBackendGuides());
     await waitFor(() => expect(result.current.hasLoaded).toBe(true));
     // The failed initial list is what keeps the guide-library entry visible.
@@ -282,7 +295,7 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
       ).rejects.toThrow('Could not read the saved guide');
     });
 
-    expect(result.current.error).toBe('list unavailable');
+    expect(result.current.error).toBe('The guide library is unavailable (obo-unavailable).');
     expect(hasManageableBackendGuides(result.current)).toBe(true);
   });
 
@@ -725,7 +738,7 @@ describe('author attribution', () => {
       await result.current.unpublishGuide('alerting-path');
     });
     mockFetch.mockReturnValue(throwError(() => new Error('boom')));
-    (fetchBackendGuides as jest.Mock).mockRejectedValue(new Error('boom'));
+    (fetchCustomGuideCatalogue as jest.Mock).mockResolvedValue({ available: false, reason: 'boom', entries: [] });
     await act(async () => {
       await result.current.publishGuide('alerting-path').catch(() => {});
       await result.current.deleteGuide('alerting-path').catch(() => {});
@@ -790,5 +803,68 @@ describe('author attribution', () => {
       repository: 'app-platform',
       author: { name: 'Sam Rivera' },
     });
+  });
+});
+
+describe('useBackendGuides — library catalogue', () => {
+  it('lists drafts and published guides from the catalogue, bypassing its cache', async () => {
+    const draft = pathCoverPage();
+    const result = await renderLoaded([draft]);
+
+    expect(fetchCustomGuideCatalogue).toHaveBeenCalledWith('stacks-1', { refresh: true });
+    expect(result.current.guides).toEqual([catalogueEntry(draft)]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reports an unavailable catalogue as an error, never as an empty library', async () => {
+    (fetchCustomGuideCatalogue as jest.Mock).mockResolvedValue({
+      available: false,
+      reason: 'identity-unavailable',
+      entries: [],
+    });
+    const { result } = renderHook(() => useBackendGuides());
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+
+    expect(result.current.error).toBe('The guide library is unavailable (identity-unavailable).');
+    expect(hasManageableBackendGuides(result.current)).toBe(true);
+  });
+
+  it('treats a stack without the backend API as an empty library, not an error', async () => {
+    (fetchCustomGuideCatalogue as jest.Mock).mockResolvedValue({
+      available: false,
+      reason: 'unsupported',
+      entries: [],
+    });
+    const { result } = renderHook(() => useBackendGuides());
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.guides).toEqual([]);
+  });
+
+  it('re-lists with a cache bypass after a save, publish, unpublish and delete', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([resource]);
+    (fetchCustomGuideCatalogue as jest.Mock).mockClear();
+
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
+      await result.current.publishGuide('alerting-path');
+      await result.current.unpublishGuide('alerting-path');
+      await result.current.deleteGuide('alerting-path');
+    });
+
+    expect((fetchCustomGuideCatalogue as jest.Mock).mock.calls).toEqual(Array(4).fill(['stacks-1', { refresh: true }]));
+  });
+
+  it('reads one guide by resource name for loading', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([], [resource]);
+
+    await expect(result.current.readGuide('alerting-path')).resolves.toEqual(resource);
+    await expect(result.current.readGuide('missing')).resolves.toBeUndefined();
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.objectContaining({ url: guideReadUrl('alerting-path'), method: 'GET' })
+    );
   });
 });

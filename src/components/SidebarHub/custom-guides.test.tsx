@@ -10,6 +10,7 @@ jest.mock('../../lib/analytics', () => ({
 
 const guide = (id: string, extra: Partial<PublishedGuide> = {}): PublishedGuide => ({
   id,
+  name: id,
   title: `Guide ${id}`,
   status: 'published',
   manifest: { type: 'guide' } as PublishedGuide['manifest'],

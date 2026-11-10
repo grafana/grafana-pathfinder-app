@@ -69,7 +69,7 @@ it.each(['request-failed', 'upstream-503', 'signing-keys-unreachable'])(
       .mockResolvedValueOnce({ available: false, entries: [], reason })
       .mockResolvedValueOnce({
         available: true,
-        entries: [{ id: 'team-guide', title: 'Team onboarding', status: 'published' }],
+        entries: [{ id: 'team-guide', name: 'team-guide', title: 'Team onboarding', status: 'published' }],
       });
     render(<PackageBrowser onOpenGuide={jest.fn()} />);
     expect(await screen.findByText('Organization content could not be loaded.')).toBeInTheDocument();

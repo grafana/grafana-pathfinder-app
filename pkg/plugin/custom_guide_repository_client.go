@@ -224,11 +224,15 @@ func (s *customGuideStats) UnmarshalJSON(data []byte) error {
 // PackageEntry in package_recommendations.go). This is the shaped/collated
 // unit the cache stores; the heavy spec.blocks never survives shaping, so
 // steady-state memory is bounded by guide count, not guide size.
+// Name and CreationTimestamp come from metadata, not spec: the editor loads and
+// saves by resource name, which can differ from spec.id.
 type customGuideRepositoryEntry struct {
-	ID       string               `json:"id"`
-	Title    string               `json:"title,omitempty"`
-	Status   string               `json:"status,omitempty"`
-	Manifest *customGuideManifest `json:"manifest,omitempty"`
+	ID                string               `json:"id"`
+	Name              string               `json:"name"`
+	CreationTimestamp string               `json:"creationTimestamp,omitempty"`
+	Title             string               `json:"title,omitempty"`
+	Status            string               `json:"status,omitempty"`
+	Manifest          *customGuideManifest `json:"manifest,omitempty"`
 }
 
 // customGuidePage is one page of a namespace LIST: the shaped entries plus the
@@ -318,6 +322,7 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 			// it did understand is still usable.
 			warn("custom guide repository: spec did not fully decode", "id", entry.ID, "error", err)
 		}
+		entry.Name, entry.CreationTimestamp = item.Metadata.Name, item.Metadata.CreationTimestamp
 		if entry.ID == "" {
 			// id is required by the CRD schema; skip anything malformed rather
 			// than surface an entry with no stable identifier.

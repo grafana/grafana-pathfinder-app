@@ -122,12 +122,13 @@ describe('package catalog', () => {
     const entries = organizationCatalog([
       {
         id: 'intro',
+        name: 'intro',
         title: 'Private introduction',
         status: 'published',
         manifest: { repository: 'bundled', type: 'guide' },
       },
-      { id: 'draft', status: 'draft' },
-      { id: '../unsafe', status: 'published' },
+      { id: 'draft', name: 'draft', status: 'draft' },
+      { id: '../unsafe', name: '../unsafe', status: 'published' },
     ]);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
@@ -145,7 +146,9 @@ describe('package catalog', () => {
       baseUrl: 'https://interactive-learning.grafana.net/packages/',
       packages: [{ id: 'intro', path: 'intro', title: 'Online introduction', type: 'guide' }],
     });
-    const privateEntries = organizationCatalog([{ id: 'intro', title: 'Private introduction', status: 'published' }]);
+    const privateEntries = organizationCatalog([
+      { id: 'intro', name: 'intro', title: 'Private introduction', status: 'published' },
+    ]);
     expect(
       mergeCatalog(local, online, privateEntries)
         .filter((entry) => entry.id === 'intro')
@@ -206,6 +209,7 @@ describe('package catalog', () => {
     const entries = organizationCatalog([
       {
         id: 'team-path',
+        name: 'team-path',
         status: 'published',
         manifest: {
           type: 'path',
@@ -215,6 +219,7 @@ describe('package catalog', () => {
       },
       {
         id: 'canonical-path',
+        name: 'canonical-path',
         status: 'published',
         manifest: {
           type: 'path',
@@ -231,6 +236,7 @@ describe('package catalog', () => {
         'standalone',
       ].map((id) => ({
         id,
+        name: id,
         status: 'published',
         manifest: { type: 'guide' as const },
       })),
@@ -242,7 +248,7 @@ describe('package catalog', () => {
 });
 
 it('keeps legacy private resource identifiers without a manifest migration', () => {
-  expect(organizationCatalog([{ id: 'team.guide_v1', status: 'published' }])[0]?.url).toBe(
+  expect(organizationCatalog([{ id: 'team.guide_v1', name: 'team.guide_v1', status: 'published' }])[0]?.url).toBe(
     'backend-guide:team.guide_v1'
   );
 });

@@ -468,6 +468,40 @@ func TestCustomGuideHTTPClient_StripsBlocksPreservesManifest(t *testing.T) {
 	}
 }
 
+// The editor addresses guides by resource name, which can differ from spec.id,
+// so the entry carries metadata.name even when the spec holds a stray "name".
+func TestCustomGuideHTTPClient_CarriesMetadataNameAndCreationTimestamp(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{{
+				"metadata": map[string]any{
+					"name":              "alerting-enablement",
+					"creationTimestamp": "2026-10-01T00:00:00Z",
+					"uid":               "uid-1",
+					"resourceVersion":   "42",
+				},
+				"spec": map[string]any{"id": "fe-alerting-path", "name": "spec-name", "creationTimestamp": "spec-time"},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(page.Entries))
+	}
+	raw, _ := json.Marshal(page.Entries[0])
+	want := `{"id":"fe-alerting-path","name":"alerting-enablement","creationTimestamp":"2026-10-01T00:00:00Z"}`
+	if string(raw) != want {
+		t.Errorf("entry = %s, want %s", raw, want)
+	}
+}
+
 // --- Stats passthrough -------------------------------------------------------
 
 func TestCustomGuideHTTPClient_PreservesManifestStats(t *testing.T) {
