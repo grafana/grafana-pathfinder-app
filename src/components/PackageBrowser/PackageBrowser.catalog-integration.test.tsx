@@ -3,7 +3,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PackageBrowser } from './PackageBrowser';
 import { updateCatalogView } from '../../global-state/package-browser';
 import { fetchCustomGuideCatalogue } from '../../lib/custom-guide-repository-client';
-import { fetchOnlinePackageRecommendations } from '../../lib/package-recommendations-client';
+import { fetchEligibleCatalog } from '../../lib/eligible-catalog-client';
+import catalogResponse from '../../lib/testdata/eligible-catalog-response.json';
+
+let mockConsent = true;
+jest.mock('../../hooks/usePathfinderPluginConfig', () => ({
+  usePathfinderPluginConfig: () => ({
+    isResolved: true,
+    config: { acceptedTermsAndConditions: mockConsent, recommenderServiceUrl: 'https://recommender.grafana.com' },
+  }),
+}));
+jest.mock('../EnableRecommenderBanner', () => ({ EnableRecommenderBanner: () => <div>Enable recommendations</div> }));
 
 jest.mock('../../learning-paths', () => ({
   usePackageCatalog: jest.requireActual('../../learning-paths/package-catalog.hook').usePackageCatalog,
@@ -11,10 +21,7 @@ jest.mock('../../learning-paths', () => ({
 }));
 jest.mock('../../learning-paths/paths-data', () => ({ getPathsData: () => ({ paths: [], guideMetadata: {} }) }));
 jest.mock('../../lib/custom-guide-repository-client', () => ({ fetchCustomGuideCatalogue: jest.fn() }));
-jest.mock('../../lib/package-recommendations-client', () => ({
-  ...jest.requireActual('../../lib/package-recommendations-client'),
-  fetchOnlinePackageRecommendations: jest.fn(),
-}));
+jest.mock('../../lib/eligible-catalog-client', () => ({ fetchEligibleCatalog: jest.fn() }));
 jest.mock('../LearningPaths/useCatalogLaunch', () => ({
   useCatalogLaunch: () => ({ launch: jest.fn(), launchingKey: null, launchError: null }),
 }));
@@ -46,7 +53,81 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   updateCatalogView('catalog-test:1:1', { mode: 'all', query: '', source: 'all', format: 'all', category: 'all' });
-  jest.mocked(fetchOnlinePackageRecommendations).mockResolvedValue({ baseUrl: '', packages: [], available: true });
+  mockConsent = true;
+  jest.mocked(fetchEligibleCatalog).mockResolvedValue({
+    available: true,
+    items: [
+      {
+        key: 'official:first-dashboard',
+        id: 'first-dashboard',
+        title: 'First dashboard',
+        format: 'guide',
+        source: 'grafana',
+        url: 'https://interactive-learning.grafana.net/packages/first-dashboard/content.json',
+      },
+    ],
+  });
+});
+
+it('shows private guides and an enablement CTA when recommendations are disabled', async () => {
+  mockConsent = false;
+  jest
+    .mocked(fetchCustomGuideCatalogue)
+    .mockResolvedValue({ available: true, entries: [{ id: 'team-guide', title: 'Team guide', status: 'published' }] });
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  expect(await screen.findByText('Team guide')).toBeInTheDocument();
+  expect(screen.getByText('Enable recommendations')).toBeInTheDocument();
+  expect(fetchEligibleCatalog).not.toHaveBeenCalled();
+  expect(screen.queryByText('Create your first dashboard')).not.toBeInTheDocument();
+});
+
+it('keeps private guides usable when the first public catalog request fails and offers Retry', async () => {
+  jest.mocked(fetchEligibleCatalog).mockResolvedValueOnce({ available: false, items: [] });
+  jest
+    .mocked(fetchCustomGuideCatalogue)
+    .mockResolvedValue({ available: true, entries: [{ id: 'team-guide', title: 'Team guide', status: 'published' }] });
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  expect(await screen.findByText('Team guide')).toBeInTheDocument();
+  expect(await screen.findByText('Public learning content could not be loaded. Try again.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(await screen.findByText('Create your first dashboard')).toBeInTheDocument();
+  expect(screen.queryByText('Some content is unavailable')).not.toBeInTheDocument();
+});
+
+it('shows a valid guide from a mixed service response without a public catalog warning', async () => {
+  const client = jest.requireActual<typeof import('../../lib/eligible-catalog-client')>(
+    '../../lib/eligible-catalog-client'
+  );
+  client.resetEligibleCatalogCacheForTests();
+  jest.mocked(fetchEligibleCatalog).mockImplementationOnce(client.fetchEligibleCatalog);
+  jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({ available: true, entries: [] });
+  const originalFetch = global.fetch;
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => catalogResponse });
+  try {
+    render(<PackageBrowser onOpenGuide={jest.fn()} />);
+    expect(await screen.findByText('Standalone guide')).toBeInTheDocument();
+    expect(screen.getByText('Valid path')).toBeInTheDocument();
+    expect(screen.queryByText('Broken guide')).not.toBeInTheDocument();
+    expect(screen.queryByText('Broken path')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nested journey')).not.toBeInTheDocument();
+    expect(screen.queryByText('Public learning content could not be loaded. Try again.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  } finally {
+    global.fetch = originalFetch;
+    client.resetEligibleCatalogCacheForTests();
+  }
+});
+
+it('does not search raw bundled guides absent from the eligible catalog', async () => {
+  jest.mocked(fetchEligibleCatalog).mockResolvedValue({ available: true, items: [] });
+  jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({ available: true, entries: [] });
+  render(<PackageBrowser onOpenGuide={jest.fn()} />);
+  await waitFor(() => expect(screen.getByRole('status')).not.toHaveTextContent('Loading more content'));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search guides and paths' }), {
+    target: { value: 'dashboard' },
+  });
+  expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
+  expect(screen.queryByText('Some content is unavailable')).not.toBeInTheDocument();
 });
 
 it.each(['unsupported', 'feature-toggle-disabled', 'obo-unavailable', 'identity-unavailable', 'identity-unverifiable'])(
@@ -79,6 +160,8 @@ it.each(['request-failed', 'upstream-503', 'signing-keys-unreachable'])(
     expect(await screen.findByText('Team onboarding')).toBeInTheDocument();
     expect(screen.queryByText('Some content is unavailable')).not.toBeInTheDocument();
     expect(fetchCustomGuideCatalogue).toHaveBeenLastCalledWith('catalog-test', { refresh: true });
-    expect(fetchOnlinePackageRecommendations).toHaveBeenLastCalledWith({ refresh: true });
+    expect(fetchEligibleCatalog).toHaveBeenLastCalledWith('https://recommender.grafana.com', 'catalog-test:1:1', {
+      refresh: true,
+    });
   }
 );
