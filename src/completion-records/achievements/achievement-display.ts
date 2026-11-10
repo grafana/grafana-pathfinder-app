@@ -12,8 +12,11 @@ import {
 } from './achievement-announcements';
 import { fetchAchievementDefinitions, fetchMyAchievements, type MyAchievementsResult } from './achievements-client';
 
+/** `displayed` is true when the sending tab already showed the award, so receivers only record it. */
+export type RelayedAnnouncement = AchievementAnnouncement & { displayed: boolean };
+
 export interface AnnouncementChannel {
-  post(announcement: AchievementAnnouncement): void;
+  post(message: RelayedAnnouncement): void;
   subscribe(listener: (message: unknown) => void): () => void;
 }
 
@@ -34,7 +37,7 @@ function openBroadcastChannel(): AnnouncementChannel | null {
   }
   const channel = new BroadcastChannel(`pathfinder-achievements:${owner}`);
   return {
-    post: (announcement) => channel.postMessage(announcement),
+    post: (message) => channel.postMessage(message),
     subscribe: (listener) => {
       const onMessage = (event: MessageEvent) => listener(event.data);
       channel.addEventListener('message', onMessage);
@@ -204,9 +207,14 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
         if (!markAnnounced(announcement)) {
           continue;
         }
-        // The tab that drains the shared queue may be hidden, so every tab holds the award until one is visible.
-        announcementChannel()?.post(announcement);
-        queueForDisplay(announcement);
+        // The tab that drains the shared queue may be hidden, so an award it cannot show waits for a visible tab.
+        const displayed = canDisplay() && deps.claim(keyOf(announcement));
+        if (displayed) {
+          notify(announcementListeners, announcement);
+        } else {
+          pending.set(keyOf(announcement), announcement);
+        }
+        announcementChannel()?.post({ ...announcement, displayed });
       }
     } else {
       logger.info('achievements: definitions unavailable, award not announced');
@@ -226,8 +234,12 @@ function queueForDisplay(announcement: AchievementAnnouncement): void {
   flushPending();
 }
 
+function canDisplay(): boolean {
+  return announcementListeners.size > 0 && deps.isVisible();
+}
+
 function flushPending(): void {
-  if (announcementListeners.size === 0 || !deps.isVisible()) {
+  if (!canDisplay()) {
     return;
   }
   for (const [key, announcement] of [...pending]) {
@@ -249,23 +261,35 @@ function markAnnounced(announcement: AchievementAnnouncement): boolean {
 }
 
 function receiveRelayed(message: unknown): void {
-  if (!isAnnouncement(message) || !markAnnounced(message)) {
+  if (!isRelayedAnnouncement(message)) {
     return;
   }
-  queueForDisplay(message);
+  const announcement: AchievementAnnouncement = {
+    achievementId: message.achievementId,
+    tierId: message.tierId,
+    kind: message.kind,
+    final: message.final,
+  };
+  if (!markAnnounced(announcement)) {
+    return;
+  }
+  if (!message.displayed) {
+    queueForDisplay(announcement);
+  }
   notify(changeListeners, undefined);
 }
 
-function isAnnouncement(value: unknown): value is AchievementAnnouncement {
+function isRelayedAnnouncement(value: unknown): value is RelayedAnnouncement {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
-  const a = value as Partial<AchievementAnnouncement>;
+  const a = value as Partial<RelayedAnnouncement>;
   return (
     typeof a.achievementId === 'string' &&
     typeof a.tierId === 'string' &&
     (a.kind === 'award' || a.kind === 'tier_up') &&
-    typeof a.final === 'boolean'
+    typeof a.final === 'boolean' &&
+    typeof a.displayed === 'boolean'
   );
 }
 

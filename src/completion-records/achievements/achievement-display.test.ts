@@ -111,6 +111,7 @@ describe('announceEvaluated', () => {
 
 describe('announcements across tabs', () => {
   const silver = { achievementId: 'guides-finished', tierId: 'silver', kind: 'tier_up', final: false };
+  const relayed = (displayed: boolean) => ({ ...silver, displayed });
 
   function tab(options: { visible: boolean; claims: Set<string>; bus?: Array<(m: unknown) => void> }) {
     let visible = options.visible;
@@ -150,17 +151,26 @@ describe('announcements across tabs', () => {
     };
   }
 
-  it('shows an award in a visible tab right away and tells other tabs', async () => {
-    const t = tab({ visible: true, claims: new Set() });
+  it('shows an award in a visible tab right away and tells other tabs it was displayed', async () => {
+    const claims = new Set<string>();
+    const t = tab({ visible: true, claims });
     await announceEvaluated(tierUp('silver'));
     expect(t.seen).toHaveBeenCalledTimes(1);
-    expect(t.posted).toEqual([silver]);
+    expect(t.posted).toEqual([relayed(true)]);
+    expect(claims.has('guides-finished:silver')).toBe(true);
+  });
+
+  it('records an award another tab already displayed without showing it, even when its claim is not visible yet', () => {
+    const t = tab({ visible: true, claims: new Set() });
+    t.receive(relayed(true));
+    expect(t.seen).not.toHaveBeenCalled();
   });
 
   it('holds an award drained while hidden and shows it when the tab becomes visible', async () => {
     const t = tab({ visible: false, claims: new Set() });
     await announceEvaluated(tierUp('silver'));
     expect(t.seen).not.toHaveBeenCalled();
+    expect(t.posted).toEqual([relayed(false)]);
     t.show();
     expect(t.seen).toHaveBeenCalledWith(silver);
   });
@@ -169,23 +179,25 @@ describe('announcements across tabs', () => {
     const t = tab({ visible: true, claims: new Set() });
     const changed = jest.fn();
     onAchievementsChanged(changed);
-    t.receive(silver);
-    t.receive(silver);
+    t.receive(relayed(false));
+    t.receive(relayed(false));
     expect(t.seen).toHaveBeenCalledTimes(1);
+    expect(t.seen).toHaveBeenCalledWith(silver);
     expect(changed).toHaveBeenCalledTimes(1);
   });
 
   it('does not show an award another tab already displayed', () => {
     const claims = new Set(['guides-finished:silver']);
     const t = tab({ visible: false, claims });
-    t.receive(silver);
+    t.receive(relayed(false));
     t.show();
     expect(t.seen).not.toHaveBeenCalled();
   });
 
   it('ignores malformed relay messages', () => {
     const t = tab({ visible: true, claims: new Set() });
-    t.receive({ ...silver, kind: 'bogus' });
+    t.receive({ ...relayed(false), kind: 'bogus' });
+    t.receive(silver);
     t.receive('not an announcement');
     expect(t.seen).not.toHaveBeenCalled();
   });
