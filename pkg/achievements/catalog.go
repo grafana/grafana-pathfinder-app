@@ -227,9 +227,9 @@ func (d *Definition) validate(registry *Registry) []error {
 	return errs
 }
 
-// checkText holds display text to plain, bounded text: no control characters
-// and no format (Cf) characters, which include the bidi marks and zero-width
-// characters that could reorder or hide what is shown.
+// checkText rejects characters that could break, reorder or hide displayed
+// text. ZWNJ and ZWJ are the allowed Cf characters: Persian, Indic and emoji
+// sequences need them.
 func checkText(s string, maxRunes int) error {
 	switch {
 	case s == "":
@@ -238,8 +238,9 @@ func checkText(s string, maxRunes int) error {
 		return fmt.Errorf("is over %d characters", maxRunes)
 	}
 	for _, r := range s {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
-			return fmt.Errorf("contains the control or format character %U", r)
+		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' ||
+			(unicode.Is(unicode.Cf, r) && r != '\u200c' && r != '\u200d') {
+			return fmt.Errorf("contains the control, format or separator character %U", r)
 		}
 	}
 	return nil
