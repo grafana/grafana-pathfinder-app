@@ -110,63 +110,84 @@ describe('announceEvaluated', () => {
 });
 
 describe('announcements across tabs', () => {
-  function fakeChannel() {
+  const silver = { achievementId: 'guides-finished', tierId: 'silver', kind: 'tier_up', final: false };
+
+  function tab(options: { visible: boolean; claims: Set<string>; bus?: Array<(m: unknown) => void> }) {
+    let visible = options.visible;
+    let becameVisible: (() => void) | null = null;
     const posted: unknown[] = [];
+    const bus = options.bus ?? [];
     let deliver: ((message: unknown) => void) | null = null;
-    return {
-      posted,
-      receive: (message: unknown) => deliver?.(message),
-      channel: {
-        post: (message: unknown) => posted.push(message),
-        subscribe: (listener: (message: unknown) => void) => {
+    __setAchievementDisplayDepsForTests({
+      fetchDefinitions: async () => definitions,
+      isVisible: () => visible,
+      onVisible: (listener) => {
+        becameVisible = listener;
+        return () => (becameVisible = null);
+      },
+      claim: (key) => !options.claims.has(key) && Boolean(options.claims.add(key)),
+      openChannel: () => ({
+        post: (message) => {
+          posted.push(message);
+          bus.forEach((other) => other(message));
+        },
+        subscribe: (listener) => {
           deliver = listener;
           return () => (deliver = null);
         },
+      }),
+    });
+    const seen = jest.fn();
+    onAchievementAnnounced(seen);
+    return {
+      seen,
+      posted,
+      receive: (message: unknown) => deliver?.(message),
+      show: () => {
+        visible = true;
+        becameVisible?.();
       },
     };
   }
 
-  it('hands the award to another tab instead of showing it when this tab is hidden', async () => {
-    const relay = fakeChannel();
-    __setAchievementDisplayDepsForTests({
-      fetchDefinitions: async () => definitions,
-      isVisible: () => false,
-      openChannel: () => relay.channel,
-    });
-    const seen = jest.fn();
-    onAchievementAnnounced(seen);
+  it('shows an award in a visible tab right away and tells other tabs', async () => {
+    const t = tab({ visible: true, claims: new Set() });
     await announceEvaluated(tierUp('silver'));
-    expect(seen).not.toHaveBeenCalled();
-    expect(relay.posted).toEqual([
-      { achievementId: 'guides-finished', tierId: 'silver', kind: 'tier_up', final: false },
-    ]);
+    expect(t.seen).toHaveBeenCalledTimes(1);
+    expect(t.posted).toEqual([silver]);
   });
 
-  it('shows a relayed award once in a visible tab and refreshes the hub', () => {
-    const relay = fakeChannel();
-    __setAchievementDisplayDepsForTests({ isVisible: () => true, openChannel: () => relay.channel });
-    const seen = jest.fn();
+  it('holds an award drained while hidden and shows it when the tab becomes visible', async () => {
+    const t = tab({ visible: false, claims: new Set() });
+    await announceEvaluated(tierUp('silver'));
+    expect(t.seen).not.toHaveBeenCalled();
+    t.show();
+    expect(t.seen).toHaveBeenCalledWith(silver);
+  });
+
+  it('shows a relayed award in a visible tab, and refreshes the hub', () => {
+    const t = tab({ visible: true, claims: new Set() });
     const changed = jest.fn();
-    onAchievementAnnounced(seen);
     onAchievementsChanged(changed);
-    const message = { achievementId: 'guides-finished', tierId: 'silver', kind: 'tier_up', final: false };
-    relay.receive(message);
-    relay.receive(message);
-    expect(seen).toHaveBeenCalledTimes(1);
+    t.receive(silver);
+    t.receive(silver);
+    expect(t.seen).toHaveBeenCalledTimes(1);
     expect(changed).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores a relayed award while hidden, and ignores malformed messages', () => {
-    let visible = false;
-    const relay = fakeChannel();
-    __setAchievementDisplayDepsForTests({ isVisible: () => visible, openChannel: () => relay.channel });
-    const seen = jest.fn();
-    onAchievementAnnounced(seen);
-    relay.receive({ achievementId: 'guides-finished', tierId: 'silver', kind: 'tier_up', final: false });
-    visible = true;
-    relay.receive({ achievementId: 'guides-finished', tierId: 'silver', kind: 'bogus', final: false });
-    relay.receive('not an announcement');
-    expect(seen).not.toHaveBeenCalled();
+  it('does not show an award another tab already displayed', () => {
+    const claims = new Set(['guides-finished:silver']);
+    const t = tab({ visible: false, claims });
+    t.receive(silver);
+    t.show();
+    expect(t.seen).not.toHaveBeenCalled();
+  });
+
+  it('ignores malformed relay messages', () => {
+    const t = tab({ visible: true, claims: new Set() });
+    t.receive({ ...silver, kind: 'bogus' });
+    t.receive('not an announcement');
+    expect(t.seen).not.toHaveBeenCalled();
   });
 });
 

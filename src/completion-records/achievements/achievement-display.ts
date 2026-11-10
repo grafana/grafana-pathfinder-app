@@ -1,4 +1,5 @@
 import { logger } from '../../lib/logging';
+import { StorageKeys } from '../../lib/storage-keys';
 import { isInteractiveLearningUrl, parseUrlSafely } from '../../security/url-validator';
 import type { AchievementEventsResponseWire } from '../../types/backend-api.schema';
 import { currentCompletionQueueOwnerKey } from '../completion-write-storage';
@@ -20,6 +21,9 @@ export interface DisplayDeps {
   fetchDefinitions: typeof fetchAchievementDefinitions;
   fetchMy: typeof fetchMyAchievements;
   isVisible: () => boolean;
+  onVisible: (listener: () => void) => () => void;
+  /** `true` for the first tab to claim an award, so each award is displayed in one tab only. */
+  claim: (key: string) => boolean;
   openChannel: () => AnnouncementChannel | null;
 }
 
@@ -39,15 +43,43 @@ function openBroadcastChannel(): AnnouncementChannel | null {
   };
 }
 
+function watchVisibility(listener: () => void): () => void {
+  if (typeof document === 'undefined') {
+    return () => undefined;
+  }
+  const onChange = () => document.visibilityState !== 'hidden' && listener();
+  document.addEventListener('visibilitychange', onChange);
+  return () => document.removeEventListener('visibilitychange', onChange);
+}
+
+function claimInLocalStorage(key: string): boolean {
+  const owner = currentCompletionQueueOwnerKey();
+  if (!owner) {
+    return true;
+  }
+  const storageKey = `${StorageKeys.ACHIEVEMENT_ANNOUNCED_PREFIX}${owner}:${key}`;
+  try {
+    if (localStorage.getItem(storageKey) !== null) {
+      return false;
+    }
+    localStorage.setItem(storageKey, String(Date.now()));
+  } catch {}
+  return true;
+}
+
 const defaultDeps: DisplayDeps = {
   fetchDefinitions: fetchAchievementDefinitions,
   fetchMy: fetchMyAchievements,
   isVisible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  onVisible: watchVisibility,
+  claim: claimInLocalStorage,
   openChannel: openBroadcastChannel,
 };
 let deps = defaultDeps;
 let channel: AnnouncementChannel | null | undefined;
 let unsubscribeChannel: (() => void) | null = null;
+let stopWatchingVisibility: (() => void) | null = null;
+const pending = new Map<string, AchievementAnnouncement>();
 
 let definitions: AchievementDefinitions | null = null;
 let definitionsInflight: Promise<AchievementDefinitions | null> | null = null;
@@ -136,7 +168,9 @@ function announcementChannel(): AnnouncementChannel | null {
 
 export function onAchievementAnnounced(listener: (announcement: AchievementAnnouncement) => void): () => void {
   unsubscribeChannel ??= announcementChannel()?.subscribe(receiveRelayed) ?? null;
+  stopWatchingVisibility ??= deps.onVisible(flushPending);
   announcementListeners.add(listener);
+  flushPending();
   return () => {
     announcementListeners.delete(listener);
   };
@@ -170,12 +204,9 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
         if (!markAnnounced(announcement)) {
           continue;
         }
-        // Whichever tab drains the shared queue sends the event, so a hidden one hands the award to a visible one.
-        if (deps.isVisible()) {
-          notify(announcementListeners, announcement);
-        } else {
-          announcementChannel()?.post(announcement);
-        }
+        // The tab that drains the shared queue may be hidden, so every tab holds the award until one is visible.
+        announcementChannel()?.post(announcement);
+        queueForDisplay(announcement);
       }
     } else {
       logger.info('achievements: definitions unavailable, award not announced');
@@ -186,8 +217,29 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
   }
 }
 
+function keyOf(announcement: AchievementAnnouncement): string {
+  return `${announcement.achievementId}:${announcement.tierId}`;
+}
+
+function queueForDisplay(announcement: AchievementAnnouncement): void {
+  pending.set(keyOf(announcement), announcement);
+  flushPending();
+}
+
+function flushPending(): void {
+  if (announcementListeners.size === 0 || !deps.isVisible()) {
+    return;
+  }
+  for (const [key, announcement] of [...pending]) {
+    pending.delete(key);
+    if (deps.claim(key)) {
+      notify(announcementListeners, announcement);
+    }
+  }
+}
+
 function markAnnounced(announcement: AchievementAnnouncement): boolean {
-  const key = `${announcement.achievementId}:${announcement.tierId}`;
+  const key = keyOf(announcement);
   if (announced.has(key)) {
     return false;
   }
@@ -197,10 +249,10 @@ function markAnnounced(announcement: AchievementAnnouncement): boolean {
 }
 
 function receiveRelayed(message: unknown): void {
-  if (!isAnnouncement(message) || !deps.isVisible() || !markAnnounced(message)) {
+  if (!isAnnouncement(message) || !markAnnounced(message)) {
     return;
   }
-  notify(announcementListeners, message);
+  queueForDisplay(message);
   notify(changeListeners, undefined);
 }
 
@@ -239,6 +291,9 @@ export function __resetAchievementDisplayForTests(): void {
   deps = defaultDeps;
   unsubscribeChannel?.();
   unsubscribeChannel = null;
+  stopWatchingVisibility?.();
+  stopWatchingVisibility = null;
+  pending.clear();
   channel = undefined;
   definitions = null;
   definitionsInflight = null;

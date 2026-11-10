@@ -96,7 +96,11 @@ class AchievementEventsController {
 
   discardQueued(): void {
     this.buffered = [];
-    this.queue?.clear();
+    if (this.queue) {
+      this.queue.clear();
+    } else {
+      this.deps.storage(this.ownerKey).clear();
+    }
   }
 
   dispose(): void {

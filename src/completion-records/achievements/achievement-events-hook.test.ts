@@ -203,6 +203,23 @@ describe('armAchievementEvents', () => {
     expect(sent).toHaveLength(50);
   });
 
+  it('discards events an earlier load persisted when reset lands before the flag resolves', async () => {
+    createQueueStorage<AchievementEventBody>('test-events:', 'user-1:org-1', 'old-tab').put({
+      id: 'old',
+      body: toGuideCompletedEvent(guideFact({ guideId: 'old' }), 'old', Date.now())!,
+      attempts: 0,
+      createdAt: Date.now(),
+      nextAttemptAt: Date.now(),
+    });
+    let resolve!: (on: boolean) => void;
+    const { sent } = arm(new Promise((r) => (resolve = r)));
+    discardQueuedAchievementEvents();
+    resolve(true);
+    await flush();
+    await flush();
+    expect(sent).toEqual([]);
+  });
+
   it('discards queued and held events on a progress reset', async () => {
     let resolve!: (on: boolean) => void;
     const { sent } = arm(new Promise((r) => (resolve = r)));
