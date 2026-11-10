@@ -77,16 +77,23 @@ export interface DocsLoadSuccessPatchInput {
   fetchedContent: RawContent;
   packageInfo?: PackageOpenInfo;
   pendingAlignment?: PendingAlignment;
+  isReload?: boolean;
 }
 
 export function titleFromLoadedContent(
   tab: LearningJourneyTab,
   requestedUrl: string,
-  fetchedContent: RawContent
+  fetchedContent: RawContent,
+  isReload = false
 ): string | undefined {
   const fetched = fetchedContent.metadata.title?.trim();
   if (!fetched) {
     return undefined;
+  }
+  const isOwnBackendGuide =
+    tab.baseUrl.startsWith('backend-guide:') && requestedUrl === tab.baseUrl && fetchedContent.url === tab.baseUrl;
+  if (isReload && isOwnBackendGuide) {
+    return fetched === tab.title ? undefined : fetched;
   }
   const placeholder =
     backendGuideResourceName(tab.baseUrl) ??
@@ -116,9 +123,10 @@ export function buildDocsLoadSuccessPatch({
   fetchedContent,
   packageInfo,
   pendingAlignment,
+  isReload,
 }: DocsLoadSuccessPatchInput): Partial<LearningJourneyTab> {
   const learningJourney = fetchedContent.metadata.learningJourney;
-  const title = titleFromLoadedContent(tab, requestedUrl, fetchedContent);
+  const title = titleFromLoadedContent(tab, requestedUrl, fetchedContent, isReload);
 
   return {
     content: fetchedContent,

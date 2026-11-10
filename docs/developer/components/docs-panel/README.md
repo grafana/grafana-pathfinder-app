@@ -233,7 +233,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 
 **Tab State:** see `LearningJourneyTab` in `src/types/content-panel.types.ts`; the persisted subset is `PersistedTabData` in the same file. The pure transitions that produce these shapes live in `src/components/docs-panel/utils/tab-state-transitions.ts` (close, gate prune, persistence projection) and `utils/docs-load-finalizer.ts` (alignment decision and load-success patch).
 
-A CDN deep link first shows a tab title from its URL. After the content loads, the tab uses the fetched title if it is not blank. This replacement occurs only while the tab title matches the URL title and the requested URL matches the tab's base URL. Milestone navigation keeps the path title. Bundled guide titles stay unchanged. App Platform guide links replace a resource-name title with the fetched guide title.
+A CDN deep link first shows a tab title from its URL. After the content loads, the tab uses the fetched title if it is not blank. This replacement occurs only while the tab title matches the URL title and the requested URL matches the tab's base URL. Milestone navigation keeps the path title. Bundled guide titles stay unchanged. App Platform guide links replace a resource-name title with the fetched guide title. An `internal_reload` of a tab showing its own App Platform guide also adopts a changed fetched title.
 
 ## Live Session Features
 

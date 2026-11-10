@@ -314,6 +314,53 @@ describe('buildDocsLoadSuccessPatch', () => {
     expect(bundled.title).toBeUndefined();
   });
 
+  describe('title on internal reload', () => {
+    const guideUrl = 'backend-guide:alerting-intro-lj';
+    const reload = (tabOverrides: Partial<LearningJourneyTab>, fetched: Partial<RawContent>, isReload = true) =>
+      buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: guideUrl, ...tabOverrides }),
+        requestedUrl: guideUrl,
+        fetchedContent: content({ url: guideUrl, metadata: { title: 'New title' }, ...fetched }),
+        isReload,
+      });
+
+    it('adopts the fetched title for a backend guide', () => {
+      expect(reload({}, {}).title).toBe('New title');
+    });
+
+    it('does not adopt without the reload flag', () => {
+      expect(reload({}, {}, false).title).toBeUndefined();
+    });
+
+    it('does not adopt when the fetched content is a different guide than the tab base', () => {
+      expect(reload({}, { url: 'backend-guide:alerting-intro-rules' }).title).toBeUndefined();
+    });
+
+    it('is a no-op for a blank or unchanged title', () => {
+      expect(reload({}, { metadata: { title: '  ' } }).title).toBeUndefined();
+      expect(reload({}, { metadata: { title: 'Old title' } }).title).toBeUndefined();
+    });
+
+    it('leaves CDN and bundled tabs untouched even with the flag', () => {
+      const cdn = 'https://interactive-learning.grafana.net/packages/x/content.json';
+      const cdnPatch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: cdn }),
+        requestedUrl: cdn,
+        fetchedContent: content({ url: cdn, metadata: { title: 'New title' } }),
+        isReload: true,
+      });
+      const bundledPatch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: 'bundled:x' }),
+        requestedUrl: 'bundled:x',
+        fetchedContent: content({ url: 'bundled:x', metadata: { title: 'New title' } }),
+        isReload: true,
+      });
+
+      expect(cdnPatch.title).toBeUndefined();
+      expect(bundledPatch.title).toBeUndefined();
+    });
+  });
+
   it('uses interactive type without package info for interactive content', () => {
     expect(
       buildDocsLoadSuccessPatch({
