@@ -205,21 +205,23 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const homeContinuePaths = homeUnassignedPaths
     .filter((entry) => entry.percent > 0 && entry.percent < 100)
     .sort((a, b) => b.percent - a.percent);
-  const homePathMemberKeys = new Set(
-    homePathEntries.flatMap((entry) =>
+  const homeContinueMemberKeys = new Set(
+    homeContinuePaths.flatMap((entry) =>
       entry.guides.map((guide) => `${entry.path.isPrivate ? 'organization' : 'grafana'}:${guide.id}`)
     )
   );
-  const homeContinueGuides = catalog.items.filter((item) => {
-    const percent = catalogProgress.get(item.key)?.percent ?? 0;
-    return (
-      item.format === 'guide' &&
-      !homePathMemberKeys.has(catalogIdentity(item)) &&
-      Number.isFinite(percent) &&
-      percent > 0 &&
-      percent < 100
-    );
-  });
+  const homeContinueGuides = catalog.items
+    .filter((item) => {
+      const percent = catalogProgress.get(item.key)?.percent ?? 0;
+      return (
+        item.format === 'guide' &&
+        !homeContinueMemberKeys.has(catalogIdentity(item)) &&
+        Number.isFinite(percent) &&
+        percent > 0 &&
+        percent < 100
+      );
+    })
+    .sort((a, b) => (catalogProgress.get(b.key)?.percent ?? 0) - (catalogProgress.get(a.key)?.percent ?? 0));
   const homeAvailablePaths = homeUnassignedPaths.filter((entry) => !(entry.percent > 0 && entry.percent < 100));
   const catalogLaunch = useCatalogLaunch(catalog.items, catalog.scope, catalogProgress, {
     launchLock: launchInFlightRef,

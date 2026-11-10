@@ -2253,7 +2253,7 @@ it('homepage gives one active course a Resume action and keeps every other cours
   }
 });
 
-it('homepage omits a member guide beside its visible path but keeps standalone guides and members of hidden paths', () => {
+it('homepage only hides member guides when their path is shown in Continue', () => {
   mockCatalogItems = [
     {
       key: 'bundled:guide-1',
@@ -2279,11 +2279,70 @@ it('homepage omits a member guide beside its visible path but keeps standalone g
       source: 'grafana',
       url: 'bundled:guide-2',
     },
+    {
+      key: 'bundled:guide-new',
+      id: 'guide-new',
+      title: 'Started guide from an available path',
+      format: 'guide',
+      source: 'grafana',
+      url: 'bundled:guide-new',
+    },
   ];
   mockCatalogProgress = new Map(mockCatalogItems.map((item) => [item.key, { percent: 25 }]));
   render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
   expect(screen.getByRole('heading', { name: 'Started path' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Standalone guide' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Revisited guide' })).toBeInTheDocument();
+  const continuation = screen.getByRole('heading', { name: 'Pick up where you left off' }).closest('section')!;
+  expect(
+    within(continuation).getByRole('heading', { name: 'Started guide from an available path' })
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByRole('region', { name: 'Find your next learning path' })).getByRole('heading', {
+      name: 'New path',
+    })
+  ).toBeInTheDocument();
+  expect(within(continuation).queryByRole('heading', { name: 'New path' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Member guide' })).not.toBeInTheDocument();
 });
+
+it.each([false, true])(
+  'homepage orders Continue guides by progress while keeping paths first (started path: %s)',
+  (hasStartedPath) => {
+    mockPaths = hasStartedPath ? [{ id: 'active-path', title: 'Active path', guides: [] }] : [];
+    mockGetPathProgress.mockReturnValue(30);
+    mockGetPathGuides.mockReturnValue([]);
+    const guideProgress = [
+      { id: 'low', title: 'Less complete guide', percent: 20 },
+      { id: 'high', title: 'Most complete guide', percent: 80 },
+      { id: 'tied', title: 'Equally complete guide', percent: 80 },
+      { id: 'middle', title: 'Halfway guide', percent: 50 },
+    ];
+    mockCatalogItems = guideProgress.map(({ id, title }) => ({
+      key: `bundled:${id}`,
+      id,
+      title,
+      format: 'guide',
+      source: 'grafana',
+      url: `bundled:${id}`,
+    }));
+    mockCatalogProgress = new Map(guideProgress.map(({ id, percent }) => [`bundled:${id}`, { percent }]));
+
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+    const continuation = screen.getByRole('heading', { name: 'Pick up where you left off' }).closest('section')!;
+    const expectedOrder = [
+      ...(hasStartedPath ? ['Active path'] : []),
+      'Most complete guide',
+      'Equally complete guide',
+      'Halfway guide',
+      'Less complete guide',
+    ];
+    expect(
+      within(continuation)
+        .getAllByRole('heading', { level: 3 })
+        .map((heading) => heading.textContent)
+    ).toEqual(expectedOrder);
+    const featuredCard = within(continuation).getByRole('button', { name: 'Resume' }).closest('[data-learning-card]')!;
+    expect(within(featuredCard as HTMLElement).getByRole('heading', { name: expectedOrder[0] })).toBeInTheDocument();
+  }
+);
