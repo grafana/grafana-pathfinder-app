@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 
 import {
+  achievementsAvailability,
   loadAchievementDefinitions,
   loadMyAchievements,
   onAchievementsChanged,
 } from '../../completion-records/achievements';
 import { useBooleanFlag } from '../../utils/openfeature';
 
-import { buildAchievementsView, type AchievementsView } from './achievements-view';
+import { buildAchievementsView, settleAchievementsView, type AchievementsView } from './achievements-view';
 
 export function useAchievementsView(): AchievementsView {
   const enabled = useBooleanFlag('pathfinder.achievements', false);
@@ -18,14 +19,17 @@ export function useAchievementsView(): AchievementsView {
       return;
     }
     let cancelled = false;
+    const settle = (next: AchievementsView) => {
+      if (!cancelled) {
+        setView((previous) => settleAchievementsView(previous, next, achievementsAvailability() === 'available'));
+      }
+    };
     const load = async () => {
       const my = await loadMyAchievements();
       const definitions = my.kind === 'ok' ? await loadAchievementDefinitions(my.data.definitionsVersion) : null;
-      if (!cancelled) {
-        setView(buildAchievementsView(my, definitions));
-      }
+      settle(buildAchievementsView(my, definitions));
     };
-    void load().catch(() => !cancelled && setView({ kind: 'hidden' }));
+    void load().catch(() => settle(HIDDEN));
     const unsubscribe = onAchievementsChanged(() => void load().catch(() => undefined));
     return () => {
       cancelled = true;

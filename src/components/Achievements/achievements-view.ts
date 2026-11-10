@@ -25,7 +25,7 @@ export interface AchievementRowView {
 export type AchievementsView =
   | { kind: 'loading' }
   | { kind: 'hidden' }
-  | { kind: 'definitions-unavailable' }
+  | { kind: 'unavailable' }
   | { kind: 'ready'; rows: AchievementRowView[]; truncated: boolean };
 
 export function tierLabel(tierId: string): string {
@@ -47,7 +47,7 @@ export function buildAchievementsView(
     return { kind: 'hidden' };
   }
   if (!definitions) {
-    return { kind: 'definitions-unavailable' };
+    return { kind: 'unavailable' };
   }
   const rows: AchievementRowView[] = [];
   for (const achievement of definitions.achievements) {
@@ -70,4 +70,16 @@ export function buildAchievementsView(
     });
   }
   return { kind: 'ready', rows, truncated: my.data.truncated };
+}
+
+/** Once achievements have replaced the legacy badges, a failed read keeps the last rows or shows the note, never a blank. */
+export function settleAchievementsView(
+  previous: AchievementsView,
+  next: AchievementsView,
+  available: boolean
+): AchievementsView {
+  if (!available || next.kind === 'ready' || next.kind === 'loading') {
+    return next;
+  }
+  return previous.kind === 'ready' ? previous : { kind: 'unavailable' };
 }

@@ -30,7 +30,7 @@ export function AchievementsSectionView({ view, styles }: AchievementsSectionPro
         <Icon name="star" size="md" className={styles.sectionIcon} />
         <h2 className={styles.sectionTitle}>{t('achievements.hub.title', 'Achievements')}</h2>
       </div>
-      {view.kind === 'definitions-unavailable' ? (
+      {view.kind === 'unavailable' ? (
         <p className={styles.sectionDescription} data-testid={testIds.achievements.hubUnavailable}>
           {t('achievements.hub.unavailable', 'Achievements cannot be shown right now. Try again later.')}
         </p>

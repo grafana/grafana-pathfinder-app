@@ -5,6 +5,8 @@ import React from 'react';
 import { act, render, screen, within } from '@testing-library/react';
 
 import {
+  announceEvaluated,
+  loadMyAchievements,
   __resetAchievementDisplayForTests,
   __setAchievementDisplayDepsForTests,
 } from '../../completion-records/achievements/achievement-display';
@@ -122,6 +124,37 @@ describe('AchievementsSection', () => {
     await renderWith(myFixture('default'), null);
     expect(screen.getByTestId(testIds.achievements.hubUnavailable)).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('shows the note, not a blank, when achievements are available but the section cannot read them', async () => {
+    const fetchMy = jest.fn<Promise<MyAchievementsResult>, []>(async () => myFixture('default'));
+    __setAchievementDisplayDepsForTests({ fetchMy, fetchDefinitions: async () => definitions });
+    await loadMyAchievements();
+    fetchMy.mockResolvedValue({ kind: 'unavailable' });
+    render(<AchievementsSection styles={styles} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByTestId(testIds.achievements.hubUnavailable)).toBeInTheDocument();
+  });
+
+  it('keeps the rows it showed when a refresh after an evaluated event fails', async () => {
+    const fetchMy = jest.fn<Promise<MyAchievementsResult>, []>(async () => myFixture('default'));
+    await renderWith(myFixture('default'), definitions);
+    __setAchievementDisplayDepsForTests({ fetchMy });
+    fetchMy.mockResolvedValue({ kind: 'unavailable' });
+    await act(async () => {
+      await announceEvaluated({
+        eventId: 'e',
+        retry: false,
+        decisions: [
+          { achievementId: 'dash-builder', decision: 'increment', awarded: [], final: false, units: 4, next: 5 },
+        ],
+      });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(fetchMy).toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.achievements.hubRow('dash-builder'))).toBeInTheDocument();
   });
 
   it('renders nothing and requests nothing when the flag is off', async () => {
