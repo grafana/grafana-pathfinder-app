@@ -12,7 +12,10 @@ import type { AchievementEventsResponseWire } from '../../types/backend-api.sche
 
 import { AchievementAnnouncementHost } from './AchievementAnnouncements';
 
-jest.mock('@grafana/i18n', () => ({ t: (_key: string, fallback: string) => fallback }));
+jest.mock('@grafana/i18n', () => ({
+  t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
+    fallback.replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(values?.[name])),
+}));
 
 const definitions: AchievementDefinitions = {
   version: 'v1',
@@ -32,11 +35,16 @@ const definitions: AchievementDefinitions = {
   ],
 };
 
-function response(decision: 'award' | 'tier_up', awarded: string[], final = false): AchievementEventsResponseWire {
+function response(
+  decision: 'award' | 'tier_up' | 'increment',
+  awarded: string[],
+  final = false,
+  progress: { units: number; next: number | null } = { units: 1, next: null }
+): AchievementEventsResponseWire {
   return {
     eventId: 'e',
     retry: false,
-    decisions: [{ achievementId: 'guides-finished', decision, awarded, final, units: 1, next: null }],
+    decisions: [{ achievementId: 'guides-finished', decision, awarded, final, ...progress }],
   };
 }
 
@@ -117,6 +125,29 @@ describe('AchievementAnnouncementHost', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('shows a progress toast, worded like the hub, for an increment', async () => {
+    render(<AchievementAnnouncementHost />);
+    await announce(response('increment', [], false, { units: 4, next: 5 }));
+    const toast = screen.getByTestId(testIds.achievements.toast('guides-finished'));
+    expect(within(toast).getByText('Achievement progress')).toBeInTheDocument();
+    expect(within(toast).getByText('Guide finisher')).toBeInTheDocument();
+    expect(within(toast).getByText('4 of 5 toward the next tier')).toBeInTheDocument();
+    expect(within(toast).getByTestId('achievement-badge-image')).toHaveAttribute(
+      'src',
+      'https://interactive-learning.grafana.net/achievements/art/guides-finished-2.svg'
+    );
+    expect(screen.queryByTestId(testIds.achievements.overlay)).not.toBeInTheDocument();
+  });
+
+  it('replaces a showing progress toast when the achievement is then awarded', async () => {
+    render(<AchievementAnnouncementHost />);
+    await announce(response('increment', [], false, { units: 2, next: 5 }));
+    await announce(response('award', ['bronze']));
+    const toasts = screen.getAllByTestId(testIds.achievements.toast('guides-finished'));
+    expect(toasts).toHaveLength(1);
+    expect(within(toasts[0]!).getByText('Achievement earned')).toBeInTheDocument();
   });
 
   it('shows nothing when /definitions is unavailable', async () => {

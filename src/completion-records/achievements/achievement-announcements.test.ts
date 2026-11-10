@@ -40,6 +40,13 @@ const definitions: AchievementDefinitions = {
       tiers: [{ id: 'intro' }],
       earnable: true,
     },
+    {
+      id: 'retired',
+      title: 'Retired',
+      description: 'No longer earnable.',
+      tiers: [{ id: 'bronze', at: 1 }],
+      earnable: false,
+    },
   ],
 };
 
@@ -82,7 +89,7 @@ describe('selectAnnouncements', () => {
 
   it('ranks by catalog order, not by the order the response lists the tiers', () => {
     const decisions = [decision({ awarded: ['gold', 'bronze'] })];
-    expect(selectAnnouncements(decisions, definitions, [])[0]?.tierId).toBe('gold');
+    expect(selectAnnouncements(decisions, definitions, [])[0]).toMatchObject({ tierId: 'gold' });
   });
 
   it('does not announce a newly held tier that ranks below a tier already held', () => {
@@ -112,10 +119,43 @@ describe('selectAnnouncements', () => {
     ]);
   });
 
-  it('skips increments and ignored decisions', () => {
+  it('announces an increment toward a next tier as progress', () => {
+    const decisions = [decision({ decision: 'increment', units: 2, next: 3 })];
+    expect(selectAnnouncements(decisions, definitions, [])).toEqual([
+      { achievementId: 'dash-builder', kind: 'progress', units: 2, next: 3 },
+    ]);
+  });
+
+  it('skips ignored decisions', () => {
+    expect(selectAnnouncements([decision({ decision: 'ignored', reason: 'duplicate' })], definitions, [])).toEqual([]);
+  });
+
+  it('lets an award for the same achievement in the same response win over its progress', () => {
     const decisions = [
       decision({ decision: 'increment', units: 2, next: 3 }),
-      decision({ decision: 'ignored', reason: 'duplicate' }),
+      decision({ decision: 'award', awarded: ['bronze'], units: 2, next: 3 }),
+    ];
+    expect(selectAnnouncements(decisions, definitions, [])).toEqual([
+      { achievementId: 'dash-builder', tierId: 'bronze', kind: 'award', final: false },
+    ]);
+  });
+
+  it('gives one progress announcement per achievement, at the highest units', () => {
+    const decisions = [
+      decision({ decision: 'increment', units: 2, next: 3 }),
+      decision({ decision: 'increment', units: 1, next: 3 }),
+    ];
+    expect(selectAnnouncements(decisions, definitions, [])).toEqual([
+      { achievementId: 'dash-builder', kind: 'progress', units: 2, next: 3 },
+    ]);
+  });
+
+  it('announces no progress for a not-earnable or unknown achievement, without a next tier, or at zero units', () => {
+    const decisions = [
+      decision({ achievementId: 'retired', decision: 'increment', units: 1, next: 2 }),
+      decision({ achievementId: 'unknown', decision: 'increment', units: 1, next: 2 }),
+      decision({ achievementId: 'guide-routes', decision: 'increment', units: 3, next: null }),
+      decision({ decision: 'increment', units: 0, next: 1 }),
     ];
     expect(selectAnnouncements(decisions, definitions, [])).toEqual([]);
   });

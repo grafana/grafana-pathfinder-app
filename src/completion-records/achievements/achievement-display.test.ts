@@ -65,6 +65,25 @@ beforeEach(() => {
 });
 
 describe('announceEvaluated', () => {
+  it('announces progress for an increment, and again at the next count', async () => {
+    const seen = jest.fn();
+    onAchievementAnnounced(seen);
+    const increment = (units: number) => ({
+      eventId: 'e',
+      retry: false,
+      decisions: [
+        { achievementId: 'guides-finished', decision: 'increment' as const, awarded: [], final: false, units, next: 5 },
+      ],
+    });
+    await announceEvaluated(increment(2));
+    await announceEvaluated(increment(2));
+    await announceEvaluated(increment(3));
+    expect(seen.mock.calls.map(([a]) => a)).toEqual([
+      { achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5 },
+      { achievementId: 'guides-finished', kind: 'progress', units: 3, next: 5 },
+    ]);
+  });
+
   it('announces a tier once per page, however many responses report it', async () => {
     const seen = jest.fn();
     onAchievementAnnounced(seen);
@@ -199,7 +218,17 @@ describe('announcements across tabs', () => {
     t.receive({ ...relayed(false), kind: 'bogus' });
     t.receive(silver);
     t.receive('not an announcement');
+    t.receive({ achievementId: 'guides-finished', kind: 'progress', units: '2', next: 5, displayed: false });
     expect(t.seen).not.toHaveBeenCalled();
+  });
+
+  it('relays progress and shows it in a visible tab once', () => {
+    const t = tab({ visible: true, claims: new Set() });
+    const progress = { achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5 };
+    t.receive({ ...progress, displayed: false });
+    t.receive({ ...progress, displayed: false });
+    expect(t.seen).toHaveBeenCalledTimes(1);
+    expect(t.seen).toHaveBeenCalledWith(progress);
   });
 });
 

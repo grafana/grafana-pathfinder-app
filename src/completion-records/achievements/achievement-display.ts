@@ -199,7 +199,7 @@ function notify<T>(listeners: Set<(value: T) => void>, value: T): void {
 
 export async function announceEvaluated(response: AchievementEventsResponseWire): Promise<void> {
   const changed = response.decisions.some((d) => d.decision !== 'ignored');
-  const gained = response.decisions.some((d) => d.awarded.length > 0);
+  const gained = response.decisions.some((d) => d.awarded.length > 0 || d.decision === 'increment');
   if (gained) {
     const loaded = await loadAchievementDefinitions();
     if (loaded) {
@@ -226,7 +226,9 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
 }
 
 function keyOf(announcement: AchievementAnnouncement): string {
-  return `${announcement.achievementId}:${announcement.tierId}`;
+  return announcement.kind === 'progress'
+    ? `${announcement.achievementId}:progress:${announcement.units}`
+    : `${announcement.achievementId}:${announcement.tierId}`;
 }
 
 function queueForDisplay(announcement: AchievementAnnouncement): void {
@@ -256,7 +258,9 @@ function markAnnounced(announcement: AchievementAnnouncement): boolean {
     return false;
   }
   announced.add(key);
-  held = [...held, { achievementId: announcement.achievementId, tierId: announcement.tierId }];
+  if (announcement.kind !== 'progress') {
+    held = [...held, { achievementId: announcement.achievementId, tierId: announcement.tierId }];
+  }
   return true;
 }
 
@@ -264,12 +268,10 @@ function receiveRelayed(message: unknown): void {
   if (!isRelayedAnnouncement(message)) {
     return;
   }
-  const announcement: AchievementAnnouncement = {
-    achievementId: message.achievementId,
-    tierId: message.tierId,
-    kind: message.kind,
-    final: message.final,
-  };
+  const announcement: AchievementAnnouncement =
+    message.kind === 'progress'
+      ? { achievementId: message.achievementId, kind: 'progress', units: message.units, next: message.next }
+      : { achievementId: message.achievementId, tierId: message.tierId, kind: message.kind, final: message.final };
   if (!markAnnounced(announcement)) {
     return;
   }
@@ -283,14 +285,14 @@ function isRelayedAnnouncement(value: unknown): value is RelayedAnnouncement {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
-  const a = value as Partial<RelayedAnnouncement>;
-  return (
-    typeof a.achievementId === 'string' &&
-    typeof a.tierId === 'string' &&
-    (a.kind === 'award' || a.kind === 'tier_up') &&
-    typeof a.final === 'boolean' &&
-    typeof a.displayed === 'boolean'
-  );
+  const a = value as Record<string, unknown>;
+  if (typeof a.achievementId !== 'string' || typeof a.displayed !== 'boolean') {
+    return false;
+  }
+  if (a.kind === 'progress') {
+    return Number.isInteger(a.units) && Number.isInteger(a.next);
+  }
+  return (a.kind === 'award' || a.kind === 'tier_up') && typeof a.tierId === 'string' && typeof a.final === 'boolean';
 }
 
 const ART_KEY = /^[a-z0-9][a-z0-9-]{0,63}$/;

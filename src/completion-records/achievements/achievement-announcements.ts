@@ -10,12 +10,21 @@ export type AchievementDisplay = AchievementDefinitions['achievements'][number];
 export type AchievementAward = MyAchievementsResponseWire['awards'][number];
 export type HeldTier = Pick<AchievementAward, 'achievementId' | 'tierId'>;
 
-export interface AchievementAnnouncement {
+export interface TierAnnouncement {
   achievementId: string;
   tierId: string;
   kind: 'award' | 'tier_up';
   final: boolean;
 }
+
+export interface ProgressAnnouncement {
+  achievementId: string;
+  kind: 'progress';
+  units: number;
+  next: number;
+}
+
+export type AchievementAnnouncement = TierAnnouncement | ProgressAnnouncement;
 
 export function findAchievement(definitions: AchievementDefinitions, id: string): AchievementDisplay | undefined {
   return definitions.achievements.find((a) => a.id === id);
@@ -44,13 +53,46 @@ export function bestTier(
   return best;
 }
 
-/** The best newly held tier per achievement, and nothing when a higher tier of it is already held. */
+/**
+ * The best newly held tier per achievement, and nothing when a higher tier of it is already held. An increment toward
+ * a next tier of an earnable achievement is announced as progress, unless the same response awards that achievement.
+ */
 export function selectAnnouncements(
   decisions: readonly AchievementDecision[],
   definitions: AchievementDefinitions,
   held: readonly HeldTier[]
 ): AchievementAnnouncement[] {
-  const announcements: AchievementAnnouncement[] = [];
+  const tiers = selectTierAnnouncements(decisions, definitions, held);
+  const awardedIds = new Set(
+    decisions.filter((d) => d.decision === 'award' || d.decision === 'tier_up').map((d) => d.achievementId)
+  );
+  const progress = new Map<string, ProgressAnnouncement>();
+  for (const decision of decisions) {
+    if (decision.decision !== 'increment' || decision.next === null || decision.units <= 0) {
+      continue;
+    }
+    if (awardedIds.has(decision.achievementId) || !findAchievement(definitions, decision.achievementId)?.earnable) {
+      continue;
+    }
+    const current = progress.get(decision.achievementId);
+    if (!current || decision.units > current.units) {
+      progress.set(decision.achievementId, {
+        achievementId: decision.achievementId,
+        kind: 'progress',
+        units: decision.units,
+        next: decision.next,
+      });
+    }
+  }
+  return [...tiers, ...progress.values()];
+}
+
+function selectTierAnnouncements(
+  decisions: readonly AchievementDecision[],
+  definitions: AchievementDefinitions,
+  held: readonly HeldTier[]
+): TierAnnouncement[] {
+  const announcements: TierAnnouncement[] = [];
   for (const decision of decisions) {
     if ((decision.decision !== 'award' && decision.decision !== 'tier_up') || decision.awarded.length === 0) {
       continue;

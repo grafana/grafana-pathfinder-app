@@ -31,7 +31,9 @@ export function AchievementAnnouncementHost() {
           if (card.surface === 'overlay') {
             setOverlays((current) => [...current, card]);
           } else {
-            setToasts((current) => [...current.filter((c) => c.key !== card.key), card].slice(-MAX_TOASTS));
+            setToasts((current) =>
+              [...current.filter((c) => c.key !== card.key && !supersedes(card, c)), card].slice(-MAX_TOASTS)
+            );
           }
         });
       }),
@@ -54,6 +56,11 @@ export function AchievementAnnouncementHost() {
       />
     </ThemeContext.Provider>
   );
+}
+
+/** A newer card for an achievement replaces its showing progress toast, so a progress toast never sits beside an award. */
+function supersedes(card: AnnouncementCard, showing: AnnouncementCard): boolean {
+  return showing.kind === 'progress' && showing.achievementId === card.achievementId;
 }
 
 interface AchievementAnnouncementsViewProps {
@@ -95,11 +102,11 @@ function AchievementToast({ card, onDismiss }: { card: AnnouncementCard; onDismi
   useAutoDismiss(TOAST_MS, dismiss);
   return (
     <div className={styles.toast} data-testid={testIds.achievements.toast(card.achievementId)}>
-      <AchievementBadge artUrl={card.tier.artUrl} size={48} />
+      <AchievementBadge artUrl={card.artUrl} size={48} />
       <div className={styles.toastBody}>
         <div className={styles.eyebrow}>{card.eyebrow}</div>
         <div className={styles.toastTitle}>{card.title}</div>
-        <div className={styles.toastTier}>{card.tier.label}</div>
+        <div className={styles.toastTier}>{card.detail}</div>
       </div>
       <IconButton
         name="times"
@@ -131,10 +138,10 @@ function TierUpOverlay({ card, onDismiss }: { card: AnnouncementCard; onDismiss:
           aria-label={t('achievements.announce.dismiss', 'Dismiss')}
           data-testid={testIds.achievements.overlayDismiss}
         />
-        <AchievementBadge artUrl={card.tier.artUrl} size={160} className={styles.overlayBadge} />
+        <AchievementBadge artUrl={card.artUrl} size={160} className={styles.overlayBadge} />
         <div className={styles.eyebrow}>{card.eyebrow}</div>
         <h2 className={styles.overlayTitle}>{card.title}</h2>
-        <div className={styles.overlayTier}>{card.tier.label}</div>
+        <div className={styles.overlayTier}>{card.detail}</div>
       </div>
     </div>
   );

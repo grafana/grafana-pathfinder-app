@@ -336,13 +336,13 @@ Implementation: `src/context-engine/recommend-completions-attachment.ts`.
 
 **Type**: Boolean
 
-**Purpose**: Gates achievements in the browser: posting `guides.completed` events to `POST /api/v1/achievements/events`, the badge toast and tier-up overlay, and the achievements section on the learning hub.
+**Purpose**: Gates achievements in the browser: posting `guides.completed` events to `POST /api/v1/achievements/events`, the badge and progress toasts and the tier-up overlay, and the achievements section on the learning hub.
 
 **Default**: `false`
 
 **Behavior**:
 
-- **`true`**: guide completions the recorder emits are queued and posted as achievement events. Awards in the response are announced, and the learning hub reads `GET /api/v1/achievements/my` and `GET /api/v1/achievements/definitions`. Where the routes answer unavailable, nothing is shown and the queue is held for a later load.
+- **`true`**: guide completions the recorder emits are queued and posted as achievement events. Awards in the response are announced, as is progress toward a next tier, and the learning hub reads `GET /api/v1/achievements/my` and `GET /api/v1/achievements/definitions`. Where the routes answer unavailable, nothing is shown and the queue is held for a later load.
 - **`false`**: no achievement requests are made and no achievements surface renders. Completions seen before the flag resolved are discarded.
 
 The flag is read once per page load: posting arms at plugin init and waits for the flag to resolve, so open tabs do not change until they reload. Turning it on reaches browsers only once a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` exist in deployment_tools.
