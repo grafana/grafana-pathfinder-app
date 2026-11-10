@@ -165,7 +165,7 @@ The Go side (`pkg/plugin/completion_records_attempt.go`) upserts one record per 
 ### Adding a reset or clear path
 
 - [ ] Go through `resetGuideProgress` or `invalidateEmittedCompletion` / `invalidateAllEmittedCompletions`, so the attempt and queued partials clear with the storage. Clearing storage alone leaves a closed attempt that blocks re-completion.
-- [ ] A reset-all path also calls `discardQueuedCompletionWrites` before any `await`, as `MyLearningTab.tsx` does. `invalidateAllEmittedCompletions` clears the queue only once the write hook is armed, through the `onAttemptReset` listener, and a scheduled drain can fire between the reset and that clear.
+- [ ] A reset-all path also calls `discardQueuedCompletionWrites` and `discardQueuedAchievementEvents` before any `await`, as `MyLearningTab.tsx` does. `invalidateAllEmittedCompletions` clears the queue only once the write hook is armed, through the `onAttemptReset` listener, and a scheduled drain can fire between the reset and that clear.
 
 ### Reading raw `CompletionRecord` rows
 
