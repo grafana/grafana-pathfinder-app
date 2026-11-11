@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { IconButton, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
@@ -22,8 +22,9 @@ export interface FullScreenLayoutProps {
   guideType?: 'learning-journey' | 'docs';
   /** Whether the active tab represents a guide (vs editor / empty state) */
   hasActiveGuide: boolean;
-  /** Click handler for the back-to-sidebar button */
+  /** Click handler for the header back button */
   onExit: () => void;
+  backLabel?: string;
   /** Click handler for the go-floating button (omit to hide it) */
   onGoFloating?: () => void;
   /**
@@ -31,6 +32,7 @@ export interface FullScreenLayoutProps {
    * used by FullScreenPanel for the learning-journey milestone toolbar.
    */
   subHeader?: React.ReactNode;
+  assistant?: React.ReactNode;
   /** Body content — rendered inside the centered max-width wrapper */
   children: React.ReactNode;
 }
@@ -42,11 +44,48 @@ export function FullScreenLayout({
   guideType,
   hasActiveGuide,
   onExit,
+  backLabel = 'Back to sidebar',
   onGoFloating,
   subHeader,
+  assistant,
   children,
 }: FullScreenLayoutProps) {
   const styles = useStyles2(getFullScreenStyles);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [availableHeight, setAvailableHeight] = useState<number>();
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const page = container?.closest('main');
+    if (!container || !page) {
+      return;
+    }
+    const measure = () => {
+      const offset =
+        container.getBoundingClientRect().top - page.getBoundingClientRect().top - page.clientTop + page.scrollTop;
+      let bottomInset = 0;
+      for (let ancestor = container.parentElement; ancestor && ancestor !== page; ancestor = ancestor.parentElement) {
+        const style = getComputedStyle(ancestor);
+        bottomInset +=
+          (parseFloat(style.paddingBottom) || 0) +
+          (parseFloat(style.borderBottomWidth) || 0) +
+          (parseFloat(style.marginBottom) || 0);
+      }
+      const height = page.clientHeight - offset - bottomInset;
+      if (height > 0) {
+        setAvailableHeight(height);
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(page);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
   const [linkCopy, setLinkCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -74,6 +113,8 @@ export function FullScreenLayout({
 
   return (
     <div
+      ref={containerRef}
+      style={{ height: availableHeight }}
       className={styles.container}
       data-pathfinder-content="true"
       data-testid={testIds.fullScreenMode.container}
@@ -85,10 +126,11 @@ export function FullScreenLayout({
           <IconButton
             name="angle-left"
             size="md"
-            tooltip="Back to sidebar"
+            className={styles.headerIconButton}
+            tooltip={backLabel}
             onClick={onExit}
             data-testid={testIds.fullScreenMode.exitButton}
-            aria-label="Back to sidebar"
+            aria-label={backLabel}
           />
           <span className={styles.headerTitle} title={title}>
             {title}
@@ -105,10 +147,12 @@ export function FullScreenLayout({
             </span>
           )}
           <div className={styles.headerActions}>
+            {assistant}
             {hasActiveGuide && guideUrl && (
               <IconButton
                 name={linkCopy === 'copied' ? 'check' : linkCopy === 'failed' ? 'exclamation-triangle' : 'link'}
-                size="sm"
+                size="md"
+                className={styles.headerIconButton}
                 tooltip={
                   linkCopy === 'copied'
                     ? t('fullScreen.copyLinkCopied', 'Copied!')
@@ -124,7 +168,8 @@ export function FullScreenLayout({
             {onGoFloating && hasActiveGuide && (
               <IconButton
                 name="corner-up-right"
-                size="sm"
+                size="md"
+                className={styles.headerIconButton}
                 tooltip="Pop out to floating panel"
                 onClick={onGoFloating}
                 aria-label="Pop out to floating panel"

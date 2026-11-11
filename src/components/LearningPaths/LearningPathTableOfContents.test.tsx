@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
 import { interactiveCompletionStorage, milestoneCompletionStorage } from '../../lib/user-storage';
 import { resetMilestoneBackfillGuardForTests } from '../../docs-retrieval';
@@ -8,6 +8,10 @@ import type { CoverPageTrack, Milestone } from '../../types/content.types';
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_t, p) => String(p) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  Badge: ({ text }: { text: React.ReactNode }) => <span>{text}</span>,
+  Button: ({ children, icon: _icon, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: string }) => (
+    <button {...props}>{children}</button>
+  ),
   TabsBar: ({ children, ...rest }: { children: React.ReactNode }) => (
     <div role="tablist" {...rest}>
       {children}
@@ -637,4 +641,38 @@ describe('LearningPathTableOfContents', () => {
       await Promise.resolve();
     });
   });
+});
+
+it('shows the topic above the full-page title and updates the count below the tabs for the selected track', () => {
+  const builderMilestones = [
+    milestones[0]!,
+    milestones[1]!,
+    { number: 3, title: 'Build', url: `${baseUrl}build/content.json`, isActive: false },
+  ];
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      title="Build dashboards"
+      category="visualization"
+      milestones={milestones}
+      baseUrl={baseUrl}
+      tracks={[{ trackId: 'builder', label: 'Builder', milestones: builderMilestones }]}
+    />
+  );
+  const hero = screen.getByTestId('learning-paths-cover-hero');
+  const eyebrow = within(hero).getByText('Dashboards');
+  const title = within(hero).getByRole('heading', { name: 'Build dashboards' });
+  expect(eyebrow).toBeInTheDocument();
+  expect(eyebrow.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(hero).not.toHaveTextContent('Learning path');
+  expect(screen.getByText('· 2 milestones')).toBeInTheDocument();
+  expect(screen.getByRole('progressbar', { name: /through Fundamentals/ })).toHaveAttribute('aria-valuemax', '100');
+  expect(hero).not.toHaveTextContent('2 milestones');
+  fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+  expect(screen.getByText('· 3 milestones')).toBeInTheDocument();
+  expect(screen.getByRole('progressbar', { name: /through Builder/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Build' })).toHaveAttribute(
+    'data-milestone-url',
+    `${baseUrl}build/content.json`
+  );
 });

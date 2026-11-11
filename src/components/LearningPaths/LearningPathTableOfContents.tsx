@@ -1,6 +1,10 @@
 import { milestoneCountText } from '../LearningContentCard/learning-effort';
+import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-visual';
+import { catalogTopic } from '../../lib/catalog-discovery';
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
-import { useStyles2, Icon, TabsBar, Tab } from '@grafana/ui';
+import { useStyles2, Icon, TabsBar, Tab, Button } from '@grafana/ui';
+import { css } from '@emotion/css';
+import type { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
 
 import type { CoverPageTrack, Milestone } from '../../types/content.types';
@@ -25,6 +29,8 @@ import { getTableOfContentsStyles } from './learning-paths.styles';
 const FOUNDATIONS_TAB_ID = FOUNDATIONS_TRACK_ID;
 
 export interface LearningPathTableOfContentsProps {
+  fullPage?: boolean;
+  category?: string;
   milestones: Milestone[];
   baseUrl: string;
   /** Package manifest ID, when known — used to look up a completion badge to preview. */
@@ -64,6 +70,8 @@ export interface LearningPathTableOfContentsProps {
 }
 
 export function LearningPathTableOfContents({
+  fullPage = false,
+  category,
   milestones,
   baseUrl,
   pathId,
@@ -73,8 +81,13 @@ export function LearningPathTableOfContents({
   onActiveTrackChange,
   initialActiveTrackId,
 }: LearningPathTableOfContentsProps) {
-  const styles = useStyles2(getTableOfContentsStyles);
+  const compactStyles = useStyles2(getTableOfContentsStyles);
+  const fullPageStyles = useStyles2(getFullPageStyles);
+  const styles = fullPage ? { ...compactStyles, ...fullPageStyles } : compactStyles;
   const badge = pathId ? getBadgeForPath(pathId) : undefined;
+  const topicId = catalogTopic({ id: pathId ?? '', title: title ?? '', category });
+  const topic = getLearningTopicMetadata(topicId, 'path');
+  const showTopic = fullPage && topicId !== 'uncategorized' && topicId !== 'other' && topic.label;
 
   const hasTracks = tracks !== undefined && tracks.length > 0;
   const [activeTabId, setActiveTabId] = useState<string>(() =>
@@ -187,52 +200,74 @@ export function LearningPathTableOfContents({
       ? activeMilestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
       : undefined;
 
+  const ctaProps = {
+    'data-journey-start': 'true',
+    'data-milestone-url': ctaTarget?.url,
+    ...(ctaTarget?.id != null && { 'data-milestone-id': ctaTarget.id }),
+    'data-interaction-location': progress === 0 ? 'get_started_cta' : 'resume_cta',
+    'data-testid': testIds.learningPaths.tableOfContentsCta,
+  };
+
   return (
     <>
       {(title || description || badge) && (
         <div className={styles.hero} data-testid={testIds.learningPaths.coverHero}>
+          {showTopic && (
+            <div className={fullPageStyles.eyebrow}>
+              <Icon name={topic.icon} size="sm" />
+              {topic.label}
+            </div>
+          )}
           {title && <h1 className={styles.heroTitle}>{title}</h1>}
           {description && <p className={styles.heroDescription}>{description}</p>}
-          <div className={styles.heroMeta}>
-            <span className={styles.heroMetaItem}>
-              <Icon name="list-ul" size="sm" />
-              {milestoneCountText(activeMilestones.length)}
-            </span>
-            {totalEstimatedMinutes != null && (
-              <span className={styles.heroMetaItem}>
-                <Icon name="clock-nine" size="sm" />
-                {totalEstimatedMinutes < 60
-                  ? t('coverPage.totalMinutes', '{{count}} min', { count: totalEstimatedMinutes })
-                  : t('coverPage.totalHours', '~{{count}} hr', { count: Math.round(totalEstimatedMinutes / 60) })}
-              </span>
-            )}
-            {badge && (
-              <span className={styles.heroMetaItem}>
-                <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="sm" />
-                {t('coverPage.earnsBadge', 'Earns {{badge}} badge', { badge: badge.title })}
-              </span>
-            )}
-          </div>
+          {(!fullPage || totalEstimatedMinutes != null || badge) && (
+            <div className={styles.heroMeta}>
+              {!fullPage && (
+                <span className={styles.heroMetaItem}>
+                  <Icon name="list-ul" size="sm" />
+                  {milestoneCountText(activeMilestones.length)}
+                </span>
+              )}
+              {totalEstimatedMinutes != null && (
+                <span className={styles.heroMetaItem}>
+                  <Icon name="clock-nine" size="sm" />
+                  {totalEstimatedMinutes < 60
+                    ? t('coverPage.totalMinutes', '{{count}} min', { count: totalEstimatedMinutes })
+                    : t('coverPage.totalHours', '~{{count}} hr', { count: Math.round(totalEstimatedMinutes / 60) })}
+                </span>
+              )}
+              {badge && (
+                <span className={styles.heroMetaItem}>
+                  <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="sm" />
+                  {t('coverPage.earnsBadge', 'Earns {{badge}} badge', { badge: badge.title })}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
       {hasTracks && (
-        <TabsBar className={styles.tracksTabs} data-testid={testIds.learningPaths.tracksTabs}>
-          <Tab
-            label={t('coverPage.foundationsTab', 'Fundamentals')}
-            active={activeTabId === FOUNDATIONS_TAB_ID}
-            onChangeTab={() => setActiveTabId(FOUNDATIONS_TAB_ID)}
-            data-testid={testIds.learningPaths.tracksTab(FOUNDATIONS_TAB_ID)}
-          />
-          {tracks!.map((track) => (
+        <>
+          <TabsBar className={styles.tracksTabs} data-testid={testIds.learningPaths.tracksTabs}>
             <Tab
-              key={track.trackId}
-              label={track.label}
-              active={activeTabId === track.trackId}
-              onChangeTab={() => setActiveTabId(track.trackId)}
-              data-testid={testIds.learningPaths.tracksTab(track.trackId)}
+              className={fullPage ? fullPageStyles.trackTab : undefined}
+              label={t('coverPage.foundationsTab', 'Fundamentals')}
+              active={activeTabId === FOUNDATIONS_TAB_ID}
+              onChangeTab={() => setActiveTabId(FOUNDATIONS_TAB_ID)}
+              data-testid={testIds.learningPaths.tracksTab(FOUNDATIONS_TAB_ID)}
             />
-          ))}
-        </TabsBar>
+            {tracks!.map((track) => (
+              <Tab
+                className={fullPage ? fullPageStyles.trackTab : undefined}
+                key={track.trackId}
+                label={track.label}
+                active={activeTabId === track.trackId}
+                onChangeTab={() => setActiveTabId(track.trackId)}
+                data-testid={testIds.learningPaths.tracksTab(track.trackId)}
+              />
+            ))}
+          </TabsBar>
+        </>
       )}
       <div
         className={styles.container}
@@ -244,12 +279,17 @@ export function LearningPathTableOfContents({
         data-test-path-percent={progress}
       >
         <div className={styles.header}>
-          <h2 className={styles.heading}>
-            <Icon name="list-ul" size="md" className={styles.headingIcon} />
-            {t('coverPage.tableOfContents', 'In this path')}
-          </h2>
+          <div className={fullPage ? fullPageStyles.headingGroup : undefined}>
+            <h2 className={styles.heading}>
+              {!fullPage && <Icon name="list-ul" size="md" className={styles.headingIcon} />}
+              {t('coverPage.tableOfContents', 'In this path')}
+            </h2>
+            {fullPage && (
+              <span className={fullPageStyles.pathCount}>· {milestoneCountText(activeMilestones.length)}</span>
+            )}
+          </div>
           <div className={styles.headerActions}>
-            {progress > 0 && (
+            {!fullPage && progress > 0 && (
               <ProgressRing
                 progress={progress}
                 size={40}
@@ -261,24 +301,113 @@ export function LearningPathTableOfContents({
                 })}
               />
             )}
-            {ctaTarget && (
-              <button
-                type="button"
-                className={styles.ctaButton}
-                data-journey-start="true"
-                data-milestone-url={ctaTarget.url}
-                {...(ctaTarget.id != null && { 'data-milestone-id': ctaTarget.id })}
-                data-interaction-location={progress === 0 ? 'get_started_cta' : 'resume_cta'}
-                data-testid={testIds.learningPaths.tableOfContentsCta}
-              >
-                <Icon name="play" size="sm" />
-                {ctaLabel}
-              </button>
-            )}
+            {ctaTarget &&
+              (fullPage ? (
+                <Button icon="play" {...ctaProps}>
+                  {ctaLabel}
+                </Button>
+              ) : (
+                <button type="button" className={styles.ctaButton} {...ctaProps}>
+                  <Icon name="play" size="sm" />
+                  {ctaLabel}
+                </button>
+              ))}
           </div>
         </div>
-        <GuideList guides={guides} enableRowLinks />
+        {fullPage && (
+          <div className={fullPageStyles.progressRow}>
+            <div
+              className={fullPageStyles.progressTrack}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              aria-label={t('coverPage.progressAriaLabel', '{{percent}}% through {{sequence}}', {
+                percent: Math.round(progress),
+                sequence: activeSequenceLabel,
+              })}
+            >
+              <div className={fullPageStyles.progressFill} style={{ width: `${progress}%` }} />
+            </div>
+            <span className={fullPageStyles.progressLabel}>
+              {t('coverPage.percentComplete', '{{percent}}% complete', { percent: Math.round(progress) })}
+            </span>
+          </div>
+        )}
+        <GuideList guides={guides} enableRowLinks fullPage={fullPage} />
       </div>
     </>
   );
 }
+
+const getFullPageStyles = (theme: GrafanaTheme2) => ({
+  hero: css({
+    padding: theme.spacing(3, 0),
+    margin: 0,
+  }),
+  eyebrow: css({
+    ...theme.typography.sm,
+    color: theme.colors.text.secondary,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    marginBottom: theme.spacing(0.5),
+  }),
+  heroTitle: css({
+    ...theme.typography.h1,
+    color: theme.colors.text.primary,
+    margin: theme.spacing(0, 0, 1),
+    border: 0,
+    padding: 0,
+  }),
+  heroDescription: css({
+    ...theme.typography.base,
+    color: theme.colors.text.primary,
+    maxWidth: '75ch',
+    margin: theme.spacing(0, 0, 2),
+  }),
+  heroMeta: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(2),
+    ...theme.typography.base,
+    color: theme.colors.text.secondary,
+  }),
+  headingGroup: css({
+    display: 'flex',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+  }),
+  pathCount: css({ ...theme.typography.base, color: theme.colors.text.secondary }),
+  progressRow: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(2), marginBottom: theme.spacing(2) }),
+  progressTrack: css({
+    flex: 1,
+    minWidth: 0,
+    height: theme.spacing(0.5),
+    borderRadius: theme.shape.radius.pill,
+    background: theme.colors.border.weak,
+    overflow: 'hidden',
+  }),
+  progressFill: css({ height: '100%', background: theme.colors.success.main, borderRadius: theme.shape.radius.pill }),
+  progressLabel: css({ ...theme.typography.sm, color: theme.colors.text.secondary, whiteSpace: 'nowrap' }),
+  tracksTabs: css({ marginTop: theme.spacing(0.5) }),
+  trackTab: css({ marginRight: theme.spacing(1) }),
+  container: css({ margin: theme.spacing(3, 0) }),
+  header: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+  }),
+  heading: css({
+    ...theme.typography.h4,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    margin: 0,
+    color: theme.colors.text.primary,
+  }),
+});

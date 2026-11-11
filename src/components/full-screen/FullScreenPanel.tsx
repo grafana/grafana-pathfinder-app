@@ -23,6 +23,8 @@ import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../util
 import pluginJson from '../../plugin.json';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FullScreenLayout } from './FullScreenLayout';
+import { CourseAssistant } from './CourseAssistant';
+import { isJourneyCoverPage } from '../../docs-retrieval';
 import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';
 import { resolveSafeTargetPath, extractTargetPathFromEventDetail } from './resolve-safe-target-path';
 
@@ -187,6 +189,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const isEditorTab = activeTab?.type === 'editor';
   const content = activeTab?.content ?? null;
+  const isCoverPage = content ? isJourneyCoverPage(content) : false;
   const title = isEditorTab ? EDITOR_FULL_SCREEN_TITLE : activeTab?.title || 'Interactive learning';
   const hasActiveGuide = activeTab != null && !isNonContentTab(activeTab);
   // Prefer `currentUrl` (the milestone the user is reading) so when the user
@@ -353,11 +356,24 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     locationService.push(PLUGIN_BASE_URL);
   }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo, panel]);
 
-  // FullScreenLayout's back-arrow calls onExit with no arguments (its own
-  // onClick handler would otherwise forward the click event as `reason`).
   const handleManualExit = useCallback(() => {
     void handleExitToSidebar('manual_exit');
   }, [handleExitToSidebar]);
+
+  const courseOverviewUrl = !isCoverPage
+    ? (content?.metadata.learningJourney?.baseUrl ?? content?.metadata.trackMemberBaseUrl)
+    : undefined;
+  const backLabel = courseOverviewUrl ? 'Back to course' : isCoverPage ? 'Back to Learn' : 'Back to sidebar';
+  const handleBack = useCallback(() => {
+    if (courseOverviewUrl && activeTab) {
+      void panel.loadTab(activeTab.id, courseOverviewUrl);
+    } else if (isCoverPage) {
+      panelModeManager.setModeTransient('fullscreen');
+      locationService.push(PLUGIN_BASE_URL);
+    } else {
+      handleManualExit();
+    }
+  }, [courseOverviewUrl, activeTab, isCoverPage, panel, handleManualExit]);
 
   // Stable ref to the latest exit-to-sidebar callback. `handleExitToSidebar`
   // only depends on `panel` (a stable useMemo'd reference) so its identity
@@ -461,16 +477,17 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // `LearningJourneyMilestoneToolbar` component. Renders as a sub-header
   // beneath the layout's main header. Returns null for non-journey tabs
   // (editor and bundled docs render without it, mirroring sidebar behavior).
-  const journeyToolbar = activeTab ? (
-    <LearningJourneyMilestoneToolbar
-      panel={panel}
-      activeTab={activeTab}
-      surface="fullscreen"
-      hasInteractiveProgress={hasInteractiveProgress}
-      progressKey={progressKey}
-      onResetGuide={handleResetGuide}
-    />
-  ) : null;
+  const journeyToolbar =
+    activeTab && !isCoverPage ? (
+      <LearningJourneyMilestoneToolbar
+        panel={panel}
+        activeTab={activeTab}
+        surface="fullscreen"
+        hasInteractiveProgress={hasInteractiveProgress}
+        progressKey={progressKey}
+        onResetGuide={handleResetGuide}
+      />
+    ) : null;
 
   const guideType: 'learning-journey' | 'docs' | undefined = hasActiveGuide
     ? activeTab?.type === 'learning-journey'
@@ -485,13 +502,17 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       guideUrl={guideUrl}
       guideType={guideType}
       hasActiveGuide={hasActiveGuide}
-      onExit={handleManualExit}
+      onExit={handleBack}
+      backLabel={backLabel}
       // Show the pop-out button for both guides AND the editor — the editor
       // is poppable to floating via the same event/handler, and hiding the
       // button would create an inconsistency with the BlockEditor toolbar's
       // own "Pop out" button which dispatches the equivalent event.
       onGoFloating={hasActiveGuide || isEditorTab ? handleSwitchToFloating : undefined}
       subHeader={journeyToolbar}
+      assistant={
+        content && !isEditorTab ? <CourseAssistant content={content} activeTab={activeTab ?? null} /> : undefined
+      }
     >
       {isEditorTab ? (
         <Suspense fallback={<SkeletonLoader type="documentation" />}>
@@ -499,6 +520,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         </Suspense>
       ) : (
         <FloatingPanelContent
+          fullPageOverview
           content={content}
           pendingAlignment={activeTab?.pendingAlignment}
           onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}

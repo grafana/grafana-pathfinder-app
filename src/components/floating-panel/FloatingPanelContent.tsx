@@ -26,6 +26,7 @@ interface FloatingPanelContentProps {
   progressKey?: string | null;
   onResetGuide?: (progressKey: string, tab: LearningJourneyTab) => Promise<void> | void;
   surface?: MilestoneToolbarSurface;
+  fullPageOverview?: boolean;
   /** The guide content to render */
   content: RawContent | null;
   /** Called when a guide completes all interactive sections */
@@ -68,6 +69,7 @@ export function FloatingPanelContent({
   progressKey,
   onResetGuide,
   surface = 'floating',
+  fullPageOverview = false,
 }: FloatingPanelContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
@@ -124,7 +126,13 @@ export function FloatingPanelContent({
     );
   }
 
-  const contentClassName = `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`;
+  const proseStyles =
+    fullPageOverview && isJourneyCoverPage(content)
+      ? ''
+      : content.type === 'learning-journey'
+        ? journeyStyles
+        : docsStyles;
+  const contentClassName = `${proseStyles} ${interactiveStyles} ${prismStyles}`;
 
   // The active track restore's identity — see LearningJourneyTab.activeTrackPathId's
   // doc comment for why this is the manifest id, not a resolved URL.
@@ -176,6 +184,7 @@ export function FloatingPanelContent({
         <ContentRenderer
           key={content.url}
           content={content}
+          fullPageOverview={fullPageOverview}
           containerRef={contentRef}
           className={contentClassName}
           completion={{ kind: 'tracked', input: surfaceCompletionInput, onComplete: onGuideComplete }}
