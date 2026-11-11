@@ -248,6 +248,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
           const validationResult = validateGuide(parsed, {
             allowDuplicateHeading: true,
             allowUnsupportedGuidedAction: true,
+            allowGrotGraphErrors: true,
           });
 
           if (!validationResult.isValid) {
