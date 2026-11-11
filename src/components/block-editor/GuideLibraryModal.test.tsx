@@ -1,12 +1,12 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
 import { lintGuide } from './lint/guide-lint';
 import { GuideLibraryModal, type GuideLibraryModalProps } from './GuideLibraryModal';
 
-function renderLibrary(props: Partial<GuideLibraryModalProps>) {
-  return render(
+function library(props: Partial<GuideLibraryModalProps>) {
+  return (
     <GuideLibraryModal
       isOpen
       onClose={jest.fn()}
@@ -22,7 +22,48 @@ function renderLibrary(props: Partial<GuideLibraryModalProps>) {
   );
 }
 
+function renderLibrary(props: Partial<GuideLibraryModalProps>) {
+  return render(library(props));
+}
+
+/** A read the test settles by hand, after it has closed the library. */
+function pendingRead() {
+  let settle!: { resolve: (value: unknown) => void; reject: (reason: unknown) => void };
+  const promise = new Promise((resolve, reject) => (settle = { resolve, reject }));
+  return { readGuide: jest.fn(() => promise) as GuideLibraryModalProps['readGuide'], settle };
+}
+
 describe('GuideLibraryModal', () => {
+  it('drops a load that finishes after the library was closed, so later edits survive', async () => {
+    const { readGuide, settle } = pendingRead();
+    const onLoadGuide = jest.fn();
+    const props = { guides: [{ id: 'g', name: 'g', title: 'Guide' }], readGuide, onLoadGuide };
+    const { rerender } = renderLibrary(props);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load' }));
+    rerender(library({ ...props, isOpen: false }));
+    await act(async () => {
+      settle.resolve({ metadata: { name: 'g' }, spec: { id: 'g', title: 'Guide', blocks: [] } });
+    });
+
+    expect(onLoadGuide).not.toHaveBeenCalled();
+  });
+
+  it('drops the error of a load that fails after the library was closed', async () => {
+    const { readGuide, settle } = pendingRead();
+    const props = { guides: [{ id: 'g', name: 'g', title: 'Guide' }], readGuide };
+    const { rerender } = renderLibrary(props);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load' }));
+    rerender(library({ ...props, isOpen: false }));
+    rerender(library(props));
+    await act(async () => {
+      settle.reject(new Error('read failed'));
+    });
+
+    expect(screen.queryByText('read failed')).not.toBeInTheDocument();
+  });
+
   it('lists catalogue entries by title and resource name, without a block count', () => {
     renderLibrary({
       guides: [{ id: 'team-guide', name: 'team-guide-v2', title: 'Team guide', status: 'published' }],

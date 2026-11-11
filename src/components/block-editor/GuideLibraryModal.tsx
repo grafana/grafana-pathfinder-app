@@ -4,7 +4,7 @@
  * Lists the private guides from the slim catalogue and reads the full guide only when loaded for editing
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Button, Badge, Icon, Tooltip, useStyles2, Spinner, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -141,17 +141,32 @@ export function GuideLibraryModal({
     resourceName: '',
   });
 
+  // The modal stays mounted while closed, so a read still in flight when the author dismisses it must
+  // not land: it would replace whatever they have edited since.
+  const loadToken = useRef(0);
+  useEffect(() => {
+    if (!isOpen) {
+      loadToken.current++;
+    }
+  }, [isOpen]);
+
   const handleLoadGuide = async (entry: CustomGuideRepositoryEntry) => {
+    const token = ++loadToken.current;
     setLoadingGuide(entry.name);
     try {
       const stored = await readGuide(entry.name);
+      if (token !== loadToken.current) {
+        return;
+      }
       if (!stored) {
         setLoadError(`Cannot load guide: "${entry.name}" was not found on the server`);
         return;
       }
       loadStoredGuide(stored);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Unknown error');
+      if (token === loadToken.current) {
+        setLoadError(error instanceof Error ? error.message : 'Unknown error');
+      }
     } finally {
       setLoadingGuide(null);
     }
@@ -289,11 +304,12 @@ export function GuideLibraryModal({
                     <Button
                       variant="primary"
                       size="sm"
-                      icon="pen"
+                      icon={loadingGuide === guide.name ? undefined : 'pen'}
                       onClick={() => handleLoadGuide(guide)}
                       disabled={loadingGuide !== null}
                       tooltip="Load guide for editing"
                     >
+                      {loadingGuide === guide.name ? <Spinner inline size="sm" /> : null}
                       Load
                     </Button>
                     <Button
