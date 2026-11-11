@@ -455,9 +455,9 @@ describe('useLinkClickHandler', () => {
 
   // The bottom nav renders at fetch time, before a tab's active Path Track
   // is known, so both buttons always render — this layout effect decides
-  // their real visibility against the same track-aware
+  // their real disabled state against the same track-aware
   // canNavigateNext()/canNavigatePrevious() the click handler already uses.
-  describe('Bottom-nav button visibility sync', () => {
+  describe('Bottom-nav button disabled sync', () => {
     function appendBottomNavButtons() {
       const prevButton = document.createElement('button');
       prevButton.className = 'journey-nav-prev';
@@ -468,7 +468,7 @@ describe('useLinkClickHandler', () => {
       return { prevButton, nextButton };
     }
 
-    it('hides the Next button on mount when canNavigateNext() returns false', () => {
+    it('disables the Next button on mount when canNavigateNext() returns false', () => {
       const { nextButton } = appendBottomNavButtons();
       mockModel.canNavigateNext.mockReturnValue(false);
 
@@ -476,10 +476,11 @@ describe('useLinkClickHandler', () => {
         useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
       );
 
-      expect(nextButton.hidden).toBe(true);
+      expect(nextButton.disabled).toBe(true);
+      expect(nextButton.hidden).toBe(false);
     });
 
-    it('shows the Next button on mount when canNavigateNext() returns true', () => {
+    it('enables the Next button on mount when canNavigateNext() returns true', () => {
       const { nextButton } = appendBottomNavButtons();
       mockModel.canNavigateNext.mockReturnValue(true);
 
@@ -487,10 +488,11 @@ describe('useLinkClickHandler', () => {
         useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
       );
 
+      expect(nextButton.disabled).toBe(false);
       expect(nextButton.hidden).toBe(false);
     });
 
-    it('hides the Previous button on mount when canNavigatePrevious() returns false', () => {
+    it('disables the Previous button on mount when canNavigatePrevious() returns false', () => {
       const { prevButton } = appendBottomNavButtons();
       mockModel.canNavigatePrevious.mockReturnValue(false);
 
@@ -498,13 +500,14 @@ describe('useLinkClickHandler', () => {
         useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
       );
 
-      expect(prevButton.hidden).toBe(true);
+      expect(prevButton.disabled).toBe(true);
+      expect(prevButton.hidden).toBe(false);
     });
 
     // A track that continues past where Foundations ends must still show
-    // Next; one that ends before Foundations does must hide it — for the
+    // Next enabled; one that ends before Foundations does must disable it — for the
     // same underlying guide.
-    it('re-syncs Next visibility when the active track changes without the guide itself changing', () => {
+    it('re-syncs Next disabled state when the active track changes without the guide itself changing', () => {
       const { nextButton } = appendBottomNavButtons();
       mockModel.canNavigateNext.mockReturnValue(false);
 
@@ -512,34 +515,38 @@ describe('useLinkClickHandler', () => {
         ({ activeTab }) => useLinkClickHandler({ contentRef, activeTab, theme: mockTheme, model: mockModel }),
         { initialProps: { activeTab: mockModel.getActiveTab() } }
       );
-      expect(nextButton.hidden).toBe(true);
+      expect(nextButton.disabled).toBe(true);
+      expect(nextButton.hidden).toBe(false);
 
       mockModel.canNavigateNext.mockReturnValue(true);
       rerender({ activeTab: { ...mockModel.getActiveTab(), activeTrackId: 'builder', activeTrackMilestones: [] } });
 
+      expect(nextButton.disabled).toBe(false);
       expect(nextButton.hidden).toBe(false);
     });
 
     // ContentProcessor's snippet-ref inlining can swap in a freshly reparsed
     // DOM tree without activeTab.content itself changing, so the DOM swap
     // itself — not a prop/rerender — must be what re-triggers the sync.
-    it('re-syncs Next visibility after a DOM swap that leaves activeTab.content unchanged', async () => {
+    it('re-syncs Next disabled state after a DOM swap that leaves activeTab.content unchanged', async () => {
       const { nextButton: originalNextButton } = appendBottomNavButtons();
       mockModel.canNavigateNext.mockReturnValue(false);
 
       renderHook(() =>
         useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
       );
-      expect(originalNextButton.hidden).toBe(true);
+      expect(originalNextButton.disabled).toBe(true);
+      expect(originalNextButton.hidden).toBe(false);
 
-      // Simulate the remount: a brand-new element, defaulting to visible,
+      // Simulate the remount: a brand-new element, defaulting to visible and enabled,
       // replaces the original with no React rerender involved at all.
       const freshNextButton = document.createElement('button');
       freshNextButton.className = 'journey-nav-next';
       originalNextButton.replaceWith(freshNextButton);
 
       await waitFor(() => {
-        expect(freshNextButton.hidden).toBe(true);
+        expect(freshNextButton.disabled).toBe(true);
+        expect(freshNextButton.hidden).toBe(false);
       });
     });
   });

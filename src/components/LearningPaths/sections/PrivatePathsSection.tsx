@@ -47,12 +47,16 @@ export function PrivatePathsSection({
   return (
     <div className={cx(styles.section, styles.columnSection)} data-testid={testIds.learningPaths.privatePathsSection}>
       <div className={styles.sectionHeader}>
-        <Icon name="lock" size="md" className={styles.sectionIcon} />
-        <h2 className={styles.sectionTitle}>{t('myLearning.privatePaths', 'Private paths')}</h2>
+        <span className={styles.sectionIcon}>
+          <Icon name="lock" size="lg" />
+        </span>
+        <div className={styles.sectionHeadingText}>
+          <h2 className={styles.sectionTitle}>{t('myLearning.privatePaths', 'Private paths')}</h2>
+          <p className={styles.sectionDescription}>
+            {t('myLearning.privatePathsDescription', 'Paths published for your organization')}
+          </p>
+        </div>
       </div>
-      <p className={styles.sectionDescription}>
-        {t('myLearning.privatePathsDescription', 'Paths published for your organization')}
-      </p>
 
       <div ref={listRef} className={cx(styles.pathsGrid, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}>
         {paths.map((path, index) => {

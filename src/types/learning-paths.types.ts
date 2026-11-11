@@ -185,6 +185,7 @@ export interface ResolvedAssignment {
   trackId?: string;
   trackLabel?: string;
   assignedBy?: string;
+  assignedAt?: string;
   dueAt?: string;
   /** True when `dueAt` is in the past and the obligation isn't satisfied. */
   overdue: boolean;

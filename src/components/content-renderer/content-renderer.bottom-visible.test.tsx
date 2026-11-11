@@ -78,8 +78,11 @@ function liveObserver(): MockIntersectionObserver | undefined {
 }
 
 async function seeEnd(isIntersecting = true): Promise<void> {
-  await waitFor(() => expect(liveObserver()).toBeDefined());
-  act(() => liveObserver()!.intersect(isIntersecting));
+  await waitFor(() => {
+    const observer = liveObserver();
+    expect(observer).toBeDefined();
+    act(() => observer!.intersect(isIntersecting));
+  });
   await act(async () => {});
 }
 
