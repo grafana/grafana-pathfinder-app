@@ -53,15 +53,24 @@ export function startSavedIntentBridge(): () => void {
       timer = setTimeout(() => void read(), delay);
     }
   };
-  const history = locationService.getHistory();
-  let previousPath = history.location.pathname;
-  const unlisten = history.listen((location: { pathname: string }) => {
-    const changed = previousPath !== location.pathname;
-    previousPath = location.pathname;
+  let previousPath = window.location.pathname;
+  const onLocation = (pathname: string) => {
+    const changed = previousPath !== pathname;
+    previousPath = pathname;
     if (changed || !current()) {
       refresh();
     }
-  });
+  };
+  let unlisten: () => void;
+  try {
+    const history = locationService.getHistory();
+    previousPath = history.location.pathname;
+    unlisten = history.listen((location: { pathname: string }) => onLocation(location.pathname));
+  } catch {
+    const onPopState = () => onLocation(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    unlisten = () => window.removeEventListener('popstate', onPopState);
+  }
   const onVisibility = () => refresh();
   document.addEventListener('visibilitychange', onVisibility);
   refresh(0);

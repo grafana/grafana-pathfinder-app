@@ -225,3 +225,26 @@ it('clears the saved answer when the identity changes', async () => {
   config.bootData.user.uid = 'one';
   expect(hasSavedExploringIntent()).toBe(false);
 });
+it('falls back to popstate when Grafana history is unavailable', async () => {
+  (locationService.getHistory as jest.Mock).mockImplementation(() => {
+    throw new Error('no history');
+  });
+  window.history.replaceState(null, '', '/dashboards');
+  const stop = start();
+  await flush();
+  expect(read).toHaveBeenCalledTimes(1);
+  window.history.replaceState(null, '', '/explore');
+  await act(async () => {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  expect(read).toHaveBeenCalledTimes(2);
+  stop();
+  window.history.replaceState(null, '', '/profile');
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  jest.advanceTimersByTime(5000);
+  expect(read).toHaveBeenCalledTimes(2);
+  window.history.replaceState(null, '', '/');
+});
