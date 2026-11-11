@@ -124,7 +124,11 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
   }
 
   // Zod validation replaces manual checks
-  const validationResult = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
+  const validationResult = validateGuide(guide, {
+    allowDuplicateHeading: true,
+    allowUnsupportedGuidedAction: true,
+    allowGrotGraphErrors: true,
+  });
   if (!validationResult.isValid) {
     return {
       isValid: false,

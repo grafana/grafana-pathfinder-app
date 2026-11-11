@@ -102,7 +102,11 @@ export function buildBackendGuideContent(
     blocks: decoded.blocks,
   };
 
-  const validationResult = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
+  const validationResult = validateGuide(guide, {
+    allowDuplicateHeading: true,
+    allowUnsupportedGuidedAction: true,
+    allowGrotGraphErrors: true,
+  });
   if (!validationResult.isValid) {
     const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
     return {

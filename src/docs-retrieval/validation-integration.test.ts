@@ -161,3 +161,60 @@ describe('already-published guide whose blocks[0] duplicates the title', () => {
     expect(JSON.parse(result.content?.content || '{}').blocks).toHaveLength(2);
   });
 });
+
+describe('already-published guide with defective grot-guide graphs', () => {
+  const defectiveGrotGuide = {
+    id: 'troubleshoot-datasource',
+    title: 'Troubleshoot datasource',
+    blocks: [
+      {
+        type: 'grot-guide',
+        welcome: { title: 'Welcome', body: 'Diagnose your issue', ctas: [{ text: 'Start', screenId: 'q1' }] },
+        screens: [
+          { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Next', screenId: 'q1' }] },
+          {
+            type: 'result',
+            id: 'r1',
+            title: 'Resolved',
+            body: 'Done.',
+            links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  it('still parses and renders through parseJsonGuide, reporting only a warning', () => {
+    const result = parseJsonGuide(JSON.stringify(defectiveGrotGuide));
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    expect(result.warnings.some((w) => w.includes('self_loop'))).toBe(true);
+  });
+
+  it('still loads through fetchContent from an external URL', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      url: 'https://example.com/content.json',
+      text: () => Promise.resolve(JSON.stringify(defectiveGrotGuide)),
+      headers: { get: () => null },
+    });
+
+    const result = await fetchContent('https://example.com/content.json');
+
+    expect(result.error).toBeUndefined();
+    expect(result.content).not.toBeNull();
+    expect(JSON.parse(result.content?.content || '{}')).toEqual(defectiveGrotGuide);
+  });
+
+  it('still loads through the App Platform custom-guide loader', () => {
+    const result = buildBackendGuideContent(
+      { metadata: { name: 'resource-name' }, spec: defectiveGrotGuide },
+      'backend-guide:resource-name',
+      'resource-name'
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.content?.content || '{}').blocks).toHaveLength(1);
+  });
+});
