@@ -64,10 +64,11 @@ export interface BackendSaveFlowGuidesInterface {
     status?: 'draft' | 'published',
     replacesForeignResource?: boolean,
     details?: GuideDetails
-  ) => Promise<{ defaultedAuthor?: DefaultedAuthor } | void>;
+  ) => Promise<{ defaultedAuthor?: DefaultedAuthor; written?: BackendSaveFlowGuideEntry } | void>;
   /** Resolves undefined only on a 404. */
   readGuide: (resourceName: string) => Promise<BackendSaveFlowGuideEntry | undefined>;
-  unpublishGuide: (resourceName: string) => Promise<void>;
+  /** Resolves to the resource the write answered with, when it answered with one. */
+  unpublishGuide: (resourceName: string) => Promise<BackendSaveFlowGuideEntry | undefined | void>;
 }
 
 export interface UseBackendSaveFlowOptions {
@@ -169,17 +170,34 @@ export function useBackendSaveFlow({
           if (seq !== readSeq.current || !written) {
             return;
           }
-          // The write landed, so its status stands, but the old resourceVersion is stale and would 409 every save.
+          // The write landed, so its status stands. The old resourceVersion stays, so the next save fails
+          // closed with a 409 rather than overwrite whatever another author wrote in between.
           setStoredGuide((prev) => {
-            const spec = prev?.metadata.name === resourceName ? prev.spec : { title: '' };
-            return { metadata: { name: resourceName }, spec: { ...spec, status: written } };
+            const kept =
+              prev?.metadata.name === resourceName ? prev : { metadata: { name: resourceName }, spec: { title: '' } };
+            return { ...kept, spec: { ...kept.spec, status: written } };
           });
         }
       );
     },
     [readGuide]
   );
-  // Only a restored name needs this read: loads seed the entry and writes re-read their own.
+  // A write's own response carries the version the editor's content is now based on, so it seeds the entry;
+  // re-reading is only the fallback for a response that holds no resource.
+  const trackWrite = useCallback(
+    (resourceName: string, status: 'draft' | 'published', written?: BackendSaveFlowGuideEntry | void) => {
+      if (written) {
+        readSeq.current++;
+        syncedName.current = resourceName;
+        setStoredGuide(written);
+        return Promise.resolve();
+      }
+      return syncStoredGuide(resourceName, status);
+    },
+    [syncStoredGuide]
+  );
+
+  // Only a restored name needs this read: loads seed the entry and writes track their own.
   useEffect(() => {
     if (currentGuideResourceName && syncedName.current !== currentGuideResourceName) {
       void syncStoredGuide(currentGuideResourceName);
@@ -267,8 +285,7 @@ export function useBackendSaveFlow({
       // Track the content that was last synced to the backend
       setLastPublishedJson(JSON.stringify(guide));
 
-      // Re-read for the new resourceVersion, which the next save must carry.
-      await syncStoredGuide(generatedResourceName, status);
+      await trackWrite(generatedResourceName, status, saved?.written);
       setCurrentGuideResourceName(generatedResourceName);
 
       if (status === 'published') {
@@ -277,7 +294,7 @@ export function useBackendSaveFlow({
         notify('success', isUpdate ? 'Draft updated.' : 'Guide saved as draft.');
       }
     },
-    [backendGuides, guideDetails, announceAuthor, syncStoredGuide]
+    [backendGuides, guideDetails, announceAuthor, trackWrite]
   );
 
   /**
@@ -375,9 +392,9 @@ export function useBackendSaveFlow({
       return;
     }
     try {
-      await backendGuides.unpublishGuide(currentGuideResourceName);
+      const written = await backendGuides.unpublishGuide(currentGuideResourceName);
 
-      await syncStoredGuide(currentGuideResourceName, 'draft');
+      await trackWrite(currentGuideResourceName, 'draft', written);
       // Keep lastPublishedJson set — guide content is unchanged, only status changed.
       // This allows change detection to work correctly for the guide now in draft state.
       setLastPublishedJson(JSON.stringify(editor.getGuide()));
@@ -386,7 +403,7 @@ export function useBackendSaveFlow({
       logger.error('[BlockEditor] Failed to unpublish guide', { error });
       notify('error', 'Unpublish failed', error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [backendGuides, currentGuideResourceName, editor, syncStoredGuide]);
+  }, [backendGuides, currentGuideResourceName, editor, trackWrite]);
 
   // Publish/update guide to backend handler
   const handlePostToBackend = useCallback(async () => {

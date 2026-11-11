@@ -84,12 +84,10 @@ beforeEach(() => {
 
 it.each([false, true])('shows private guides and an enablement CTA without consent (page=%s)', async (page) => {
   mockConsent = false;
-  jest
-    .mocked(fetchCustomGuideCatalogue)
-    .mockResolvedValue({
-      available: true,
-      entries: [{ id: 'team-guide', name: 'team-guide', title: 'Team guide', status: 'published' }],
-    });
+  jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
+    available: true,
+    entries: [{ id: 'team-guide', name: 'team-guide', title: 'Team guide', status: 'published' }],
+  });
   render(<PackageBrowser page={page} onOpenGuide={jest.fn()} />);
   expect(await screen.findByText('Team guide')).toBeInTheDocument();
   expect(screen.getByText('Enable recommendations')).toBeInTheDocument();

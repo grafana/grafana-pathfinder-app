@@ -806,6 +806,61 @@ describe('author attribution', () => {
   });
 });
 
+describe('useBackendGuides — written resource', () => {
+  // The server answers a PUT or POST with the stored object, whose resourceVersion is what the next save
+  // must echo for a concurrent write to 409.
+  const answerWritesWith = (answer: (request: { data?: StoredGuide }) => unknown) =>
+    mockFetch.mockImplementation((request: { method: string; url: string; data?: StoredGuide }) =>
+      request.method === 'GET' ? serveFetch(request) : of({ data: answer(request) })
+    );
+
+  it('returns the resource a save wrote, with its new resourceVersion', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([resource]);
+    answerWritesWith(({ data }) => ({ ...data, metadata: { ...data!.metadata, resourceVersion: '43' } }));
+
+    let saved: Awaited<ReturnType<typeof result.current.saveGuide>> | undefined;
+    await act(async () => {
+      saved = await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
+    });
+
+    expect(saved?.written?.metadata).toMatchObject({ name: 'alerting-path', resourceVersion: '43' });
+  });
+
+  it('returns the resource an unpublish wrote', async () => {
+    const result = await renderLoaded([pathCoverPage()]);
+    answerWritesWith(({ data }) => ({ ...data, metadata: { ...data!.metadata, resourceVersion: '44' } }));
+
+    let written: Awaited<ReturnType<typeof result.current.unpublishGuide>> | undefined;
+    await act(async () => {
+      written = await result.current.unpublishGuide('alerting-path');
+    });
+
+    expect(written?.metadata.resourceVersion).toBe('44');
+    expect(written?.spec.status).toBe('draft');
+  });
+
+  it.each([
+    ['an empty body', () => ({})],
+    ['another resource', () => ({ metadata: { name: 'other', resourceVersion: '1' }, spec: {} })],
+    [
+      'a resource with no version',
+      ({ data }: { data?: StoredGuide }) => ({ ...data, metadata: { name: 'alerting-path' } }),
+    ],
+  ])('returns no written resource when the write answers with %s', async (_label, answer) => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([resource]);
+    answerWritesWith(answer);
+
+    let saved: Awaited<ReturnType<typeof result.current.saveGuide>> | undefined;
+    await act(async () => {
+      saved = await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
+    });
+
+    expect(saved?.written).toBeUndefined();
+  });
+});
+
 describe('useBackendGuides — library catalogue', () => {
   it('lists drafts and published guides from the catalogue, bypassing its cache', async () => {
     const draft = pathCoverPage();

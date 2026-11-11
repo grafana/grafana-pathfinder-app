@@ -334,7 +334,7 @@ describe('useBackendSaveFlow — resourceVersion', () => {
     expect(versions).toEqual(['7', '8']);
   });
 
-  it('drops the pre-save version when the re-read fails, so the next save is not stuck on a 409', async () => {
+  it('keeps the pre-save version when the write answers with no resource and the re-read fails, so the next save fails closed', async () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
     const { g, entry } = trackedAt('7');
     const backendGuides = makeBackendGuides([entry]);
@@ -349,9 +349,49 @@ describe('useBackendSaveFlow — resourceVersion', () => {
       await result.current.performSaveDraft();
     });
 
+    // Version 7 is stale once the first save landed, so the server answers the second save with a 409
+    // instead of letting it overwrite whatever another author wrote in between.
     const [, second] = (backendGuides.saveGuide as jest.Mock).mock.calls;
-    expect(second[2]).toEqual({ name: 'g1' });
+    expect(second[2]).toMatchObject({ name: 'g1', resourceVersion: '7' });
     warnSpy.mockRestore();
+  });
+
+  it("takes the next save's version from the write's response, with no re-read", async () => {
+    const { g, entry } = trackedAt('7');
+    const written = makeGuideEntry('g1', 'Guide one');
+    written.metadata.resourceVersion = '8';
+    const backendGuides = makeBackendGuides([entry], { saveGuide: jest.fn().mockResolvedValue({ written }) });
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+    await flushReads();
+    const readsBeforeSaving = (backendGuides.readGuide as jest.Mock).mock.calls.length;
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect((backendGuides.readGuide as jest.Mock).mock.calls.length).toBe(readsBeforeSaving);
+    const [, second] = (backendGuides.saveGuide as jest.Mock).mock.calls;
+    expect(second[2]).toMatchObject({ resourceVersion: '8' });
+  });
+
+  it('takes the version and status from the unpublish response', async () => {
+    const { g, entry } = trackedAt('7');
+    entry.spec.status = 'published';
+    const written = makeGuideEntry('g1', 'Guide one', 'draft');
+    written.metadata.resourceVersion = '8';
+    const backendGuides = makeBackendGuides([entry], { unpublishGuide: jest.fn().mockResolvedValue(written) });
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+    await waitFor(() => expect(result.current.publishedStatus).toBe('published'));
+
+    await act(async () => {
+      await result.current.performUnpublish();
+    });
+
+    expect(result.current.publishedStatus).toBe('draft');
+    expect(result.current.currentGuideMetadata).toMatchObject({ resourceVersion: '8' });
   });
 
   it('keeps a just-published guide published when its re-read fails, so Save cannot unpublish it', async () => {
@@ -368,7 +408,7 @@ describe('useBackendSaveFlow — resourceVersion', () => {
     });
 
     expect(result.current.publishedStatus).toBe('published');
-    expect(result.current.currentGuideMetadata).toEqual({ name: 'g1' });
+    expect(result.current.currentGuideMetadata).toMatchObject({ name: 'g1', resourceVersion: '7' });
     warnSpy.mockRestore();
   });
 });

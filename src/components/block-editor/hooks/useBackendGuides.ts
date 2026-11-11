@@ -157,6 +157,16 @@ async function readStoredGuide(resourceName: string): Promise<BackendGuide | und
 export interface SaveGuideResult {
   /** The name this save chose for the guide, set only when it was not already authored by a real name. */
   defaultedAuthor?: DefaultedAuthor;
+  /** The resource the write answered with, carrying the resourceVersion the next save must echo. */
+  written?: BackendGuide;
+}
+
+/** The stored resource a write answered with, when the answer is one. */
+function writtenResource(data: unknown, resourceName: string): BackendGuide | undefined {
+  const resource = data as Partial<BackendGuide> | null | undefined;
+  return resource?.metadata?.name === resourceName && resource.metadata.resourceVersion && resource.spec
+    ? (resource as BackendGuide)
+    : undefined;
 }
 
 export interface UseBackendGuidesReturn {
@@ -176,8 +186,8 @@ export interface UseBackendGuidesReturn {
     replacesForeignResource?: boolean,
     details?: GuideDetails
   ) => Promise<SaveGuideResult>;
-  publishGuide: (resourceName: string) => Promise<void>;
-  unpublishGuide: (resourceName: string) => Promise<void>;
+  publishGuide: (resourceName: string) => Promise<BackendGuide | undefined>;
+  unpublishGuide: (resourceName: string) => Promise<BackendGuide | undefined>;
   deleteGuide: (resourceName: string) => Promise<void>;
   isSaving: boolean;
 }
@@ -311,8 +321,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           details,
         })?.defaulted;
 
-        await lastValueFrom(
-          getBackendSrv().fetch({
+        const response = await lastValueFrom(
+          getBackendSrv().fetch<unknown>({
             url: existingResourceName ? itemUrl(namespace, existingResourceName) : collectionUrl(namespace),
             method: existingResourceName ? 'PUT' : 'POST',
             data: k8sResource,
@@ -321,7 +331,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         );
 
         await refreshGuides();
-        return { defaultedAuthor };
+        return { defaultedAuthor, written: writtenResource(response.data, resourceName) };
       } finally {
         setIsSaving(false);
       }
@@ -334,7 +344,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
    * content written is the stored content, so there is no editor-held version to conflict against.
    */
   const writeStatus = useCallback(
-    async (resourceName: string, status: 'draft' | 'published') => {
+    async (resourceName: string, status: 'draft' | 'published'): Promise<BackendGuide | undefined> => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -346,8 +356,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           throw new Error(`Guide "${resourceName}" was not found on the server`);
         }
 
-        await lastValueFrom(
-          getBackendSrv().fetch({
+        const response = await lastValueFrom(
+          getBackendSrv().fetch<unknown>({
             url: itemUrl(namespace, resourceName),
             method: 'PUT',
             data: {
@@ -361,6 +371,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         );
 
         await refreshGuides();
+        return writtenResource(response.data, resourceName);
       } finally {
         setIsSaving(false);
       }
