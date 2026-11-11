@@ -912,7 +912,7 @@ provider that predates and sits outside the #1966 contract. That test is the aut
 rule's exact precision (how a conditional method, a url builder, or a variable-held request
 object is resolved); see it rather than this paragraph for the mechanics.
 
-That test's allowlist is empty: no direct read is grandfathered, so any new one fails the test.
+That test's allowlist contains only the [signed-in survey compatibility read](#signed-in-survey-compatibility-read) described below. Any other direct read fails the test.
 
 ## Signed-in survey compatibility read
 

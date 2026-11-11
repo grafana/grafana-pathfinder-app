@@ -134,18 +134,13 @@ const pathfinderFeatureFlags = {
     defaultValue: false,
     trackingKey: 'auto_open_sidebar',
   },
-  /**
-   * Auto-open guide A/B experiment, run on `@grafana-experiments/sdk`. Treatment
-   * pops Pathfinder open with a configured guide on matched pages; control and
-   * excluded keep today's behaviour. No trackingKey: the SDK owns the exposure.
-   * Payload schema and enrollment live in `src/utils/experiments/auto-open-guide/`.
-   */
-  // Separate flag prevents older clients from ignoring the saved-intent eligibility gate.
+  /** Saved-exploring cohort; a separate flag keeps older clients from bypassing its eligibility gate. */
   'pathfinder.onboarding-exploring-auto-open-experiment': {
     valueType: 'object',
     values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
     defaultValue: { variant: 'excluded' },
   },
+  /** Legacy page-targeted cohort: treatment opens a guide; control and excluded leave the panel closed. */
   'pathfinder.auto-open-guide-experiment': {
     valueType: 'object',
     values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
