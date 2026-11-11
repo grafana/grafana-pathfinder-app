@@ -912,4 +912,10 @@ provider that predates and sits outside the #1966 contract. That test is the aut
 rule's exact precision (how a conditional method, a url builder, or a variable-held request
 object is resolved); see it rather than this paragraph for the mechanics.
 
-That test's allowlist is empty: no direct read is grandfathered, so any new one fails the test.
+That test's allowlist contains only the [signed-in survey compatibility read](#signed-in-survey-compatibility-read) described below. Any other direct read fails the test.
+
+## Signed-in survey compatibility read
+
+The temporary saved-exploring experiment has one explicit browser-read exception, tracked in PR #2343: `src/lib/onboarding-survey-intent.ts` reads the existing `grafana-setupguide-app:<current-user-uid>` object in `userstorage.grafana.app/v0alpha1`. This is Grafana's own-user settings API, not the Pathfinder catalogue API. Its authorizer verifies the authenticated caller's UID against the record name, regardless of the service-name prefix. The adapter derives namespace and UID from the signed-in runtime context, never from a URL parameter, and uses the browser session. Anonymous users never read or enroll. There is no service-account credential, internal storage import, fabricated plugin context or Setupguide release dependency.
+
+This exception does not change the proxy requirement for any other resource. The transport ratchet explicitly detects and allowlists this single call, with a regression preventing it from becoming invisible to the scanner. The private survey key/schema and alpha resource require compatibility tests. Missing/malformed data, authentication failures and timeouts leave both experiment arms ineligible; legacy browser storage is not an identity-safe fallback. Revalidate on bounded navigation/visibility cycles only on configured experiment pages and discard stale responses. The source is the latest completed server save, not a guarantee that a newer, still-pending survey submission has completed. Remove the exception when retiring the experiment.
