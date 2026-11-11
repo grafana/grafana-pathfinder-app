@@ -16,7 +16,6 @@ import { getPackageBrowserStyles } from '../PackageBrowser/package-browser.style
 import { prefixRoute } from '../../utils/utils.routing';
 import { ROUTES } from '../../constants';
 import { useBooleanFlag } from '../../utils/openfeature';
-import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
 import { beginGuideLoad, finishGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
@@ -252,12 +251,8 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   );
 
   const performLaunch = useCallback(
-    async (url: string, title: string, packageInfo?: PackageOpenInfo, inSidebar = false) => {
+    async (url: string, title: string, packageInfo?: PackageOpenInfo) => {
       if (!mountedRef.current) {
-        return;
-      }
-      if (inSidebar) {
-        openGuideInSidebar({ url, title, source: 'home_page', packageInfo });
         return;
       }
       const loadContext = beginGuideLoad(url);
@@ -282,14 +277,14 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   );
 
   const launch = useCallback(
-    async (url: string, title: string, launchId: string, packageInfo?: PackageOpenInfo, inSidebar = false) => {
+    async (url: string, title: string, launchId: string, packageInfo?: PackageOpenInfo) => {
       if (launchInFlightRef.current) {
         return;
       }
       launchInFlightRef.current = true;
       setLaunchingId(launchId);
       try {
-        await performLaunch(url, title, packageInfo, inSidebar);
+        await performLaunch(url, title, packageInfo);
       } finally {
         launchInFlightRef.current = false;
         if (mountedRef.current) {
@@ -302,7 +297,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
 
   // Lock before resolving the cover so repeated clicks cannot race the lookup.
   const openPathCover = useCallback(
-    async (path: LearningPath, inSidebar = false) => {
+    async (path: LearningPath) => {
       if (launchInFlightRef.current) {
         return;
       }
@@ -335,7 +330,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
           return;
         }
 
-        await performLaunch(coverUrl, path.title, packageInfo, inSidebar);
+        await performLaunch(coverUrl, path.title, packageInfo);
       } finally {
         launchInFlightRef.current = false;
         if (mountedRef.current) {
@@ -349,15 +344,14 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const allPaths = useMemo(() => [...paths, ...onlinePaths], [paths, onlinePaths]);
 
   const handleOpenGuide = useCallback(
-    (guideId: string, pathId: string, options?: { path: LearningPath; inSidebar: boolean }) => {
+    (guideId: string, pathId: string, options?: { path: LearningPath }) => {
       if (launchInFlightRef.current) {
         return;
       }
       const parentPath = options?.path ?? allPaths.find((p) => p.id === pathId);
-      const inSidebar = options?.inSidebar ?? false;
 
       if (parentPath?.manifest && !parentPath.url) {
-        void openPathCover(parentPath, inSidebar);
+        void openPathCover(parentPath);
         return;
       }
 
@@ -371,7 +365,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
           launch_target: 'cover_page',
         });
 
-        void launch(parentPath.url, parentPath.title, parentPath.id, undefined, inSidebar);
+        void launch(parentPath.url, parentPath.title, parentPath.id, undefined);
         return;
       }
 
@@ -409,7 +403,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         });
       }
 
-      void launch(guideUrl, title, pathId, undefined, inSidebar);
+      void launch(guideUrl, title, pathId, undefined);
     },
     [launch, allPaths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
@@ -431,7 +425,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         effectiveGuides.find((guide) => guide.isCurrent && !guide.completed) ??
         effectiveGuides.find((guide) => !guide.completed) ??
         effectiveGuides[0];
-      handleOpenGuide(nextGuide?.id ?? '', entry.path.id, { path: entry.path, inSidebar: false });
+      handleOpenGuide(nextGuide?.id ?? '', entry.path.id, { path: entry.path });
     }
   };
 
