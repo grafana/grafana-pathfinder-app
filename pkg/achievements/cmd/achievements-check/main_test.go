@@ -91,6 +91,7 @@ func TestBuildRejects(t *testing.T) {
 		{"entity not JSON", map[string]string{"events/guides.json": `{`}, "", "unexpected EOF"},
 		{"action key this build does not read", map[string]string{"events/guides.json": strings.Replace(guidesEntity, `"resources"`, `"resouces"`, 1)}, "", `key "resouces" is not one this build reads`},
 		{"entity with an unread field", map[string]string{"events/guides.json": strings.Replace(guidesEntity, `"owner"`, `"leak":"x","owner"`, 1)}, "", `unknown field "leak"`},
+		{"invalid source", map[string]string{"events/guides.json": strings.Replace(guidesEntity, `"resources"`, `"sources":[{"interaction":"grafana_guide_done","emitter":"grafana","versions":">=13.2.0","owner":"nobody"}],"resources"`, 1)}, "", "source grafana_guide_done skipped as invalid: guides.completed: owner must be a team handle"},
 		{"case-variant id", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"ID": "other", "title"`, 1)}, "", "declare id exactly once"},
 		{"bad entity file name", map[string]string{"events/Bad Name.json": `{"actions":{"x":{"context":{}}}}`}, "", "entity Bad Name skipped"},
 		{"bad art file name", map[string]string{"art/Weird KEY.svg": ""}, "", "art #0 skipped"},
@@ -109,6 +110,27 @@ func TestBuildRejects(t *testing.T) {
 				t.Errorf("code = %d stderr = %q stdout = %q, want %q and no bundle", code, stderr, stdout, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildAcceptsASource(t *testing.T) {
+	entity := strings.Replace(guidesEntity, `"resources"`, `"sources":[{"interaction":"grafana_guide_done","emitter":"grafana","versions":">=13.2.0",
+  "context":{"guideId":"id"},"owner":"@grafana/pathfinder","silent":true}],"resources"`, 1)
+	src := sourceTree(t, map[string]string{"events/guides.json": entity, "catalog/guides-finished.json": guidesFinished, "art/guides-finished-1.svg": ""})
+	out := filepath.Join(t.TempDir(), "definitions.json")
+	if code, _, stderr := runCmd("build", "-src", src, "-o", out); code != exitOK {
+		t.Fatalf("build = %d: %s", code, stderr)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := achievements.LoadBundle(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subs := s.Registry.Subscriptions(achievements.Stack{}); len(subs) != 1 || subs[0].Interaction != "grafana_guide_done" {
+		t.Errorf("subscriptions = %+v", subs)
 	}
 }
 

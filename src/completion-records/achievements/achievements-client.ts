@@ -26,8 +26,8 @@ export interface GuideCompletedContext {
   pathId?: string;
 }
 
-/** RFC §6.1. Only `guides.completed` is posted, so the context is that pair's declared fields. */
-export interface AchievementEventBody {
+/** RFC §6.1. The recorder posts `guides.completed`, so the context is that pair's declared fields. */
+export interface GuideCompletedEventBody {
   schemaVersion: typeof ACHIEVEMENT_EVENT_SCHEMA_VERSION;
   eventId: string;
   entity: 'guides';
@@ -35,6 +35,17 @@ export interface AchievementEventBody {
   occurredAt: string;
   context: GuideCompletedContext;
 }
+
+/** An Echo event, carrying only the properties its source lists; the backend maps it to a pair. */
+export interface SourceEventBody {
+  schemaVersion: typeof ACHIEVEMENT_EVENT_SCHEMA_VERSION;
+  eventId: string;
+  source: string;
+  occurredAt: string;
+  properties: Record<string, string | number | boolean>;
+}
+
+export type AchievementEventBody = GuideCompletedEventBody | SourceEventBody;
 
 /** `route-missing` and `forbidden` disarm the session and keep the queue (RFC §6.5). */
 export type EventOutcome =

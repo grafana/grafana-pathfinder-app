@@ -429,7 +429,12 @@ func getAchievementDefinitions(t *testing.T, app *App, sub string, cfg map[strin
 // guide-streak uses a construct this build cannot read: displayed, not earnable.
 const achievementsTestBundleWithSkipJSON = `{"grammar":"1.0","registry":{"entities":{
   "guides":{"actions":{"completed":{"context":{"guideId":{"type":"string"}},
-    "resources":[{"unit":"guide","id":["guideId"]}]}}}}},
+    "resources":[{"unit":"guide","id":["guideId"]}]}}},
+  "dashboards":{"actions":{"created":{"context":{"resourceId":{"type":"string"}},
+    "resources":[{"unit":"dashboard","id":["resourceId"]}],
+    "sources":[{"interaction":"grafana_dashboard_created","emitter":"grafana","versions":">=13.2.0",
+      "when":[{"property":"result","op":"in","value":["success","copied"]}],
+      "context":{"resourceId":"uid"},"owner":"@grafana/dashboards-squad"}]}}}}},
  "catalog":{"achievements":[
   {"id":"guides-finished","title":"Guide finisher","description":"Finish guides.",
    "counter":{"unit":"guide","evidence":[{"entity":"guides","action":"completed","countBy":"resource"}]},
