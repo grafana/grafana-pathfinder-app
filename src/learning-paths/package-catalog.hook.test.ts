@@ -101,7 +101,7 @@ it('uses only eligible official IDs for discovery, preserving private guides', a
   });
   jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
     available: true,
-    entries: [{ id: 'private-guide', title: 'Private guide', status: 'published' }],
+    entries: [{ id: 'private-guide', name: 'private-guide', title: 'Private guide', status: 'published' }],
   });
   jest.clearAllMocks();
   const { result } = renderHook(() =>
@@ -116,7 +116,7 @@ it('uses only eligible official IDs for discovery, preserving private guides', a
 it('keeps private content visible when public discovery is disabled, without calling either public catalog', async () => {
   jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
     available: true,
-    entries: [{ id: 'private-guide', title: 'Private guide', status: 'published' }],
+    entries: [{ id: 'private-guide', name: 'private-guide', title: 'Private guide', status: 'published' }],
   });
   jest.clearAllMocks();
   const { result } = renderHook(() =>
@@ -144,7 +144,7 @@ it('hides public content immediately on consent revocation without dropping priv
   });
   jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
     available: true,
-    entries: [{ id: 'private-guide', title: 'Private guide', status: 'published' }],
+    entries: [{ id: 'private-guide', name: 'private-guide', title: 'Private guide', status: 'published' }],
   });
   const { result, rerender } = renderHook(
     ({ consent }) =>

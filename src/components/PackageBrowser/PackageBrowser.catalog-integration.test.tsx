@@ -86,7 +86,10 @@ it.each([false, true])('shows private guides and an enablement CTA without conse
   mockConsent = false;
   jest
     .mocked(fetchCustomGuideCatalogue)
-    .mockResolvedValue({ available: true, entries: [{ id: 'team-guide', title: 'Team guide', status: 'published' }] });
+    .mockResolvedValue({
+      available: true,
+      entries: [{ id: 'team-guide', name: 'team-guide', title: 'Team guide', status: 'published' }],
+    });
   render(<PackageBrowser page={page} onOpenGuide={jest.fn()} />);
   expect(await screen.findByText('Team guide')).toBeInTheDocument();
   expect(screen.getByText('Enable recommendations')).toBeInTheDocument();
@@ -100,7 +103,7 @@ it.each([false, true])(
     jest.mocked(fetchEligibleCatalog).mockResolvedValueOnce({ available: false, items: [] });
     jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
       available: true,
-      entries: [{ id: 'team-guide', title: 'Team guide', status: 'published' }],
+      entries: [{ id: 'team-guide', name: 'team-guide', title: 'Team guide', status: 'published' }],
     });
     render(<PackageBrowser page={page} onOpenGuide={jest.fn()} />);
     expect(await screen.findByText('Team guide')).toBeInTheDocument();
