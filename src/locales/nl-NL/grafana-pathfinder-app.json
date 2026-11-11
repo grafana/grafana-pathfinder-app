@@ -48,6 +48,7 @@
     "previousMilestone": "Vorige mijlpaal",
     "previousMilestoneTooltip": "Vorige mijlpaal (Alt + ←)",
     "recommendations": "Aanbevelingen",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "Gids resetten",
     "resetGuideErrorMessage": "Kan de voortgang van de gids niet resetten. Probeer het opnieuw of laad de pagina opnieuw.",
     "resetGuideErrorTitle": "Resetten mislukt",

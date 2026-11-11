@@ -361,6 +361,31 @@ describe('buildDocsLoadSuccessPatch', () => {
     });
   });
 
+  describe('pending alignment on reload', () => {
+    const pending = { startingLocation: '/explore' } as unknown as LearningJourneyTab['pendingAlignment'];
+    const patch = (isReload: boolean, pendingAlignment?: LearningJourneyTab['pendingAlignment']) =>
+      buildDocsLoadSuccessPatch({
+        tab: tab({ pendingAlignment: pending }),
+        requestedUrl: 'backend-guide:g',
+        fetchedContent: content({ url: 'backend-guide:g' }),
+        pendingAlignment,
+        isReload,
+      });
+
+    it('keeps an unanswered prompt when reloading with no new decision', () => {
+      expect(patch(true).pendingAlignment).toBe(pending);
+    });
+
+    it('clears the prompt on a normal load with no decision', () => {
+      expect(patch(false).pendingAlignment).toBeUndefined();
+    });
+
+    it('uses a new decision over the existing prompt on reload', () => {
+      const next = { startingLocation: '/other' } as unknown as LearningJourneyTab['pendingAlignment'];
+      expect(patch(true, next).pendingAlignment).toBe(next);
+    });
+  });
+
   it('uses interactive type without package info for interactive content', () => {
     expect(
       buildDocsLoadSuccessPatch({

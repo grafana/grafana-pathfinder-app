@@ -113,19 +113,19 @@ If the backend API is unavailable in the target Grafana instance, the client sho
 
 ## Assistant event (refresh an open guide in place)
 
-A deep link opens a guide once; a tab that is already open never refetches on its own. The Assistant publishes one Assistant-owned event on Grafana's in-page app event bus, and Pathfinder acts on it. The event is one-way from the Assistant to Pathfinder.
+A deep link opens a guide once; a tab that is already open never refetches on its own. The Assistant publishes one Assistant-owned event on Grafana's in-page app event bus, and Pathfinder acts on it. The event is one-way from the Assistant to Pathfinder. The sender is defined in `grafana-assistant-app` at `apps/plugin/src/agent/tools/pathfinder/pathfinderEvents.ts`.
 
-| Field        | Value                                                                                                                 |
-| ------------ | --------------------------------------------------------------------------------------------------------------------- |
-| Bus          | `getAppEvents()` from `@grafana/runtime`                                                                              |
-| Event `type` | `grafana-assistant:pathfinder` (`ASSISTANT_PATHFINDER_EVENT_TYPE` in `src/lib/assistant-pathfinder-event.ts`)         |
-| Payload      | A union discriminated by `operation`. Today: `{ operation: 'refresh-guide'; name: string; resourceVersion?: string }` |
+| Field        | Value                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------- |
+| Bus          | `getAppEvents()` from `@grafana/runtime`                                                                      |
+| Event `type` | `grafana-assistant:pathfinder` (`ASSISTANT_PATHFINDER_EVENT_TYPE` in `src/lib/assistant-pathfinder-event.ts`) |
+| Payload      | A union discriminated by `operation`. Today: `{ operation: 'refresh-guide'; name: string }`                   |
 
 Operations:
 
-1. `refresh-guide`: after a successful save of an existing guide, reloads the already-open guide whose resource name is `name` (the name used in `doc=api:<name>`), matched against the tab's `backend-guide:<name>` URL. `resourceVersion` is unused.
+1. `refresh-guide`: after a successful create, update, publish or unpublish of a guide, reloads the already-open guide whose resource name is `name` (the name used in `doc=api:<name>`), matched against the tab's `backend-guide:<name>` URL.
 
-The bus matches subscribers by the `type` string only, so a publisher in another bundle defines its own `BusEventWithPayload` subclass with the identical `static type`. More operations can be added to the list later. Pathfinder ignores operations it does not know and every other payload field, so older Pathfinder versions stay compatible.
+The bus matches subscribers by the `type` string only, so a publisher in another bundle defines its own `BusEventWithPayload` subclass with the identical `static type`. More operations can be added to the list later. Operations are additive: changing the fields of an existing operation is a breaking change, so add a new operation instead. Pathfinder ignores operations it does not know and every other payload field, so older Pathfinder versions stay compatible.
 
 Pathfinder accepts only a `name` matching `[A-Za-z0-9._-]{1,253}`. The payload never carries content: the reload goes through the normal validated fetch (`loadTab` with `source: 'internal_reload'`, `rejectOnError: true`), so content stays visible if the fetch fails. The tab label follows a changed guide title on reload. If no open tab matches, nothing happens and no tab is opened. Only the surface that owns the display (sidebar, floating or fullscreen) reloads.
 

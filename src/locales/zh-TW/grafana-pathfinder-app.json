@@ -48,6 +48,7 @@
     "previousMilestone": "上一個里程碑",
     "previousMilestoneTooltip": "上一個里程碑 (Alt + ←)",
     "recommendations": "推薦",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "重置指南",
     "resetGuideErrorMessage": "無法重置指南進度。請重試或重新載入頁面。",
     "resetGuideErrorTitle": "重置失敗",

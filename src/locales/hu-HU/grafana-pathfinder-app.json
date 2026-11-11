@@ -48,6 +48,7 @@
     "previousMilestone": "Előző mérföldkő",
     "previousMilestoneTooltip": "Előző mérföldkő (Alt + ←)",
     "recommendations": "Ajánlások",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "Útmutató visszaállítása",
     "resetGuideErrorMessage": "Az útmutató előrehaladása nem állítható vissza. Próbálja újra, vagy töltse újra az oldalt.",
     "resetGuideErrorTitle": "Visszaállítás sikertelen",

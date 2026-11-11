@@ -48,6 +48,7 @@
     "previousMilestone": "Föregående milstolpe",
     "previousMilestoneTooltip": "Föregående milstolpe (Alt + ←)",
     "recommendations": "Rekommendationer",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "Återställ guide",
     "resetGuideErrorMessage": "Det gick inte att återställa guidens framsteg. Försök igen eller ladda om sidan.",
     "resetGuideErrorTitle": "Återställningen misslyckades",

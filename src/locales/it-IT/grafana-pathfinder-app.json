@@ -51,6 +51,7 @@
     "previousMilestone": "Traguardo precedente",
     "previousMilestoneTooltip": "Traguardo precedente (Alt + ←)",
     "recommendations": "Raccomandazioni",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "Reimposta guida",
     "resetGuideErrorMessage": "Impossibile reimpostare i progressi della guida. Riprova o ricarica la pagina.",
     "resetGuideErrorTitle": "Reimpostazione non riuscita",

@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { BusEventWithPayload, EventBusSrv } from '@grafana/data';
 import { useAssistantPathfinderListener } from './useAssistantPathfinderListener';
-import { ASSISTANT_PATHFINDER_EVENT_TYPE } from '../../../lib/assistant-pathfinder-event';
+import { ASSISTANT_PATHFINDER_EVENT_TYPE, AssistantPathfinderEvent } from '../../../lib/assistant-pathfinder-event';
 import { StorageKeys } from '../../../lib/storage-keys';
 import type { PanelMode } from '../../../global-state/panel-mode';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
@@ -14,7 +14,7 @@ jest.mock('@grafana/runtime', () => ({
 
 // Stands in for the Assistant bundle's own class: same type string, different identity.
 class ForeignAssistantPathfinderEvent extends BusEventWithPayload<Record<string, unknown>> {
-  static type = ASSISTANT_PATHFINDER_EVENT_TYPE;
+  static type = 'grafana-assistant:pathfinder';
 }
 
 function tab(id: string, baseUrl: string, currentUrl = baseUrl): LearningJourneyTab {
@@ -47,7 +47,7 @@ describe('useAssistantPathfinderListener', () => {
     const model = makeModel([tab('a', 'bundled:x'), tab('b', 'backend-guide:my-guide')]);
     renderHook(() => useAssistantPathfinderListener(model, 'sidebar'));
 
-    publish({ operation: 'refresh-guide', name: 'my-guide', resourceVersion: '12' });
+    publish({ operation: 'refresh-guide', name: 'my-guide' });
 
     expect(model.loadTab).toHaveBeenCalledTimes(1);
     expect(model.loadTab).toHaveBeenCalledWith('b', 'backend-guide:my-guide', {
@@ -154,6 +154,28 @@ describe('useAssistantPathfinderListener', () => {
     );
     expect(unhandled).not.toHaveBeenCalled();
     process.off('unhandledRejection', unhandled);
+  });
+
+  it('warns the user when the reload fails', async () => {
+    const loadTab = jest.fn().mockRejectedValue(new Error('boom'));
+    const model = makeModel([tab('a', 'backend-guide:my-guide')], loadTab);
+    const publishSpy = jest.spyOn(bus, 'publish');
+    renderHook(() => useAssistantPathfinderListener(model, 'sidebar'));
+
+    publish({ operation: 'refresh-guide', name: 'my-guide' });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(publishSpy).toHaveBeenCalledWith({
+      type: 'alert-warning',
+      payload: ["Couldn't refresh the guide"],
+    });
+  });
+
+  it('pins the event type string shared with the Assistant', () => {
+    expect(ASSISTANT_PATHFINDER_EVENT_TYPE).toBe('grafana-assistant:pathfinder');
+    expect(AssistantPathfinderEvent.type).toBe('grafana-assistant:pathfinder');
   });
 
   it('stops listening on unmount', () => {

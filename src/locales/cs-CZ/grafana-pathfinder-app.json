@@ -54,6 +54,7 @@
     "previousMilestone": "Předchozí mílník",
     "previousMilestoneTooltip": "Předchozí mílník (Alt + ←)",
     "recommendations": "Doporučení",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "Resetovat průvodce",
     "resetGuideErrorMessage": "Nepodařilo se resetovat postup průvodce. Zkuste to znovu nebo znovu načtěte stránku.",
     "resetGuideErrorTitle": "Resetování selhalo",

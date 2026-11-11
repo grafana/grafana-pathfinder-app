@@ -54,6 +54,7 @@
     "previousMilestone": "Предыдущий этап",
     "previousMilestoneTooltip": "Предыдущий этап (Alt + ←)",
     "recommendations": "Рекомендации",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "Сбросить руководство",
     "resetGuideErrorMessage": "Не удалось сбросить прогресс руководства. Попробуйте ещё раз или перезагрузите страницу.",
     "resetGuideErrorTitle": "Сброс не выполнен",

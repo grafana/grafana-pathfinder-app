@@ -48,6 +48,7 @@
     "previousMilestone": "前のマイルストーン",
     "previousMilestoneTooltip": "前のマイルストーン (Alt + ←)",
     "recommendations": "推奨",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "ガイドをリセット",
     "resetGuideErrorMessage": "ガイドの進捗をリセットできませんでした。もう一度試すか、ページをリロードしてください。",
     "resetGuideErrorTitle": "リセットに失敗しました",

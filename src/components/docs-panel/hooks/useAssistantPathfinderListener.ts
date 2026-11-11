@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { getAppEvents } from '@grafana/runtime';
+import { t } from '@grafana/i18n';
 import { panelModeManager, type PanelMode } from '../../../global-state/panel-mode';
 import { AssistantPathfinderEvent, parseAssistantPathfinderPayload } from '../../../lib/assistant-pathfinder-event';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
@@ -26,8 +27,13 @@ export function useAssistantPathfinderListener(model: AssistantPathfinderModel, 
         }
         model
           .loadTab(tab.id, tab.currentUrl || tab.baseUrl, { source: 'internal_reload', rejectOnError: true })
-          // loadTab already reports failures; old content stays visible.
-          .catch(() => {});
+          // Old content stays visible on failure, so tell the user the guide did not update.
+          .catch(() => {
+            getAppEvents().publish({
+              type: 'alert-warning',
+              payload: [t('docsPanel.refreshGuideErrorTitle', "Couldn't refresh the guide")],
+            });
+          });
       }
     });
     return () => subscription.unsubscribe();

@@ -65,6 +65,7 @@
     "previousMilestone": "이전 마일스톤",
     "previousMilestoneTooltip": "이전 마일스톤 (Alt + ←)",
     "recommendations": "추천",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "가이드 재설정",
     "resetGuideErrorMessage": "가이드 진행 상황을 재설정할 수 없습니다. 다시 시도하거나 페이지를 새로고침하세요.",
     "resetGuideErrorTitle": "재설정 실패",

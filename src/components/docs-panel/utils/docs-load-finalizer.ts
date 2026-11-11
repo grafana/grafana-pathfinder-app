@@ -141,7 +141,7 @@ export function buildDocsLoadSuccessPatch({
           : tab.type,
     packageInfo: retainResolvedPath(packageInfo ?? tab.packageInfo, fetchedContent),
     pathContext: learningJourney ? { learningJourney } : undefined,
-    pendingAlignment,
+    pendingAlignment: pendingAlignment === undefined && isReload ? tab.pendingAlignment : pendingAlignment,
   };
 }
 

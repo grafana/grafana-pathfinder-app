@@ -48,6 +48,7 @@
     "previousMilestone": "Pencapaian sebelumnya",
     "previousMilestoneTooltip": "Pencapaian sebelumnya (Alt + ←)",
     "recommendations": "Rekomendasi",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "Atur ulang panduan",
     "resetGuideErrorMessage": "Tidak dapat mengatur ulang progres panduan. Silakan coba lagi atau muat ulang halaman.",
     "resetGuideErrorTitle": "Pengaturan ulang gagal",

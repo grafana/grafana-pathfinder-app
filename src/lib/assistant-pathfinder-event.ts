@@ -5,7 +5,6 @@ export const ASSISTANT_PATHFINDER_EVENT_TYPE = 'grafana-assistant:pathfinder';
 export interface RefreshGuideOperation {
   operation: 'refresh-guide';
   name: string;
-  resourceVersion?: string;
 }
 
 // Add new operations to this union; consumers ignore operations they do not know.

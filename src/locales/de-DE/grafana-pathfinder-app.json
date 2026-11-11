@@ -48,6 +48,7 @@
     "previousMilestone": "Vorheriger Meilenstein",
     "previousMilestoneTooltip": "Vorheriger Meilenstein (Alt + ←)",
     "recommendations": "Empfehlungen",
+    "refreshGuideErrorTitle": "",
     "resetGuide": "Anleitung zurücksetzen",
     "resetGuideErrorMessage": "Der Fortschritt der Anleitung konnte nicht zurückgesetzt werden. Bitte versuchen Sie es erneut oder laden Sie die Seite neu.",
     "resetGuideErrorTitle": "Zurücksetzen fehlgeschlagen",
