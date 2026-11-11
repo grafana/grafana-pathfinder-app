@@ -7,7 +7,8 @@ import {
 import { getSurveyUserUid, readSavedSurveyIntent } from '../../../lib/onboarding-survey-intent';
 
 // Grafana renders grafana/app/chrome/v1 only for grafana-setupguide-app, so this runs from the experiment instead.
-export function startSavedIntentBridge(): () => void {
+export function startSavedIntentBridge(shouldRead: (pathname: string) => boolean): () => void {
+  let previousPath = window.location.pathname;
   const contextKey = getOnboardingIntentContextKey();
   let disposed = false;
   let generation = 0;
@@ -27,19 +28,19 @@ export function startSavedIntentBridge(): () => void {
       return;
     }
     // Keep the last answer while revalidating: clearing it cancels a launch already in flight.
-    if (document.visibilityState === 'hidden') {
+    if (document.visibilityState === 'hidden' || !shouldRead(previousPath)) {
       return;
     }
     const cycle = generation;
     let attempt = 0;
     const read = async () => {
-      if (!current() || cycle !== generation) {
+      if (!current() || cycle !== generation || !shouldRead(previousPath)) {
         return;
       }
       attempt++;
       controller = new AbortController();
       const result = await readSavedSurveyIntent(controller.signal);
-      if (!current() || cycle !== generation) {
+      if (!current() || cycle !== generation || !shouldRead(previousPath)) {
         return;
       }
       setOnboardingExploringIntent({ ...result, contextKey });
@@ -53,7 +54,6 @@ export function startSavedIntentBridge(): () => void {
       timer = setTimeout(() => void read(), delay);
     }
   };
-  let previousPath = window.location.pathname;
   const onLocation = (pathname: string) => {
     const changed = previousPath !== pathname;
     previousPath = pathname;

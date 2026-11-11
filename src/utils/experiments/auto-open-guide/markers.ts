@@ -1,4 +1,5 @@
 import { clearKeysByPrefix, collectKeysByPrefix } from '../../../lib/storage/key-utils';
+import { ONBOARDING_EXPLORING_EXPERIMENT_ID } from '../../../constants/auto-open-guide-experiment';
 import { StorageKeys } from '../../../lib/storage-keys';
 
 const markerPrefix = (hostname: string) => `${StorageKeys.AUTO_OPEN_GUIDE_SHOWN_PREFIX}${hostname}:`;
@@ -40,9 +41,17 @@ export function writeConsumedVisit(hostname: string, visit: string | undefined):
   }
 }
 
-export function listAutoOpenGuidesShown(hostname: string): string[] {
+export function listAutoOpenGuidesShown(hostname: string, contextKey: string): string[] {
   const prefix = markerPrefix(hostname);
-  return collectKeysByPrefix(localStorage, prefix).map((key) => key.slice(prefix.length));
+  const scopedPrefix = `${prefix}${ONBOARDING_EXPLORING_EXPERIMENT_ID}:`;
+  const currentPrefix = `${scopedPrefix}${contextKey}:`;
+  const guides = collectKeysByPrefix(localStorage, prefix).flatMap((key) => {
+    if (key.startsWith(currentPrefix)) {
+      return [key.slice(currentPrefix.length)];
+    }
+    return key.startsWith(scopedPrefix) ? [] : [key.slice(prefix.length)];
+  });
+  return [...new Set(guides)];
 }
 
 export function clearAutoOpenGuideMarkers(hostname: string): number {

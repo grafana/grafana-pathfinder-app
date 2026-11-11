@@ -34,8 +34,8 @@ beforeEach(() => {
   });
 });
 const stops: Array<() => void> = [];
-const start = () => {
-  const stop = startSavedIntentBridge();
+const start = (shouldRead: (pathname: string) => boolean = () => true) => {
+  const stop = startSavedIntentBridge(shouldRead);
   stops.push(stop);
   return stop;
 };
@@ -247,4 +247,33 @@ it('falls back to popstate when Grafana history is unavailable', async () => {
   jest.advanceTimersByTime(5000);
   expect(read).toHaveBeenCalledTimes(2);
   window.history.replaceState(null, '', '/');
+});
+
+it('reads only on configured pages and cancels retries when leaving them', async () => {
+  start((path) => path === '/dashboards');
+  await flush();
+  expect(read).not.toHaveBeenCalled();
+  navigate({ pathname: '/profile' });
+  document.dispatchEvent(new Event('visibilitychange'));
+  await act(async () => {
+    jest.runAllTimers();
+  });
+  expect(read).not.toHaveBeenCalled();
+  navigate({ pathname: '/dashboards' });
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  expect(read).toHaveBeenCalledTimes(1);
+  navigate({ pathname: '/profile' });
+  await act(async () => {
+    jest.runAllTimers();
+  });
+  expect(read).toHaveBeenCalledTimes(1);
+  read.mockResolvedValue({ status: 'ready', exploring: true });
+  navigate({ pathname: '/dashboards' });
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(hasSavedExploringIntent()).toBe(true);
 });

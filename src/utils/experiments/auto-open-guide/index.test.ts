@@ -735,6 +735,9 @@ describe('saved exploring cohort', () => {
   it('runs the saved-intent reader only for this experiment, and stops it on teardown', async () => {
     await startExploring();
     expect(startSavedIntentBridge).toHaveBeenCalledTimes(1);
+    const shouldRead = jest.mocked(startSavedIntentBridge).mock.calls[0]![0];
+    expect(shouldRead('/dashboards')).toBe(true);
+    expect(shouldRead('/profile')).toBe(false);
     stop?.();
     stop = undefined;
     expect(mockStopIntentBridge).toHaveBeenCalledTimes(1);

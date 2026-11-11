@@ -407,7 +407,11 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
         check();
       })
     : () => {};
-  const stopIntentBridge = requiresExploring ? startSavedIntentBridge() : () => {};
+  const stopIntentBridge = exploringTargeting
+    ? startSavedIntentBridge((path) =>
+        exploringTargeting.experiences.some((experience) => matchesExperience(experience, path))
+      )
+    : () => {};
 
   return () => {
     stopped = true;

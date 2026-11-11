@@ -73,7 +73,7 @@ __pathfinderExperiment.flags; // list of known flag names
 __pathfinderExperiment.showExposures(); // lists (flag, variant) pairs already reported to analytics on this browser
 __pathfinderExperiment.clearExposures(); // clears the analytics dedup markers so the next reload re-fires pathfinder_feature_flag_evaluated
 __pathfinderExperiment.bannerVariant(); // interactive-learning banner arm, or 'not-enrolled' if no panel has opened yet
-__pathfinderExperiment.autoOpenGuide(); // { variant, shown }: the auto-open guide arm ('not-enrolled' before activation) and the guides this browser was offered
+__pathfinderExperiment.autoOpenGuide(); // { variant, shown }: the auto-open guide arm ('not-enrolled' before activation) and the legacy or current-identity guides this browser was offered
 __pathfinderExperiment.clearAutoOpenGuideMarkers(); // forget which guides were offered, so a reload offers them again
 ```
 
