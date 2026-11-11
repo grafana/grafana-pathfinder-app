@@ -20,6 +20,7 @@ jest.mock('@grafana/i18n', () => ({
 const definitions: AchievementDefinitions = {
   version: 'v1',
   artBase: 'https://interactive-learning.grafana.net/achievements/art/',
+  sources: [],
   achievements: [
     {
       id: 'guides-finished',

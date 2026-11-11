@@ -31,6 +31,8 @@ var (
 // carries (RFC §6.1).
 type Registry struct {
 	Entities map[string]Entity `json:"entities"`
+
+	sources map[string]sourceRef
 }
 
 type Entity struct {
@@ -38,24 +40,27 @@ type Entity struct {
 }
 
 // Action is one registry pair's declaration. Within a format version an action
-// may only gain keys that leave what it means unchanged, such as event sources,
-// so its top level ignores keys this build does not know. A key that changes
-// what an action means needs a new format version. Fields and resources stay
-// strict.
+// may only gain keys that leave what it means unchanged, so its top level
+// ignores keys this build does not know. A key that changes what an action
+// means needs a new format version. Fields, resources and sources stay strict.
 type Action struct {
 	Context   map[string]Field `json:"context"`
 	Resources []Resource       `json:"resources,omitempty"`
+	Sources   []Source         `json:"sources,omitempty"`
+
+	rawSources []json.RawMessage
 }
 
 func (a *Action) UnmarshalJSON(data []byte) error {
 	var top struct {
 		Context   map[string]json.RawMessage `json:"context"`
 		Resources []json.RawMessage          `json:"resources"`
+		Sources   []json.RawMessage          `json:"sources"`
 	}
 	if err := json.Unmarshal(data, &top); err != nil {
-		return errors.New("action must be an object with a context object and a resources list")
+		return errors.New("action must be an object with a context object and resources and sources lists")
 	}
-	out := Action{Context: make(map[string]Field, len(top.Context))}
+	out := Action{Context: make(map[string]Field, len(top.Context)), rawSources: top.Sources}
 	for _, name := range sortedKeys(top.Context) {
 		var f Field
 		if err := decodeStrict(top.Context[name], &f); err != nil {
@@ -127,6 +132,9 @@ func (r *Registry) validate() error {
 			errs = append(errs, actions[action].validate(where)...)
 		}
 	}
+	reject := func(_ string, err error) { errs = append(errs, fmt.Errorf("registry: source %w", err)) }
+	r.eachAction(func(entity, name string, a *Action) { a.loadSources(entity+"."+name, reject) })
+	r.indexSources(reject)
 	return errors.Join(errs...)
 }
 

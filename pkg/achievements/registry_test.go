@@ -44,7 +44,7 @@ func TestLoadRegistryRejects(t *testing.T) {
 }
 
 func TestLoadRegistryIgnoresAdditiveActionKeys(t *testing.T) {
-	r, err := loadRegistry([]byte(`{"entities":{"a":{"actions":{"b":{"context":{"f":{"type":"string"}},"sources":[{"interaction":"x"}],"owner":"@team"}}}}}`))
+	r, err := loadRegistry([]byte(`{"entities":{"a":{"actions":{"b":{"context":{"f":{"type":"string"}},"examples":[{"interaction":"x"}],"owner":"@team"}}}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}

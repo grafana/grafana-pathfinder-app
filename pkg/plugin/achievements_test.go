@@ -24,7 +24,10 @@ import (
 const achievementsTestBundleJSON = `{"grammar":"1.0","registry":{"entities":{
   "dashboards":{"actions":{"created":{
     "context":{"resourceId":{"type":"string"},"numPanels":{"type":"number"}},
-    "resources":[{"unit":"dashboard","id":["resourceId"]}]}}},
+    "resources":[{"unit":"dashboard","id":["resourceId"]}],
+    "sources":[{"interaction":"grafana_dashboard_created","emitter":"grafana","versions":">=13.2.0",
+      "when":[{"property":"result","op":"eq","value":"success"}],
+      "context":{"resourceId":"uid","numPanels":"numPanels"},"owner":"@grafana/dashboards-squad"}]}}},
   "guides":{"actions":{"completed":{
     "context":{"guideSource":{"type":"string"},"guideId":{"type":"string"},
                "guideCategory":{"type":"string","enum":["interactive","documentation","learning-journey"]}},
@@ -363,6 +366,11 @@ func TestAchievementEvent_InvalidEventsAre400(t *testing.T) {
 		"uppercase token":    `{"schemaVersion":1,"eventId":"e","entity":"Dashboards","action":"created","occurredAt":"` + at(0) + `"}`,
 		"control char in id": `{"schemaVersion":1,"eventId":"a\u0000b","entity":"dashboards","action":"created","occurredAt":"` + at(0) + `"}`,
 		"too many fields":    `{"schemaVersion":1,"eventId":"e","entity":"dashboards","action":"created","occurredAt":"` + at(0) + `","context":{"a":1,"b":1,"c":1,"d":1,"e":1,"f":1,"g":1,"h":1,"i":1,"j":1,"k":1,"l":1,"m":1}}`,
+		"undeclared source":  `{"schemaVersion":1,"eventId":"e","source":"grafana_dashboard_deleted","occurredAt":"` + at(0) + `","properties":{"uid":"u"}}`,
+		"unlisted property":  `{"schemaVersion":1,"eventId":"e","source":"grafana_dashboard_created","occurredAt":"` + at(0) + `","properties":{"uid":"u","result":"success","title":"Prod"}}`,
+		"nested property":    `{"schemaVersion":1,"eventId":"e","source":"grafana_dashboard_created","occurredAt":"` + at(0) + `","properties":{"uid":["u"],"result":"success"}}`,
+		"pair and source":    `{"schemaVersion":1,"eventId":"e","entity":"dashboards","action":"created","source":"grafana_dashboard_created","occurredAt":"` + at(0) + `","properties":{"uid":"u","result":"success"}}`,
+		"source too old":     `{"schemaVersion":1,"eventId":"e","source":"grafana_dashboard_created","occurredAt":"` + at(-31*24*time.Hour) + `","properties":{"uid":"u","result":"failure"}}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

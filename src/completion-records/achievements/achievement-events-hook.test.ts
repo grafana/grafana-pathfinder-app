@@ -12,9 +12,16 @@ import {
   armAchievementEvents,
   discardQueuedAchievementEvents,
   toGuideCompletedEvent,
+  toSourceEvent,
   __resetAchievementEventsForTests,
 } from './achievement-events-hook';
 import type { AchievementEventBody, EventOutcome } from './achievements-client';
+import {
+  applyEchoSources,
+  installEchoSubscriptions,
+  subscribedEchoNames,
+  __resetEchoSourcesForTests,
+} from '../../lib/achievement-echo';
 
 jest.mock('../../utils/openfeature', () => ({
   getFeatureFlagValue: jest.fn(() => false),
@@ -55,11 +62,33 @@ function guideFact(overrides: Partial<GuideCompletionFact> = {}): GuideCompletio
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function arm(enabled: Promise<boolean>, outcome?: EventOutcome) {
+const guideIds = (bodies: AchievementEventBody[]) => bodies.map((b) => ('context' in b ? b.context.guideId : b.source));
+
+function fakeEcho() {
+  const listeners = new Map<string, Set<(properties: Record<string, unknown>) => void>>();
+  return {
+    subscribe: (name: string, callback: (properties: Record<string, unknown>) => void) => {
+      const set = listeners.get(name) ?? new Set();
+      set.add(callback);
+      listeners.set(name, set);
+      return () => set.delete(callback);
+    },
+    report: (name: string, properties: Record<string, unknown>) => listeners.get(name)?.forEach((cb) => cb(properties)),
+  };
+}
+
+const DASHBOARD_SOURCE = {
+  interaction: 'grafana_dashboard_created',
+  properties: ['result', 'uid'],
+  when: [{ property: 'result', op: 'eq', value: 'success' }],
+};
+
+function arm(enabled: Promise<boolean>, outcome?: EventOutcome, refreshSources = jest.fn()) {
   const sent: AchievementEventBody[] = [];
   const evaluated = jest.fn();
   let id = 0;
   armAchievementEvents({
+    refreshSources,
     enabled: () => enabled,
     ownerKey: () => 'user-1:org-1',
     storage: (owner) => createQueueStorage<AchievementEventBody>('test-events:', owner, 'tab'),
@@ -75,6 +104,7 @@ function arm(enabled: Promise<boolean>, outcome?: EventOutcome) {
 
 beforeEach(() => {
   __resetAchievementEventsForTests();
+  __resetEchoSourcesForTests();
   __resetRecorderForTests();
   invalidateAllEmittedCompletions();
   localStorage.clear();
@@ -112,7 +142,7 @@ describe('armAchievementEvents', () => {
     recordGuideCompletion(guideFact());
     await flush();
     await flush();
-    expect(sent.map((b) => b.context.guideId)).toEqual(['intro']);
+    expect(guideIds(sent)).toEqual(['intro']);
   });
 
   it('holds facts seen before the flag resolves, then sends them', async () => {
@@ -177,15 +207,15 @@ describe('armAchievementEvents', () => {
       recordGuideCompletion(guideFact({ guideId: 'second' }));
       await flush();
       await flush();
-      expect(sent.map((b) => b.context.guideId)).toEqual(['first']);
+      expect(guideIds(sent)).toEqual(['first']);
       const persisted = createQueueStorage<AchievementEventBody>('test-events:', 'user-1:org-1', 'other-tab').list();
-      expect(persisted.map((i) => i.body.context.guideId).sort()).toEqual(['first', 'second']);
+      expect(guideIds(persisted.map((i) => i.body)).sort()).toEqual(['first', 'second']);
 
       __resetAchievementEventsForTests();
       const later = arm(Promise.resolve(true));
       await flush();
       await flush();
-      expect(later.sent.map((b) => b.context.guideId).sort()).toEqual(['first', 'second']);
+      expect(guideIds(later.sent).sort()).toEqual(['first', 'second']);
     }
   );
 
@@ -239,5 +269,86 @@ describe('armAchievementEvents', () => {
     await flush();
     await flush();
     expect(evaluated).toHaveBeenCalledWith({ eventId: 'event-1', retry: false, decisions: [] });
+  });
+});
+
+describe('Echo delivery', () => {
+  function installWithCachedSource() {
+    const echo = fakeEcho();
+    localStorage.setItem(
+      'grafana-pathfinder-app-achievement-sources-v1:user-1:org-1',
+      JSON.stringify([DASHBOARD_SOURCE])
+    );
+    installEchoSubscriptions({
+      subscribe: echo.subscribe,
+      ownerKey: () => 'user-1:org-1',
+      now: () => Date.parse('2026-11-10T12:00:00Z'),
+    });
+    return echo;
+  }
+
+  it('builds a source-shaped event that names no pair', () => {
+    expect(
+      toSourceEvent(
+        {
+          source: 'grafana_dashboard_created',
+          properties: { uid: 'abc' },
+          occurredAt: Date.parse('2026-11-10T12:00:00Z'),
+        },
+        'e1'
+      )
+    ).toEqual({
+      schemaVersion: 1,
+      eventId: 'e1',
+      source: 'grafana_dashboard_created',
+      occurredAt: '2026-11-10T12:00:00.000Z',
+      properties: { uid: 'abc' },
+    });
+  });
+
+  it('queues events held before the flag resolves true, then live ones, with only listed properties', async () => {
+    const echo = installWithCachedSource();
+    echo.report('grafana_dashboard_created', { uid: 'early', result: 'success', title: 'Prod' });
+    let resolve!: (on: boolean) => void;
+    const { sent } = arm(new Promise((r) => (resolve = r)));
+    await flush();
+    expect(sent).toEqual([]);
+
+    resolve(true);
+    await flush();
+    echo.report('grafana_dashboard_created', { uid: 'live', result: 'success' });
+    echo.report('grafana_dashboard_created', { uid: 'failed', result: 'failure' });
+    for (let i = 0; i < 4; i++) {
+      await flush();
+    }
+    expect(sent).toEqual([
+      expect.objectContaining({ source: 'grafana_dashboard_created', properties: { uid: 'early', result: 'success' } }),
+      expect.objectContaining({ source: 'grafana_dashboard_created', properties: { uid: 'live', result: 'success' } }),
+    ]);
+    expect(new Set(sent.map((b) => b.eventId)).size).toBe(2);
+  });
+
+  it('asks for /definitions once the flag resolves true, so a fresh browser subscribes', async () => {
+    const refresh = jest.fn();
+    arm(Promise.resolve(true), undefined, refresh);
+    await flush();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards held events, unsubscribes and forgets the cached list when the flag resolves false', async () => {
+    const echo = installWithCachedSource();
+    echo.report('grafana_dashboard_created', { uid: 'early', result: 'success' });
+    const refresh = jest.fn();
+    const { sent } = arm(Promise.resolve(false), undefined, refresh);
+    await flush();
+    await flush();
+    echo.report('grafana_dashboard_created', { uid: 'late', result: 'success' });
+    await flush();
+    expect(sent).toEqual([]);
+    expect(subscribedEchoNames()).toEqual([]);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(localStorage.length).toBe(0);
+    applyEchoSources([DASHBOARD_SOURCE]);
+    expect(subscribedEchoNames()).toEqual([]);
   });
 });

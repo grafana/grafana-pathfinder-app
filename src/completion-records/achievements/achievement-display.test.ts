@@ -16,6 +16,7 @@ import { classifyEventError, type MyAchievementsResult } from './achievements-cl
 const definitions: AchievementDefinitions = {
   version: 'v1',
   artBase: 'https://interactive-learning.grafana.net/achievements/art/',
+  sources: [],
   achievements: [
     {
       id: 'guides-finished',
@@ -263,6 +264,22 @@ describe('loadAchievementDefinitions', () => {
     expect(fetchDefinitions).toHaveBeenCalledTimes(1);
     await loadAchievementDefinitions('v2');
     expect(fetchDefinitions).toHaveBeenCalledTimes(2);
+  });
+
+  it('hands the sources of every answer to the Echo subscriptions, and nothing when the fetch fails', async () => {
+    const sources = [{ interaction: 'grafana_dashboard_created', properties: ['uid'] }];
+    const applySources = jest.fn();
+    const fetchDefinitions = jest.fn<Promise<AchievementDefinitions | null>, []>(async () => ({
+      ...definitions,
+      sources,
+    }));
+    __setAchievementDisplayDepsForTests({ fetchDefinitions, applySources });
+    await loadAchievementDefinitions();
+    expect(applySources).toHaveBeenCalledWith(sources);
+
+    fetchDefinitions.mockResolvedValueOnce(null);
+    await loadAchievementDefinitions('v2');
+    expect(applySources).toHaveBeenCalledTimes(1);
   });
 });
 

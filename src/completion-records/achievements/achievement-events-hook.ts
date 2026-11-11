@@ -13,13 +13,16 @@ import {
 import type { CompletionFact } from '../types';
 
 import { createEventQueue, type EventQueue } from './achievement-event-queue';
-import { announceEvaluated } from './achievement-display';
+import { announceEvaluated, loadAchievementDefinitions } from './achievement-display';
 import {
   ACHIEVEMENT_EVENT_SCHEMA_VERSION,
   postAchievementEvent,
   type AchievementEventBody,
   type EventOutcome,
+  type GuideCompletedEventBody,
+  type SourceEventBody,
 } from './achievements-client';
+import { attachEchoSink, closeEchoSubscriptions, type EchoEvent } from '../../lib/achievement-echo';
 
 export interface AchievementEventsDeps {
   enabled: () => Promise<boolean>;
@@ -32,6 +35,10 @@ export interface AchievementEventsDeps {
   random: () => number;
   setTimer: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimer: (handle: ReturnType<typeof setTimeout>) => void;
+  attachEcho: (sink: (event: EchoEvent) => void) => void;
+  closeEcho: () => void;
+  /** Fetches `/definitions`, whose answer refreshes the Echo subscriptions. */
+  refreshSources: () => void;
 }
 
 // Facts seen before the flag resolves wait here, as the RFC's early ring buffer does.
@@ -48,9 +55,16 @@ const defaultDeps: AchievementEventsDeps = {
   random: Math.random,
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (handle) => clearTimeout(handle),
+  attachEcho: attachEchoSink,
+  closeEcho: closeEchoSubscriptions,
+  refreshSources: () => void loadAchievementDefinitions(),
 };
 
-export function toGuideCompletedEvent(fact: CompletionFact, eventId: string, now: number): AchievementEventBody | null {
+export function toGuideCompletedEvent(
+  fact: CompletionFact,
+  eventId: string,
+  now: number
+): GuideCompletedEventBody | null {
   if (fact.kind !== 'guide' || !isValidIdentifier(fact.guideSource) || !isValidIdentifier(fact.guideId)) {
     return null;
   }
@@ -67,6 +81,16 @@ export function toGuideCompletedEvent(fact: CompletionFact, eventId: string, now
       guideCategory: fact.guideCategory,
       ...(fact.pathId !== undefined && { pathId: normalizeField(fact.pathId, MAX_ID_BYTES) }),
     },
+  };
+}
+
+export function toSourceEvent(event: EchoEvent, eventId: string): SourceEventBody {
+  return {
+    schemaVersion: ACHIEVEMENT_EVENT_SCHEMA_VERSION,
+    eventId,
+    source: event.source,
+    occurredAt: new Date(event.occurredAt).toISOString(),
+    properties: event.properties,
   };
 }
 
@@ -123,6 +147,7 @@ class AchievementEventsController {
     if (!enabled) {
       this.unsubscribeFacts?.();
       this.unsubscribeFacts = null;
+      this.deps.closeEcho();
       return;
     }
     this.queue = createEventQueue({
@@ -136,7 +161,15 @@ class AchievementEventsController {
     for (const body of buffered) {
       this.queue.enqueue(body);
     }
+    this.deps.attachEcho((event) => this.onEcho(event));
+    this.deps.refreshSources();
     this.scheduleDrain(0);
+  }
+
+  private onEcho(event: EchoEvent): void {
+    if (!this.disposed && this.queue) {
+      this.enqueue(this.queue, toSourceEvent(event, this.deps.newId()));
+    }
   }
 
   private onFact(fact: CompletionFact): void {
@@ -153,8 +186,12 @@ class AchievementEventsController {
       }
       return;
     }
-    this.queue.enqueue(body);
-    if (!this.queue.isDisarmed()) {
+    this.enqueue(this.queue, body);
+  }
+
+  private enqueue(queue: EventQueue, body: AchievementEventBody): void {
+    queue.enqueue(body);
+    if (!queue.isDisarmed()) {
       this.scheduleDrain(0);
     }
   }
