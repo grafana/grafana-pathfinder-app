@@ -103,6 +103,13 @@ func (s *Source) validate(action Action) []error {
 			fail("context field %q must name one event property matching %s", field, propertyPattern)
 		}
 	}
+	if len(action.Resources) > 0 {
+		for _, id := range action.Resources[0].ID {
+			if _, ok := s.Context[id]; !ok {
+				fail("context must map %q, an id field of the pair's default resource %q", id, action.Resources[0].Unit)
+			}
+		}
+	}
 	return errs
 }
 
@@ -138,7 +145,7 @@ func (c SourceCondition) holds(props map[string]any) bool {
 }
 
 func (s *Source) properties() []string {
-	var out []string
+	out := make([]string, 0, len(s.Context)+len(s.When))
 	for _, p := range s.Context {
 		out = append(out, p)
 	}

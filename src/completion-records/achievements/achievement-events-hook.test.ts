@@ -335,6 +335,20 @@ describe('Echo delivery', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps queued source events when learning progress is reset, and withdraws the guide events', async () => {
+    const echo = installWithCachedSource();
+    arm(Promise.resolve(true), { kind: 'route-missing' });
+    onCompletionRecorded(() => true);
+    await flush();
+    recordGuideCompletion(guideFact({ guideId: 'reset-me' }));
+    echo.report('grafana_dashboard_created', { uid: 'keep-me', result: 'success' });
+    await flush();
+    await flush();
+    discardQueuedAchievementEvents();
+    const persisted = createQueueStorage<AchievementEventBody>('test-events:', 'user-1:org-1', 'other-tab').list();
+    expect(guideIds(persisted.map((item) => item.body))).toEqual(['grafana_dashboard_created']);
+  });
+
   it('discards held events, unsubscribes and forgets the cached list when the flag resolves false', async () => {
     const echo = installWithCachedSource();
     echo.report('grafana_dashboard_created', { uid: 'early', result: 'success' });

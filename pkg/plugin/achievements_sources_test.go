@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,6 +102,16 @@ func TestAchievementDefinitions_ListsTheSourcesTheStackEmits(t *testing.T) {
 				t.Errorf("Grafana %q: source = %+v", version, got)
 			}
 		}
+	}
+}
+
+func TestAchievementDefinitions_ASourceWithNoMappingIsAnEmptyPropertyList(t *testing.T) {
+	bundle := strings.Replace(achievementsTestBundleJSON, `"search":{"actions":{"performed":{"context":{}}}}`,
+		`"search":{"actions":{"performed":{"context":{},"sources":[{"interaction":"grafana_search_performed","emitter":"grafana","versions":">=13.2.0","owner":"@grafana/search-squad"}]}}}`, 1)
+	app, _ := appWithDefinitions(t, bundle)
+	rr := getAchievementDefinitions(t, app, achievementsTestUser, testGrafanaConfig())
+	if !strings.Contains(rr.Body.String(), `{"interaction":"grafana_search_performed","properties":[]}`) {
+		t.Fatalf("body = %s, want an empty properties array the browser can parse", rr.Body.String())
 	}
 }
 
