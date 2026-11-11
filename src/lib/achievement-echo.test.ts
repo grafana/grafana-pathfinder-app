@@ -85,8 +85,9 @@ describe('feature detection', () => {
     localStorage.setItem(CACHE_KEY, '{not json');
     const echo = install();
     expect(echo.subscribe).not.toHaveBeenCalled();
-    applyEchoSources([]);
-    expect(subscribedEchoNames()).toEqual([]);
+    applyEchoSources([created]);
+    expect(echo.listening()).toEqual(['grafana_dashboard_created']);
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY)!)).toEqual([created]);
   });
 });
 

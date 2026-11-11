@@ -2,6 +2,7 @@ package achievements
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -85,6 +86,7 @@ func TestLoadRegistryRejectsInvalidSources(t *testing.T) {
 		{"when property", strings.Replace(dashboardCreatedSource, `"property":"result"`, `"property":"re sult"`, 1), "", "property must match"},
 		{"same interaction twice", dashboardCreatedSource, strings.Replace(alertCreatedSource, "grafana_alerting_rule_created", "grafana_dashboard_created", 1), "declared by 2 sources"},
 		{"several sources and no resource", dashboardCreatedSource, alertCreatedSource + "," + strings.Replace(alertCreatedSource, "rule_created", "rule_saved", 1), "several sources must count by resource"},
+		{"resource id not mapped", strings.Replace(dashboardCreatedSource, `"context":{"resourceId":"uid","numPanels":"numPanels"}`, `"context":{"numPanels":"numPanels"}`, 1), "", `context must map "resourceId", an id field of the pair's default resource "dashboard"`},
 		{"sources not a list", "", "", "resources and sources lists"},
 	}
 	for _, tc := range cases {
@@ -98,6 +100,21 @@ func TestLoadRegistryRejectsInvalidSources(t *testing.T) {
 				t.Errorf("err = %v, want it to mention %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestASourceWithNoMappingListsAnEmptyPropertyList(t *testing.T) {
+	bare := `{"interaction":"grafana_alerting_grafana_rule_creation_new_success","emitter":"grafana","versions":">=13.2.0","owner":"@grafana/alerting-squad"}`
+	r, err := loadRegistry([]byte(sourcesRegistryJSON(dashboardCreatedSource, bare)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(r.Subscriptions(Stack{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `{"interaction":"grafana_alerting_grafana_rule_creation_new_success","properties":[]}`) {
+		t.Errorf("subscriptions = %s, want an empty properties array, never null", data)
 	}
 }
 

@@ -12,7 +12,7 @@ import {
 } from '../completion-write-storage';
 import type { CompletionFact } from '../types';
 
-import { createEventQueue, type EventQueue } from './achievement-event-queue';
+import { createEventQueue, discardQueuedGuideEvents, type EventQueue } from './achievement-event-queue';
 import { announceEvaluated, loadAchievementDefinitions } from './achievement-display';
 import {
   ACHIEVEMENT_EVENT_SCHEMA_VERSION,
@@ -121,9 +121,9 @@ class AchievementEventsController {
   discardQueued(): void {
     this.buffered = [];
     if (this.queue) {
-      this.queue.clear();
+      this.queue.discardGuideEvents();
     } else {
-      this.deps.storage(this.ownerKey).clear();
+      discardQueuedGuideEvents(this.deps.storage(this.ownerKey));
     }
   }
 
@@ -263,7 +263,7 @@ export function discardQueuedAchievementEvents(overrides?: Partial<AchievementEv
   const deps = { ...defaultDeps, ...overrides };
   const ownerKey = deps.ownerKey();
   if (ownerKey) {
-    deps.storage(ownerKey).clear();
+    discardQueuedGuideEvents(deps.storage(ownerKey));
   }
 }
 

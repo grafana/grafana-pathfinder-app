@@ -3,7 +3,7 @@ import type { AchievementEventsResponseWire } from '../../types/backend-api.sche
 import { DRAIN_BUDGET_PER_PASS, MAX_RETENTION_MS } from '../completion-write-timing';
 import type { QueuedItem, QueueStorage } from '../completion-write-storage';
 
-import type { AchievementEventBody, EventOutcome } from './achievements-client';
+import type { AchievementEventBody, EventOutcome, SourceEventBody } from './achievements-client';
 
 export type QueuedEvent = QueuedItem<AchievementEventBody>;
 
@@ -27,13 +27,26 @@ export interface EventQueue {
   isDisarmed(): boolean;
   snapshot(): QueuedEvent[];
   subscribe(listener: () => void): () => void;
-  clear(): void;
+  discardGuideEvents(): void;
 }
 
 // The completion write queue's bounds (RFC §6.6).
 export const MAX_QUEUED_EVENTS = 100;
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 5 * 60 * 1000;
+
+export function isSourceEvent(body: AchievementEventBody): body is SourceEventBody {
+  return 'source' in body;
+}
+
+/** "Reset all learning progress" withdraws guide events only: a source event is not learning progress. */
+export function discardQueuedGuideEvents(storage: QueueStorage<AchievementEventBody>): void {
+  for (const item of storage.list()) {
+    if (!isSourceEvent(item.body)) {
+      storage.remove(item.id);
+    }
+  }
+}
 
 export function createEventQueue(deps: EventQueueDeps): EventQueue {
   const { now, send, storage, onEvaluated } = deps;
@@ -58,9 +71,15 @@ export function createEventQueue(deps: EventQueueDeps): EventQueue {
     storage.remove(item.id);
   }
 
+  // Echo sources can fire far more often than guides finish, so they go first and never push a guide event out.
+  function evictionIndex(): number {
+    const source = items.findIndex((i) => i.id !== inFlightId && isSourceEvent(i.body));
+    return source >= 0 ? source : items.findIndex((i) => i.id !== inFlightId);
+  }
+
   function evictOverCap(): void {
     while (items.length > MAX_QUEUED_EVENTS) {
-      const index = items.findIndex((i) => i.id !== inFlightId);
+      const index = evictionIndex();
       if (index < 0) {
         return;
       }
@@ -191,9 +210,9 @@ export function createEventQueue(deps: EventQueueDeps): EventQueue {
     isDisarmed: () => disarmed,
     snapshot: () => items.map((i) => ({ ...i })),
     subscribe: (listener) => storage.subscribe(listener),
-    clear: () => {
-      items = [];
-      storage.clear();
+    discardGuideEvents: () => {
+      discardQueuedGuideEvents(storage);
+      items = items.filter((i) => isSourceEvent(i.body));
     },
   };
 }
