@@ -14,6 +14,7 @@ import { JsonSnippetSchema, SnippetCatalogSchema } from '../types/json-snippet.s
 import type { JsonSnippet, SnippetCatalog } from '../types/json-snippet.types';
 import { formatPath } from '../validation/errors';
 import { validateGuidedActionsInBlocks } from '../validation/guided-action-validator';
+import { validateGrotGuideGraphsInBlocks } from '../validation/grot-guide-validator';
 
 import type { SnippetCatalogProvider, SnippetResolution, SnippetResolver } from './types';
 
@@ -70,6 +71,9 @@ export class OnlineCdnSnippetResolver implements SnippetResolver, SnippetCatalog
       // block that does work still renders. Only the authoring gate in
       // `build-snippets` refuses a guided verb the handler cannot drive.
       for (const issue of validateGuidedActionsInBlocks(snippet.blocks)) {
+        logger.warn(`[OnlineSnippetResolver] snippet "${snippetId}" ${formatPath(issue.path)}: ${issue.message}`);
+      }
+      for (const issue of validateGrotGuideGraphsInBlocks(snippet.blocks)) {
         logger.warn(`[OnlineSnippetResolver] snippet "${snippetId}" ${formatPath(issue.path)}: ${issue.message}`);
       }
       return { ok: true, id: snippetId, snippet, source: 'online-cdn' };

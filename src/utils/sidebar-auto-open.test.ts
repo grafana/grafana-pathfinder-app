@@ -58,6 +58,20 @@ describe('setupConfigAutoOpen', () => {
     jest.useRealTimers();
   });
 
+  it('publishes a zero-delay auto-open synchronously at the checked trigger', () => {
+    const shouldOpen = jest.fn(() => true);
+    attemptAutoOpen(0, shouldOpen);
+    expect(shouldOpen).toHaveBeenCalledTimes(1);
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    jest.runAllTimers();
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish a zero-delay auto-open when final eligibility fails', () => {
+    attemptAutoOpen(0, () => false);
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
   it('opens the sidebar when openPanelOnLaunch is set', () => {
     setupConfigAutoOpen({
       currentPath: '/dashboards',
@@ -135,5 +149,28 @@ describe('setupConfigAutoOpen', () => {
     attemptAutoOpen();
     jest.runAllTimers();
     expect(mockPublish).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('scheduled auto-open cancellation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    kioskState.set(null);
+    window.history.replaceState({}, '', '/');
+  });
+  afterEach(() => jest.useRealTimers());
+  it('rechecks eligibility before a scheduled auto-open', () => {
+    let eligible = true;
+    attemptAutoOpen(200, () => eligible);
+    eligible = false;
+    jest.advanceTimersByTime(200);
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+  it('cancels the scheduled open during teardown', () => {
+    const cancel = attemptAutoOpen();
+    cancel();
+    jest.runAllTimers();
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 });

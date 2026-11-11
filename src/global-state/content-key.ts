@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
 /**
  * Content key — the identifier used to scope persisted progress to the
  * current guide / milestone.
@@ -110,11 +111,11 @@ export function getContentKeyOverride(): string | undefined {
 export function getContentKey(): string {
   const tabUrl = activeTabUrl ?? readGlobal('__DocsPluginActiveTabUrl');
   if (tabUrl) {
-    return sanitize(tabUrl);
+    return sanitize(bundledTutorialContentKey(tabUrl));
   }
   const override = contentKeyOverride ?? readGlobal('__DocsPluginContentKey');
   if (override) {
-    return sanitize(override);
+    return sanitize(bundledTutorialContentKey(override));
   }
   return typeof window !== 'undefined' ? sanitize(window.location.pathname) : 'unknown';
 }

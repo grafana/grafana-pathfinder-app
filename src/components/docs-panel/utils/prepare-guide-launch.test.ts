@@ -398,6 +398,33 @@ describe('prepareGuideLaunch', () => {
         expect(JSON.parse(result.launch.preparedContent.content).blocks[0].futureField).toBe('keep me');
       }
     });
+
+    it('allows published guide with grot-guide graph errors to launch', async () => {
+      fetchResolves({
+        id: 'g',
+        title: 'g',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'q1' }] },
+            screens: [
+              { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Loop', screenId: 'q1' }] },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+
+      const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
+
+      expect(result.ok).toBe(true);
+    });
   });
 
   it('derives package info for a package URL and fetches only once', async () => {

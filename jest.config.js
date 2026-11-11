@@ -23,9 +23,10 @@ module.exports = {
   // scaffolded setup's HTMLCanvasElement / matchMedia references.
   setupFilesAfterEnv: ['<rootDir>/.config/jest-env-polyfill.js', ...(baseConfig.setupFilesAfterEnv ?? [])],
 
-  // Add SVG file handling to base config
+  // Asset imports are rendered as test stubs.
   moduleNameMapper: {
     ...require('./.config/jest.config').moduleNameMapper,
+    '\\.(png|jpe?g|webp)$': '<rootDir>/__mocks__/imageMock.js',
     '\\.(svg)$': '<rootDir>/__mocks__/svgMock.js', // Mock SVG files
     // The real entry eagerly loads runtime internals that suites' partial
     // @grafana/data mocks break; plugin-compat treats an empty module as a host

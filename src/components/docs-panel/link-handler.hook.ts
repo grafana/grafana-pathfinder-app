@@ -32,6 +32,7 @@ import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOpti
  * dimension.
  */
 const KNOWN_INTERACTION_LOCATIONS = new Set(['get_started_cta', 'resume_cta', 'module_row_click']);
+const KNOWN_ROW_STATES = new Set(['up_next', 'completed', 'ahead']);
 
 interface UseLinkClickHandlerProps {
   contentRef: React.RefObject<HTMLDivElement | null>;
@@ -103,7 +104,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         };
 
         // Get the milestone URL (and, when the click target carried one, the
-        // manifest guide id it resolved from — GuideList's current row and
+        // manifest guide id it resolved from — GuideList's rows and
         // the cover-page CTA both set this) from the button's data attributes.
         const milestoneUrl = startElement.getAttribute('data-milestone-url');
         const milestoneId = startElement.getAttribute('data-milestone-id') ?? undefined;
@@ -120,12 +121,17 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             rawInteractionLocation && KNOWN_INTERACTION_LOCATIONS.has(rawInteractionLocation)
               ? rawInteractionLocation
               : 'ready_to_begin_button';
-          // Track analytics for starting journey
+          const rawRowState = startElement.getAttribute('data-row-state');
+          const rowState =
+            interactionLocation === 'module_row_click' && rawRowState && KNOWN_ROW_STATES.has(rawRowState)
+              ? rawRowState
+              : undefined;
           reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
             content_title: activeTab.title,
             content_url: activeTab.baseUrl,
             interaction_location: interactionLocation,
             total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
+            ...(rowState && { row_state: rowState }),
           });
 
           // Navigate directly to the first milestone URL. Use the unified
@@ -623,31 +629,31 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
   }, [contentRef, theme, activeTab?.content, activeTab?.baseUrl, activeTab?.title, model]);
 
   // Bottom-nav buttons always render (appendBottomNavigationToContent) — real
-  // visibility is decided here, live, against the track-aware model.
+  // disabled state is decided here, live, against the track-aware model.
   useLayoutEffect(() => {
     const contentElement = contentRef.current;
     if (!contentElement) {
       return;
     }
 
-    const syncBottomNavVisibility = () => {
+    const syncBottomNavDisabled = () => {
       contentElement.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => prepareKioskLink(anchor, true));
-      const nextButton = contentElement.querySelector<HTMLElement>('.journey-nav-next');
-      const prevButton = contentElement.querySelector<HTMLElement>('.journey-nav-prev');
+      const nextButton = contentElement.querySelector<HTMLButtonElement>('.journey-nav-next');
+      const prevButton = contentElement.querySelector<HTMLButtonElement>('.journey-nav-prev');
       if (nextButton) {
-        nextButton.hidden = !model.canNavigateNext();
+        nextButton.disabled = !model.canNavigateNext();
       }
       if (prevButton) {
-        prevButton.hidden = !model.canNavigatePrevious();
+        prevButton.disabled = !model.canNavigatePrevious();
       }
     };
 
-    syncBottomNavVisibility();
+    syncBottomNavDisabled();
 
     // ContentProcessor can swap the DOM tree without activeTab.content
     // changing (e.g. async snippet inlining) — re-sync on any such mutation.
-    // childList/subtree only, so the `hidden` writes above don't retrigger this.
-    const observer = new MutationObserver(syncBottomNavVisibility);
+    // childList/subtree only, so the `disabled` writes above don't retrigger this.
+    const observer = new MutationObserver(syncBottomNavDisabled);
     observer.observe(contentElement, { childList: true, subtree: true });
 
     return () => {

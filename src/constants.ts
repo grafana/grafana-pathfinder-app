@@ -288,5 +288,6 @@ export enum ROUTES {
   Home = '',
   Context = 'context',
   Browse = 'browse',
+  Badges = 'badges',
   FullScreen = 'fullscreen',
 }

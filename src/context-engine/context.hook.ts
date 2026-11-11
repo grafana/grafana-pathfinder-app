@@ -1,3 +1,4 @@
+import { contextLocationKey } from '../lib/context-location';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] Shared resolved settings dependency tracked in PR #1691.
 import { usePathfinderPluginConfig } from '../hooks';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -129,7 +130,11 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         // Prepend external suggestions (if any) so they appear first in the featured zone
         const suggestions = suggestionState.getSuggestions();
         const suggestionUrls = new Set(suggestions.map((s) => s.url));
-        const tagged = suggestions.map((s) => ({ ...s, _fromSuggestion: true as const }));
+        const tagged = suggestions.map((s) => ({
+          ...s,
+          _fromSuggestion: true as const,
+          placement: 'suggestion' as const,
+        }));
         const mergedFeatured =
           tagged.length > 0
             ? [...tagged, ...featuredRecommendations.filter((r) => !suggestionUrls.has(r.url))]
@@ -174,16 +179,14 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   useEffect(() => {
     const checkForChanges = () => {
       const location = locationService.getLocation();
-      const currentPath = location.pathname || window.location.pathname || '';
+      const currentPath = contextLocationKey(location.pathname || window.location.pathname || '', location.search);
       const currentUrl = window.location.href;
       const currentSearchParams = window.location.search;
 
-      // Only check pathname changes - EchoSrv handles datasource/viz detection
-      // This prevents unnecessary updates when URL params or hash change
       const hasLocationChanged = lastLocationRef.current.path !== currentPath;
 
       if (hasLocationChanged) {
-        // Get current EchoSrv state for tracking (but don't trigger on changes)
+        // Reading the detectors also expires observations from the previous location.
         const currentVizType = getDetectedVisualizationType();
         const currentSelectedDatasource = getDetectedDatasourceType();
 
@@ -273,7 +276,11 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       }
       const suggestionUrls = new Set(suggestions.map((s) => s.url));
       const dedupedExisting = withoutOld.filter((r) => !suggestionUrls.has(r.url));
-      const tagged = suggestions.map((s) => ({ ...s, _fromSuggestion: true as const }));
+      const tagged = suggestions.map((s) => ({
+        ...s,
+        _fromSuggestion: true as const,
+        placement: 'suggestion' as const,
+      }));
       return { ...prev, featuredRecommendations: [...tagged, ...dedupedExisting] };
     });
   }, []);

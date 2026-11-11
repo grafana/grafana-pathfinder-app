@@ -106,8 +106,10 @@ import { of } from 'rxjs';
 import { config, setBackendSrv, type BackendSrv } from '@grafana/runtime';
 import { completionAnalytics } from '../completion-records/completion-analytics';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
+import { fetchPackageContent, setPackageResolver } from './content-fetcher/package-content';
 import {
   recordStandaloneGuideCompletion,
+  getPreviousMilestoneUrl,
   setJourneyCompletionPercentage,
   setJourneyCompletionPercentageAsync,
   setMilestoneCompletionPercentage,
@@ -193,6 +195,124 @@ test('milestone manifests are not mistaken for their own parent journey', async 
     packageManifest: { id: 'm1', type: 'guide', repository: 'app-platform' },
   });
   expect(emitted[0]?.pathId).toBeUndefined();
+});
+
+it('awards the online path badge when both member content and path resolution fall back', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+  const baseUrl = 'https://interactive-learning.grafana.net/packages/getting-started/content.json';
+  const manifest = {
+    id: 'getting-started',
+    type: 'path',
+    milestones: ['welcome-to-grafana', 'prometheus-grafana-101'],
+  };
+  const milestones = manifest.milestones.map((id, index) => ({
+    id,
+    number: index + 1,
+    title: id,
+    url: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+    isActive: false,
+  }));
+  setPackageResolver({
+    resolve: jest.fn().mockResolvedValue({
+      ok: false,
+      id: manifest.id,
+      error: { code: 'not-found', message: 'offline' },
+    }),
+  });
+  seedMilestoneComplete(milestones[1]!.url);
+  getPathsDataMock.mockReturnValue({ paths: [{ id: manifest.id, url: baseUrl, badgeId: 'getting-started-badge' }] });
+
+  try {
+    const { content } = await fetchPackageContent(
+      milestones[0]!.url,
+      manifest,
+      milestones,
+      'interactive-tutorials',
+      undefined,
+      'welcome-to-grafana',
+      baseUrl
+    );
+    expect(content).not.toBeNull();
+    expect(content!.metadata.learningJourney?.baseUrl).toBe(baseUrl);
+    expect(getPreviousMilestoneUrl(content!)).toBe(baseUrl);
+    recordGuideCompletionForSurface({
+      contentUrl: content!.url,
+      currentUrl: content!.url,
+      contentType: content!.type,
+      metadata: content!.metadata,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(emitted.filter((fact) => fact.kind === 'guide')).toEqual([
+      expect.objectContaining({
+        guideId: 'welcome-to-grafana',
+        guideSource: 'bundled',
+        guideCategory: 'learning-journey',
+        pathId: manifest.id,
+      }),
+    ]);
+    expect(emitted.filter((fact) => fact.kind === 'journey')).toEqual([
+      expect.objectContaining({ guideId: manifest.id, guideSource: 'interactive-tutorials' }),
+    ]);
+    expect(awardBadgeMock).toHaveBeenCalledWith('getting-started-badge');
+  } finally {
+    global.fetch = originalFetch;
+    setPackageResolver({
+      resolve: jest.fn().mockResolvedValue({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }),
+    });
+  }
+});
+
+it('defers path completion when an offline member has no authoritative parent locator', () => {
+  recordGuideCompletionForSurface({
+    contentUrl: 'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json',
+    currentUrl: 'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json',
+    metadata: {
+      title: 'Welcome',
+      packageManifest: { id: 'welcome-to-grafana', type: 'guide' },
+      journeyManifest: { id: 'getting-started', type: 'path' },
+      repository: 'interactive-tutorials',
+      learningJourney: { currentMilestone: 1, totalMilestones: 1, baseUrl: '', milestones: [] },
+    },
+  });
+  expect(emitted).toEqual([]);
+  expect(journeySetMock).not.toHaveBeenCalled();
+  expect(awardBadgeMock).not.toHaveBeenCalled();
+});
+
+it('does not award path completion when offline metadata leaves required members unavailable', async () => {
+  const baseUrl = 'https://interactive-learning.grafana.net/packages/getting-started/content.json';
+  const memberUrl = 'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json';
+  getPathsDataMock.mockReturnValue({
+    paths: [{ id: 'getting-started', url: baseUrl, badgeId: 'getting-started-badge' }],
+  });
+  recordGuideCompletionForSurface({
+    contentUrl: memberUrl,
+    currentUrl: memberUrl,
+    metadata: {
+      title: 'Welcome',
+      packageManifest: { id: 'welcome-to-grafana', type: 'guide' },
+      journeyManifest: { id: 'getting-started', type: 'path' },
+      repository: 'interactive-tutorials',
+      learningJourney: {
+        currentMilestone: 1,
+        totalMilestones: 2,
+        baseUrl,
+        hasUnavailableMilestones: true,
+        milestones: [
+          { id: 'welcome-to-grafana', number: 1, title: 'Welcome', url: memberUrl, isActive: false },
+          { id: 'not-cached', number: 2, title: 'Not cached', url: '', isActive: false, isLocked: true },
+        ],
+      },
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(emitted).toEqual([
+    expect.objectContaining({ kind: 'guide', guideId: 'welcome-to-grafana', pathId: 'getting-started' }),
+  ]);
+  expect(journeySetMock).not.toHaveBeenCalledWith(baseUrl, expect.anything());
+  expect(awardBadgeMock).not.toHaveBeenCalled();
 });
 
 describe('bundled guide reaching 100% (trigger class A)', () => {
@@ -1704,3 +1824,55 @@ describe('PR-tester previews stay out of real completion records', () => {
     expect(getMilestoneSlug(`${base}${slug}/content.json#pf-pr-one`)).toBe(slug);
   });
 });
+
+it('counts an online migrated tutorial in completed guides', () => {
+  const url = 'https://interactive-learning.grafana.net/packages/first-dashboard/content.json';
+  const metadata = {
+    title: 'First dashboard',
+    packageManifest: { id: 'first-dashboard', type: 'guide' },
+    repository: 'interactive-tutorials',
+  };
+  recordGuideCompletionForSurface({ currentUrl: url, contentUrl: url, metadata });
+  expect(markGuideCompletedMock).toHaveBeenCalledWith('first-dashboard');
+  expect(journeySetMock).toHaveBeenCalledWith('bundled:first-dashboard', 100);
+});
+
+it.each(['interactive-tutorials', 'online-cdn'])(
+  'records a migrated dashboard path member with shared identity from %s',
+  async (repository) => {
+    const url = 'https://interactive-learning.grafana.net/packages/first-dashboard/content.json';
+    const metadata = {
+      title: 'First dashboard',
+      packageManifest: { id: 'first-dashboard', type: 'guide' },
+      repository,
+      learningJourney: {
+        baseUrl: 'https://interactive-learning.grafana.net/packages/getting-started/content.json',
+        currentMilestone: 1,
+        totalMilestones: 2,
+        milestones: [
+          { number: 1, title: 'First dashboard', url, isActive: true },
+          {
+            number: 2,
+            title: 'Next guide',
+            url: 'https://interactive-learning.grafana.net/packages/next-guide/content.json',
+            isActive: false,
+          },
+        ],
+      },
+    };
+    recordGuideCompletionForSurface({ currentUrl: url, contentUrl: url, metadata, contentType: 'learning-journey' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      guideSource: 'bundled',
+      guideId: 'first-dashboard',
+      guideCategory: 'learning-journey',
+    });
+    recordGuideCompletionForSurface({
+      currentUrl: 'bundled:first-dashboard',
+      contentUrl: 'bundled:first-dashboard',
+      metadata: { title: 'First dashboard' },
+    });
+    expect(emitted).toHaveLength(1);
+  }
+);

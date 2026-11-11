@@ -125,7 +125,11 @@ export async function prepareGuideLaunch(
       return { ok: false, error: 'Guide content could not be parsed', errorCode: 'unparseable' };
     }
 
-    const validation = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
+    const validation = validateGuide(guide, {
+      allowDuplicateHeading: true,
+      allowUnsupportedGuidedAction: true,
+      allowGrotGraphErrors: true,
+    });
     if (!validation.isValid) {
       finishGuideLoad(loadContext, 'error', {
         source: loadContext.source,

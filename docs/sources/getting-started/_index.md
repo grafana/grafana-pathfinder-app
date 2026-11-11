@@ -87,9 +87,9 @@ Automatic detection is enabled by default for supported actions, so steps can co
 
 The guide's progress indicator reflects completed steps. A guide completes when you finish its last interactive step, even if reading material follows it. A guide with no interactive steps completes when you scroll to the end of its content. Use **Mark complete**, or **Complete milestone** in a learning path, when you want to mark the guide complete yourself. After completing a milestone, select **Continue** to open the next one. Merely opening the last milestone does not complete the whole path.
 
-## Use learning paths and My learning
+## Use learning paths in Learn
 
-A learning path groups related guides into milestones. Open **My learning** to browse learning paths and review your progress and badges. Private paths published for your organization appear separately from public learning content when available.
+A learning path groups related guides into milestones. Open **Learn** to see assignments, continue learning, and find learning paths. Use **Explore learning** to search and filter content, or **Show all badges** to review badges. Organization assignments appear in **Your assignments** when available.
 
 Use a path's milestone controls to move between guides. Within a learning path, you can also use:
 

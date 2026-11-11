@@ -121,7 +121,7 @@ describe('path-member-join launch round-trip', () => {
 
   it('pairs a resolved package-form URL with its bare sibling', () => {
     expect(pathMemberContentKeys({ id: 'first-dashboard', url: 'bundled:first-dashboard/content.json' })).toEqual([
-      keyPersistedByLaunch('bundled:first-dashboard/content.json'),
+      'bundled:first-dashboard/content.json',
       keyPersistedByLaunch('bundled:first-dashboard'),
     ]);
   });
@@ -129,7 +129,7 @@ describe('path-member-join launch round-trip', () => {
   it('pairs a resolved bare bundled URL with its package-form sibling', () => {
     expect(pathMemberContentKeys({ id: 'first-dashboard', url: 'bundled:first-dashboard' })).toEqual([
       keyPersistedByLaunch('bundled:first-dashboard'),
-      keyPersistedByLaunch('bundled:first-dashboard/content.json'),
+      'bundled:first-dashboard/content.json',
     ]);
   });
 
@@ -588,4 +588,16 @@ describe('resolvePathMemberPercentages', () => {
     expect(result.resolvedPercentages).toEqual([]);
     expect(result.excludedCount).toBe(0);
   });
+});
+
+it('reads shared bundled progress for migrated online path members without importing RSS history', () => {
+  const url = 'https://interactive-learning.grafana.net/packages/first-dashboard/content.json';
+  expect(
+    resolvePathMemberPercentage(
+      { id: 'first-dashboard', url },
+      contextWith({
+        persistedPercentages: { [url]: 100, 'bundled:first-dashboard': 35 },
+      })
+    )
+  ).toMatchObject({ percent: 35, contentKey: 'bundled:first-dashboard' });
 });

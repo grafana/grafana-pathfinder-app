@@ -10,6 +10,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { JsonGuide } from './types';
 import { ConfirmModal, AlertModal } from './NotificationModals';
+import { formatPath } from '../../validation/errors';
 import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
 
 interface BackendGuide {
@@ -24,7 +25,7 @@ interface BackendGuide {
     id: string;
     title: string;
     schemaVersion?: string;
-    blocks: any[];
+    blocks?: unknown;
     status?: 'draft' | 'published';
   };
 }
@@ -139,7 +140,6 @@ export function GuideLibraryModal({
   });
 
   const handleLoadGuide = (backendGuide: BackendGuide) => {
-    // Validate guide has required fields
     if (!backendGuide.spec.blocks || !Array.isArray(backendGuide.spec.blocks)) {
       setLoadError('Cannot load guide: missing or invalid blocks array');
       return;
@@ -149,11 +149,22 @@ export function GuideLibraryModal({
       return;
     }
 
+    const decoded = decodeAppPlatformGuideBlocks(backendGuide.spec.blocks, 'editor');
+    if (!decoded.ok) {
+      const issue = decoded.issues[0];
+      const path = formatPath([
+        'blocks',
+        ...(issue?.path ?? []).map((key) => (typeof key === 'number' ? key : String(key))),
+      ]);
+      setLoadError(`Cannot load guide: ${path}: ${issue?.message ?? 'invalid blocks'}`);
+      return;
+    }
+
     const guide: JsonGuide = {
       id: backendGuide.spec.id,
       title: backendGuide.spec.title,
       schemaVersion: backendGuide.spec.schemaVersion || '1.0',
-      blocks: decodeAppPlatformGuideBlocks(backendGuide.spec.blocks),
+      blocks: decoded.blocks,
     };
     onLoadGuide(guide, backendGuide.metadata.name);
     onClose();
@@ -255,7 +266,8 @@ export function GuideLibraryModal({
                         <Icon name="clock-nine" /> {formatDate(guide.metadata.creationTimestamp)}
                       </span>
                       <span>
-                        <Icon name="apps" /> {guide.spec.blocks.length} blocks
+                        <Icon name="apps" /> {Array.isArray(guide.spec.blocks) ? guide.spec.blocks.length : 'Invalid'}{' '}
+                        blocks
                       </span>
                     </div>
                   </div>
