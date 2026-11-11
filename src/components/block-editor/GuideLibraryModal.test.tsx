@@ -3,10 +3,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
 import { lintGuide } from './lint/guide-lint';
-import { GuideLibraryModal, type GuideLibraryModalProps } from './GuideLibraryModal';
+import { GuideLibraryModal, type GuideLibraryModalProps, type StoredGuide } from './GuideLibraryModal';
 
-function library(props: Partial<GuideLibraryModalProps>) {
-  return (
+function renderLibrary(props: Partial<GuideLibraryModalProps>) {
+  return render(
     <GuideLibraryModal
       isOpen
       onClose={jest.fn()}
@@ -22,46 +22,69 @@ function library(props: Partial<GuideLibraryModalProps>) {
   );
 }
 
-function renderLibrary(props: Partial<GuideLibraryModalProps>) {
-  return render(library(props));
+/** A read the test settles by hand. */
+function pendingRead() {
+  let settle!: { resolve: (value: StoredGuide) => void; reject: (reason: unknown) => void };
+  const promise = new Promise<StoredGuide | undefined>((resolve, reject) => (settle = { resolve, reject }));
+  return { promise, settle };
 }
 
-/** A read the test settles by hand, after it has closed the library. */
-function pendingRead() {
-  let settle!: { resolve: (value: unknown) => void; reject: (reason: unknown) => void };
-  const promise = new Promise((resolve, reject) => (settle = { resolve, reject }));
-  return { readGuide: jest.fn(() => promise) as GuideLibraryModalProps['readGuide'], settle };
-}
+// Grafana's Button disables through aria-disabled, which toBeDisabled() does not read.
+const loadDisabled = () => screen.getByRole('button', { name: /Load/ }).getAttribute('aria-disabled') === 'true';
+
+const stored = (name: string) => ({ metadata: { name }, spec: { id: name, title: name, blocks: [] } });
+const entry = (name: string) => ({ id: name, name, title: name });
 
 describe('GuideLibraryModal', () => {
-  it('drops a load that finishes after the library was closed, so later edits survive', async () => {
-    const { readGuide, settle } = pendingRead();
+  it('cancels a load in flight when the library is dismissed, so later edits survive', async () => {
+    const read = pendingRead();
     const onLoadGuide = jest.fn();
-    const props = { guides: [{ id: 'g', name: 'g', title: 'Guide' }], readGuide, onLoadGuide };
-    const { rerender } = renderLibrary(props);
+    renderLibrary({ guides: [entry('g')], readGuide: jest.fn(() => read.promise), onLoadGuide });
 
     fireEvent.click(screen.getByRole('button', { name: 'Load' }));
-    rerender(library({ ...props, isOpen: false }));
-    await act(async () => {
-      settle.resolve({ metadata: { name: 'g' }, spec: { id: 'g', title: 'Guide', blocks: [] } });
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await act(async () => read.settle.resolve(stored('g')));
 
     expect(onLoadGuide).not.toHaveBeenCalled();
   });
 
-  it('drops the error of a load that fails after the library was closed', async () => {
-    const { readGuide, settle } = pendingRead();
-    const props = { guides: [{ id: 'g', name: 'g', title: 'Guide' }], readGuide };
-    const { rerender } = renderLibrary(props);
+  it('drops the error of a load that fails after the library was dismissed', async () => {
+    const read = pendingRead();
+    renderLibrary({ guides: [entry('g')], readGuide: jest.fn(() => read.promise) });
 
     fireEvent.click(screen.getByRole('button', { name: 'Load' }));
-    rerender(library({ ...props, isOpen: false }));
-    rerender(library(props));
-    await act(async () => {
-      settle.reject(new Error('read failed'));
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await act(async () => read.settle.reject(new Error('read failed')));
 
     expect(screen.queryByText('read failed')).not.toBeInTheDocument();
+  });
+
+  it('re-enables Load at once after a dismissal, even while the cancelled read hangs', () => {
+    renderLibrary({ guides: [entry('g')], readGuide: jest.fn(() => pendingRead().promise) });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load' }));
+    expect(loadDisabled()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(loadDisabled()).toBe(false);
+  });
+
+  it('keeps a newer load running when a cancelled one settles', async () => {
+    const first = pendingRead();
+    const second = pendingRead();
+    const readGuide = jest.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const onLoadGuide = jest.fn();
+    renderLibrary({ guides: [entry('g')], readGuide, onLoadGuide });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load' }));
+    await act(async () => first.settle.resolve(stored('g')));
+
+    expect(loadDisabled()).toBe(true);
+    expect(onLoadGuide).not.toHaveBeenCalled();
+    await act(async () => second.settle.resolve(stored('g')));
+    expect(onLoadGuide).toHaveBeenCalledTimes(1);
   });
 
   it('lists catalogue entries by title and resource name, without a block count', () => {

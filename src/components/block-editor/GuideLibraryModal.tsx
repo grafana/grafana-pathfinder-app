@@ -4,7 +4,7 @@
  * Lists the private guides from the slim catalogue and reads the full guide only when loaded for editing
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Modal, Button, Badge, Icon, Tooltip, useStyles2, Spinner, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -141,14 +141,14 @@ export function GuideLibraryModal({
     resourceName: '',
   });
 
-  // The modal stays mounted while closed, so a read still in flight when the author dismisses it must
-  // not land: it would replace whatever they have edited since.
+  // The modal stays mounted while closed, so dismissing it must cancel a read still in flight, synchronously:
+  // landing later, that read would replace whatever the author has edited since.
   const loadToken = useRef(0);
-  useEffect(() => {
-    if (!isOpen) {
-      loadToken.current++;
-    }
-  }, [isOpen]);
+  const handleClose = () => {
+    loadToken.current++;
+    setLoadingGuide(null);
+    onClose();
+  };
 
   const handleLoadGuide = async (entry: CustomGuideRepositoryEntry) => {
     const token = ++loadToken.current;
@@ -168,7 +168,10 @@ export function GuideLibraryModal({
         setLoadError(error instanceof Error ? error.message : 'Unknown error');
       }
     } finally {
-      setLoadingGuide(null);
+      // A cancelled read must not clear the spinner of a load started after it.
+      if (token === loadToken.current) {
+        setLoadingGuide(null);
+      }
     }
   };
 
@@ -241,7 +244,7 @@ export function GuideLibraryModal({
   };
 
   return (
-    <Modal title="Guide library" isOpen={isOpen} onDismiss={onClose}>
+    <Modal title="Guide library" isOpen={isOpen} onDismiss={handleClose}>
       <div className={styles.content}>
         <div className={styles.header}>
           <span>
