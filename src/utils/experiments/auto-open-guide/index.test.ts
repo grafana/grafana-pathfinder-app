@@ -134,6 +134,31 @@ async function navigate(path: string) {
 
 const exposures = () => mockPushEvent.mock.calls.filter(([name]) => name === 'experiment_viewed');
 
+it.each([AUTO_OPEN_GUIDE_EXPERIMENT_FLAG, ONBOARDING_EXPLORING_EXPERIMENT_FLAG])(
+  'replaces a pending launch without letting its callback cancel the next offer for %s',
+  async (experimentFlag) => {
+    setOnboardingExploringIntent({ status: 'ready', exploring: true, contextKey: getOnboardingIntentContextKey() });
+    window.history.replaceState(null, '', '/explore');
+    await flag({ variant: 'treatment', experiences: EXPERIENCES }, experimentFlag);
+    stop = await startAutoOpenGuideExperiment();
+    await settle();
+    const firstShouldOpen = (attemptAutoOpen as jest.Mock).mock.calls[0]![1] as () => boolean;
+    const firstCancelOpen = (attemptAutoOpen as jest.Mock).mock.results[0]!.value as jest.Mock;
+    const firstCancelLaunch = (installAutoLaunchOnMount as jest.Mock).mock.results[0]!.value as jest.Mock;
+
+    await navigate('/dashboards');
+
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(2);
+    expect(firstCancelOpen).toHaveBeenCalledTimes(1);
+    expect(firstCancelLaunch).toHaveBeenCalledTimes(1);
+    const secondCancelLaunch = (installAutoLaunchOnMount as jest.Mock).mock.results[1]!.value as jest.Mock;
+    expect(firstShouldOpen()).toBe(false);
+    expect(secondCancelLaunch).not.toHaveBeenCalled();
+    const secondShouldOpen = (attemptAutoOpen as jest.Mock).mock.calls[1]![1] as () => boolean;
+    expect(secondShouldOpen()).toBe(true);
+  }
+);
+
 beforeEach(() => {
   Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: randomUUID });
   globalThis.structuredClone = (value) => deserialize(serialize(value));

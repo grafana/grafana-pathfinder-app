@@ -209,8 +209,10 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     const stillOnOffer = matchesExperience(targeting.experiences[offer.index]!, getCurrentPath());
     const opened = variant === 'treatment' && docPage !== null && stillOnOffer && canPopOut();
     if (opened) {
+      cancelAutoOpen();
+      cancelAutoLaunch();
       let openRequested = false;
-      cancelAutoLaunch = installAutoLaunchOnMount(
+      const cancelLaunch = installAutoLaunchOnMount(
         docPage,
         () =>
           openRequested &&
@@ -219,6 +221,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
           intentEligible() &&
           matchesExperience(targeting.experiences[offer.index]!, getCurrentPath())
       );
+      cancelAutoLaunch = cancelLaunch;
       cancelAutoOpen = attemptAutoOpen(200, () => {
         openRequested =
           !stopped &&
@@ -229,7 +232,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
         if (openRequested) {
           sidebarState.setPendingOpenSource('auto_open_guide_experiment', 'auto_open');
         } else {
-          cancelAutoLaunch();
+          cancelLaunch();
         }
         return openRequested;
       });
