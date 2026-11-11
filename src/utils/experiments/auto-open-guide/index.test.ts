@@ -21,6 +21,7 @@ import { sidebarState } from '../../../global-state/sidebar';
 import { logger } from '../../../lib/logging';
 import { attemptAutoOpen } from '../../sidebar-auto-open';
 import { installAutoLaunchOnMount } from './auto-launch';
+import { getActiveExperiments } from '../active-experiments';
 import { startSavedIntentBridge } from './saved-intent-bridge';
 import { getAutoOpenGuideEnrollment, setAutoOpenGuideEnrollment } from './state';
 import { startAutoOpenGuideExperiment } from './index';
@@ -620,44 +621,51 @@ describe('saved exploring cohort', () => {
     }
   );
 
-  it('migrates the previous consumed visit without resurrecting it after navigation', async () => {
-    const previousContextKey = JSON.stringify([
-      config.namespace ?? '',
-      config.bootData.user.id,
-      config.bootData.user.orgId,
-    ]);
-    const previousScope = `localhost:${ONBOARDING_EXPLORING_EXPERIMENT_ID}:${previousContextKey}`;
-    const previousVisitKey = `grafana-pathfinder-auto-open-guide-visit-${previousScope}`;
-    sessionStorage.setItem(previousVisitKey, 'bundled:test-dashboards');
-    saved();
-    await startExploring();
-    expect(attemptAutoOpen).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem(previousVisitKey)).toBeNull();
-    await navigate('/profile');
-    stop?.();
-    await startExploring();
-    expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it('respects markers written before the reader added UID and auth context', async () => {
-    const previousContextKey = JSON.stringify([
-      config.namespace ?? '',
-      config.bootData.user.id,
-      config.bootData.user.orgId,
-    ]);
-    const previousScope = `localhost:${ONBOARDING_EXPLORING_EXPERIMENT_ID}:${previousContextKey}`;
-    localStorage.setItem(`grafana-pathfinder-auto-open-guide-shown-${previousScope}:bundled:test-dashboards`, 'true');
-    saved();
-    await startExploring();
-    expect(attemptAutoOpen).not.toHaveBeenCalled();
-    expect(reportExperimentView).not.toHaveBeenCalled();
-  });
-
   it.each(['loading', 'unavailable'] as const)('fails closed for %s even when exploring is true', async (status) => {
     saved(true, status);
     await startExploring();
     await navigate('/explore');
     expect(reportExperimentView).not.toHaveBeenCalled();
+  });
+
+  it.each(['control', 'treatment'])('preserves %s attribution after unavailable revalidation', async (variant) => {
+    saved();
+    await startExploring(variant);
+    expect(exposures()).toHaveLength(1);
+    saved(false, 'unavailable');
+    await settle();
+    expect(getAutoOpenGuideEnrollment()?.variant).toBe(variant);
+    expect(getActiveExperiments()).toContainEqual({ flag: ONBOARDING_EXPLORING_EXPERIMENT_FLAG, variant });
+    await navigate('/explore');
+    expect(exposures()).toHaveLength(1);
+    saved(false);
+    await settle();
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+    expect(getActiveExperiments()).not.toContainEqual({ flag: ONBOARDING_EXPLORING_EXPERIMENT_FLAG, variant });
+  });
+
+  it('still clears attribution when the identity changes after an unavailable read', async () => {
+    saved();
+    await startExploring();
+    saved(false, 'unavailable');
+    const originalId = config.bootData.user.id;
+    config.bootData.user.id = 999;
+    try {
+      await navigate('/explore');
+      expect(getAutoOpenGuideEnrollment()).toBeNull();
+    } finally {
+      config.bootData.user.id = originalId;
+    }
+  });
+
+  it('cancels an uncommitted launch on unavailable revalidation', async () => {
+    await startExploring();
+    saved();
+    saved(false, 'unavailable');
+    await settle();
+    expect(exposures()).toHaveLength(0);
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
   });
 
   it('does not enroll other answers or a snapshot from another context', async () => {

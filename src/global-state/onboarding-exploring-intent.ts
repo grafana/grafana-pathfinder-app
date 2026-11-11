@@ -22,6 +22,10 @@ export function hasSavedExploringIntent(): boolean {
   return snapshot?.status === 'ready' && snapshot.exploring && snapshot.contextKey === getOnboardingIntentContextKey();
 }
 
+export function hasSavedNonExploringIntent(): boolean {
+  return snapshot?.status === 'ready' && !snapshot.exploring && snapshot.contextKey === getOnboardingIntentContextKey();
+}
+
 export function setOnboardingExploringIntent(value: unknown): void {
   const next = value as Partial<OnboardingExploringIntentSnapshot> | null;
   const previous = snapshot;

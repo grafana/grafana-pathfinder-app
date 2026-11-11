@@ -13,6 +13,7 @@ import {
 import {
   getOnboardingIntentContextKey,
   hasSavedExploringIntent,
+  hasSavedNonExploringIntent,
   subscribeToOnboardingExploringIntent,
 } from '../../../global-state/onboarding-exploring-intent';
 import { startSavedIntentBridge } from './saved-intent-bridge';
@@ -111,17 +112,9 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   const contextKey = getOnboardingIntentContextKey();
   const hostname = window.location.hostname;
   const exploringScope = `${hostname}:${ONBOARDING_EXPLORING_EXPERIMENT_ID}:${contextKey}`;
-  const previousContextKey = JSON.stringify([
-    config.namespace ?? '',
-    config.bootData.user.id,
-    config.bootData.user.orgId,
-  ]);
-  const previousExploringScope = `${hostname}:${ONBOARDING_EXPLORING_EXPERIMENT_ID}:${previousContextKey}`;
   const markerScope = requiresExploring ? exploringScope : hostname;
   const alreadyShown = (guide: string) =>
-    hasAutoOpenGuideShown(hostname, guide) ||
-    hasAutoOpenGuideShown(exploringScope, guide) ||
-    hasAutoOpenGuideShown(previousExploringScope, guide);
+    hasAutoOpenGuideShown(hostname, guide) || hasAutoOpenGuideShown(exploringScope, guide);
   const intentEligible = () => !requiresExploring || hasSavedExploringIntent();
   let pendingOffer: { offer: Offer; targeting: AutoOpenGuideConfig } | undefined;
   const currentOfferEligible = () =>
@@ -185,14 +178,6 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   let activationTimer: ReturnType<typeof setTimeout> | undefined;
   let recheck = false;
   let consumedVisit = readConsumedVisit(markerScope);
-  if (requiresExploring) {
-    const previousVisit = readConsumedVisit(previousExploringScope);
-    if (consumedVisit === undefined && previousVisit !== undefined) {
-      consumedVisit = previousVisit;
-      writeConsumedVisit(markerScope, previousVisit);
-    }
-    writeConsumedVisit(previousExploringScope, undefined);
-  }
   // Held in memory from activation start; persisted only once an offer applies, so a reload
   // mid-activation or after a failed one gets its own attempt.
   const consumeVisit = (visit: string | undefined) => {
@@ -329,7 +314,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
       pendingOffer = undefined;
       cancelAutoLaunch();
       cancelAutoOpen();
-      if (!intentEligible()) {
+      if (hasSavedNonExploringIntent() || contextKey !== getOnboardingIntentContextKey()) {
         restored = false;
         setAutoOpenGuideEnrollment(null);
         notifyEnrollment();
