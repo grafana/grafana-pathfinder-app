@@ -24,13 +24,24 @@ export function hasSavedExploringIntent(): boolean {
 
 export function setOnboardingExploringIntent(value: unknown): void {
   const next = value as Partial<OnboardingExploringIntentSnapshot> | null;
+  const previous = snapshot;
   snapshot =
     next &&
     (next.status === 'loading' || next.status === 'ready' || next.status === 'unavailable') &&
     typeof next.exploring === 'boolean' &&
     typeof next.contextKey === 'string'
-      ? (next as OnboardingExploringIntentSnapshot)
+      ? { status: next.status, exploring: next.exploring, contextKey: next.contextKey }
       : null;
+  if (
+    previous === snapshot ||
+    (previous &&
+      snapshot &&
+      previous.status === snapshot.status &&
+      previous.exploring === snapshot.exploring &&
+      previous.contextKey === snapshot.contextKey)
+  ) {
+    return;
+  }
   for (const listener of [...listeners]) {
     listener();
   }

@@ -26,8 +26,12 @@ function SavedIntentBridge() {
     };
     const refresh = (delay = 500) => {
       cancel();
-      setOnboardingExploringIntent(null);
-      if (!current() || !uid || document.visibilityState === 'hidden') {
+      if (!current() || !uid) {
+        setOnboardingExploringIntent(null);
+        return;
+      }
+      // Keep the last answer while revalidating: clearing it cancels a launch already in flight.
+      if (document.visibilityState === 'hidden') {
         return;
       }
       const cycle = generation;
@@ -38,7 +42,6 @@ function SavedIntentBridge() {
         }
         attempt++;
         controller = new AbortController();
-        setOnboardingExploringIntent({ status: 'loading', exploring: false, contextKey });
         const result = await readSavedSurveyIntent(controller.signal);
         if (!current() || cycle !== generation) {
           return;

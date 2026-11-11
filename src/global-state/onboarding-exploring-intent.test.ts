@@ -29,10 +29,21 @@ it.each([null, {}, [], 'ready', { status: 'unknown', exploring: true }, { status
 it('unsubscribes listeners', () => {
   const listener = jest.fn();
   const unsubscribe = subscribeToOnboardingExploringIntent(listener);
-  setOnboardingExploringIntent(null);
+  setOnboardingExploringIntent({ status: 'ready', exploring: true, contextKey: 'a' });
   unsubscribe();
   setOnboardingExploringIntent(null);
   expect(listener).toHaveBeenCalledTimes(1);
+});
+
+it('notifies only when the snapshot changes', () => {
+  const listener = jest.fn();
+  const unsubscribe = subscribeToOnboardingExploringIntent(listener);
+  setOnboardingExploringIntent(null);
+  setOnboardingExploringIntent({ status: 'ready', exploring: true, contextKey: 'a' });
+  setOnboardingExploringIntent({ status: 'ready', exploring: true, contextKey: 'a' });
+  setOnboardingExploringIntent({ status: 'ready', exploring: false, contextKey: 'a' });
+  unsubscribe();
+  expect(listener).toHaveBeenCalledTimes(2);
 });
 
 it('invalidates a saved answer when the UID or sign-in state changes', () => {

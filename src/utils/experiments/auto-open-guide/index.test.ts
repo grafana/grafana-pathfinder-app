@@ -756,6 +756,23 @@ describe('saved exploring cohort', () => {
     expect(getAutoOpenGuideEnrollment()?.flag).toBe(ONBOARDING_EXPLORING_EXPERIMENT_FLAG);
   });
 
+  it('keeps a committed launch through same-page navigation but cancels it when intent is lost', async () => {
+    saved();
+    await startExploring();
+    const cancelOpen = (attemptAutoOpen as jest.Mock).mock.results[0]!.value as jest.Mock;
+    const cancelLaunch = (installAutoLaunchOnMount as jest.Mock).mock.results[0]!.value as jest.Mock;
+    await navigate('/dashboards?starred');
+    saved();
+    await settle();
+    expect(cancelLaunch).not.toHaveBeenCalled();
+    expect(cancelOpen).not.toHaveBeenCalled();
+    expect(getAutoOpenGuideEnrollment()?.variant).toBe('treatment');
+    saved(false);
+    await settle();
+    expect(cancelLaunch).toHaveBeenCalled();
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+  });
+
   it('rechecks navigation, ownership and identity before the delayed panel open', async () => {
     saved();
     await startExploring();

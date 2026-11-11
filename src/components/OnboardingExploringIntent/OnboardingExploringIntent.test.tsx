@@ -183,3 +183,48 @@ it('coalesces navigation and visibility events before revalidating', async () =>
   });
   expect(read).toHaveBeenCalledTimes(2);
 });
+it('keeps a saved answer eligible while navigation and visibility revalidate it', async () => {
+  read.mockResolvedValue({ status: 'ready', exploring: true });
+  render(<OnboardingExploringIntent />);
+  await flush();
+  expect(hasSavedExploringIntent()).toBe(true);
+  let resolve!: (value: { status: 'ready'; exploring: boolean }) => void;
+  read.mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    })
+  );
+  await act(async () => {
+    navigate({ pathname: '/dashboards' });
+  });
+  expect(hasSavedExploringIntent()).toBe(true);
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(hasSavedExploringIntent()).toBe(true);
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  expect(hasSavedExploringIntent()).toBe(true);
+  await act(async () => {
+    resolve({ status: 'ready', exploring: true });
+  });
+  read.mockResolvedValue({ status: 'ready', exploring: false });
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  expect(hasSavedExploringIntent()).toBe(false);
+});
+it('clears the saved answer when the identity changes', async () => {
+  read.mockResolvedValue({ status: 'ready', exploring: true });
+  render(<OnboardingExploringIntent />);
+  await flush();
+  expect(hasSavedExploringIntent()).toBe(true);
+  config.bootData.user.uid = 'two';
+  await act(async () => {
+    navigate({ pathname: '/dashboards' });
+  });
+  config.bootData.user.uid = 'one';
+  expect(hasSavedExploringIntent()).toBe(false);
+});
