@@ -140,6 +140,12 @@ const pathfinderFeatureFlags = {
    * excluded keep today's behaviour. No trackingKey: the SDK owns the exposure.
    * Payload schema and enrollment live in `src/utils/experiments/auto-open-guide/`.
    */
+  // Separate flag prevents older clients from ignoring the saved-intent eligibility gate.
+  'pathfinder.onboarding-exploring-auto-open-experiment': {
+    valueType: 'object',
+    values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
+    defaultValue: { variant: 'excluded' },
+  },
   'pathfinder.auto-open-guide-experiment': {
     valueType: 'object',
     values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),

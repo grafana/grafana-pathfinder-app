@@ -109,6 +109,25 @@ location.reload();
 
 After the reload, Pathfinder behaves like a brand-new visitor: no overrides, no markers, no docked plugin.
 
+## Saved exploring auto-open POC
+
+Use `pathfinder.onboarding-exploring-auto-open-experiment` only with the setup-guide producer build exposing `grafana-setupguide-app/onboarding-exploring-intent/v1`. Keep `pathfinder.auto-open-guide-experiment` excluded. The consumer fails closed if both flags are configured, or the producer is missing. This is a local POC; no remote flag was enabled.
+
+In feature control, use either arm with this payload, replacing `treatment` by `control` for control or using `{ "variant": "excluded" }` for excluded:
+
+```json
+{
+  "variant": "treatment",
+  "experiences": [{ "guide": "bundled:first-dashboard", "pages": ["/dashboards", "/dashboard/new*"] }]
+}
+```
+
+Submit the real setup-guide survey with “I'm just exploring”, then navigate to a configured dashboard page. Before save succeeds, neither arm may expose or open. Treatment should schedule the guide; control should expose at the same eligible moment but leave the page unchanged. Other answers, a failed read/save and an unavailable producer must not enroll. Check the distinct experiment ID `pathfinder-onboarding-exploring-auto-open-v1` and `pathfinder_onboarding_exploring_auto_open_eligible`, not the original experiment's denominator. See the [flag contract and limitations](./FEATURE_FLAGS.md#pathfinderonboarding-exploring-auto-open-experiment).
+
+Repeat with delayed storage, navigation away during activation or the 200ms opening delay, an already-open panel, a hidden tab, an organization change, and teardown before the answer arrives. Reload while the bridge is loading with two experiences on the same page: neither a repeated first guide nor the second overlapping guide may open. A legacy shown marker suppresses the guide without assigning the user to this new cohort.
+
+`__pathfinderExperiment.clearAutoOpenGuideMarkers()` clears the browser's old and scoped shown/visit markers for this hostname. Also reset the SDK session assignment using the existing reset recipe below, then reload. Do not clear production markers to grow the sample. The saved survey answer remains in setup-guide user storage; change it through the real survey for manual QA.
+
 ## `pathfinder.auto-open-guide-experiment`
 
 Tests whether opening Pathfinder with a relevant guide, on a page the operator chose, increases guide starts and completions. On a matched page, `treatment` opens the sidebar and launches the guide as a tab through the same `auto-launch-tutorial` seam as `?doc=`; the user stays where they were. `control` is counted at the same moment and sees nothing. The payload and enrollment rules are in [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md#pathfinderauto-open-guide-experiment).

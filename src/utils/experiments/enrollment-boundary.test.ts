@@ -83,6 +83,11 @@ describe('interactive-learning banner enrollment boundary', () => {
 describe('auto-open guide enrollment boundary', () => {
   const PINNED: Record<string, string[]> = {
     startAutoOpenGuideExperiment: ['module.tsx', 'utils/experiments/auto-open-guide/index.ts'],
+    ONBOARDING_EXPLORING_EXPERIMENT_FLAG: [
+      'constants/auto-open-guide-experiment.ts',
+      'components/OnboardingExploringIntent/OnboardingExploringIntent.tsx',
+      'utils/experiments/auto-open-guide/index.ts',
+    ],
     AUTO_OPEN_GUIDE_EXPERIMENT_FLAG: [
       'constants/auto-open-guide-experiment.ts',
       // Enrichment names the flag on cached arms; it never evaluates it.

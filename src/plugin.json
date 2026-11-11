@@ -55,6 +55,11 @@
         "targets": ["grafana/extension-sidebar/v0-alpha"],
         "description": "Opens Interactive learning",
         "title": "Interactive learning"
+      },
+      {
+        "targets": ["grafana/app/chrome/v1"],
+        "title": "Onboarding experiment eligibility",
+        "description": "Reads saved onboarding eligibility for Interactive learning"
       }
     ],
     "addedLinks": [
@@ -82,7 +87,10 @@
   },
   "dependencies": {
     "grafanaDependency": ">=13.1.0-0",
-    "plugins": []
+    "plugins": [],
+    "extensions": {
+      "exposedComponents": ["grafana-setupguide-app/onboarding-exploring-intent/v1"]
+    }
   },
   "roles": [
     {

@@ -19,8 +19,11 @@ export interface ConfigAutoOpenContext {
   pluginConfig: { openPanelOnLaunch?: boolean };
 }
 
-export function attemptAutoOpen(delay = 200): void {
-  setTimeout(() => {
+export function attemptAutoOpen(delay = 200, shouldOpen: () => boolean = () => true): () => void {
+  const timer = setTimeout(() => {
+    if (!shouldOpen()) {
+      return;
+    }
     const params = parsePathfinderDeepLink(window.location.search);
     if (kioskState.getSnapshot() || (params.pathfinderKiosk && !params.doc && !params.controller)) {
       return;
@@ -37,6 +40,7 @@ export function attemptAutoOpen(delay = 200): void {
       logger.error('Failed to auto-open Interactive learning panel', { error });
     }
   }, delay);
+  return () => clearTimeout(timer);
 }
 
 export function getCurrentPath(): string {

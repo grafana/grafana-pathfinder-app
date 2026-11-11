@@ -210,7 +210,7 @@ it.each([
 
 it.each([true, undefined])('registers learning surfaces when remote enabled and tenant=%s', async (tenant) => {
   const { plugin, effects } = await boot(true, tenant);
-  expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+  expect(plugin.addComponent).toHaveBeenCalledTimes(2);
   expect(plugin.addLink).toHaveBeenCalledTimes(4);
   plugin.init();
   expect(effects.initializeConfiguredSurfaces).toHaveBeenCalledTimes(1);
@@ -247,7 +247,7 @@ it('keeps the docked sidebar when a person opens a render=1 URL in a normal sess
   try {
     const { plugin, effects } = await boot(true, true, false, undefined, undefined, undefined, 'sidebar');
     expect(effects.readPathfinderStartupPreference).toHaveBeenCalledTimes(1);
-    expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+    expect(plugin.addComponent).toHaveBeenCalledTimes(2);
     expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
   } finally {
     window.history.replaceState(null, '', '/');
@@ -256,7 +256,7 @@ it('keeps the docked sidebar when a person opens a render=1 URL in a normal sess
 
 it('registers baseline learning surfaces after an unsuccessful settings read', async () => {
   const { plugin } = await boot(true, undefined, true);
-  expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+  expect(plugin.addComponent).toHaveBeenCalledTimes(2);
   expect(plugin.addLink).toHaveBeenCalledTimes(4);
   expect(plugin.addConfigPage).toHaveBeenCalledTimes(3);
 });
@@ -271,7 +271,7 @@ it('keeps the page-load decision after timeout, while late opt-out reaches confi
     const startup = boot(true, undefined, false, read);
     await jest.advanceTimersByTimeAsync(3000);
     const { plugin, effects, root } = await startup;
-    expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+    expect(plugin.addComponent).toHaveBeenCalledTimes(2);
     plugin.init();
     finish(getConfigWithDefaults({ pathfinderEnabled: false }));
     await expect(effects.initializeConfiguredSurfaces.mock.calls[0][0]).resolves.toMatchObject({
@@ -281,7 +281,7 @@ it('keeps the page-load decision after timeout, while late opt-out reaches confi
     render(<Root />);
     await jest.advanceTimersByTimeAsync(0);
     expect(await screen.findByText('Learning app')).toBeInTheDocument();
-    expect(plugin.addComponent).toHaveBeenCalledTimes(1);
+    expect(plugin.addComponent).toHaveBeenCalledTimes(2);
   } finally {
     jest.useRealTimers();
   }
@@ -569,7 +569,9 @@ it.each([
 ])('reports the sidebar open source %s as %s', async (source, expected) => {
   const { plugin, effects, reportAppInteraction } = await boot(true, true);
   effects.consumePendingOpenSource.mockReturnValue({ source, action: 'auto_open' });
-  const Sidebar = plugin.addComponent.mock.calls[0][0].component as React.ComponentType;
+  const Sidebar = plugin.addComponent.mock.calls.find(
+    ([entry]: [{ targets: string }]) => entry.targets === 'grafana/extension-sidebar/v0-alpha'
+  )![0].component as React.ComponentType;
   render(<Sidebar />);
   expect(reportAppInteraction).toHaveBeenCalledWith('docs_panel_interaction', {
     action: 'auto_open',

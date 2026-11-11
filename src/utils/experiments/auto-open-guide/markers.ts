@@ -47,5 +47,6 @@ export function listAutoOpenGuidesShown(hostname: string): string[] {
 
 export function clearAutoOpenGuideMarkers(hostname: string): number {
   writeConsumedVisit(hostname, undefined);
+  clearKeysByPrefix(sessionStorage, `${StorageKeys.AUTO_OPEN_GUIDE_VISIT_PREFIX}${hostname}:`);
   return clearKeysByPrefix(localStorage, markerPrefix(hostname)).length;
 }

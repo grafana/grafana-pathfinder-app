@@ -137,3 +137,26 @@ describe('setupConfigAutoOpen', () => {
     expect(mockPublish).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('scheduled auto-open cancellation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    kioskState.set(null);
+    window.history.replaceState({}, '', '/');
+  });
+  afterEach(() => jest.useRealTimers());
+  it('rechecks eligibility before a scheduled auto-open', () => {
+    let eligible = true;
+    attemptAutoOpen(200, () => eligible);
+    eligible = false;
+    jest.advanceTimersByTime(200);
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+  it('cancels the scheduled open during teardown', () => {
+    const cancel = attemptAutoOpen();
+    cancel();
+    jest.runAllTimers();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+});
