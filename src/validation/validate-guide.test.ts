@@ -800,6 +800,70 @@ describe('JsonGuideSchema', () => {
       expect(loopError).toBeDefined();
     });
 
+    it('should downgrade self-loop and no-result-path to invalid-graph warnings when allowGrotGraphErrors is set', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'q1' }] },
+            screens: [
+              { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Self', screenId: 'q1' }] },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide, { allowGrotGraphErrors: true });
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      const loopWarn = result.warnings.find((w) => w.type === 'invalid-graph' && w.message.includes('self_loop'));
+      expect(loopWarn).toBeDefined();
+    });
+
+    it('should keep allowGrotGraphErrors warnings as advisories even under strict mode', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: {
+              title: 'W',
+              body: 'B',
+              ctas: [
+                { text: 'Go', screenId: 'q1' },
+                { text: 'Skip', screenId: 'r1' },
+              ],
+            },
+            screens: [
+              { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Self', screenId: 'q1' }] },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide, { allowGrotGraphErrors: true, strict: true });
+      expect(result.isValid).toBe(true);
+      const noResultWarn = result.warnings.find(
+        (w) => w.type === 'invalid-graph' && w.message.includes('no_result_path')
+      );
+      expect(noResultWarn).toBeDefined();
+    });
+
     it('should warn on duplicate screen IDs in grot-guide block', () => {
       const guide = JSON.stringify({
         id: 'test',

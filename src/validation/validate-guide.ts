@@ -55,6 +55,14 @@ export interface ValidationOptions {
    * unset so the error blocks before the guide ships.
    */
   allowUnsupportedGuidedAction?: boolean;
+  /**
+   * When true, self-loops and missing result paths in grot-guide blocks stay
+   * warnings instead of failing validation. Same split as `allowDuplicateHeading`:
+   * runtime guide loaders set this so an already-published guide keeps rendering,
+   * while authoring gates (the CLI `validate` command, the block editor, snippet
+   * builders) leave it unset so the error blocks before the guide ships.
+   */
+  allowGrotGraphErrors?: boolean;
 }
 /**
  * Convert a condition issue to a validation warning.
@@ -131,7 +139,11 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
   for (const issue of validateGrotGuideGraphs(result.data as JsonGuide)) {
     const message = `${formatPath(issue.path)}: ${issue.message}`;
     if (issue.severity === 'error') {
-      errors.push({ message, path: issue.path, code: issue.code });
+      if (options.allowGrotGraphErrors) {
+        advisories.push({ message, path: issue.path, type: 'invalid-graph' });
+      } else {
+        errors.push({ message, path: issue.path, code: issue.code });
+      }
     } else {
       warnings.push({ message, path: issue.path, type: 'invalid-graph' });
     }
