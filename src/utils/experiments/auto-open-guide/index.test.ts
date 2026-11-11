@@ -21,6 +21,7 @@ import { sidebarState } from '../../../global-state/sidebar';
 import { logger } from '../../../lib/logging';
 import { attemptAutoOpen } from '../../sidebar-auto-open';
 import { installAutoLaunchOnMount } from './auto-launch';
+import { startSavedIntentBridge } from './saved-intent-bridge';
 import { getAutoOpenGuideEnrollment, setAutoOpenGuideEnrollment } from './state';
 import { startAutoOpenGuideExperiment } from './index';
 
@@ -67,6 +68,8 @@ jest.mock('../../sidebar-auto-open', () => ({
   getCurrentPath: () => window.location.pathname,
 }));
 jest.mock('./auto-launch', () => ({ installAutoLaunchOnMount: jest.fn(() => jest.fn()) }));
+const mockStopIntentBridge = jest.fn();
+jest.mock('./saved-intent-bridge', () => ({ startSavedIntentBridge: jest.fn(() => mockStopIntentBridge) }));
 jest.mock('../../../global-state/sidebar', () => ({
   sidebarState: { setPendingOpenSource: jest.fn(), getIsSidebarMounted: jest.fn(() => false) },
 }));
@@ -727,6 +730,17 @@ describe('saved exploring cohort', () => {
     expect(attemptAutoOpen).not.toHaveBeenCalled();
     expect(reportExperimentView).not.toHaveBeenCalled();
     expect(getAutoOpenGuideEnrollment()?.flag).toBe(ONBOARDING_EXPLORING_EXPERIMENT_FLAG);
+  });
+
+  it('runs the saved-intent reader only for this experiment, and stops it on teardown', async () => {
+    await startExploring();
+    expect(startSavedIntentBridge).toHaveBeenCalledTimes(1);
+    stop?.();
+    stop = undefined;
+    expect(mockStopIntentBridge).toHaveBeenCalledTimes(1);
+    jest.clearAllMocks();
+    await start('/dashboards', { variant: 'treatment', experiences: EXPERIENCES });
+    expect(startSavedIntentBridge).not.toHaveBeenCalled();
   });
 
   it('rejects simultaneous enrollment in old and new experiments', async () => {

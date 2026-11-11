@@ -1,6 +1,6 @@
 import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
 import { config } from '@grafana/runtime';
-import React, { lazy, Suspense, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { toAnalyticsValue } from './lib/analytics-values';
 import { logger } from './lib/logging';
@@ -149,10 +149,6 @@ if (isExtensionSidebarOwnedByPathfinder(pluginJson.id, SIDEBAR_COMPONENT_TITLE))
     sidebarState.setPendingOpenSource('browser_restore', 'restore');
   }
 }
-
-const LazyOnboardingExploringIntent = lazy(
-  () => import('./components/OnboardingExploringIntent/OnboardingExploringIntent')
-);
 
 const LazyApp = createTranslatedComponent(() => import('./components/App/App'));
 const LazyPathfinderDisabled = createTranslatedComponent(async () => ({
@@ -357,18 +353,6 @@ plugin.init = function () {
 export { plugin };
 
 if (pathfinderEnabled) {
-  plugin.addComponent({
-    targets: 'grafana/app/chrome/v1',
-    title: 'Onboarding experiment eligibility',
-    description: 'Reads saved onboarding eligibility for Interactive learning',
-    component: function OnboardingExperimentEligibility() {
-      return (
-        <Suspense fallback={null}>
-          <LazyOnboardingExploringIntent />
-        </Suspense>
-      );
-    },
-  });
   plugin.addComponent({
     targets: `grafana/extension-sidebar/v0-alpha`,
     title: SIDEBAR_COMPONENT_TITLE,

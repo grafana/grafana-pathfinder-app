@@ -15,6 +15,7 @@ import {
   hasSavedExploringIntent,
   subscribeToOnboardingExploringIntent,
 } from '../../../global-state/onboarding-exploring-intent';
+import { startSavedIntentBridge } from './saved-intent-bridge';
 import { kioskState } from '../../../global-state/kiosk';
 import { sidebarState } from '../../../global-state/sidebar';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
@@ -406,6 +407,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
         check();
       })
     : () => {};
+  const stopIntentBridge = requiresExploring ? startSavedIntentBridge() : () => {};
 
   return () => {
     stopped = true;
@@ -413,6 +415,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     clearTimeout(activationTimer);
     cancelAutoLaunch();
     cancelAutoOpen();
+    stopIntentBridge();
     unsubscribeIntent();
     unlisten();
     document.removeEventListener('visibilitychange', onVisibilityChange);
