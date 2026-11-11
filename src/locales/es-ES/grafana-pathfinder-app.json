@@ -51,7 +51,6 @@
     "previousMilestone": "Hito anterior",
     "previousMilestoneTooltip": "Hito anterior (Alt + ←)",
     "recommendations": "Recomendaciones",
-    "refreshGuideErrorTitle": "",
     "resetGuide": "Reiniciar guía",
     "resetGuideErrorMessage": "No se pudo restablecer el progreso de la guía. Inténtalo de nuevo o recarga la página.",
     "resetGuideErrorTitle": "Error al restablecer",

@@ -51,7 +51,6 @@
     "previousMilestone": "Marco anterior",
     "previousMilestoneTooltip": "Marco anterior (Alt + ←)",
     "recommendations": "Recomendações",
-    "refreshGuideErrorTitle": "",
     "resetGuide": "Redefinir guia",
     "resetGuideErrorMessage": "Não foi possível redefinir o progresso do guia. Tente novamente ou recarregue a página.",
     "resetGuideErrorTitle": "Falha ao redefinir",
