@@ -28,8 +28,27 @@ import { renderHook, act } from '@testing-library/react';
 
 import type { GrafanaUserStorage } from '../types/storage.types';
 
-import { __resetSyncedForTests, createLocalStorage, setGlobalStorage, useUserStorage } from './user-storage';
-import { StorageKeys, buildDiscardedSectionStorageKey, buildVersionedSectionStorageKey } from './storage-keys';
+import {
+  __resetSyncedForTests,
+  createLocalStorage,
+  guideCompletionMarkStorage,
+  guideResponseStorage,
+  interactiveCompletionStorage,
+  interactiveStepStorage,
+  journeyCompletionStorage,
+  learningProgressStorage,
+  sectionAcknowledgementStorage,
+  sectionDoneStorage,
+  setGlobalStorage,
+  tabStorage,
+  useUserStorage,
+} from './user-storage';
+import {
+  StorageKeys,
+  buildDiscardedSectionStorageKey,
+  buildVersionedContentStorageKey,
+  buildVersionedSectionStorageKey,
+} from './storage-keys';
 
 const usePluginUserStorageMock = jest.fn();
 
@@ -39,16 +58,24 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 function makeFunctionalGrafanaStorage(): GrafanaUserStorage & {
+  store: Map<string, string>;
   getItem: jest.Mock;
   setItem: jest.Mock;
 } {
   const store = new Map<string, string>();
   return {
+    store,
     getItem: jest.fn(async (key: string) => store.get(key) ?? null),
     setItem: jest.fn(async (key: string, value: string) => {
       store.set(key, value);
     }),
-  } as unknown as GrafanaUserStorage & { getItem: jest.Mock; setItem: jest.Mock };
+  } as unknown as GrafanaUserStorage & { store: Map<string, string>; getItem: jest.Mock; setItem: jest.Mock };
+}
+
+async function flushMicrotasks(times = 12): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await Promise.resolve();
+  }
 }
 
 beforeEach(() => {
@@ -143,6 +170,93 @@ describe('useUserStorage — global-storage bridge', () => {
 
     // Hybrid writes localStorage synchronously.
     expect(localStorage.getItem('standalone-key')).not.toBeNull();
+  });
+});
+
+describe('useUserStorage — legacy mirror boundary', () => {
+  const CONTENT_KEY = 'api:characterization-guide';
+  const SECTION_ID = 'configure';
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  it('mirrors live domain writes broadly, then restores only the five compatibility records', async () => {
+    const grafana = makeFunctionalGrafanaStorage();
+    usePluginUserStorageMock.mockReturnValue(grafana);
+
+    const firstMount = renderHook(() => useUserStorage());
+    await act(flushMicrotasks);
+    grafana.setItem.mockClear();
+
+    await act(async () => {
+      await tabStorage.setTabs([{ id: 'tab-1' }]);
+      await tabStorage.setActiveTab('tab-1');
+      await learningProgressStorage.update({ completedGuides: ['guide-1'] });
+      await guideResponseStorage.setResponse('guide-1', 'region', 'us-east');
+      await journeyCompletionStorage.set('journey-1', 40);
+      await interactiveCompletionStorage.set(CONTENT_KEY, 75);
+      await interactiveStepStorage.setCompleted(CONTENT_KEY, SECTION_ID, new Set(['step-1']));
+      await sectionAcknowledgementStorage.set(CONTENT_KEY, SECTION_ID, true);
+      await sectionDoneStorage.set(CONTENT_KEY, SECTION_ID, true);
+      await guideCompletionMarkStorage.set(CONTENT_KEY, true);
+    });
+
+    expect(grafana.setItem).not.toHaveBeenCalled();
+    expect(await tabStorage.getTabs()).toEqual([{ id: 'tab-1' }]);
+    expect(await interactiveCompletionStorage.get(CONTENT_KEY)).toBe(75);
+    expect(await sectionDoneStorage.get(CONTENT_KEY, SECTION_ID)).toBe(true);
+
+    await jest.advanceTimersByTimeAsync(500);
+
+    const sectionStepKey = buildVersionedSectionStorageKey(
+      StorageKeys.INTERACTIVE_STEPS_PREFIX,
+      CONTENT_KEY,
+      SECTION_ID
+    );
+    const sectionAcknowledgedKey = buildVersionedSectionStorageKey(
+      StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,
+      CONTENT_KEY,
+      SECTION_ID
+    );
+    const sectionDoneKey = buildVersionedSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, CONTENT_KEY, SECTION_ID);
+    const guideMarkKey = buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, CONTENT_KEY);
+    const currentMirroredKeys = [
+      StorageKeys.TABS,
+      StorageKeys.ACTIVE_TAB,
+      StorageKeys.LEARNING_PROGRESS,
+      StorageKeys.GUIDE_RESPONSES,
+      StorageKeys.JOURNEY_COMPLETION,
+      StorageKeys.INTERACTIVE_COMPLETION,
+      sectionStepKey,
+      sectionAcknowledgedKey,
+      sectionDoneKey,
+      guideMarkKey,
+    ];
+    expect(grafana.setItem.mock.calls.map(([key]) => key)).toEqual(currentMirroredKeys);
+    expect([...grafana.store.keys()]).toEqual(currentMirroredKeys);
+
+    firstMount.unmount();
+    localStorage.clear();
+    __resetSyncedForTests();
+    renderHook(() => useUserStorage());
+    await act(flushMicrotasks);
+
+    expect(await tabStorage.getTabs()).toEqual([{ id: 'tab-1' }]);
+    expect(await tabStorage.getActiveTab()).toBe('tab-1');
+    expect((await learningProgressStorage.get()).completedGuides).toEqual(['guide-1']);
+    expect(await guideResponseStorage.getResponse('guide-1', 'region')).toBe('us-east');
+    expect(await journeyCompletionStorage.get('journey-1')).toBe(40);
+    expect(await interactiveCompletionStorage.get(CONTENT_KEY)).toBe(0);
+    expect(await interactiveStepStorage.getCompleted(CONTENT_KEY, SECTION_ID)).toEqual(new Set());
+    expect(await sectionAcknowledgementStorage.get(CONTENT_KEY, SECTION_ID)).toBeNull();
+    expect(await sectionDoneStorage.get(CONTENT_KEY, SECTION_ID)).toBeNull();
+    expect(await guideCompletionMarkStorage.get(CONTENT_KEY)).toBeNull();
   });
 });
 
