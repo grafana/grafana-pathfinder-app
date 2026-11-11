@@ -806,6 +806,68 @@ describe('author attribution', () => {
   });
 });
 
+describe('useBackendGuides — overlapping refreshes', () => {
+  const entry = (name: string) => ({ id: name, name, title: name, status: 'draft' });
+  function deferredCatalogue() {
+    let resolve!: (value: unknown) => void;
+    const promise = new Promise((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it('keeps the newer list when an older drain lands last', async () => {
+    const mount = deferredCatalogue();
+    (fetchCustomGuideCatalogue as jest.Mock)
+      .mockReturnValueOnce(mount.promise)
+      .mockResolvedValueOnce({ available: true, entries: [entry('after-save')] });
+    const { result } = renderHook(() => useBackendGuides());
+
+    await act(async () => {
+      await result.current.refreshGuides();
+    });
+    await act(async () => mount.resolve({ available: true, entries: [entry('before-save')] }));
+
+    expect(result.current.guides.map((g) => g.name)).toEqual(['after-save']);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('does not let an older failed drain put an error over a newer list', async () => {
+    const mount = deferredCatalogue();
+    (fetchCustomGuideCatalogue as jest.Mock)
+      .mockReturnValueOnce(mount.promise)
+      .mockResolvedValueOnce({ available: true, entries: [entry('after-save')] });
+    const { result } = renderHook(() => useBackendGuides());
+
+    await act(async () => {
+      await result.current.refreshGuides();
+    });
+    await act(async () => mount.resolve({ available: false, reason: 'upstream-503', entries: [] }));
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.guides.map((g) => g.name)).toEqual(['after-save']);
+  });
+
+  it('stays loading until the latest drain settles', async () => {
+    const latest = deferredCatalogue();
+    (fetchCustomGuideCatalogue as jest.Mock)
+      .mockResolvedValueOnce({ available: true, entries: [entry('mount')] })
+      .mockReturnValueOnce(latest.promise);
+    const { result } = renderHook(() => useBackendGuides());
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current.refreshGuides();
+    });
+    expect(result.current.isLoading).toBe(true);
+    await act(async () => {
+      latest.resolve({ available: true, entries: [entry('latest')] });
+      await pending;
+    });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.guides.map((g) => g.name)).toEqual(['latest']);
+  });
+});
+
 describe('useBackendGuides — written resource', () => {
   // The server answers a PUT or POST with the stored object, whose resourceVersion is what the next save
   // must echo for a concurrent write to 409.

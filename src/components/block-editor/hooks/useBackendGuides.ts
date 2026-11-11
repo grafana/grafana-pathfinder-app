@@ -218,6 +218,9 @@ export function useBackendGuides(): UseBackendGuidesReturn {
   const namespace = config.namespace;
 
   const isMountedRef = useRef(true);
+  // Refreshes overlap (mount, then one after every write), and a catalogue drain can be slow, so only the
+  // latest one may write state: an older drain landing last would restore pre-write rows or a stale error.
+  const refreshSeq = useRef(0);
   const refreshGuides = useCallback(async (): Promise<CustomGuideRepositoryEntry[]> => {
     if (!namespace) {
       if (isMountedRef.current) {
@@ -226,6 +229,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       return [];
     }
 
+    const seq = ++refreshSeq.current;
+    const isLatest = () => isMountedRef.current && seq === refreshSeq.current;
     if (isMountedRef.current) {
       setIsLoading(true);
       setError(null);
@@ -238,18 +243,18 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       if (!catalogue.available && catalogue.reason !== 'unsupported') {
         throw new Error(`The guide library is unavailable (${catalogue.reason ?? 'unknown'}).`);
       }
-      if (isMountedRef.current) {
+      if (isLatest()) {
         setGuides(catalogue.entries);
       }
       return catalogue.entries;
     } catch (err) {
       logger.error('[useBackendGuides] Failed to fetch guides', { error: err });
-      if (isMountedRef.current) {
+      if (isLatest()) {
         setError(err instanceof Error ? err.message : 'Failed to fetch guides');
       }
       return [];
     } finally {
-      if (isMountedRef.current) {
+      if (isLatest()) {
         setIsLoading(false);
         setHasLoaded(true);
       }
