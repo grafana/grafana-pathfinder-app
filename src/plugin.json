@@ -87,10 +87,7 @@
   },
   "dependencies": {
     "grafanaDependency": ">=13.1.0-0",
-    "plugins": [],
-    "extensions": {
-      "exposedComponents": ["grafana-setupguide-app/onboarding-exploring-intent/v1"]
-    }
+    "plugins": []
   },
   "roles": [
     {

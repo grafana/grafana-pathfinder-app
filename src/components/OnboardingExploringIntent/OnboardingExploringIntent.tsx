@@ -1,30 +1,80 @@
 import React, { useEffect, useMemo } from 'react';
-import { usePluginComponent } from '@grafana/runtime';
+import { locationService } from '@grafana/runtime';
 
-import {
-  ONBOARDING_EXPLORING_COMPONENT_ID,
-  ONBOARDING_EXPLORING_EXPERIMENT_FLAG,
-} from '../../constants/auto-open-guide-experiment';
+import { ONBOARDING_EXPLORING_EXPERIMENT_FLAG } from '../../constants/auto-open-guide-experiment';
 import {
   setOnboardingExploringIntent,
-  type OnboardingExploringIntentSnapshot,
+  getOnboardingIntentContextKey,
 } from '../../global-state/onboarding-exploring-intent';
+import { getSurveyUserUid, readSavedSurveyIntent } from '../../lib/onboarding-survey-intent';
 import { getFeatureFlagClient } from '../../utils/openfeature';
 import { isAutoOpenGuideConfig } from '../../utils/experiments/auto-open-guide/config';
 
-interface IntentProps {
-  onChange: (snapshot: OnboardingExploringIntentSnapshot) => void;
-}
-
 function SavedIntentBridge() {
-  const { component: Intent } = usePluginComponent<IntentProps>(ONBOARDING_EXPLORING_COMPONENT_ID);
+  const contextKey = getOnboardingIntentContextKey();
   useEffect(() => {
-    if (!Intent) {
+    let disposed = false;
+    let generation = 0;
+    let controller: AbortController | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const uid = getSurveyUserUid();
+    const current = () => !disposed && contextKey === getOnboardingIntentContextKey() && uid === getSurveyUserUid();
+    const cancel = () => {
+      generation++;
+      controller?.abort();
+      clearTimeout(timer);
+    };
+    const refresh = (delay = 500) => {
+      cancel();
       setOnboardingExploringIntent(null);
-    }
-    return () => setOnboardingExploringIntent(null);
-  }, [Intent]);
-  return Intent ? <Intent onChange={setOnboardingExploringIntent} /> : null;
+      if (!current() || !uid || document.visibilityState === 'hidden') {
+        return;
+      }
+      const cycle = generation;
+      let attempt = 0;
+      const read = async () => {
+        if (!current() || cycle !== generation) {
+          return;
+        }
+        attempt++;
+        controller = new AbortController();
+        setOnboardingExploringIntent({ status: 'loading', exploring: false, contextKey });
+        const result = await readSavedSurveyIntent(controller.signal);
+        if (!current() || cycle !== generation) {
+          return;
+        }
+        setOnboardingExploringIntent({ ...result, contextKey });
+        if (result.status === 'ready' && !result.exploring && attempt < 4) {
+          timer = setTimeout(() => void read(), [500, 1500, 3000][attempt - 1]);
+        }
+      };
+      if (delay === 0) {
+        void read();
+      } else {
+        timer = setTimeout(() => void read(), delay);
+      }
+    };
+    const history = locationService.getHistory();
+    let previousPath = history.location.pathname;
+    const unlisten = history.listen((location: { pathname: string }) => {
+      const changed = previousPath !== location.pathname;
+      previousPath = location.pathname;
+      if (changed || !current()) {
+        refresh();
+      }
+    });
+    const onVisibility = () => refresh();
+    document.addEventListener('visibilitychange', onVisibility);
+    refresh(0);
+    return () => {
+      disposed = true;
+      cancel();
+      unlisten();
+      document.removeEventListener('visibilitychange', onVisibility);
+      setOnboardingExploringIntent(null);
+    };
+  }, [contextKey]);
+  return null;
 }
 
 export default function OnboardingExploringIntent() {

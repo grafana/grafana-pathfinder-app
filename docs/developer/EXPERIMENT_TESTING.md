@@ -111,20 +111,20 @@ After the reload, Pathfinder behaves like a brand-new visitor: no overrides, no 
 
 ## Saved exploring auto-open POC
 
-Use `pathfinder.onboarding-exploring-auto-open-experiment` only with the setup-guide producer build exposing `grafana-setupguide-app/onboarding-exploring-intent/v1`. Keep `pathfinder.auto-open-guide-experiment` excluded. The consumer fails closed if both flags are configured, or the producer is missing. This is a local POC; no remote flag was enabled.
+Use `pathfinder.onboarding-exploring-auto-open-experiment` with the existing setup-guide saved survey. No Setupguide changes or release are required. Keep `pathfinder.auto-open-guide-experiment` excluded. The reader fails closed when both flags are configured or the own-user storage read is unavailable. No remote flag was enabled. Restrict the flag audience to the intended new-signup cohort; the saved answer has no signup timestamp.
 
-In feature control, use either arm with this payload, replacing `treatment` by `control` for control or using `{ "variant": "excluded" }` for excluded:
+In feature control, use either arm with this QA payload, replacing `treatment` by `control` for control or using `{ "variant": "excluded" }` for excluded. The guide is a resolvable QA example, not a proposed guide for all destinations. Replace it with approved hosted content or another supported reference for rollout:
 
 ```json
 {
   "variant": "treatment",
-  "experiences": [{ "guide": "bundled:first-dashboard", "pages": ["/dashboards", "/dashboard/new*"] }]
+  "experiences": [{ "guide": "bundled:first-dashboard", "pages": ["/dashboards"] }]
 }
 ```
 
-Submit the real setup-guide survey with “I'm just exploring”, then navigate to a configured dashboard page. Before save succeeds, neither arm may expose or open. Treatment should schedule the guide; control should expose at the same eligible moment but leave the page unchanged. Other answers, a failed read/save and an unavailable producer must not enroll. Check the distinct experiment ID `pathfinder-onboarding-exploring-auto-open-v1` and `pathfinder_onboarding_exploring_auto_open_eligible`, not the original experiment's denominator. See the [flag contract and limitations](./FEATURE_FLAGS.md#pathfinderonboarding-exploring-auto-open-experiment).
+Submit the real setup-guide survey with “I'm just exploring”, then visit the configured QA page. Landing-page selections are made separately in the deployment-tools flag: the requested set is Dashboards, Profile, Starred and Playlists, excluding Connections. Starred is `/dashboards?starred`, covered by the dashboard pathname. Reset the QA markers between destinations when using the same guide: one guide should not reopen on every page. No production landing-page configuration is set here. Before save succeeds, neither arm may expose or open. Treatment should schedule the guide; control should expose at the same eligible moment but leave the page unchanged. Other answers, a failed read/save and an unavailable user-storage API must not enroll. Check the distinct experiment ID `pathfinder-onboarding-exploring-auto-open-v1` and `pathfinder_onboarding_exploring_auto_open_eligible`, not the original experiment's denominator. See the [flag contract and limitations](./FEATURE_FLAGS.md#pathfinderonboarding-exploring-auto-open-experiment).
 
-Repeat with delayed storage, navigation away during activation or the 200ms opening delay, an already-open panel, a hidden tab, an organization change, and teardown before the answer arrives. Reload while the bridge is loading with two experiences on the same page: neither a repeated first guide nor the second overlapping guide may open. A legacy shown marker suppresses the guide without assigning the user to this new cohort.
+Repeat with delayed storage, navigation away during the 200ms trigger delay or SDK activation, an already-open panel, a hidden tab, an organization change, and teardown before the answer arrives. Reload while the reader is loading with two experiences on the same page: neither a repeated first guide nor the second overlapping guide may open. A legacy shown marker suppresses the guide without assigning the user to this new cohort. Assert zero SDK exposure before the trigger delay finishes and when eligibility disappears during that delay. At the eligible trigger, treatment requests the panel immediately; control records the same eligible opportunity without opening. Check actual panel mounts separately from SDK exposure.
 
 `__pathfinderExperiment.clearAutoOpenGuideMarkers()` clears the browser's old and scoped shown/visit markers for this hostname. Also reset the SDK session assignment using the existing reset recipe below, then reload. Do not clear production markers to grow the sample. The saved survey answer remains in setup-guide user storage; change it through the real survey for manual QA.
 

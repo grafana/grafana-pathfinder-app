@@ -7,7 +7,13 @@ export interface OnboardingExploringIntentSnapshot {
 }
 
 export const getOnboardingIntentContextKey = (): string =>
-  JSON.stringify([config.namespace ?? '', config.bootData.user.id, config.bootData.user.orgId]);
+  JSON.stringify([
+    config.namespace ?? '',
+    config.bootData.user.id,
+    config.bootData.user.orgId,
+    config.bootData.user.uid ?? '',
+    config.bootData.user.isSignedIn,
+  ]);
 
 let snapshot: OnboardingExploringIntentSnapshot | null = null;
 const listeners = new Set<() => void>();

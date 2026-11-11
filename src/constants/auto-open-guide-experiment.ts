@@ -7,4 +7,3 @@ export const ONBOARDING_EXPLORING_EXPERIMENT_ID = 'pathfinder-onboarding-explori
 export const ONBOARDING_EXPLORING_EXPERIMENT_FLAG = 'pathfinder.onboarding-exploring-auto-open-experiment';
 export const ONBOARDING_EXPLORING_EXPERIMENT_GROUP = 'saved-exploring-matched-page-closed-panel';
 export const ONBOARDING_EXPLORING_ELIGIBLE_EVENT = 'pathfinder_onboarding_exploring_auto_open_eligible';
-export const ONBOARDING_EXPLORING_COMPONENT_ID = 'grafana-setupguide-app/onboarding-exploring-intent/v1';

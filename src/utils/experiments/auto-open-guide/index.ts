@@ -110,9 +110,17 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   const contextKey = getOnboardingIntentContextKey();
   const hostname = window.location.hostname;
   const exploringScope = `${hostname}:${ONBOARDING_EXPLORING_EXPERIMENT_ID}:${contextKey}`;
+  const previousContextKey = JSON.stringify([
+    config.namespace ?? '',
+    config.bootData.user.id,
+    config.bootData.user.orgId,
+  ]);
+  const previousExploringScope = `${hostname}:${ONBOARDING_EXPLORING_EXPERIMENT_ID}:${previousContextKey}`;
   const markerScope = requiresExploring ? exploringScope : hostname;
   const alreadyShown = (guide: string) =>
-    hasAutoOpenGuideShown(hostname, guide) || hasAutoOpenGuideShown(exploringScope, guide);
+    hasAutoOpenGuideShown(hostname, guide) ||
+    hasAutoOpenGuideShown(exploringScope, guide) ||
+    hasAutoOpenGuideShown(previousExploringScope, guide);
   const intentEligible = () => !requiresExploring || hasSavedExploringIntent();
   let pendingOffer: { offer: Offer; targeting: AutoOpenGuideConfig } | undefined;
   const currentOfferEligible = () =>
@@ -173,8 +181,17 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
 
   let stopped = false;
   let pending: AbortController | undefined;
+  let activationTimer: ReturnType<typeof setTimeout> | undefined;
   let recheck = false;
   let consumedVisit = readConsumedVisit(markerScope);
+  if (requiresExploring) {
+    const previousVisit = readConsumedVisit(previousExploringScope);
+    if (consumedVisit === undefined && previousVisit !== undefined) {
+      consumedVisit = previousVisit;
+      writeConsumedVisit(markerScope, previousVisit);
+    }
+    writeConsumedVisit(previousExploringScope, undefined);
+  }
   // Held in memory from activation start; persisted only once an offer applies, so a reload
   // mid-activation or after a failed one gets its own attempt.
   const consumeVisit = (visit: string | undefined) => {
@@ -195,6 +212,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
       consumeVisit(undefined);
       return;
     }
+    pendingOffer = undefined;
     restored = true;
     setAutoOpenGuideEnrollment({
       variant,
@@ -222,7 +240,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
           matchesExperience(targeting.experiences[offer.index]!, getCurrentPath())
       );
       cancelAutoLaunch = cancelLaunch;
-      cancelAutoOpen = attemptAutoOpen(200, () => {
+      cancelAutoOpen = attemptAutoOpen(requiresExploring ? 0 : 200, () => {
         openRequested =
           !stopped &&
           contextKey === getOnboardingIntentContextKey() &&
@@ -244,40 +262,51 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     const activation = new AbortController();
     pending = activation;
     pendingOffer = { offer, targeting };
-    if (requiresExploring) {
-      sdk.refreshSession();
-    }
     recheck = false;
-    void experiment
-      .activate({ signal: activation.signal })
-      .then((state) => {
-        if (stopped || pending !== activation) {
-          return;
-        }
-        pending = undefined;
-        if (state.status === 'active' && isEnrolledVariant(state.variant)) {
-          apply(offer, state.variant, targeting);
-        } else if (state.status === 'inactive' || (state.status === 'unavailable' && state.reason === 'disabled')) {
-          // A tab hidden mid-activation must not use up the visit; the next visibilitychange retries.
-          consumeVisit(undefined);
-        } else if (state.status === 'unavailable') {
-          if (!warnedUnavailable.has(state.reason)) {
-            warnedUnavailable.add(state.reason);
-            logger.warn('[Pathfinder] Auto-open guide experiment unavailable', { reason: state.reason });
+    const run = () => {
+      activationTimer = undefined;
+      if (stopped || pending !== activation || activation.signal.aborted) {
+        return;
+      }
+      if (requiresExploring) {
+        sdk.refreshSession();
+      }
+      void experiment
+        .activate({ signal: activation.signal })
+        .then((state) => {
+          if (stopped || pending !== activation) {
+            return;
           }
-        }
-        pendingOffer = undefined;
-        if (recheck) {
-          recheck = false;
-          check();
-        }
-      })
-      .catch(() => {
-        if (pending === activation) {
           pending = undefined;
+          if (state.status === 'active' && isEnrolledVariant(state.variant)) {
+            apply(offer, state.variant, targeting);
+          } else if (state.status === 'inactive' || (state.status === 'unavailable' && state.reason === 'disabled')) {
+            // A tab hidden mid-activation must not use up the visit; the next visibilitychange retries.
+            consumeVisit(undefined);
+          } else if (state.status === 'unavailable') {
+            if (!warnedUnavailable.has(state.reason)) {
+              warnedUnavailable.add(state.reason);
+              logger.warn('[Pathfinder] Auto-open guide experiment unavailable', { reason: state.reason });
+            }
+          }
           pendingOffer = undefined;
-        }
-      });
+          if (recheck) {
+            recheck = false;
+            check();
+          }
+        })
+        .catch(() => {
+          if (pending === activation) {
+            pending = undefined;
+            pendingOffer = undefined;
+          }
+        });
+    };
+    if (requiresExploring) {
+      activationTimer = setTimeout(run, 200);
+    } else {
+      run();
+    }
   };
 
   // Each visit gets at most one activation, whatever it resolves to, so a result that
@@ -292,6 +321,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     ) {
       if (pending) {
         pending.abort();
+        clearTimeout(activationTimer);
         consumeVisit(undefined);
       }
       pending = undefined;
@@ -380,6 +410,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   return () => {
     stopped = true;
     pending?.abort();
+    clearTimeout(activationTimer);
     cancelAutoLaunch();
     cancelAutoOpen();
     unsubscribeIntent();

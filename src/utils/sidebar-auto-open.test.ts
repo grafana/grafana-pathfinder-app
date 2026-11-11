@@ -58,6 +58,20 @@ describe('setupConfigAutoOpen', () => {
     jest.useRealTimers();
   });
 
+  it('publishes a zero-delay auto-open synchronously at the checked trigger', () => {
+    const shouldOpen = jest.fn(() => true);
+    attemptAutoOpen(0, shouldOpen);
+    expect(shouldOpen).toHaveBeenCalledTimes(1);
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    jest.runAllTimers();
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish a zero-delay auto-open when final eligibility fails', () => {
+    attemptAutoOpen(0, () => false);
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
   it('opens the sidebar when openPanelOnLaunch is set', () => {
     setupConfigAutoOpen({
       currentPath: '/dashboards',

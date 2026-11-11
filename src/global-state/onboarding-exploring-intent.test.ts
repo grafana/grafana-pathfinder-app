@@ -6,7 +6,9 @@ import {
   subscribeToOnboardingExploringIntent,
 } from './onboarding-exploring-intent';
 
-jest.mock('@grafana/runtime', () => ({ config: { namespace: 'stacks-1', bootData: { user: { id: 1, orgId: 2 } } } }));
+jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'stacks-1', bootData: { user: { id: 1, orgId: 2, uid: 'user-1', isSignedIn: true } } },
+}));
 
 beforeEach(() => setOnboardingExploringIntent(null));
 it('accepts only a ready saved answer for the current identity', () => {
@@ -31,4 +33,15 @@ it('unsubscribes listeners', () => {
   unsubscribe();
   setOnboardingExploringIntent(null);
   expect(listener).toHaveBeenCalledTimes(1);
+});
+
+it('invalidates a saved answer when the UID or sign-in state changes', () => {
+  const contextKey = getOnboardingIntentContextKey();
+  setOnboardingExploringIntent({ status: 'ready', exploring: true, contextKey });
+  config.bootData.user.uid = 'other-uid';
+  expect(hasSavedExploringIntent()).toBe(false);
+  config.bootData.user.uid = 'user-1';
+  config.bootData.user.isSignedIn = false;
+  expect(hasSavedExploringIntent()).toBe(false);
+  config.bootData.user.isSignedIn = true;
 });

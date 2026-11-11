@@ -20,7 +20,7 @@ export interface ConfigAutoOpenContext {
 }
 
 export function attemptAutoOpen(delay = 200, shouldOpen: () => boolean = () => true): () => void {
-  const timer = setTimeout(() => {
+  const open = () => {
     if (!shouldOpen()) {
       return;
     }
@@ -39,7 +39,12 @@ export function attemptAutoOpen(delay = 200, shouldOpen: () => boolean = () => t
     } catch (error) {
       logger.error('Failed to auto-open Interactive learning panel', { error });
     }
-  }, delay);
+  };
+  if (delay === 0) {
+    open();
+    return () => {};
+  }
+  const timer = setTimeout(open, delay);
   return () => clearTimeout(timer);
 }
 
