@@ -118,6 +118,8 @@ export interface UseBackendSaveFlowReturn {
   storedAuthor: unknown;
   /** Overwrite-conflict prompt state */
   confirmModal: BackendSaveFlowConfirmModal;
+  /** True from a save or unpublish click until its tracking has settled; another one is ignored meanwhile. */
+  isBusy: boolean;
   /** Dismiss the confirm modal, invoking its onCancel */
   closeConfirmModal: () => void;
   /** Save the current guide as a draft (not visible to users) */
@@ -162,7 +164,7 @@ export function useBackendSaveFlow({
     setStoredGuide(entry);
   }, []);
   const syncStoredGuide = useCallback(
-    (resourceName: string, written?: 'draft' | 'published'): Promise<void> => {
+    (resourceName: string): Promise<void> => {
       const seq = ++readSeq.current;
       syncedName.current = resourceName;
       return readGuide(resourceName).then(
@@ -171,19 +173,7 @@ export function useBackendSaveFlow({
             setStoredGuide(stored);
           }
         },
-        (error: unknown) => {
-          logger.warn('[BlockEditor] Failed to read the tracked guide', { error });
-          if (seq !== readSeq.current || !written) {
-            return;
-          }
-          // The write landed, so its status stands. The old resourceVersion stays, so the next save fails
-          // closed with a 409 rather than overwrite whatever another author wrote in between.
-          setStoredGuide((prev) => {
-            const kept =
-              prev?.metadata.name === resourceName ? prev : { metadata: { name: resourceName }, spec: { title: '' } };
-            return { ...kept, spec: { ...kept.spec, status: written } };
-          });
-        }
+        (error: unknown) => logger.warn('[BlockEditor] Failed to read the tracked guide', { error })
       );
     },
     [readGuide]
@@ -196,7 +186,14 @@ export function useBackendSaveFlow({
         adoptStored(resourceName, written);
         return Promise.resolve();
       }
-      return syncStoredGuide(resourceName, status);
+      // Until the re-read lands, and if it fails, the write's status stands and the old resourceVersion
+      // stays, so a save in between fails closed with a 409 rather than overwrite a concurrent write.
+      setStoredGuide((prev) => {
+        const kept =
+          prev?.metadata.name === resourceName ? prev : { metadata: { name: resourceName }, spec: { title: '' } };
+        return { ...kept, spec: { ...kept.spec, status } };
+      });
+      return syncStoredGuide(resourceName);
     },
     [adoptStored, syncStoredGuide]
   );
@@ -289,8 +286,8 @@ export function useBackendSaveFlow({
       // Track the content that was last synced to the backend
       setLastPublishedJson(JSON.stringify(guide));
 
-      await trackWrite(generatedResourceName, status, saved?.written);
       setCurrentGuideResourceName(generatedResourceName);
+      await trackWrite(generatedResourceName, status, saved?.written);
 
       if (status === 'published') {
         notify('success', previousStatus === 'published' ? 'Guide updated.' : 'Guide published.');
@@ -393,13 +390,28 @@ export function useBackendSaveFlow({
     [editor, backendGuides, currentGuideResourceName, currentGuideEntry, adoptStored, performBackendSave]
   );
 
-  /** Save the current guide as a draft — not visible to users */
-  const performSaveDraft = useCallback(async () => {
-    await orchestrateSave('draft');
-  }, [orchestrateSave]);
+  // Busy until tracking settles, not just until the write returns: a second save or unpublish in that
+  // window would act on the status and version from before the first one.
+  const [isBusy, setIsBusy] = useState(false);
+  const busyRef = useRef(false);
+  const exclusive = useCallback(async (action: () => Promise<void>) => {
+    if (busyRef.current) {
+      return;
+    }
+    busyRef.current = true;
+    setIsBusy(true);
+    try {
+      await action();
+    } finally {
+      busyRef.current = false;
+      setIsBusy(false);
+    }
+  }, []);
 
-  /** Unpublish a published guide — sets it back to draft, removing it from the docs panel */
-  const performUnpublish = useCallback(async () => {
+  /** Save the current guide as a draft — not visible to users */
+  const performSaveDraft = useCallback(() => exclusive(() => orchestrateSave('draft')), [exclusive, orchestrateSave]);
+
+  const unpublishTracked = useCallback(async () => {
     if (!currentGuideResourceName) {
       return;
     }
@@ -417,10 +429,14 @@ export function useBackendSaveFlow({
     }
   }, [backendGuides, currentGuideResourceName, editor, trackWrite]);
 
+  /** Unpublish a published guide — sets it back to draft, removing it from the docs panel */
+  const performUnpublish = useCallback(() => exclusive(unpublishTracked), [exclusive, unpublishTracked]);
+
   // Publish/update guide to backend handler
-  const handlePostToBackend = useCallback(async () => {
-    await orchestrateSave('published');
-  }, [orchestrateSave]);
+  const handlePostToBackend = useCallback(
+    () => exclusive(() => orchestrateSave('published')),
+    [exclusive, orchestrateSave]
+  );
 
   // Clear backend tracking when starting a new guide
   const handleClearBackendTracking = useCallback(() => {
@@ -448,6 +464,7 @@ export function useBackendSaveFlow({
     hasUnsyncedChanges,
     storedAuthor,
     confirmModal,
+    isBusy,
     closeConfirmModal,
     performSaveDraft,
     handlePostToBackend,

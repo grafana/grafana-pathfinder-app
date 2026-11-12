@@ -868,6 +868,21 @@ describe('useBackendGuides — overlapping refreshes', () => {
   });
 });
 
+describe('useBackendGuides — refresh after a write', () => {
+  it('does not hold a save until the catalogue has re-drained', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([resource]);
+    (fetchCustomGuideCatalogue as jest.Mock).mockReturnValueOnce(new Promise(() => {}));
+
+    await act(async () => {
+      await result.current.saveGuide(loadedGuide(resource), 'alerting-path', resource.metadata, 'draft');
+    });
+
+    expect(result.current.isSaving).toBe(false);
+    expect(fetchCustomGuideCatalogue).toHaveBeenLastCalledWith('stacks-1', { refresh: true });
+  });
+});
+
 describe('useBackendGuides — written resource', () => {
   // The server answers a PUT or POST with the stored object, whose resourceVersion is what the next save
   // must echo for a concurrent write to 409.

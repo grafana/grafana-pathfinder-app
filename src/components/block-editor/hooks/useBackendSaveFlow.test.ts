@@ -413,6 +413,72 @@ describe('useBackendSaveFlow — resourceVersion', () => {
   });
 });
 
+describe('useBackendSaveFlow — while a write is settling', () => {
+  function deferredRead() {
+    let resolve!: (value: BackendSaveFlowGuideEntry | undefined) => void;
+    const promise = new Promise<BackendSaveFlowGuideEntry | undefined>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it('shows a just-published guide as published, with its old version, before the re-read lands', async () => {
+    const g = guide();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceName: 'g1', lastPublishedJson: JSON.stringify(g) }));
+    const entry = makeGuideEntry('g1', 'Guide one');
+    entry.metadata.resourceVersion = '7';
+    const backendGuides = makeBackendGuides([entry]);
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+    await flushReads();
+    const reread = deferredRead();
+    (backendGuides.readGuide as jest.Mock).mockReturnValueOnce(reread.promise);
+
+    let publishing!: Promise<void>;
+    await act(async () => {
+      publishing = result.current.handlePostToBackend();
+    });
+
+    expect(result.current.publishedStatus).toBe('published');
+    expect(result.current.currentGuideMetadata).toMatchObject({ resourceVersion: '7' });
+    expect(result.current.isBusy).toBe(true);
+
+    const landed = makeGuideEntry('g1', 'Guide one', 'published');
+    landed.metadata.resourceVersion = '8';
+    await act(async () => {
+      reread.resolve(landed);
+      await publishing;
+    });
+    expect(result.current.isBusy).toBe(false);
+    expect(result.current.currentGuideMetadata).toMatchObject({ resourceVersion: '8' });
+  });
+
+  it("tracks a first save's name at once and ignores a second save until the first settles", async () => {
+    const g = guide();
+    const backendGuides = makeBackendGuides();
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+    const reread = deferredRead();
+    (backendGuides.readGuide as jest.Mock)
+      .mockResolvedValueOnce(undefined) // name-collision check: nothing stored yet
+      .mockReturnValueOnce(reread.promise);
+
+    let saving!: Promise<void>;
+    await act(async () => {
+      saving = result.current.performSaveDraft();
+    });
+    expect(result.current.currentGuideResourceName).toBe('g1');
+    expect(result.current.publishedStatus).toBe('draft');
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+    expect(backendGuides.saveGuide).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      reread.resolve(makeGuideEntry('g1', 'Guide one'));
+      await saving;
+    });
+    expect(result.current.isBusy).toBe(false);
+  });
+});
+
 describe('useBackendSaveFlow — after a failed restore read', () => {
   // The restore read failed, so the editor holds no status or version for the guide it tracks.
   const restoredUnread = (

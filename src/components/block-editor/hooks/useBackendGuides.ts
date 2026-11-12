@@ -335,7 +335,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           })
         );
 
-        await refreshGuides();
+        // Not awaited: the save needs nothing from the list, and a drain on a large instance can take long.
+        void refreshGuides();
         return { defaultedAuthor, written: writtenResource(response.data, resourceName) };
       } finally {
         setIsSaving(false);
@@ -375,7 +376,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           })
         );
 
-        await refreshGuides();
+        void refreshGuides();
         return writtenResource(response.data, resourceName);
       } finally {
         setIsSaving(false);

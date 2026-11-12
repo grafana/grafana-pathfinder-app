@@ -853,7 +853,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         onSaveDraft={backendSaveFlow.performSaveDraft}
         onPostToBackend={backendSaveFlow.handlePostToBackend}
         onUnpublish={backendSaveFlow.performUnpublish}
-        isPostingToBackend={backendGuides.isSaving}
+        isPostingToBackend={backendGuides.isSaving || backendSaveFlow.isBusy}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
         hasBackendGuides={hasManageableBackendGuides(backendGuides)}
