@@ -402,6 +402,18 @@ export class CompletionCoordinator {
     return [...this.entries.values()].sort((a, b) => rank(a) - rank(b) || order(a) - order(b));
   }
 
+  needsWorkflowObservation() {
+    return (
+      this.active &&
+      [...this.entries.values()].some(
+        ({ step, committed }) =>
+          !committed &&
+          !step.completed &&
+          conditionTokens(completionGate(step, false)).some((token) => token.startsWith('workflow-ready:'))
+      )
+    );
+  }
+
   pendingActions() {
     return this.prioritized()
       .filter(

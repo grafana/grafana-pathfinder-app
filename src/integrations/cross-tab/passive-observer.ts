@@ -32,12 +32,16 @@ export function createPassiveObserver(
 ) {
   let subscription: (Omit<ObservationSubscriptionMessage, 'steps'> & { steps: ObservedStep[] }) | undefined;
   let release: (() => void) | undefined;
+  let workflow: (() => void) | undefined;
+  let notifyChange = () => {};
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const cancelled = new Set<string>();
   let latest: { session?: string; generation: number; id: string } | undefined;
   const stop = () => {
     release?.();
     release = undefined;
+    workflow?.();
+    workflow = undefined;
     subscription = undefined;
     clearTimeout(expiry);
   };
@@ -114,6 +118,12 @@ export function createPassiveObserver(
     };
     clearTimeout(expiry);
     expiry = setTimeout(stop, 6000);
+    if (message.observeWorkflows === true) {
+      workflow ??= observeWorkflowStateChanges(() => notifyChange());
+    } else {
+      workflow?.();
+      workflow = undefined;
+    }
     if (release) {
       return;
     }
@@ -134,7 +144,7 @@ export function createPassiveObserver(
       }, 50);
     };
     const context = onContextChange(changed);
-    const workflow = observeWorkflowStateChanges(changed);
+    notifyChange = changed;
     document.addEventListener('visibilitychange', changed);
     const events = observePassiveActions(
       (event) => {
@@ -154,7 +164,6 @@ export function createPassiveObserver(
       events();
       navigation();
       context();
-      workflow();
       clearTimeout(pending);
       document.removeEventListener('visibilitychange', changed);
     };
