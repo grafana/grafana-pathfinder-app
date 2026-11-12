@@ -30,8 +30,10 @@ omissions) sections.
 Numbered, PR-specific manual steps a reviewer can run. Map them to the acceptance
 criteria of the linked issue. For a bug fix, start with how to reproduce the old
 behavior on main (or explain why it cannot be reproduced locally), then confirm
-the fix. CI runs typecheck, lint, prettier, and tests, so leave those out. Name
-any check you could not run and why; never claim a step passed that you did not run.
+the fix. For each acceptance criterion, note the result you observed when you
+ran its steps. CI runs typecheck, lint, prettier, and tests, so leave those out.
+Name any check you could not run and why; never claim a step passed that you did
+not run.
 -->
 
 ## Breaking changes

@@ -50,7 +50,7 @@ If you're partway through and realise a change is growing beyond one concern, it
 - **Run the full check.** `npm run check` runs the local pre-merge gate; `npm run check -- --list` prints what it contains. CI is not the same set — it additionally enforces manifest freshness and the production build — but PRs that pass the local gate move faster. While developing, run the narrowest relevant test first, then `npm run check` locally; you don't need to paste its output into the description. If you could not run a check, say which and why in the PR; never claim one passed that you didn't run.
 - **Add or update tests** for the behaviour you're changing.
 - **Match the existing style.** All UI text and documentation uses [sentence case](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization): capitalise only the first word and proper nouns. Keep comments to what the code can't say for itself.
-- **Link the issue(s)** your PR addresses in the description. Link the prepared issue, and in the template's "How to verify" section map your steps to its acceptance criteria. For a bug fix, start with the reproduction on `main`, or explain why it cannot be reproduced locally.
+- **Link the issue(s)** your PR addresses in the description. Link the prepared issue, and in the template's "How to verify" section state which of its acceptance criteria you verified and the result you observed for each. For a bug fix, start with the reproduction on `main`, or explain why it cannot be reproduced locally.
 - **Write a clear description** of what changed and why. The "why" is the part reviewers can't reconstruct from the diff.
 
 ## Review
