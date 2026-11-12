@@ -89,7 +89,7 @@ If you're new to the codebase, start at **[`docs/developer/GETTING_STARTED.md`](
 
 ## Contributing
 
-We welcome feedback, issues, and contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get set up, what we look for in a pull request, and how to keep changes easy to review.
+We welcome feedback, issues, and contributions. For implementation, start with an issue labelled `agent/ready`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor contract, local checks, and how to keep changes easy to review.
 
 ## License
 

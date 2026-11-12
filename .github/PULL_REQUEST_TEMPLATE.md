@@ -15,6 +15,10 @@ description.
 
 <!-- e.g. "Closes #123" or "Addresses #123". One concern per PR; see the checklist below. -->
 
+## Acceptance evidence
+
+<!-- For each acceptance criterion in the linked issue(s): the test or reproduction you ran and its result. Name any check you did not run, and why. -->
+
 ## Checklist
 
 - [ ] This PR addresses a **single concern** (one bug fix or feature, or a set of closely-related changes). Unrelated changes belong in separate PRs; see [CONTRIBUTING.md](../CONTRIBUTING.md#pull-request-scope).
