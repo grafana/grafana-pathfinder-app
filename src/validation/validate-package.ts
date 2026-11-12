@@ -183,8 +183,8 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
   validateAssetReferences(contentRaw, assetsDir, warnings);
 
-  const packageType = manifest ? manifest.type : 'guide';
-  if (packageType === 'guide' && content.blocks.length === 0) {
+  const isKnownGuide = !fs.existsSync(manifestPath) || manifest?.type === 'guide';
+  if (isKnownGuide && content.blocks.length === 0) {
     errors.push({
       message: `Package "${packageId}" of type "guide" needs at least one block`,
       path: ['content.json', 'blocks'],

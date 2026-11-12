@@ -22,7 +22,6 @@ import {
   GraphNodeSchema,
   GraphEdgeSchema,
   DependencyGraphSchema,
-  PackageStateSchema,
   PACKAGE_ID_REGEX,
   PACKAGE_ID_MAX_LENGTH,
 } from '../types/package.schema';
@@ -1000,56 +999,5 @@ describe('Cross-file ID consistency', () => {
 describe('CURRENT_SCHEMA_VERSION', () => {
   it('should be 1.1.0', () => {
     expect(CURRENT_SCHEMA_VERSION).toBe('1.1.0');
-  });
-});
-
-// ============ PackageStateSchema ============
-
-describe('PackageStateSchema', () => {
-  it('rejects a guide package with no blocks', () => {
-    const result = PackageStateSchema.safeParse({
-      content: { id: 'empty-guide', title: 'Empty guide', blocks: [] },
-      manifest: { id: 'empty-guide', type: 'guide' },
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain('empty-guide');
-      expect(result.error.issues[0]?.message).toContain('needs at least one block');
-    }
-  });
-
-  it('rejects a standalone guide package (no manifest) with no blocks', () => {
-    const result = PackageStateSchema.safeParse({
-      content: { id: 'empty-standalone', title: 'Empty standalone', blocks: [] },
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain('empty-standalone');
-      expect(result.error.issues[0]?.message).toContain('needs at least one block');
-    }
-  });
-
-  it('accepts a guide package with one block', () => {
-    const result = PackageStateSchema.safeParse({
-      content: { id: 'valid-guide', title: 'Valid guide', blocks: [{ type: 'markdown', content: '# Hi' }] },
-      manifest: { id: 'valid-guide', type: 'guide' },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts a container type package (path) with no blocks', () => {
-    const result = PackageStateSchema.safeParse({
-      content: { id: 'valid-path', title: 'Valid path', blocks: [] },
-      manifest: { id: 'valid-path', type: 'path', milestones: ['step-1'] },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts a container type package (journey) with no blocks', () => {
-    const result = PackageStateSchema.safeParse({
-      content: { id: 'valid-journey', title: 'Valid journey', blocks: [] },
-      manifest: { id: 'valid-journey', type: 'journey', milestones: ['step-1'] },
-    });
-    expect(result.success).toBe(true);
   });
 });

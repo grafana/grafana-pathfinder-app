@@ -141,6 +141,24 @@ describe('validatePackage', () => {
     expect(result.isValid).toBe(true);
   });
 
+  it('does not emit empty-guide error for a path package with an invalid manifest', () => {
+    const pkgDir = path.join(tmpDir, 'invalid-path-manifest');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'invalid-path',
+      title: 'Invalid path manifest',
+      blocks: [],
+    });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'invalid-path',
+      type: 'path',
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.code === 'schema_validation')).toBe(true);
+    expect(result.errors.some((e) => e.code === 'empty_guide_blocks')).toBe(false);
+  });
+
   it('should error when content.json is missing', () => {
     const pkgDir = path.join(tmpDir, 'no-content');
     fs.mkdirSync(pkgDir, { recursive: true });

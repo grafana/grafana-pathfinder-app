@@ -861,6 +861,17 @@ describe('runValidate', () => {
     }
   });
 
+  it('rejects a standalone guide with no blocks', () => {
+    const result = runValidate({
+      content: { id: 'empty-standalone', title: 'Empty Standalone', blocks: [] },
+    });
+    expect(result.status).toBe('error');
+    if (result.status === 'error') {
+      expect(result.message).toContain('empty-standalone');
+      expect(result.message).toContain('needs at least one block');
+    }
+  });
+
   it('accepts a container type package (path) with no blocks', () => {
     const result = runValidate({
       content: { id: 'empty-path', title: 'Empty Path', blocks: [] },

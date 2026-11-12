@@ -358,24 +358,6 @@ export const ManifestJsonSchema = ManifestJsonObjectSchema.superRefine((manifest
   }
 });
 
-// ============ PACKAGE STATE SCHEMA ============
-
-export const PackageStateSchema = z
-  .object({
-    content: ContentJsonSchema,
-    manifest: ManifestJsonSchema.optional(),
-  })
-  .superRefine((pkg, ctx) => {
-    const type = pkg.manifest?.type ?? 'guide';
-    if (type === 'guide' && pkg.content.blocks.length === 0) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Package "${pkg.content.id}" of type "guide" needs at least one block`,
-        path: ['content', 'blocks'],
-      });
-    }
-  });
-
 // ============ SHARED METADATA SCHEMA FIELDS ============
 
 /**
