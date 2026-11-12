@@ -4,6 +4,7 @@ import {
   nextObservationStamp,
 } from '../../global-state/observation/action-progress';
 import { onContextChange } from '../../lib/context-event-bus';
+import { observeWorkflowStateChanges } from '../../lib/dom/workflow-observer';
 import {
   matchesFormfillState,
   matchesPassiveAction,
@@ -133,6 +134,7 @@ export function createPassiveObserver(
       }, 50);
     };
     const context = onContextChange(changed);
+    const workflow = observeWorkflowStateChanges(changed);
     document.addEventListener('visibilitychange', changed);
     const events = observePassiveActions(
       (event) => {
@@ -152,6 +154,7 @@ export function createPassiveObserver(
       events();
       navigation();
       context();
+      workflow();
       clearTimeout(pending);
       document.removeEventListener('visibilitychange', changed);
     };

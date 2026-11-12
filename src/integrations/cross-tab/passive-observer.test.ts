@@ -195,3 +195,32 @@ it('takes the controller cursor back when the controller never applies a reporte
   expect(evidence.map(({ index }) => index)).toEqual([0, 0]);
   observer.stop();
 });
+
+it('notifies the paired guide promptly when a token success marker arrives without sending its contents', async () => {
+  const disconnect = jest.spyOn(MutationObserver.prototype, 'disconnect');
+  const post = jest.fn();
+  const observer = createPassiveObserver(post);
+  observer.update(message({ steps: [] }));
+  try {
+    const success = document.createElement('div');
+    success.dataset.testid = 'generate-token-success-message';
+    document.body.append(success);
+    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(100);
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith({
+      kind: 'observation-change',
+      subscriptionId: 'generation-1',
+      guideKey: 'guide',
+    });
+    observer.stop();
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    success.remove();
+    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(100);
+    expect(post).toHaveBeenCalledTimes(1);
+  } finally {
+    observer.stop();
+    disconnect.mockRestore();
+  }
+});

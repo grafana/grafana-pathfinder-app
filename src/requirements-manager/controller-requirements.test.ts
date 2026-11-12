@@ -12,7 +12,7 @@ describe('TAB_LOCAL_REQUIREMENTS drift guard (F-1063-2)', () => {
   // tab instead of stripped. Update both together; this test is the reminder.
   it('contains exactly the known DOM/URL/navigation-probing requirements', () => {
     expect([...TAB_LOCAL_REQUIREMENTS].sort()).toEqual(
-      ['exists-reftarget', 'form-valid', 'navmenu-open', 'on-page'].sort()
+      ['exists-reftarget', 'form-valid', 'navmenu-open', 'on-page', 'workflow-ready'].sort()
     );
   });
 
@@ -30,6 +30,7 @@ describe('stripTabLocalRequirements', () => {
     expect(stripTabLocalRequirements('navmenu-open')).toBe('');
     expect(stripTabLocalRequirements('on-page:/explore')).toBe('');
     expect(stripTabLocalRequirements('form-valid')).toBe('');
+    expect(stripTabLocalRequirements(['workflow-ready:cloud-token-created', 'is-admin'])).toEqual(['is-admin']);
   });
 
   it('keeps session / permission requirements so genuine failures still surface', () => {
