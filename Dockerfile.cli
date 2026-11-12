@@ -21,7 +21,7 @@
 # Use the same digest for both stages. Keep this at Node 24.14.1+ so the
 # bundled npm is >= 11.10.0, which is required for the `allow-git` and
 # `min-release-age` settings in .npmrc to take effect.
-FROM node:26-alpine@sha256:ce8c3a386c7649c1f9a38d29eb9f6b0c29e70707eb50f208643a75b3f763b60f AS builder
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS builder
 
 WORKDIR /build
 
@@ -56,7 +56,7 @@ RUN node scripts/cli-build-utils.js runtime-package /build/runtime-package.json
 
 # ---- Runtime stage -------------------------------------------------------
 # Same digest as the build stage above. Refresh both together.
-FROM node:26-alpine@sha256:ce8c3a386c7649c1f9a38d29eb9f6b0c29e70707eb50f208643a75b3f763b60f AS runtime
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runtime
 
 WORKDIR /app
 
