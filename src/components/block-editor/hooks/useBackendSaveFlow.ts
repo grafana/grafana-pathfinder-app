@@ -155,6 +155,12 @@ export function useBackendSaveFlow({
   const { readGuide } = backendGuides;
   const readSeq = useRef(0);
   const syncedName = useRef<string | null>(null);
+  // Takes a stored entry already in hand, superseding any read still in flight.
+  const adoptStored = useCallback((resourceName: string, entry: BackendSaveFlowGuideEntry) => {
+    readSeq.current++;
+    syncedName.current = resourceName;
+    setStoredGuide(entry);
+  }, []);
   const syncStoredGuide = useCallback(
     (resourceName: string, written?: 'draft' | 'published'): Promise<void> => {
       const seq = ++readSeq.current;
@@ -187,14 +193,12 @@ export function useBackendSaveFlow({
   const trackWrite = useCallback(
     (resourceName: string, status: 'draft' | 'published', written?: BackendSaveFlowGuideEntry | void) => {
       if (written) {
-        readSeq.current++;
-        syncedName.current = resourceName;
-        setStoredGuide(written);
+        adoptStored(resourceName, written);
         return Promise.resolve();
       }
       return syncStoredGuide(resourceName, status);
     },
-    [syncStoredGuide]
+    [adoptStored, syncStoredGuide]
   );
 
   // Only a restored name needs this read: loads seed the entry and writes track their own.
@@ -320,6 +324,21 @@ export function useBackendSaveFlow({
           return;
         }
 
+        let tracked = currentGuideEntry;
+        if (isUpdate && !tracked) {
+          // The read that restored tracking failed or has not landed, so the status and version are unknown.
+          // Read now rather than write blind: a failed read fails the save, and a draft save must not
+          // unpublish a guide the editor did not know was published.
+          tracked = await backendGuides.readGuide(resourceName);
+          if (tracked) {
+            adoptStored(resourceName, tracked);
+            if (status === 'draft' && tracked.spec.status === 'published') {
+              notify('error', 'Save failed', 'This guide is published. Use Update to save your changes.');
+              return;
+            }
+          }
+        }
+
         if (!isUpdate) {
           const existingGuide = await backendGuides.readGuide(resourceName);
           if (existingGuide) {
@@ -361,24 +380,17 @@ export function useBackendSaveFlow({
         await performBackendSave(
           guide,
           currentGuideResourceName || undefined,
-          currentGuideMetadata || undefined,
+          tracked?.metadata,
           isUpdate,
           status,
-          currentGuideBackendStatus
+          tracked?.spec.status ?? null
         );
       } catch (error) {
         logger.error('[BlockEditor] Failed to save guide', { error });
         notify('error', 'Save failed', error instanceof Error ? error.message : 'Unknown error');
       }
     },
-    [
-      editor,
-      backendGuides,
-      currentGuideResourceName,
-      currentGuideMetadata,
-      currentGuideBackendStatus,
-      performBackendSave,
-    ]
+    [editor, backendGuides, currentGuideResourceName, currentGuideEntry, adoptStored, performBackendSave]
   );
 
   /** Save the current guide as a draft — not visible to users */
@@ -418,14 +430,15 @@ export function useBackendSaveFlow({
 
   // Track a guide freshly loaded from the backend library. Its stored resource is what the content came
   // from, so it seeds the status and the resourceVersion the next save carries, with no second read.
-  const trackLoadedGuide = useCallback((guide: JsonGuide, resourceName: string, stored: BackendSaveFlowGuideEntry) => {
-    readSeq.current++;
-    syncedName.current = resourceName;
-    setStoredGuide(stored);
-    setCurrentGuideResourceName(resourceName);
-    // Normalize to match getGuide() output (id, title, blocks — no schemaVersion or extra fields)
-    setLastPublishedJson(JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks }));
-  }, []);
+  const trackLoadedGuide = useCallback(
+    (guide: JsonGuide, resourceName: string, stored: BackendSaveFlowGuideEntry) => {
+      adoptStored(resourceName, stored);
+      setCurrentGuideResourceName(resourceName);
+      // Normalize to match getGuide() output (id, title, blocks — no schemaVersion or extra fields)
+      setLastPublishedJson(JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks }));
+    },
+    [adoptStored]
+  );
 
   return {
     currentGuideResourceName,

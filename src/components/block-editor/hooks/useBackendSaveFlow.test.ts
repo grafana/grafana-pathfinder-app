@@ -413,6 +413,83 @@ describe('useBackendSaveFlow — resourceVersion', () => {
   });
 });
 
+describe('useBackendSaveFlow — after a failed restore read', () => {
+  // The restore read failed, so the editor holds no status or version for the guide it tracks.
+  const restoredUnread = (
+    stored: BackendSaveFlowGuideEntry[],
+    overrides: Partial<BackendSaveFlowGuidesInterface> = {}
+  ) => {
+    const g = guide();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceName: 'g1', lastPublishedJson: JSON.stringify(g) }));
+    const backendGuides = makeBackendGuides(stored, overrides);
+    (backendGuides.readGuide as jest.Mock).mockRejectedValueOnce(new Error('blip'));
+    return { g, backendGuides };
+  };
+
+  it('reads the guide before a draft save and refuses to unpublish it', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const { g, backendGuides } = restoredUnread([makeGuideEntry('g1', 'Guide one', 'published')]);
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+    await flushReads();
+    expect(result.current.publishedStatus).toBe('draft');
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(backendGuides.saveGuide).not.toHaveBeenCalled();
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'alert-error',
+        payload: ['Save failed', 'This guide is published. Use Update to save your changes.'],
+      })
+    );
+    expect(result.current.publishedStatus).toBe('published');
+    warnSpy.mockRestore();
+  });
+
+  it('saves with the version that read returned', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const entry = makeGuideEntry('g1', 'Guide one');
+    entry.metadata.resourceVersion = '7';
+    const { g, backendGuides } = restoredUnread([entry]);
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+    await flushReads();
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(
+      g,
+      'g1',
+      expect.objectContaining({ resourceVersion: '7' }),
+      'draft',
+      false,
+      undefined
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('fails the save closed when that read fails too', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const errSpy = jest.spyOn(console, 'error').mockImplementation();
+    const { g, backendGuides } = restoredUnread([makeGuideEntry('g1', 'Guide one')]);
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+    await flushReads();
+    (backendGuides.readGuide as jest.Mock).mockRejectedValueOnce(new Error('still down'));
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(backendGuides.saveGuide).not.toHaveBeenCalled();
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ payload: ['Save failed', 'still down'] }));
+    warnSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+});
+
 describe('useBackendSaveFlow — overwrite conflict', () => {
   it('opens the confirm modal, and confirming saves over the existing guide', async () => {
     const g = guide({ id: 'existing-guide', title: 'Existing guide' });
