@@ -9,6 +9,7 @@ import (
 // proxy for the App Platform aggregator or the recommender CDN — see
 // docs/design/BACKEND_PROXY_PATTERN.md.
 func (a *App) registerRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/cohorts/my", a.handleMyCohorts)
 	mux.HandleFunc("/package-recommendations", a.handlePackageRecommendations)
 	mux.HandleFunc("/completion-records", a.handleCreateCompletionRecord)
 	mux.HandleFunc("/completion-records/my", a.handleMyCompletions)

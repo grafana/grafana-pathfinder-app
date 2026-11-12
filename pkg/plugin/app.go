@@ -50,7 +50,12 @@ type App struct {
 	idVerifierCreatedAt time.Time
 	idVerifierMu        sync.Mutex
 
-	logger log.Logger
+	logger                  log.Logger
+	cohortLookupToken       string
+	cohortClient            *http.Client
+	cohortVerifier          *auth.IDTokenVerifier
+	cohortVerifierCreatedAt time.Time
+	cohortVerifierMu        sync.Mutex
 
 	// Per-user rate limiter for POST /completion-records (RFC §9 flood guard)
 	completionWriteRateLimiter *userRateLimiter
@@ -71,6 +76,8 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 
 	app := &App{
 		logger:                     logger,
+		cohortLookupToken:          settings.CohortLookupToken,
+		cohortClient:               &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		completionWriteRateLimiter: newCompletionWriteRateLimiter(),
 		assignmentsReadRateLimiter: newUserRateLimiter(assignmentsReadRateBurst, assignmentsReadRateRefillPerSec),
 	}

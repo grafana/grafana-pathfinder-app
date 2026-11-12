@@ -919,3 +919,34 @@ That test's allowlist contains only the [signed-in survey compatibility read](#s
 The temporary saved-exploring experiment has one explicit browser-read exception, tracked in PR #2343: `src/lib/onboarding-survey-intent.ts` reads the existing `grafana-setupguide-app:<current-user-uid>` object in `userstorage.grafana.app/v0alpha1`. This is Grafana's own-user settings API, not the Pathfinder catalogue API. Its authorizer verifies the authenticated caller's UID against the record name, regardless of the service-name prefix. The adapter derives namespace and UID from the signed-in runtime context, never from a URL parameter, and uses the browser session. Anonymous users never read or enroll. There is no service-account credential, internal storage import, fabricated plugin context or Setupguide release dependency.
 
 This exception does not change the proxy requirement for any other resource. The transport ratchet explicitly detects and allowlists this single call, with a regression preventing it from becoming invisible to the scanner. The private survey key/schema and alpha resource require compatibility tests. Missing/malformed data, authentication failures and timeouts leave both experiment arms ineligible; legacy browser storage is not an identity-safe fallback. Revalidate on bounded navigation/visibility cycles only on configured experiment pages and discard stale responses. The source is the latest completed server save, not a guarantee that a newer, still-pending survey submission has completed. Remove the exception when retiring the experiment.
+
+## Cohort self-lookup
+
+`GET /api/plugins/grafana-pathfinder-app/resources/cohorts/my` is a private
+recommender proxy, separate from the shared recommendation cache. It accepts no
+query parameters or body and returns only `{"cohorts":[...]}` with `Cache-Control:
+no-store`. It never returns the email or its hash.
+
+Provision `secureJsonData.cohortLookupToken` with the recommender's server-side
+`COHORT_LOOKUP_TOKEN`. Never place it in jsonData or frontend configuration. Without
+it the route returns 503. No UI login or additional browser credential is needed.
+The route verifies the forwarded Grafana ID token against Cloud auth-api keys
+only, binds its namespace to the trusted plugin context, requires a `user:` subject
+and a nonempty, verified `email` claim, and hashes the exact email bytes using
+SHA-256 (no normalization, matching the publisher). Self-hosted signing keys are
+not accepted. Missing or invalid identity returns 401 without contacting the
+recommender. Email claim availability must be confirmed on the target Cloud stack
+before enabling the experiment; there is no fallback to caller-supplied email.
+
+The upstream URL is fixed to `https://recommender.grafana.com/api/v1/cohorts`.
+Requests carry only the server credential and derived hash, use a five-second
+timeout, reject redirects, and cap responses at 64 KiB. Upstream failures return
+503; malformed responses return 502. Responses are decoded into the cohort-only
+shape so upstream identity fields cannot leak through. No per-user cache is used.
+
+Roll out the authenticated recommender before provisioning the matching plugin
+secret through the Cloud deployment owner. Remove the plugin secret to disable
+lookup. This PR exposes the backend route; experiment enrollment and frontend
+consumption remain separate work. Verify two signed-in users, an anonymous
+request, wrong-stack identity and absence of identity fields in responses before
+activation. Token rotation requires coordinating both deployments.

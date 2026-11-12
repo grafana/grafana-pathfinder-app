@@ -6,6 +6,7 @@ import (
 
 // Settings contains the plugin configuration from Grafana.
 type Settings struct {
+	CohortLookupToken string `json:"-"`
 	// OBOToken is the per-stack Cloud Access Policy token provisioned by
 	// stack-state-service into secureJsonData.accessToken. The App Platform proxy
 	// routes exchange it for a short-lived on-behalf-of access token; the exchange
@@ -23,7 +24,7 @@ type Settings struct {
 // reads. Restore the unmarshal if a field ever needs it, and tolerate a parse
 // error rather than propagating it.
 func ParseSettings(appSettings backend.AppInstanceSettings) (*Settings, error) {
-	settings := &Settings{}
+	settings := &Settings{CohortLookupToken: appSettings.DecryptedSecureJSONData["cohortLookupToken"]}
 
 	if oboToken, ok := appSettings.DecryptedSecureJSONData["accessToken"]; ok {
 		settings.OBOToken = oboToken

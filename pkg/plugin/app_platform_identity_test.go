@@ -112,8 +112,10 @@ type idToken struct {
 
 	// Optional authlib profile claims; empty values are omitted so a test can
 	// pin what an absent claim yields.
-	username string
-	name     string
+	email         string
+	emailVerified bool
+	username      string
+	name          string
 }
 
 // signIDToken builds and ES256-signs a JWT to spec.
@@ -124,7 +126,7 @@ func signIDToken(t *testing.T, tok idToken) string {
 	if err != nil {
 		t.Fatalf("marshal header: %v", err)
 	}
-	claims := map[string]any{}
+	claims := map[string]any{"email": tok.email, "email_verified": tok.emailVerified}
 	if tok.sub != "" {
 		claims["sub"] = tok.sub
 	}
