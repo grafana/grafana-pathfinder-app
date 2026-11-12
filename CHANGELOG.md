@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.27.0
+
+### Added
+
+- **Refreshed learning home and Explore**: Find assignments first, browse courses with search and filters, and see clearer progress and badge details. (#2293)
+- **Shared fallback tutorials**: Prefer updated online versions of seven tutorials while retaining bundled copies for offline use. Progress and assignment credit are shared across both copies, with a gated workflow to keep bundled content in sync. (#2304)
+- **Decision-tree validation**: Warn authors about unreachable screens, self-loops, dead ends, duplicate screen IDs, and empty results in Grot guides. (#2331)
+- **Saved onboarding intent experiment**: Add an opt-in experiment that can open a configured guide for signed-in users whose saved onboarding answer indicates they are exploring. The experiment is excluded by default. (#2343)
+
+### Fixed
+
+- **Cloud token steps complete automatically**: Guided and multistep blocks that create a Cloud access-policy token now complete when the token form already shows success, so early creation or a guide reset no longer asks readers to repeat the form. Clicking Create token alone does not complete the step. (#2302)
+- **Lighter token workflow observation**: Observe token form changes only while a step needs them, and log one warning when the expected Cloud token form stays unavailable for over a minute. (#2367)
+- **Eligible public discovery**: Explore respects recommendation consent and shows only eligible public content, while organization guides remain independently available. Requires the recommender eligible-catalog endpoint before rollout. (#2325)
+- **Contextual recommendation ordering**: Rank suggested guides by the current task and prerequisites, demote completed peers, and discard stale context after navigation. (#2205)
+- **Consistent milestone boundaries**: Keep previous and next buttons visible but disabled at learning journey boundaries, and apply the same limits to keyboard shortcuts. (#2307)
+- **Reliable guide saves in large libraries**: Read the individual stored guide before saving, publishing, or unpublishing so truncated library lists cannot make existing guides appear missing. (#2317)
+- **Divider compatibility**: Preserve dividers across publishing and loading, including nested content, and keep stored guides compatible with older readers. (#2289)
+- **Remember collapsed custom guides**: Keep the custom guides section collapsed across sidebar reopening, navigation, and browser refreshes. (#2295)
+- **Consistent edit button styling**: Use Grafana's secondary edit buttons in nested blocks and guided steps for consistent hover and focus states. (#2345)
+
+### Security
+
+- **Dependency advisory fixes**: Update body-parser, fast-uri, and serialize-javascript to address advisories within their existing version ranges. (#2347)
+- **Container base image updates**: Refresh Node.js and CA trust base images with security updates. (#2346, #2355)
+
+### Chore
+
+- **Stable end-of-guide tests**: Remove an observer lookup race from content-renderer tests. (#2324)
+- **Learning launch cleanup**: Remove unreachable sidebar launch code from the learning home. (#2335)
+- **Review evidence requirements**: Strengthen light reviews with pinned evidence and explicit handling of blocking fixes, optional suggestions, and separate work. (#2323)
+- **Collaborator-aware community gate**: Treat collaborators with repository write access as internal while retaining the community checks when permission lookup fails. (#2344)
+
 ## 2.26.1
 
 ### Fixed
