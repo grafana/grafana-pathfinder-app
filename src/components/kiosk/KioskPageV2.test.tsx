@@ -38,7 +38,7 @@ it('renders hero imagery and launches the referenced action with the selected mo
   expect(screen.getByRole('heading', { name: 'Make room for your next idea' })).toBeInTheDocument();
   expect(document.querySelector('img')).toHaveAttribute(
     'src',
-    'https://example.com/catalog/assets/dem-overview-warm.png'
+    'https://grafana.com/media/interactive-learning/kiosk/dem/v1/dem-overview-warm.png'
   );
   expect(document.querySelector('img')).toHaveAttribute('alt', '');
   fireEvent.click(screen.getByRole('button', { name: 'Start the tour' }));
@@ -82,8 +82,8 @@ it('renders both DEM perspectives in reading order and launches the combined set
     'Bring both perspectives together',
   ]);
   expect(screen.getAllByRole('img').map((img) => img.getAttribute('src'))).toEqual([
-    'https://example.com/assets/dem-outside.png',
-    'https://example.com/assets/dem-inside.png',
+    'https://grafana.com/media/interactive-learning/kiosk/dem/v1/dem-outside.png',
+    'https://grafana.com/media/interactive-learning/kiosk/dem/v1/dem-inside.png',
   ]);
   fireEvent.click(screen.getByRole('button', { name: 'Start guided setup' }));
   expect(launchKioskGuide).toHaveBeenLastCalledWith(rules[0], 'instance', onLaunch, undefined, 8);

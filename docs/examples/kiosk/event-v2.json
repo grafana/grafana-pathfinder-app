@@ -30,7 +30,7 @@
         "alignment": "start",
         "titleSize": "extra-large",
         "image": {
-          "src": "assets/dem-overview-warm.png",
+          "src": "https://grafana.com/media/interactive-learning/kiosk/dem/v1/dem-overview-warm.png",
           "decorative": true,
           "aspectRatio": "wide"
         },

@@ -34,7 +34,7 @@
     "header": "minimal",
     "brand": {
       "logo": {
-        "src": "assets/grafana-mark.png",
+        "src": "https://grafana.com/media/interactive-learning/kiosk/dem/v1/grafana-mark.png",
         "alt": "Grafana"
       }
     },
@@ -68,7 +68,7 @@
               {
                 "type": "image",
                 "image": {
-                  "src": "assets/dem-outside-warm.png",
+                  "src": "https://grafana.com/media/interactive-learning/kiosk/dem/v1/dem-outside-warm.png",
                   "alt": "Monitoring probes around the world check a website's availability.",
                   "aspectRatio": "wide"
                 }
@@ -101,7 +101,7 @@
               {
                 "type": "image",
                 "image": {
-                  "src": "assets/dem-inside-warm.png",
+                  "src": "https://grafana.com/media/interactive-learning/kiosk/dem/v1/dem-inside-warm.png",
                   "alt": "A browser session timeline highlights an error and shows real-user sessions.",
                   "aspectRatio": "wide"
                 }

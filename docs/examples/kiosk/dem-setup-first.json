@@ -34,7 +34,7 @@
     "header": "minimal",
     "brand": {
       "logo": {
-        "src": "assets/grafana-mark.png",
+        "src": "https://grafana.com/media/interactive-learning/kiosk/dem/v1/grafana-mark.png",
         "alt": "Grafana"
       }
     },
@@ -65,7 +65,7 @@
           }
         },
         "image": {
-          "src": "assets/dem-overview.png",
+          "src": "https://grafana.com/media/interactive-learning/kiosk/dem/v1/dem-overview.png",
           "alt": "A website connected to availability probes and real-user sessions.",
           "fit": "contain"
         },
