@@ -1,6 +1,15 @@
+import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
+import { useControllerChannel, useControllerConnected } from '../../global-state/controller-channel';
+
+jest.mock('../../global-state/controller-channel', () => ({
+  ...jest.requireActual('../../global-state/controller-channel'),
+  useControllerChannel: jest.fn(() => null),
+  useControllerConnected: jest.fn(() => false),
+}));
+
 import React from 'react';
 import { createTheme } from '@grafana/data';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
 import { ImageRenderer } from '../../docs-retrieval';
@@ -52,6 +61,11 @@ jest.mock('../../interactive-engine', () => ({
 }));
 
 jest.mock('../../requirements-manager', () => ({
+  splitGuideScopedRequirements: jest.requireActual('../../requirements-manager/controller-requirements')
+    .splitGuideScopedRequirements,
+  SequentialRequirementsManager: {
+    getInstance: () => ({ triggerReactiveCheck: jest.fn(), watchNextStep: jest.fn() }),
+  },
   useGuideRequirements: () => ({ checkPostconditions: jest.fn() }),
   useStepChecker: () => ({ completionReason: undefined }),
   stripTabLocalRequirements: (requirements: string | undefined) => requirements,
@@ -65,6 +79,8 @@ jest.mock('../../constants', () => ({
 describe('InteractiveConditional', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    jest.mocked(useControllerChannel).mockReturnValue(null);
+    jest.mocked(useControllerConnected).mockReturnValue(false);
     checkRequirementsFromData.mockReset();
     checkRequirementsFromData.mockResolvedValue({ pass: false, requirements: '', error: [] });
   });
@@ -96,6 +112,74 @@ describe('InteractiveConditional', () => {
       />
     );
   };
+
+  it('checks guide state locally and DOM state on the live tab, retaining the branch on disconnect', async () => {
+    const requestRequirementCheck = jest.fn().mockResolvedValue({ pass: true, verdict: 'satisfied' });
+    jest.mocked(useControllerChannel).mockReturnValue({ requestRequirementCheck } as never);
+    jest.mocked(useControllerConnected).mockReturnValue(true);
+    checkRequirementsFromData.mockResolvedValue({ pass: true, verdict: 'satisfied', error: [] });
+    render(
+      <InteractiveModeContext.Provider value="controller">
+        <InteractiveConditional
+          id="remote-service"
+          conditions={['var-ready:true', 'exists-reftarget']}
+          refTarget="#live-service"
+          whenTrueChildren={[{ type: 'p', props: {}, children: ['Save remote service'] }]}
+          whenFalseChildren={[{ type: 'p', props: {}, children: ['Create remote service'] }]}
+          renderElement={(element, key) => <p key={key}>{element.children as string[]}</p>}
+          keyPrefix="remote"
+        />
+      </InteractiveModeContext.Provider>
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(checkRequirementsFromData).toHaveBeenCalledWith(
+      expect.objectContaining({ requirements: ['var-ready:true'] })
+    );
+    expect(requestRequirementCheck).toHaveBeenCalledWith('conditional-remote-service', ['exists-reftarget'], {
+      targetAction: 'conditional',
+      refTarget: '#live-service',
+      passive: true,
+    });
+    expect(screen.getByText('Save remote service')).toBeInTheDocument();
+    requestRequirementCheck.mockResolvedValue(null);
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(screen.getByText('Save remote service')).toBeInTheDocument();
+    expect(screen.queryByText('Create remote service')).not.toBeInTheDocument();
+  });
+
+  it.each(['unavailable', 'invalid'])('does not select the false branch for an %s check', async (verdict) => {
+    checkRequirementsFromData.mockResolvedValue({ pass: false, verdict, requirements: '', error: [] });
+    render(
+      <InteractiveConditional
+        conditions={['has-datasources']}
+        whenTrueChildren={[{ type: 'p', props: {}, children: ['Existing resource'] }]}
+        whenFalseChildren={[{ type: 'p', props: {}, children: ['Create resource'] }]}
+        renderElement={(element, key) => <p key={key}>{element.children as string[]}</p>}
+        keyPrefix="unavailable"
+      />
+    );
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(screen.queryByText('Create resource')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Unable to check');
+    checkRequirementsFromData.mockResolvedValue({ pass: true, verdict: 'satisfied', requirements: '', error: [] });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+    expect(screen.getByText('Existing resource')).toBeInTheDocument();
+    checkRequirementsFromData.mockRejectedValue(new Error('Temporary failure'));
+    await act(async () => {
+      window.dispatchEvent(new Event('guide-response-changed'));
+      jest.advanceTimersByTime(300);
+    });
+    expect(screen.getByText('Existing resource')).toBeInTheDocument();
+    expect(screen.queryByText('Create resource')).not.toBeInTheDocument();
+  });
 
   it('re-evaluates after a response change without an unrelated action', async () => {
     renderConditional(false);
@@ -625,6 +709,45 @@ describe('InteractiveConditional', () => {
     expect(getComputedStyle(passive).paddingLeft).toBe('calc(18px)');
   });
 
+  it('isolates section identity and acknowledgement across branches with identical conditions', async () => {
+    checkRequirementsFromData.mockResolvedValue({ pass: true, requirements: '', error: [] });
+    const { container } = render(
+      <>
+        {['first', 'second'].map((id) => (
+          <InteractiveConditional
+            key={id}
+            id={id}
+            conditions={['exists-reftarget']}
+            display="section"
+            whenTrueChildren={[{ type: 'p', props: {}, children: [] }]}
+            whenFalseChildren={[{ type: 'p', props: {}, children: [] }]}
+            renderElement={(_element, key) => <p key={key}>Branch content</p>}
+            keyPrefix={id}
+          />
+        ))}
+      </>
+    );
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    const first = container.querySelector('#section-conditional-first-true');
+    const second = container.querySelector('#section-conditional-second-true');
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Mark section as complete' })[0]!);
+    expect(first).toHaveClass('completed');
+    expect(second).not.toHaveClass('completed');
+    checkRequirementsFromData.mockResolvedValue({ pass: false, requirements: '', error: [] });
+    await act(async () => {
+      window.dispatchEvent(new Event('guide-response-changed'));
+      jest.advanceTimersByTime(300);
+    });
+    expect(container.querySelector('#section-conditional-first-true')).toHaveClass('completed');
+    expect(container.querySelector('#section-conditional-first-false')).toBeNull();
+    expect(container.querySelector('#section-conditional-second-false')).not.toHaveClass('completed');
+    expect(screen.getAllByRole('button', { name: 'Mark section as complete' })).toHaveLength(1);
+  });
+
   it('keeps section-display numbering separate from its outer position', async () => {
     checkRequirementsFromData.mockResolvedValue({ pass: true, requirements: '', error: [] });
     const { container } = render(
@@ -669,6 +792,8 @@ describe('InteractiveConditional', () => {
 describe('InteractiveConditional - DOM mutation reproduction', () => {
   beforeEach(() => {
     jest.useRealTimers();
+    jest.mocked(useControllerChannel).mockReturnValue(null);
+    jest.mocked(useControllerConnected).mockReturnValue(false);
     checkRequirementsFromData.mockReset();
     // Realistic check: actually query the DOM, mirroring reftargetExistsCheck.
     checkRequirementsFromData.mockImplementation(async (data: { refTarget?: string }) => {
@@ -680,6 +805,29 @@ describe('InteractiveConditional - DOM mutation reproduction', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+  });
+
+  it('reverses the selected branch when only a target attribute changes', async () => {
+    const input = document.createElement('input');
+    input.id = 'conditional-service';
+    input.setAttribute('value', '');
+    document.body.append(input);
+    render(
+      <InteractiveConditional
+        conditions={['exists-reftarget']}
+        refTarget="#conditional-service[value]:not([value=''])"
+        whenTrueChildren={[{ type: 'p', props: {}, children: ['Save service'] }]}
+        whenFalseChildren={[{ type: 'p', props: {}, children: ['Choose service'] }]}
+        renderElement={(element, key) => <p key={key}>{element.children as string[]}</p>}
+        keyPrefix="service-selection"
+      />
+    );
+    await screen.findByText('Choose service');
+    input.setAttribute('value', 'frontend');
+    await screen.findByText('Save service');
+    input.setAttribute('value', '');
+    await screen.findByText('Choose service');
+    expect(screen.queryByText('Save service')).not.toBeInTheDocument();
   });
 
   it('renders whenTrue branch when target element is injected post-mount', async () => {
@@ -737,7 +885,10 @@ describe('InteractiveConditional - DOM mutation reproduction', () => {
     ) {
       // Component observer: targets document.body with childList + subtree.
       const isOurObserver =
-        target === document.body && options?.childList === true && options?.subtree === true && !options?.attributes;
+        target === document.body &&
+        options?.childList === true &&
+        options?.subtree === true &&
+        options?.attributes === true;
       if (isOurObserver && options) {
         observeCalls.push(options);
         // Tag so we can recognise disconnect from the same instance.

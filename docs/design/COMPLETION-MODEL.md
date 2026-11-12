@@ -157,6 +157,14 @@ is why the worry about an understated KPI is not hypothetical.
 
 ## Decision records
 
+### Conditional workflow completion
+
+Conditional blocks retain one published position each. The runtime additionally records which branch is active and its tracked step IDs and nested conditional IDs. For a conditional containing interactive work in either authored branch, automatic guide completion waits for the selected branch to resolve and all of its active tracked steps to have completion evidence. Completing one branch child does not satisfy its remaining siblings. Unresolved nested branches also hold completion. Conditional workflows are completion targets even when every action is nested, so trailing prose does not delay completion after the final action, and scrolling to the end cannot complete their work.
+
+The completion store applies this gate before producing a terminal percentage. For ordinary guides it caps progress before the first unfinished conditional. Choice guides apply the gate only to conditional positions on the active, unmarked choice path. Explicit guide completion remains authoritative. Branch registration is scoped by content key and is republished after index eviction; inactive step evidence remains available when a branch returns.
+
+This extends the historical position-based rule below without changing published denominators or requiring guide JSON migration. Unfinished branch visibility follows live application state. Completed branches retain their selection until reset, using their stored completion evidence; navigation away from a finished workflow cannot replace it with fallback instructions. Selection is also held during action execution so navigation triggered by Save cannot unmount the step before its completion is recorded.
+
 ### Decision 1 — guide progress is completed interactive steps over total block count
 
 **Decision.** The denominator is the guide's total block count, per the counting

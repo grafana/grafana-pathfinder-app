@@ -342,7 +342,15 @@ export interface CountedBlock {
  * Total plus per-block positions. The total alone would let a consumer
  * recompute positions and drift; this carries both so it never has to.
  */
+function containsCompletableWork(block: CountableBlock): boolean {
+  return (
+    emitsCompletionEvidence(block) ||
+    [...(block.blocks ?? []), ...(block.whenTrue ?? []), ...(block.whenFalse ?? [])].some(containsCompletableWork)
+  );
+}
+
 export interface GuideBlockIndex {
+  conditionalPositions?: ReadonlyMap<string, number>;
   /** The completion denominator. */
   totalBlockCount: number;
   /** Counted blocks in document order; `blocks[i].position === i + 1`. */
@@ -409,6 +417,7 @@ export function computeGuideBlockIndex(
   options?: BlockIndexOptions
 ): GuideBlockIndex {
   const counted: CountedBlock[] = [];
+  const conditionalPositions = new Map<string, number>();
   const positionsById = new Map<string, number>();
   const positionsByStepId = new Map<string, number>();
   const containerEndPositions = new Map<string, number>();
@@ -488,6 +497,9 @@ export function computeGuideBlockIndex(
 
       const completable = emitsCompletionEvidence(block);
       const position = counted.length + 1;
+      if (block.type === 'conditional' && containsCompletableWork(block)) {
+        conditionalPositions.set(block.id ?? blockJsonPath, position);
+      }
       counted.push({ position, type: block.type, ...(block.id ? { id: block.id } : {}), path, completable });
       if (typeof block.id === 'string' && block.id.length > 0 && !positionsById.has(block.id)) {
         positionsById.set(block.id, position);
@@ -527,6 +539,7 @@ export function computeGuideBlockIndex(
   visit(blocks, [], STANDALONE_PARENT_ID, 'blocks', false, false);
 
   return {
+    conditionalPositions,
     totalBlockCount: counted.length,
     blocks: counted,
     positionsById,

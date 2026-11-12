@@ -23,7 +23,7 @@ import {
 import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
-import { publishGuideIndex } from './active-guide-index';
+import { publishGuideIndex, setGuideConditionalBranch } from './active-guide-index';
 import { computeGuideBlockIndex, type CountableBlock } from '../lib/guide-stats';
 import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 
@@ -1182,4 +1182,47 @@ describe('sectionHasChangeCompletion', () => {
     expect(sectionHasChangeCompletion(contentKey, sectionId)).toBe(false);
     expect(sectionHasChangeCompletion(otherKey, sectionId)).toBe(true);
   });
+});
+
+it('does not record completion at Open Labels or fill before the conditional Save', () => {
+  const contentKey = '/conditional-save';
+  setActiveTabUrl(contentKey);
+  const index = computeGuideBlockIndex(
+    [
+      { type: 'interactive', id: 'open-labels' },
+      {
+        type: 'conditional',
+        id: 'labels',
+        whenTrue: [
+          { type: 'interactive', id: 'fill' },
+          { type: 'interactive', id: 'save' },
+        ],
+      },
+    ],
+    { resolveStepId: (block) => block.id }
+  );
+  publishGuideIndex({ contentKey, index, denominatorSource: 'live-pre-inlining' });
+  markStepCompleted('open-labels', 'section-labels', 'manual');
+  expect(peekGuidePercentage(contentKey)).toBeLessThan(100);
+  setGuideConditionalBranch(contentKey, 'labels', { stepIds: ['fill', 'save'], nestedConditionalIds: [] });
+  markStepCompleted('fill', 'section-labels', 'manual');
+  expect(peekGuidePercentage(contentKey)).toBeLessThan(100);
+  markStepCompleted('save', 'section-labels', 'manual');
+  expect(peekGuidePercentage(contentKey)).toBe(100);
+  resetSection('section-labels');
+  expect(peekGuidePercentage(contentKey)).toBeLessThan(100);
+});
+
+it('completes conditional-only actions before trailing prose', () => {
+  const contentKey = '/conditional-only';
+  setActiveTabUrl(contentKey);
+  const index = computeGuideBlockIndex(
+    [{ type: 'conditional', id: 'workflow', whenTrue: [{ type: 'interactive', id: 'save' }] }, { type: 'markdown' }],
+    { resolveStepId: (block) => block.id }
+  );
+  publishGuideIndex({ contentKey, index, denominatorSource: 'live-pre-inlining' });
+  setGuideConditionalBranch(contentKey, 'workflow', { stepIds: ['save'], nestedConditionalIds: [] });
+  expect(peekGuidePercentage(contentKey)).toBe(0);
+  markStepCompleted('save', 'section-workflow', 'manual');
+  expect(peekGuidePercentage(contentKey)).toBe(100);
 });

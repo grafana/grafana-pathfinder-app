@@ -105,6 +105,19 @@ function activePositions(
   );
 }
 
+export function activeUnmarkedChoicePositions(
+  model: ChoiceProgressModel,
+  responses: Responses,
+  hiddenSections: ReadonlySet<string>,
+  markedKeys: readonly string[]
+): ReadonlySet<number> {
+  return new Set(
+    activePositions(model, responses, hiddenSections)
+      .filter((item) => !markedKeys.includes(item.key))
+      .map((item) => item.position)
+  );
+}
+
 export function choicePathCompletionKeys(
   model: ChoiceProgressModel,
   responses: Responses,

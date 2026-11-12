@@ -1,4 +1,29 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { GuideContentKeyContext } from './guide-content-key-context';
+import { getContentKey } from '../../global-state/content-key';
+import {
+  setGuideConditionalBranch,
+  subscribeGuideIndexEvictions,
+  getGuideIndexEvictionRevision,
+} from '../../global-state/active-guide-index';
+import { collectGuideCompletionEvidence, refreshGuidePercentageOnLoad } from '../../global-state/completion-store';
+import { completedParsedBranch } from './conditional-branch-completion';
+import { STEP_TYPE_PARSE_KEYS } from './step-type-registry';
+import { ConditionalExecutionContext, SectionBranchContext } from './section-branch-context';
+import { useInteractiveMode } from '../../global-state/interactive-mode-context';
+import { useControllerChannel, useControllerConnected } from '../../global-state/controller-channel';
+import { splitGuideScopedRequirements } from '../../requirements-manager';
+import { conditionTokens } from '../../lib/condition-input';
+import { Button } from '@grafana/ui';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  useContext,
+  useLayoutEffect,
+  useSyncExternalStore,
+} from 'react';
 import { useInteractiveElements } from '../../interactive-engine';
 import type { ParsedElement } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
@@ -10,6 +35,7 @@ import { logger } from '../../lib/logging';
 import { shouldNumberSectionChild } from './section-numbering';
 
 export interface InteractiveConditionalProps {
+  id?: string;
   conditions: string[];
   description?: string;
   display?: ConditionalDisplayMode;
@@ -98,6 +124,7 @@ function inspectRenderedDom(nodes: NodeListOf<ChildNode>): RenderedDomState {
 }
 
 export function InteractiveConditional({
+  id,
   conditions,
   description,
   display = 'inline',
@@ -109,12 +136,42 @@ export function InteractiveConditional({
   renderElement,
   keyPrefix,
 }: InteractiveConditionalProps) {
+  const resolveOwnerContentKey = useContext(GuideContentKeyContext);
+  const indexRevision = useSyncExternalStore(
+    subscribeGuideIndexEvictions,
+    getGuideIndexEvictionRevision,
+    getGuideIndexEvictionRevision
+  );
+  const parentSection = useContext(SectionBranchContext);
+  const reportParentExecution = useContext(ConditionalExecutionContext);
+  const executingTokens = useRef(new Set<object>());
+  const selectedBranchRef = useRef<boolean | null>(null);
+  const completedSelection = useCallback((): boolean | null => {
+    const evidence = collectGuideCompletionEvidence(resolveOwnerContentKey?.() ?? getContentKey());
+    const complete = (branch: boolean) =>
+      completedParsedBranch(branch ? whenTrueChildren : whenFalseChildren, evidence) ||
+      evidence.some(
+        (item) =>
+          item.kind === 'mark-section-complete' &&
+          item.blockId === `section-conditional-${id ?? keyPrefix}-${branch ? 'true' : 'false'}`
+      );
+    const selected = selectedBranchRef.current;
+    if (selected !== null) {
+      return complete(selected) ? selected : null;
+    }
+    return complete(true) ? true : complete(false) ? false : null;
+  }, [resolveOwnerContentKey, whenTrueChildren, whenFalseChildren, id, keyPrefix]);
+  const registerBranch = display === 'inline' ? parentSection?.register : undefined;
+  const branchOwnerId = id ?? keyPrefix;
   const [conditionsPassed, setConditionsPassed] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
   const [hasOccupiedNumberingSlot, setHasOccupiedNumberingSlot] = useState(false);
   const [emptyRenderToken, setEmptyRenderToken] = useState<object | null>(null);
   const conditionalWrapperRef = useRef<HTMLDivElement>(null);
   const { checkRequirementsFromData } = useInteractiveElements();
+  const mode = useInteractiveMode();
+  const channel = useControllerChannel();
+  const connected = useControllerConnected();
 
   // Stable string identity for `conditions`. The parent passes a fresh array
   // on every render (parsed from JSON), so keying effects off the array would
@@ -156,6 +213,17 @@ export function InteractiveConditional({
         return;
       }
 
+      const completed = completedSelection();
+      if (completed !== null) {
+        selectedBranchRef.current = completed;
+        setConditionsPassed(completed);
+        setIsChecking(false);
+        return;
+      }
+      if (executingTokens.current.size > 0) {
+        return;
+      }
+
       // Only block the UI with a spinner on the first evaluation. Re-checks keep the
       // current branch mounted so steps can appear without a full content refresh.
       if (!options?.isReevaluation) {
@@ -175,40 +243,119 @@ export function InteractiveConditional({
           tagName: 'div',
         };
 
-        const result = await checkRequirementsFromData(requirementData);
+        const check = async () => {
+          if (mode !== 'controller') {
+            return checkRequirementsFromData(requirementData);
+          }
+          const { guideScoped, remaining } = splitGuideScopedRequirements(requirements);
+          if (conditionTokens(guideScoped).length) {
+            const local = await checkRequirementsFromData({
+              ...requirementData,
+              requirements: guideScoped,
+            });
+            if (!local.pass) {
+              return local;
+            }
+          }
+          if (!conditionTokens(remaining).length) {
+            return { pass: true, verdict: 'satisfied' as const };
+          }
+          if (!channel || !connected) {
+            return { pass: false, verdict: 'unavailable' as const };
+          }
+          return (
+            (await channel.requestRequirementCheck(`conditional-${id ?? keyPrefix}`, remaining, {
+              targetAction: 'conditional',
+              refTarget: requirementData.refTarget,
+              passive: true,
+            })) ?? { pass: false, verdict: 'unavailable' as const }
+          );
+        };
+        const result = await check();
 
         // Drop the result if a newer run has started after we awaited - prevents
         // a stale "false" landing after a fresh "true" (and vice versa).
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
-        setConditionsPassed(result.pass);
+        const completed = completedSelection();
+        if (executingTokens.current.size > 0) {
+          return;
+        }
+        if (completed !== null || (result.verdict !== 'unavailable' && result.verdict !== 'invalid')) {
+          const selected = completed ?? result.pass;
+          selectedBranchRef.current = selected;
+          setConditionsPassed(selected);
+        }
         setIsChecking(false);
       } catch (error) {
         logger.warn('Failed to evaluate conditional conditions', { error });
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
-        setConditionsPassed(false);
         setIsChecking(false);
       }
     },
-    [requirements, checkRequirementsFromData, description, refTarget]
+    [
+      requirements,
+      checkRequirementsFromData,
+      description,
+      refTarget,
+      mode,
+      channel,
+      connected,
+      id,
+      keyPrefix,
+      completedSelection,
+    ]
   );
 
-  const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
+  const needsDomWatch = mode !== 'controller' && conditionsKeyNeedsDomWatch(conditionsKey);
 
   const childrenToRender = useMemo(
     () => (conditionsPassed === null ? [] : conditionsPassed ? whenTrueChildren : whenFalseChildren),
     [conditionsPassed, whenFalseChildren, whenTrueChildren]
   );
+  useLayoutEffect(() => {
+    const contentKey = resolveOwnerContentKey?.() ?? getContentKey();
+    const stepIds: string[] = [];
+    const nestedConditionalIds: string[] = [];
+    const visit = (elements: ParsedElement[]) => {
+      for (const element of elements) {
+        if (element.type === 'interactive-conditional') {
+          nestedConditionalIds.push(element.props.id);
+        } else if ((STEP_TYPE_PARSE_KEYS as readonly string[]).includes(element.type)) {
+          if (typeof element.props.stepId === 'string') {
+            stepIds.push(element.props.stepId);
+          }
+        } else {
+          visit(element.children.filter((child): child is ParsedElement => typeof child !== 'string'));
+        }
+      }
+    };
+    visit(childrenToRender);
+    setGuideConditionalBranch(
+      contentKey,
+      branchOwnerId,
+      conditionsPassed === null ? undefined : { stepIds, nestedConditionalIds }
+    );
+    refreshGuidePercentageOnLoad(contentKey);
+    return () => setGuideConditionalBranch(contentKey, branchOwnerId, undefined);
+  }, [resolveOwnerContentKey, branchOwnerId, conditionsPassed, childrenToRender, indexRevision]);
+
   const sectionConfig =
     conditionsPassed === null ? undefined : conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
   const branchKey = conditionsPassed ? 'true' : 'false';
-  const renderedChildren =
-    conditionsPassed === null
-      ? []
-      : childrenToRender.map((child, index) => renderElement(child, `${keyPrefix}-${branchKey}-${index}`));
+  const branchSectionId = `conditional-${id ?? keyPrefix}-${branchKey}`;
+  const rawChildren = useMemo(
+    () => childrenToRender.map((child, index) => renderElement(child, `${keyPrefix}-${branchKey}-${index}`)),
+    [childrenToRender, renderElement, keyPrefix, branchKey]
+  );
+  useLayoutEffect(() => {
+    registerBranch?.(branchOwnerId, conditionsPassed === null ? undefined : rawChildren);
+    return () => registerBranch?.(branchOwnerId, undefined);
+  }, [registerBranch, branchOwnerId, conditionsPassed, rawChildren]);
+  const renderedChildren = display === 'inline' && parentSection ? rawChildren.map(parentSection.enhance) : rawChildren;
   const hasRenderableChildren = renderedChildren.some(hasRenderableNode);
   // A later authoring update must be allowed to remount a branch previously
   // observed as empty, even when the condition verdict itself did not change.
@@ -251,9 +398,48 @@ export function InteractiveConditional({
   // having to include it in their dep arrays, which would tear down and
   // re-attach the subscription on every parent render.
   const evaluateRef = useRef(evaluateConditions);
+  const reportExecution = useCallback(
+    (token: object, executing: boolean) => {
+      if (executing) {
+        executingTokens.current.add(token);
+      } else {
+        executingTokens.current.delete(token);
+        void evaluateRef.current({ isReevaluation: true });
+      }
+      reportParentExecution?.(token, executing);
+    },
+    [reportParentExecution]
+  );
   useEffect(() => {
     evaluateRef.current = evaluateConditions;
   }, [evaluateConditions]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => void evaluateConditions({ isReevaluation: true }), 0);
+    return () => {
+      clearTimeout(timer);
+      runIdRef.current += 1;
+    };
+  }, [evaluateConditions]);
+
+  useEffect(() => {
+    if (mode !== 'controller' || !connected) {
+      return;
+    }
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await evaluateRef.current({ isReevaluation: true });
+      if (active) {
+        timer = setTimeout(() => void poll(), 5000);
+      }
+    };
+    timer = setTimeout(() => void poll(), 5000);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [mode, connected]);
 
   const scheduleReevaluation = useCallback(() => {
     if (reevalTimerRef.current) {
@@ -267,11 +453,6 @@ export function InteractiveConditional({
   }, [needsDomWatch]);
 
   useEffect(() => {
-    // Initial evaluation (deferred to avoid synchronous setState in effect)
-    const initialCheckTimeout = setTimeout(() => {
-      evaluateRef.current();
-    }, 0);
-
     const handleDataSourcesChanged = () => {
       scheduleReevaluation();
     };
@@ -296,7 +477,7 @@ export function InteractiveConditional({
     // `interactive-step-completed` event: step finishes → re-evaluate
     // exists-reftarget conditions.
     const unsubscribeProgress = subscribeProgressEvent((detail) => {
-      if (detail.kind === 'step' && detail.completed) {
+      if (detail.kind !== 'guide') {
         scheduleReevaluation();
       }
     });
@@ -304,13 +485,15 @@ export function InteractiveConditional({
     window.addEventListener('datasources-changed', handleDataSourcesChanged);
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
+    window.addEventListener('hashchange', handleLocationChanged);
+    document.addEventListener('input', handleActionCompleted);
+    document.addEventListener('change', handleActionCompleted);
     window.addEventListener('guide-response-changed', handleActionCompleted);
     window.addEventListener('interactive-action-completed', handleActionCompleted);
     document.addEventListener('interactive-action-completed', handleActionCompleted);
 
     // REACT: cleanup subscriptions (R1)
     return () => {
-      clearTimeout(initialCheckTimeout);
       if (reevalTimerRef.current) {
         clearTimeout(reevalTimerRef.current);
         reevalTimerRef.current = undefined;
@@ -319,17 +502,15 @@ export function InteractiveConditional({
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
+      window.removeEventListener('hashchange', handleLocationChanged);
+      document.removeEventListener('input', handleActionCompleted);
+      document.removeEventListener('change', handleActionCompleted);
       window.removeEventListener('guide-response-changed', handleActionCompleted);
       window.removeEventListener('interactive-action-completed', handleActionCompleted);
       document.removeEventListener('interactive-action-completed', handleActionCompleted);
     };
   }, [scheduleReevaluation]);
 
-  // exists-reftarget: re-check when Grafana portals/pickers inject new nodes (e.g. viz picker tabs).
-  // We watch only structural changes (childList + subtree) - attribute churn from panel re-renders
-  // is the noisy part and element-existence transitions are childList events anyway.
-  // Depends only on `needsDomWatch` (effectively a one-shot boolean per conditional) - the latest
-  // evaluator is reached via `evaluateRef` so re-renders never tear down the observer.
   useEffect(() => {
     if (!needsDomWatch) {
       return;
@@ -337,11 +518,16 @@ export function InteractiveConditional({
 
     let debounceId: ReturnType<typeof setTimeout> | undefined;
 
-    const observer = new MutationObserver(() => {
-      if (debounceId) {
-        clearTimeout(debounceId);
+    const observer = new MutationObserver((mutations) => {
+      const externalChange = mutations.some(({ target }) => {
+        const element = target instanceof Element ? target : target.parentElement;
+        return !element?.closest('.interactive-conditional');
+      });
+      if (!externalChange || debounceId !== undefined) {
+        return;
       }
       debounceId = setTimeout(() => {
+        debounceId = undefined;
         evaluateRef.current({ isReevaluation: true });
       }, 200);
     });
@@ -349,6 +535,8 @@ export function InteractiveConditional({
     observer.observe(document.body, {
       childList: true,
       subtree: true,
+      attributes: true,
+      characterData: true,
     });
 
     return () => {
@@ -359,12 +547,23 @@ export function InteractiveConditional({
     };
   }, [needsDomWatch]);
 
-  if (isChecking && conditionsPassed === null) {
+  if (conditionsPassed === null) {
     return (
       <div className="interactive-conditional loading" data-testid={testIds.interactive.conditional(conditionalId)}>
         <div className="interactive-conditional-loading">
-          <span className="interactive-conditional-spinner spinning">⟳</span>
-          <span className="interactive-conditional-loading-text">Checking conditions...</span>
+          {isChecking ? (
+            <>
+              <span className="interactive-conditional-spinner spinning">⟳</span>
+              <span className="interactive-conditional-loading-text">Checking conditions...</span>
+            </>
+          ) : (
+            <>
+              <span role="status">Unable to check which instructions apply.</span>
+              <Button size="sm" variant="secondary" onClick={() => void evaluateConditions()}>
+                Retry
+              </Button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -418,14 +617,17 @@ export function InteractiveConditional({
         data-section-numbering-retained={isRetainedNumberingState ? 'true' : undefined}
       >
         <InteractiveSection
+          key={branchSectionId}
           title={sectionTitle}
-          id={`conditional-${conditionalId}-${conditionsPassed ? 'true' : 'false'}`}
+          id={branchSectionId}
           isSequence={true}
           requirements={sectionRequirements}
           objectives={sectionObjectives}
           className="conditional-section"
         >
-          {renderedChildren}
+          <ConditionalExecutionContext.Provider value={reportExecution}>
+            {renderedChildren}
+          </ConditionalExecutionContext.Provider>
         </InteractiveSection>
       </div>
     );
@@ -443,7 +645,9 @@ export function InteractiveConditional({
       data-section-numbering-empty={isEmptyNumberingState ? 'true' : undefined}
       data-section-numbering-retained={isRetainedNumberingState ? 'true' : undefined}
     >
-      {alignedChildren}
+      <ConditionalExecutionContext.Provider value={reportExecution}>
+        {alignedChildren}
+      </ConditionalExecutionContext.Provider>
     </div>
   );
 }

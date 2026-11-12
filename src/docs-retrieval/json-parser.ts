@@ -659,6 +659,7 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
     element: {
       type: 'interactive-conditional',
       props: {
+        id: block.id ?? path,
         conditions: block.conditions,
         description: block.description,
         display: block.display ?? 'inline',

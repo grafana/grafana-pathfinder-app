@@ -456,7 +456,7 @@ Hides its nested blocks behind a toggle. Use it to gate solutions or example out
 
 #### Conditional Block
 
-Shows different content based on runtime condition evaluation. Conditions use the same syntax as requirements (e.g., `has-datasource:prometheus`, `is-admin`). When ALL conditions pass, the `whenTrue` branch is shown; otherwise, the `whenFalse` branch is shown.
+Shows different content based on runtime condition evaluation. Conditions use the same syntax as requirements (e.g., `has-datasource:prometheus`, `is-admin`). When ALL conditions pass, the `whenTrue` branch is shown; a confirmed failed condition selects `whenFalse`. An unavailable or invalid check does not select a new branch: the last confirmed branch stays visible, or a retry control appears if no branch has resolved yet.
 
 ```json
 {
@@ -500,6 +500,10 @@ Shows different content based on runtime condition evaluation. Conditions use th
 | --------- | ------------------------------------------------------------------------ |
 | `inline`  | Content renders directly without wrapper (default)                       |
 | `section` | Content wrapped with section styling, collapse controls, and "Do" button |
+
+Within a section, active inline branch steps participate in the section's sequence, resume, and reset. Switching a branch preserves previously completed steps and cancels any section run that was using the old branch. Give each conditional a unique `id`; section-display branches use it to keep their state separate.
+
+Conditions describe current state, not a saved outcome. Use step `objectives` or `verify` to establish outcomes such as a saved configuration. A selector disappearing after navigation does not prove that a save succeeded. Keep page-readiness checks separate from resource-existence checks when absence on the wrong page would be misleading.
 
 **Section Display Mode:**
 
