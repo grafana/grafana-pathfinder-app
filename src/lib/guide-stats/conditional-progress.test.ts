@@ -1,4 +1,8 @@
-import { conditionalWorkComplete, type ActiveConditionalBranch } from './conditional-progress';
+import {
+  conditionalBranchesReady,
+  conditionalWorkComplete,
+  type ActiveConditionalBranch,
+} from './conditional-progress';
 import { computeGuideBlockIndex } from './block-index';
 
 it('requires a settled branch and every active action, including save', () => {
@@ -32,4 +36,14 @@ it('indexes conditional work without changing published block positions', () => 
   ]);
   expect(index.totalBlockCount).toBe(3);
   expect([...index.conditionalPositions!]).toEqual([['labels', 2]]);
+});
+
+it('waits for all active nested branches to register without waiting for their work to complete', () => {
+  const branches = new Map<string, ActiveConditionalBranch>([
+    ['outer', { stepIds: ['save'], nestedConditionalIds: ['inner'] }],
+  ]);
+  expect(conditionalBranchesReady(['outer'], branches)).toBe(false);
+  branches.set('inner', { stepIds: ['fill'], nestedConditionalIds: [] });
+  expect(conditionalBranchesReady(['outer'], branches)).toBe(true);
+  expect(conditionalWorkComplete(['outer'], branches, [])).toBe(false);
 });

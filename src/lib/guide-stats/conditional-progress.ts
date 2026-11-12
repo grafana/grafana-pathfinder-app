@@ -38,3 +38,21 @@ export function withConditionalCompletionTargets(index: GuideBlockIndex): GuideB
     finalCompletablePosition: Math.max(index.finalCompletablePosition, ...positions),
   };
 }
+
+export function conditionalBranchesReady(
+  roots: Iterable<string>,
+  branches: ReadonlyMap<string, ActiveConditionalBranch>
+): boolean {
+  const visiting = new Set<string>();
+  const ready = (id: string): boolean => {
+    const branch = branches.get(id);
+    if (!branch || visiting.has(id)) {
+      return false;
+    }
+    visiting.add(id);
+    const result = branch.nestedConditionalIds.every(ready);
+    visiting.delete(id);
+    return result;
+  };
+  return Array.from(roots).every(ready);
+}

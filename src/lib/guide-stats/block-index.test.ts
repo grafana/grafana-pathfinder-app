@@ -692,3 +692,18 @@ describe('branchChildPositions', () => {
     expect(index.totalBlockCount).toBe(3);
   });
 });
+
+it('omits shifted anonymous conditional paths inside named sections while retaining explicit conditional ids', () => {
+  const index = computeGuideBlockIndex([
+    { type: 'snippet-ref' },
+    {
+      type: 'section',
+      id: 'named',
+      blocks: [
+        { type: 'conditional', whenTrue: [interactive('save')] },
+        { type: 'conditional', id: 'stable', whenTrue: [interactive('save-stable')] },
+      ],
+    },
+  ]);
+  expect([...index.conditionalPositions!]).toEqual([['stable', 3]]);
+});

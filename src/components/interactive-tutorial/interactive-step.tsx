@@ -237,7 +237,7 @@ export const InteractiveStep = forwardRef<
     const controllerChannel = useControllerChannel();
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
-    useReportExecuting(isShowRunning || isDoRunning, onExecutingChange);
+    useReportExecuting(isShowRunning || isDoRunning || isCurrentlyExecuting, onExecutingChange);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);

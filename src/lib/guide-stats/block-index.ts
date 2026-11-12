@@ -497,7 +497,11 @@ export function computeGuideBlockIndex(
 
       const completable = emitsCompletionEvidence(block);
       const position = counted.length + 1;
-      if (block.type === 'conditional' && containsCompletableWork(block)) {
+      if (
+        block.type === 'conditional' &&
+        containsCompletableWork(block) &&
+        (block.id || (!jsonPathShifted && !sawSnippetRefSibling))
+      ) {
         conditionalPositions.set(block.id ?? blockJsonPath, position);
       }
       counted.push({ position, type: block.type, ...(block.id ? { id: block.id } : {}), path, completable });

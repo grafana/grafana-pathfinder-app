@@ -1,4 +1,8 @@
-import { conditionalWorkComplete, withConditionalCompletionTargets } from '../lib/guide-stats/conditional-progress';
+import {
+  conditionalBranchesReady,
+  conditionalWorkComplete,
+  withConditionalCompletionTargets,
+} from '../lib/guide-stats/conditional-progress';
 import { bundledTutorialContentKey, isBundledTutorial } from '../lib/bundled-tutorial-identity';
 /**
  * Step completion store.
@@ -391,9 +395,19 @@ function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
         ? (active.previewChoiceCompletionKeys ?? [])
         : guideCompletionMarkStorage.getChoiceCompletionKeys(contentKey)
     );
-    const unfinished = Array.from(active.index.conditionalPositions ?? []).some(
-      ([id, position]) =>
-        activePositions.has(position) &&
+    const activeConditionals = Array.from(active.index.conditionalPositions ?? []).filter(([, position]) =>
+      activePositions.has(position)
+    );
+    if (
+      !conditionalBranchesReady(
+        activeConditionals.map(([id]) => id),
+        getGuideConditionalBranches(contentKey)
+      )
+    ) {
+      return undefined;
+    }
+    const unfinished = activeConditionals.some(
+      ([id]) =>
         !conditionalWorkComplete(
           [id],
           getGuideConditionalBranches(contentKey),
@@ -410,6 +424,11 @@ function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
     return { percent: 100, complete: true, evidenced: true };
   }
   if (!active) {
+    return undefined;
+  }
+  if (
+    !conditionalBranchesReady(active.index.conditionalPositions?.keys() ?? [], getGuideConditionalBranches(contentKey))
+  ) {
     return undefined;
   }
   const evidence = collectGuideCompletionEvidence(contentKey);
@@ -716,11 +735,19 @@ export function resetStep(stepId: string, sectionId: string | undefined = STANDA
  * `refreshGuidePercentage` writes from, so every reader of the percentage
  * agrees: the completion store is the sole producer. 0 before the guide's
  * frozen index has published for this content key, or for content with no
- * countable blocks at all.
+ * countable blocks at all. Ordinary conditional guides retain their stored
+ * percentage until the active branches register.
  */
 export function peekGuidePercentage(contentKey: string): number {
   contentKey = bundledTutorialContentKey(contentKey);
-  return computeGuideProgress(contentKey)?.percent ?? 0;
+  const progress = computeGuideProgress(contentKey);
+  if (progress) {
+    return progress.percent;
+  }
+  const active = getGuideIndex(contentKey);
+  return active?.index.conditionalPositions?.size && !active.choiceModel
+    ? (interactiveCompletionStorage.peekAll()[contentKey] ?? 0)
+    : 0;
 }
 
 /**
