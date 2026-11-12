@@ -6,6 +6,8 @@ interface WorkflowAction {
 }
 
 export const CLOUD_TOKEN_OBJECTIVE = 'workflow-ready:cloud-access-policy-token';
+export const CLOUD_TOKEN_INCOMPLETE_MESSAGE =
+  'Finish creating the token. If creation failed, resolve the error shown in the token form.';
 
 const tokenNameTargets = new Set(['#tokenName', '[data-testid="generate-token-name-input"]']);
 const tokenSubmitTarget = '[data-testid="generate-token-submit-button"]';

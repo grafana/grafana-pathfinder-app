@@ -1,5 +1,5 @@
 import { isPathfinderContent } from '../../lib/dom';
-import { CLOUD_TOKEN_OBJECTIVE } from '../../lib/workflow-objectives';
+import { CLOUD_TOKEN_OBJECTIVE, CLOUD_TOKEN_INCOMPLETE_MESSAGE } from '../../lib/workflow-objectives';
 import type { CheckResultError } from '../../types/requirements.types';
 
 function isVisible(element: HTMLElement): boolean {
@@ -43,8 +43,6 @@ export async function workflowReadyCheck(requirement: string): Promise<CheckResu
     requirement,
     pass,
     verdict: pass ? 'satisfied' : 'unsatisfied',
-    error: pass
-      ? undefined
-      : 'Finish creating the token. If creation failed, resolve the error shown in the token form.',
+    error: pass ? undefined : CLOUD_TOKEN_INCOMPLETE_MESSAGE,
   };
 }

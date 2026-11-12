@@ -15,6 +15,7 @@
 
 import { FixedRequirementType, ParameterizedRequirementPrefix } from '../types/requirements.types';
 import type { JsonGuide, JsonBlock, JsonStep } from '../types/json-guide.types';
+import { CLOUD_TOKEN_OBJECTIVE } from '../lib/workflow-objectives';
 import { assertExhaustive } from '../lib/assert-exhaustive';
 
 // Maximum number of comma-separated components in a single condition string
@@ -119,7 +120,7 @@ function validateArgumentFormat(
 ): ConditionIssue | null {
   switch (prefix) {
     case ParameterizedRequirementPrefix.WORKFLOW_READY:
-      if (argument !== 'cloud-access-policy-token') {
+      if (fullCondition !== CLOUD_TOKEN_OBJECTIVE) {
         return {
           condition: fullCondition,
           message: 'Unsupported workflow state check',

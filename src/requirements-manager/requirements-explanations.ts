@@ -1,3 +1,5 @@
+import { CLOUD_TOKEN_OBJECTIVE, CLOUD_TOKEN_INCOMPLETE_MESSAGE } from '../lib/workflow-objectives';
+
 /**
  * Shared utility functions for requirement explanations
  * Used across the interactive requirements system
@@ -9,8 +11,7 @@
  */
 export function mapRequirementToUserFriendlyMessage(requirement: string): string {
   const requirementMappings: Record<string, string> = {
-    'workflow-ready:cloud-access-policy-token':
-      'Finish creating the token. If creation failed, resolve the error shown in the token form.',
+    [CLOUD_TOKEN_OBJECTIVE]: CLOUD_TOKEN_INCOMPLETE_MESSAGE,
 
     // Navigation requirements
     'navmenu-open':

@@ -966,8 +966,23 @@ it('does not add a token objective to an ordinary action-based step', async () =
     });
     expect(mockCheck).not.toHaveBeenCalled();
     expect(done).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Assist'));
-    expect(done).toHaveBeenCalledTimes(1);
+    const first = document.createElement('button');
+    first.id = 'first';
+    const last = document.createElement('button');
+    last.id = 'last';
+    document.body.append(first, last);
+    try {
+      await act(async () => {
+        fireEvent.click(first);
+        fireEvent.click(last);
+        await jest.advanceTimersByTimeAsync(300);
+      });
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(mockCheck).not.toHaveBeenCalled();
+    } finally {
+      first.remove();
+      last.remove();
+    }
   } finally {
     view.unmount();
     success.remove();

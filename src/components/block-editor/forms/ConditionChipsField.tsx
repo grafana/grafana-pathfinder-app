@@ -61,12 +61,14 @@ const PICKER_OPTIONS: PickerOption[] = [
     description: REQUIREMENT_DESCRIPTIONS[token] ?? '',
     isPrefix: false,
   })),
-  ...PARAMETERIZED_REQUIREMENT_PREFIXES.map((prefix): PickerOption => ({
-    value: prefix,
-    label: prefix,
-    description: REQUIREMENT_DESCRIPTIONS[prefix] ?? '',
-    isPrefix: true,
-  })),
+  ...PARAMETERIZED_REQUIREMENT_PREFIXES.filter((prefix) => prefix !== 'workflow-ready:').map(
+    (prefix): PickerOption => ({
+      value: prefix,
+      label: prefix,
+      description: REQUIREMENT_DESCRIPTIONS[prefix] ?? '',
+      isPrefix: true,
+    })
+  ),
 ];
 
 function tokensFromString(value: string): string[] {
@@ -103,10 +105,13 @@ export function ConditionChipsField({
   const styles = useStyles2(getStyles);
   const tokens = useMemo(() => tokensFromString(value), [value]);
   const choiceInputs = useChoiceInputs();
+  const modeOptions = PICKER_OPTIONS.filter(
+    (option) => mode !== 'requirements' || option.value !== CLOUD_TOKEN_OBJECTIVE
+  );
   const pickerOptions =
     choiceInputs.length > 0 && (mode === 'requirements' || mode === 'conditions')
-      ? [CHOICE_PICKER_OPTION, ...PICKER_OPTIONS]
-      : PICKER_OPTIONS;
+      ? [CHOICE_PICKER_OPTION, ...modeOptions]
+      : modeOptions;
   const choiceLabel = (token: string) => {
     const condition = parseChoiceRequirement(token);
     const input = choiceInputs.find((item) => item.variableName === condition?.variableName);

@@ -87,6 +87,8 @@ JSON guides using the shared Cloud access-policy token form need no additional c
 
 The runtime checks the shared component's API-success marker in its unique visible form. Creating the token before reaching the guide step, or resetting the guide while that form still shows success, completes the block without creating another token. Clicking Create token alone does not complete it: errors and loading remain incomplete. Success-marker insertion or removal schedules a recheck after a 50 ms debounce, including in a paired pop-out. Unrelated DOM changes do not trigger it, and the existing polling remains a fallback. The check reads no input values, token secrets, or success-message text, and makes no API requests.
 
+Contract checked against [GenerateToken.tsx](https://github.com/grafana/grafana-cloud/blob/36c7831ab28c3bd245e1d971f9050c51337a1fbe/packages/access-policies/src/components/AccessPolicies/GenerateToken.tsx): `GenerateTokenE2ESelectors` defines the name, submit and success test IDs; the input and success marker are children of the same Grafana `Form`; the marker renders only when `useGenerateTokenMutation` reports `isSuccess`. [TokensApi.ts](https://github.com/grafana/grafana-cloud/blob/36c7831ab28c3bd245e1d971f9050c51337a1fbe/packages/access-policies/src/api/TokensApi.ts) returns an error on failed creation and data only after token creation succeeds. Cached success can remain visible, so guide reset intentionally recognizes the existing success. This is source verification, not a live creation test. Recheck this contract when the upstream component changes; an absent marker leaves the objective incomplete.
+
 Explicit `objectives` override inference, including `objectives: []` to retain action-based completion. A standalone block's explicit `verify` also prevents inference. Mixed blocks that include unrelated actions are not inferred, and ordinary token-name entry or token-mode selection steps retain their existing behavior.
 
 To configure completion explicitly in the block editor, open the interactive, guided, or multistep block's **Objectives** field, select **Add condition**, choose **Cloud token created**, and select **Add**. No argument is required. This saves `workflow-ready:cloud-access-policy-token`; add an `on-page:` objective too if completion must be restricted to a specific page. For a mixed block, include objectives for its other required outcomes as well.
@@ -550,22 +552,23 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 
 ### Parameterized requirements
 
-| Requirement                          | Purpose                                                |
-| ------------------------------------ | ------------------------------------------------------ |
-| `on-page:<path>`                     | User is on a specific page                             |
-| `has-role:<role>`                    | User has a specific organizational role                |
-| `has-permission:<permission>`        | User has a specific Grafana permission                 |
-| `has-datasource:<identifier>`        | Specific data source exists (by name or type)          |
-| `datasource-configured:<identifier>` | Specific data source exists and passes connection test |
-| `has-plugin:<pluginId>`              | Specific plugin is installed                           |
-| `plugin-enabled:<pluginId>`          | Specific plugin is installed and enabled               |
-| `has-dashboard-named:<title>`        | Dashboard with specific title exists                   |
-| `has-feature:<toggle>`               | Feature toggle is enabled                              |
-| `in-environment:<env>`               | Running in a specific environment                      |
-| `min-version:<version>`              | Grafana version meets minimum requirement              |
-| `section-completed:<sectionId>`      | Another section has been completed                     |
-| `var-<name>:<value>`                 | Guide variable has expected value                      |
-| `renderer:<renderer>`                | Rendering context matches (`pathfinder` or `website`)  |
+| Requirement                                | Purpose                                                           |
+| ------------------------------------------ | ----------------------------------------------------------------- |
+| `on-page:<path>`                           | User is on a specific page                                        |
+| `has-role:<role>`                          | User has a specific organizational role                           |
+| `has-permission:<permission>`              | User has a specific Grafana permission                            |
+| `workflow-ready:cloud-access-policy-token` | Successful token creation in the unique visible shared Cloud form |
+| `has-datasource:<identifier>`              | Specific data source exists (by name or type)                     |
+| `datasource-configured:<identifier>`       | Specific data source exists and passes connection test            |
+| `has-plugin:<pluginId>`                    | Specific plugin is installed                                      |
+| `plugin-enabled:<pluginId>`                | Specific plugin is installed and enabled                          |
+| `has-dashboard-named:<title>`              | Dashboard with specific title exists                              |
+| `has-feature:<toggle>`                     | Feature toggle is enabled                                         |
+| `in-environment:<env>`                     | Running in a specific environment                                 |
+| `min-version:<version>`                    | Grafana version meets minimum requirement                         |
+| `section-completed:<sectionId>`            | Another section has been completed                                |
+| `var-<name>:<value>`                       | Guide variable has expected value                                 |
+| `renderer:<renderer>`                      | Rendering context matches (`pathfinder` or `website`)             |
 
 ## Error handling and user guidance
 

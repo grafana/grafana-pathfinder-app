@@ -679,6 +679,7 @@ function convertInteractiveBlock(
   stepContext?: StepContext
 ): ConversionResult {
   const targetAction = block.action ?? block.targetAction;
+  // Canonical lowercase fields take precedence over legacy camelCase aliases.
   const refTargetValue = block.reftarget ?? block.refTarget;
   const targetValue = block.targetvalue ?? block.targetValue;
   const targetState = block.targetstate ?? block.targetState;
@@ -786,6 +787,7 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
     lazyRender: step.lazyRender,
     scrollContainer: step.scrollContainer,
     requirements: step.requirements,
+    // Guided descriptions take precedence over legacy tooltips.
     targetComment: step.description
       ? markdownToHtml(step.description)
       : step.tooltip
