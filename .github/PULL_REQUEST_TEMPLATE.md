@@ -5,19 +5,42 @@ See CONTRIBUTING.md for the full guide.
 If you're an agent opening this PR, use the pr-summary skill instead of filling
 in this template by hand. It contains our style guide for what makes a good PR
 description.
+
+Match each section's depth to the weight of the change: a typo fix needs a
+Summary and little else. You may add optional "Reversibility" (when undoing the
+change is non-obvious) and "Out of scope" (for series PRs or deliberate
+omissions) sections.
 -->
 
-## What does this PR do?
+## Summary
 
-<!-- A short description of the change and, importantly, why it's needed. -->
+<!-- One to three sentences: the behavior change and why it matters to a reviewer. For a bug fix, give the problem, root cause, and fix. -->
 
-## Linked issue(s)
+## What to look at
 
-<!-- e.g. "Closes #123" or "Addresses #123". One concern per PR; see the checklist below. -->
+<!-- One bullet per area: the load-bearing change and the interaction to trace, not a file list. Omit for tiny fixes. -->
 
-## Acceptance evidence
+## Why
 
-<!-- For each acceptance criterion in the linked issue(s): the test or reproduction you ran and its result. Name any check you did not run, and why. -->
+<!-- The constraint, rejected alternative, or user reason behind the change. Omit when Summary already says it. -->
+
+## How to verify
+
+<!--
+Numbered, PR-specific manual steps a reviewer can run. Map them to the acceptance
+criteria of the linked issue. For a bug fix, start with how to reproduce the old
+behavior on main (or explain why it cannot be reproduced locally), then confirm
+the fix. CI runs typecheck, lint, prettier, and tests, so leave those out. Name
+any check you could not run and why; never claim a step passed that you did not run.
+-->
+
+## Breaking changes
+
+<!-- "None." or what breaks, for whom, and any migration needed. -->
+
+Fixes #
+
+<!-- Use "Fixes #123" for a bug, "Closes #123" for a feature, or "Refs #123" for related work. Link the prepared (agent/ready) issue. -->
 
 ## Checklist
 
