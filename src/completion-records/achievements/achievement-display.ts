@@ -11,6 +11,7 @@ import {
   type AchievementDefinitions,
 } from './achievement-announcements';
 import { fetchAchievementDefinitions, fetchMyAchievements, type MyAchievementsResult } from './achievements-client';
+import { applyEchoSources } from '../../lib/achievement-echo';
 
 /** `displayed` is true when the sending tab already showed the award, so receivers only record it. */
 export type RelayedAnnouncement = AchievementAnnouncement & { displayed: boolean };
@@ -28,6 +29,7 @@ export interface DisplayDeps {
   /** `true` for the first tab to claim an award, so each award is displayed in one tab only. */
   claim: (key: string) => boolean;
   openChannel: () => AnnouncementChannel | null;
+  applySources: (sources: AchievementDefinitions['sources']) => void;
 }
 
 function openBroadcastChannel(): AnnouncementChannel | null {
@@ -77,6 +79,7 @@ const defaultDeps: DisplayDeps = {
   onVisible: watchVisibility,
   claim: claimInLocalStorage,
   openChannel: openBroadcastChannel,
+  applySources: applyEchoSources,
 };
 let deps = defaultDeps;
 let channel: AnnouncementChannel | null | undefined;
@@ -107,6 +110,7 @@ export function loadAchievementDefinitions(wantedVersion?: string): Promise<Achi
       .then((fetched) => {
         if (fetched) {
           definitions = fetched;
+          deps.applySources(fetched.sources);
         }
         return definitions;
       })

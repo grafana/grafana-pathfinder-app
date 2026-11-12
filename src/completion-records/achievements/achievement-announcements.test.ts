@@ -21,6 +21,7 @@ function eventsFixture(name: string) {
 const definitions: AchievementDefinitions = {
   version: 'v1',
   artBase: 'https://interactive-learning.grafana.net/achievements/art/',
+  sources: [],
   achievements: [
     {
       id: 'dash-builder',

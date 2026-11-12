@@ -1,10 +1,13 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
+import { z } from 'zod';
 
 import { PLUGIN_BACKEND_URL } from '../../constants';
 import { extractFetchErrorStatus } from '../../lib/fetch-error';
 import {
   AchievementDefinitionsResponseWireSchema,
+  AchievementSourceConditionWireSchema,
+  AchievementSourceSubscriptionWireSchema,
   AchievementEventsResponseWireSchema,
   MyAchievementsResponseWireSchema,
   type AchievementDefinitionsResponseWire,
@@ -26,8 +29,8 @@ export interface GuideCompletedContext {
   pathId?: string;
 }
 
-/** RFC §6.1. Only `guides.completed` is posted, so the context is that pair's declared fields. */
-export interface AchievementEventBody {
+/** RFC §6.1. The recorder posts `guides.completed`, so the context is that pair's declared fields. */
+export interface GuideCompletedEventBody {
   schemaVersion: typeof ACHIEVEMENT_EVENT_SCHEMA_VERSION;
   eventId: string;
   entity: 'guides';
@@ -35,6 +38,17 @@ export interface AchievementEventBody {
   occurredAt: string;
   context: GuideCompletedContext;
 }
+
+/** An Echo event, carrying only the properties its source lists; the backend maps it to a pair. */
+export interface SourceEventBody {
+  schemaVersion: typeof ACHIEVEMENT_EVENT_SCHEMA_VERSION;
+  eventId: string;
+  source: string;
+  occurredAt: string;
+  properties: Record<string, string | number | boolean>;
+}
+
+export type AchievementEventBody = GuideCompletedEventBody | SourceEventBody;
 
 /** `route-missing` and `forbidden` disarm the session and keep the queue (RFC §6.5). */
 export type EventOutcome =
@@ -101,6 +115,29 @@ export async function fetchMyAchievements(): Promise<MyAchievementsResult> {
   }
 }
 
+const RuntimeSourceSchema = z.object({
+  ...AchievementSourceSubscriptionWireSchema.shape,
+  when: z.array(z.object(AchievementSourceConditionWireSchema.shape)).optional(),
+});
+
+// Each source is read on its own and unknown keys are dropped, so a source this build cannot read never hides the definitions.
+const RuntimeDefinitionsSchema = AchievementDefinitionsResponseWireSchema.extend({
+  sources: z
+    .array(z.unknown())
+    .catch([])
+    .transform((entries) =>
+      entries.flatMap((entry) => {
+        const parsed = RuntimeSourceSchema.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      })
+    ),
+});
+
+export function parseAchievementDefinitions(data: unknown): AchievementDefinitionsResponseWire | null {
+  const parsed = RuntimeDefinitionsSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
+}
+
 export async function fetchAchievementDefinitions(): Promise<AchievementDefinitionsResponseWire | null> {
   try {
     const response = await lastValueFrom(
@@ -108,8 +145,7 @@ export async function fetchAchievementDefinitions(): Promise<AchievementDefiniti
         .fetch<unknown>({ url: `${ACHIEVEMENTS_URL}/definitions`, method: 'GET', showErrorAlert: false })
         .pipe(timeout(READ_TIMEOUT_MS))
     );
-    const parsed = AchievementDefinitionsResponseWireSchema.safeParse(response.data);
-    return parsed.success ? parsed.data : null;
+    return parseAchievementDefinitions(response.data);
   } catch {
     return null;
   }

@@ -193,13 +193,35 @@ export const AchievementDisplayWireSchema = z.strictObject({
 });
 
 /**
- * A tier's image is `artBase + art + '.svg'`.
+ * `value` is a scalar for `eq` and a list of scalars for `in`.
+ * @coupling Go struct: SourceCondition (pkg/achievements/source.go)
+ */
+export const AchievementSourceConditionWireSchema = z.strictObject({
+  property: z.string(),
+  op: z.string(),
+  value: JsonValueSchema,
+});
+
+/**
+ * `properties` are the only event properties the browser may forward.
+ * @coupling Go struct: SourceSubscription (pkg/achievements/source.go)
+ */
+export const AchievementSourceSubscriptionWireSchema = z.strictObject({
+  interaction: z.string(),
+  properties: z.array(z.string()),
+  when: z.array(AchievementSourceConditionWireSchema).optional(),
+});
+
+/**
+ * A tier's image is `artBase + art + '.svg'`. `sources` are the Echo
+ * interactions this stack can emit, `[]` when none.
  * @coupling Go struct: achievementDefinitionsResponse
  */
 export const AchievementDefinitionsResponseWireSchema = z.strictObject({
   version: z.string(),
   artBase: z.string(),
   achievements: z.array(AchievementDisplayWireSchema),
+  sources: z.array(AchievementSourceSubscriptionWireSchema),
 });
 
 // ============ /assignments/my ============
@@ -469,6 +491,8 @@ export const GO_STRUCT_SCHEMAS = {
   achievementDefinitionsResponse: AchievementDefinitionsResponseWireSchema,
   Display: AchievementDisplayWireSchema,
   DisplayTier: AchievementDisplayTierWireSchema,
+  SourceSubscription: AchievementSourceSubscriptionWireSchema,
+  SourceCondition: AchievementSourceConditionWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;

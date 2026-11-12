@@ -17,6 +17,16 @@ function event(eventId: string, occurredAt = new Date(NOW).toISOString()): Achie
   };
 }
 
+function sourceEvent(eventId: string): AchievementEventBody {
+  return {
+    schemaVersion: 1,
+    eventId,
+    source: 'grafana_dashboard_created',
+    occurredAt: new Date(NOW).toISOString(),
+    properties: { uid: eventId },
+  };
+}
+
 const evaluated = (retry: boolean): EventOutcome => ({
   kind: 'evaluated',
   response: { eventId: 'e', retry, decisions: [] },
@@ -44,6 +54,36 @@ function setup(outcomes: EventOutcome[]) {
 beforeEach(() => localStorage.clear());
 
 describe('achievement event queue', () => {
+  it('drops source events before guide events at the cap, so frequent Echo events never push a guide out', async () => {
+    const { queue } = setup([{ kind: 'route-missing' }]);
+    queue.enqueue(event('guide-held'));
+    await queue.processDue();
+    expect(queue.isDisarmed()).toBe(true);
+    for (let i = 0; i < MAX_QUEUED_EVENTS + 20; i++) {
+      queue.enqueue(sourceEvent(`echo-${i}`));
+    }
+    const ids = queue.snapshot().map((item) => item.id);
+    expect(ids).toHaveLength(MAX_QUEUED_EVENTS);
+    expect(ids).toContain('guide-held');
+    expect(ids).not.toContain('echo-0');
+  });
+
+  it('discards only guide events, here and in what other tabs persisted', () => {
+    const { queue, storage } = setup([evaluated(false)]);
+    createQueueStorage<AchievementEventBody>('test-achievement-queue:', 'user-1:org-1', 'tab-b').put({
+      id: 'other-tab-guide',
+      body: event('other-tab-guide'),
+      attempts: 0,
+      createdAt: NOW,
+      nextAttemptAt: NOW,
+    });
+    queue.enqueue(event('guide'));
+    queue.enqueue(sourceEvent('echo'));
+    queue.discardGuideEvents();
+    expect(queue.snapshot().map((item) => item.id)).toEqual(['echo']);
+    expect(storage.list().map((item) => item.id)).toEqual(['echo']);
+  });
+
   it('removes an event the route evaluated with retry false and hands the response on', async () => {
     const { queue, sent, onEvaluated } = setup([evaluated(false)]);
     queue.enqueue(event('e1'));

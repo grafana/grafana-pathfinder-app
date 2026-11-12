@@ -34,8 +34,9 @@ function myFixture(name: string): MyAchievementsResult {
 }
 
 const definitions: AchievementDefinitions = {
-  version: 'cc05e90009762e27',
+  version: 'fd206fabd4c141f6',
   artBase: 'https://interactive-learning.grafana.net/achievements/art/',
+  sources: [],
   achievements: [
     {
       id: 'dash-builder',

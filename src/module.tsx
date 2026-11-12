@@ -1,6 +1,7 @@
 import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import React, { useEffect } from 'react';
+import { closeEchoSubscriptions, installEchoSubscriptions } from './lib/achievement-echo';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { toAnalyticsValue } from './lib/analytics-values';
 import { logger } from './lib/logging';
@@ -35,6 +36,9 @@ import {
   hasReportedPathfinderSurface,
   onPathfinderSurfaceChange,
 } from './lib/telemetry/surface';
+
+// Echo events are never replayed, so the subscription must exist before any await (RFC §5.6).
+installEchoSubscriptions();
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -187,10 +191,14 @@ const plugin = new AppPlugin<{}>()
 
 plugin.init = function () {
   if (!pathfinderEnabled) {
+    closeEchoSubscriptions();
     return;
   }
 
   const achievementsEnabled = getFeatureFlagValue('pathfinder.achievements', false);
+  if (!achievementsEnabled) {
+    closeEchoSubscriptions();
+  }
   // Grafana does not await init; navigation listeners must register synchronously.
   // The achievements observer arms first so the recorder's startup replay reaches it as well.
   void Promise.all([

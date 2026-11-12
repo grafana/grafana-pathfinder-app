@@ -48,6 +48,8 @@ export const StorageKeys = {
   ACHIEVEMENT_EVENT_QUEUE_PREFIX: 'grafana-pathfinder-app-achievement-event-queue-v1:',
   // Dynamic: `{owner}:{achievementId}:{tierId}`. Marks an award already displayed in some tab.
   ACHIEVEMENT_ANNOUNCED_PREFIX: 'grafana-pathfinder-app-achievement-announced-v1:',
+  // Dynamic: `{owner}`. Echo sources from the last `/definitions` answer, subscribed at the next load.
+  ACHIEVEMENT_SOURCES_PREFIX: 'grafana-pathfinder-app-achievement-sources-v1:',
   // Guide responses from input blocks (user-entered values for variables)
   GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
   // Persistent dedup for experiment exposure events. Used with `{hostname}:{flagKey}:{variant}`

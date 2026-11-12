@@ -336,18 +336,20 @@ Implementation: `src/context-engine/recommend-completions-attachment.ts`.
 
 **Type**: Boolean
 
-**Purpose**: Gates achievements in the browser: posting `guides.completed` events to `POST /api/v1/achievements/events`, the badge and progress toasts and the tier-up overlay, and the achievements section on the learning hub.
+**Purpose**: Gates achievements in the browser: posting `guides.completed` events and Echo source events to `POST /api/v1/achievements/events`, the badge and progress toasts and the tier-up overlay, and the achievements section on the learning hub.
 
 **Default**: `false`
 
 **Behavior**:
 
-- **`true`**: guide completions the recorder emits are queued and posted as achievement events. Awards in the response are announced, as is progress toward a next tier, and the learning hub reads `GET /api/v1/achievements/my` and `GET /api/v1/achievements/definitions`. Where the routes answer unavailable, nothing is shown and the queue is held for a later load.
-- **`false`**: no achievement requests are made and no achievements surface renders. Completions seen before the flag resolved are discarded.
+- **`true`**: guide completions the recorder emits are queued and posted as achievement events, and so are the Echo interactions `GET /api/v1/achievements/definitions` lists as sources, with only the properties each source lists. Awards in the response are announced, as is progress toward a next tier, and the learning hub reads `GET /api/v1/achievements/my` and `GET /api/v1/achievements/definitions`. Where the routes answer unavailable, nothing is shown and the queue is held for a later load.
+- **`false`**: no achievement requests are made and no achievements surface renders. Completions and Echo events seen before the flag resolved are discarded, the Echo subscriptions are dropped, and the cached source list is forgotten.
+
+Echo subscriptions cannot wait for the flag: `module.tsx` installs them before any `await`, on Grafana 13.2 and later, from the source list the last `/definitions` answer cached for the signed-in user. Until the flag resolves, events wait in a ring buffer of 50 in memory and nothing is posted. A browser that never had the flag on has no cached list and subscribes to nothing.
 
 The flag is read once per page load: posting arms at plugin init and waits for the flag to resolve, so open tabs do not change until they reload. Turning it on reaches browsers only once a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` exist in deployment_tools.
 
-Implementation: `src/completion-records/achievements/` and `src/components/Achievements/`.
+Implementation: `src/completion-records/achievements/`, `src/lib/achievement-echo.ts` and `src/components/Achievements/`.
 
 **Tracking key**: `achievements`
 

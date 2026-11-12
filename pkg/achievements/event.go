@@ -16,22 +16,31 @@ const (
 	maxContextStringBytes = 1024
 )
 
-// ErrInvalidEvent marks an event the route answers with a 400 and the client drops.
-var ErrInvalidEvent = errors.New("achievements: invalid event")
+var (
+	// ErrInvalidEvent marks an event the route answers with a 400 and the client drops.
+	ErrInvalidEvent = errors.New("achievements: invalid event")
+	// ErrNotCounted marks a valid source event whose when conditions do not
+	// hold, such as a failed save: no pair counts it.
+	ErrNotCounted = errors.New("achievements: source variant not counted")
+)
 
 // EventRequest is the decoded body of a posted event (RFC §6.1). It has no
-// identity fields: identity comes from the authenticated caller.
+// identity fields: identity comes from the authenticated caller. It names a
+// pair and its context, or an Echo source and its properties.
 type EventRequest struct {
 	SchemaVersion int            `json:"schemaVersion"`
 	EventID       string         `json:"eventId"`
-	Entity        string         `json:"entity"`
-	Action        string         `json:"action"`
+	Entity        string         `json:"entity,omitempty"`
+	Action        string         `json:"action,omitempty"`
 	OccurredAt    string         `json:"occurredAt"`
-	Context       map[string]any `json:"context"`
+	Context       map[string]any `json:"context,omitempty"`
+	Source        string         `json:"source,omitempty"`
+	Properties    map[string]any `json:"properties,omitempty"`
 }
 
 // NewEvent checks req against the registry and the clock and returns the event.
-// Every failure wraps ErrInvalidEvent.
+// A source variant that is not counted is ErrNotCounted; every other failure
+// wraps ErrInvalidEvent.
 func (r *Registry) NewEvent(req EventRequest, now time.Time) (Event, error) {
 	fail := func(format string, args ...any) (Event, error) {
 		return Event{}, fmt.Errorf("%w: %s", ErrInvalidEvent, fmt.Sprintf(format, args...))
@@ -42,10 +51,6 @@ func (r *Registry) NewEvent(req EventRequest, now time.Time) (Event, error) {
 	if req.EventID == "" || len(req.EventID) > maxEventIDBytes || !printable(req.EventID) {
 		return fail("eventId must be 1 to %d printable bytes", maxEventIDBytes)
 	}
-	declared, ok := r.action(req.Entity, req.Action)
-	if !ok {
-		return fail("%s.%s is not a declared pair", req.Entity, req.Action)
-	}
 	occurredAt, err := time.Parse(time.RFC3339Nano, req.OccurredAt)
 	if err != nil {
 		return fail("occurredAt is not an RFC 3339 timestamp")
@@ -53,15 +58,28 @@ func (r *Registry) NewEvent(req EventRequest, now time.Time) (Event, error) {
 	if occurredAt.After(now.Add(eventMaxClockSkew)) || occurredAt.Before(now.Add(-eventMaxBackdate)) {
 		return fail("occurredAt is outside the accepted window")
 	}
-	if len(req.Context) > maxContextFields {
-		return fail("context has %d fields, at most %d", len(req.Context), maxContextFields)
+	entity, action, eventContext := req.Entity, req.Action, req.Context
+	if req.Source != "" || req.Properties != nil {
+		if req.Entity != "" || req.Action != "" || req.Context != nil {
+			return fail("an event names a pair or a source, not both")
+		}
+		if entity, action, eventContext, err = r.mapSource(req.Source, req.Properties); err != nil {
+			return Event{}, err
+		}
 	}
-	for _, name := range sortedKeys(req.Context) {
+	declared, ok := r.action(entity, action)
+	if !ok {
+		return fail("%s.%s is not a declared pair", entity, action)
+	}
+	if len(eventContext) > maxContextFields {
+		return fail("context has %d fields, at most %d", len(eventContext), maxContextFields)
+	}
+	for _, name := range sortedKeys(eventContext) {
 		field, ok := declared.Context[name]
 		if !ok {
 			return fail("context field %q is not declared", name)
 		}
-		value := req.Context[name]
+		value := eventContext[name]
 		if !field.Type.accepts(value) {
 			return fail("context field %q is not a %s", name, field.Type)
 		}
@@ -72,7 +90,7 @@ func (r *Registry) NewEvent(req EventRequest, now time.Time) (Event, error) {
 			return fail("context field %q is outside its enum", name)
 		}
 	}
-	return Event{ID: req.EventID, Entity: req.Entity, Action: req.Action, OccurredAt: occurredAt.UTC(), Context: req.Context}, nil
+	return Event{ID: req.EventID, Entity: entity, Action: action, OccurredAt: occurredAt.UTC(), Context: eventContext}, nil
 }
 
 func printable(s string) bool {

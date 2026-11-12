@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/useragent"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 )
@@ -212,6 +213,18 @@ type achievementDefinitionsResponse struct {
 	Version      string                 `json:"version"`
 	ArtBase      string                 `json:"artBase"`
 	Achievements []achievements.Display `json:"achievements"`
+	// Sources are the Echo interactions the browser subscribes to on this stack.
+	Sources []achievements.SourceSubscription `json:"sources"`
+}
+
+// stackFromRequest reads the Grafana version from the user agent Grafana sends
+// with every plugin request. It describes the stack, never the caller.
+func stackFromRequest(r *http.Request) achievements.Stack {
+	ua := useragent.FromContext(r.Context())
+	if ua.IsUnknown() {
+		return achievements.Stack{}
+	}
+	return achievements.Stack{GrafanaVersion: ua.GrafanaVersion()}
 }
 
 // handleAchievementDefinitions serves GET /api/v1/achievements/definitions.
@@ -232,9 +245,11 @@ func (a *App) handleAchievementDefinitions(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	stack := stackFromRequest(r)
 	a.writeJSON(w, achievementDefinitionsResponse{
 		Version:      snap.Version,
 		ArtBase:      achievementsArtBase,
-		Achievements: append([]achievements.Display{}, snap.Display...),
+		Achievements: snap.DisplayFor(stack),
+		Sources:      snap.Registry.Subscriptions(stack),
 	}, http.StatusOK)
 }

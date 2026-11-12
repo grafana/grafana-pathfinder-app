@@ -165,7 +165,7 @@ func check(data []byte) []string {
 // actionKeys are the action keys this build reads. The loader ignores any other
 // as additive metadata; publishing one this build does not know is more likely
 // a typo, so the publish bar refuses it.
-var actionKeys = map[string]bool{"context": true, "resources": true}
+var actionKeys = map[string]bool{"context": true, "resources": true, "sources": true}
 
 func unknownActionKeys(data []byte) []string {
 	var env struct {

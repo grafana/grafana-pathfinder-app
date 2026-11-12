@@ -177,6 +177,10 @@ func (a *App) handleAchievementEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	event, err := defs.Registry.NewEvent(req, timeNow())
+	if errors.Is(err, achievements.ErrNotCounted) {
+		a.writeJSON(w, achievementEventsResponse{EventID: req.EventID, Decisions: []achievements.Decision{}}, http.StatusOK)
+		return
+	}
 	if err != nil {
 		a.ctxLogger(r.Context()).Debug("achievement event rejected", "error", err)
 		a.writeError(w, "invalid-event", http.StatusBadRequest)
