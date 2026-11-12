@@ -1,4 +1,4 @@
-import { getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
+import { getKioskName, getKioskSessionId, reportKioskInteraction } from '../../lib/kiosk-analytics';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { KioskOverlay } from './KioskOverlay';
@@ -250,5 +250,6 @@ it('renders a prepared PR preview without reporting catalog exposure or loading 
   });
   render(<KioskOverlay preview catalog={catalog} rulesUrl="https://example.com/pr/rules.json" onClose={jest.fn()} />);
   await screen.findByText('PR guide');
+  expect(getKioskName()).toBe('pr-preview');
   expect(load).not.toHaveBeenCalled();
 });

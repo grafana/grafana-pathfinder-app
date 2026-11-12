@@ -73,7 +73,10 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
 
   useEffect(() => {
     const controller = new AbortController();
-    const session = startKioskSession(getKioskNameFromCatalogUrl(overrideUrl || rulesUrl), preview);
+    const session = startKioskSession(
+      preview ? 'pr-preview' : getKioskNameFromCatalogUrl(overrideUrl || rulesUrl),
+      preview
+    );
     const loading = preview
       ? (catalog ?? Promise.reject(new Error('No preview catalog was prepared'))).then((prepared) => prepared.data)
       : loadKioskData(rulesUrl, overrideUrl, controller.signal, { sessionId: session.id, mode }, catalog);

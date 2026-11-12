@@ -133,6 +133,30 @@ describe('KioskTile', () => {
     mockRandomUUID.mockReset().mockReturnValue('00000000-0000-4000-a000-000000000001');
   });
 
+  it.each(['instance', 'presentation'] as const)('isolates preview attribution through a %s launch', (mode) => {
+    jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
+    const session = startKioskSession('pr-preview', true);
+    const previewRule = {
+      ...rule,
+      url: `https://raw.githubusercontent.com/fork/repo/${'a'.repeat(40)}/guide/content.json#pf-pr-kiosk123`,
+      preview: true,
+    };
+    launchKioskGuide(previewRule, mode, session.end);
+    const destination = mode === 'presentation' ? mockOpen.mock.calls[0][0] : mockPush.mock.calls[0][0];
+    const url = new URL(destination, window.location.origin);
+    expect(url.searchParams.get('kiosk_name')).toBe('pr-preview');
+    expect(url.searchParams.get('kiosk_session')).toBe(session.id);
+    expect(url.searchParams.get('doc')).toBe(previewRule.url);
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    if (mode === 'instance') {
+      expect(window.__pathfinderKioskName).toBe('pr-preview');
+      expect(window.__pathfinderKioskSessionId).toBe(session.id);
+    }
+    session.end();
+    delete window.__pathfinderKioskSessionId;
+    delete window.__pathfinderKioskName;
+  });
+
   it('fires KioskDemoStarted analytics event before opening the tab', () => {
     render(<KioskTile rule={rule} index={0} />);
     fireEvent.click(screen.getByTestId('kiosk-tile-0'));
