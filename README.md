@@ -89,7 +89,7 @@ If you're new to the codebase, start at **[`docs/developer/GETTING_STARTED.md`](
 
 ## Contributing
 
-We welcome feedback, issues, and contributions. For implementation, start with an issue labelled `agent/ready`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor contract, local checks, and how to keep changes easy to review.
+We welcome feedback, issues, and contributions. For implementation, start with an issue labelled `agent/ready`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor contract, local checks, and how to keep changes easy to review. You must sign the Contributor License Agreement once and sign every commit; these are the most common reasons a new contributor PR cannot be reviewed. See [the CLA](CONTRIBUTING.md#contributor-license-agreement) and [signed commits](CONTRIBUTING.md#signed-commits).
 
 ## License
 

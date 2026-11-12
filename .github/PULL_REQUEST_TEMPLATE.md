@@ -24,7 +24,7 @@ omissions) sections.
 
 <!-- The constraint, rejected alternative, or user reason behind the change. Omit when Summary already says it. -->
 
-## How to verify
+## Acceptance evidence
 
 <!--
 Numbered, PR-specific manual steps a reviewer can run. Map them to the acceptance
