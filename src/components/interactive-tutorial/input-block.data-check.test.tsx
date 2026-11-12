@@ -9,15 +9,18 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { StorageEvents } from '../../lib/event-names';
 import { InputBlock } from './input-block';
+import { holdDatasourceList, mockDatasourceList, settleDatasourceList } from '../../test-utils/datasource-list';
+import { DATASOURCE_LIST } from '../../test-utils/data-check-stubs';
 
 const mockRunQuery = jest.fn();
 const mockSetResponse = jest.fn();
 
 jest.mock('@grafana/ui', () => require('../../test-utils/data-check-stubs').grafanaUiStub);
 
-jest.mock('@grafana/runtime', () => ({
-  getDataSourceSrv: () => ({ getList: () => require('../../test-utils/data-check-stubs').DATASOURCE_LIST }),
-}));
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 
 jest.mock('../../lib/datasource/run-data-check-query', () => ({
   runDataCheckQuery: (...args: unknown[]) => mockRunQuery(...args),
@@ -56,6 +59,8 @@ jest.mock('../../docs-retrieval', () => {
   };
 });
 
+beforeEach(() => mockDatasourceList(DATASOURCE_LIST));
+
 const RUN = 'input-data-check-run-metricsDatasource';
 const FAILURE = 'input-data-check-failure-metricsDatasource';
 
@@ -66,8 +71,10 @@ const baseProps = {
   datasourceFilter: 'prometheus',
 };
 
-function renderPicker(props: Partial<React.ComponentProps<typeof InputBlock>> = {}) {
-  return render(<InputBlock {...baseProps} {...props} />);
+async function renderPicker(props: Partial<React.ComponentProps<typeof InputBlock>> = {}) {
+  const view = render(<InputBlock {...baseProps} {...props} />);
+  await settleDatasourceList();
+  return view;
 }
 
 async function pick(name = 'Prometheus') {
@@ -88,39 +95,39 @@ async function writeVariableElsewhere(value: string | undefined) {
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
   mockOtherWriters = [];
   mockRunQuery.mockResolvedValue({ ok: true, hasData: true, seriesCount: 1, rowCount: 2 });
 });
 
 describe('a picker with no check configured', () => {
-  it('offers no run button', () => {
-    renderPicker();
+  it('offers no run button', async () => {
+    await renderPicker();
     expect(screen.queryByTestId(RUN)).not.toBeInTheDocument();
   });
 
   it('runs no query', async () => {
-    renderPicker();
+    await renderPicker();
     await pick();
     expect(mockRunQuery).not.toHaveBeenCalled();
   });
 });
 
 describe('an advisory check', () => {
-  it('offers a run button, disabled until something is picked', () => {
-    renderPicker({ dataCheckQuery: 'up' });
+  it('offers a run button, disabled until something is picked', async () => {
+    await renderPicker({ dataCheckQuery: 'up' });
     expect(screen.getByTestId(RUN)).toBeDisabled();
   });
 
   it('runs nothing until the user asks', async () => {
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick();
     expect(mockRunQuery).not.toHaveBeenCalled();
   });
 
   it('queries the picked data source by uid and normalized type', async () => {
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick('Prometheus staging');
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -131,7 +138,7 @@ describe('an advisory check', () => {
   });
 
   it('confirms when the data is there', async () => {
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -141,7 +148,7 @@ describe('an advisory check', () => {
 
   it("shows the author's message when it is not", async () => {
     mockRunQuery.mockResolvedValue({ ok: true, hasData: false, seriesCount: 0, rowCount: 0 });
-    renderPicker({ dataCheckQuery: 'up', dataCheckFailureMessage: 'No container metrics here.' });
+    await renderPicker({ dataCheckQuery: 'up', dataCheckFailureMessage: 'No container metrics here.' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -151,7 +158,7 @@ describe('an advisory check', () => {
 
   it('still lets the user save a failing pick — advisory never blocks', async () => {
     mockRunQuery.mockResolvedValue({ ok: true, hasData: false, seriesCount: 0, rowCount: 0 });
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -166,7 +173,7 @@ describe('an advisory check', () => {
 
   it('clears a stale verdict when the user resets the input', async () => {
     mockRunQuery.mockResolvedValue({ ok: true, hasData: false, seriesCount: 0, rowCount: 0 });
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -184,7 +191,7 @@ describe('an advisory check', () => {
 
   it('clears a stale verdict when the data source changes', async () => {
     mockRunQuery.mockResolvedValue({ ok: true, hasData: false, seriesCount: 0, rowCount: 0 });
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -197,7 +204,7 @@ describe('an advisory check', () => {
 
   it("does not dress a failed query up in the author's no-data message", async () => {
     mockRunQuery.mockResolvedValue({ ok: false, error: 'Query timed out after 15s.' });
-    renderPicker({ dataCheckQuery: 'up', dataCheckFailureMessage: 'No container metrics here.' });
+    await renderPicker({ dataCheckQuery: 'up', dataCheckFailureMessage: 'No container metrics here.' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -210,7 +217,7 @@ describe('an advisory check', () => {
   });
 
   it('says so rather than querying a data source type no check can read', async () => {
-    renderPicker({ dataCheckQuery: 'up', datasourceFilter: 'mysql' });
+    await renderPicker({ dataCheckQuery: 'up', datasourceFilter: 'mysql' });
     await pick('Reporting');
     expect(screen.getByRole('alert')).toHaveTextContent(/can't run here/i);
     expect(screen.queryByTestId(RUN)).not.toBeInTheDocument();
@@ -221,14 +228,14 @@ describe('an advisory check', () => {
 describe('while a check is still running', () => {
   beforeEach(async () => {
     mockRunQuery.mockImplementation(() => new Promise(() => {}));
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
     });
   });
 
-  it('says so, and refuses a second press until the first lands', () => {
+  it('says so, and refuses a second press until the first lands', async () => {
     expect(screen.getByText('Checking your data…')).toBeInTheDocument();
     expect(screen.getByTestId(RUN)).toBeDisabled();
   });
@@ -246,7 +253,7 @@ describe('while a check is still running', () => {
 // here can be invalidated without this block's own handler ever running.
 describe('a data source swapped by someone else', () => {
   it('drops a pass rather than reporting it against the new pick', async () => {
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -259,7 +266,7 @@ describe('a data source swapped by someone else', () => {
 
   it('drops a failure rather than blaming it on the new pick', async () => {
     mockRunQuery.mockResolvedValue({ ok: true, hasData: false, seriesCount: 0, rowCount: 0 });
-    renderPicker({ dataCheckQuery: 'up', dataCheckFailureMessage: 'No container metrics here.' });
+    await renderPicker({ dataCheckQuery: 'up', dataCheckFailureMessage: 'No container metrics here.' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -271,7 +278,7 @@ describe('a data source swapped by someone else', () => {
   });
 
   it('drops a pass when a guide clear empties the picker', async () => {
-    renderPicker({ dataCheckQuery: 'up' });
+    await renderPicker({ dataCheckQuery: 'up' });
     await pick();
     await act(async () => {
       fireEvent.click(screen.getByTestId(RUN));
@@ -280,5 +287,47 @@ describe('a data source swapped by someone else', () => {
 
     await writeVariableElsewhere(undefined);
     expect(screen.queryByText('Data available')).not.toBeInTheDocument();
+  });
+});
+
+describe('while the data source list is still loading', () => {
+  const picker = () => screen.getByLabelText(/Select a data source/i);
+
+  it('shows the pick in a busy, disabled picker and keeps it once the list arrives', async () => {
+    const list = holdDatasourceList();
+    render(<InputBlock {...baseProps} dataCheckQuery="up" defaultValue="Prometheus staging" />);
+
+    expect(picker()).toHaveValue('Prometheus staging');
+    expect(picker()).toBeDisabled();
+    expect(picker()).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByTestId(RUN)).toBeDisabled();
+
+    await act(async () => list.resolve(DATASOURCE_LIST));
+
+    expect(picker()).toHaveValue('Prometheus staging');
+    expect(picker()).toBeEnabled();
+    expect(screen.getByTestId(RUN)).toBeEnabled();
+  });
+
+  it('refuses to check a pick the arrived list lacks', async () => {
+    const list = holdDatasourceList();
+    render(<InputBlock {...baseProps} dataCheckQuery="up" defaultValue="Deleted data source" />);
+
+    await act(async () => list.resolve(DATASOURCE_LIST));
+
+    expect(screen.getByTestId(RUN)).toBeDisabled();
+    expect(mockRunQuery).not.toHaveBeenCalled();
+  });
+
+  it('warns that nothing matches only after the list arrives', async () => {
+    const list = holdDatasourceList();
+    render(<InputBlock {...baseProps} datasourceFilter="elasticsearch" />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await act(async () => list.resolve(DATASOURCE_LIST));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/No data sources/i);
   });
 });

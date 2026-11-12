@@ -5,7 +5,8 @@ import {
   RequirementsCheckOptions,
   validateInteractiveRequirements,
 } from './requirements-checker.utils';
-import { locationService, config, hasPermission, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
+import { locationService, config, hasPermission, getBackendSrv } from '@grafana/runtime';
+import { mockDatasourceList, mockDatasourceListFailure } from '../test-utils/datasource-list';
 import { hasDataSourceCheck } from './checks/grafana-api';
 import * as grafanaApi from '../lib/grafana-api';
 import { getContentKey } from '../global-state/content-key';
@@ -43,8 +44,11 @@ jest.mock('@grafana/runtime', () => ({
   },
   hasPermission: jest.fn(),
   getBackendSrv: jest.fn(),
-  getDataSourceSrv: jest.fn(),
 }));
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 
 jest.mock('../lib/grafana-api', () => ({
   fetchPlugins: jest.fn(),
@@ -1120,8 +1124,7 @@ describe('structured check verdicts', () => {
 });
 
 describe('has-datasource sources and error policy', () => {
-  const local = (list: Array<{ name: string; type: string; uid: string }>) =>
-    (getDataSourceSrv as jest.Mock).mockReturnValue({ getList: () => list });
+  const local = (list: Array<{ name: string; type: string; uid: string }>) => mockDatasourceList(list);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1135,9 +1138,7 @@ describe('has-datasource sources and error policy', () => {
   });
 
   it.each(['grafana', 'mixed', 'dashboard'])('never matches the built-in %s data source', async (type) => {
-    (getDataSourceSrv as jest.Mock).mockReturnValue({
-      getList: () => [{ name: `-- ${type} --`, type, uid: type, meta: { builtIn: true } }],
-    });
+    mockDatasourceList([{ name: `-- ${type} --`, type, uid: type, meta: { builtIn: true } }]);
     (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([]);
     const result = await hasDataSourceCheck(`has-datasource:${type}`);
     expect(result.pass).toBe(false);
@@ -1149,6 +1150,14 @@ describe('has-datasource sources and error policy', () => {
     (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([{ name: 'Prom', type: 'prometheus', uid: 'p' }]);
     const result = await hasDataSourceCheck('has-datasource:prometheus');
     expect(result.pass).toBe(true);
+  });
+
+  it('asks the API when the local list cannot be read', async () => {
+    mockDatasourceListFailure();
+    (grafanaApi.fetchDataSources as jest.Mock).mockResolvedValue([{ name: 'Prom', type: 'prometheus', uid: 'p' }]);
+    const result = await hasDataSourceCheck('has-datasource:prometheus');
+    expect(result.pass).toBe(true);
+    expect(grafanaApi.fetchDataSources).toHaveBeenCalled();
   });
 
   it.each([401, 403])('treats the local list as complete when the API denies the read (%s)', async (status) => {

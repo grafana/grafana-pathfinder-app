@@ -10,7 +10,7 @@ import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/k
 import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { KioskFormError, MAX_INPUT_LENGTH, describeHttpInput } from '../../lib/input-value';
-import { filterDatasourcesByType, toDatasourceOptions } from '../interactive-tutorial/datasource-options';
+import { useDatasourceOptions } from '../interactive-tutorial/use-datasource-options';
 import type { KioskRule } from './kiosk-rules';
 import { launchKioskGuide } from './launch-kiosk-guide';
 import { KioskTile } from './KioskTile';
@@ -186,6 +186,32 @@ function Command({
   );
 }
 
+function KioskDatasourcePicker({
+  id,
+  filter,
+  disabled,
+  value,
+  onChange,
+}: {
+  id: string;
+  filter: string | undefined;
+  disabled: boolean;
+  value: string | null;
+  onChange: (name: string) => void;
+}) {
+  const { options, loading } = useDatasourceOptions(filter);
+  return (
+    <Combobox
+      id={id}
+      disabled={disabled || loading}
+      loading={loading}
+      options={options}
+      value={value}
+      onChange={(option) => onChange(option?.value ?? '')}
+    />
+  );
+}
+
 function LaunchForm({
   block,
   blockIndex,
@@ -287,14 +313,14 @@ function LaunchForm({
             required={input.required}
           >
             {input.inputType === 'datasource' ? (
-              <Combobox
+              <KioskDatasourcePicker
                 id={`${id}-${input.variableName}`}
+                filter={input.datasourceFilter}
                 disabled={busy}
-                options={toDatasourceOptions(filterDatasourcesByType(input.datasourceFilter))}
                 value={draft[input.variableName] ?? null}
-                onChange={(option) => {
+                onChange={(name) => {
                   reportChange(inputIndex, 'datasource');
-                  setDraft((previous) => ({ ...previous, [input.variableName]: option?.value ?? '' }));
+                  setDraft((previous) => ({ ...previous, [input.variableName]: name }));
                 }}
               />
             ) : (
