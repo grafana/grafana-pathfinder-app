@@ -837,6 +837,51 @@ describe('runValidate', () => {
     }
   });
 
+  it('rejects a guide package with no blocks', () => {
+    const result = runValidate({
+      content: { id: 'empty-guide', title: 'Empty Guide', blocks: [] },
+      manifest: {
+        id: 'empty-guide',
+        type: 'guide',
+        schemaVersion: '1.1.0',
+        repository: 'interactive-tutorials',
+        testEnvironment: { tier: 'cloud' },
+        depends: [],
+        recommends: [],
+        suggests: [],
+        provides: [],
+        conflicts: [],
+        replaces: [],
+      },
+    });
+    expect(result.status).toBe('error');
+    if (result.status === 'error') {
+      expect(result.message).toContain('empty-guide');
+      expect(result.message).toContain('needs at least one block');
+    }
+  });
+
+  it('accepts a container type package (path) with no blocks', () => {
+    const result = runValidate({
+      content: { id: 'empty-path', title: 'Empty Path', blocks: [] },
+      manifest: {
+        id: 'empty-path',
+        type: 'path',
+        milestones: ['some-step'],
+        schemaVersion: '1.1.0',
+        repository: 'interactive-tutorials',
+        testEnvironment: { tier: 'cloud' },
+        depends: [],
+        recommends: [],
+        suggests: [],
+        provides: [],
+        conflicts: [],
+        replaces: [],
+      },
+    });
+    expect(result.status).toBe('ok');
+  });
+
   it("reports a file's independent warnings even when the file is invalid", async () => {
     const dir = tempDir();
     const file = path.join(dir, 'guide.json');

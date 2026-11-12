@@ -52,7 +52,7 @@ describe('validatePackage', () => {
     writeJson(path.join(pkgDir, 'content.json'), {
       id: 'test-guide',
       title: 'Test guide',
-      blocks: [],
+      blocks: [{ type: 'markdown', content: '# Hello' }],
     });
     writeJson(path.join(pkgDir, 'manifest.json'), {
       id: 'test-guide',
@@ -66,6 +66,79 @@ describe('validatePackage', () => {
     expect(result.isValid).toBe(true);
     expect(result.packageId).toBe('test-guide');
     expect(result.errors).toHaveLength(0);
+  });
+
+  it('rejects a guide package with no blocks', () => {
+    const pkgDir = path.join(tmpDir, 'empty-guide');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'empty-guide',
+      title: 'Empty guide',
+      blocks: [],
+    });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'empty-guide',
+      type: 'guide',
+      category: 'testing',
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(false);
+    expect(
+      result.errors.some((e) => e.message.includes('empty-guide') && e.message.includes('needs at least one block'))
+    ).toBe(true);
+  });
+
+  it('rejects a standalone guide with no blocks', () => {
+    const pkgDir = path.join(tmpDir, 'empty-standalone');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'empty-standalone',
+      title: 'Empty standalone',
+      blocks: [],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(false);
+    expect(
+      result.errors.some(
+        (e) => e.message.includes('empty-standalone') && e.message.includes('needs at least one block')
+      )
+    ).toBe(true);
+  });
+
+  it('accepts a container type package (path) with no blocks', () => {
+    const pkgDir = path.join(tmpDir, 'valid-empty-path');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'valid-empty-path',
+      title: 'Valid empty path',
+      blocks: [],
+    });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'valid-empty-path',
+      type: 'path',
+      category: 'testing',
+      milestones: ['step-1'],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(true);
+  });
+
+  it('accepts a container type package (journey) with no blocks', () => {
+    const pkgDir = path.join(tmpDir, 'valid-empty-journey');
+    writeJson(path.join(pkgDir, 'content.json'), {
+      id: 'valid-empty-journey',
+      title: 'Valid empty journey',
+      blocks: [],
+    });
+    writeJson(path.join(pkgDir, 'manifest.json'), {
+      id: 'valid-empty-journey',
+      type: 'journey',
+      category: 'testing',
+      milestones: ['step-1'],
+    });
+
+    const result = validatePackage(pkgDir);
+    expect(result.isValid).toBe(true);
   });
 
   it('should error when content.json is missing', () => {
@@ -145,7 +218,11 @@ describe('validatePackage', () => {
   describe('manifest category', () => {
     function validateWithCategory(name: string, category: unknown, type = 'guide') {
       const pkgDir = path.join(tmpDir, name);
-      writeJson(path.join(pkgDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+      writeJson(path.join(pkgDir, 'content.json'), {
+        id: 'test',
+        title: 'Test',
+        blocks: [{ type: 'markdown', content: '# Hello' }],
+      });
       const manifest: Record<string, unknown> = { id: 'test', type };
       if (category !== undefined) {
         manifest.category = category;
@@ -194,7 +271,11 @@ describe('validatePackage', () => {
 
     it('does not fail a package with no manifest', () => {
       const pkgDir = path.join(tmpDir, 'category-no-manifest');
-      writeJson(path.join(pkgDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+      writeJson(path.join(pkgDir, 'content.json'), {
+        id: 'test',
+        title: 'Test',
+        blocks: [{ type: 'markdown', content: '# Hello' }],
+      });
       expect(validatePackage(pkgDir).isValid).toBe(true);
     });
   });
@@ -231,7 +312,7 @@ describe('validatePackage', () => {
     writeJson(path.join(pkgDir, 'content.json'), {
       id: 'test',
       title: 'Test',
-      blocks: [],
+      blocks: [{ type: 'markdown', content: '# Hello' }],
     });
     writeJson(path.join(pkgDir, 'manifest.json'), {
       id: 'test',
@@ -299,7 +380,11 @@ describe('validatePackage', () => {
   });
 
   it.each([undefined, '13.2.0'])('accepts an optional valid runtime floor %s', (minGrafanaVersion) => {
-    writeJson(path.join(tmpDir, 'content.json'), { id: 'test', title: 'Test', blocks: [] });
+    writeJson(path.join(tmpDir, 'content.json'), {
+      id: 'test',
+      title: 'Test',
+      blocks: [{ type: 'markdown', content: '# Hello' }],
+    });
     writeJson(path.join(tmpDir, 'manifest.json'), {
       id: 'test',
       type: 'guide',
@@ -315,7 +400,7 @@ describe('validatePackage', () => {
     writeJson(path.join(pkgDir, 'content.json'), {
       id: 'test',
       title: 'Test',
-      blocks: [],
+      blocks: [{ type: 'markdown', content: '# Hello' }],
     });
     writeJson(path.join(pkgDir, 'manifest.json'), {
       id: 'test',
@@ -368,7 +453,7 @@ describe('validatePackage', () => {
     writeJson(path.join(pkgDir, 'content.json'), {
       id: 'test',
       title: 'Test',
-      blocks: [],
+      blocks: [{ type: 'markdown', content: '# Hello', unknownField: true }],
     });
 
     const normalResult = validatePackage(pkgDir);
@@ -516,7 +601,7 @@ describe('validatePackageTree', () => {
     writeJson(path.join(tmpDir, 'guide-a', 'content.json'), {
       id: 'guide-a',
       title: 'Guide A',
-      blocks: [],
+      blocks: [{ type: 'markdown', content: '# Hello' }],
     });
     writeJson(path.join(tmpDir, 'guide-b', 'content.json'), {
       id: 'guide-b',

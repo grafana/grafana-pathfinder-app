@@ -128,6 +128,8 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
   // --- Validate manifest.json (optional) ---
 
+  let manifest: ManifestJson | undefined;
+
   if (fs.existsSync(manifestPath)) {
     const manifestRead = readJsonFile(manifestPath, ManifestJsonSchema);
     if (!manifestRead.ok) {
@@ -152,7 +154,7 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
         return { isValid: false, packageId, errors, warnings, messages, contentResult };
       }
     } else {
-      const manifest = manifestRead.data;
+      manifest = manifestRead.data;
 
       if (manifest.id !== content.id) {
         errors.push({
@@ -180,6 +182,15 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
   // --- Asset reference validation ---
 
   validateAssetReferences(contentRaw, assetsDir, warnings);
+
+  const packageType = manifest ? manifest.type : 'guide';
+  if (packageType === 'guide' && content.blocks.length === 0) {
+    errors.push({
+      message: `Package "${packageId}" of type "guide" needs at least one block`,
+      path: ['content.json', 'blocks'],
+      code: 'empty_guide_blocks',
+    });
+  }
 
   const isValid = errors.length === 0 && (contentResult?.isValid ?? true);
 
