@@ -10,6 +10,7 @@ import { getFullScreenStyles } from './full-screen.styles';
 export interface FullScreenLayoutProps {
   /** Title of the active guide / editor */
   title: string;
+  showTitle?: boolean;
   /** "n/m" step progress for guides; omitted otherwise */
   stepProgress?: string;
   /** Active guide URL — used for the workshop "copy link" button */
@@ -39,6 +40,7 @@ export interface FullScreenLayoutProps {
 
 export function FullScreenLayout({
   title,
+  showTitle = true,
   stepProgress,
   guideUrl,
   guideType,
@@ -124,16 +126,14 @@ export function FullScreenLayout({
       <div className={styles.stickyTopBar}>
         <div className={styles.header}>
           <IconButton
-            name="angle-left"
+            name="arrow-left"
             size="md"
-            className={styles.headerIconButton}
-            tooltip={backLabel}
             onClick={onExit}
             data-testid={testIds.fullScreenMode.exitButton}
             aria-label={backLabel}
           />
-          <span className={styles.headerTitle} title={title}>
-            {title}
+          <span className={styles.headerTitle} title={showTitle ? title : undefined}>
+            {showTitle && title}
           </span>
           {stepProgress && (
             <span
@@ -147,12 +147,10 @@ export function FullScreenLayout({
             </span>
           )}
           <div className={styles.headerActions}>
-            {assistant}
             {hasActiveGuide && guideUrl && (
               <IconButton
                 name={linkCopy === 'copied' ? 'check' : linkCopy === 'failed' ? 'exclamation-triangle' : 'link'}
                 size="md"
-                className={styles.headerIconButton}
                 tooltip={
                   linkCopy === 'copied'
                     ? t('fullScreen.copyLinkCopied', 'Copied!')
@@ -169,13 +167,13 @@ export function FullScreenLayout({
               <IconButton
                 name="corner-up-right"
                 size="md"
-                className={styles.headerIconButton}
                 tooltip="Pop out to floating panel"
                 onClick={onGoFloating}
                 aria-label="Pop out to floating panel"
                 data-testid={testIds.fullScreenMode.goFloatingButton}
               />
             )}
+            {assistant}
           </div>
         </div>
         {subHeader}

@@ -84,6 +84,7 @@ describe('FullScreenLayout', () => {
 
     fireEvent.click(screen.getByTestId(testIds.fullScreenMode.exitButton));
     expect(onExit).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId(testIds.fullScreenMode.exitButton)).not.toHaveAttribute('title');
   });
 
   it('shows the step counter as an explicit "Step X of Y" label when stepProgress is provided', () => {

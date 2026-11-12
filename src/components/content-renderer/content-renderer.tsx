@@ -637,6 +637,10 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         {hasCoverContents && journey && (
           <LearningPathTableOfContents
             fullPage={fullPageOverview}
+            organization={(content.metadata.repository ?? packageManifest?.repository) === 'app-platform'}
+            estimatedMinutes={
+              typeof packageManifest?.estimatedMinutes === 'number' ? packageManifest.estimatedMinutes : undefined
+            }
             category={typeof packageManifest?.category === 'string' ? packageManifest.category : undefined}
             milestones={journey.milestones}
             baseUrl={journey.baseUrl}

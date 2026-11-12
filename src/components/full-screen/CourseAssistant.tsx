@@ -48,7 +48,7 @@ export function CourseAssistant({ content, activeTab }: { content: RawContent; a
       prompt=""
       autoSend={false}
       size="sm"
-      title={t('fullScreen.openAssistant', 'Open Grafana Assistant')}
+      title={t('fullScreen.askAssistant', 'Ask Assistant')}
     />
   );
 }

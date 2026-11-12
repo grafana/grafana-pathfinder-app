@@ -13,6 +13,7 @@ export { useDiscoverMore, toDiscoverMoreItem } from './useDiscoverMore';
 export type { DiscoverMoreItem, UseDiscoverMoreReturn } from './useDiscoverMore';
 
 // Badge utilities
+export { getCourseCompletionBadges } from './course-badges';
 export {
   BADGES,
   getBadgesToAward,

@@ -1,5 +1,11 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SceneObjectBase, type SceneComponentProps, type SceneObjectState } from '@grafana/scenes';
+import {
+  SceneAppPage,
+  sceneGraph,
+  SceneObjectBase,
+  type SceneComponentProps,
+  type SceneObjectState,
+} from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
@@ -19,14 +25,22 @@ import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { reportPathfinderSurface } from '../../lib/telemetry/surface';
 import { REQUEST_FULLSCREEN_GUIDE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../../lib/event-names';
 import { findDocPage } from '../../utils/find-doc-page';
-import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
+import {
+  buildPathfinderShareUrl,
+  parsePathfinderDeepLink,
+  shouldOpenAsLearningJourney,
+} from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FullScreenLayout } from './FullScreenLayout';
 import { CourseAssistant } from './CourseAssistant';
 import { isJourneyCoverPage } from '../../docs-retrieval';
 import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';
-import { resolveSafeTargetPath, extractTargetPathFromEventDetail } from './resolve-safe-target-path';
+import {
+  resolveSafeTargetPath,
+  resolveCourseReturnPath,
+  extractTargetPathFromEventDetail,
+} from './resolve-safe-target-path';
 
 // Lazy-loaded so the editor only ships when the user actually opens it full screen.
 const BlockEditor = lazy(() =>
@@ -363,17 +377,66 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const courseOverviewUrl = !isCoverPage
     ? (content?.metadata.learningJourney?.baseUrl ?? content?.metadata.trackMemberBaseUrl)
     : undefined;
-  const backLabel = courseOverviewUrl ? 'Back to course' : isCoverPage ? 'Back to Learn' : 'Back to sidebar';
+  const backLabel = courseOverviewUrl ? 'Back to course' : isCoverPage ? 'Back to learning' : 'Back to sidebar';
   const handleBack = useCallback(() => {
     if (courseOverviewUrl && activeTab) {
       void panel.loadTab(activeTab.id, courseOverviewUrl);
     } else if (isCoverPage) {
+      const returnPath = resolveCourseReturnPath(panelModeManager.consumePriorPath());
       panelModeManager.setModeTransient('fullscreen');
-      locationService.push(PLUGIN_BASE_URL);
+      locationService.push(returnPath);
     } else {
       handleManualExit();
     }
   }, [courseOverviewUrl, activeTab, isCoverPage, panel, handleManualExit]);
+
+  const courseReturnPath = resolveCourseReturnPath(panelModeManager.getPriorPath());
+  useEffect(() => {
+    const page = sceneGraph.getAncestor(_props.model, SceneAppPage);
+    const learnPage = new SceneAppPage({ title: 'Learn', url: PLUGIN_BASE_URL, routePath: '/', preserveUrlKeys: [] });
+    const catalogPage = new URL(courseReturnPath, window.location.origin).pathname.endsWith('/browse')
+      ? new SceneAppPage({
+          title: 'Explore learning',
+          url: courseReturnPath,
+          routePath: 'browse',
+          preserveUrlKeys: [],
+          getParentPage: () => learnPage,
+        })
+      : learnPage;
+    const coursePage = courseOverviewUrl
+      ? new SceneAppPage({
+          title,
+          url: buildPathfinderShareUrl({
+            doc: courseOverviewUrl,
+            panelMode: 'fullscreen',
+            guideType: activeTab?.type === 'learning-journey' ? 'learning-journey' : 'docs',
+          }),
+          routePath: ROUTES.FullScreen,
+          preserveUrlKeys: [],
+          getParentPage: () => catalogPage,
+        })
+      : catalogPage;
+    page.setState({
+      title: isEditorTab ? title : content?.metadata.title || title,
+      hideFromBreadcrumbs: false,
+      getParentPage: () => coursePage,
+    });
+  }, [_props.model, courseReturnPath, courseOverviewUrl, title, content?.metadata.title, activeTab?.type, isEditorTab]);
+
+  useEffect(() => {
+    if (!courseOverviewUrl || !activeTab) {
+      return;
+    }
+    const tabId = activeTab.id;
+    return locationService.getHistory().listen((location: { pathname: string; search: string }) => {
+      if (location.pathname !== `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`) {
+        return;
+      }
+      if (parsePathfinderDeepLink(location.search).doc === courseOverviewUrl) {
+        void panel.loadTab(tabId, courseOverviewUrl);
+      }
+    });
+  }, [courseOverviewUrl, activeTab, panel]);
 
   // Stable ref to the latest exit-to-sidebar callback. `handleExitToSidebar`
   // only depends on `panel` (a stable useMemo'd reference) so its identity
@@ -498,6 +561,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   return (
     <FullScreenLayout
       title={title}
+      showTitle={!isCoverPage && !courseOverviewUrl}
       stepProgress={stepProgress}
       guideUrl={guideUrl}
       guideType={guideType}

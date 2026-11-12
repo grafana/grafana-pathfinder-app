@@ -28,12 +28,12 @@ export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
   header: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(0.75),
-    padding: theme.spacing(0.75),
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.75, 0.75, 0.75, 1.25),
     minHeight: theme.spacing(5),
     boxSizing: 'border-box',
     borderBottom: `1px solid ${theme.colors.border.weak}`,
-    background: theme.colors.background.secondary,
+    background: theme.colors.background.primary,
     flexShrink: 0,
   }),
   headerTitle: css({
@@ -54,11 +54,10 @@ export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     flexShrink: 0,
   }),
-  headerIconButton: css({ margin: 0 }),
   headerActions: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1.25),
+    gap: theme.spacing(1),
     flexShrink: 0,
   }),
   body: css({
