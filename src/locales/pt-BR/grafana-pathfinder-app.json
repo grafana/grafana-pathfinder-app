@@ -12,21 +12,21 @@
     "menuTooltip": "Mais opções",
     "milestones": "Marcos:",
     "noRecommendations": "Nenhuma recomendação disponível para seu contexto atual",
-    "otherDocumentation": "Outra Documentação",
+    "otherDocumentation": "Outra documentação",
     "percentComplete": "{{percent}}% completo",
-    "recommendedLearning": "Documentação Recomendada",
+    "recommendedLearning": "Documentação recomendada",
     "resume": "Continuar",
     "settings": "Configurações",
     "start": "Iniciar",
     "startInteractiveGuide": "Iniciar guia interativo",
-    "startLearningJourney": "Iniciar Jornada de Aprendizado",
+    "startLearningJourney": "Iniciar jornada de aprendizado",
     "subtitle": "Guias interativos e recursos com base no que você está trabalhando.",
     "summary": "Resumo",
     "view": "Visualizar",
-    "viewDocumentation": "Visualizar Documentação"
+    "viewDocumentation": "Visualizar documentação"
   },
   "coverPage": {
-    "tableOfContents": "Neste caminho",
+    "tableOfContents": "Nesta jornada",
     "getStarted": "Iniciar",
     "resume": "Continuar",
     "earnsBadge": "Ganhe o badge {{badge}}",
@@ -53,7 +53,7 @@
     "interactiveJourney": "Jornada interativa",
     "linkCopied": "Link copiado para a área de transferência",
     "linkCopyFailed": "Não foi possível copiar o link",
-    "learningJourney": "Jornada de Aprendizado",
+    "learningJourney": "Jornada de aprendizado",
     "loading": "Carregando...",
     "menuAriaLabel": "Mais opções",
     "menuTooltip": "Mais opções",
@@ -98,13 +98,13 @@
     "title": "Este guia precisa de um Grafana mais recente"
   },
   "interactiveLearningBanner": {
-    "body": "As guias interativas guiam você através do Grafana passo a passo. \"Mostrar me\" destaca o controle a ser usado, e \"Faça isso\" executa o passo para você.",
+    "body": "Os guias interativos mostram o Grafana passo a passo. \"Show me\" destaca o controle a ser usado e \"Do it\" executa o passo para você.",
     "title": "Aprenda fazendo"
   },
   "markComplete": {
-    "completed": "Completo",
-    "guideButton": "Marcar como completo",
-    "milestoneButton": "Marcar como completo e continuar"
+    "completed": "Concluído",
+    "guideButton": "Marcar como concluído",
+    "milestoneButton": "Marcar como concluído e continuar"
   },
   "myLearning": {
     "welcome": "Bem-vindo",
@@ -120,10 +120,10 @@
     "badgesDescription": "Ganhe badges ao completar guias e jornadas de aprendizado.",
     "badgesEarned": "Badges ganhos",
     "yourBadges": "Seus badges",
-    "collapse": "Minimizar",
-    "completed": "Completo",
+    "collapse": "Recolher",
+    "completed": "Concluídos",
     "completedDescription": "Cursos e jornadas de aprendizado que você completou",
-    "completedDone": "Completo",
+    "completedDone": "Concluído",
     "completedEmpty": "Complete um curso para ver aqui",
     "dayStreak": "Sequência de dias",
     "discoverMore": "Descobrir mais",
@@ -141,16 +141,16 @@
     "dueRelativeToday": "Hoje",
     "expand": "Expandir",
     "fundamentals": "Fundamentos",
-    "guidesCompleted": "Guias completas",
-    "launchErrorMessage": "Algo deu errado ao carregar a guia. Tente novamente.",
-    "launchErrorTitle": "Não foi possível abrir a guia",
+    "guidesCompleted": "Guias concluídos",
+    "launchErrorMessage": "Algo deu errado ao carregar o guia. Tente novamente.",
+    "launchErrorTitle": "Não foi possível abrir o guia",
     "learningAltitude": "Seu nível de aprendizado",
     "learningPaths": "Jornadas de aprendizado",
     "loadingGuides": "Carregando guias...",
     "myCourses": "Minhas jornadas",
     "myCoursesDescription": "Jornadas atribuídas e jornadas que você iniciou",
     "myCoursesEmpty": "Nenhuma jornada de aprendizado disponível ainda",
-    "pathsDescription": "Guias estruturadas para ajudar você a dominar o Grafana passo a passo",
+    "pathsDescription": "Guias estruturados para ajudar você a dominar o Grafana passo a passo",
     "privatePaths": "Jornadas privadas",
     "privatePathsDescription": "Jornadas publicadas para sua organização",
     "resetPathErrorMessage": "Algum progresso desta jornada não pôde ser limpo. Recarregue a página e tente novamente.",
@@ -181,7 +181,7 @@
     "showAll": "Mostrar todos {{total}}",
     "start": "Iniciar",
     "subtitle": "Aprenda o Grafana em seu próprio ritmo",
-    "track": "Acompanhar",
+    "track": "Jornada",
     "welcomeBack": "Bem-vindo de volta",
     "welcomeBackName": "Bem-vindo de volta, {{- name}}"
   },
@@ -215,22 +215,22 @@
   },
   "appConfig": {
     "beta": "Beta",
-    "pathfinderEnabled": "Ativar aprendizagem interativa",
-    "pathfinderEnabledDescription": "As alterações aplicam-se quando os usuários recarregam o Grafana e seus ajustes são carregados com sucesso. Se os ajustes não puderem ser lidos, a aprendizagem interativa permanece disponível.",
+    "pathfinderEnabled": "Ativar aprendizado interativo",
+    "pathfinderEnabledDescription": "As alterações são aplicadas quando os usuários recarregam o Grafana e suas configurações são carregadas com sucesso. Se as configurações não puderem ser lidas, o aprendizado interativo continua disponível.",
     "pathfinderPreview": "Aprendizado interativo",
     "pathfinderPreviewDescription": "O aprendizado interativo traz ajuda contextual e guias interativos para o Grafana.",
-    "pathfinderRemotelyDisabled": "O aprendizado interativo está desativado remotamente.",
+    "pathfinderRemotelyDisabled": "O aprendizado interativo está desativado remotamente",
     "pathfinderRemotelyDisabledDescription": "Atualmente, a chave remota impede a execução do aprendizado interativo. Sua preferência salva será aplicada quando o aprendizado interativo for habilitado remotamente novamente.",
     "pathfinderRevertDescription": "Desative isso para usar o menu de Ajuda clássico do Grafana após os usuários recarregarem a página. Seu progresso de aprendizado é mantido."
   },
   "pathfinder": {
-    "disabled": "Aprendizado interativo está desativado.",
+    "disabled": "O aprendizado interativo está desativado",
     "disabledDescription": "Aprendizado interativo está desativado para esta organização.",
     "openSettings": "Abrir configurações de aprendizado interativo"
   },
   "helpButtonHint": {
-    "message": "Experimente a aprendizagem interativa",
-    "dismiss": "Dispensar dica de aprendizagem",
+    "message": "Experimente o aprendizado interativo",
+    "dismiss": "Dispensar dica de aprendizado",
     "learn": "Aprender"
   },
   "common": {
