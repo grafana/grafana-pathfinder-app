@@ -204,3 +204,35 @@ After editing `src/module.tsx` or `src/plugin.json`, ensure the titles match. Re
 ### UI state looks stale
 
 Pathfinder persists state to localStorage and Grafana's user-storage API. Clear the `pathfinder-*` keys in localStorage from the browser DevTools, then refresh.
+
+## Local cohort integration test
+
+Build both backends, then run the opt-in integration test from the Pathfinder
+checkout. Point the first command at your recommender PR checkout:
+
+```bash
+(cd /path/to/grafana-recommender && go build -o /tmp/recommender-cohort-local ./cmd/recommender)
+go build -o /tmp/pathfinder-cohort-local ./pkg
+COHORT_RECOMMENDER_BINARY=/tmp/recommender-cohort-local \
+  go test -race ./pkg/plugin -run '^TestCohortLocalIntegration$' -count=1 -v
+```
+
+The test starts the real recommender executable with synthetic cohort data and
+exercises Pathfinder's registered HTTP route in the Go test process. It uses real
+ES256 signature verification against a local JWKS fixture. A test-only transport
+sends Pathfinder's fixed upstream URL to the local recommender. The recommender
+loads its fixture through a local HTTP proxy: the public-looking fixture address
+is intercepted locally, never contacted. No production configuration, secrets,
+or authentication bypass is added. Processes and listeners are cleaned up.
+
+Cases cover overlapping memberships, distinct users, unknown users, repeat reads
+without cross-user cache contamination, anonymous/expired/wrong-stack identities,
+caller-supplied identity rejection, and direct recommender lookup without valid
+service credentials. Responses must be cohort-only and carry `no-store`.
+
+This is a backend integration test, not a Grafana browser or plugin RPC test. It
+uses file-backed synthetic memberships, not live GCS or scheduled BigQuery
+publication. The separate mapper and publisher suites cover snapshot freshness,
+failed refresh retention and publishing guards. Before production activation,
+verify the target Cloud stack supplies signed `email` and `email_verified` claims,
+provision matching secrets, and smoke-test the deployed route.
