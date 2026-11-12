@@ -68,3 +68,17 @@ describe('resolveAssetUrl', () => {
     });
   });
 });
+
+it.each([
+  'http://[invalid',
+  'https://interactive-learning.grafana.net/packages/guide/%2e%2e%2fimage.png',
+  'https://interactive-learning.grafana.net/packages/guide/%ZZ.png',
+])('leaves malformed preview assets unresolved without throwing: %s', (src) => {
+  jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
+  try {
+    const base = `https://raw.githubusercontent.com/fork/repo/${'a'.repeat(40)}/guide/content.json#pf-pr-kiosk123`;
+    expect(resolveAssetUrl(src, base)).toBe('');
+  } finally {
+    jest.mocked(isDevModeEnabledGlobal).mockReturnValue(false);
+  }
+});

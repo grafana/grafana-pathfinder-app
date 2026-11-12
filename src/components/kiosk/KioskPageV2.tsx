@@ -191,7 +191,7 @@ export function KioskPageV2({
               key={key}
               style={{
                 textAlign: block.alignment === 'center' ? 'center' : 'left',
-                fontSize: block.secondary ? theme.typography.sm.fontSize : undefined,
+                fontSize: block.secondary ? theme.typography.bodySmall.fontSize : undefined,
               }}
             >
               {block.format === 'markdown' ? (

@@ -5,7 +5,11 @@ import { stripPrTestMarker } from '../../../lib/pr-test-marker';
 export function resolveAssetUrl(src: string, baseUrl?: string): string {
   const snapshot = baseUrl ? activePrPreview(baseUrl) : undefined;
   if (snapshot) {
-    return stripPrTestMarker(mapPreviewContentUrl(new URL(src, baseUrl).href, snapshot, snapshot.fetchId));
+    try {
+      return stripPrTestMarker(mapPreviewContentUrl(new URL(src, baseUrl).href, snapshot, snapshot.fetchId));
+    } catch {
+      return '';
+    }
   }
   if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//') || src.startsWith('data:')) {
     return src;
