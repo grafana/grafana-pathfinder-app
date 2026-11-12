@@ -3,17 +3,20 @@ import { toAnalyticsValue } from './analytics-values';
 
 let kioskSessionId: string | undefined;
 let kioskName: string | undefined;
+let previewSession = false;
 
-export function startKioskSession(name = 'unknown'): { id: string; end: () => void } {
+export function startKioskSession(name = 'unknown', preview = false): { id: string; end: () => void } {
   const id = crypto.randomUUID();
   kioskSessionId = id;
   kioskName = name;
+  previewSession = preview;
   return {
     id,
     end: () => {
       if (kioskSessionId === id) {
         kioskSessionId = undefined;
         kioskName = undefined;
+        previewSession = false;
       }
     },
   };
@@ -48,6 +51,9 @@ export function reportKioskInteraction(
   blockIndex: number | undefined,
   interaction: KioskInteraction
 ) {
+  if (previewSession) {
+    return;
+  }
   reportAppInteraction(UserInteraction.KioskInteraction, {
     ...(kioskSessionId && { kiosk_session_id: kioskSessionId }),
     ...(kioskName && { kiosk_name: kioskName }),

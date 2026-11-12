@@ -1,3 +1,4 @@
+import { safeParseKioskCatalog } from '../../types/kiosk-page.schema';
 /**
  * Validate Command
  *
@@ -440,6 +441,7 @@ export function runValidate(args: ValidateArgs): CommandOutcome {
 }
 
 export const ValidateCliCommand = z.object({
+  kiosk: z.string().optional().describe('Validate a legacy or structured kiosk catalog').meta({ role: 'io' }),
   files: z.array(z.string()).default([]).describe('Guide files or a package directory').meta({ role: 'io' }),
   bundled: z
     .boolean()
@@ -480,6 +482,24 @@ export type ValidateCliInput = z.output<typeof ValidateCliCommand>;
 export async function runValidateCli(args: ValidateCliInput): Promise<CommandOutcome> {
   const failed = (code: string, message: string): CommandOutcome => ({ status: 'error', code, message });
   try {
+    if (args.kiosk) {
+      if (args.files.length || args.stdin || args.bundled || args.package || args.packages || args.snippetsCatalog) {
+        return failed('INVALID_OPTIONS', '--kiosk cannot be combined with other validation inputs');
+      }
+      const data: unknown = JSON.parse(fs.readFileSync(resolveCliPath(args.kiosk), 'utf8'));
+      const parsed = safeParseKioskCatalog(data);
+      const outcome: CommandOutcome = parsed.success
+        ? { status: 'ok', summary: 'Kiosk catalog is valid' }
+        : failed('INVALID_KIOSK', z.prettifyError(parsed.error));
+      console.log(
+        args.format === 'json'
+          ? JSON.stringify(outcome)
+          : parsed.success
+            ? 'Kiosk catalog is valid'
+            : z.prettifyError(parsed.error)
+      );
+      return outcome;
+    }
     const mode = resolveMode(args, args.files);
 
     if (mode.kind === 'error') {

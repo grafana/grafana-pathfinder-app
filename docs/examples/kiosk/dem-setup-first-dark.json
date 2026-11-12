@@ -1,0 +1,105 @@
+{
+  "rules": [
+    {
+      "title": "Set up both",
+      "url": "https://interactive-learning.grafana.net/packages/dem-get-started/content.json",
+      "description": "Use the Synthetic Monitoring CLI, review your check, and choose your Frontend Observability setup journey.",
+      "type": "interactive",
+      "page": "/a/grafana-synthetic-monitoring-app/home",
+      "id": "combined"
+    },
+    {
+      "title": "Synthetic Monitoring",
+      "url": "https://interactive-learning.grafana.net/packages/get-started-first-check/content.json",
+      "description": "Open Synthetic Monitoring to explore checks and monitor your website's availability and response time.",
+      "type": "interactive",
+      "page": "/a/grafana-synthetic-monitoring-app/home",
+      "id": "synthetic",
+      "interactiveLearning": false
+    },
+    {
+      "title": "Frontend Observability",
+      "url": "https://interactive-learning.grafana.net/packages/welcome-frontend-observability/content.json",
+      "description": "Open Frontend Observability to explore applications and understand the experience of people using your website.",
+      "type": "interactive",
+      "page": "/a/grafana-kowalski-app/apps/new/web",
+      "id": "frontend",
+      "interactiveLearning": false
+    }
+  ],
+  "exitButtonLabel": "Explore all options",
+  "page": {
+    "version": 2,
+    "width": "wide",
+    "header": "minimal",
+    "brand": {
+      "logo": {
+        "src": "assets/grafana-mark.svg",
+        "alt": "Grafana"
+      }
+    },
+    "appearance": {
+      "accentColor": "#FF9830",
+      "radius": "large",
+      "density": "normal",
+      "preset": "grafana"
+    },
+    "blocks": [
+      {
+        "type": "hero",
+        "eyebrow": "Digital Experience Monitoring",
+        "title": "Understand every side of your website's experience",
+        "description": "See whether your website is available and how it performs for real users. Guided setup creates an uptime check with the CLI, then helps you connect your frontend.",
+        "alignment": "start",
+        "titleSize": "extra-large",
+        "layout": "split",
+        "appearance": {
+          "preset": "subtle"
+        },
+        "image": {
+          "src": "assets/dem-overview-warm.png",
+          "alt": "A website connected to availability probes and real-user sessions.",
+          "fit": "contain"
+        },
+        "primaryAction": {
+          "ruleId": "combined",
+          "label": "Start guided setup"
+        }
+      },
+      {
+        "type": "section",
+        "title": "Start with one product",
+        "blocks": [
+          {
+            "type": "guide-links",
+            "layout": "cards",
+            "columns": 2,
+            "links": [
+              {
+                "ruleId": "synthetic",
+                "label": "Synthetic Monitoring",
+                "description": "Check availability and response time from around the world.",
+                "icon": "cloud",
+                "badge": "Outside in",
+                "actionLabel": "Open Synthetic Monitoring"
+              },
+              {
+                "ruleId": "frontend",
+                "label": "Frontend Observability",
+                "description": "Understand real sessions, errors, and page performance.",
+                "icon": "chart-line",
+                "badge": "Inside out",
+                "actionLabel": "Set up Frontend Observability"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "content": "Start with either product and add the other when you are ready.",
+        "secondary": true
+      }
+    ]
+  }
+}

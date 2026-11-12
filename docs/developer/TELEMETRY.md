@@ -484,3 +484,5 @@ Topics report when they are on a fixed allowlist or come from the official catal
 Automatic view changes caused by searching or choosing a topic do not emit `view`; resetting filters does not emit `source` or `topic`. Clicking an already selected view or source emits nothing. These events use the shared RudderStack pipeline and Faro mirror.
 
 Launches continue to use `pathfinder_open_resource_click` with `interaction_location=package_browser` and `pathfinder_guide_launch_surface_chosen` with `source=package_browser`. The resource click measures an attempt before loading, not a successful open. No additional launch event is emitted.
+
+Kiosks opened through the PR tester suppress catalog exposure, kiosk interactions, and demo-start conversions while retaining diagnostic errors. Their launched content uses the existing PR-test marker and completion guards; saved form answers also include the per-fetch marker. Ordinary kiosk sessions retain the events above.

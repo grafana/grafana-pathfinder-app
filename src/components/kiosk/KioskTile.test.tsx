@@ -1,3 +1,4 @@
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { config } from '@grafana/runtime';
 import { sidebarState } from '../../global-state/sidebar';
 import { launchKioskGuide } from './launch-kiosk-guide';
@@ -27,7 +28,7 @@ jest.mock('@grafana/runtime', () => ({
 
 jest.mock('../../lib/storage/extension-sidebar', () => ({ isExtensionSidebarOwnedByOther: jest.fn(() => false) }));
 
-jest.mock('../../utils/dev-mode', () => ({ isDevModeEnabledGlobal: () => false }));
+jest.mock('../../utils/dev-mode', () => ({ isDevModeEnabledGlobal: jest.fn(() => false) }));
 
 jest.mock('@grafana/ui', () => ({
   Icon: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} />,
@@ -68,6 +69,7 @@ describe('KioskTile', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(isDevModeEnabledGlobal).mockReturnValue(false);
     sidebarState.setIsSidebarMounted(false);
     sidebarState.consumePendingOpenSource();
     window.open = mockOpen;
@@ -75,6 +77,23 @@ describe('KioskTile', () => {
       value: { randomUUID: mockRandomUUID, getRandomValues: realCrypto.getRandomValues.bind(realCrypto) },
       writable: true,
     });
+  });
+
+  it('only permits pinned raw guide launches in explicit dev-mode previews', () => {
+    const rawRule = {
+      ...rule,
+      url: `https://raw.githubusercontent.com/fork/repo/${'a'.repeat(40)}/guide/content.json#pf-pr-kiosk123`,
+      preview: true,
+    };
+    launchKioskGuide(rawRule, 'presentation');
+    expect(mockOpen).not.toHaveBeenCalled();
+    jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
+    launchKioskGuide({ ...rawRule, preview: undefined }, 'presentation');
+    expect(mockOpen).not.toHaveBeenCalled();
+    launchKioskGuide(rawRule, 'presentation');
+    expect(mockOpen).toHaveBeenCalledTimes(1);
+    expect(new URL(mockOpen.mock.calls[0][0]).searchParams.get('doc')).toBe(rawRule.url);
+    expect(reportAppInteraction).not.toHaveBeenCalled();
   });
 
   it('opens deep link with doc and kiosk_session params on click', () => {

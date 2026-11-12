@@ -12,6 +12,8 @@ jest.mock('../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: { KioskInteraction: 'kiosk_interaction' },
 }));
+jest.mock('../../utils/dev-mode', () => ({ isDevModeEnabledGlobal: () => false }));
+jest.mock('@grafana/runtime', () => ({ config: {} }));
 
 jest.mock('@grafana/ui', () => ({
   Icon: () => null,
@@ -21,8 +23,10 @@ jest.mock('@grafana/ui', () => ({
     }
   ),
   useStyles2: () => ({}),
+  useTheme2: () => ({ colors: { background: { primary: '#ffffff' }, text: { primary: '#000000' } } }),
 }));
 jest.mock('./kiosk-rules', () => ({ loadKioskData: jest.fn(), DEFAULT_BANNER: 'default-banner' }));
+jest.mock('./KioskPageV2', () => ({ KioskPageV2: () => <div>Version 2 page</div> }));
 jest.mock('./KioskPage', () => ({ KioskPage: () => <div>Structured page</div> }));
 jest.mock('./KioskTile', () => ({ KioskTile: ({ rule }: { rule: { title: string } }) => <div>{rule.title}</div> }));
 
@@ -37,6 +41,23 @@ beforeEach(() => {
   jest.spyOn(document, 'hasFocus').mockReturnValue(true);
 });
 afterEach(() => jest.restoreAllMocks());
+
+it('renders the catalog brand beside the persistent exit control', async () => {
+  load.mockResolvedValue({
+    ...data('Guide'),
+    catalogUrl: 'https://example.com/rules.json',
+    page: {
+      version: 2,
+      header: 'minimal',
+      brand: { name: 'Grafana Cloud', logo: { src: 'assets/grafana-mark.svg', decorative: true } },
+      blocks: [{ type: 'text', content: 'Hello' }],
+    },
+  });
+  render(<KioskOverlay rulesUrl="https://example.com/rules.json" onClose={jest.fn()} />);
+  expect(await screen.findByText('Grafana Cloud')).toBeVisible();
+  expect(document.querySelector('img[src="https://example.com/assets/grafana-mark.svg"]')).toHaveAttribute('alt', '');
+  expect(screen.getByRole('button', { name: 'Skip this and show all options' })).toBeVisible();
+});
 
 it('starts a session before loading and replaces it when the kiosk reopens', async () => {
   load.mockResolvedValue(data('Guide'));
@@ -217,4 +238,17 @@ it('focuses the dialog instead of its exit when the current control becomes disa
   exit.setAttribute('disabled', '');
   await waitFor(() => expect(screen.getByRole('dialog')).toHaveFocus());
   focus.mockRestore();
+});
+
+it('renders a prepared PR preview without reporting catalog exposure or loading fallback catalogs', async () => {
+  const catalog = Promise.resolve({
+    data: data('PR guide'),
+    tier: 'override' as const,
+    kioskName: 'pr-preview',
+    degraded: false,
+    rejectedRules: 0,
+  });
+  render(<KioskOverlay preview catalog={catalog} rulesUrl="https://example.com/pr/rules.json" onClose={jest.fn()} />);
+  await screen.findByText('PR guide');
+  expect(load).not.toHaveBeenCalled();
 });

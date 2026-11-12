@@ -1,10 +1,13 @@
+import { KioskPageV2 } from './KioskPageV2';
+import { KioskImage } from './KioskImage';
+import { kioskAppearanceClass } from './kiosk-appearance';
 import { reportKioskInteraction, startKioskSession } from '../../lib/kiosk-analytics';
 import { getKioskNameFromCatalogUrl } from '../../lib/kiosk-attribution';
 import { KioskPage } from './KioskPage';
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify';
-import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { Button, Icon, useStyles2, useTheme2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
 import { loadKioskData, DEFAULT_BANNER, type KioskData, type PreparedKioskData } from './kiosk-rules';
@@ -18,6 +21,7 @@ const BANNER_SANITIZE_CONFIG: DOMPurifyConfig = {
 };
 
 interface KioskOverlayProps {
+  preview?: boolean;
   catalog?: Promise<PreparedKioskData>;
   rulesUrl: string;
   overrideUrl?: string;
@@ -28,6 +32,7 @@ interface KioskOverlayProps {
 
 export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   catalog,
+  preview = false,
   rulesUrl,
   overrideUrl,
   onClose,
@@ -35,6 +40,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
   mode = 'presentation',
 }) => {
   const styles = useStyles2(getKioskOverlayStyles);
+  const theme = useTheme2();
   const overlayRef = useRef<HTMLDivElement>(null);
   const exitRef = useRef<HTMLButtonElement>(null);
   const [result, setResult] = useState<{
@@ -67,8 +73,11 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
 
   useEffect(() => {
     const controller = new AbortController();
-    const session = startKioskSession(getKioskNameFromCatalogUrl(overrideUrl || rulesUrl));
-    loadKioskData(rulesUrl, overrideUrl, controller.signal, { sessionId: session.id, mode }, catalog)
+    const session = startKioskSession(getKioskNameFromCatalogUrl(overrideUrl || rulesUrl), preview);
+    const loading = preview
+      ? (catalog ?? Promise.reject(new Error('No preview catalog was prepared'))).then((prepared) => prepared.data)
+      : loadKioskData(rulesUrl, overrideUrl, controller.signal, { sessionId: session.id, mode }, catalog);
+    loading
       .then((data) => {
         if (!controller.signal.aborted) {
           setResult({ rulesUrl, overrideUrl, catalog, data });
@@ -88,7 +97,7 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
       controller.abort();
       session.end();
     };
-  }, [rulesUrl, overrideUrl, mode, catalog]);
+  }, [rulesUrl, overrideUrl, mode, catalog, preview]);
 
   const handleExit = useCallback(
     (method: 'button' | 'escape') => {
@@ -171,7 +180,8 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
     <div
       ref={overlayRef}
       onKeyDown={handleKeyDown}
-      className={styles.backdrop}
+      className={`${styles.backdrop} ${page?.version === 2 ? kioskAppearanceClass(page.appearance, theme) : ''}`}
+      style={page?.version === 2 ? { borderRadius: 0 } : undefined}
       data-testid={testIds.kioskMode.overlay}
       tabIndex={-1}
       role="dialog"
@@ -181,14 +191,35 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
       <div className={`${styles.container} ${page && page.width !== 'wide' ? styles.standardWidth : ''}`}>
         <div
           className={`${styles.header} ${page?.header === 'minimal' ? styles.minimalHeader : ''}`}
+          style={page?.version === 2 ? { background: 'inherit', color: 'inherit' } : undefined}
           data-testid={testIds.kioskMode.header}
         >
+          {page?.version === 2 && page.brand && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginRight: 'auto',
+                fontSize: 'clamp(16px, 2vw, 24px)',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {page.brand.logo && (
+                <div style={{ width: 28, flexShrink: 0 }}>
+                  <KioskImage image={page.brand.logo} catalogUrl={current?.catalogUrl ?? rulesUrl} />
+                </div>
+              )}
+              {page.brand.name && <span>{page.brand.name}</span>}
+            </div>
+          )}
           {page?.header !== 'minimal' && (
             <div className={styles.titleGroup}>
               <h1 className={styles.title}>
                 <Icon name="presentation-play" size="lg" /> Interactive guides
               </h1>
-              <p className={styles.subtitle}>
+              <p className={styles.subtitle} style={page?.version === 2 ? { color: 'inherit' } : undefined}>
                 {mode === 'instance'
                   ? 'Choose a guide to follow in this Grafana instance'
                   : 'Select a guide to launch it in a new tab'}
@@ -198,8 +229,13 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
           <Button
             ref={exitRef}
             variant="secondary"
-            icon="arrow-left"
+            icon={page?.version === 2 && page.brand ? undefined : 'arrow-left'}
             className={styles.closeButton}
+            style={
+              page?.version === 2
+                ? { background: theme.colors.background.primary, color: theme.colors.text.primary }
+                : undefined
+            }
             onClick={() => handleExit('button')}
             aria-label={exitButtonLabel}
             data-testid={testIds.kioskMode.closeButton}
@@ -240,7 +276,16 @@ export const KioskOverlay: React.FC<KioskOverlayProps> = ({
           </div>
         )}
 
-        {!loading && page && (
+        {!loading && page?.version === 2 && (
+          <KioskPageV2
+            page={page}
+            rules={rules}
+            mode={mode}
+            onLaunch={onLaunch}
+            catalogUrl={current?.catalogUrl ?? overrideUrl ?? rulesUrl}
+          />
+        )}
+        {!loading && page?.version === 1 && (
           <KioskPage
             key={`${rulesUrl}-${overrideUrl ?? ''}`}
             page={page}
