@@ -16,6 +16,8 @@ import React, { useEffect, useLayoutEffect, useState, type PropsWithChildren } f
 import { CompletionCoordinator, type ObservationCheck } from '../../global-state/observation/coordinator';
 import { CompletionObservationContext } from '../../global-state/observation/context';
 import { useGuideRequirements, splitGuideScopedRequirements } from '../../requirements-manager';
+import { logger } from '../../lib/logging';
+import { CLOUD_TOKEN_OBJECTIVE } from '../../lib/workflow-objectives';
 import { conditionTokens } from '../../lib/condition-input';
 import { onContextChange } from '../../lib/context-event-bus';
 import { observeWorkflowStateChanges } from '../../lib/dom/workflow-observer';
@@ -48,6 +50,8 @@ interface CheckSettings {
 
 function createObservationCheck() {
   let settings: CheckSettings | undefined;
+  const unavailable = new Map<string, { since: number; lastSeen: number }>();
+  let driftReported = false;
   const inFlight = new Map<string, Promise<boolean | undefined>>();
   const check: ObservationCheck = async (conditions, step, signal, checkCommand = false) => {
     if (!settings) {
@@ -66,25 +70,25 @@ function createObservationCheck() {
       maxRetries: 0,
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const evaluate = async () => {
+    const evaluate = async (requirements = conditions) => {
       if (mode !== 'controller') {
-        return outcome(await checkPostconditions(options));
+        return checkPostconditions({ ...options, requirements });
       }
       if (!channel) {
         return undefined;
       }
-      const { guideScoped, remaining } = splitGuideScopedRequirements(conditions);
+      const { guideScoped, remaining } = splitGuideScopedRequirements(requirements);
       if (conditionTokens(guideScoped).length) {
         const local = outcome(await checkPostconditions({ ...options, requirements: guideScoped }));
         if (local !== true) {
-          return local;
+          return { verdict: local === false ? 'unsatisfied' : 'unavailable' };
         }
       }
       if (!conditionTokens(remaining).length) {
-        return true;
+        return { verdict: 'satisfied' };
       }
       const remote = await channel.requestRequirementCheck(step.stepId, remaining, { ...options, passive: true });
-      return remote === null ? undefined : outcome(remote);
+      return remote ?? undefined;
     };
     const key = JSON.stringify([mode, conditions, step.actions[0], checkCommand]);
     let pending = inFlight.get(key);
@@ -92,11 +96,47 @@ function createObservationCheck() {
       if (inFlight.size >= 4) {
         return undefined;
       }
-      pending = evaluate().finally(() => {
-        if (inFlight.get(key) === pending) {
-          inFlight.delete(key);
-        }
-      });
+      pending = evaluate()
+        .then(async (result) => {
+          if (signal.aborted) {
+            return undefined;
+          }
+          if (
+            conditionTokens(conditions).some((token) => token.startsWith('on-page:')) &&
+            result?.verdict !== 'satisfied'
+          ) {
+            unavailable.delete(step.id);
+          }
+          if (!driftReported && conditionTokens(conditions).includes(CLOUD_TOKEN_OBJECTIVE)) {
+            const pages = conditionTokens(step.objectives).filter((token) => token.startsWith('on-page:'));
+            const pageMatches =
+              result?.verdict === 'unavailable' && pages.length > 0 && (await evaluate(pages))?.verdict === 'satisfied';
+            if (!signal.aborted && pageMatches) {
+              const now = Date.now();
+              const previous = unavailable.get(step.id);
+              const since = previous && now - previous.lastSeen <= MAX_POLL_MS + 5000 ? previous.since : now;
+              if (unavailable.size >= 256 && !previous) {
+                unavailable.delete(unavailable.keys().next().value!);
+              }
+              unavailable.set(step.id, { since, lastSeen: now });
+              if (now - since >= 60_000) {
+                driftReported = true;
+                logger.warn('[pathfinder] Cloud token workflow remains unavailable on its expected page', {
+                  workflow: 'cloud_access_policy_token',
+                  reason: 'form_contract_unavailable',
+                });
+              }
+            } else {
+              unavailable.delete(step.id);
+            }
+          }
+          return outcome(result ?? {});
+        })
+        .finally(() => {
+          if (inFlight.get(key) === pending) {
+            inFlight.delete(key);
+          }
+        });
       inFlight.set(key, pending);
     }
     let onAbort = () => {};
@@ -125,6 +165,10 @@ function createObservationCheck() {
   };
   return {
     check,
+    reset: () => {
+      unavailable.clear();
+      driftReported = false;
+    },
     configure: (next: CheckSettings) => {
       settings = next;
     },
@@ -175,7 +219,17 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       recheckIfVisible();
     };
     const unsubscribeContext = onContextChange(visibleCheck);
-    const stopWorkflowObservation = mode === 'interactive' ? observeWorkflowStateChanges(visibleCheck) : () => {};
+    let stopWorkflowObservation: (() => void) | undefined;
+    const syncWorkflowObservation = () => {
+      if (mode === 'interactive' && coordinator.needsWorkflowObservation()) {
+        stopWorkflowObservation ??= observeWorkflowStateChanges(visibleCheck);
+      } else {
+        stopWorkflowObservation?.();
+        stopWorkflowObservation = undefined;
+      }
+    };
+    syncWorkflowObservation();
+    const unsubscribeWorkflow = coordinator.subscribe(syncWorkflowObservation);
     const unsubscribeProgress = subscribeProgressEvent((event) => {
       if (event.kind !== 'guide' && !event.completed) {
         coordinator.resetScope(event.kind === 'step' ? event.stepId : undefined, event.sectionId);
@@ -261,6 +315,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
     document.addEventListener('visibilitychange', visibleCheck);
     return () => {
       coordinator.stop();
+      observationCheck.reset();
       window.removeEventListener('storage', restoreHandoff);
       history();
       document.removeEventListener(OBSERVATION_HANDOFF_EVENT, handoff);
@@ -269,7 +324,8 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       window.removeEventListener('pagehide', saveHandoff);
       window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleReset);
       unsubscribeContext();
-      stopWorkflowObservation();
+      unsubscribeWorkflow();
+      stopWorkflowObservation?.();
       unsubscribeProgress();
       unsubscribeGeneration();
       observe();
@@ -281,7 +337,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
       window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, visibleCheck);
       document.removeEventListener('visibilitychange', visibleCheck);
     };
-  }, [coordinator, mode, contentKey, observing]);
+  }, [coordinator, mode, contentKey, observing, observationCheck]);
   useEffect(() => {
     if (!observing || mode !== 'controller' || !channel || !connected) {
       return;
@@ -316,6 +372,7 @@ export function CompletionObservationProvider({ children, contentKey }: PropsWit
         guideKey: contentKey,
         revision: coordinator.snapshot(),
         steps: coordinator.pendingActions(),
+        observeWorkflows: coordinator.needsWorkflowObservation(),
       });
     };
     publish();

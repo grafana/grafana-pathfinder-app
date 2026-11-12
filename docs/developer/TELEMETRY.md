@@ -57,6 +57,12 @@ If none apply, the free channels cover you. When in doubt, ask: _if this silentl
 
 Span helpers (`withFaroUserAction`, `setFaroUserActionAttributes`), explicit error pushes (`pushFaroError` from error boundaries), and view setters (`setFaroView`/`setFaroViewName`) may be used directly from components.
 
+## Cloud token workflow diagnostics
+
+The completion observer logs `Cloud token workflow remains unavailable on its expected page` through the shared logger after repeated unavailable checks span at least 60 seconds while the objective's `on-page:` checks pass. The warning is emitted at most once per mounted guide observation session, including controller mode, where page and workflow checks run in the live tab. Leaving the expected page, a known workflow result, or a gap longer than 65 seconds resets the interval.
+
+The log carries only the fixed `workflow: cloud_access_policy_token` and `reason: form_contract_unavailable` fields. It includes no guide identifiers, URLs, selectors, form content, or credentials. This is a possible contract-drift signal, not proof: leaving the token form closed on the expected page can also trigger it. An absent success marker in a recognized form remains an ordinary incomplete result and does not trigger this warning.
+
 ## Guide progress events
 
 `pathfinder.progress-analytics` defaults to false, including when MTFF is unreachable.

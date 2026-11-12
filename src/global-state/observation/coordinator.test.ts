@@ -979,3 +979,19 @@ it('consumes explicit command permission once per manual request or retry', asyn
   expect(check).toHaveBeenLastCalledWith(['coda-exit-zero:true'], item, expect.any(AbortSignal), true);
   coordinator.stop();
 });
+
+it('keeps workflow observation until the last objective or verification step is removed', () => {
+  const coordinator = new CompletionCoordinator(jest.fn().mockResolvedValue(undefined));
+  const removeObjective = coordinator.register(
+    step({ objectives: ['workflow-ready:cloud-access-policy-token'], eligible: false })
+  );
+  const removeVerify = coordinator.register(step({ id: 'verify', verify: 'workflow-ready:cloud-access-policy-token' }));
+  expect(coordinator.needsWorkflowObservation()).toBe(false);
+  coordinator.start();
+  expect(coordinator.needsWorkflowObservation()).toBe(true);
+  removeObjective();
+  expect(coordinator.needsWorkflowObservation()).toBe(true);
+  removeVerify();
+  expect(coordinator.needsWorkflowObservation()).toBe(false);
+  coordinator.stop();
+});

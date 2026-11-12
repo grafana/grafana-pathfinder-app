@@ -200,7 +200,7 @@ it('notifies the paired guide promptly when a token success marker arrives witho
   const disconnect = jest.spyOn(MutationObserver.prototype, 'disconnect');
   const post = jest.fn();
   const observer = createPassiveObserver(post);
-  observer.update(message({ steps: [] }));
+  observer.update(message({ steps: [], observeWorkflows: true }));
   try {
     const success = document.createElement('div');
     success.dataset.testid = 'generate-token-success-message';
@@ -221,6 +221,29 @@ it('notifies the paired guide promptly when a token success marker arrives witho
     expect(post).toHaveBeenCalledTimes(1);
   } finally {
     observer.stop();
+    disconnect.mockRestore();
+  }
+});
+
+it('changes workflow observation on subscription updates without reattaching on heartbeats', () => {
+  const observe = jest.spyOn(MutationObserver.prototype, 'observe');
+  const disconnect = jest.spyOn(MutationObserver.prototype, 'disconnect');
+  const observer = createPassiveObserver(jest.fn());
+  try {
+    observer.update(message());
+    expect(observe).not.toHaveBeenCalled();
+    observer.update(message({ revision: 2, observeWorkflows: true }));
+    observer.update(message({ revision: 2, observeWorkflows: true }));
+    expect(observe).toHaveBeenCalledTimes(1);
+    observer.update(message({ revision: 3, observeWorkflows: false }));
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    observer.update(message({ revision: 4, observeWorkflows: true }));
+    expect(observe).toHaveBeenCalledTimes(2);
+    jest.advanceTimersByTime(6001);
+    expect(disconnect).toHaveBeenCalledTimes(2);
+  } finally {
+    observer.stop();
+    observe.mockRestore();
     disconnect.mockRestore();
   }
 });
