@@ -34,7 +34,7 @@
     "header": "minimal",
     "brand": {
       "logo": {
-        "src": "assets/grafana-mark.svg",
+        "src": "assets/grafana-mark.png",
         "alt": "Grafana"
       }
     },

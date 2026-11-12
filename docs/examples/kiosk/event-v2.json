@@ -30,7 +30,7 @@
         "alignment": "start",
         "titleSize": "extra-large",
         "image": {
-          "src": "assets/event-mark.svg",
+          "src": "assets/dem-overview-warm.png",
           "decorative": true,
           "aspectRatio": "wide"
         },

@@ -36,7 +36,10 @@ it('renders hero imagery and launches the referenced action with the selected mo
     />
   );
   expect(screen.getByRole('heading', { name: 'Make room for your next idea' })).toBeInTheDocument();
-  expect(document.querySelector('img')).toHaveAttribute('src', 'https://example.com/catalog/assets/event-mark.svg');
+  expect(document.querySelector('img')).toHaveAttribute(
+    'src',
+    'https://example.com/catalog/assets/dem-overview-warm.png'
+  );
   expect(document.querySelector('img')).toHaveAttribute('alt', '');
   fireEvent.click(screen.getByRole('button', { name: 'Start the tour' }));
   expect(launchKioskGuide).toHaveBeenCalledWith(rules[0], 'presentation', onLaunch, undefined, 0);
