@@ -102,6 +102,8 @@ type fakeStore struct {
 	version  int
 
 	loadErr, createProgressErr, saveErr, awardErr error
+	// awardErrFor fails CreateAward for the "achievement/tier" keys it holds.
+	awardErrFor map[string]error
 	// beforeSave runs at the start of each SaveProgress, to model another replica writing first.
 	beforeSave func(s *fakeStore, attempt int)
 
@@ -167,6 +169,9 @@ func (s *fakeStore) CreateAward(_ context.Context, _ Person, a Award) error {
 		return s.awardErr
 	}
 	key := a.AchievementID + "/" + a.TierID
+	if err := s.awardErrFor[key]; err != nil {
+		return err
+	}
 	if _, ok := s.awards[key]; ok {
 		return ErrExists
 	}
