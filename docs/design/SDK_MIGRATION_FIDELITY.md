@@ -99,9 +99,9 @@ acceptance gaps; they are not asserted runtime defects.
 | Singleflight, waiter cancellation, invalidation fencing                         | Same                                                                      | Per-caller keys                             | `TestCompletionCacheSingleflightAndCancelledWaiter`, `TestCompletionCacheInvalidationFencesFlight`          | Stress scheduling is not exhaustive                                                                           |
 | Caller-specific failure isolation                                               | Provider completion cache key and services cache                          | Per-caller keys                             | `TestCompletionSDKCacheFiltersUsersAndInvalidates`, cache carryover test                                    | HTTP error cooldown classification needs broader negative controls                                            |
 | Completion collation, source separation, historical partials                    | `pkg/services/completions.go`                                             | None                                        | Frozen history projections; existing collation tests                                                        | Nonempty HTTP read/pagination comparison; empty and failure envelopes now compared                            |
-| Retry deduplication, monotonic progress, optimistic versions, partial semantics | `pkg/services/completion_attempt.go`, provider write route                | `no-store` header                           | Frozen write sequences, `TestCompletionAttemptConcurrentUpdatesNeverRegress`, SDK client conflict test      | Differential concurrent scheduling and physical connection-loss injection                                     |
+| Retry deduplication, monotonic progress, optimistic versions, partial semantics | `pkg/services/completion_attempt.go`, provider write route                | `no-store` header                           | Frozen write sequences, `TestCompletionAttemptConcurrentUpdatesNeverRegress`, SDK client conflict test      | Differential concurrent scheduling; physical connection loss is now independently tested                      |
 | Queue retry/retain/disarm/drop taxonomy                                         | Provider write errors and frontend write queue                            | Runtime authentication failure boundary     | Frozen failure statuses/bodies/Retry-After; existing `completion-write-client.test.ts` / queue tests        | Shared backend-to-browser classifier harness, schema-not-ready comparative case                               |
-| Completed retry repairs assignments and invalidates cache                       | Provider completion write, assignment dependencies                        | Narrow app-identity status write            | Existing provider completion-write and assignment repair tests; resourceaccess ownership/RV tests           | Differential repair effects are not captured by write harness; SDK adapter uses a no-op sync callback         |
+| Completed retry repairs assignments and invalidates cache                       | Provider completion write, assignment dependencies                        | Narrow app-identity status write            | `TestCompletionRetryAfterConnectionLossRepairsAssignmentAndCache`, existing repair and ownership/RV tests   | Differential repair effects are not captured by write harness; SDK adapter uses a no-op sync callback         |
 | Assignment lifecycle, duplicate rules, last-page caller records                 | `ReadAssignments`                                                         | None                                        | `TestAssignmentCarryoverLifecycleRulesAndPagination`, `TestAssignmentCarryoverDoesNotServeIncompleteList`   | HTTP failure classification comparison                                                                        |
 | Assignment source precedence, cutoff and terminal evidence                      | `ObligationEvaluator`, provider source constructors                       | None                                        | Frozen history, migrated tutorial table, provider source parity tests                                       | Network source failures compared only by independent tests                                                    |
 | Insights admin gate, rate limit before upstream work                            | `pkg/provider/insights.go`                                                | SDK verified claims                         | `TestInsightsAuthorizationPrecedesReadsAndPeriodParsing`, `TestInsightsRateLimitPrecedesResourceReads`      | Platform ingress authentication differential                                                                  |
@@ -110,9 +110,38 @@ acceptance gaps; they are not asserted runtime defects.
 | Published guide visibility, catalogue metadata, authoring CRUD                  | Provider guides/catalogue and resourceaccess guides                       | SDK transport                               | Existing provider/client tests and local E2E                                                                | Frozen historical guide corpus                                                                                |
 | Anonymous shared recommendation cache and bounded CDN fetch                     | `pkg/publiccontent`                                                       | New route                                   | Existing migrated publiccontent suite                                                                       | Golden is synthetic; real fetch-to-route capture still needed                                                 |
 | Capability envelopes and diagnostic classifications                             | SDK provider                                                              | Identity boundary changes above             | SDK contract suite; frozen write failure envelopes                                                          | Old 19 value fixtures not yet all exercised with identical SDK inputs; logs/metrics parity not established    |
-| Health/configuration integration                                                | SDK runner and health route                                               | Legacy adapter removed                      | Local E2E health and legacy-route checks                                                                    | Deployment-specific configuration/rollback checks                                                             |
+| Health/configuration integration                                                | SDK runner and health route                                               | Legacy adapter removed                      | Local E2E health and legacy-route checks                                                                    | Local binary rollback passed; other deployment configurations remain unverified                               |
 | Survey own-user exception                                                       | Existing frontend survey adapter                                          | None intended                               | Existing frontend transport/security tests                                                                  | Not part of this differential harness                                                                         |
-| Partial retention and rollback reader compatibility                             | Existing persisted schema and SDK reader                                  | None                                        | Existing partial-aware tests; no schema changes                                                             | Operational rollback not executed                                                                             |
+| Partial retention and rollback reader compatibility                             | Existing persisted schema and SDK reader                                  | None                                        | Existing partial-aware tests; no schema changes                                                             | Local binary rollback passed (below); Cloud rollout/rollback remains deferred                                 |
+
+## Interrupted responses and local rollback
+
+`TestCompletionRetryAfterConnectionLossRepairsAssignmentAndCache` runs the SDK
+write handler behind a real HTTP server. It closes the TCP connection after the
+completion commits but before its response is sent, with the first assignment
+status persistence simulated as unsuccessful. A retry must keep the same record
+and completion timestamp, perform no replacement, repair assignment satisfaction,
+and invalidate the caller's cache. The test passes under `go test -race`. This is
+independent SDK evidence; the frozen write adapter's repair callback is still a
+no-op, so the differential repair gap remains explicit.
+
+On 2026-11-13, the dedicated Grafana OSS 13.3.0 instance at port 3302 was switched
+from SDK-only `b62e8e0507725720a2a68e85f760964784267f00` to compatibility parent
+`132e4430566e2cc722c87b1dc703a6d7757965fa`, then restored. The same published guide,
+40% partial completion, and settings resource were read through SDK routes at
+all three stages. Full resource snapshots, including resource versions, matched
+exactly (SHA-256 `d4173c8812f8f49ecc25871b11038cb6b033abce0f58a9ef27d043ff63d661db`).
+The partial remained readable in personal progress with no `completedAt`.
+Temporary guide/completion probes were removed, caches were cleared by restart,
+and the SDK-only instance was left running.
+
+This proves local rollback to the parent's SDK-capable compatibility runtime with
+unchanged registration and storage. It does not prove Cloud registration rollback
+or legacy OBO routes on OSS. To repeat on an isolated instance: build both Linux
+binaries, save disposable guide/partial probes through SDK routes, snapshot those
+resources and settings, atomically replace the runtime binary and restart Grafana,
+compare the same reads on the parent, then restore the SDK-only binary in a
+`finally`/shell trap and compare again before deleting the probes.
 
 ## Acceptance decision
 
@@ -121,7 +150,6 @@ carryover tests. It does **not** certify comprehensive equivalence. Reviewers sh
 resolve the open rows before declaring that standard met, and attach results to the
 actual head they tested. Do not convert an open evidence gap into a claimed defect.
 
-Cloud already supports the SDK prerequisites. Cloud execution/coexistence and
-operational rollback remain deferred by explicit scope; local success cannot close
-those rows. Admin CLI, exporter, repository consolidation, admission rules and
+Cloud already supports the SDK prerequisites. Cloud execution/coexistence and Cloud rollout/rollback remain deferred; the
+local rollback evidence above does not close those deployment-specific rows. Admin CLI, exporter, repository consolidation, admission rules and
 background reconcilers remain outside this migration.
