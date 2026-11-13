@@ -1,3 +1,5 @@
+import { usesSdkBackend } from '../../lib/backend-routes';
+import { updatePluginSettings } from '../../utils/utils.plugin';
 import { PathfinderTenantSettings, TENANT_SETTING_KEYS } from '../../constants';
 import {
   clampToKindBounds,
@@ -5,7 +7,6 @@ import {
   fetchPathfinderSettingsSnapshot,
 } from '../../utils/pathfinder-settings-api';
 import { resolveTenantSettings } from '../../utils/resolve-tenant-settings';
-import { updatePluginSettings } from '../../utils/utils.plugin';
 
 export interface SaveTenantSettingsArgs {
   pluginId: string;
@@ -19,7 +20,17 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
     TENANT_SETTING_KEYS.filter((key) => source[key] !== undefined).map((key) => [key, source[key]])
   );
 
-  // Persist explicit overrides only; runtime defaults and feature flags have their own owners.
+  if (!usesSdkBackend() && !tenant) {
+    const { devModeOptIn: _devModeOptIn, ...legacy } = pluginSettings.jsonData;
+    await updatePluginSettings(pluginId, {
+      enabled: pluginSettings.enabled,
+      pinned: pluginSettings.pinned,
+      jsonData: { ...legacy, ...next },
+    });
+    return;
+  }
+
+  // Registered SDK failures must not write a second, potentially stale settings store.
   if (await savePathfinderSettings(next, tenant)) {
     if (changes.pathfinderEnabled !== undefined) {
       const saved = await fetchPathfinderSettingsSnapshot();
@@ -32,10 +43,5 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
     return;
   }
 
-  const { devModeOptIn: _devModeOptIn, ...legacy } = pluginSettings.jsonData;
-  await updatePluginSettings(pluginId, {
-    enabled: pluginSettings.enabled,
-    pinned: pluginSettings.pinned,
-    jsonData: { ...legacy, ...next },
-  });
+  throw new Error('The SDK settings API is unavailable; retry the save after the application is registered.');
 }

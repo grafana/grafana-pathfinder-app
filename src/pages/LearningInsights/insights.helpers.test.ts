@@ -1,7 +1,7 @@
 import { config } from '@grafana/runtime';
 import type { LearningInsightsCompletion, LearningInsightsResponse } from '../../types/learning-insights';
 import { assignmentTitle, guideTitle, learningLink } from './insights.helpers';
-import fixture from '../../../pkg/plugin/testdata/contract/learning-insights.default.json';
+import fixture from '../../../pkg/provider/testdata/contract/learning-insights.default.json';
 
 jest.mock('@grafana/runtime', () => ({ config: { appSubUrl: '' } }));
 

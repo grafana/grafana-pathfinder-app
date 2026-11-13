@@ -1,18 +1,18 @@
 /**
  * Zod schemas for the App Platform backend response envelopes.
  *
- * These describe **wire truth** — what `pkg/plugin` actually emits — not what
+ * These describe **wire truth** — what `pkg/provider` actually emits — not what
  * the hand-written client interfaces wish it emitted. Where the two disagree,
  * these schemas follow Go and `src/validation/backend-api-contract.test.ts`
  * pins the disagreement (see `CustomGuideManifestWireSchema`).
  *
  * Nothing parses at runtime yet: the schemas exist so the committed goldens
- * under `pkg/plugin/testdata/contract/` are checked against a TypeScript
+ * under `pkg/provider/testdata/contract/` are checked against a TypeScript
  * description of the same bytes, in CI, in a separate process from the Go
  * tests that produced them. Adopting them at the fetch sites
  * (parse-log-fall-back, per the decision on issue #1526) is a follow-up.
  *
- * @coupling API: pkg/plugin/contract_fixtures_test.go + pkg/plugin/testdata/contract/
+ * @coupling API: pkg/provider/contract_fixtures_test.go + pkg/provider/testdata/contract/
  */
 
 import { z } from 'zod';
@@ -38,7 +38,7 @@ export const GuideProxyDiagnosticWireSchema = z.strictObject({
 // ============ /completion-records/capability ============
 
 /**
- * `completionCapability` (pkg/plugin/completion_records.go).
+ * `completionCapability` (pkg/provider/completions.go).
  * @coupling Go struct: completionCapability
  */
 export const CompletionCapabilityWireSchema = z.strictObject({
@@ -89,7 +89,7 @@ export const InProgressCompletionWireSchema = z.strictObject({
  * `TestMyCompletions_UnknownUserEmptyList` asserts it serializes as `[]`.
  * A `null` here is a Go bug that should fail loudly rather than be absorbed.
  *
- * @coupling Go struct: myCompletionsResponse
+ * @coupling Go struct: completionResponse
  */
 export const MyCompletionsResponseWireSchema = z.strictObject({
   diagnostics: GuideProxyDiagnosticWireSchema.optional(),
@@ -104,7 +104,7 @@ export const MyCompletionsResponseWireSchema = z.strictObject({
 // ============ /assignments/my ============
 
 /**
- * `AssignmentCapability` (pkg/plugin/assignments.go).
+ * `AssignmentCapability` (pkg/provider/assignments.go).
  * @coupling Go struct: AssignmentCapability
  */
 export const AssignmentCapabilityWireSchema = z.strictObject({
@@ -149,7 +149,7 @@ export const AssignmentEntryWireSchema = z.strictObject({
  * obligations, which is a different statement from `capability.available`
  * being false — a `null` here is a Go bug that should fail loudly.
  *
- * @coupling Go struct: myAssignmentsResponse
+ * @coupling Go struct: assignmentResponse
  */
 export const MyAssignmentsResponseWireSchema = z.strictObject({
   capability: AssignmentCapabilityWireSchema,
@@ -239,7 +239,7 @@ export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
  * `guides` is a required array for the same reason as `completions`:
  * `custom_guide_repository_test.go:156` asserts `[]` not `null`.
  *
- * @coupling Go struct: customGuideRepositoryResponse
+ * @coupling Go struct: catalogueResponse
  */
 export const CustomGuideRepositoryResponseWireSchema = z.strictObject({
   diagnostics: GuideProxyDiagnosticWireSchema.optional(),
@@ -329,29 +329,31 @@ export const LearningInsightsResponseWireSchema = z.strictObject({
 
 /**
  * Every Go struct reachable from an in-scope response envelope, keyed exactly
- * as `pkg/plugin/testdata/contract/struct-tags.json` keys it. The contract test
+ * as `pkg/provider/testdata/contract/struct-tags.json` keys it. The contract test
  * requires this map and that golden to agree in both directions, so a new Go
  * struct — or a stale schema — fails.
  */
 export const GO_STRUCT_SCHEMAS = {
   guideProxyDiagnostic: GuideProxyDiagnosticWireSchema,
+  ProxyDiagnostic: GuideProxyDiagnosticWireSchema,
   PackageRecommendationsResponse: PackageRecommendationsResponseWireSchema,
   PackageEntry: PackageEntryWireSchema,
   PackageTargeting: PackageTargetingWireSchema,
-  customGuideRepositoryResponse: CustomGuideRepositoryResponseWireSchema,
-  customGuidesResponse: CustomGuidesResponseWireSchema,
-  customGuideCapability: CustomGuideCapabilityWireSchema,
+  catalogueResponse: CustomGuideRepositoryResponseWireSchema,
+  guideListResponse: CustomGuidesResponseWireSchema,
+  'catalogueResponse.capability': CustomGuideCapabilityWireSchema,
   CatalogueEntry: CustomGuideRepositoryEntryWireSchema,
   CatalogueManifest: CustomGuideManifestWireSchema,
   CatalogueStats: CustomGuideStatsWireSchema,
   'CatalogueManifest.author': CustomGuideAuthorWireSchema,
   'CatalogueManifest.tracks': CustomGuideTrackWireSchema,
-  myCompletionsResponse: MyCompletionsResponseWireSchema,
+  completionResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,
   CollatedCompletion: CollatedCompletionWireSchema,
   InProgressCompletion: InProgressCompletionWireSchema,
-  myAssignmentsResponse: MyAssignmentsResponseWireSchema,
+  assignmentResponse: MyAssignmentsResponseWireSchema,
   AssignmentCapability: AssignmentCapabilityWireSchema,
+  assignmentCapability: AssignmentCapabilityWireSchema,
   AssignmentEntry: AssignmentEntryWireSchema,
   AssignmentGuideEntry: AssignmentGuideEntryWireSchema,
   LearningInsightsResponse: LearningInsightsResponseWireSchema,
@@ -370,11 +372,11 @@ export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
  */
 export const BACKEND_RESPONSE_ENVELOPES = {
   'package-recommendations': 'PackageRecommendationsResponse',
-  'custom-guide-repository': 'customGuideRepositoryResponse',
-  'custom-guides': 'customGuidesResponse',
-  'completion-records-my': 'myCompletionsResponse',
+  'custom-guide-repository': 'catalogueResponse',
+  'custom-guides': 'guideListResponse',
+  'completion-records-my': 'completionResponse',
   'completion-records-capability': 'completionCapability',
-  'assignments-my': 'myAssignmentsResponse',
+  'assignments-my': 'assignmentResponse',
   'learning-insights': 'LearningInsightsResponse',
 } as const satisfies Record<string, GoStructName>;
 

@@ -1422,7 +1422,7 @@ export class ContextService {
    * If the package design adds new dependency-like fields (e.g. `enhances`,
    * `breaks`), they will silently fail to surface to OSS users until this
    * allowlist is updated. Treat changes here and in
-   * `pkg/plugin/package_recommendations.go` (`PackageTargeting.Match`) as a
+   * `pkg/publiccontent/recommendations.go` (`PackageTargeting.Match`) as a
    * schema-coupling pair.
    */
   private static normalizeOnlinePackageManifest(

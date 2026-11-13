@@ -14,7 +14,6 @@
 
 import { expect, type Page, type Route } from '@playwright/test';
 
-import pluginJson from '../../src/plugin.json';
 import { StorageKeys } from '../../src/lib/storage-keys';
 import { LEASE_TTL_MS } from '../../src/completion-records/completion-write-timing';
 import { testIds } from '../../src/constants/testIds';
@@ -28,7 +27,7 @@ import {
   type PackageFixture,
 } from './completion.fixtures';
 
-const RESOURCES_URL = `/api/plugins/${pluginJson.id}/resources`;
+const RESOURCES_URL = `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend`;
 
 /** The write route `postCompletionRecord` POSTs to. */
 const COMPLETION_WRITE_URL = `${RESOURCES_URL}/completion-records`;

@@ -9,7 +9,7 @@ Load this reference when changing the reporting route, its frontend consumer, me
 - `src/pages/learningInsightsPage.tsx` — full-page route.
 - `src/hooks/useLearningInsights.ts` — plugin-resource request, wire validation, loading/error state, and refresh. It clears previously displayed data before a new request; a failed refresh does not replay old results.
 - `src/types/learning-insights.ts` — response types; `src/types/backend-api.schema.ts` validates the wire response.
-- `pkg/plugin/learning_insights.go` — trusted admin gate, bounded namespace reads, aggregation, and read-only assignment snapshot.
+- `pkg/provider/insights.go` — trusted admin gate, bounded namespace reads, aggregation, and read-only assignment snapshot.
 - `pkg/plugin/assignment_satisfaction.go` and `assignment_paths.go` — source-qualified target membership and completion acceptance.
 
 ## Production rollout
@@ -18,15 +18,20 @@ The reporting UI is behind the default-off boolean MTFF flag `pathfinder.learnin
 
 Register the flag in MTFF as public with a remote default of `false`, then target only the production test stack's namespace with `true`. Deploy the packaged frontend **and backend**, reload Grafana, and run the smoke procedure below. Leave other stacks off. Roll back the UI by setting the target to `false` and reloading; this is not an instant kill switch for already-open pages or in-flight reads. Registration in `grafana/deployment_tools` is separate from the app-side flag definition; see [Feature flags](FEATURE_FLAGS.md#pathfinderlearning-insights).
 
-The flag is a browser rollout control, not backend authorization. An authorized admin can still call the reporting resource directly when the UI is off. Non-admin denial, identity/OBO verification, namespace isolation, and the raw-resource RBAC limitation below remain independent release checks.
+The flag is a browser rollout control, not backend authorization. An authorized admin can still call the reporting resource directly when the UI is off. Non-admin denial, SDK identity/delegation verification, namespace isolation, and the raw-resource RBAC limitation below remain independent release checks.
 
 ## Authorization and transport
 
-`GET /api/plugins/grafana-pathfinder-app/resources/learning-insights` is the browser-facing resource (`GET /learning-insights` inside the plugin). The backend requires `PluginConfig.User.Role == "Admin"` in Grafana's trusted current-org RPC context. Missing user context and non-admin roles receive **403**. A browser role predicate only controls discovery/rendering; it is not the authorization boundary. Being a server administrator is not a substitute for this current-org role check.
+`GET /apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/learning-insights`
+is the browser-facing SDK route. The handler requires authenticated Admin claims
+bound to the verified subject and namespace. Missing identity, mismatched namespace,
+and non-admin callers receive **403**. Browser role predicates control discovery
+only; caller-supplied headers cannot establish the role.
 
-The route also requires a cryptographically verified forwarded ID token bound to the exact trusted plugin-context namespace. It never accepts a namespace from the browser, trusts a caller-supplied role header, substitutes a service account, or falls back to an unverified identity. Missing/rejected identity or unverifiable namespace binding serves no records: an admin request receives the shared unavailable capability envelope rather than successful empty-stack evidence. Identity reason tokens follow the shared proxy pattern (`identity-unavailable`, `identity-unverifiable`, or `signing-keys-unreachable`).
-
-Upstream App Platform LIST requests use the caller's on-behalf-of (OBO) access token. Missing OBO provisioning is unavailable, not permission to use an ambient credential. Neither session cookies nor an inbound Authorization header are forwarded as substitutes.
+Generated SDK clients preserve the verified caller context and delegate outbound
+resource reads. The handler does not forward session cookies, substitute an app
+identity, or maintain a bespoke OBO exchanger. SDK ingress authenticates callers;
+local tests verify handler authorization and client delegation separately.
 
 **Known accepted limitation:** broad raw GAP resource grants remain a separate issue. Guarding this reporting proxy does not repair upstream raw-resource RBAC or prevent other permitted raw API access. This MVP must not be presented as fixing those grants.
 
@@ -96,7 +101,7 @@ No stale reporting payload is supplied after a failure. An unavailable response 
 
 ### Prerequisites and current verification limit
 
-Use an already deployed build containing both the page and plugin resource, with `pathfinder.learning-insights` enabled only for the test stack and Grafana reloaded. Obtain authorized current-org **Admin** and **Viewer** sessions, an available App Platform namespace, provisioned OBO exchange, and existing test records in that namespace. Do not assume Basic auth or a service-account token exercises the verified user-token/OBO path.
+Use an already deployed build containing both the page and plugin resource, with `pathfinder.learning-insights` enabled only for the test stack and Grafana reloaded. Obtain authorized current-org **Admin** and **Viewer** sessions, an available App Platform namespace, SDK registration and caller delegation, and existing test records in that namespace. Do not assume Basic auth or a service-account token exercises the SDK-verified caller path.
 
 The initial local probe reached `http://localhost:3000/api/health`, but `admin:admin` returned **401** for authenticated access. Actual authenticated live reporting, permission enforcement, and the upstream round trip therefore remain **unverified** by that probe. Health success alone proves neither plugin deployment nor authorization.
 
@@ -105,11 +110,11 @@ Use existing or separately authorized disposable fixtures. Useful records includ
 ### Checks
 
 1. Read `/api/health`. Confirm the intended plugin build is installed through the existing deployment/operator evidence; do not rebuild, restart, deploy, or change plugin settings merely to run this check.
-2. In the authorized Admin browser session, open `/a/grafana-pathfinder-app/learning-insights`. Inspect the GET resource response and `Cache-Control: no-store` in developer tools. Check availability, warnings, and `asOf` before interpreting totals. Verify the page uses the plugin resource rather than direct raw GAP reads.
+2. In the authorized Admin browser session, open `/a/grafana-pathfinder-app/learning-insights`. Inspect the GET resource response and `Cache-Control: no-store` in developer tools. Check availability, warnings, and `asOf` before interpreting totals. Verify the page uses the SDK custom route rather than direct raw GAP reads.
 3. Repeat the resource GET with explicit UTC bounds, for example:
 
    ```text
-   /api/plugins/grafana-pathfinder-app/resources/learning-insights?from=2026-07-01T00%3A00%3A00Z&to=2026-07-29T00%3A00%3A00Z
+   /apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/learning-insights?from=2026-07-01T00%3A00%3A00Z&to=2026-07-29T00%3A00%3A00Z
    ```
 
    Compare against the existing fixture inventory: earliest duplicate wins, `from` is included, `to` excluded, source collisions stay separate, and missing names retain subjects. Change only the chart period and confirm older accepted evidence still credits assignments. Compare unknown and withdrawn rows separately from outstanding.

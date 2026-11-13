@@ -3,13 +3,13 @@ import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from '.
  * Client for the /custom-guide-repository backend proxy — a slim,
  * denormalized catalogue of the caller's private InteractiveGuide packages
  * (the App Platform analogue of the CDN's repository.json), computed live by
- * pkg/plugin/custom_guide_repository.go rather than pre-built.
+ * pkg/provider/catalogue.go rather than pre-built.
  *
  * Consumed by the Custom Guides surface and My Learning ingestion to
  * enumerate path/journey packages without pulling every guide's full
  * content.json just to build a catalogue view.
  *
- * @coupling API: GET /custom-guide-repository served by pkg/plugin/custom_guide_repository.go
+ * @coupling API: GET /custom-guide-repository served by pkg/provider/catalogue.go
  */
 import { config, getBackendSrv } from '@grafana/runtime';
 

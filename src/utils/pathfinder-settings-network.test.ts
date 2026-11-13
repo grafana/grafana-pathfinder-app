@@ -31,17 +31,22 @@ beforeEach(() => {
   localStorage.clear();
   jest.mocked(isBackendApiAvailable).mockReturnValue(true);
   config.namespace = 'stacks-123';
+  config.featureToggles = {};
+  Object.assign(config.featureToggles, { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true });
 });
 
 it('reads an existing resource with its concurrency token', async () => {
   fetchMock.mockReturnValueOnce(of({ data: { metadata: { resourceVersion: '42' }, spec: base.spec } }));
   expect(await fetchPathfinderSettingsSnapshot()).toEqual(base);
   expect(fetchMock).toHaveBeenCalledWith(
-    expect.objectContaining({ method: 'GET', url: '/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings' })
+    expect.objectContaining({
+      method: 'GET',
+      url: '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-123/backend/pathfinder-settings',
+    })
   );
 });
 
-it.each([404, 405, 501])('permits legacy fallback when the API is absent (%i)', async (status) => {
+it.each([404, 405, 501])('recognizes structural unavailability when the API is absent (%i)', async (status) => {
   fetchMock.mockReturnValueOnce(throwError(() => ({ status, data: { error: 'settings-upstream-unavailable' } })));
   expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
 });
@@ -89,7 +94,7 @@ describe('settings read recovery', () => {
     expect(settingsReads()).toHaveLength(2);
     await jest.advanceTimersByTimeAsync(1);
     await rejected;
-    const url = '/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings';
+    const url = '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-123/backend/pathfinder-settings';
     expect(settingsReads().map((request) => [request.url, request.params])).toEqual([
       [url, { absence: 'explicit' }],
       [url, { absence: 'explicit', attempt: 2 }],
@@ -254,19 +259,13 @@ describe('existing resource update recovery', () => {
   });
 });
 
-it('preserves OSS plugin settings without materializing system defaults', async () => {
+it('rejects unavailable registered SDK saves without writing plugin settings', async () => {
   jest.mocked(isBackendApiAvailable).mockReturnValue(false);
-  fetchMock
-    .mockReturnValueOnce(
-      of({ data: { enabled: false, pinned: false, jsonData: { stackId: '123', futureField: 'keep' } } })
-    )
-    .mockReturnValueOnce(of({ data: {} }));
-  await saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } });
-  expect(fetchMock.mock.calls[1][0]).toMatchObject({
-    method: 'POST',
-    data: { enabled: false, pinned: false, jsonData: { stackId: '123', futureField: 'keep', tutorialUrl: 'new' } },
-  });
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  fetchMock.mockReturnValueOnce(of({ data: { enabled: false, pinned: false, jsonData: { stackId: '123' } } }));
+  await expect(
+    saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } })
+  ).rejects.toThrow('SDK settings API is unavailable');
+  expect(fetchMock.mock.calls.every(([request]) => request.method === 'GET')).toBe(true);
 });
 
 it('does not call the settings resource without a namespace', async () => {
@@ -404,7 +403,11 @@ describe('confirmed settings absence', () => {
     });
     await startupRead();
     await saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { pathfinderEnabled: false } });
-    expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(3);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([request]) => request.url.endsWith('/pathfinder-settings') && request.method === 'GET'
+      )
+    ).toHaveLength(3);
     expect(fetchMock.mock.calls.filter(([request]) => request.method === 'POST')).toHaveLength(1);
   });
 });
@@ -433,15 +436,12 @@ describe('the kind is not served (structural upstream 404)', () => {
     expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(2);
   });
 
-  it('saves to jsonData rather than failing', async () => {
+  it('reports an unavailable SDK store without a plugin-settings write', async () => {
     const writes: Array<{ url: string; data: unknown }> = [];
     routes(writes);
-    await saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } });
-    expect(writes).toEqual([
-      {
-        url: '/api/plugins/grafana-pathfinder-app/settings',
-        data: expect.objectContaining({ jsonData: expect.objectContaining({ stackId: '123', tutorialUrl: 'new' }) }),
-      },
-    ]);
+    await expect(
+      saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } })
+    ).rejects.toThrow('SDK settings API is unavailable');
+    expect(writes).toEqual([]);
   });
 });

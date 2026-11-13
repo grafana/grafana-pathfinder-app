@@ -33,33 +33,41 @@ test('correlates private and CDN failures with committed rendering without leaki
       get: () => boot,
       set: (value) => {
         value.settings.buildInfo.env = 'development';
-        value.settings.featureToggles['aggregation.pathfinderbackend-ext-grafana-app.enabled'] = true;
+        value.settings.featureToggles['appplugins.loadAppManifest'] = true;
+        value.settings.featureToggles['appplugins.registerAPIServer'] = true;
+        value.settings.namespace = 'default';
         boot = value;
       },
     });
   });
   await page.route(
-    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+    (url) =>
+      url.pathname.endsWith(
+        '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/pathfinder-settings'
+      ),
     (route) => route.fulfill({ json: { state: 'not-configured' } })
   );
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/custom-guide?*', async (route) => {
-    const id = new URL(route.request().url()).searchParams.get('name');
-    if (id === 'private-missing') {
-      await route.fulfill({ status: 404, json: { error: 'private upstream body' } });
-      return;
-    }
-    await route.fulfill({
-      json: {
-        metadata: { name: id },
-        spec: {
-          id,
-          title: 'Private fixture title',
-          status: 'published',
-          blocks: [{ type: 'markdown', content: id === 'private-invalid' ? 42 : 'Private fixture rendered' }],
+  await page.route(
+    '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/custom-guide?*',
+    async (route) => {
+      const id = new URL(route.request().url()).searchParams.get('name');
+      if (id === 'private-missing') {
+        await route.fulfill({ status: 404, json: { error: 'private upstream body' } });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          metadata: { name: id },
+          spec: {
+            id,
+            title: 'Private fixture title',
+            status: 'published',
+            blocks: [{ type: 'markdown', content: id === 'private-invalid' ? 42 : 'Private fixture rendered' }],
+          },
         },
-      },
-    });
-  });
+      });
+    }
+  );
   await page.route('https://interactive-learning.grafana.net/packages/telemetry-test/*', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{invalid json' })
   );

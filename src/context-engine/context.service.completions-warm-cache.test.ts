@@ -21,6 +21,7 @@ jest.mock('../utils/dev-mode', () => ({
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
   config: {
+    namespace: 'stacks-123',
     bootData: {
       settings: { buildInfo: { versionString: 'Grafana v10.0.0', version: '10.0.0' } },
       user: { analytics: { identifier: 'test-user' }, email: 'test@example.com', orgRole: 'Admin', language: 'en-US' },

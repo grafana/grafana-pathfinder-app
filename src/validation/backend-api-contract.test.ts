@@ -4,9 +4,9 @@
  * `/custom-guides`, `/completion-records/my`, `/completion-records/capability`, `/assignments/my`.
  *
  * The boundary is a process boundary, so no compiler can couple the two
- * descriptions of these shapes. `pkg/plugin/contract_fixtures_test.go` captures
+ * descriptions of these shapes. `pkg/provider/contract_fixtures_test.go` captures
  * real handler responses plus a reflected struct-tag inventory into
- * `pkg/plugin/testdata/contract/`; this test reads those committed bytes and
+ * `pkg/provider/testdata/contract/`; this test reads those committed bytes and
  * holds them against `src/types/backend-api.schema.ts`. A Go-side envelope
  * change therefore surfaces as a TypeScript failure that names the field.
  *
@@ -31,9 +31,9 @@ import {
 import { DependencyListSchema, PackageTypeSchema } from '../types/package.schema';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const CONTRACT_DIR = path.join(REPO_ROOT, 'pkg', 'plugin', 'testdata', 'contract');
+const CONTRACT_DIR = path.join(REPO_ROOT, 'pkg', 'provider', 'testdata', 'contract');
 const TAG_GOLDEN = 'struct-tags.json';
-const REGENERATE = 'go test ./pkg/plugin -run TestContract -update';
+const REGENERATE = 'go test ./pkg/provider -run TestContract -update';
 
 const GoFieldTagSchema = z.strictObject({
   field: z.string(),
@@ -83,7 +83,7 @@ function collectValueGoldens(): ValueGolden[] {
   } catch (error) {
     throw new Error(
       `Contract golden directory ${CONTRACT_DIR} is missing. It is produced by ` +
-        `pkg/plugin/contract_fixtures_test.go — regenerate with \`${REGENERATE}\`.\n${String(error)}`
+        `pkg/provider/contract_fixtures_test.go — regenerate with \`${REGENERATE}\`.\n${String(error)}`
     );
   }
 
@@ -296,7 +296,7 @@ describe('backend API contract: struct tags match the schemas', () => {
   });
 
   it('rejects pointer and numeric widenings that preserve fixture values', () => {
-    const responseFields = STRUCT_TAGS.myCompletionsResponse;
+    const responseFields = STRUCT_TAGS.completionResponse;
     const completionFields = STRUCT_TAGS.CollatedCompletion;
     if (!responseFields || !completionFields) {
       throw new Error('struct-tags.json does not inventory the completion response structs.');
@@ -309,8 +309,8 @@ describe('backend API contract: struct tags match the schemas', () => {
       field.json === 'count' ? { ...field, type: 'float64', wire: 'number' } : field
     );
 
-    expect(() => assertStructTagsMatchSchema('myCompletionsResponse', pointerFields)).toThrow(
-      'myCompletionsResponse.capability is nullable<object> on the Go wire (*completionCapability), ' +
+    expect(() => assertStructTagsMatchSchema('completionResponse', pointerFields)).toThrow(
+      'completionResponse.capability is nullable<object> on the Go wire (*completionCapability), ' +
         'but its Zod schema accepts object.'
     );
     expect(() => assertStructTagsMatchSchema('CollatedCompletion', numberFields)).toThrow(

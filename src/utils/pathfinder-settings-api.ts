@@ -1,4 +1,4 @@
-import { backendRoute, usesSdkBackend } from '../lib/backend-routes';
+import { backendRoute } from '../lib/backend-routes';
 import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { defer, lastValueFrom, retry, throwError, timer } from 'rxjs';
@@ -18,8 +18,6 @@ import {
   forgetSettingsAbsence,
   invalidateSettingsAbsence,
 } from './pathfinder-settings-cache';
-
-const RESOURCE = 'pathfindersettings';
 
 function recordSettingsStoreResolved(outcome: SettingsStoreOutcome): void {
   void import('../lib/telemetry/facade')
@@ -60,17 +58,17 @@ function statusOf(err: unknown): number | undefined {
 }
 
 export function collectionUrl(namespace: string): string {
-  if (usesSdkBackend()) {
-    return backendRoute('pathfinder-settings');
+  if (namespace !== config.namespace) {
+    throw new Error('SDK backend namespace mismatch');
   }
-  return `/apis/${APP_PLATFORM_API_VERSION}/namespaces/${encodeURIComponent(namespace)}/${RESOURCE}`;
+  return backendRoute('pathfinder-settings');
 }
 
 export function itemUrl(namespace: string, name: string = SETTINGS_RESOURCE_NAME): string {
-  if (usesSdkBackend()) {
-    return backendRoute('pathfinder-settings');
+  if (name !== SETTINGS_RESOURCE_NAME) {
+    throw new Error('Invalid settings resource name');
   }
-  return `${collectionUrl(namespace)}/${encodeURIComponent(name)}`;
+  return collectionUrl(namespace);
 }
 
 export function isSettingsApiAvailable(): boolean {

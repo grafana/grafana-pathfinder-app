@@ -7,6 +7,7 @@ const mockFetch = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: () => ({ fetch: mockFetch }),
   config: {
+    namespace: 'stacks-123',
     bootData: {
       user: { id: 7, orgId: 3 },
       settings: { buildInfo: { versionString: 'Grafana Cloud' } },

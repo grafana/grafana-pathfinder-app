@@ -18,7 +18,7 @@ const mockGet = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   config: {
     namespace: 'stacks-123',
-    featureToggles: { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true },
+    featureToggles: { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true },
   },
   getBackendSrv: () => ({ get: mockGet }),
   usePluginUserStorage: jest.fn(),

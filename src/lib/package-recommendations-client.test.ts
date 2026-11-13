@@ -1,6 +1,7 @@
 import { recordPackageIndex } from './telemetry/facade';
 jest.mock('./telemetry/facade', () => ({ recordPackageIndex: jest.fn() }));
 jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'default' },
   getBackendSrv: jest.fn(),
 }));
 
@@ -78,7 +79,7 @@ describe('fetchOnlinePackageRecommendations', () => {
     const result = await fetchOnlinePackageRecommendations();
 
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/plugins/grafana-pathfinder-app/resources/package-recommendations',
+      '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/package-recommendations',
       undefined,
       undefined,
       expect.objectContaining({ showErrorAlert: false })

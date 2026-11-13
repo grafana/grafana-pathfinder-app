@@ -171,81 +171,30 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `completion-records` (`recordGuideCompletion`, `recordJourneyCompletion`) | `docs-retrieval` (`learning-journey-helpers`) | Single completion-emission boundary; exactly-once per `(kind, guideSource, guideId)` |
 | `completion-records` (`armCompletionWriteHook`) | `module.tsx` (`plugin.init`) | Universal plugin bootstrap arms the durable-write subscriber once for every entry surface — nothing is armed and a warn is logged when no user/org identity resolves, so an anonymous session is distinguishable from a broken one and a later identity can still arm |
 | `utils/resolve-tenant-settings.ts` (`resolveTenantSettings`) | `hooks/usePathfinderPluginConfig`, `components/AppConfig/save-settings.ts` | The single resolve order for tenant settings — `PathfinderSettings` App Platform resource over plugin `jsonData` over defaults. Reads and writes must share it: a form seeded from a store its save does not touch renders pre-migration values and writes them back. It also carries the `resourceVersion` and raw spec the write needs to be a compare-and-swap that preserves unknown newer fields. |
-| `components/AppConfig/save-settings.ts` (`saveTenantSettings`) | every configuration tab | The only writer of tenant settings. A tab passes only fields the admin edited; the current settings are read authoritatively immediately before the write, and `enabled`/`pinned` are echoed from that read. Prefers the App Platform resource and degrades to `jsonData` when the kind is not served — read errors stop the save; transient update failures retry twice with the original resource version, then show an error while retaining edits. Only an absent resource/API permits fallback; a failed update never switches stores. Defaults and OpenFeature values are not materialized by tenant writes. |
+| `components/AppConfig/save-settings.ts` (`saveTenantSettings`) | every configuration tab | The only writer of tenant settings. A tab passes only fields the admin edited; the current settings are read authoritatively immediately before the write, and the SDK writes only tenant fields. OSS without SDK registration retains plugin `jsonData` saves and echoes the provisioning fields read from Grafana. Registered SDK writes use the resource only — read errors stop the save; transient update failures retry twice with the original resource version, then show an error while retaining edits. A registered SDK failure never switches stores. Defaults and OpenFeature values are not materialized by tenant writes. |
 | `completion-records` (`discardQueuedCompletionWrites`) | `components/LearningPaths` (`MyLearningTab`) | "Reset all progress" drops queued-but-unsent durable writes before its first `await`, so a reset is not followed by records minting for the guides it just cleared |
 
 ## Backend architecture (`pkg/`)
 
-The Go backend is a **proxy for the App Platform aggregator**, and nothing else. No database, no
-streaming. Direct dependencies are `grafana-plugin-sdk-go` and `grafana/authlib` (the on-behalf-of
-token exchange).
+The Go executable runs the App SDK provider with `sdkplugin.Run`, without
+`WithAppFunc` or a legacy `CallResource` adapter. SDK custom routes live under
+`/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/`.
+The canonical identity, cache, resource, and write contracts are in
+`docs/design/BACKEND_PROXY_PATTERN.md`.
 
-The **App Platform** routes (`completion_records.go` + `completion_records_write.go`,
-`custom_guide_repository.go`) follow one shape: drain a paginated namespace-scoped upstream LIST,
-cache the shaped result per caller, serve it availability-first, and ride the caller's own identity
-end to end — outbound as an on-behalf-of access token minted in `pkg/plugin/auth`, never the ID
-token itself. Completion records add the write half of that shape: a POST create on the same
-coordinate, with identity stamped server-side and a deterministic idempotent name. The canonical
-pattern — including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
+| Package | Responsibility |
+| --- | --- |
+| `provider` | SDK routes, verified caller/namespace gates, admin authorization |
+| `resourceaccess` | Generated resource clients, caller delegation, bounded transport |
+| `services` | Completion collation/writes, assignment evaluation/synchronization, settings, catalogue, insights |
+| `publiccontent` | Anonymous public CDN recommendations and online assignment lookup |
 
-Learning insights (`learning_insights.go`) is a deliberate reporting exception: `GET /learning-insights`
-requires the trusted current-org Admin role plus verified namespace-bound identity, reads as the caller
-via OBO, and never mutates assignment status. Every request makes fresh bounded reads; there is no
-reporting cache or stale replay (`Cache-Control: no-store`). Partial reads and unresolved assignments
-remain explicit, not false zero/outstanding. Broad raw GAP grants remain a known separate issue.
-For the full contract and read-only smoke procedure, see `docs/developer/LEARNING_INSIGHTS.md`.
+Personal caches are keyed by namespace and authenticated subject. Public
+recommendations alone have an anonymous shared cache. Assignment status updates
+use narrowly scoped app identity after delegated ownership/evidence checks.
+Learning insights makes fresh caller-delegated reads and never updates status;
+see `docs/developer/LEARNING_INSIGHTS.md` for reporting semantics.
 
-The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
-AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
-
-`package_recommendations.go` is the exception and must not be assimilated into that shape: it fetches
-a public CDN index anonymously behind a host allowlist, with no namespace and one process-wide
-6-hour cache. Because that cache is shared across users, per-user data must never be routed into it.
-
-**File map:**
-
-| File                                | Role                                                                                                              |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `main.go`                           | Plugin entrypoint. Calls `app.Manage("grafana-pathfinder-app", plugin.NewApp, ...)`                                |
-| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the per-user rate limiter (completion writes and `GET /assignments/my`). |
-| `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`; includes admin-only `GET /learning-insights`. |
-| `plugin/learning_insights.go`        | Read-only current-org reporting: fresh bounded namespace LISTs, terminal evidence deduplication in [from, to), recorded people union, and current assignment snapshot independent of chart period. No reporting cache. |
-| `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory). Owns `timeNow`. |
-| `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`): per-user collation of a namespace LIST behind a single-flight TTL cache with stale-serve. Backend proxy pattern §4-§7. |
-| `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform client for `completionrecords`: supplies group/version + resource, decodes each `items[].spec` for LISTs, and issues the create (POST) for the write path. |
-| `plugin/completion_records_write.go` | Completion Records durable write proxy (`POST /completion-records`): identity gate, server-stamped identity fields, idempotent record name, and the retry-contract status mapping. Contract: backend proxy pattern §11 (write variant) and §3 (identity). |
-| `plugin/completion_records_write_ratelimit.go` | Per-user token-bucket rate limiter (`newCompletionWriteRateLimiter`, held on `App`) guarding `POST /completion-records` and `GET /assignments/my` (backend proxy pattern §9 flood guard). |
-| `plugin/assignments.go`             | Assignments read proxy (`GET /assignments/my`): per-caller filtering of the namespace LIST; an assignment whose path guides cannot be resolved is omitted rather than served unmet. |
-| `plugin/assignments_client.go`      | Per-kind wrapper for the `Assignment` resource: LIST plus the `status` PUT. |
-| `plugin/assignment_paths.go`        | Path-guide sources for an assignment target: bundled, custom and online. |
-| `plugin/assignment_satisfaction.go` | Per-request satisfaction evaluation, plus background and on-read `status.satisfied` writes. |
-| `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
-| `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |
-| `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
-| `plugin/settings.go`                | Parses `JSONData` and decrypts `SecureJSONData`. Reads only `secureJsonData.accessToken` into `OBOToken`; the exchange namespace comes from plugin-context, not settings. |
-| `plugin/app_platform_client.go`     | Shared paginated LIST and create client for App Platform proxies: URL building, per-page caps, per-request `X-Access-Token` minting, redirects disabled, error classification. Backend proxy pattern §1. |
-| `plugin/app_platform_identity.go`   | Shared identity helpers (`validIDToken`, `subjectFromIDToken`, `identityStatus`, `deriveCompletionUserID`) over `plugin/auth/id_token.go`; backend proxy pattern §3. |
-| `plugin/auth/id_token.go`           | Inbound Grafana ID-token verifier: stack-local JWKS first, then auth-api's, with `namespace` bound to the trusted plugin-context namespace; fail closed. Trust boundary: backend proxy pattern §3. |
-
-**Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
-
-`/package-recommendations`, `/completion-records` (POST create), `/completion-records/my`,
-`/completion-records/capability`, `/assignments/my`, `/learning-insights` (GET, current-org Admin),
-`/custom-guide-repository`, `/health`.
-
-**Security boundaries:**
-
-- Package-recommendations URL — `https` + explicit hostname allowlist
-- Forwarded ID token — JWKS signature verification plus a `namespace` binding to the trusted
-  plugin-context namespace, fail closed; never `Cookie`, never a replayed `Authorization` header
-
-### What is deliberately NOT here
-
-Sandbox VMs, SSH, the WebSocket relay, and Grafana Live streaming all live in the separate
-**`grafana-coda-app`** plugin. Pathfinder keeps the terminal UI only and consumes that plugin's v1
-API. `plugin.json` therefore does not set `"streaming": true`, and `pkg/` has no `gorilla/websocket`
-or `golang.org/x/crypto` dependency.
-
-If a task mentions `CodaClient`, `RunStream`, `ConnectSSHViaRelay`, `WSConn`, or `resolveVMForUser`,
-that work belongs in the `grafana-coda-app` repo. For the frontend side of the integration, load
-`.cursor/rules/coda.mdc`; for the operational reference, `docs/developer/CODA.md`.
+Browser reads and writes use the bounded SDK route helper. Tenant settings saves
+fail if the SDK store is unavailable; plugin JSON remains readable for migration,
+not an alternate write destination. No database or streaming backend is introduced.
