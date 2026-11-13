@@ -47,7 +47,7 @@ export const TIER_2_ENGINES = Object.entries(TIER_MAP)
   .filter(([, tier]) => tier === 2)
   .map(([dir]) => dir);
 
-export const EXCLUDED_TOP_LEVEL = new Set(['test-utils', 'cli', 'bundled-interactives', 'img', 'locales', 'generated']);
+export const EXCLUDED_TOP_LEVEL = new Set(['test-utils', 'cli', 'bundled-interactives', 'img', 'locales']);
 
 /**
  * Root-level src/ files have `topLevelDir === null` and would otherwise

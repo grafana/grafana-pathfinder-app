@@ -64,7 +64,7 @@ Imports flow **downward only**, enforced by ESLint and `src/validation/architect
 - **Tier 3 — Integrations**: `integrations/`
 - **Tier 4 — UI**: `components/`, `pages/`
 
-Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`, `generated/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`.
+Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-interactives/`, `img/`, `locales/`. The canonical source is `TIER_MAP` in `src/validation/import-graph.ts`.
 
 `src/cli/` and `tests/` run in plain Node, so nothing they import may need browser globals; put shared logic in environment-neutral `*-core.ts` modules. `architecture.test.ts` also ratchets orphaned and off-graph modules; its failure messages give the procedure.
 

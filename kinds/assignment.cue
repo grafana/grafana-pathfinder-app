@@ -9,14 +9,6 @@ assignmentKind: {
 	// RBAC; it only drops folder access from the authz question, leaving
 	// "access = has stack role" instead of "has stack role AND has folder access".
 	folderScoped: false
-	codegen: {
-		ts: {
-			enabled: true
-		}
-		go: {
-			enabled: true
-		}
-	}
 }
 
 // assignmentv1alpha1 is the v1alpha1 version of the Assignment kind.

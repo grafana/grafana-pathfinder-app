@@ -15,14 +15,6 @@ interactiveGuideKind: {
 	// "access = has stack role" instead of "has stack role AND has folder access".
 	folderScoped: false
 	// Codegen provides information to the codegen tooling about what sort of code you want generated.
-	codegen: {
-		ts: {
-			enabled: true
-		}
-		go: {
-			enabled: true
-		}
-	}
 }
 
 // interactiveguidev1alpha1 is our version `v1alpha1` interactive guide kind.

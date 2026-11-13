@@ -25,7 +25,6 @@ config: {
 	codegen: {
 		goEnabled:                      true
 		goGenPath:                      "pkg/generated/"
-		tsGenPath:                      "src/generated/"
 		enableK8sPostProcessing:        false
 		enableOperatorStatusGeneration: true
 	}

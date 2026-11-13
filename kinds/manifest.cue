@@ -117,7 +117,7 @@ v1alpha1: {
             // [OPTIONAL]
             // enabled indicates whether the CLI should generate front-end TypeScript code for the kind.
             // Defaults to true if not present.
-            enabled: true
+            enabled: false
         }
         // [OPTIONAL]
         // go contains go code generation properties for the kind

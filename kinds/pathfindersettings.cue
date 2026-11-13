@@ -31,14 +31,6 @@ pathfinderSettingsKind: {
 	// leaving "access = has stack role" instead of "has stack role AND has folder
 	// access". Matches InteractiveGuide and CompletionRecord.
 	folderScoped: false
-	codegen: {
-		ts: {
-			enabled: true
-		}
-		go: {
-			enabled: true
-		}
-	}
 }
 
 // pathfindersettingsv1alpha1 is the v1alpha1 version of the PathfinderSettings kind.
