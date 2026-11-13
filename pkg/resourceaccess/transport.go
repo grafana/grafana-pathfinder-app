@@ -1,6 +1,8 @@
 package resourceaccess
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -10,7 +12,9 @@ import (
 )
 
 func SettingsConfig(config rest.Config) rest.Config {
-	return BoundedConfig(config, services.SettingsMaxBytes)
+	config = BoundedConfig(config, services.SettingsMaxBytes)
+	config.Wrap(func(next http.RoundTripper) http.RoundTripper { return settingsErrorTransport{next: next} })
+	return config
 }
 
 func BoundedConfig(config rest.Config, maxBytes int64) rest.Config {
@@ -78,3 +82,25 @@ type ResponseValidationError struct {
 }
 
 func (e *ResponseValidationError) Error() string { return "invalid upstream response: " + e.Reason }
+
+type settingsErrorTransport struct{ next http.RoundTripper }
+
+func (t settingsErrorTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := t.next.RoundTrip(request)
+	if err != nil || response.StatusCode < 400 {
+		return response, err
+	}
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, 2049))
+	_ = response.Body.Close()
+	var status struct {
+		Code int `json:"code"`
+	}
+	// SDK error decoding trusts the body code; a conflicting body cannot establish absence.
+	if readErr != nil || len(body) > 2048 || (json.Unmarshal(body, &status) == nil && status.Code != response.StatusCode) {
+		body = nil
+	}
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	response.ContentLength = int64(len(body))
+	response.Header.Del("Content-Length")
+	return response, nil
+}

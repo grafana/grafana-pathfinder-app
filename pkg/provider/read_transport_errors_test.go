@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -126,5 +127,27 @@ func TestSettingsRoutePreservesInvalidResponseDiagnostics(t *testing.T) {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body)
 			}
 		})
+	}
+}
+
+func TestSettingsRouteDoesNotMistakeUpstreamFailureForAbsence(t *testing.T) {
+	const missing = `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404,"details":{"name":"default","group":"pathfinderbackend.ext.grafana.app","kind":"pathfindersettings"}}`
+	for _, code := range []int{403, 503} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			_, _ = w.Write([]byte(missing))
+		}))
+		store, err := resourceaccess.NewSettingsStore(sdkplugin.BuildClientGenerator(resourceaccess.SettingsConfig(rest.Config{Host: server.URL, APIPath: "/apis"})))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "default"})
+		response := httptest.NewRecorder()
+		err = settingsReadHandler(store.Read)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: &url.URL{RawQuery: "absence=explicit"}, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}})
+		server.Close()
+		if err != nil || response.Code != code || strings.Contains(response.Body.String(), "not-configured") {
+			t.Fatalf("upstream=%d status=%d body=%s err=%v", code, response.Code, response.Body, err)
+		}
 	}
 }
