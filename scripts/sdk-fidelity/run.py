@@ -69,6 +69,12 @@ def main():
                 if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
                     raise RuntimeError('unexpected cache-control difference')
                 old['cacheControl'] = 'no-store'
+        for name, old in transcripts[0]['httpReads'].items():
+            if name.startswith('assignments/'):
+                new = transcripts[1]['httpReads'][name]
+                if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
+                    raise RuntimeError('unexpected assignment cache-control difference')
+                old['cacheControl'] = 'no-store'
         diff = compare(*transcripts)
         # Mutate only the temporary SDK copy: the harness must catch a broken
         # monotonic-progress comparison in production code, not just a JSON edit.
@@ -155,6 +161,17 @@ def main():
         if not compare(transcripts[1]['httpReads']['settings-absence/forbidden'], mutated_absence):
             raise RuntimeError('production settings absence mutation was not detected')
         bounded_transport.write_text(bounded_source)
+        assignment_route = target / 'pkg/provider/assignments.go'
+        assignment_source = assignment_route.read_text()
+        assignment_needle = ' && status != 429'
+        if assignment_source.count(assignment_needle) != 1:
+            raise RuntimeError('assignment retry classification mutation target changed')
+        assignment_route.write_text(assignment_source.replace(assignment_needle, ''))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityHTTPReads$', '-count=1'], cwd=target, env=env, check=True)
+        mutated_assignment = json.loads(Path(str(output) + '.httpreads').read_text())['assignments/429/completions=false']
+        if not compare(transcripts[1]['httpReads']['assignments/429/completions=false'], mutated_assignment):
+            raise RuntimeError('production assignment retry classification mutation was not detected')
+        assignment_route.write_text(assignment_source)
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599
@@ -163,7 +180,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, and diagnostic controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

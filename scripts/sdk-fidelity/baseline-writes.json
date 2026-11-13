@@ -1448,6 +1448,382 @@
       "retryAfter": "30",
       "status": 503
     },
+    "assignments/-1/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-1/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-2/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-2/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-4/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-4/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-5/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-5/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/200/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "userId": "user:abc"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/400/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-400"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/400/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-400"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/401/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-401"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/401/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-401"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/403/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-403"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/403/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-403"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/404/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-404"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/404/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-404"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/405/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-405"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/405/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-405"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/408/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/408/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/409/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-409"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/409/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-409"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/422/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-422"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/422/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-422"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/429/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/429/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/500/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/500/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/501/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/501/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/503/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/503/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/504/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/504/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
     "settings-absence/cause": {
       "body": {
         "diagnostics": {

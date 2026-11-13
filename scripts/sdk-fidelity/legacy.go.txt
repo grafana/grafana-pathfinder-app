@@ -145,3 +145,36 @@ func fidelitySettingsRead(t *testing.T, status int, body string, query string) *
 	app.handlePathfinderSettings(response, customGuideRequestWithConfig(t, "/pathfinder-settings?"+query, "user:1", map[string]string{sdkconfig.AppURL: upstream.URL}))
 	return response
 }
+
+func fidelityAssignmentsRead(t *testing.T, status int, completions bool) *httptest.ResponseRecorder {
+	failure := func() error {
+		switch status {
+		case 200:
+			return nil
+		case -1:
+			var value any
+			return json.Unmarshal([]byte("not-json"), &value)
+		case -2:
+			return fidelityFailure("deadline")
+		case -4:
+			return fidelityFailure("cancelled")
+		case -5:
+			return fidelityFailure("network")
+		default:
+			return &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+	}
+	if completions {
+		withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) { return nil, failure() }})
+		withAssignmentLister(t, singlePageAssignmentLister(asg("user:abc", "missing", "", "rule", "2026-09-14T09:00:00Z")))
+	} else {
+		withAssignmentLister(t, &fakeAssignmentLister{respond: func(string) (*assignmentPage, error) {
+			if err := failure(); err != nil {
+				return nil, err
+			}
+			return &assignmentPage{}, nil
+		}})
+	}
+	response, _ := doMyAssignments(t, "user:abc")
+	return response
+}
