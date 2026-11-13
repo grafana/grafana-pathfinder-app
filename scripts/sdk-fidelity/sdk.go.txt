@@ -103,6 +103,12 @@ func newFidelityCache(t *testing.T) fidelityCacheDriver {
 type fidelityReadTransport struct{ status int }
 
 func (transport fidelityReadTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if transport.status == -4 {
+		return nil, fidelityFailure("cancelled")
+	}
+	if transport.status == -5 {
+		return nil, fidelityFailure("network")
+	}
 	if transport.status == -2 {
 		return nil, context.DeadlineExceeded
 	}

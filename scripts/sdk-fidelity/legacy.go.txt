@@ -92,6 +92,12 @@ func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest
 			var value any
 			return nil, json.Unmarshal([]byte("not-json"), &value)
 		}
+		if status == -4 {
+			return nil, fidelityFailure("cancelled")
+		}
+		if status == -5 {
+			return nil, fidelityFailure("network")
+		}
 		if status == -2 {
 			return nil, context.DeadlineExceeded
 		}

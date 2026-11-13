@@ -844,6 +844,74 @@
       "retryAfter": "",
       "status": 200
     },
+    "-4/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "cancelled",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-4/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "cancelled",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-5/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "network-error",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-5/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "network-error",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
     "200/capability=false": {
       "body": {
         "asOf": "<validated-server-time>",

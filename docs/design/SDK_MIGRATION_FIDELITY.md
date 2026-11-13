@@ -31,8 +31,8 @@ A negative control doubles the production SDK cache TTL and must change the
 transcript. This covers one caller; the SDK's intentional caller partitioning is
 covered separately by isolation tests. It does not claim HTTP diagnostic parity.
 
-Completion data and capability routes also run a 34-case HTTP comparison: empty
-success, thirteen upstream HTTP statuses, malformed JSON, and a transport deadline
+Completion data and capability routes also run a 38-case HTTP comparison: empty
+success, thirteen upstream HTTP statuses, malformed JSON, transport deadline, cancellation, and connection failures
 across both routes. Status, complete JSON body, content type, cache control, and
 Retry-After are compared. Only a successfully parsed server `asOf` is normalized.
 The SDK adapter uses the generated client and its real error wrappers. This caught
