@@ -1,0 +1,64 @@
+package PACKAGE
+
+import (
+	"encoding/json"
+	"os"
+	"testing"
+	"time"
+)
+
+type fidelityCacheResult struct {
+	Name   string `json:"name"`
+	Calls  int    `json:"calls"`
+	AsOf   string `json:"asOf"`
+	Failed bool   `json:"failed"`
+}
+
+type fidelityCacheDriver struct {
+	read       func(bool, int) fidelityCacheResult
+	advance    func(time.Duration)
+	invalidate func()
+}
+
+func TestFrozenFidelityCache(t *testing.T) {
+	driver := newFidelityCache(t)
+	steps := []struct {
+		name       string
+		advance    time.Duration
+		forced     bool
+		status     int
+		invalidate bool
+	}{
+		{name: "cold outage", status: 503},
+		{name: "cold cooldown", status: 503},
+		{name: "cold recovery", advance: 30 * time.Second},
+		{name: "within TTL", advance: 4 * time.Minute},
+		{name: "TTL boundary", advance: time.Minute},
+		{name: "forced refresh", forced: true},
+		{name: "forced refresh throttled", forced: true},
+		{name: "forced refresh resumes", advance: 30 * time.Second, forced: true},
+		{name: "invalidation retains stale on denied refresh", invalidate: true, status: 403},
+		{name: "denied refresh is not cached", status: 403},
+		{name: "warm outage", status: 503},
+		{name: "warm cooldown serves stale", status: 503},
+		{name: "warm recovery", advance: 30 * time.Second},
+		{name: "write invalidation refreshes", invalidate: true},
+	}
+	results := make([]fidelityCacheResult, 0, len(steps))
+	for _, step := range steps {
+		driver.advance(step.advance)
+		if step.invalidate {
+			driver.invalidate()
+		}
+		result := driver.read(step.forced, step.status)
+		result.Name = step.name
+		results = append(results, result)
+	}
+	data, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv("FIDELITY_OUTPUT")+".cache", data, 0600); err != nil {
+		t.Fatal(err)
+	}
+}

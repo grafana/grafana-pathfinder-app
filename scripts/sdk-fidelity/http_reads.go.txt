@@ -1,0 +1,266 @@
+package PACKAGE
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestFrozenFidelityHTTPReads(t *testing.T) {
+	results := map[string]any{}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2, -3, -4, -5} {
+		for _, capability := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%d/capability=%t", status, capability), func(t *testing.T) {
+				response := fidelityCompletionRead(t, status, capability)
+				var body map[string]any
+				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if value, ok := body["asOf"]; ok {
+					stamp, ok := value.(string)
+					if !ok {
+						t.Fatal("non-string asOf")
+					}
+					if _, err := time.Parse(time.RFC3339, stamp); err != nil {
+						t.Fatal(err)
+					}
+					body["asOf"] = "<validated-server-time>"
+				}
+				results[fmt.Sprintf("%d/capability=%t", status, capability)] = map[string]any{
+					"status": response.Code, "body": body,
+					"contentType":  response.Header().Get("Content-Type"),
+					"retryAfter":   response.Header().Get("Retry-After"),
+					"cacheControl": response.Header().Get("Cache-Control"),
+				}
+			})
+		}
+	}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2} {
+		body := `{"metadata":{"resourceVersion":"42"},"spec":{"futureField":{"enabled":true}}}`
+		if status != 200 {
+			body = fmt.Sprintf(`{"kind":"Status","apiVersion":"v1","status":"Failure","code":%d,"message":"injected"}`, status)
+		}
+		upstreamStatus := status
+		if status == -1 {
+			body = "not-json"
+			upstreamStatus = 200
+		}
+		if status == -2 {
+			body = strings.Repeat(" ", 1024*1024+1)
+			upstreamStatus = 200
+		}
+		response := fidelitySettingsRead(t, upstreamStatus, body, "")
+		var decoded any
+		if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		results[fmt.Sprintf("settings/%d", status)] = map[string]any{
+			"status": response.Code, "body": decoded,
+			"contentType":  response.Header().Get("Content-Type"),
+			"cacheControl": response.Header().Get("Cache-Control"),
+			"retryAfter":   response.Header().Get("Retry-After"),
+		}
+	}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2} {
+		body := `{"metadata":{"name":"test-guide","resourceVersion":"42"},"spec":{"status":"draft","blocks":[{"type":"markdown","content":"Hello"}],"futureField":{"enabled":true}}}`
+		if status != 200 {
+			body = fmt.Sprintf(`{"kind":"Status","apiVersion":"v1","status":"Failure","code":%d,"message":"injected"}`, status)
+		}
+		upstreamStatus := status
+		if status == -1 {
+			body = "not-json"
+			upstreamStatus = 200
+		}
+		if status == -2 {
+			body = strings.Repeat(" ", 8*1024*1024+1)
+			upstreamStatus = 200
+		}
+		response := fidelitySettingsRead(t, upstreamStatus, body, "", true)
+		var decoded any
+		if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		results[fmt.Sprintf("guide/%d", status)] = map[string]any{
+			"status": response.Code, "body": decoded,
+			"contentType":  response.Header().Get("Content-Type"),
+			"cacheControl": response.Header().Get("Cache-Control"),
+			"retryAfter":   response.Header().Get("Retry-After"),
+		}
+	}
+	missing := `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404,"details":{"name":"default","group":"pathfinderbackend.ext.grafana.app","kind":"pathfindersettings"}}`
+	for _, tc := range []struct {
+		name, body, query string
+		status            int
+	}{
+		{"confirmed", missing, "absence=explicit", 404},
+		{"oversized", missing + strings.Repeat(" ", 2048), "absence=explicit", 404},
+		{"malformed", missing[:len(missing)-1], "absence=explicit", 404},
+		{"conflicting-body-code", strings.ReplaceAll(missing, `"code":404`, `"code":403`), "absence=explicit", 404},
+		{"legacy-query", missing, "", 404},
+		{"missing-route", "404 page not found", "absence=explicit", 404},
+		{"other-name", strings.ReplaceAll(missing, `"default"`, `"other"`), "absence=explicit", 404},
+		{"other-group", strings.ReplaceAll(missing, "pathfinderbackend.ext.grafana.app", "other.app"), "absence=explicit", 404},
+		{"cause", strings.ReplaceAll(missing, `"name":"default"`, `"name":"default","causes":[{"reason":"UnexpectedServerResponse"}]`), "absence=explicit", 404},
+		{"forbidden", missing, "absence=explicit", 403},
+		{"unavailable", missing, "absence=explicit", 503},
+	} {
+		response := fidelitySettingsRead(t, tc.status, tc.body, tc.query)
+		var body any
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		results["settings-absence/"+tc.name] = map[string]any{
+			"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"),
+			"cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"),
+		}
+	}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2, -4, -5} {
+		for _, completions := range []bool{false, true} {
+			if completions && status == 200 {
+				continue
+			}
+			response := fidelityAssignmentsRead(t, status, completions)
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if stamp, ok := body["asOf"]; ok {
+				value, ok := stamp.(string)
+				if !ok {
+					t.Fatal("non-string assignment asOf")
+				}
+				if _, err := time.Parse(time.RFC3339, value); err != nil {
+					t.Fatal(err)
+				}
+				body["asOf"] = "<validated-server-time>"
+			}
+			results[fmt.Sprintf("assignments/%d/completions=%t", status, completions)] = map[string]any{
+				"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"),
+				"cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"),
+			}
+		}
+	}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2, -4, -5} {
+		for _, completions := range []bool{false, true} {
+			if completions && status == 200 {
+				continue
+			}
+			response := fidelityInsightsRead(t, status, completions)
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if stamp, ok := body["asOf"]; ok {
+				value, ok := stamp.(string)
+				if !ok {
+					t.Fatal("non-string insights asOf")
+				}
+				if _, err := time.Parse(time.RFC3339, value); err != nil {
+					t.Fatal(err)
+				}
+				body["asOf"] = "<validated-server-time>"
+			}
+			results[fmt.Sprintf("insights/%d/completions=%t", status, completions)] = map[string]any{
+				"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"),
+				"cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"),
+			}
+		}
+	}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2, -4, -5} {
+		for _, completions := range []bool{true} {
+			response := fidelityInsightsRead(t, status, completions, true)
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if stamp, ok := body["asOf"]; ok {
+				value, ok := stamp.(string)
+				if !ok {
+					t.Fatal("non-string insights asOf")
+				}
+				if _, err := time.Parse(time.RFC3339, value); err != nil {
+					t.Fatal(err)
+				}
+				body["asOf"] = "<validated-server-time>"
+			}
+			results[fmt.Sprintf("insights-paged/%d/completions=%t", status, completions)] = map[string]any{
+				"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"),
+				"cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"),
+			}
+		}
+	}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2} {
+		for _, catalogue := range []bool{false, true} {
+			response := fidelityCollectionRead(t, status, catalogue)
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if stamp, ok := body["asOf"]; ok {
+				value, ok := stamp.(string)
+				if !ok {
+					t.Fatal("non-string catalogue asOf")
+				}
+				if _, err := time.Parse(time.RFC3339, value); err != nil {
+					t.Fatal(err)
+				}
+				body["asOf"] = "<validated-server-time>"
+			}
+			results[fmt.Sprintf("guide-list/%d/catalogue=%t", status, catalogue)] = map[string]any{
+				"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"), "cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"),
+			}
+		}
+	}
+	data, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv("FIDELITY_OUTPUT")+".httpreads", data, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func fidelityReadPage(token string) ([]json.RawMessage, string) {
+	if token == "next" {
+		return []json.RawMessage{
+			json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"bundled","completionPercent":100,"completedAt":"2026-09-03T00:00:00Z"}`),
+			json.RawMessage(`{"userId":"user:abc","guideId":"partial","guideSource":"app-platform","completionPercent":40,"attemptId":"attempt","recordedAt":"2026-09-03T00:00:00Z"}`),
+		}, ""
+	}
+	return []json.RawMessage{
+		json.RawMessage(`{"userId":"user:other","guideId":"private","guideSource":"app-platform","completionPercent":100,"completedAt":"2026-09-01T00:00:00Z"}`),
+		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"bundled","completionPercent":100,"completedAt":"2026-09-01T00:00:00Z"}`),
+		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"app-platform","completionPercent":100,"completedAt":"2026-09-02T00:00:00Z"}`),
+	}, "next"
+}
+
+func fidelityInsightsFirstPage() []json.RawMessage {
+	return []json.RawMessage{
+		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"bundled","completionPercent":100,"completedAt":"2026-09-02T00:00:00Z"}`),
+		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"app-platform","completionPercent":100,"completedAt":"2026-09-03T00:00:00Z"}`),
+		json.RawMessage(`{"userId":"user:abc","guideId":"partial","guideSource":"app-platform","completionPercent":40,"attemptId":"attempt","recordedAt":"2026-09-03T00:00:00Z"}`),
+	}
+}
+
+func fidelityCollectionResponse(w http.ResponseWriter, r *http.Request, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	switch status {
+	case -1:
+		_, _ = w.Write([]byte("not-json"))
+	case -2:
+		_, _ = w.Write([]byte(strings.Repeat(" ", 8*1024*1024+1)))
+	case 200:
+		body := `{"metadata":{"continue":"next"},"items":[{"metadata":{"name":"draft","resourceVersion":"7"},"spec":{"id":"draft","title":"Draft","status":"draft","blocks":[{"type":"markdown","content":"private draft"}],"futureField":true}},{"metadata":{"name":"published","resourceVersion":"8"},"spec":{"id":"published","title":"Published","status":"published","blocks":[{"type":"markdown","content":"published content"}],"manifest":{"type":"guide","description":"Metadata"}}}]}`
+		if r.URL.Query().Get("continue") == "next" {
+			body = `{"metadata":{},"items":[{"metadata":{"name":"last","resourceVersion":"9"},"spec":{"id":"last","title":"Last page","status":"published","manifest":{"type":"guide"}}}]}`
+		}
+		_, _ = w.Write([]byte(body))
+	default:
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]any{"kind": "Status", "apiVersion": "v1", "status": "Failure", "code": status, "message": "injected"})
+	}
+}

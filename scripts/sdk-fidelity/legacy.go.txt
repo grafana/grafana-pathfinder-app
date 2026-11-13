@@ -1,0 +1,363 @@
+package plugin
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any, assignment *fidelityAssignmentState) *httptest.ResponseRecorder {
+	store.createErr = fidelityFailure(step.Failure)
+	if step.Status != 0 {
+		store.createErr = &appPlatformUpstreamError{status: step.Status, msg: "injected", body: step.ErrorBody}
+	}
+	store.replaceErrs = nil
+	for i := 0; i < step.Conflicts; i++ {
+		store.replaceErrs = append(store.replaceErrs, &appPlatformUpstreamError{status: 409, msg: "injected"})
+	}
+	withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		assignment.HistoryReads++
+		page := &completionRecordPage{}
+		for _, object := range store.objects {
+			raw, _ := json.Marshal(object["spec"])
+			var rec completionRecordSpec
+			if err := json.Unmarshal(raw, &rec); err != nil {
+				t.Fatal(err)
+			}
+			page.Records = append(page.Records, rec)
+		}
+		return page, nil
+	}})
+	withAssignmentLister(t, &fakeAssignmentLister{
+		respond: func(string) (*assignmentPage, error) {
+			assignment.Reads++
+			return &assignmentPage{Records: []assignmentSpec{{Name: "assignment", ResourceVersion: assignment.ResourceVersion, StatusSatisfied: &assignment.Satisfied, UserID: "user:abc", TargetType: "guide", TargetID: "first-dashboard", TargetSource: "bundled", Lifecycle: "active"}}}, nil
+		},
+		updateStatus: func(_ context.Context, ns, name, version string, satisfied bool) error {
+			return assignment.mark(t, ns, name, version, satisfied)
+		},
+	})
+	withCreator(t, store)
+	r := writeRequest(t, "user:abc", body, testGrafanaConfig())
+	// Model a valid stack/org pair; the baseline fixture's org 7 is deliberately synthetic.
+	r = r.WithContext(backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: "stacks-1", OrgID: 1}))
+	return doWrite(t, nil, r)
+}
+
+func fidelityHistory(t *testing.T, data []byte) any {
+	var corpus struct {
+		Records     []completionRecordSpec `json:"records"`
+		Assignments []assignmentSpec       `json:"assignments"`
+	}
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		t.Fatal(err)
+	}
+	complete, partial := collateCompletions(corpus.Records)
+	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 1, 0)
+	evaluator := &obligationEvaluator{logger: log.DefaultLogger}
+	reports := []any{}
+	for _, historyComplete := range []bool{true, false} {
+		report := newLearningInsightsResponse(from, to)
+		shapeLearningInsights(&report, corpus.Records, corpus.Assignments, from, to, to, historyComplete, evaluator.guideProgress)
+		reports = append(reports, report)
+	}
+	return map[string]any{"completed": complete, "partial": partial, "reports": reports}
+}
+
+func newFidelityCache(t *testing.T) fidelityCacheDriver {
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+	advance := withFrozenTime(t, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
+	status := 0
+	lister := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if status != 0 {
+			return nil, &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+		return &completionRecordPage{}, nil
+	}}
+	return fidelityCacheDriver{
+		advance:    advance,
+		invalidate: func() { invalidateCompletionIndex("stacks-1") },
+		read: func(forced bool, nextStatus int) fidelityCacheResult {
+			status = nextStatus
+			index, err := getCompletionIndex(context.Background(), "stacks-1", lister, forced, log.DefaultLogger)
+			result := fidelityCacheResult{Calls: lister.callCount(), Failed: err != nil}
+			if index != nil {
+				result.AsOf = index.asOf.Format(time.RFC3339Nano)
+			}
+			return result
+		},
+	}
+}
+
+func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest.ResponseRecorder {
+	lister := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if status == -3 {
+			raw, next := fidelityReadPage(token)
+			page := &completionRecordPage{Continue: next}
+			for _, value := range raw {
+				var record completionRecordSpec
+				if err := json.Unmarshal(value, &record); err != nil {
+					t.Fatal(err)
+				}
+				record.LastUpdatedAt = recordLastUpdatedAt(nil, record.RecordedAt)
+				page.Records = append(page.Records, record)
+			}
+			return page, nil
+		}
+		if status == -1 {
+			var value any
+			return nil, json.Unmarshal([]byte("not-json"), &value)
+		}
+		if status == -4 {
+			return nil, fidelityFailure("cancelled")
+		}
+		if status == -5 {
+			return nil, fidelityFailure("network")
+		}
+		if status == -2 {
+			return nil, context.DeadlineExceeded
+		}
+		if status != 200 {
+			return nil, &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+		return &completionRecordPage{}, nil
+	}}
+	withLister(t, lister)
+	request := completionRequest(t, "/completion-records/my", "user:abc")
+	response := httptest.NewRecorder()
+	app := newTestApp(t)
+	if capability {
+		app.handleCompletionCapability(response, request)
+	} else {
+		app.handleMyCompletions(response, request)
+	}
+	return response
+}
+
+func fidelitySettingsRead(t *testing.T, status int, body string, query string, guide ...bool) *httptest.ResponseRecorder {
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"token":"obo-token"}}`))
+	}))
+	defer exchange.Close()
+	exchanger, err := auth.New("cap-token", exchange.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == auth.SigningKeysPath {
+			_, _ = w.Write(jwksBody(testSigningKeyID, testSigningKey()))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer upstream.Close()
+	app := &App{logger: log.DefaultLogger, oboExchanger: exchanger}
+	response := httptest.NewRecorder()
+	if len(guide) > 0 && guide[0] {
+		app.handleCustomGuide(response, customGuideRequestWithConfig(t, "/custom-guide?name=test-guide", "user:1", map[string]string{sdkconfig.AppURL: upstream.URL}))
+	} else {
+		app.handlePathfinderSettings(response, customGuideRequestWithConfig(t, "/pathfinder-settings?"+query, "user:1", map[string]string{sdkconfig.AppURL: upstream.URL}))
+	}
+	return response
+}
+
+func fidelityAssignmentsRead(t *testing.T, status int, completions bool) *httptest.ResponseRecorder {
+	failure := func() error {
+		switch status {
+		case 200:
+			return nil
+		case -1:
+			var value any
+			return json.Unmarshal([]byte("not-json"), &value)
+		case -2:
+			return fidelityFailure("deadline")
+		case -4:
+			return fidelityFailure("cancelled")
+		case -5:
+			return fidelityFailure("network")
+		default:
+			return &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+	}
+	if completions {
+		withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) { return nil, failure() }})
+		withAssignmentLister(t, singlePageAssignmentLister(asg("user:abc", "missing", "", "rule", "2026-09-14T09:00:00Z")))
+	} else {
+		withAssignmentLister(t, &fakeAssignmentLister{respond: func(string) (*assignmentPage, error) {
+			if err := failure(); err != nil {
+				return nil, err
+			}
+			return &assignmentPage{}, nil
+		}})
+	}
+	response, _ := doMyAssignments(t, "user:abc")
+	return response
+}
+
+func fidelityInsightsRead(t *testing.T, status int, completions bool, paged ...bool) *httptest.ResponseRecorder {
+	failure := func() error {
+		switch status {
+		case 200:
+			return nil
+		case -1:
+			var value any
+			return json.Unmarshal([]byte("not-json"), &value)
+		case -2:
+			return fidelityFailure("deadline")
+		case -4:
+			return fidelityFailure("cancelled")
+		case -5:
+			return fidelityFailure("network")
+		default:
+			return &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+	}
+	withLister(t, &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if len(paged) > 0 && paged[0] && token == "" {
+			page := &completionRecordPage{Continue: "next"}
+			for _, value := range fidelityInsightsFirstPage() {
+				var record completionRecordSpec
+				if err := json.Unmarshal(value, &record); err != nil {
+					t.Fatal(err)
+				}
+				record.LastUpdatedAt = recordLastUpdatedAt(nil, record.RecordedAt)
+				page.Records = append(page.Records, record)
+			}
+			return page, nil
+		}
+		if completions {
+			if err := failure(); err != nil {
+				return nil, err
+			}
+		}
+		return &completionRecordPage{}, nil
+	}})
+	withAssignmentLister(t, &fakeAssignmentLister{respond: func(string) (*assignmentPage, error) {
+		if !completions {
+			if err := failure(); err != nil {
+				return nil, err
+			}
+		}
+		return &assignmentPage{}, nil
+	}})
+	response, _ := insightsResponse(t, insightsRequest(t, "Admin", "user:abc"))
+	return response
+}
+
+type fidelityStoredRecord = storedCompletionRecord
+type fidelityWriteSpec = completionRecordWriteSpec
+
+func fidelityConcurrentUpsert(ctx context.Context, store *fidelityConcurrentStore, spec fidelityWriteSpec) (int, fidelityWriteSpec, error) {
+	request := httptest.NewRequest(http.MethodPost, "/completion-records", nil).WithContext(ctx)
+	outcome, persisted, err := upsertCompletionAttempt(request, store, "stacks-1", "concurrent-attempt", spec)
+	return int(outcome), persisted, err
+}
+
+func fidelityCollectionRead(t *testing.T, status int, catalogue bool) *httptest.ResponseRecorder {
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"token":"obo-token"}}`))
+	}))
+	defer exchange.Close()
+	exchanger, err := auth.New("cap-token", exchange.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == auth.SigningKeysPath {
+			_, _ = w.Write(jwksBody(testSigningKeyID, testSigningKey()))
+			return
+		}
+		fidelityCollectionResponse(w, r, status)
+	}))
+	defer upstream.Close()
+	cfg := testGrafanaConfig()
+	cfg[sdkconfig.AppURL] = upstream.URL
+	app := &App{logger: log.DefaultLogger, oboExchanger: exchanger}
+	response := httptest.NewRecorder()
+	request := customGuideRequestWithConfig(t, "/custom-guides", "user:abc", cfg)
+	if catalogue {
+		app.handleCustomGuideRepository(response, request)
+	} else {
+		app.handleCustomGuides(response, request)
+	}
+	return response
+}
+
+func fidelityResourceMutation(t *testing.T, base, kind, method, name string, body []byte) *httptest.ResponseRecorder {
+	resource := "interactiveguides"
+	if kind == "PathfinderSettings" {
+		resource = "pathfindersettings"
+	}
+	endpoint := base + "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-1/" + resource
+	if method != http.MethodPost {
+		endpoint += "/" + name
+	}
+	request, err := http.NewRequest(method, endpoint, bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	recorder := httptest.NewRecorder()
+	recorder.Header().Set("Content-Type", response.Header.Get("Content-Type"))
+	recorder.WriteHeader(response.StatusCode)
+	if _, err := io.Copy(recorder, response.Body); err != nil {
+		t.Fatal(err)
+	}
+	return recorder
+}
+
+func fidelityAssignmentHistory(t *testing.T, status int, insights bool) *httptest.ResponseRecorder {
+	withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		page := &completionRecordPage{}
+		for _, raw := range fidelityInsightsFirstPage() {
+			var record completionRecordSpec
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			record.LastUpdatedAt = recordLastUpdatedAt(nil, record.RecordedAt)
+			page.Records = append(page.Records, record)
+		}
+		return page, nil
+	}})
+	withAssignmentLister(t, &fakeAssignmentLister{respond: func(token string) (*assignmentPage, error) {
+		if token == "next" && status != 200 {
+			return nil, &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+		page := &assignmentPage{}
+		if token == "" {
+			page.Continue = "next"
+		}
+		for _, raw := range fidelityAssignmentHistoryPage(token) {
+			var record assignmentSpec
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			page.Records = append(page.Records, record)
+		}
+		return page, nil
+	}})
+	if insights {
+		response, _ := insightsResponse(t, insightsRequest(t, "Admin", "user:abc"))
+		return response
+	}
+	response, _ := doMyAssignments(t, "user:abc")
+	return response
+}

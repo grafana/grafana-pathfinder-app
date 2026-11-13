@@ -1,0 +1,381 @@
+package provider
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	authlib "github.com/grafana/authlib/types"
+	"github.com/grafana/grafana-app-sdk/app"
+	"github.com/grafana/grafana-app-sdk/k8s"
+	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
+	"github.com/grafana/grafana-app-sdk/resource"
+	"github.com/grafana/grafana-pathfinder-app/pkg/resourceaccess"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"io"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+)
+
+func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any, assignment *fidelityAssignmentState) *httptest.ResponseRecorder {
+	store.createErr = nil
+	if failure := fidelityFailure(step.Failure); failure != nil {
+		store.createErr = k8s.NewServerResponseError(failure, 503)
+	}
+	if step.Status != 0 {
+		status := metav1.Status{Code: int32(step.Status), Message: "injected"}
+		if len(step.ErrorBody) > 0 {
+			if err := json.Unmarshal(step.ErrorBody, &status); err != nil {
+				t.Fatal(err)
+			}
+		}
+		store.createErr = &apierrors.StatusError{ErrStatus: status}
+	}
+	store.replaceErrs = nil
+	for i := 0; i < step.Conflicts; i++ {
+		store.replaceErrs = append(store.replaceErrs, &apierrors.StatusError{ErrStatus: metav1.Status{Code: 409}})
+	}
+	raw, _ := json.Marshal(body)
+	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"})
+	handler := completionWriteHandler(store, func(ctx context.Context, ns string, just services.CompletionRecord) {
+		assignment.Reads++
+		records := []services.Assignment{{Name: "assignment", ResourceVersion: assignment.ResourceVersion, StatusSatisfied: &assignment.Satisfied, UserID: "user:abc", TargetType: "guide", TargetID: "first-dashboard", TargetSource: "bundled", Lifecycle: "active"}}
+		ev := &services.ObligationEvaluator{Context: ctx, Logger: log.DefaultLogger}
+		services.SyncSatisfiedAssignments(records, just, ev, func() ([]services.CompletionRecord, error) {
+			assignment.HistoryReads++
+			records := []services.CompletionRecord{}
+			for _, object := range store.objects {
+				raw, _ := json.Marshal(object["spec"])
+				var rec services.CompletionRecord
+				if err := json.Unmarshal(raw, &rec); err != nil {
+					t.Fatal(err)
+				}
+				records = append(records, rec)
+			}
+			return records, nil
+		}, func(record services.Assignment) {
+			_ = assignment.mark(t, ns, record.Name, record.ResourceVersion, true)
+		}, log.DefaultLogger)
+	})
+	w := httptest.NewRecorder()
+	if err := handler(ctx, w, &app.CustomRouteRequest{Method: http.MethodPost, Body: io.NopCloser(bytes.NewReader(raw)), ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+func fidelityHistory(t *testing.T, data []byte) any {
+	var corpus struct {
+		Records     []services.CompletionRecord `json:"records"`
+		Assignments []services.Assignment       `json:"assignments"`
+	}
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		t.Fatal(err)
+	}
+	complete, partial := services.CollateCompletions(corpus.Records)
+	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 1, 0)
+	evaluator := &services.ObligationEvaluator{Logger: log.DefaultLogger}
+	reports := []any{}
+	for _, historyComplete := range []bool{true, false} {
+		report := services.NewLearningInsightsResponse(from, to)
+		services.ShapeLearningInsights(&report, corpus.Records, corpus.Assignments, from, to, to, historyComplete, evaluator.GuideProgress)
+		reports = append(reports, report)
+	}
+	return map[string]any{"completed": complete, "partial": partial, "reports": reports}
+}
+
+func newFidelityCache(t *testing.T) fidelityCacheDriver {
+	services.ResetCompletionCache()
+	t.Cleanup(services.ResetCompletionCache)
+	now := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	key := services.CallerCompletionCacheKey("stacks-1", "user:abc")
+	calls := 0
+	return fidelityCacheDriver{
+		advance:    func(duration time.Duration) { now = now.Add(duration) },
+		invalidate: func() { services.InvalidateCompletionIndex("stacks-1") },
+		read: func(forced bool, status int) fidelityCacheResult {
+			index, err := services.LoadCompletionIndex(context.Background(), key, forced, log.DefaultLogger,
+				func(context.Context) (*services.CompletionIndex, int, error) {
+					calls++
+					if status != 0 {
+						return nil, 0, &apierrors.StatusError{ErrStatus: metav1.Status{Code: int32(status)}}
+					}
+					return &services.CompletionIndex{AsOf: now}, 1, nil
+				}, func() time.Time { return now },
+				completionFailureCooldown,
+				func(error) string { return "upstream-error" })
+			result := fidelityCacheResult{Calls: calls, Failed: err != nil}
+			if index != nil {
+				result.AsOf = index.AsOf.Format(time.RFC3339Nano)
+			}
+			return result
+		},
+	}
+}
+
+type fidelityReadTransport struct{ status int }
+
+func (transport fidelityReadTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if transport.status == -4 {
+		return nil, fidelityFailure("cancelled")
+	}
+	if transport.status == -5 {
+		return nil, fidelityFailure("network")
+	}
+	if transport.status == -2 {
+		return nil, context.DeadlineExceeded
+	}
+	status := transport.status
+	body := []byte(`{"metadata":{},"items":[]}`)
+	if status == -3 {
+		status = 200
+		records, token := fidelityReadPage(request.URL.Query().Get("continue"))
+		items := []any{}
+		for _, record := range records {
+			items = append(items, map[string]any{"metadata": map[string]any{}, "spec": record})
+		}
+		body, _ = json.Marshal(map[string]any{"metadata": map[string]any{"continue": token}, "items": items})
+	} else if status == -1 {
+		status = 200
+		body = []byte("not-json")
+	} else if status != 200 {
+		body, _ = json.Marshal(map[string]any{"kind": "Status", "apiVersion": "v1", "status": "Failure", "code": status, "message": "injected"})
+	}
+	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: request}, nil
+}
+func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest.ResponseRecorder {
+	services.ResetCompletionCache()
+	t.Cleanup(services.ResetCompletionCache)
+	store, err := resourceaccess.NewCompletionStore(sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityReadTransport{status: status}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"})
+	response := httptest.NewRecorder()
+	if err := completionReadHandler(store, capability)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func fidelitySettingsRead(t *testing.T, status int, body string, query string, guide ...bool) *httptest.ResponseRecorder {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer upstream.Close()
+	if len(guide) > 0 && guide[0] {
+		store, err := resourceaccess.NewGuideStore(sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(rest.Config{Host: upstream.URL, APIPath: "/apis"}, resourceaccess.GuidePageMaxBytes)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "stacks-1"})
+		response := httptest.NewRecorder()
+		if err := guideReadHandler(store)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: &url.URL{RawQuery: "name=test-guide"}, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+	store, err := resourceaccess.NewSettingsStore(sdkplugin.BuildClientGenerator(resourceaccess.SettingsConfig(rest.Config{Host: upstream.URL, APIPath: "/apis"})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "stacks-1"})
+	response := httptest.NewRecorder()
+	if err := settingsReadHandler(store.Read)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: &url.URL{RawQuery: query}, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func fidelityAssignmentsRead(t *testing.T, status int, completions bool) *httptest.ResponseRecorder {
+	generator := sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityReadTransport{status: status}})
+	store, err := resourceaccess.NewAssignmentStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completionStore, err := resourceaccess.NewCompletionStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reader services.AssignmentReader = store
+	if completions {
+		reader = assignmentReaderFunc(func(context.Context, string, string) (*services.AssignmentPage, error) {
+			return &services.AssignmentPage{Records: []services.Assignment{{UserID: "user:abc", TargetType: "path", TargetID: "missing", RuleID: "rule", Lifecycle: "active"}}}, nil
+		})
+	}
+	deps := assignmentRouteDependencies{
+		Assignments: reader,
+		ReadCompletions: func(ctx context.Context, ns, subject string) ([]services.CompletionRecord, error) {
+			page, err := completionStore.ListPage(ctx, ns, "")
+			if err != nil {
+				return nil, err
+			}
+			return page.Records, nil
+		},
+		Evaluator: func(ctx context.Context, ns string) *services.ObligationEvaluator {
+			return &services.ObligationEvaluator{Context: ctx, Logger: log.DefaultLogger}
+		},
+		MarkSatisfied: func(context.Context, string, []services.Assignment) { t.Fatal("unexpected repair") },
+		Allow:         func(string, string) (bool, time.Duration) { return true, 0 },
+	}
+	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"})
+	response := httptest.NewRecorder()
+	if err := assignmentsReadHandler(deps)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+type fidelityInsightsTransport struct {
+	status      int
+	completions bool
+	paged       bool
+}
+
+func (transport fidelityInsightsTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	status := 200
+	if strings.Contains(request.URL.Path, "/completionrecords") == transport.completions {
+		if transport.paged && request.URL.Query().Get("continue") == "" {
+			items := []any{}
+			for _, record := range fidelityInsightsFirstPage() {
+				items = append(items, map[string]any{"metadata": map[string]any{}, "spec": record})
+			}
+			body, _ := json.Marshal(map[string]any{"metadata": map[string]any{"continue": "next"}, "items": items})
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: request}, nil
+		}
+		status = transport.status
+	}
+	return (fidelityReadTransport{status: status}).RoundTrip(request)
+}
+func fidelityInsightsRead(t *testing.T, status int, completions bool, paged ...bool) *httptest.ResponseRecorder {
+	generator := sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityInsightsTransport{status: status, completions: completions, paged: len(paged) > 0 && paged[0]}})
+	assignmentStore, err := resourceaccess.NewAssignmentStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completionStore, err := resourceaccess.NewCompletionStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := adminIdentity{completionIdentity: completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"}, idToken: "header." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user:abc","namespace":"stacks-1","role":"Admin"}`)) + ".signature"}
+	ctx := authlib.WithAuthInfo(context.Background(), identity)
+	handler := insightsReadHandler(completionStore, assignmentStore, func(ctx context.Context, ns string) *services.ObligationEvaluator {
+		return &services.ObligationEvaluator{Context: ctx, Logger: log.DefaultLogger}
+	}, func(string, string) (bool, time.Duration) { return true, 0 })
+	target, _ := url.Parse("http://local/learning-insights?from=2026-09-01T00:00:00Z&to=2026-10-01T00:00:00Z")
+	response := httptest.NewRecorder()
+	if err := handler(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: target, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+type fidelityStoredRecord = services.StoredCompletionRecord
+type fidelityWriteSpec = services.CompletionRecordWriteSpec
+
+func fidelityConcurrentUpsert(ctx context.Context, store *fidelityConcurrentStore, spec fidelityWriteSpec) (int, fidelityWriteSpec, error) {
+	outcome, persisted, err := services.UpsertCompletionAttempt(ctx, store, "stacks-1", "concurrent-attempt", spec, func(err error) (int, string) { return sdkErrorStatus(err), "" })
+	return int(outcome), persisted, err
+}
+
+func fidelityCollectionRead(t *testing.T, status int, catalogue bool) *httptest.ResponseRecorder {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fidelityCollectionResponse(w, r, status) }))
+	defer upstream.Close()
+	store, err := resourceaccess.NewGuideStore(sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(rest.Config{Host: upstream.URL, APIPath: "/apis"}, resourceaccess.GuidePageMaxBytes)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := guidesReadHandler(store)
+	if catalogue {
+		handler = catalogueReadHandler(store)
+	}
+	ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "stacks-1"})
+	response := httptest.NewRecorder()
+	if err := handler(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func fidelityResourceMutation(t *testing.T, base, kind, method, name string, body []byte) *httptest.ResponseRecorder {
+	generator := sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(rest.Config{Host: base, APIPath: "/apis"}, resourceaccess.GuidePageMaxBytes))
+	guides, err := resourceaccess.NewGuideStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := resourceWriteHandler(kind, resourceaccess.GuidePageMaxBytes, guides.Write, guides.Delete)
+	if kind == "PathfinderSettings" {
+		settings, err := resourceaccess.NewSettingsStore(generator)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handler = resourceWriteHandler(kind, services.SettingsMaxBytes, settings.Write, nil)
+	}
+	ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "stacks-1"})
+	response := httptest.NewRecorder()
+	if err := handler(ctx, response, &app.CustomRouteRequest{Method: method, URL: &url.URL{RawQuery: "name=" + name}, Body: io.NopCloser(bytes.NewReader(body)), ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+type fidelityAssignmentHistoryTransport struct{ status int }
+
+func (transport fidelityAssignmentHistoryTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	records := fidelityInsightsFirstPage()
+	next := ""
+	if strings.Contains(request.URL.Path, "/assignments") {
+		token := request.URL.Query().Get("continue")
+		if token == "next" && transport.status != 200 {
+			return (fidelityReadTransport{status: transport.status}).RoundTrip(request)
+		}
+		records = fidelityAssignmentHistoryPage(token)
+		if token == "" {
+			next = "next"
+		}
+	}
+	items := []any{}
+	for _, raw := range records {
+		items = append(items, map[string]any{"metadata": map[string]any{}, "spec": raw})
+	}
+	body, _ := json.Marshal(map[string]any{"metadata": map[string]any{"continue": next}, "items": items})
+	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: request}, nil
+}
+func fidelityAssignmentHistory(t *testing.T, status int, insights bool) *httptest.ResponseRecorder {
+	generator := sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityAssignmentHistoryTransport{status: status}})
+	assignments, err := resourceaccess.NewAssignmentStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completions, err := resourceaccess.NewCompletionStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := adminIdentity{completionIdentity: completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"}, idToken: "header." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user:abc","namespace":"stacks-1","role":"Admin"}`)) + ".signature"}
+	ctx := authlib.WithAuthInfo(context.Background(), identity)
+	evaluator := func(ctx context.Context, ns string) *services.ObligationEvaluator {
+		return &services.ObligationEvaluator{Context: ctx, Logger: log.DefaultLogger}
+	}
+	allow := func(string, string) (bool, time.Duration) { return true, 0 }
+	handler := assignmentsReadHandler(assignmentRouteDependencies{Assignments: assignments, ReadCompletions: completions.ReadCaller, Evaluator: evaluator, MarkSatisfied: func(context.Context, string, []services.Assignment) {}, Allow: allow})
+	if insights {
+		handler = insightsReadHandler(completions, assignments, evaluator, allow)
+	}
+	target, _ := url.Parse("http://local/?from=2026-09-01T00:00:00Z&to=2026-10-01T00:00:00Z")
+	response := httptest.NewRecorder()
+	if err := handler(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: target, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
