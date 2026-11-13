@@ -27,6 +27,8 @@ const STEPS = [
   'lint',
   'prettier-test',
   'docs:sync-terms:check',
+  'test:i18n',
+  'i18n:check',
   'lint:go',
   'test:go',
   'test:coverage',
