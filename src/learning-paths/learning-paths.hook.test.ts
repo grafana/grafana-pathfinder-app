@@ -548,3 +548,65 @@ describe('useLearningPaths — resetPath reports a partial failure once', () => 
     );
   });
 });
+
+it('keeps bundled and organization guide metadata in their owning paths', async () => {
+  mockFetchAppPlatformLearningPaths.mockResolvedValue({
+    paths: [
+      {
+        id: 'private-path',
+        title: 'Private path',
+        description: '',
+        guides: ['bundled-guide', 'missing-private'],
+        badgeId: '',
+        isPrivate: true,
+      },
+    ],
+    guideMetadata: {
+      'bundled-guide': { title: 'Private guide', estimatedMinutes: 5, url: 'backend-guide:bundled-guide' },
+    },
+  });
+  mockPathsData = {
+    ...BUNDLED_PATHS_DATA,
+    guideMetadata: {
+      ...BUNDLED_PATHS_DATA.guideMetadata,
+      'missing-private': { title: 'Public lookalike', estimatedMinutes: 5, url: 'https://grafana.com/docs/lookalike' },
+    },
+  };
+  const { result } = renderHook(() => useLearningPaths());
+  await waitFor(() => expect(result.current.paths.some(({ id }) => id === 'private-path')).toBe(true));
+  expect(result.current.getPathGuides('bundled-path')[0]?.title).toBe('Bundled guide');
+  expect(result.current.getGuideUrlForPath('bundled-guide', 'bundled-path')).toBeUndefined();
+  expect(result.current.getPathGuides('private-path')[0]?.title).toBe('Private guide');
+  expect(result.current.getGuideUrlForPath('bundled-guide', 'private-path')).toBe('backend-guide:bundled-guide');
+  expect(result.current.getPathGuides('private-path')[1]?.title).toBe('missing-private');
+  expect(result.current.getGuideUrlForPath('missing-private', 'private-path')).toBeUndefined();
+});
+
+it('uses the selected organization path when a bundled path has the same ID', async () => {
+  mockFetchAppPlatformLearningPaths.mockResolvedValue({
+    paths: [
+      {
+        id: 'bundled-path',
+        title: 'Private path',
+        description: '',
+        guides: ['private-guide'],
+        badgeId: '',
+        isPrivate: true,
+      },
+    ],
+    guideMetadata: {
+      'private-guide': { title: 'Private guide', estimatedMinutes: 5, url: 'backend-guide:private-guide' },
+    },
+  });
+  mockProgressGet.mockResolvedValue({ ...EMPTY_PROGRESS, completedGuides: ['bundled-guide'] });
+  const { result } = renderHook(() => useLearningPaths());
+  await waitFor(() => expect(result.current.paths).toHaveLength(2));
+  const selected = result.current.paths.find((path) => path.isPrivate)!;
+  expect(result.current.getPathGuides(selected.id, selected).map(({ id, title }) => [id, title])).toEqual([
+    ['private-guide', 'Private guide'],
+  ]);
+  expect(result.current.getGuideUrlForPath('private-guide', selected.id, selected)).toBe('backend-guide:private-guide');
+  expect(result.current.getPathProgress(selected.id, selected)).toBe(0);
+  expect(result.current.isPathCompleted(selected.id, selected)).toBe(false);
+  expect(result.current.getPathProgress('bundled-path')).toBe(100);
+});

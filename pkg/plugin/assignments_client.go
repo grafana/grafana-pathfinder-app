@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
@@ -30,33 +31,8 @@ var assignmentsAggregationToggle = aggregationToggle(appPlatformGroup)
 // assignmentSpec is the Assignment spec this proxy consumes. Name,
 // ResourceVersion and StatusSatisfied come from metadata and status;
 // StatusSatisfied is nil when absent.
-type assignmentSpec struct {
-	Name            string `json:"-"`
-	ResourceVersion string `json:"-"`
-	StatusSatisfied *bool  `json:"-"`
-
-	UserID       string `json:"userId"`
-	TargetType   string `json:"targetType"`
-	TargetID     string `json:"targetId"`
-	TrackID      string `json:"trackId"`
-	TargetSource string `json:"targetSource"`
-
-	RuleID     string `json:"ruleId"`
-	AssignedBy string `json:"assignedBy"`
-	AssignedAt string `json:"assignedAt"`
-
-	DueAt                 string `json:"dueAt"`
-	AcceptCompletionsFrom string `json:"acceptCompletionsFrom"`
-
-	Lifecycle string `json:"lifecycle"`
-}
-
-// assignmentPage is one page of a namespace LIST: the decoded specs plus the
-// Kubernetes continue token (empty when the listing is drained).
-type assignmentPage struct {
-	Records  []assignmentSpec
-	Continue string
-}
+type assignmentSpec = services.Assignment
+type assignmentPage = services.AssignmentPage
 
 // assignmentLister abstracts the upstream LIST and status write so tests can
 // inject a fake. The production implementation is assignmentHTTPClient.

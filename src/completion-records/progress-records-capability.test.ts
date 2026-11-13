@@ -1,3 +1,6 @@
+let mockScope = 'default:1:1';
+jest.mock('../lib/user-scope', () => ({ getUserScope: () => mockScope }));
+
 jest.mock('../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => false) }));
 jest.mock('@grafana/runtime', () => ({ getBackendSrv: () => ({ fetch: mockFetch }) }));
 
@@ -15,6 +18,7 @@ const flag = getFeatureFlagValue as jest.Mock;
 let stop: (() => void) | undefined;
 
 beforeEach(() => {
+  mockScope = 'default:1:1';
   jest.useFakeTimers();
   jest.spyOn(Math, 'random').mockReturnValue(0.5);
   mockFetch.mockReset();
@@ -97,4 +101,29 @@ it('does not notify or schedule retries after disposal during a request', async 
   await jest.advanceTimersByTimeAsync(600_000);
   expect(resolved).not.toHaveBeenCalled();
   expect(jest.getTimerCount()).toBe(0);
+});
+
+it('does not reuse capability results after a caller change', async () => {
+  flag.mockReturnValue(true);
+  await expect(loadProgressRecordsCapability(async () => 'yes')).resolves.toBe('yes');
+  mockScope = 'default:1:2';
+  expect(progressRecordsCapability()).toBe('unknown');
+  await expect(loadProgressRecordsCapability(async () => 'no')).resolves.toBe('no');
+});
+
+it('does not let an old capability response replace the new caller result', async () => {
+  flag.mockReturnValue(true);
+  let resolve!: (value: 'yes') => void;
+  const pending = loadProgressRecordsCapability(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      })
+  );
+  await Promise.resolve();
+  mockScope = 'default:1:2';
+  await expect(loadProgressRecordsCapability(async () => 'no')).resolves.toBe('no');
+  resolve('yes');
+  await expect(pending).resolves.toBe('unknown');
+  expect(progressRecordsCapability()).toBe('no');
 });

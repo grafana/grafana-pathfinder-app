@@ -1,10 +1,9 @@
 package plugin
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
 	"strconv"
 )
@@ -47,113 +46,39 @@ const (
 	completionAttemptStartedAnnotation = "pathfinder.grafana.com/attempt-started-at"
 )
 
-var errAttemptContended = errors.New("completion attempt: write contended")
+var errAttemptContended = services.ErrAttemptContended
 
 // completionAttemptRecordName is the record name for one attempt. Like
 // completionRecordName it is scoped to the trusted userID; the "attempt" label
 // after the separator keeps it disjoint from every legacy name, because a
 // legacy idempotency key can never contain the separator byte.
 func completionAttemptRecordName(userID, attemptID string) string {
-	h := sha256.New()
-	h.Write([]byte(userID))
-	h.Write([]byte{0})
-	h.Write([]byte("attempt"))
-	h.Write([]byte{0})
-	h.Write([]byte(attemptID))
-	sum := h.Sum(nil)
-	return "completion-" + hex.EncodeToString(sum[:16])
+	return services.CompletionAttemptRecordName(userID, attemptID)
 }
 
 // attemptWriteSpec turns a validated client spec into what an attempt record
 // stores at this percent: completedAt, the source and the duration only at 100.
 func attemptWriteSpec(spec completionRecordWriteSpec) completionRecordWriteSpec {
-	if spec.CompletionPercent < 100 {
-		spec.CompletedAt = ""
-		spec.Source = "objectives"
-		spec.DurationSeconds = 0
-	}
-	return spec
+	return services.AttemptWriteSpec(spec)
 }
 
-type attemptOutcome int
+type attemptOutcome = services.AttemptOutcome
 
 const (
-	attemptCreated attemptOutcome = iota
-	attemptUpdated
-	attemptUnchanged
+	attemptCreated   = services.AttemptCreated
+	attemptUpdated   = services.AttemptUpdated
+	attemptUnchanged = services.AttemptUnchanged
 )
 
 // upsertCompletionAttempt runs the GET → create/PUT loop for one attempt.
 func upsertCompletionAttempt(r *http.Request, store completionRecordUpdater, namespace, name string, incoming completionRecordWriteSpec) (attemptOutcome, completionRecordWriteSpec, error) {
-	ctx := r.Context()
-	for try := 0; try < completionAttemptMaxTries; try++ {
-		stored, err := store.Get(ctx, namespace, name)
-		if err != nil {
-			return 0, incoming, err
-		}
-		if stored == nil {
-			obj := completionRecordObject{
-				APIVersion: completionRecordsGroupVersion,
-				Kind:       completionRecordKindStr,
-				Metadata:   completionRecordObjectMeta{Name: name, Namespace: namespace, Annotations: map[string]string{completionAttemptStartedAnnotation: incoming.AttemptStartedAt}},
-				Spec:       incoming,
-			}
-			err := store.Create(ctx, namespace, obj)
-			if err == nil {
-				return attemptCreated, incoming, nil
-			}
-			if isAlreadyExistsUpstream(err) {
-				continue
-			}
-			return 0, incoming, err
-		}
-
-		if stored.Spec.UserID != incoming.UserID || stored.Spec.GuideSource != incoming.GuideSource || stored.Spec.GuideID != incoming.GuideID {
-			return 0, incoming, errAttemptIdentityMismatch
-		}
-		if stored.Spec.CompletionPercent >= incoming.CompletionPercent {
-			return attemptUnchanged, stored.Spec, nil
-		}
-
-		if err := store.Replace(ctx, namespace, name, mergeAttemptUpdate(stored, incoming)); err != nil {
-			status, _ := upstreamStatusOf(err)
-			if isAlreadyExistsUpstream(err) || (status == http.StatusNotFound && upstreamStatusReasonOf(err) == "NotFound") {
-				continue // Re-read after a concurrent update or deletion, not a structural 404.
-			}
-			return 0, incoming, err
-		}
-		return attemptUpdated, incoming, nil
-	}
-	return 0, incoming, errAttemptContended
+	return services.UpsertCompletionAttempt(r.Context(), store, namespace, name, incoming, func(err error) (int, string) {
+		status, _ := upstreamStatusOf(err)
+		return status, upstreamStatusReasonOf(err)
+	})
 }
 
-var errAttemptIdentityMismatch = errors.New("completion attempt: stored record belongs to another user or guide")
-
-// mergeAttemptUpdate writes the incoming progress onto the stored object,
-// keeping every server-held field (metadata, resourceVersion, unknown spec
-// fields). Identity and guide fields were checked equal; display fields take
-// the latest values; completedAt/source/duration are set on crossing to 100.
-func mergeAttemptUpdate(stored *storedCompletionRecord, incoming completionRecordWriteSpec) map[string]any {
-	spec, _ := stored.Raw["spec"].(map[string]any)
-	if spec == nil {
-		spec = map[string]any{}
-		stored.Raw["spec"] = spec
-	}
-	spec["completionPercent"] = incoming.CompletionPercent
-	spec["recordedAt"] = incoming.RecordedAt
-	spec["guideTitle"] = incoming.GuideTitle
-	spec["guideCategory"] = incoming.GuideCategory
-	spec["pathId"] = incoming.PathID
-	spec["userLogin"] = incoming.UserLogin
-	spec["userDisplayName"] = incoming.UserDisplayName
-	spec["platform"] = incoming.Platform
-	if incoming.CompletionPercent >= 100 {
-		spec["completedAt"] = incoming.CompletedAt
-		spec["source"] = incoming.Source
-		spec["durationSeconds"] = incoming.DurationSeconds
-	}
-	return stored.Raw
-}
+var errAttemptIdentityMismatch = services.ErrAttemptIdentityMismatch
 
 // handleCompletionAttemptWrite is the attemptId branch of
 // handleCreateCompletionRecord, after identity, rate limit, backend and body

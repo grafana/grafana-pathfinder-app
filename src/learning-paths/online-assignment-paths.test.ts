@@ -56,6 +56,32 @@ beforeEach(() => {
 });
 
 describe('resolveOnlineAssignmentCard', () => {
+  it.each(['app-platform', 'bundled', 'unknown'])(
+    'does not resolve a %s target through a same-ID public package',
+    async (targetSource) => {
+      const resolveNavLinks = jest.fn().mockResolvedValue([navLinkFor({ milestones: [] })]);
+      const card = await resolveOnlineAssignmentCard(
+        assignment({ targetId: 'postgresql-data-source-lj', targetSource }),
+        resolveNavLinks
+      );
+      expect(card).toBeUndefined();
+      expect(mockFetchOnlinePackageRecommendations).not.toHaveBeenCalled();
+      expect(resolveNavLinks).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['online-cdn', 'interactive-tutorials', undefined])(
+    'resolves the supported public source %s',
+    async (targetSource) => {
+      const resolveNavLinks = jest.fn().mockResolvedValue([navLinkFor({ milestones: [] })]);
+      const card = await resolveOnlineAssignmentCard(
+        assignment({ targetId: 'postgresql-data-source-lj', targetSource }),
+        resolveNavLinks
+      );
+      expect(card?.path.title).toBe('Connect to PostgreSQL');
+    }
+  );
+
   it("translates each milestone id to its sibling entry's URL slug", async () => {
     const manifest = { milestones: ['postgresql-data-source-prepare', 'postgresql-data-source-end'] };
     const resolveNavLinks = jest.fn().mockResolvedValue([navLinkFor(manifest)]);

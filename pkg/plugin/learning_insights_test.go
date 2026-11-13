@@ -210,7 +210,7 @@ func TestLearningInsightsReadRateLimit(t *testing.T) {
 			t.Fatalf("identity %s: %d %+v", identity, rr.Code, resp)
 		}
 	}
-	if len(app.assignmentsReadRateLimiter.buckets) != 0 || completions.callCount() != 0 || assignments.callCount() != 0 {
+	if app.assignmentsReadRateLimiter.BucketCount() != 0 || completions.callCount() != 0 || assignments.callCount() != 0 {
 		t.Fatal("rejected callers consumed rate budget or read upstream")
 	}
 	rr, _ := insightsResponseWith(t, app, insightsRequest(t, "Admin", "user:1"))
@@ -229,7 +229,7 @@ func TestLearningInsightsReadRateLimit(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("another verified caller: %d", rr.Code)
 	}
-	if len(app.assignmentsReadRateLimiter.buckets) != 2 {
+	if app.assignmentsReadRateLimiter.BucketCount() != 2 {
 		t.Fatal("limiter is not keyed on verified subjects")
 	}
 	advance(time.Second)

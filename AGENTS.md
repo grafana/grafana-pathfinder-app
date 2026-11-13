@@ -18,7 +18,7 @@ Never paste a raw control byte, invisible Unicode formatting character, or bidir
 
 ### App Platform access
 
-Browser reads of App Platform resources (`/apis/<group>/...`) go through a plugin-backend proxy, never a direct `getBackendSrv()` read (403 for anonymous viewers, #1966). `src/validation/app-platform-transport.test.ts` enforces it. The signed-in own-user survey read is a narrow documented exception; see `docs/design/BACKEND_PROXY_PATTERN.md`.
+Browser reads of App Platform resources go through backend handlers using `backendRoute()` (SDK routes or the legacy proxy), never direct resource CRUD reads (403 for anonymous viewers, #1966). `src/validation/app-platform-transport.test.ts` enforces it. The signed-in own-user survey read is a narrow documented exception; see `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 ### Comments
 

@@ -1,17 +1,14 @@
 package plugin
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"io"
 	"math"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
@@ -84,7 +81,6 @@ const (
 
 	// completionMaxClockSkew tolerates a client clock running slightly ahead of
 	// the server when validating completedAt.
-	completionMaxClockSkew = 5 * time.Minute
 
 	// completionMaxBackdate is the oldest a client-supplied completedAt may be.
 	// Deliberately generous: an offline/queued write may legitimately land days
@@ -119,12 +115,6 @@ const (
 	completionMaxDisplayLen = 256
 )
 
-var (
-	completionValidSources    = map[string]bool{"objectives": true, "manual": true, "skipped": true}
-	completionValidCategories = map[string]bool{"interactive": true, "documentation": true, "learning-journey": true}
-	completionValidPlatforms  = map[string]bool{"oss": true, "cloud": true}
-)
-
 // completionWriteRequest is the client-supplied fact for a durable write. It
 // mirrors the front-end CompletionFact (src/completion-records/types.ts) plus
 // `platform` — a required client-supplied CRD field the fact derives from the
@@ -133,30 +123,7 @@ var (
 // IDENTITY IS NEVER READ FROM THE BODY: this struct has no
 // userId/userLogin/orgId/... fields, so any identity value a client smuggles in
 // is dropped on decode and cannot influence the written record.
-type completionWriteRequest struct {
-	GuideSource       string `json:"guideSource"`
-	GuideID           string `json:"guideId"`
-	GuideTitle        string `json:"guideTitle"`
-	GuideCategory     string `json:"guideCategory"`
-	PathID            string `json:"pathId"`
-	CompletionPercent int64  `json:"completionPercent"`
-	Source            string `json:"source"`
-	CompletedAt       string `json:"completedAt"`
-	DurationMs        *int64 `json:"durationMs"`
-	Platform          string `json:"platform"`
-
-	// IdempotencyKey is the completion event's stable client id (#1434). Required
-	// and non-blank; never persisted. See completionRecordName for how it derives
-	// the record name.
-	IdempotencyKey string `json:"idempotencyKey"`
-
-	// AttemptID, when present, makes this write one attempt's progress: the
-	// record is named from (userID, attemptId) and updated in place
-	// (completion_records_attempt.go). Absent, the write is the legacy
-	// create-only completion and behaves exactly as before.
-	AttemptID        string `json:"attemptId,omitempty"`
-	AttemptStartedAt string `json:"attemptStartedAt,omitempty"`
-}
+type completionWriteRequest = services.CompletionWriteRequest
 
 // handleCreateCompletionRecord serves POST /completion-records.
 func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Request) {
@@ -248,19 +215,8 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	// Identity-scoped deterministic name: userID is verified above, and the key is
 	// validated non-blank in buildCompletionSpec. Every create carries this name,
 	// which is the invariant that makes an upstream 409 provably our own record.
-	name := completionRecordName(userID, req.IdempotencyKey)
-
-	obj := completionRecordObject{
-		APIVersion: completionRecordsGroupVersion,
-		Kind:       "CompletionRecord",
-		Metadata:   completionRecordObjectMeta{Name: name, Namespace: namespace},
-		Spec:       spec,
-	}
-
-	// An "already exists" (409) on the identity-scoped deterministic name means
-	// this caller's own write already committed — treat it as idempotent success,
-	// never a duplicate or a failure.
-	if err := creator.Create(r.Context(), namespace, obj); err != nil && !isAlreadyExistsUpstream(err) {
+	name, err := services.CreateCompletion(r.Context(), creator, namespace, spec, req.IdempotencyKey, isAlreadyExistsUpstream)
+	if err != nil {
 		a.writeCompletionUpstreamError(w, r, err)
 		return
 	}
@@ -304,133 +260,10 @@ func decodeCompletionWriteRequest(w http.ResponseWriter, r *http.Request) (compl
 // verified request context. Returns a validation error (→ terminal 400) when any
 // client field violates the schema.
 func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, userID, userLogin, userDisplayName, namespace string) (completionRecordWriteSpec, error) {
-	if req.GuideID == "" || req.GuideSource == "" {
-		return completionRecordWriteSpec{}, fmt.Errorf("guideId and guideSource are required")
-	}
-	// A non-blank idempotency key is REQUIRED: the record name is derived from it
-	// (with the trusted userID), so a blank key has no safe deterministic identity
-	// and must not fall back to a random name. Reject before any upstream work.
-	if strings.TrimSpace(req.IdempotencyKey) == "" {
-		return completionRecordWriteSpec{}, fmt.Errorf("idempotencyKey is required")
-	}
-	for _, f := range []struct {
-		name  string
-		value string
-		max   int
-	}{
-		{"guideId", req.GuideID, completionMaxIDLen},
-		{"guideSource", req.GuideSource, completionMaxIDLen},
-		{"pathId", req.PathID, completionMaxIDLen},
-		{"guideTitle", req.GuideTitle, completionMaxTitleLen},
-		{"idempotencyKey", req.IdempotencyKey, completionMaxIDLen},
-		{"attemptId", req.AttemptID, completionMaxIDLen},
-	} {
-		if err := validateBoundedText(f.name, f.value, f.max); err != nil {
-			return completionRecordWriteSpec{}, err
-		}
-	}
-	if !completionValidSources[req.Source] {
-		return completionRecordWriteSpec{}, fmt.Errorf("invalid source")
-	}
-	if !completionValidCategories[req.GuideCategory] {
-		return completionRecordWriteSpec{}, fmt.Errorf("invalid guideCategory")
-	}
-	if !completionValidPlatforms[req.Platform] {
-		return completionRecordWriteSpec{}, fmt.Errorf("invalid platform")
-	}
-	if req.CompletionPercent < 0 || req.CompletionPercent > 100 {
-		return completionRecordWriteSpec{}, fmt.Errorf("completionPercent out of range")
-	}
-	// The attempt id names the record, so it must be exactly what the client
-	// minted: no surrounding whitespace.
-	if req.AttemptID != "" && strings.TrimSpace(req.AttemptID) != req.AttemptID {
-		return completionRecordWriteSpec{}, fmt.Errorf("invalid attemptId")
-	}
-	if req.AttemptStartedAt != "" {
-		started, err := time.Parse(time.RFC3339Nano, req.AttemptStartedAt)
-		if err != nil || started.IsZero() || started.After(timeNow().Add(completionMaxClockSkew)) {
-			return completionRecordWriteSpec{}, fmt.Errorf("invalid attemptStartedAt")
-		}
-	}
-	if err := validateCompletedAt(req.CompletedAt); err != nil {
-		return completionRecordWriteSpec{}, err
-	}
-
-	durationSeconds := int64(0)
-	if req.DurationMs != nil {
-		durationMs := *req.DurationMs
-		if clamped := min(max(durationMs, 0), int64(completionMaxDurationMs)); clamped != durationMs {
-			a.ctxLogger(r.Context()).Info("completion write: durationMs out of range, clamped",
-				"received", durationMs, "clamped", clamped)
-			durationMs = clamped
-		}
-		durationSeconds = durationMs / 1000
-	}
-
-	return completionRecordWriteSpec{
-		GuideID:           req.GuideID,
-		GuideSource:       req.GuideSource,
-		GuideTitle:        req.GuideTitle,
-		PathID:            req.PathID,
-		Source:            req.Source,
-		CompletedAt:       req.CompletedAt,
-		DurationSeconds:   durationSeconds,
-		CompletionPercent: req.CompletionPercent,
-		GuideCategory:     req.GuideCategory,
-		Platform:          req.Platform,
-
-		UserID:          userID,
-		UserLogin:       boundedIdentityField(userLogin, completionMaxDisplayLen),
-		UserDisplayName: boundedIdentityField(userDisplayName, completionMaxDisplayLen),
-		RecordedAt:      timeNow().UTC().Format(time.RFC3339),
-		// The CRD requires a numeric orgId (RFC §7.1); PluginContext.OrgID is the
-		// only source of it. The SDK deprecates OrgID for request *scoping* (use
-		// Namespace, which we also record as stackNamespace), not for reading the
-		// numeric org — so this remains the correct field for the value itself.
-		OrgID:          backend.PluginConfigFromContext(r.Context()).OrgID, //nolint:staticcheck // numeric orgId required by CRD; Namespace is the string scope, not a number
-		StackNamespace: namespace,
-		SchemaVersion:  completionWriteSchemaVersion,
-	}, nil
+	return services.BuildCompletionSpec(req, userID, userLogin, userDisplayName, namespace, backend.PluginConfigFromContext(r.Context()).OrgID, timeNow(), a.ctxLogger(r.Context())) //nolint:staticcheck // orgId is retained in the stored schema
 }
-
-// validateBoundedText rejects oversized, invalid-UTF-8, or control-character
-// content in a client-supplied free-text field (→ terminal 400).
 func validateBoundedText(field, value string, maxBytes int) error {
-	if len(value) > maxBytes {
-		return fmt.Errorf("%s exceeds %d bytes", field, maxBytes)
-	}
-	// BELT-AND-BRACES, not a live defect fix: unreachable from every caller today.
-	// All current callers pass JSON-decoded values, and encoding/json replaces
-	// invalid UTF-8 at DECODE time, so `value` is always already valid here (a
-	// hostile 1024-byte field arrives as 3072 valid bytes and the cap above
-	// rejects it). This exists so the validator's contract still holds if a
-	// non-JSON caller is ever added; do not read it as guarding a reachable bug.
-	if !utf8.ValidString(value) {
-		return fmt.Errorf("%s contains invalid UTF-8", field)
-	}
-	for _, r := range value {
-		if r < 0x20 || r == 0x7f {
-			return fmt.Errorf("%s contains control characters", field)
-		}
-	}
-	return nil
-}
-
-// validateCompletedAt enforces the client-observed completion time is a valid
-// RFC 3339 timestamp within [now-completionMaxBackdate, now+completionMaxClockSkew].
-func validateCompletedAt(s string) error {
-	t, ok := parseCompletionTime(s)
-	if !ok {
-		return fmt.Errorf("completedAt is not a valid RFC 3339 timestamp")
-	}
-	now := timeNow()
-	if t.After(now.Add(completionMaxClockSkew)) {
-		return fmt.Errorf("completedAt is in the future")
-	}
-	if t.Before(now.Add(-completionMaxBackdate)) {
-		return fmt.Errorf("completedAt is too far in the past")
-	}
-	return nil
+	return services.ValidateBoundedText(field, value, maxBytes)
 }
 
 func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Request, err error) {
@@ -482,20 +315,7 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 // naming constraints. The caller guarantees a non-blank key (buildCompletionSpec
 // rejects a blank one with a 400); client-supplied names are never accepted.
 func completionRecordName(userID, idempotencyKey string) string {
-	h := sha256.New()
-	// CORRECTNESS: userID MUST remain in this derivation. Dropping it collapses
-	// the name back to the client key alone in a namespace shared across users,
-	// re-opening the cross-user collision where one caller's 409 falsely
-	// acknowledges another's write (pinned by TestCompletionWrite_CrossUserSameKeyDistinctRecords).
-	h.Write([]byte(userID))
-	// A zero byte separates the trusted identity from the client key. The key is
-	// validated to contain no control characters (validateBoundedText), so it can
-	// never contain this separator — the boundary is unambiguous regardless of
-	// key content, defeating a (userID, key) ambiguity across callers.
-	h.Write([]byte{0})
-	h.Write([]byte(idempotencyKey))
-	sum := h.Sum(nil)
-	return "completion-" + hex.EncodeToString(sum[:16])
+	return services.CompletionRecordName(userID, idempotencyKey)
 }
 
 // isAlreadyExistsUpstream reports whether an upstream create failed only because
@@ -514,16 +334,6 @@ func isAlreadyExistsUpstream(err error) bool {
 // maxBytes on a rune boundary. Unlike client-fact fields these are trusted for
 // attribution, so an unusual identity-provider value is sanitized rather than
 // rejected — a write must never fail on an oversized or odd profile string.
-func boundedIdentityField(s string, maxBytes int) string {
-	var b strings.Builder
-	for _, r := range s {
-		if r < 0x20 || r == 0x7f {
-			continue
-		}
-		if b.Len()+utf8.RuneLen(r) > maxBytes {
-			break
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
+func boundedIdentityField(value string, maxBytes int) string {
+	return services.BoundedIdentityField(value, maxBytes)
 }

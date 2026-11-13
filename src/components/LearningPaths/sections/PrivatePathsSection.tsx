@@ -19,9 +19,9 @@ import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
 interface PrivatePathsSectionProps {
   paths: LearningPath[];
-  getPathGuides: (pathId: string) => PathGuide[];
-  getPathProgress: (pathId: string) => number;
-  onContinue: (guideId: string, pathId: string) => void;
+  getPathGuides: (pathId: string, selectedPath?: LearningPath) => PathGuide[];
+  getPathProgress: (pathId: string, selectedPath?: LearningPath) => number;
+  onContinue: (guideId: string, pathId: string, options?: { path: LearningPath }) => void;
   onReset: (pathId: string) => void;
   launchingPathId: string | null;
   launchDisabled: boolean;
@@ -60,17 +60,17 @@ export function PrivatePathsSection({
 
       <div ref={listRef} className={cx(styles.pathsGrid, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}>
         {paths.map((path, index) => {
-          const pathProgress = getPathProgress(path.id);
+          const pathProgress = getPathProgress(path.id, path);
           const isFirstInProgress = index === 0 && pathProgress > 0;
 
           return (
             <LearningPathCard
               key={path.id}
               path={path}
-              guides={getPathGuides(path.id)}
+              guides={getPathGuides(path.id, path)}
               progress={pathProgress}
               isCompleted={false}
-              onContinue={onContinue}
+              onContinue={(guideId) => onContinue(guideId, path.id, { path })}
               onReset={onReset}
               defaultExpanded={isFirstInProgress}
               isLaunching={launchingPathId === path.id}

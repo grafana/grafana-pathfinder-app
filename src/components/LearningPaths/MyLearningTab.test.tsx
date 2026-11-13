@@ -14,6 +14,7 @@ jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: jest.fn(() => true
  */
 
 import React from 'react';
+import type { AssignmentEntry } from '../../lib/assignments-client';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { reportPathfinderSurface } from '../../lib/telemetry/surface';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
@@ -180,6 +181,8 @@ let mockDiscoverItems: Array<{
 }> = [];
 let mockDiscoverExcludeIdentities: Set<string> | undefined;
 type MockAssignment = {
+  ruleId?: string;
+  targetSource?: string;
   targetType: string;
   targetId: string;
   title: string;
@@ -194,6 +197,7 @@ type MockAssignment = {
   guides?: Array<{ guideId: string; completed: boolean }>;
 };
 let mockAssignments: MockAssignment[] = [];
+let mockGuideAssignments: AssignmentEntry[] = [];
 let mockAssignedCompleted: MockAssignment[] = [];
 let mockOnlinePaths: any[] = [];
 let mockAssignmentsLoading = false;
@@ -202,7 +206,11 @@ const mockRetryAssignments = jest.fn();
 
 jest.mock('../../learning-paths', () => ({
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectGuideAssignmentEntries: jest.requireActual('../../learning-paths/guide-assignment-entries')
+    .selectGuideAssignmentEntries,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
+  selectPathAssignmentEntries: jest.requireActual('../../learning-paths/learning-path-entries')
+    .selectPathAssignmentEntries,
   get BADGES() {
     return mockBadgeDefinitions;
   },
@@ -237,6 +245,8 @@ jest.mock('../../learning-paths', () => ({
     }
     return {
       items,
+      guideAssignments: mockGuideAssignments,
+      pathAssignments: items.map((item) => ({ ...item, targetType: 'path', lifecycle: 'active' })),
       notDone: mockAssignments,
       assignmentByTargetId,
       onlinePaths: mockOnlinePaths,
@@ -251,6 +261,7 @@ jest.mock('../../learning-paths', () => ({
   formatDueDate: jest.requireActual('../../learning-paths/assignments-core').formatDueDate,
   compareResolvedAssignments: jest.requireActual('../../learning-paths/assignments-core').compareResolvedAssignments,
   getAssignmentGuideState: jest.requireActual('../../learning-paths/assignments-core').getAssignmentGuideState,
+  getPathAssignment: jest.requireActual('../../learning-paths/assignments-core').getPathAssignment,
   markCurrentGuide: jest.requireActual('../../learning-paths/mark-current-guide').markCurrentGuide,
 }));
 
@@ -340,6 +351,7 @@ beforeEach(() => {
   mockCatalogProgress = new Map();
   mockDiscoverExcludeIdentities = undefined;
   mockAssignments = [];
+  mockGuideAssignments = [];
   mockAssignedCompleted = [];
   mockAssignmentsLoading = false;
   mockAssignmentsError = false;
@@ -649,6 +661,7 @@ describe('MyLearningTab launch flow', () => {
     mockPaths = [
       {
         id: 'path-track',
+        isPrivate: true,
         title: 'Track path',
         guides: ['g-foundation', 'g-ops-1', 'g-ops-2'],
         manifest: { type: 'path', milestones: ['g-foundation'] },
@@ -685,7 +698,9 @@ describe('MyLearningTab launch flow', () => {
 
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
-    const card = screen.getByTestId(testIds.learningPaths.card('path-track'));
+    const card = within(screen.getByTestId(testIds.learningPaths.myCoursesSection)).getByTestId(
+      testIds.learningPaths.card('path-track')
+    );
     expect(card).toHaveTextContent('1/2 guides');
     expect(card.querySelector('.expandable')).toHaveTextContent('Track Ops engineers');
 
@@ -1323,7 +1338,8 @@ describe('MyLearningTab — online course package cover launch', () => {
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
     expect(mockGetGuideUrlForPath).toHaveBeenCalledWith(
       'core-grafana-concepts-data-sources',
-      'core-grafana-concepts-lj'
+      'core-grafana-concepts-lj',
+      expect.objectContaining({ id: 'core-grafana-concepts-lj' })
     );
     // Regression test (Cursor Bugbot, "Fallback launch mislabeled cover"):
     // this fallback opens the first member guide, not the cover — the
@@ -1344,6 +1360,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     mockPaths = [
       {
         id: 'ap-path',
+        isPrivate: true,
         title: 'Alerting enablement',
         guides: ['fe-alerting-01'],
         manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
@@ -1359,7 +1376,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
-    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(resolvePackageNavLinksMock).not.toHaveBeenCalled();
     expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
       title: 'Alerting enablement',
       source: 'home_page',
@@ -1380,6 +1397,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     mockPaths = [
       {
         id: 'ap-path',
+        isPrivate: true,
         title: 'Alerting enablement',
         guides: ['fe-alerting-01'],
         manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
@@ -1398,7 +1416,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     // Same cover-launch outcome as the fresh case above — the cover's own CTA
     // (LearningPathTableOfContents) is what resolves the current milestone,
     // not this launch call.
-    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(resolvePackageNavLinksMock).not.toHaveBeenCalled();
     expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
       title: 'Alerting enablement',
       source: 'home_page',
@@ -2166,6 +2184,7 @@ it('opens the assigned path from any row cell, preserves its track, and clears s
   mockPaths = [
     {
       id: 'path-1',
+      isPrivate: true,
       title: 'Started path',
       guides: ['guide-1'],
       manifest: {
@@ -2548,3 +2567,243 @@ it.each([false, true])(
     expect(within(featuredCard as HTMLElement).getByRole('heading', { name: expectedOrder[0] })).toBeInTheDocument();
   }
 );
+
+it('homepage displays and opens a directly assigned guide through its catalogue URL', async () => {
+  jest.requireMock('../../package-engine').AppPlatformPackageResolver.mockImplementation(() => ({
+    resolve: async () => ({ ok: true, manifest: { id: 'private-guide', type: 'guide' } }),
+  }));
+  const onOpenGuide = jest.fn();
+  mockGuideAssignments = [
+    {
+      targetType: 'guide',
+      targetId: 'private-guide',
+      targetSource: 'app-platform',
+      ruleId: 'rule',
+      satisfied: false,
+      lifecycle: 'active',
+      guides: [{ guideId: 'private-guide', guideSource: 'app-platform', completed: false }],
+    },
+  ];
+  mockCatalogItems = [
+    {
+      key: 'app-platform:private-guide',
+      id: 'private-guide',
+      title: 'Assigned private guide',
+      source: 'organization',
+      format: 'guide',
+      url: 'backend-guide:private-guide',
+    },
+  ];
+  render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+  const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
+  expect(assigned.getByText('0%')).toBeInTheDocument();
+  fireEvent.click(assigned.getByRole('button', { name: 'Assigned private guide' }));
+  await waitFor(() =>
+    expect(onOpenGuide).toHaveBeenCalledWith(expect.objectContaining({ url: 'backend-guide:private-guide' }))
+  );
+});
+
+describe('direct guide assignment re-completion', () => {
+  it.each(['cancel', 'failure', 'success'] as const)(
+    'handles %s without losing the reset boundary',
+    async (outcome) => {
+      jest.requireMock('../../package-engine').AppPlatformPackageResolver.mockImplementation(() => ({
+        resolve: async () => ({ ok: true, manifest: { id: 'private-guide', type: 'guide' } }),
+      }));
+      const onOpenGuide = jest.fn();
+      mockGuideAssignments = [
+        {
+          targetType: 'guide',
+          targetId: 'private-guide',
+          targetSource: 'app-platform',
+          ruleId: 'rule',
+          satisfied: false,
+          lifecycle: 'active',
+          guides: [{ guideId: 'private-guide', guideSource: 'app-platform', completed: false }],
+        },
+      ];
+      mockCatalogItems = [
+        {
+          key: 'app-platform:private-guide',
+          id: 'private-guide',
+          title: 'Assigned private guide',
+          source: 'organization',
+          format: 'guide',
+          url: 'backend-guide:private-guide',
+        },
+      ];
+
+      mockCatalogProgress = new Map([['app-platform:private-guide', { percent: 100 }]]);
+      if (outcome === 'failure') {
+        mockResetPathGuides.mockRejectedValue(new Error('Reset failed'));
+      }
+      let finishReset!: () => void;
+      if (outcome === 'success') {
+        mockResetPathGuides.mockReturnValue(
+          new Promise<void>((resolve) => {
+            finishReset = resolve;
+          })
+        );
+      }
+      render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+      fireEvent.click(
+        within(screen.getByRole('region', { name: 'Your assignments' })).getByRole('button', {
+          name: 'Assigned private guide',
+        })
+      );
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toHaveTextContent('Assigned private guide');
+      expect(onOpenGuide).not.toHaveBeenCalled();
+      if (outcome === 'cancel') {
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+        expect(mockResetPathGuides).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        return;
+      }
+      const confirm = within(dialog).getByRole('button', { name: 'Reset and continue' });
+      fireEvent.click(confirm);
+      fireEvent.click(confirm);
+      expect(mockResetPathGuides).toHaveBeenCalledTimes(1);
+      expect(mockResetPathGuides).toHaveBeenCalledWith(
+        'private-guide',
+        [expect.objectContaining({ id: 'private-guide', url: 'backend-guide:private-guide' })],
+        null
+      );
+      expect(onOpenGuide).not.toHaveBeenCalled();
+      if (outcome === 'failure') {
+        await waitFor(() => expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' })));
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(onOpenGuide).not.toHaveBeenCalled();
+      } else {
+        await act(async () => finishReset());
+        await waitFor(() =>
+          expect(onOpenGuide).toHaveBeenCalledWith(expect.objectContaining({ url: 'backend-guide:private-guide' }))
+        );
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      }
+    }
+  );
+});
+
+it('homepage retains an unavailable assigned guide without borrowing local progress or another source', () => {
+  mockGuideAssignments = [
+    {
+      targetType: 'guide',
+      targetId: 'missing-guide',
+      targetSource: 'app-platform',
+      ruleId: 'rule',
+      satisfied: false,
+      lifecycle: 'active',
+    },
+  ];
+  mockCatalogItems = [
+    {
+      key: 'bundled:missing-guide',
+      id: 'missing-guide',
+      title: 'Different public guide',
+      source: 'grafana',
+      format: 'guide',
+      url: 'bundled:missing-guide',
+    },
+  ];
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
+  expect(assigned.getByRole('button', { name: 'missing-guide' })).toBeDisabled();
+  expect(assigned.getByText('Guide unavailable')).toBeInTheDocument();
+  expect(assigned.getByText('Cannot check')).toBeInTheDocument();
+  expect(assigned.queryByText('0%')).not.toBeInTheDocument();
+});
+
+it('homepage retains unavailable paths and distinct rules for the same path', () => {
+  mockAssignments = [
+    {
+      targetType: 'path',
+      targetId: 'path-new',
+      ruleId: 'one',
+      title: 'New path',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+    {
+      targetType: 'path',
+      targetId: 'path-new',
+      ruleId: 'two',
+      title: 'New path',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+    {
+      targetType: 'path',
+      targetId: 'missing-private',
+      targetSource: 'app-platform',
+      title: 'Missing',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+  ];
+  const onOpenGuide = jest.fn();
+  render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+  const section = within(screen.getByRole('region', { name: 'Your assignments' }));
+  expect(section.getAllByRole('button', { name: 'New path' })).toHaveLength(2);
+  const unavailable = section.getByRole('button', { name: 'missing-private' });
+  expect(unavailable).toBeDisabled();
+  expect(section.getByText('Path unavailable')).toBeInTheDocument();
+  fireEvent.click(unavailable.closest('tr')!.querySelectorAll('td')[2]!);
+  expect(onOpenGuide).not.toHaveBeenCalled();
+  expect(section.queryByText('You’re all clear!')).not.toBeInTheDocument();
+});
+
+it('launches an assigned organization path directly despite a same-ID public cover', async () => {
+  mockPaths = [
+    { id: 'collision', title: 'Public path', guides: ['public'], manifest: { type: 'path', milestones: ['public'] } },
+    {
+      id: 'collision',
+      title: 'Private path',
+      isPrivate: true,
+      guides: ['private'],
+      manifest: { type: 'path', milestones: ['private'] },
+    },
+  ];
+  mockAssignments = [
+    {
+      targetType: 'path',
+      targetId: 'collision',
+      targetSource: 'app-platform',
+      title: 'Private path',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+  ];
+  resolvePackageNavLinksMock.mockResolvedValue([
+    { packageId: 'collision', contentUrl: 'https://interactive-learning.grafana.net/packages/collision/content.json' },
+  ]);
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  fireEvent.click(
+    within(screen.getByRole('region', { name: 'Your assignments' })).getByRole('button', { name: 'Private path' })
+  );
+  await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+  expect(prepareMock).toHaveBeenCalledWith(
+    'backend-guide:collision',
+    expect.objectContaining({ title: 'Private path' })
+  );
+  expect(resolvePackageNavLinksMock).not.toHaveBeenCalled();
+});
+
+it('does not launch an organization cover returned for a public path', async () => {
+  mockPaths = [
+    { id: 'public-collision', title: 'Public collision', guides: [], manifest: { type: 'path', milestones: [] } },
+  ];
+  mockGetPathProgress.mockReturnValue(0);
+  mockGetGuideUrlForPath.mockReturnValue(undefined);
+  resolvePackageNavLinksMock.mockResolvedValue([
+    { packageId: 'public-collision', contentUrl: 'backend-guide:public-collision' },
+  ]);
+  render(<MyLearningTab onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('public-collision')));
+  await waitFor(() => expect(resolvePackageNavLinksMock).toHaveBeenCalled());
+  expect(prepareMock).not.toHaveBeenCalled();
+});

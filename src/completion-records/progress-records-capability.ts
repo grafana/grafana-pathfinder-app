@@ -1,27 +1,41 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout } from 'rxjs';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from '../lib/backend-routes';
 import { logger } from '../lib/logging';
+import { getUserScope } from '../lib/user-scope';
 import { CompletionCapabilityWireSchema } from '../types/backend-api.schema';
 import { getFeatureFlagValue } from '../utils/openfeature';
 
 export type ProgressRecordsCapability = 'yes' | 'no' | 'unknown';
 
-const CAPABILITY_URL = `${PLUGIN_BACKEND_URL}/completion-records/capability`;
 const FLAG_POLL_MS = 5_000;
 const MAX_BACKOFF_MS = 5 * 60_000;
 
+let capabilityScope = '';
 let state: ProgressRecordsCapability = 'unknown';
 let inflight: Promise<ProgressRecordsCapability> | null = null;
 
+function syncCapabilityScope(): string {
+  const scope = getUserScope();
+  if (scope !== capabilityScope) {
+    capabilityScope = scope;
+    state = 'unknown';
+    inflight = null;
+  }
+  return scope;
+}
+
 export function progressRecordsCapability(): ProgressRecordsCapability {
+  syncCapabilityScope();
   return state;
 }
 
 async function fetchCapability(): Promise<ProgressRecordsCapability> {
   const response = await lastValueFrom(
-    getBackendSrv().fetch<unknown>({ url: CAPABILITY_URL, method: 'GET', showErrorAlert: false }).pipe(timeout(10_000))
+    getBackendSrv()
+      .fetch<unknown>({ url: backendRoute('completion-records/capability'), method: 'GET', showErrorAlert: false })
+      .pipe(timeout(10_000))
   );
   const parsed = CompletionCapabilityWireSchema.safeParse(response.data);
   if (!parsed.success) {
@@ -33,6 +47,7 @@ async function fetchCapability(): Promise<ProgressRecordsCapability> {
 export function loadProgressRecordsCapability(
   fetcher: () => Promise<ProgressRecordsCapability> = fetchCapability
 ): Promise<ProgressRecordsCapability> {
+  const scope = syncCapabilityScope();
   if (!getFeatureFlagValue('pathfinder.progress-records', false)) {
     return Promise.resolve('unknown');
   }
@@ -40,9 +55,12 @@ export function loadProgressRecordsCapability(
     return Promise.resolve(state);
   }
   if (!inflight) {
-    inflight = Promise.resolve()
+    const request = Promise.resolve()
       .then(fetcher)
       .then((resolved) => {
+        if (scope !== getUserScope()) {
+          return 'unknown' as const;
+        }
         state = resolved;
         return resolved;
       })
@@ -51,8 +69,11 @@ export function loadProgressRecordsCapability(
         return 'unknown' as const;
       })
       .finally(() => {
-        inflight = null;
+        if (inflight === request) {
+          inflight = null;
+        }
       });
+    inflight = request;
   }
   return inflight;
 }
@@ -92,6 +113,7 @@ export function watchProgressRecordsCapability(onResolved: () => void): () => vo
 }
 
 export function __setProgressRecordsCapabilityForTests(next: ProgressRecordsCapability): void {
+  capabilityScope = getUserScope();
   state = next;
   inflight = null;
 }

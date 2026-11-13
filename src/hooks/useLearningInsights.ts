@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getBackendSrv } from '@grafana/runtime';
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from '../lib/backend-routes';
 import { LearningInsightsResponseWireSchema, type LearningInsightsResponse } from '../types/learning-insights';
 
 interface InsightsResult {
@@ -26,7 +26,7 @@ export function useLearningInsights(from?: string, to?: string) {
     }
     const query = params.toString();
     getBackendSrv()
-      .get<unknown>(`${PLUGIN_BACKEND_URL}/learning-insights${query ? `?${query}` : ''}`)
+      .get<unknown>(`${backendRoute('learning-insights')}${query ? `?${query}` : ''}`)
       .then((response) => {
         if (!cancelled) {
           setResult({ key, data: LearningInsightsResponseWireSchema.parse(response), error: null });

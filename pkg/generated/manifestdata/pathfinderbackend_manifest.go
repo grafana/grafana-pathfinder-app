@@ -13,10 +13,13 @@ import (
 	"github.com/grafana/grafana-app-sdk/app"
 	"github.com/grafana/grafana-app-sdk/resource"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/kube-openapi/pkg/spec3"
+	"k8s.io/kube-openapi/pkg/validation/spec"
 
 	assignmentv1alpha1 "github.com/grafana/grafana-pathfinder-app/pkg/generated/assignment/v1alpha1"
 	completionrecordv1alpha1 "github.com/grafana/grafana-pathfinder-app/pkg/generated/completionrecord/v1alpha1"
 	interactiveguidev1alpha1 "github.com/grafana/grafana-pathfinder-app/pkg/generated/interactiveguide/v1alpha1"
+	v1alpha1 "github.com/grafana/grafana-pathfinder-app/pkg/generated/pathfinderbackend/v1alpha1"
 	pathfindersettingsv1alpha1 "github.com/grafana/grafana-pathfinder-app/pkg/generated/pathfindersettings/v1alpha1"
 )
 
@@ -85,6 +88,490 @@ var appManifestData = app.ManifestData{
 					Schema:       &versionSchemaAssignmentv1alpha1,
 				},
 			},
+			// nolint:staticcheck
+			Routes: app.ManifestVersionRoutes{
+				Namespaced: map[string]spec3.PathProps{
+					"/backend/assignments/my": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendAssignments",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/completion-records": {
+						Post: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "createBackendCompletion",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/completion-records/capability": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendCompletionCapability",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/completion-records/my": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendCompletions",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/custom-guide": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendGuide",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+						Post: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "createBackendGuide",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+						Put: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "replaceBackendGuide",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+						Delete: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "deleteBackendGuide",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/custom-guide-repository": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendCatalogue",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/custom-guides": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendGuides",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	Properties: map[string]spec.Schema{
+																		"items": {
+																			SchemaProps: spec.SchemaProps{
+																				Type: []string{"array"},
+																				Items: &spec.SchemaOrArray{
+																					Schema: &spec.Schema{
+																						SchemaProps: spec.SchemaProps{
+																							Type: []string{"object"},
+																							AdditionalProperties: &spec.SchemaOrBool{
+																								Allows: true,
+																							},
+																						}},
+																				},
+																			},
+																		},
+																	},
+																	Required: []string{
+																		"items",
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/health": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendHealth",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/learning-insights": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendLearningInsights",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/package-recommendations": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendRecommendations",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/pathfinder-settings": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendSettings",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+						Post: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "createBackendSettings",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+						Put: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "replaceBackendSettings",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	AdditionalProperties: &spec.SchemaOrBool{
+																		Allows: true,
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+				},
+				Cluster: map[string]spec3.PathProps{},
+				Schemas: map[string]spec.Schema{},
+			},
+			OpenAPI: func() app.ManifestVersionOpenAPI {
+				var openAPI app.ManifestVersionOpenAPI
+				if err := json.Unmarshal([]byte("{\"paths\":{\"/namespaces/{namespace}/backend/assignments/my\":{\"get\":{\"operationId\":\"getBackendAssignments\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records\":{\"post\":{\"operationId\":\"createBackendCompletion\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records/capability\":{\"get\":{\"operationId\":\"getBackendCompletionCapability\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records/my\":{\"get\":{\"operationId\":\"getBackendCompletions\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/custom-guide\":{\"get\":{\"operationId\":\"getBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"put\":{\"operationId\":\"replaceBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"post\":{\"operationId\":\"createBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"delete\":{\"operationId\":\"deleteBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/custom-guide-repository\":{\"get\":{\"operationId\":\"getBackendCatalogue\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/custom-guides\":{\"get\":{\"operationId\":\"getBackendGuides\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"required\":[\"items\"],\"properties\":{\"items\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":true}}},\"additionalProperties\":false}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/health\":{\"get\":{\"operationId\":\"getBackendHealth\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/learning-insights\":{\"get\":{\"operationId\":\"getBackendLearningInsights\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/package-recommendations\":{\"get\":{\"operationId\":\"getBackendRecommendations\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/pathfinder-settings\":{\"get\":{\"operationId\":\"getBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"put\":{\"operationId\":\"replaceBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"post\":{\"operationId\":\"createBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]}}}"), &openAPI); err != nil {
+					panic(err)
+				}
+				return openAPI
+			}(),
 		},
 	},
 	Roles: map[string]app.ManifestRole{
@@ -204,7 +691,24 @@ func ManifestGoTypeAssociator(kind, version string) (goType resource.Kind, exist
 	return goType, exists
 }
 
-var customRouteToGoResponseType = map[string]any{}
+var customRouteToGoResponseType = map[string]any{
+	"v1alpha1||<namespace>/backend/assignments/my|GET":                v1alpha1.GetBackendAssignmentsResponse{},
+	"v1alpha1||<namespace>/backend/completion-records|POST":           v1alpha1.CreateBackendCompletionResponse{},
+	"v1alpha1||<namespace>/backend/completion-records/capability|GET": v1alpha1.GetBackendCompletionCapabilityResponse{},
+	"v1alpha1||<namespace>/backend/completion-records/my|GET":         v1alpha1.GetBackendCompletionsResponse{},
+	"v1alpha1||<namespace>/backend/custom-guide|GET":                  v1alpha1.GetBackendGuideResponse{},
+	"v1alpha1||<namespace>/backend/custom-guide|POST":                 v1alpha1.CreateBackendGuideResponse{},
+	"v1alpha1||<namespace>/backend/custom-guide|PUT":                  v1alpha1.ReplaceBackendGuideResponse{},
+	"v1alpha1||<namespace>/backend/custom-guide|DELETE":               v1alpha1.DeleteBackendGuideResponse{},
+	"v1alpha1||<namespace>/backend/custom-guide-repository|GET":       v1alpha1.GetBackendCatalogueResponse{},
+	"v1alpha1||<namespace>/backend/custom-guides|GET":                 v1alpha1.GetBackendGuidesResponse{},
+	"v1alpha1||<namespace>/backend/health|GET":                        v1alpha1.GetBackendHealthResponse{},
+	"v1alpha1||<namespace>/backend/learning-insights|GET":             v1alpha1.GetBackendLearningInsightsResponse{},
+	"v1alpha1||<namespace>/backend/package-recommendations|GET":       v1alpha1.GetBackendRecommendationsResponse{},
+	"v1alpha1||<namespace>/backend/pathfinder-settings|GET":           v1alpha1.GetBackendSettingsResponse{},
+	"v1alpha1||<namespace>/backend/pathfinder-settings|POST":          v1alpha1.CreateBackendSettingsResponse{},
+	"v1alpha1||<namespace>/backend/pathfinder-settings|PUT":           v1alpha1.ReplaceBackendSettingsResponse{},
+}
 
 // ManifestCustomRouteResponsesAssociator returns the associated response go type for a given kind, version, custom route path, and method, if one exists.
 // kind may be empty for custom routes which are not kind subroutes. Leading slashes are removed from subroute paths.

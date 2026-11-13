@@ -11,11 +11,12 @@ import (
 	"strconv"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
-const pathfinderSettingsMaxBytes = 1024 * 1024
+const pathfinderSettingsMaxBytes = services.SettingsMaxBytes
 
 func (a *App) handlePathfinderSettings(w http.ResponseWriter, r *http.Request) {
 	a.handleAppPlatformRead(w, r, "pathfindersettings", "default", pathfinderSettingsMaxBytes)
@@ -27,7 +28,13 @@ func (a *App) handleAppPlatformRead(w http.ResponseWriter, r *http.Request, reso
 		return
 	}
 	client.attempt = readAttempt(r)
-	body, err := client.getItem(r.Context(), namespace, resource, name, maxBytes)
+	var body json.RawMessage
+	var err error
+	if resource == "pathfindersettings" {
+		body, err = services.ReadSettings(r.Context(), namespace, client.getSettings)
+	} else {
+		body, err = client.getItem(r.Context(), namespace, resource, name, maxBytes)
+	}
 	if err != nil {
 		status := appPlatformReadErrorStatus(err)
 
@@ -120,24 +127,7 @@ func isSettingsNotConfigured(err error) bool {
 	if !errors.As(err, &upstream) || upstream.status != http.StatusNotFound {
 		return false
 	}
-	var status struct {
-		Kind       string `json:"kind"`
-		APIVersion string `json:"apiVersion"`
-		Status     string `json:"status"`
-		Reason     string `json:"reason"`
-		Code       int    `json:"code"`
-		Details    struct {
-			Group  string            `json:"group"`
-			Kind   string            `json:"kind"`
-			Name   string            `json:"name"`
-			Causes []json.RawMessage `json:"causes"`
-		} `json:"details"`
-	}
-	return json.Unmarshal(upstream.body, &status) == nil &&
-		status.Kind == "Status" && status.APIVersion == "v1" && status.Status == "Failure" &&
-		status.Reason == "NotFound" && status.Code == http.StatusNotFound &&
-		status.Details.Group == appPlatformGroup && status.Details.Kind == "pathfindersettings" &&
-		status.Details.Name == "default" && len(status.Details.Causes) == 0
+	return services.IsSettingsNotConfigured(upstream.status, upstream.body)
 }
 
 func readAttempt(r *http.Request) int {

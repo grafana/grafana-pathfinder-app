@@ -29,7 +29,7 @@ func TestLearningInsightsRecorderHistoryMatchesLearner(t *testing.T) {
 								unrelated := asg
 								unrelated.Name, unrelated.UserID = "unrelated", "user:2"
 								resp := newLearningInsightsResponse(from, to)
-								shapeLearningInsights(&resp, rows, []assignmentSpec{asg, unrelated}, from, to, to, complete, ev.guideProgress)
+								shapeLearningInsights(&resp, rows, []assignmentSpec{asg, unrelated}, from, to, to, complete, ev.GuideProgress)
 								if len(resp.Completions) != 0 || len(resp.People) != 2 {
 									t.Fatalf("chart ambiguity or subjects: %+v", resp)
 								}
@@ -64,7 +64,7 @@ func TestOnlinePathGuidesRejectsOtherSourcesBeforeFetch(t *testing.T) {
 	})
 	app := newTestApp(t)
 	r := insightsRequest(t, "Admin", "user:1")
-	insightsSource := app.insightsObligationEvaluator(r).sources[2]
+	insightsSource := app.insightsObligationEvaluator(r).Sources[2]
 	resp := &PackageRecommendationsResponse{BaseURL: "https://interactive-learning.grafana.net/packages/", Packages: []PackageEntry{{ID: "path", Path: "paths/path"}}}
 	for _, source := range []string{"bundled", "app-platform", "arbitrary"} {
 		guides, found, err := app.resolveOnlinePathGuides(context.Background(), resp, log.DefaultLogger, "path", "", source)

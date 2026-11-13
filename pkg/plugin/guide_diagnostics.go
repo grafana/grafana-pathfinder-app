@@ -5,23 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"net"
 	"net/http"
 )
 
-type guideProxyDiagnostic struct {
-	Stage            string         `json:"stage,omitempty"`
-	Resource         string         `json:"resource,omitempty"`
-	Operation        string         `json:"operation,omitempty"`
-	Outcome          string         `json:"outcome"`
-	Reason           string         `json:"reason,omitempty"`
-	UpstreamStatus   int            `json:"upstreamStatus,omitempty"`
-	Cache            string         `json:"cache,omitempty"`
-	CacheAgeMS       int64          `json:"cacheAgeMs"`
-	ManifestFailures map[string]int `json:"manifestFailures,omitempty"`
-	BudgetExhausted  bool           `json:"budgetExhausted,omitempty"`
-}
+type guideProxyDiagnostic services.ProxyDiagnostic
 
 type guideProxyError struct {
 	diagnostic guideProxyDiagnostic

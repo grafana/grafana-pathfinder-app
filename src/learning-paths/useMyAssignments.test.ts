@@ -1,3 +1,6 @@
+let mockUserScope = 'stacks-123:1:1';
+jest.mock('../lib/user-scope', () => ({ getUserScope: () => mockUserScope }));
+
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import type { LearningPath } from '../types/learning-paths.types';
@@ -73,6 +76,7 @@ const baseOptions = {
 };
 
 beforeEach(() => {
+  mockUserScope = 'stacks-123:1:1';
   jest.clearAllMocks();
   mockNamespace = 'stacks-123';
   mockFetchOnlinePackageRecommendations.mockResolvedValue({ baseUrl: '', packages: [] });
@@ -150,7 +154,7 @@ describe('useMyAssignments', () => {
 
     expect(mockFetchMyAssignments).toHaveBeenCalledWith('stacks-123');
     expect(result.current.notDone.map((item) => item.title)).toEqual(['Grafana Fundamentals']);
-    expect(result.current.assignmentByTargetId.get('fundamentals')?.title).toBe('Grafana Fundamentals');
+    expect(result.current.assignmentByTargetId.get('grafana:fundamentals')?.title).toBe('Grafana Fundamentals');
     expect(logger.warn).not.toHaveBeenCalled();
     expect(mockReportUnresolvedAssignmentTargets).not.toHaveBeenCalled();
   });
@@ -212,6 +216,33 @@ describe('useMyAssignments', () => {
     expect(result.current.hasError).toBe(false);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.notDone.map((entry) => entry.targetId)).toEqual(['new-path']);
+  });
+
+  it('settles failed online resolution, retains successful paths, and clears the error after retry', async () => {
+    const assignments = [assignment({ targetId: 'unavailable' }), assignment({ targetId: 'available' })];
+    mockFetchMyAssignments.mockImplementation(async () => ({ ok: true, assignments: [...assignments] }));
+    mockFetchOnlinePackageRecommendations.mockResolvedValue({
+      baseUrl: '',
+      packages: assignments.map(({ targetId }) => ({ id: targetId, type: 'path', path: targetId })),
+    });
+    mockResolveNavLinks.mockImplementation(async ([id]: string[]) => {
+      if (id === 'unavailable') {
+        throw new Error('temporary lookup failure');
+      }
+      return [{ title: id, manifest: { id, type: 'path', milestones: [] } }];
+    });
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasError).toBe(true);
+    expect(result.current.onlinePaths.map(({ id }) => id)).toEqual(['available']);
+
+    mockResolveNavLinks.mockImplementation(async ([id]: string[]) => [
+      { title: id, manifest: { id, type: 'path', milestones: [] } },
+    ]);
+    await act(async () => result.current.retry());
+    await waitFor(() => expect(result.current.onlinePaths).toHaveLength(2));
+    expect(result.current.hasError).toBe(false);
   });
 
   it("reflects local completion in an online target's guides", async () => {
@@ -367,4 +398,67 @@ describe('useMyAssignments', () => {
       expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledTimes(2);
     });
   });
+});
+
+it('clears visible assignments when the caller changes even if the new fetch fails', async () => {
+  mockFetchMyAssignments.mockResolvedValueOnce({
+    ok: true,
+    assignments: [assignment({ targetId: 'private', targetType: 'guide' })],
+  });
+  const { result, rerender } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+  await waitFor(() => expect(result.current.guideAssignments).toHaveLength(1));
+  mockUserScope = 'stacks-123:1:2';
+  mockFetchMyAssignments.mockResolvedValueOnce({ ok: false });
+  rerender();
+  expect(result.current.guideAssignments).toEqual([]);
+  await waitFor(() => expect(result.current.hasError).toBe(true));
+  expect(result.current.guideAssignments).toEqual([]);
+});
+
+it('starts a new caller fetch while the previous request is pending and ignores its late result', async () => {
+  let resolve!: (value: unknown) => void;
+  mockFetchMyAssignments.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      })
+  );
+  const { result, rerender } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+  mockUserScope = 'stacks-123:1:2';
+  mockFetchMyAssignments.mockResolvedValueOnce({ ok: true, assignments: [] });
+  rerender();
+  await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+  await act(async () => resolve({ ok: true, assignments: [assignment({ targetId: 'private', targetType: 'guide' })] }));
+  expect(result.current.guideAssignments).toEqual([]);
+  expect(result.current.isLoading).toBe(false);
+  expect(mockFetchMyAssignments).toHaveBeenCalledTimes(2);
+});
+
+it('keeps same-ID public and organization assignments separate without retrying resolved records online', async () => {
+  mockFetchMyAssignments.mockResolvedValue({
+    ok: true,
+    assignments: [
+      assignment({
+        targetId: 'collision',
+        targetSource: 'bundled',
+        guides: [{ guideId: 'g', guideSource: 'bundled', completed: false }],
+      }),
+      assignment({
+        targetId: 'collision',
+        targetSource: 'app-platform',
+        guides: [{ guideId: 'g', guideSource: 'app-platform', completed: true }],
+      }),
+      assignment({ targetId: 'collision', targetSource: 'online-cdn' }),
+    ],
+  });
+  const paths = [
+    path({ id: 'collision', title: 'Private', isPrivate: true }),
+    path({ id: 'collision', title: 'Public' }),
+  ];
+  const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths }));
+  await waitFor(() => expect(result.current.isLoading).toBe(false));
+  expect(result.current.assignmentByTargetId.get('grafana:collision')?.progress).toBe(0);
+  expect(result.current.assignmentByTargetId.get('organization:collision')?.progress).toBe(100);
+  expect(result.current.items.map(({ title }) => title)).toEqual(['Public', 'Private']);
+  expect(mockFetchOnlinePackageRecommendations).toHaveBeenCalledTimes(1);
 });

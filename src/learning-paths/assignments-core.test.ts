@@ -146,14 +146,15 @@ describe('resolveAssignments', () => {
     expect(result.notDone[0]!.progress).toBe(50);
   });
 
-  it('falls back to local progress when the wire resolved no guide list', () => {
+  it('marks missing backend evidence unknown instead of borrowing local progress', () => {
     const result = resolve({
       entries: [assignment({ targetId: 'p1' })],
       paths: [path({ id: 'p1', title: 'P1' })],
       getPathProgress: () => 42,
     });
 
-    expect(result.notDone[0]!.progress).toBe(42);
+    expect(result.notDone[0]!.progress).toBe(0);
+    expect(result.notDone[0]!.progressUnavailable).toBe(true);
     expect(result.notDone[0]!.guides).toBeUndefined();
   });
 
@@ -300,4 +301,27 @@ describe('getDueStatus', () => {
   ])('%s', (_name, assignment, expected) => {
     expect(getDueStatus(assignment, now)).toEqual(expected);
   });
+});
+
+it('resolves same-ID path assignments by source regardless of catalogue order', () => {
+  const publicPath = path({ id: 'collision', title: 'Public' });
+  const privatePath = path({ id: 'collision', title: 'Private', isPrivate: true });
+  const entries = [
+    assignment({ targetId: 'collision', targetSource: 'bundled' }),
+    assignment({ targetId: 'collision', targetSource: 'app-platform' }),
+    assignment({ targetId: 'collision' }),
+    assignment({ targetId: 'collision', targetSource: 'online-cdn' }),
+  ];
+  for (const paths of [
+    [publicPath, privatePath],
+    [privatePath, publicPath],
+  ]) {
+    const result = resolveAssignments(entries, paths, noProgress, NOW);
+    expect(result.items.map(({ title, targetSource }) => [title, targetSource])).toEqual([
+      ['Public', 'bundled'],
+      ['Private', 'app-platform'],
+      ['Public', 'bundled'],
+    ]);
+    expect(result.unresolvedTargetIds).toEqual(['collision']);
+  }
 });

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
-	"sort"
 	"strconv"
 	"time"
 
@@ -46,30 +46,10 @@ const (
 var assignmentListerOverride assignmentLister
 
 // assignmentCapability is the availability signal "My Paths" gates on.
-type assignmentCapability struct {
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
-}
+type assignmentCapability = services.AssignmentCapability
 
 // assignmentEntry is one obligation on the wire.
-type assignmentEntry struct {
-	TargetType   string `json:"targetType"`
-	TargetID     string `json:"targetId"`
-	TrackID      string `json:"trackId,omitempty"`
-	TargetSource string `json:"targetSource,omitempty"`
-
-	RuleID     string `json:"ruleId,omitempty"`
-	AssignedBy string `json:"assignedBy,omitempty"`
-	AssignedAt string `json:"assignedAt,omitempty"`
-
-	DueAt                 string `json:"dueAt,omitempty"`
-	AcceptCompletionsFrom string `json:"acceptCompletionsFrom,omitempty"`
-
-	Satisfied bool `json:"satisfied"`
-	// Guides is absent when the target could not be resolved.
-	Guides    []assignmentGuideEntry `json:"guides,omitempty"`
-	Lifecycle string                 `json:"lifecycle"`
-}
+type assignmentEntry = services.AssignmentEntry
 
 // myAssignmentsResponse is the GET /assignments/my envelope; assignments is
 // never nil.
@@ -118,28 +98,20 @@ func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries := []assignmentEntry{}
-	if len(records) > 0 {
-		completions, err := a.callerCompletionRecords(r, userID)
-		if err != nil {
-			a.writeAssignmentsReadFailure(w, logger, namespace, "completion records", err)
-			return
-		}
-		var unmarked []assignmentSpec
-		progress := a.satisfactionFunc(r, completions)
-		entries = shapeAssignments(logger, records, func(rec assignmentSpec) ([]assignmentGuideEntry, error) {
-			guides, perr := progress(rec)
-			if perr != nil {
-				logger.Info("assignment guides unavailable", "targetId", rec.TargetID, "trackId", rec.TrackID, "error", perr)
-				return nil, perr
-			}
-			if rec.Name != "" && !isStatusSatisfied(rec) && satisfiedFromGuides(guides) {
-				unmarked = append(unmarked, rec)
-			}
-			return guides, nil
-		})
-		a.markSatisfiedInBackground(r, lister, namespace, unmarked)
+	ev := a.newObligationEvaluator(r)
+	entries, err := services.ReadAssignmentView(r.Context(), records, userID, services.AssignmentViewDependencies{
+		ReadCompletions: func(ctx context.Context, userID string) ([]services.CompletionRecord, error) {
+			return a.callerCompletionRecords(r.WithContext(ctx), userID)
+		},
+		Progress:      ev.GuideProgress,
+		MarkSatisfied: func(unmarked []services.Assignment) { a.markSatisfiedInBackground(r, lister, namespace, unmarked) },
+		Logger:        logger,
+	})
+	if err != nil {
+		a.writeAssignmentsReadFailure(w, logger, namespace, "completion records", err)
+		return
 	}
+
 	logger.Debug("assignments served", "namespace", namespace, "callerAssignments", len(entries))
 	a.writeJSON(w, myAssignmentsResponse{
 		Capability:  assignmentCapability{Available: true},
@@ -176,61 +148,6 @@ func (a *App) writeAssignmentsReadFailure(w http.ResponseWriter, logger log.Logg
 // shapeAssignments orders the caller's obligations newest first. Two rules for
 // the same target stay two records so no deadline is discarded. An assignment
 // whose progress cannot be evaluated is logged and omitted.
-func shapeAssignments(logger log.Logger, records []assignmentSpec, progress func(assignmentSpec) ([]assignmentGuideEntry, error)) []assignmentEntry {
-	entries := []assignmentEntry{}
-	for _, rec := range records {
-		guides, err := progress(rec)
-		if err != nil {
-			logger.Info("assignment omitted, progress unavailable", "targetId", rec.TargetID, "ruleId", rec.RuleID, "error", err)
-			continue
-		}
-		entries = append(entries, assignmentEntry{
-			TargetType:            rec.TargetType,
-			TargetID:              rec.TargetID,
-			TrackID:               rec.TrackID,
-			TargetSource:          rec.TargetSource,
-			RuleID:                rec.RuleID,
-			AssignedBy:            rec.AssignedBy,
-			AssignedAt:            rec.AssignedAt,
-			DueAt:                 rec.DueAt,
-			AcceptCompletionsFrom: rec.AcceptCompletionsFrom,
-			Satisfied:             satisfiedFromGuides(guides),
-			Guides:                guides,
-			Lifecycle:             rec.Lifecycle,
-		})
-	}
-	sortAssignments(entries)
-	return entries
-}
-
-// sortAssignments orders entries by assignedAt descending, so the newest
-// obligation leads. Parseable timestamps sort chronologically; unparseable and
-// absent ones sort last, then by (targetType, targetId, trackId, ruleId) so
-// the order is total and a golden cannot flake on map iteration or upstream
-// page order.
-func sortAssignments(entries []assignmentEntry) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		x, y := entries[i], entries[j]
-		tx, okx := parseCompletionTime(x.AssignedAt)
-		ty, oky := parseCompletionTime(y.AssignedAt)
-		if okx && oky && !tx.Equal(ty) {
-			return tx.After(ty)
-		}
-		if okx != oky {
-			return okx // the one that parsed leads
-		}
-		if x.TargetType != y.TargetType {
-			return x.TargetType < y.TargetType
-		}
-		if x.TargetID != y.TargetID {
-			return x.TargetID < y.TargetID
-		}
-		if x.TrackID != y.TrackID {
-			return x.TrackID < y.TrackID
-		}
-		return x.RuleID < y.RuleID
-	})
-}
 
 // drainAssignments drains the namespace LIST and returns the caller's active
 // records. There is deliberately no record cap: it would silently drop the
@@ -239,23 +156,7 @@ func sortAssignments(entries []assignmentEntry) {
 // caller before anything else sees it. Withdrawal revokes an obligation, so only
 // active records are served.
 func drainAssignments(ctx context.Context, namespace, userID string, lister assignmentLister) ([]assignmentSpec, error) {
-	records := []assignmentSpec{}
-	continueToken := ""
-	for {
-		page, err := lister.ListPage(ctx, namespace, continueToken)
-		if err != nil {
-			return nil, err
-		}
-		for _, rec := range page.Records {
-			if rec.UserID == userID && rec.Lifecycle == assignmentLifecycleActive {
-				records = append(records, rec)
-			}
-		}
-		if page.Continue == "" {
-			return records, nil
-		}
-		continueToken = page.Continue
-	}
+	return services.ReadAssignments(ctx, namespace, userID, lister)
 }
 
 // resolveAssignmentBackend reports whether the aggregated API is structurally

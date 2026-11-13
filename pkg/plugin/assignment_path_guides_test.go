@@ -92,7 +92,7 @@ func TestGuideProgress_UnknownAndFailureStayUnknown(t *testing.T) {
 			ev := newTestEvaluator(source)
 			asg := assignmentSpec{TargetType: "path", TargetID: "unknown"}
 			for range 2 {
-				guides, err := ev.guideProgress(asg, nil)
+				guides, err := ev.GuideProgress(asg, nil)
 				if guides != nil || (err != nil) != (tc.err != nil) {
 					t.Fatalf("guides = %+v, error = %v", guides, err)
 				}
@@ -127,7 +127,7 @@ func TestOnlinePathGuides_RecorderShapedCompletions(t *testing.T) {
 				if len(guides) != 1 || satisfiedFromGuides(guides) != wantCompleted {
 					t.Fatalf("target source %q: guides = %+v, want completed %v", targetSource, guides, wantCompleted)
 				}
-				identities, err := ev.assignmentGuides(assignmentSpec{TargetType: "path", TargetID: "path", TargetSource: targetSource})
+				identities, err := ev.AssignmentGuides(assignmentSpec{TargetType: "path", TargetID: "path", TargetSource: targetSource})
 				if err != nil || containsAssignmentGuide(identities, rows[0]) != wantCompleted {
 					t.Fatalf("status repair membership differs from evaluation: %+v, %v", identities, err)
 				}
@@ -153,7 +153,7 @@ func TestOnlinePathGuides_CachedIndexAvoidsMemberManifestFanout(t *testing.T) {
 	app := newTestApp(t)
 	for range 2 {
 		ev := newTestEvaluator(app.onlinePathGuides(log.DefaultLogger))
-		guides, err := ev.guideProgress(assignmentSpec{TargetType: "path", TargetID: "path"}, []completionRecordSpec{{GuideID: "slug-a", GuideSource: "online-cdn", CompletedAt: "2026-10-21T12:00:00Z", CompletionPercent: 100}})
+		guides, err := ev.GuideProgress(assignmentSpec{TargetType: "path", TargetID: "path"}, []completionRecordSpec{{GuideID: "slug-a", GuideSource: "online-cdn", CompletedAt: "2026-10-21T12:00:00Z", CompletionPercent: 100}})
 		if err != nil || len(guides) != 2 || !guides[0].Completed || guides[1].Completed {
 			t.Fatalf("member outage lost assignment or known evidence: %+v, %v", guides, err)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
 	"strconv"
 	"time"
@@ -208,37 +209,16 @@ func drainCustomGuides(ctx context.Context, namespace string, lister customGuide
 		defer finalizer.finalizeDrain(namespace)
 	}
 
-	entries := []customGuideRepositoryEntry{}
-	continueToken := ""
-	pages := 0
-	for {
-		page, err := lister.ListPage(ctx, namespace, continueToken)
-		if err != nil {
-			return nil, pages, err
-		}
-		pages++
-		entries = append(entries, page.Entries...)
-		if len(entries) >= customGuideListMaxTotalEntries {
-			// Strict budget: cap the accumulated slice so the memory bound holds
-			// exactly (a page can push us past the limit), and log whenever the
-			// cap actually drops data — either we trimmed an overshoot or more
-			// pages remained undrained.
-			truncated := len(entries) > customGuideListMaxTotalEntries || page.Continue != ""
-			if len(entries) > customGuideListMaxTotalEntries {
-				entries = entries[:customGuideListMaxTotalEntries]
+	return services.ReadCatalogue(ctx, namespace, customGuideListMaxTotalEntries,
+		func(ctx context.Context, namespace, token string) (services.CataloguePage[customGuideRepositoryEntry], error) {
+			page, err := lister.ListPage(ctx, namespace, token)
+			if err != nil {
+				return services.CataloguePage[customGuideRepositoryEntry]{}, err
 			}
-			if truncated {
-				logger.Warn("custom guide catalogue LIST truncated at aggregate budget",
-					"namespace", namespace, "maxTotalEntries", customGuideListMaxTotalEntries, "pages", pages)
-			}
-			break
-		}
-		if page.Continue == "" {
-			break
-		}
-		continueToken = page.Continue
-	}
-	return entries, pages, nil
+			return services.CataloguePage[customGuideRepositoryEntry]{Entries: page.Entries, Continue: page.Continue}, nil
+		}, func(pages int) {
+			logger.Warn("custom guide catalogue LIST truncated at aggregate budget", "namespace", namespace, "maxTotalEntries", customGuideListMaxTotalEntries, "pages", pages)
+		})
 }
 
 // resolveCustomGuideBackend determines whether the aggregated CRUD API is

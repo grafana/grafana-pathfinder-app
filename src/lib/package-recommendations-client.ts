@@ -3,7 +3,7 @@ import { diagnoseGuideError, httpStatus } from './guide-diagnostics';
 import { recordPackageIndex } from './telemetry/facade';
 import { getBackendSrv } from '@grafana/runtime';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from './backend-routes';
 
 /**
  * Subset of the recommender's MatchExpr that ContextService.matchesUrlPrefix
@@ -47,8 +47,6 @@ export interface PackageRecommendationsResponse {
   baseUrl: string;
   packages: OnlinePackageEntry[];
 }
-
-const PACKAGE_RECOMMENDATIONS_URL = `${PLUGIN_BACKEND_URL}/package-recommendations`;
 
 /**
  * Build a CDN URL from a package index `baseUrl`, an entry's `path`, and a
@@ -102,7 +100,7 @@ function isOffline(): boolean {
 async function performFetch(): Promise<PackageRecommendationsResponse | null> {
   try {
     const response = await getBackendSrv().get<PackageRecommendationsResponse>(
-      PACKAGE_RECOMMENDATIONS_URL,
+      backendRoute('package-recommendations'),
       undefined,
       undefined,
       {

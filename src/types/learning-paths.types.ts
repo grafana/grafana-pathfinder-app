@@ -177,9 +177,10 @@ export const DEFAULT_LEARNING_PROGRESS: LearningProgress = {
 // COMPONENT PROP TYPES
 // ============================================================================
 
-/** One assignment resolved against a catalogue path. `progress` is guide-completion-derived when `guides` is present, local path progress otherwise. */
+/** Assignment progress comes from server completion evidence; absent evidence is marked unavailable. */
 export interface ResolvedAssignment {
   targetId: string;
+  targetSource?: string;
   title: string;
   /** The manifest track this assignment targets; unset for a Foundations assignment or a track the manifest does not declare. */
   trackId?: string;
@@ -193,6 +194,7 @@ export interface ResolvedAssignment {
   satisfied: boolean;
   guides?: AssignmentEntryWire['guides'];
   progress: number;
+  progressUnavailable?: boolean;
 }
 
 /**
@@ -290,23 +292,27 @@ export interface UseLearningPathsReturn {
   /** Current learning progress */
   progress: LearningProgress;
   /** Get guides for a specific path with completion status */
-  getPathGuides: (pathId: string) => PathGuide[];
+  getPathGuides: (pathId: string, selectedPath?: LearningPath) => PathGuide[];
   /** Get completion percentage for a path */
-  getPathProgress: (pathId: string) => number;
+  getPathProgress: (pathId: string, selectedPath?: LearningPath) => number;
   /** Check if a path is completed */
-  isPathCompleted: (pathId: string) => boolean;
+  isPathCompleted: (pathId: string, selectedPath?: LearningPath) => boolean;
   /**
    * Resolve the per-guide URL for a (guideId, pathId) pair.
    * Returns undefined when no URL is known (e.g. bundled guide, or dynamic
    * data has not loaded yet) so callers can fall back appropriately.
    */
-  getGuideUrlForPath: (guideId: string, pathId: string) => string | undefined;
+  getGuideUrlForPath: (guideId: string, pathId: string, selectedPath?: LearningPath) => string | undefined;
   /** Mark a guide as completed (triggers badge checks) */
   markGuideCompleted: (guideId: string) => Promise<void>;
   /** Reset a path's progress (clears guides, interactive steps, keeps badges) */
   resetPath: (pathId: string) => Promise<void>;
   /** Clears local completion for the given guides only; never touches the path's cover-level record. */
-  resetPathGuides: (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>) => Promise<void>;
+  resetPathGuides: (
+    pathId: string,
+    guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>,
+    selectedPath?: LearningPath | null
+  ) => Promise<void>;
   /** Dismiss a pending celebration */
   dismissCelebration: (badgeId: string) => Promise<void>;
   /** Current streak display info */
