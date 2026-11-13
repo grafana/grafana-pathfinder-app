@@ -146,6 +146,15 @@ def main():
         if not compare(transcripts[1]['httpReads']['settings/-2'], mutated_settings):
             raise RuntimeError('production oversized settings mutation was not detected')
         bounded_transport.write_text(bounded_source)
+        absence_needle = 'return settingsErrorTransport{next: next}'
+        if bounded_source.count(absence_needle) != 1:
+            raise RuntimeError('settings absence mutation target changed')
+        bounded_transport.write_text(bounded_source.replace(absence_needle, 'return next'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityHTTPReads$', '-count=1'], cwd=target, env=env, check=True)
+        mutated_absence = json.loads(Path(str(output) + '.httpreads').read_text())['settings-absence/forbidden']
+        if not compare(transcripts[1]['httpReads']['settings-absence/forbidden'], mutated_absence):
+            raise RuntimeError('production settings absence mutation was not detected')
+        bounded_transport.write_text(bounded_source)
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599
@@ -154,7 +163,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, and diagnostic controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

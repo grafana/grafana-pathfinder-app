@@ -52,7 +52,7 @@ func TestFrozenFidelityHTTPReads(t *testing.T) {
 			body = strings.Repeat(" ", 1024*1024+1)
 			upstreamStatus = 200
 		}
-		response := fidelitySettingsRead(t, upstreamStatus, body)
+		response := fidelitySettingsRead(t, upstreamStatus, body, "")
 		var decoded any
 		if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
 			t.Fatal(err)
@@ -62,6 +62,33 @@ func TestFrozenFidelityHTTPReads(t *testing.T) {
 			"contentType":  response.Header().Get("Content-Type"),
 			"cacheControl": response.Header().Get("Cache-Control"),
 			"retryAfter":   response.Header().Get("Retry-After"),
+		}
+	}
+	missing := `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404,"details":{"name":"default","group":"pathfinderbackend.ext.grafana.app","kind":"pathfindersettings"}}`
+	for _, tc := range []struct {
+		name, body, query string
+		status            int
+	}{
+		{"confirmed", missing, "absence=explicit", 404},
+		{"oversized", missing + strings.Repeat(" ", 2048), "absence=explicit", 404},
+		{"malformed", missing[:len(missing)-1], "absence=explicit", 404},
+		{"conflicting-body-code", strings.ReplaceAll(missing, `"code":404`, `"code":403`), "absence=explicit", 404},
+		{"legacy-query", missing, "", 404},
+		{"missing-route", "404 page not found", "absence=explicit", 404},
+		{"other-name", strings.ReplaceAll(missing, `"default"`, `"other"`), "absence=explicit", 404},
+		{"other-group", strings.ReplaceAll(missing, "pathfinderbackend.ext.grafana.app", "other.app"), "absence=explicit", 404},
+		{"cause", strings.ReplaceAll(missing, `"name":"default"`, `"name":"default","causes":[{"reason":"UnexpectedServerResponse"}]`), "absence=explicit", 404},
+		{"forbidden", missing, "absence=explicit", 403},
+		{"unavailable", missing, "absence=explicit", 503},
+	} {
+		response := fidelitySettingsRead(t, tc.status, tc.body, tc.query)
+		var body any
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		results["settings-absence/"+tc.name] = map[string]any{
+			"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"),
+			"cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"),
 		}
 	}
 	data, err := json.MarshalIndent(results, "", "  ")

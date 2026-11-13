@@ -46,8 +46,12 @@ plus thirteen upstream HTTP statuses, malformed JSON, and an oversized success
 body. Full status, body, and cache/retry headers are compared. This caught the SDK
 turning an oversized response into 503 instead of legacy 502 and losing the original
 200 diagnostic status. A production mutation must detect that regression.
-Missing-singleton classification and historical CRUD sequences remain open, as do
-other read-route failure corpora.
+Eleven further settings cases compare explicit absence, legacy query behavior,
+missing routes, wrong names/groups, unexpected causes, malformed/oversized error
+bodies, and conflicting HTTP/body statuses. This caught 403/503 failures being
+misclassified as successful absence; the HTTP status now stays authoritative and
+a production mutation must detect the regression. Historical CRUD sequences and
+other read-route failure corpora remain open.
 
 The runner exports the immutable baseline into a temporary directory and copies the
 current Go implementation into a separate temporary checkout. It does not switch

@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/rest"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -145,7 +146,7 @@ func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest
 	return response
 }
 
-func fidelitySettingsRead(t *testing.T, status int, body string) *httptest.ResponseRecorder {
+func fidelitySettingsRead(t *testing.T, status int, body string, query string) *httptest.ResponseRecorder {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -158,7 +159,7 @@ func fidelitySettingsRead(t *testing.T, status int, body string) *httptest.Respo
 	}
 	ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "stacks-1"})
 	response := httptest.NewRecorder()
-	if err := settingsReadHandler(store.Read)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+	if err := settingsReadHandler(store.Read)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: &url.URL{RawQuery: query}, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
 		t.Fatal(err)
 	}
 	return response

@@ -1448,6 +1448,195 @@
       "retryAfter": "30",
       "status": 503
     },
+    "settings-absence/cause": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/confirmed": {
+      "body": {
+        "state": "not-configured"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "settings-absence/conflicting-body-code": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/forbidden": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 403
+    },
+    "settings-absence/legacy-query": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/malformed": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/missing-route": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/other-group": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/other-name": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/oversized": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/unavailable": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 503
+    },
     "settings/-1": {
       "body": {
         "diagnostics": {
