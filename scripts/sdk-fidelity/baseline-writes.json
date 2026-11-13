@@ -85,6 +85,71 @@
       "name": "write invalidation refreshes"
     }
   ],
+  "completed-schema-rejection": [
+    {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 422
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
   "conflict-exhaustion-recovery": [
     {
       "body": {
@@ -1417,6 +1482,70 @@
       "status": 200
     }
   ],
+  "mixed-validation": [
+    {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 422
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
   "not-found": [
     {
       "body": {
@@ -1439,6 +1568,70 @@
       "status": 404
     }
   ],
+  "other-field-validation": [
+    {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 422
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
   "outage-recovery": [
     {
       "body": {
@@ -1452,6 +1645,61 @@
           "upstreamStatus": 503
         },
         "error": "completion-write-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "partial-schema-recovery": [
+    {
+      "body": {
+        "error": "schema-not-ready"
       },
       "cacheControl": "",
       "contentType": "application/json",

@@ -13,7 +13,7 @@ import (
 func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any) *httptest.ResponseRecorder {
 	store.createErr = nil
 	if step.Status != 0 {
-		store.createErr = &appPlatformUpstreamError{status: step.Status, msg: "injected"}
+		store.createErr = &appPlatformUpstreamError{status: step.Status, msg: "injected", body: step.ErrorBody}
 	}
 	store.replaceErrs = nil
 	for i := 0; i < step.Conflicts; i++ {

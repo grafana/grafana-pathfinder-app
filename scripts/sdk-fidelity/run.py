@@ -86,6 +86,17 @@ def main():
                 raise RuntimeError('production monotonicity mutation was not detected')
         else:
             raise RuntimeError('mutation did not produce a comparable transcript: ' + mutation.stdout + mutation.stderr)
+        attempt.write_text(original)
+        write_route = target / 'pkg/provider/completion_write.go'
+        write_source = write_route.read_text()
+        schema_needle = 'cause.Field != "spec.completedAt" || cause.Type != "FieldValueRequired"'
+        if write_source.count(schema_needle) != 1:
+            raise RuntimeError('schema mutation target changed; review the control')
+        write_route.write_text(write_source.replace(schema_needle, 'cause.Field == "__never__"'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityWrites$', '-count=1'], cwd=target, env=env, check=True)
+        if not compare(clean_writes, json.loads(output.read_text())):
+            raise RuntimeError('production schema validation mutation was not detected')
+        write_route.write_text(write_source)
         cache = target / 'pkg/services/completion_cache.go'
         cache_source = cache.read_text()
         cache_needle = 'const completionCacheTTL = 5 * time.Minute'
@@ -123,7 +134,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, and diagnostic controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

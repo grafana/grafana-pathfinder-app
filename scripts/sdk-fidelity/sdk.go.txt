@@ -24,7 +24,13 @@ import (
 func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any) *httptest.ResponseRecorder {
 	store.createErr = nil
 	if step.Status != 0 {
-		store.createErr = &apierrors.StatusError{ErrStatus: metav1.Status{Code: int32(step.Status), Message: "injected"}}
+		status := metav1.Status{Code: int32(step.Status), Message: "injected"}
+		if len(step.ErrorBody) > 0 {
+			if err := json.Unmarshal(step.ErrorBody, &status); err != nil {
+				t.Fatal(err)
+			}
+		}
+		store.createErr = &apierrors.StatusError{ErrStatus: status}
 	}
 	store.replaceErrs = nil
 	for i := 0; i < step.Conflicts; i++ {

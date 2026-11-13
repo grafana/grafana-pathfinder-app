@@ -8,10 +8,11 @@ import (
 )
 
 type fidelityStep struct {
-	Percent         int  `json:"percent"`
-	Status          int  `json:"status"`
-	Conflicts       int  `json:"conflicts"`
-	DiscardResponse bool `json:"discardResponse"`
+	ErrorBody       json.RawMessage `json:"errorBody"`
+	Percent         int             `json:"percent"`
+	Status          int             `json:"status"`
+	Conflicts       int             `json:"conflicts"`
+	DiscardResponse bool            `json:"discardResponse"`
 }
 
 func TestFrozenFidelityWrites(t *testing.T) {
