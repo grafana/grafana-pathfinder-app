@@ -69,6 +69,7 @@
     "previousMilestone": "Previous milestone",
     "previousMilestoneTooltip": "Previous milestone (Alt + ←)",
     "recommendations": "Recommendations",
+    "refreshGuideErrorTitle": "Couldn't refresh the guide",
     "resetGuide": "Reset guide",
     "resetGuideErrorMessage": "Couldn't reset guide progress. Please try again or reload the page.",
     "resetGuideErrorTitle": "Reset failed",
