@@ -661,6 +661,7 @@ describe('MyLearningTab launch flow', () => {
     mockPaths = [
       {
         id: 'path-track',
+        isPrivate: true,
         title: 'Track path',
         guides: ['g-foundation', 'g-ops-1', 'g-ops-2'],
         manifest: { type: 'path', milestones: ['g-foundation'] },
@@ -697,7 +698,9 @@ describe('MyLearningTab launch flow', () => {
 
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
-    const card = screen.getByTestId(testIds.learningPaths.card('path-track'));
+    const card = within(screen.getByTestId(testIds.learningPaths.myCoursesSection)).getByTestId(
+      testIds.learningPaths.card('path-track')
+    );
     expect(card).toHaveTextContent('1/2 guides');
     expect(card.querySelector('.expandable')).toHaveTextContent('Track Ops engineers');
 
@@ -1335,7 +1338,8 @@ describe('MyLearningTab — online course package cover launch', () => {
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
     expect(mockGetGuideUrlForPath).toHaveBeenCalledWith(
       'core-grafana-concepts-data-sources',
-      'core-grafana-concepts-lj'
+      'core-grafana-concepts-lj',
+      expect.objectContaining({ id: 'core-grafana-concepts-lj' })
     );
     // Regression test (Cursor Bugbot, "Fallback launch mislabeled cover"):
     // this fallback opens the first member guide, not the cover — the
@@ -1356,6 +1360,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     mockPaths = [
       {
         id: 'ap-path',
+        isPrivate: true,
         title: 'Alerting enablement',
         guides: ['fe-alerting-01'],
         manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
@@ -1371,7 +1376,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
-    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(resolvePackageNavLinksMock).not.toHaveBeenCalled();
     expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
       title: 'Alerting enablement',
       source: 'home_page',
@@ -1392,6 +1397,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     mockPaths = [
       {
         id: 'ap-path',
+        isPrivate: true,
         title: 'Alerting enablement',
         guides: ['fe-alerting-01'],
         manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
@@ -1410,7 +1416,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     // Same cover-launch outcome as the fresh case above — the cover's own CTA
     // (LearningPathTableOfContents) is what resolves the current milestone,
     // not this launch call.
-    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(resolvePackageNavLinksMock).not.toHaveBeenCalled();
     expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
       title: 'Alerting enablement',
       source: 'home_page',
@@ -2178,6 +2184,7 @@ it('opens the assigned path from any row cell, preserves its track, and clears s
   mockPaths = [
     {
       id: 'path-1',
+      isPrivate: true,
       title: 'Started path',
       guides: ['guide-1'],
       manifest: {
@@ -2665,4 +2672,56 @@ it('homepage retains unavailable paths and distinct rules for the same path', ()
   fireEvent.click(unavailable.closest('tr')!.querySelectorAll('td')[2]!);
   expect(onOpenGuide).not.toHaveBeenCalled();
   expect(section.queryByText('You’re all clear!')).not.toBeInTheDocument();
+});
+
+it('launches an assigned organization path directly despite a same-ID public cover', async () => {
+  mockPaths = [
+    { id: 'collision', title: 'Public path', guides: ['public'], manifest: { type: 'path', milestones: ['public'] } },
+    {
+      id: 'collision',
+      title: 'Private path',
+      isPrivate: true,
+      guides: ['private'],
+      manifest: { type: 'path', milestones: ['private'] },
+    },
+  ];
+  mockAssignments = [
+    {
+      targetType: 'path',
+      targetId: 'collision',
+      targetSource: 'app-platform',
+      title: 'Private path',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+  ];
+  resolvePackageNavLinksMock.mockResolvedValue([
+    { packageId: 'collision', contentUrl: 'https://interactive-learning.grafana.net/packages/collision/content.json' },
+  ]);
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  fireEvent.click(
+    within(screen.getByRole('region', { name: 'Your assignments' })).getByRole('button', { name: 'Private path' })
+  );
+  await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+  expect(prepareMock).toHaveBeenCalledWith(
+    'backend-guide:collision',
+    expect.objectContaining({ title: 'Private path' })
+  );
+  expect(resolvePackageNavLinksMock).not.toHaveBeenCalled();
+});
+
+it('does not launch an organization cover returned for a public path', async () => {
+  mockPaths = [
+    { id: 'public-collision', title: 'Public collision', guides: [], manifest: { type: 'path', milestones: [] } },
+  ];
+  mockGetPathProgress.mockReturnValue(0);
+  mockGetGuideUrlForPath.mockReturnValue(undefined);
+  resolvePackageNavLinksMock.mockResolvedValue([
+    { packageId: 'public-collision', contentUrl: 'backend-guide:public-collision' },
+  ]);
+  render(<MyLearningTab onOpenGuide={jest.fn()} />);
+  fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('public-collision')));
+  await waitFor(() => expect(resolvePackageNavLinksMock).toHaveBeenCalled());
+  expect(prepareMock).not.toHaveBeenCalled();
 });

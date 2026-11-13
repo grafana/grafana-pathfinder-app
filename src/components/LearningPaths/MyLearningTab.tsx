@@ -149,13 +149,13 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
     const local = paths.filter((path) => {
       const assignment = getPathAssignment(assignmentByTargetId, path);
       const hasOutstandingAssignment = Boolean(assignment && !assignment.satisfied);
-      return hasOutstandingAssignment || getPathProgress(path.id) < 100;
+      return hasOutstandingAssignment || getPathProgress(path.id, path) < 100;
     });
     const online = onlinePaths.filter((path) => !getPathAssignment(assignmentByTargetId, path)?.satisfied);
     return [...local, ...online].sort(
       (a, b) =>
-        (getPathAssignment(assignmentByTargetId, b)?.progress ?? getPathProgress(b.id)) -
-        (getPathAssignment(assignmentByTargetId, a)?.progress ?? getPathProgress(a.id))
+        (getPathAssignment(assignmentByTargetId, b)?.progress ?? getPathProgress(b.id, b)) -
+        (getPathAssignment(assignmentByTargetId, a)?.progress ?? getPathProgress(a.id, a))
     );
   }, [paths, onlinePaths, getPathProgress, assignmentByTargetId]);
 
@@ -167,7 +167,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   );
 
   const completedPaths = useMemo(() => {
-    const local = paths.filter((path) => isPathCompleted(path.id));
+    const local = paths.filter((path) => isPathCompleted(path.id, path));
     const online = onlinePaths.filter((path) => getPathAssignment(assignmentByTargetId, path)?.satisfied);
     return [...local, ...online];
   }, [paths, onlinePaths, isPathCompleted, assignmentByTargetId]);
@@ -193,7 +193,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         catalogItems: catalog.items,
         catalogProgress,
         getPathProgress,
-        getPathGuides: (pathId) => getPathGuides(pathId, true),
+        getPathGuides: (pathId, path) => getPathGuides(pathId, true, path),
         includeCompleted: true,
       }),
     [paths, onlinePaths, assignmentByTargetId, catalog.items, catalogProgress, getPathProgress, getPathGuides]
@@ -317,12 +317,21 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
           packageManifest: { ...path.manifest, id: path.id },
           trackId: assignment ? assignment.trackId : getPathAssignment(assignmentByTargetId, path)?.trackId,
         };
-        const [navLink] = await resolvePackageNavLinks([path.id]);
+        const publicPath = catalog.items.find(
+          (item) => item.id === path.id && item.format === 'path' && item.source === 'grafana'
+        );
+        const [resolvedLink] = path.isPrivate
+          ? [{ contentUrl: `backend-guide:${path.id}` }]
+          : publicPath
+            ? [{ contentUrl: publicPath.url }]
+            : await resolvePackageNavLinks([path.id]);
+        const navLink =
+          !path.isPrivate && resolvedLink?.contentUrl.startsWith('backend-guide:') ? undefined : resolvedLink;
         if (!mountedRef.current) {
           return;
         }
         // A resolver miss can still open the first member guide.
-        const coverUrl = navLink?.contentUrl || getGuideUrlForPath(path.guides[0] ?? '', path.id) || '';
+        const coverUrl = navLink?.contentUrl || getGuideUrlForPath(path.guides[0] ?? '', path.id, path) || '';
 
         reportAppInteraction(UserInteraction.OpenResourceClick, {
           content_title: path.title,
@@ -346,7 +355,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         }
       }
     },
-    [performLaunch, getGuideUrlForPath, assignmentByTargetId]
+    [performLaunch, getGuideUrlForPath, assignmentByTargetId, catalog.items]
   );
 
   const allPaths = useMemo(() => [...paths, ...onlinePaths], [paths, onlinePaths]);
@@ -382,10 +391,10 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         return;
       }
 
-      const resolvedGuideUrl = parentPath ? getGuideUrlForPath(guideId, parentPath.id) : undefined;
+      const resolvedGuideUrl = parentPath ? getGuideUrlForPath(guideId, parentPath.id, parentPath) : undefined;
       const staticGuideMetadata = getPathsData().guideMetadata[guideId];
       const title =
-        (parentPath && getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title) ||
+        (parentPath && getPathGuides(parentPath.id, false, parentPath).find((g) => g.id === guideId)?.title) ||
         staticGuideMetadata?.title ||
         guideId;
       const guideUrl = resolvedGuideUrl ?? staticGuideMetadata?.url ?? `bundled:${guideId}`;
@@ -398,8 +407,8 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
       });
 
       if (parentPath) {
-        const pathProgress = getPathProgress(parentPath.id);
-        const pathGuides = getPathGuides(parentPath.id);
+        const pathProgress = getPathProgress(parentPath.id, parentPath);
+        const pathGuides = getPathGuides(parentPath.id, false, parentPath);
         const completedCount = pathGuides.filter((g) => g.completed).length;
 
         reportAppInteraction(UserInteraction.LearningPathProgress, {
@@ -749,7 +758,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
       {!homepage && (
         <PrivatePathsSection
           paths={privatePaths}
-          getPathGuides={getPathGuides}
+          getPathGuides={(id, path) => getPathGuides(id, false, path)}
           getPathProgress={getPathProgress}
           onContinue={handleOpenGuide}
           onReset={resetPath}
@@ -765,7 +774,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
             <MyCoursesSection
               courses={courses}
               assignmentByTargetId={assignmentByTargetId}
-              getPathGuides={getPathGuides}
+              getPathGuides={(id, path) => getPathGuides(id, false, path)}
               getPathProgress={getPathProgress}
               onContinue={handleOpenGuide}
               onReset={resetPath}

@@ -35,8 +35,8 @@ export function selectLearningPathEntries({
   assignmentByTargetId: Map<string, ResolvedAssignment>;
   catalogItems: CatalogPackage[];
   catalogProgress: Map<string, CatalogProgress>;
-  getPathProgress: (id: string) => number;
-  getPathGuides: (id: string) => PathGuide[];
+  getPathProgress: (id: string, selectedPath?: LearningPath) => number;
+  getPathGuides: (id: string, selectedPath?: LearningPath) => PathGuide[];
   includeCompleted?: boolean;
 }): LearningPathEntry[] {
   const entries = new Map<string, LearningPathEntry>();
@@ -60,7 +60,7 @@ export function selectLearningPathEntries({
     const key = `${path.isPrivate ? 'organization' : 'grafana'}:${path.id}`;
     const assignment = getPathAssignment(assignmentByTargetId, path);
     const item = catalogPaths.get(key);
-    const percent = assignment?.progress ?? Math.max(getPathProgress(path.id), pathProgress.get(key) ?? 0);
+    const percent = assignment?.progress ?? Math.max(getPathProgress(path.id, path), pathProgress.get(key) ?? 0);
     if (!includeCompleted && percent >= 100 && !(assignment && !assignment.satisfied)) {
       continue;
     }
@@ -68,7 +68,7 @@ export function selectLearningPathEntries({
       key,
       contentSource: path.isPrivate ? 'app-platform' : onlinePaths.includes(path) ? 'online-cdn' : 'bundled',
       path: { ...path, estimatedMinutes: path.estimatedMinutes ?? item?.estimatedMinutes },
-      guides: getPathGuides(path.id),
+      guides: getPathGuides(path.id, path),
       percent,
       assignment,
       topic: item ? catalogTopic(item) : undefined,

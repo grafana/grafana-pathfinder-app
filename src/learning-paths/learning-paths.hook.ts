@@ -329,15 +329,17 @@ export function useLearningPaths(): UseLearningPathsReturn {
   }, [rawPaths, dynamicGuideData, appPlatformData]);
 
   const resolveGuideMetadata = useCallback(
-    (guideId: string, pathId?: string): GuideMetadataEntry => {
+    (guideId: string, pathId?: string, selectedPath?: LearningPath): GuideMetadataEntry => {
       const fallback = { title: guideId, estimatedMinutes: 5 };
       const customMetadata = Object.hasOwn(appPlatformData.guideMetadata, guideId)
         ? appPlatformData.guideMetadata[guideId]
         : undefined;
       if (
-        pathId &&
-        !rawPaths.some((path) => path.id === pathId) &&
-        appPlatformData.paths.some((path) => path.id === pathId)
+        selectedPath?.isPrivate ||
+        (!selectedPath &&
+          pathId &&
+          !rawPaths.some((path) => path.id === pathId) &&
+          appPlatformData.paths.some((path) => path.id === pathId))
       ) {
         return customMetadata ?? fallback;
       }
@@ -465,8 +467,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
   // Get guides for a specific path with completion status
   const getPathGuides = useCallback(
-    (pathId: string): PathGuide[] => {
-      const path = paths.find((p) => p.id === pathId);
+    (pathId: string, selectedPath?: LearningPath): PathGuide[] => {
+      const path = selectedPath ?? paths.find((p) => p.id === pathId);
       if (!path) {
         return [];
       }
@@ -475,7 +477,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
         path.guides.map((guideId) => {
           // Scope metadata to this path so two paths sharing a guide slug do
           // not bleed URLs/titles across each other.
-          const metadata = resolveGuideMetadata(guideId, pathId);
+          const metadata = resolveGuideMetadata(guideId, pathId, path);
 
           return {
             id: guideId,
@@ -496,8 +498,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
   // Path-scoped per-guide URL lookup. Used by handlers that receive
   // (guideId, pathId) and need to navigate to the correct module.
   const getGuideUrlForPath = useCallback(
-    (guideId: string, pathId: string): string | undefined => {
-      return resolveGuideMetadata(guideId, pathId).url;
+    (guideId: string, pathId: string, selectedPath?: LearningPath): string | undefined => {
+      return resolveGuideMetadata(guideId, pathId, selectedPath).url;
     },
     [resolveGuideMetadata]
   );
@@ -513,12 +515,13 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
   // Get completion percentage for a path
   const getPathProgress = useCallback(
-    (pathId: string): number => {
-      const path = paths.find((p) => p.id === pathId);
+    (pathId: string, selectedPath?: LearningPath): number => {
+      const path = selectedPath ?? paths.find((p) => p.id === pathId);
       if (!path) {
         return 0;
       }
-      return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).percent;
+      return calculatePathRollup(path, progress.completedGuides, (guideId, id) => getGuideUrlForPath(guideId, id, path))
+        .percent;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the revision is not read here, it is what re-identifies this callback so a consumer memoising on it (My Learning's card list) recomputes when the evidence moves
     [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
@@ -528,12 +531,13 @@ export function useLearningPaths(): UseLearningPathsReturn {
   // fully-finished path can legitimately round to 99 (meanOfMemberPercentages
   // reserves 100 for `complete`), so that comparison would strand it.
   const isPathCompleted = useCallback(
-    (pathId: string): boolean => {
-      const path = paths.find((p) => p.id === pathId);
+    (pathId: string, selectedPath?: LearningPath): boolean => {
+      const path = selectedPath ?? paths.find((p) => p.id === pathId);
       if (!path) {
         return false;
       }
-      return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).complete;
+      return calculatePathRollup(path, progress.completedGuides, (guideId, id) => getGuideUrlForPath(guideId, id, path))
+        .complete;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the revision re-identifies the callback, it is not an input the body reads
     [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]

@@ -292,17 +292,17 @@ export interface UseLearningPathsReturn {
   /** Current learning progress */
   progress: LearningProgress;
   /** Get guides for a specific path with completion status */
-  getPathGuides: (pathId: string) => PathGuide[];
+  getPathGuides: (pathId: string, selectedPath?: LearningPath) => PathGuide[];
   /** Get completion percentage for a path */
-  getPathProgress: (pathId: string) => number;
+  getPathProgress: (pathId: string, selectedPath?: LearningPath) => number;
   /** Check if a path is completed */
-  isPathCompleted: (pathId: string) => boolean;
+  isPathCompleted: (pathId: string, selectedPath?: LearningPath) => boolean;
   /**
    * Resolve the per-guide URL for a (guideId, pathId) pair.
    * Returns undefined when no URL is known (e.g. bundled guide, or dynamic
    * data has not loaded yet) so callers can fall back appropriately.
    */
-  getGuideUrlForPath: (guideId: string, pathId: string) => string | undefined;
+  getGuideUrlForPath: (guideId: string, pathId: string, selectedPath?: LearningPath) => string | undefined;
   /** Mark a guide as completed (triggers badge checks) */
   markGuideCompleted: (guideId: string) => Promise<void>;
   /** Reset a path's progress (clears guides, interactive steps, keeps badges) */

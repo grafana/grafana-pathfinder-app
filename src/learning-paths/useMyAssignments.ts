@@ -25,7 +25,7 @@ interface UseMyAssignmentsOptions {
   /** The caller's learning-paths catalogue — resolution drops targets not found here. */
   paths: readonly LearningPath[];
   getPathProgress: (pathId: string) => number;
-  getPathGuides: (pathId: string, includeAllTracks?: boolean) => PathGuide[];
+  getPathGuides: (pathId: string, selectedPath?: LearningPath) => PathGuide[];
   completedGuides: readonly string[];
   resolveNavLinks: PackageNavLinkResolver;
 }
@@ -41,7 +41,7 @@ interface UseMyAssignmentsResult {
   /** Paths for online-catalogue targets, absent from `paths`. */
   onlinePaths: LearningPath[];
   /** Online targets get local completion overlaid; everything else defers to the passed-in getter. */
-  getPathGuides: (pathId: string, includeAllTracks?: boolean) => PathGuide[];
+  getPathGuides: (pathId: string, includeAllTracks?: boolean, selectedPath?: LearningPath) => PathGuide[];
   /** True once the first fetch has settled, whether or not it succeeded. */
   hasLoaded: boolean;
   isLoading: boolean;
@@ -211,15 +211,21 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   // Wire completion can drift from local storage; overlaying local completion keeps the
   // card's mismatch detection meaningful.
   const getPathGuidesWithOnline = useCallback(
-    (pathId: string, includeAllTracks = false): PathGuide[] => {
-      const onlineCard = onlineCardsById.get(pathId);
+    (pathId: string, includeAllTracks = false, selectedPath?: LearningPath): PathGuide[] => {
+      const candidate = onlineCardsById.get(pathId);
+      const onlineCard =
+        !selectedPath ||
+        selectedPath === candidate?.path ||
+        (selectedPath.manifest && selectedPath.manifest === candidate?.path.manifest)
+          ? candidate
+          : undefined;
       const baseGuides = onlineCard
         ? onlineCard.guides.map((guide) => ({ ...guide, completed: completedGuides.includes(guide.id) }))
-        : getPathGuides(pathId);
+        : getPathGuides(pathId, selectedPath);
       if (includeAllTracks) {
         return onlineCard ? markCurrentGuide(baseGuides) : baseGuides;
       }
-      const path = onlineCard?.path ?? pathsById.get(pathId);
+      const path = selectedPath ?? onlineCard?.path ?? pathsById.get(pathId);
       const trackId = path && getPathAssignment(assignmentByTargetId, path)?.trackId;
       const trackGuideIds = onlineCard?.trackGuideIds ?? (path && findAssignedTrack(path, trackId))?.guides;
       if (!trackGuideIds) {

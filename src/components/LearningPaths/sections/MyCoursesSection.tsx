@@ -13,9 +13,9 @@ import type { getMyLearningStyles } from '../MyLearningTab.styles';
 interface MyCoursesSectionProps {
   courses: LearningPath[];
   assignmentByTargetId: Map<string, ResolvedAssignment>;
-  getPathGuides: (pathId: string) => PathGuide[];
-  getPathProgress: (pathId: string) => number;
-  onContinue: (guideId: string, pathId: string) => void;
+  getPathGuides: (pathId: string, selectedPath?: LearningPath) => PathGuide[];
+  getPathProgress: (pathId: string, selectedPath?: LearningPath) => number;
+  onContinue: (guideId: string, pathId: string, options?: { path: LearningPath }) => void;
   onReset: (pathId: string) => void;
   onResetGuides: (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>) => Promise<void>;
   launchingPathId: string | null;
@@ -86,17 +86,17 @@ export function MyCoursesSection({
         >
           {ordered.map((path, index) => {
             const assignment = activeAssignment(path);
-            const pathProgress = assignment ? assignment.progress : getPathProgress(path.id);
+            const pathProgress = assignment ? assignment.progress : getPathProgress(path.id, path);
             const isFirstInProgress = index === 0 && pathProgress > 0;
 
             return (
               <LearningPathCard
                 key={`${path.isPrivate ? 'organization' : 'grafana'}:${path.id}`}
                 path={path}
-                guides={getPathGuides(path.id)}
+                guides={getPathGuides(path.id, path)}
                 progress={pathProgress}
                 isCompleted={false}
-                onContinue={onContinue}
+                onContinue={(guideId) => onContinue(guideId, path.id, { path })}
                 onReset={onReset}
                 onResetGuides={onResetGuides}
                 defaultExpanded={isFirstInProgress}
