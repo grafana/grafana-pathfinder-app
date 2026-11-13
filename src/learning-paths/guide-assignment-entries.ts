@@ -11,7 +11,8 @@ function sourceIdentity(source: string, id: string): string {
 
 export function selectGuideAssignmentEntries(
   assignments: readonly AssignmentEntry[],
-  catalog: readonly CatalogPackage[]
+  catalog: readonly CatalogPackage[],
+  progress?: ReadonlyMap<string, { percent: number }>
 ): LearningPathEntry[] {
   return assignments
     .filter((assignment) => assignment.targetType === 'guide')
@@ -27,7 +28,17 @@ export function selectGuideAssignmentEntries(
       return {
         key: `assignment:guide:${assignment.targetSource}:${assignment.targetId}:${assignment.ruleId}:${assignment.assignedAt ?? ''}`,
         path: { id: assignment.targetId, title, description: '', guides: [], badgeId: '' },
-        guides: [],
+        guides: item
+          ? [
+              {
+                id: item.id,
+                title,
+                url: item.url,
+                completed: (progress?.get(item.key)?.percent ?? 0) >= 100,
+                isCurrent: true,
+              },
+            ]
+          : [],
         percent: assignmentProgress(assignment.guides, 0),
         assignment: buildResolvedAssignment(assignment, { title }, assignmentProgress(assignment.guides, 0)),
         assignedGuide: item,

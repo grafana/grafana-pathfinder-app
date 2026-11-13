@@ -589,3 +589,19 @@ describe('reset analytics', () => {
     expect(resetEvents()).toHaveLength(0);
   });
 });
+
+it('resets a directly assigned guide without treating a same-ID path as its owner', async () => {
+  await interactiveCompletionStorage.set(PATH_KEY, 100);
+  await interactiveCompletionStorage.set(BUNDLED_PATH_KEY, 100);
+  await guideCompletionMarkStorage.set(PATH_KEY, true);
+  await seedCompletedCourse();
+  const { result, unmount } = renderHook(() => useLearningPaths());
+  await waitFor(() => expect(result.current.paths.map((path) => path.id)).toContain(PATH_ID));
+  await act(async () => {
+    await result.current.resetPathGuides(PATH_ID, [{ id: PATH_ID, url: PATH_KEY }], null);
+  });
+  expect(await interactiveCompletionStorage.get(PATH_KEY)).toBe(0);
+  expect(await interactiveCompletionStorage.get(BUNDLED_PATH_KEY)).toBe(100);
+  expect(await guideCompletionMarkStorage.get(PATH_KEY)).toBeNull();
+  unmount();
+});

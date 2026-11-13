@@ -2603,6 +2603,88 @@ it('homepage displays and opens a directly assigned guide through its catalogue 
   );
 });
 
+describe('direct guide assignment re-completion', () => {
+  it.each(['cancel', 'failure', 'success'] as const)(
+    'handles %s without losing the reset boundary',
+    async (outcome) => {
+      jest.requireMock('../../package-engine').AppPlatformPackageResolver.mockImplementation(() => ({
+        resolve: async () => ({ ok: true, manifest: { id: 'private-guide', type: 'guide' } }),
+      }));
+      const onOpenGuide = jest.fn();
+      mockGuideAssignments = [
+        {
+          targetType: 'guide',
+          targetId: 'private-guide',
+          targetSource: 'app-platform',
+          ruleId: 'rule',
+          satisfied: false,
+          lifecycle: 'active',
+          guides: [{ guideId: 'private-guide', guideSource: 'app-platform', completed: false }],
+        },
+      ];
+      mockCatalogItems = [
+        {
+          key: 'app-platform:private-guide',
+          id: 'private-guide',
+          title: 'Assigned private guide',
+          source: 'organization',
+          format: 'guide',
+          url: 'backend-guide:private-guide',
+        },
+      ];
+
+      mockCatalogProgress = new Map([['app-platform:private-guide', { percent: 100 }]]);
+      if (outcome === 'failure') {
+        mockResetPathGuides.mockRejectedValue(new Error('Reset failed'));
+      }
+      let finishReset!: () => void;
+      if (outcome === 'success') {
+        mockResetPathGuides.mockReturnValue(
+          new Promise<void>((resolve) => {
+            finishReset = resolve;
+          })
+        );
+      }
+      render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+      fireEvent.click(
+        within(screen.getByRole('region', { name: 'Your assignments' })).getByRole('button', {
+          name: 'Assigned private guide',
+        })
+      );
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toHaveTextContent('Assigned private guide');
+      expect(onOpenGuide).not.toHaveBeenCalled();
+      if (outcome === 'cancel') {
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+        expect(mockResetPathGuides).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        return;
+      }
+      const confirm = within(dialog).getByRole('button', { name: 'Reset and continue' });
+      fireEvent.click(confirm);
+      fireEvent.click(confirm);
+      expect(mockResetPathGuides).toHaveBeenCalledTimes(1);
+      expect(mockResetPathGuides).toHaveBeenCalledWith(
+        'private-guide',
+        [expect.objectContaining({ id: 'private-guide', url: 'backend-guide:private-guide' })],
+        null
+      );
+      expect(onOpenGuide).not.toHaveBeenCalled();
+      if (outcome === 'failure') {
+        await waitFor(() => expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' })));
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(onOpenGuide).not.toHaveBeenCalled();
+      } else {
+        await act(async () => finishReset());
+        await waitFor(() =>
+          expect(onOpenGuide).toHaveBeenCalledWith(expect.objectContaining({ url: 'backend-guide:private-guide' }))
+        );
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      }
+    }
+  );
+});
+
 it('homepage retains an unavailable assigned guide without borrowing local progress or another source', () => {
   mockGuideAssignments = [
     {

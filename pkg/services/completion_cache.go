@@ -121,6 +121,7 @@ func CallerCompletionCacheKey(namespace, subject string) string {
 }
 
 func LoadCompletionIndex(ctx context.Context, namespace string, forced bool, logger log.Logger, load func(context.Context) (*CompletionIndex, int, error), now func() time.Time, namespaceGlobal func(error) bool, reason func(error) string) (*CompletionIndex, error) {
+	logNamespace, _, _ := strings.Cut(namespace, "\x00")
 	CompletionCacheMu.Lock()
 	InitCompletionCache()
 
@@ -201,15 +202,15 @@ func LoadCompletionIndex(ctx context.Context, namespace string, forced bool, log
 	if err == nil {
 		stats.Refreshes++
 		if _, hadFailure := completionLastFailure[namespace]; hadFailure {
-			logger.Info("completion index recovered", "namespace", namespace)
+			logger.Info("completion index recovered", "namespace", logNamespace)
 		}
 		completionCacheEntries[namespace] = &completionCacheEntry{index: idx}
 		delete(completionLastFailure, namespace)
 		fl.index = idx
 		logger.Debug("completion index refreshed",
-			"namespace", namespace, "pages", pages, "users", len(idx.ByUser),
-			"hits", stats.hits, "Misses", stats.Misses,
-			"staleServes", stats.staleServes, "RefreshFailures", stats.RefreshFailures)
+			"namespace", logNamespace, "pages", pages, "users", len(idx.ByUser),
+			"hits", stats.hits, "misses", stats.Misses,
+			"staleServes", stats.staleServes, "refreshFailures", stats.RefreshFailures)
 	} else {
 		stats.RefreshFailures++
 		namespaceGlobal := namespaceGlobal(err)
@@ -217,9 +218,9 @@ func LoadCompletionIndex(ctx context.Context, namespace string, forced bool, log
 			completionLastFailure[namespace] = completionFailure{at: now(), err: err}
 		}
 		logger.Info("completion index refresh failed",
-			"namespace", namespace, "reason", reason(err),
+			"namespace", logNamespace, "reason", reason(err),
 			"namespaceGlobal", namespaceGlobal, "servingStale", entry != nil,
-			"RefreshFailures", stats.RefreshFailures)
+			"refreshFailures", stats.RefreshFailures)
 		if entry != nil {
 			stats.staleServes++
 			fl.index = entry.index

@@ -203,7 +203,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   );
   const homeAssignedPaths = [
     ...selectPathAssignmentEntries(pathAssignments, allHomePathEntries),
-    ...selectGuideAssignmentEntries(guideAssignments, catalog.items),
+    ...selectGuideAssignmentEntries(guideAssignments, catalog.items, catalogProgress),
   ]
     .filter((entry) => entry.assignment && !entry.assignment.satisfied)
     .sort((a, b) => compareResolvedAssignments(a.assignment!, b.assignment!));
@@ -427,6 +427,12 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
 
   const openHomePath = (entry: HomePathEntry) => {
     selectCard(entry.key);
+    if (entry.isGuideAssignment) {
+      if (entry.assignedGuide) {
+        void catalogLaunch.launch(entry.assignedGuide);
+      }
+      return;
+    }
     const item = catalog.items.find(
       (candidate) => candidate.format === 'path' && catalogIdentity(candidate) === (entry.catalogKey ?? entry.key)
     );
@@ -450,12 +456,6 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
     if (entry.assignmentUnavailable || launchInFlightRef.current) {
       return;
     }
-    if (entry.isGuideAssignment) {
-      if (entry.assignedGuide) {
-        void catalogLaunch.launch(entry.assignedGuide);
-      }
-      return;
-    }
     const { mismatchedGuides } = getAssignmentGuideState(entry.guides, entry.assignment?.guides);
     if (mismatchedGuides.length > 0) {
       setPendingAssignment({ entry, mismatchedGuides });
@@ -473,7 +473,11 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
     setLaunchingId(pendingAssignment.entry.path.id);
     let resetSucceeded = false;
     try {
-      await resetPathGuides(pendingAssignment.entry.path.id, pendingAssignment.mismatchedGuides);
+      if (pendingAssignment.entry.isGuideAssignment) {
+        await resetPathGuides(pendingAssignment.entry.path.id, pendingAssignment.mismatchedGuides, null);
+      } else {
+        await resetPathGuides(pendingAssignment.entry.path.id, pendingAssignment.mismatchedGuides);
+      }
       resetSucceeded = true;
     } catch {
       if (mountedRef.current) {

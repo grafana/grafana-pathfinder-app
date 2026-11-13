@@ -308,7 +308,11 @@ export interface UseLearningPathsReturn {
   /** Reset a path's progress (clears guides, interactive steps, keeps badges) */
   resetPath: (pathId: string) => Promise<void>;
   /** Clears local completion for the given guides only; never touches the path's cover-level record. */
-  resetPathGuides: (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>) => Promise<void>;
+  resetPathGuides: (
+    pathId: string,
+    guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>,
+    selectedPath?: LearningPath | null
+  ) => Promise<void>;
   /** Dismiss a pending celebration */
   dismissCelebration: (badgeId: string) => Promise<void>;
   /** Current streak display info */

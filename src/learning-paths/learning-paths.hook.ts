@@ -670,13 +670,17 @@ export function useLearningPaths(): UseLearningPathsReturn {
   );
 
   const resetPathGuides = useCallback(
-    async (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>): Promise<void> => {
+    async (
+      pathId: string,
+      guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>,
+      selectedPath?: LearningPath | null
+    ): Promise<void> => {
       if (guides.length === 0) {
         return;
       }
       reportPathReset('assignment', 'learning_path_assignment_reset_modal', undefined, guides.length);
       const guideIds = guides.map((guide) => guide.id);
-      const path = paths.find((p) => p.id === pathId);
+      const path = selectedPath === undefined ? paths.find((p) => p.id === pathId) : selectedPath;
 
       if (path?.url) {
         const targets = guides.map((guide) => ({

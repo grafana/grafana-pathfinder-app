@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"time"
 
@@ -89,10 +90,7 @@ func completionReadHandler(store *resourceaccess.CompletionStore, capabilityOnly
 			}
 			completed, progress := services.CollateCompletions(records)
 			return &services.CompletionIndex{ByUser: completed, InProgressByUser: progress, AsOf: time.Now()}, pages, nil
-		}, time.Now, func(err error) bool {
-			status := sdkErrorStatus(err)
-			return status >= 400 && status != 401 && status != 403
-		}, func(error) string { return "upstream-error" })
+		}, time.Now, completionFailureCooldown, func(err error) string { return upstreamDiagnostic(err, "completionrecords", "list").Reason })
 		diagnostic := upstreamDiagnostic(err, "completionrecords", "list")
 		if index == nil {
 			status := sdkErrorStatus(err)
@@ -122,4 +120,16 @@ func completionReadHandler(store *resourceaccess.CompletionStore, capabilityOnly
 		}
 		return write()
 	}
+}
+
+func completionFailureCooldown(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	diagnostic := upstreamDiagnostic(err, "completionrecords", "list")
+	return diagnostic != nil && diagnostic.UpstreamStatus >= 300 && diagnostic.UpstreamStatus != 401 && diagnostic.UpstreamStatus != 403
 }
