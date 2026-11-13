@@ -17,6 +17,7 @@ export interface LearningPathEntry {
   isGuideAssignment?: boolean;
   assignmentUnavailable?: boolean;
   catalogKey?: string;
+  contentSource?: string;
 }
 
 export function selectLearningPathEntries({
@@ -65,6 +66,7 @@ export function selectLearningPathEntries({
     }
     entries.set(key, {
       key,
+      contentSource: path.isPrivate ? 'app-platform' : onlinePaths.includes(path) ? 'online-cdn' : 'bundled',
       path: { ...path, estimatedMinutes: path.estimatedMinutes ?? item?.estimatedMinutes },
       guides: getPathGuides(path.id),
       percent,
@@ -82,6 +84,8 @@ export function selectLearningPathEntries({
       key,
       percent,
       topic: catalogTopic(item),
+      contentSource:
+        item.source === 'organization' ? 'app-platform' : item.curatedPath ? 'bundled' : item.key.split(':')[0],
       path: item.curatedPath ?? {
         id: item.id,
         title: item.title,
@@ -119,7 +123,8 @@ export function selectPathAssignmentEntries(
         (candidate) =>
           candidate.path.id === assignment.targetId &&
           (!assignment.targetSource ||
-            (assignment.targetSource === 'app-platform') === Boolean(candidate.path.isPrivate))
+            (assignment.targetSource === 'interactive-tutorials' ? 'online-cdn' : assignment.targetSource) ===
+              (candidate.contentSource ?? (candidate.path.isPrivate ? 'app-platform' : 'bundled')))
       );
       const path = entry?.path ?? {
         id: assignment.targetId,

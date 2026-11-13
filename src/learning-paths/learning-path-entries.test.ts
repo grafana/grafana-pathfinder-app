@@ -137,3 +137,21 @@ it('keeps unavailable path obligations visible and preserves duplicate rule and 
       ?.assignmentUnavailable
   ).toBe(true);
 });
+
+it('does not substitute a bundled path for an unresolved online or unknown-source assignment', () => {
+  const entry = { key: 'grafana:path', path, guides: [], percent: 0, contentSource: 'bundled' };
+  for (const targetSource of ['online-cdn', 'interactive-tutorials', 'unknown']) {
+    const [row] = selectPathAssignmentEntries(
+      [{ targetType: 'path', targetId: 'path', targetSource, satisfied: false, lifecycle: 'active' }],
+      [entry]
+    );
+    expect(row?.assignmentUnavailable).toBe(true);
+  }
+  for (const targetSource of ['online-cdn', 'interactive-tutorials']) {
+    const [row] = selectPathAssignmentEntries(
+      [{ targetType: 'path', targetId: 'path', targetSource, satisfied: false, lifecycle: 'active' }],
+      [{ ...entry, contentSource: 'online-cdn' }]
+    );
+    expect(row?.assignmentUnavailable).toBe(false);
+  }
+});
