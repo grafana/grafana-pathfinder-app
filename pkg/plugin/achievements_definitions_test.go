@@ -3,10 +3,12 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,6 +179,174 @@ func TestDefinitionsSource_KeepsLastGoodAndRevalidates(t *testing.T) {
 				t.Fatalf("fetches = %d, want one (no redirect followed)", cdn.fetches.Load()-before)
 			}
 		})
+	}
+}
+
+// degradedBundle skips dash-builder (a construct outside the grammar) and drops
+// the search.performed action, both of which the test bundle evaluates.
+func degradedBundle(t *testing.T) string {
+	t.Helper()
+	b := strings.Replace(achievementsTestBundleJSON, `"counter":{"unit":"dashboard"`, `"streak":{"days":3},"counter":{"unit":"dashboard"`, 1)
+	b = strings.Replace(b, `,
+  "search":{"actions":{"performed":{"context":{}}}}`, "", 1)
+	if b == achievementsTestBundleJSON || strings.Contains(b, `"search"`) || !strings.Contains(b, `"streak"`) {
+		t.Fatal("degraded bundle fixture no longer matches the test bundle")
+	}
+	return b
+}
+
+// grownBundle adds an achievement and a registry action and keeps the rest.
+func grownBundle(t *testing.T) string {
+	t.Helper()
+	b := strings.Replace(achievementsTestBundleJSON, `"search":{"actions":{"performed":{"context":{}}}}`,
+		`"search":{"actions":{"performed":{"context":{}}}},
+  "alert-rules":{"actions":{"created":{"context":{}}}}`, 1)
+	b = strings.Replace(b, `
+]}}`, `,
+  {"id":"alert-starter","title":"Alert starter","description":"Create an alert rule.",
+   "counter":{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},
+   "tiers":[{"id":"bronze","at":1}]}
+]}}`, 1)
+	if !strings.Contains(b, `"alert-starter"`) || !strings.Contains(b, `"alert-rules"`) {
+		t.Fatal("grown bundle fixture no longer matches the test bundle")
+	}
+	return b
+}
+
+func warnFields(l *diagnosticLogger) map[string]interface{} {
+	fields := map[string]interface{}{}
+	for i := 0; i+1 < len(l.fields); i += 2 {
+		fields[l.fields[i].(string)] = l.fields[i+1]
+	}
+	return fields
+}
+
+func TestDefinitionsSource_RejectsADegradedRefresh(t *testing.T) {
+	cdn := newDefinitionsCDN(t)
+	source, clock := newTestDefinitionsSource(t, cdn)
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	source.logger = logger
+	first, _ := source.Snapshot(context.Background())
+
+	degraded := degradedBundle(t)
+	rejected, err := achievements.LoadBundle([]byte(degraded))
+	if err != nil || len(rejected.Skipped) == 0 {
+		t.Fatalf("the degraded bundle must load with skips: %v", err)
+	}
+	cdn.answer(http.StatusOK, degraded, `W/"degraded"`)
+	clock.advance(definitionsRevalidateAfter)
+	source.Snapshot(context.Background())
+	settle(t, source)
+
+	if source.current.Load() != first {
+		t.Fatal("a refresh that loses evaluable entries replaced the last good copy")
+	}
+	if !logger.warnedWith(msgDefinitionsRefreshRejected) {
+		t.Fatal("no rejection warning")
+	}
+	fields := warnFields(logger)
+	if fields["definitionsVersion"] != first.Version || fields["rejectedDefinitionsVersion"] != rejected.Version ||
+		!slices.Equal(fields["lostAchievements"].([]string), []string{"dash-builder"}) ||
+		!slices.Equal(fields["lostActions"].([]string), []string{"search.performed"}) {
+		t.Fatalf("rejection fields = %#v", fields)
+	}
+	source.mu.Lock()
+	backoff, etag := source.retryAt.Sub(clock.Now()), source.etag
+	source.mu.Unlock()
+	if backoff != definitionsBackoffMin || etag != `W/"one"` {
+		t.Fatalf("a rejected refresh must back off like a failed fetch and keep the old ETag: backoff %v, etag %q", backoff, etag)
+	}
+
+	clock.advance(definitionsBackoffMin)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	if source.current.Load() != first {
+		t.Fatal("the degraded bundle replaced the copy on retry")
+	}
+	source.mu.Lock()
+	backoff = source.retryAt.Sub(clock.Now())
+	source.mu.Unlock()
+	if backoff != 2*definitionsBackoffMin {
+		t.Fatalf("second rejection backoff = %v, want %v", backoff, 2*definitionsBackoffMin)
+	}
+
+	mem := newMemAchievements()
+	app := newAchievementsTestApp(t, mem)
+	app.definitions = source
+	rr := postAchievementEvent(t, app, achievementsTestUser, dashboardEventBody("evt-1", "uid-a"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("events on the kept copy: status %d body %s", rr.Code, rr.Body.String())
+	}
+	if d := decodeEvents(t, rr).Decisions; len(d) != 1 || d[0].AchievementID != "dash-builder" || !slices.Equal(d[0].Awarded, []string{"bronze"}) {
+		t.Fatalf("the kept copy did not evaluate dash-builder: %+v", d)
+	}
+	search := fmt.Sprintf(`{"schemaVersion":1,"eventId":"s","entity":"search","action":"performed","occurredAt":%q}`, timeNow().UTC().Format(time.RFC3339))
+	if rr := postAchievementEvent(t, app, achievementsTestUser, search); rr.Code != http.StatusOK {
+		t.Fatalf("search.performed on the kept copy: status %d body %s", rr.Code, rr.Body.String())
+	}
+
+	grown := grownBundle(t)
+	cdn.answer(http.StatusOK, grown, `W/"grown"`)
+	clock.advance(2 * definitionsBackoffMin)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	recovered := source.current.Load()
+	if recovered == first || len(recovered.Catalog.Achievements) != 3 {
+		t.Fatalf("a good bundle after a rejection was not swapped in: %+v", recovered.Catalog)
+	}
+	source.mu.Lock()
+	failures, retryAt := source.failures, source.retryAt
+	source.mu.Unlock()
+	if failures != 0 || !retryAt.IsZero() {
+		t.Fatalf("recovery left failures %d, retryAt %v", failures, retryAt)
+	}
+}
+
+func TestDefinitionsSource_AcceptsARefreshThatOnlyAddsOrKeeps(t *testing.T) {
+	cdn := newDefinitionsCDN(t)
+	source, clock := newTestDefinitionsSource(t, cdn)
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	source.logger = logger
+	first, _ := source.Snapshot(context.Background())
+
+	cdn.answer(http.StatusOK, grownBundle(t), `W/"grown"`)
+	clock.advance(definitionsRevalidateAfter)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	next := source.current.Load()
+	if next == first || len(next.Catalog.Achievements) != 3 || logger.warnedWith(msgDefinitionsRefreshRejected) {
+		t.Fatalf("a growing refresh was not accepted: %d achievements", len(next.Catalog.Achievements))
+	}
+	if _, ok := next.Registry.Entities["alert-rules"].Actions["created"]; !ok {
+		t.Fatal("the added registry action is missing")
+	}
+}
+
+func TestDefinitionsSource_FirstLoadTakesADegradedBundle(t *testing.T) {
+	cdn := newDefinitionsCDN(t)
+	cdn.answer(http.StatusOK, degradedBundle(t), `W/"degraded"`)
+	source, _ := newTestDefinitionsSource(t, cdn)
+	snap, _ := source.Snapshot(context.Background())
+	if snap == nil || len(snap.Skipped) == 0 {
+		t.Fatalf("with no copy loaded, a bundle with skips must still load: %+v", snap)
+	}
+}
+
+func TestLostEvaluable(t *testing.T) {
+	good := loadAchievementsTestBundle(t, achievementsTestBundleJSON)
+	degraded, err := achievements.LoadBundle([]byte(degradedBundle(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, actions := lostEvaluable(good, degraded)
+	if !slices.Equal(ids, []string{"dash-builder"}) || !slices.Equal(actions, []string{"search.performed"}) {
+		t.Fatalf("lost = %v, %v", ids, actions)
+	}
+	if ids, actions := lostEvaluable(degraded, good); len(ids)+len(actions) != 0 {
+		t.Fatalf("gaining entries lost %v, %v", ids, actions)
+	}
+	if ids, actions := lostEvaluable(good, good); len(ids)+len(actions) != 0 {
+		t.Fatalf("an identical copy lost %v, %v", ids, actions)
 	}
 }
 

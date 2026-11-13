@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,8 @@ const (
 	definitionsColdStartWait   = 2 * time.Second
 
 	errDefinitionsUnavailable = "definitions-unavailable"
+
+	msgDefinitionsRefreshRejected = "achievements definitions refresh rejected"
 )
 
 // definitionsProvider returns nil and a retry delay when no definitions are loaded.
@@ -36,7 +39,10 @@ type definitionsProvider interface {
 	Snapshot(ctx context.Context) (*achievements.Snapshot, time.Duration)
 }
 
-// definitionsSource never replaces its last good copy with a failed or unreadable fetch.
+// definitionsSource never replaces its last good copy with a failed or
+// unreadable fetch, nor with one that would stop evaluating a definition or
+// registry action the copy evaluates; such a degraded refresh counts as a
+// failure and backs off. A refresh that only adds or keeps entries replaces it.
 type definitionsSource struct {
 	url           string
 	client        *http.Client
@@ -133,6 +139,16 @@ func (s *definitionsSource) refresh(done chan struct{}, etag string) {
 		s.logger.Warn("achievement definitions fetch failed, keeping the last good copy", "error", err, "failures", s.failures, "loaded", s.current.Load() != nil)
 		return
 	}
+	if current := s.current.Load(); current != nil && snap != nil {
+		if achievementIDs, actions := lostEvaluable(current, snap); len(achievementIDs)+len(actions) > 0 {
+			s.failures++
+			s.retryAt = now.Add(definitionsBackoff(s.failures))
+			s.logger.Warn(msgDefinitionsRefreshRejected,
+				"definitionsVersion", current.Version, "rejectedDefinitionsVersion", snap.Version,
+				"lostAchievements", achievementIDs, "lostActions", actions, "failures", s.failures)
+			return
+		}
+	}
 	s.failures = 0
 	s.retryAt = time.Time{}
 	s.checkedAt = now
@@ -144,6 +160,29 @@ func (s *definitionsSource) refresh(done chan struct{}, etag string) {
 	}
 	s.etag = newETag
 	s.current.Store(snap)
+}
+
+// lostEvaluable lists the definitions and registry actions current evaluates
+// that next does not, because next skipped them or dropped them.
+func lostEvaluable(current, next *achievements.Snapshot) (achievementIDs, actions []string) {
+	kept := map[string]bool{}
+	for _, d := range next.Catalog.Achievements {
+		kept[d.ID] = true
+	}
+	for _, d := range current.Catalog.Achievements {
+		if !kept[d.ID] {
+			achievementIDs = append(achievementIDs, d.ID)
+		}
+	}
+	for entity, e := range current.Registry.Entities {
+		for name := range e.Actions {
+			if _, ok := next.Registry.Entities[entity].Actions[name]; !ok {
+				actions = append(actions, entity+"."+name)
+			}
+		}
+	}
+	slices.Sort(actions)
+	return achievementIDs, actions
 }
 
 // fetch returns a nil snapshot and no error on 304.
