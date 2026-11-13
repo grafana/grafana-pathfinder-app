@@ -108,7 +108,7 @@ type Decision struct {
 	AchievementID string `json:"achievementId"`
 	Decision      Kind   `json:"decision"`
 	Reason        Reason `json:"reason,omitempty"`
-	// Awarded lists the tier ids this event newly awarded, in catalog order.
+	// Awarded lists the tier ids this event added to the held set, in catalog order.
 	Awarded []string `json:"awarded"`
 	// Final reports that every tier in the catalog is held.
 	Final bool `json:"final"`
