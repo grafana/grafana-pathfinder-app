@@ -187,6 +187,17 @@ def main():
         if not compare(transcripts[1]['httpReads']['insights/503/completions=true'], mutated_insights):
             raise RuntimeError('production insights partial-history mutation was not detected')
         insights_route.write_text(insights_source)
+        guide_client = target / 'pkg/resourceaccess/guides.go'
+        guide_source = guide_client.read_text()
+        guide_needle = 'return nil, &ResponseValidationError{Reason: "invalid-json", Status: 200}'
+        if guide_source.count(guide_needle) != 1:
+            raise RuntimeError('guide malformed-response mutation target changed')
+        guide_client.write_text(guide_source.replace(guide_needle, 'return nil, err'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityHTTPReads$', '-count=1'], cwd=target, env=env, check=True)
+        mutated_guide = json.loads(Path(str(output) + '.httpreads').read_text())['guide/-1']
+        if not compare(transcripts[1]['httpReads']['guide/-1'], mutated_guide):
+            raise RuntimeError('production guide diagnostic mutation was not detected')
+        guide_client.write_text(guide_source)
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599
@@ -195,7 +206,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, insights completeness, and diagnostic controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, insights completeness, guide responses, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

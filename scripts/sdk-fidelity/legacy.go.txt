@@ -121,7 +121,7 @@ func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest
 	return response
 }
 
-func fidelitySettingsRead(t *testing.T, status int, body string, query string) *httptest.ResponseRecorder {
+func fidelitySettingsRead(t *testing.T, status int, body string, query string, guide ...bool) *httptest.ResponseRecorder {
 	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"success","data":{"token":"obo-token"}}`))
 	}))
@@ -142,7 +142,11 @@ func fidelitySettingsRead(t *testing.T, status int, body string, query string) *
 	defer upstream.Close()
 	app := &App{logger: log.DefaultLogger, oboExchanger: exchanger}
 	response := httptest.NewRecorder()
-	app.handlePathfinderSettings(response, customGuideRequestWithConfig(t, "/pathfinder-settings?"+query, "user:1", map[string]string{sdkconfig.AppURL: upstream.URL}))
+	if len(guide) > 0 && guide[0] {
+		app.handleCustomGuide(response, customGuideRequestWithConfig(t, "/custom-guide?name=test-guide", "user:1", map[string]string{sdkconfig.AppURL: upstream.URL}))
+	} else {
+		app.handlePathfinderSettings(response, customGuideRequestWithConfig(t, "/pathfinder-settings?"+query, "user:1", map[string]string{sdkconfig.AppURL: upstream.URL}))
+	}
 	return response
 }
 

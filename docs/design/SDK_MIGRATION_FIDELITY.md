@@ -72,6 +72,14 @@ and warnings. Dropping the generated client's continuation token must change the
 partial-report transcript. Assignment-page partial history and platform ingress
 authentication remain separate from this corpus.
 
+Individual guide reads add sixteen HTTP cases through real clients on both sides:
+a draft with blocks, an unknown field, and a resource version; thirteen upstream
+error statuses; malformed JSON; and a response exceeding the 8 MiB bound. The
+full resource and error envelopes must match. This caught loss of the successful
+upstream status when JSON decoding fails; a production mutation must detect it.
+Guide lists, catalogue visibility, and historical write sequences remain separate
+from these individual-resource reads.
+
 The runner exports the immutable baseline into a temporary directory and copies the
 current Go implementation into a separate temporary checkout. It does not switch
 branches, alter the local running instance, or execute the old plugin against live

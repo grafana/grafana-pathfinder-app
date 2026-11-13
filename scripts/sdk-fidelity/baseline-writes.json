@@ -1824,6 +1824,300 @@
       "retryAfter": "30",
       "status": 503
     },
+    "guide/-1": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide/-2": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "response-too-large",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide/200": {
+      "body": {
+        "metadata": {
+          "name": "test-guide",
+          "resourceVersion": "42"
+        },
+        "spec": {
+          "blocks": [
+            {
+              "content": "Hello",
+              "type": "markdown"
+            }
+          ],
+          "futureField": {
+            "enabled": true
+          },
+          "status": "draft"
+        }
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide/400": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 400
+    },
+    "guide/401": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide/403": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 403
+    },
+    "guide/404": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "guide/405": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 405
+    },
+    "guide/408": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 408
+    },
+    "guide/409": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 409
+    },
+    "guide/422": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 422
+    },
+    "guide/429": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 429
+    },
+    "guide/500": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 500
+    },
+    "guide/501": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 501
+    },
+    "guide/503": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 503
+    },
+    "guide/504": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 504
+    },
     "insights-paged/-1/completions=true": {
       "body": {
         "asOf": "<validated-server-time>",
