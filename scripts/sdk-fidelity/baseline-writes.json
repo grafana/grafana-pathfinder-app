@@ -1,4 +1,90 @@
 {
+  "cache": [
+    {
+      "asOf": "",
+      "calls": 1,
+      "failed": true,
+      "name": "cold outage"
+    },
+    {
+      "asOf": "",
+      "calls": 1,
+      "failed": true,
+      "name": "cold cooldown"
+    },
+    {
+      "asOf": "2026-11-01T00:00:30Z",
+      "calls": 2,
+      "failed": false,
+      "name": "cold recovery"
+    },
+    {
+      "asOf": "2026-11-01T00:00:30Z",
+      "calls": 2,
+      "failed": false,
+      "name": "within TTL"
+    },
+    {
+      "asOf": "2026-11-01T00:05:30Z",
+      "calls": 3,
+      "failed": false,
+      "name": "TTL boundary"
+    },
+    {
+      "asOf": "2026-11-01T00:05:30Z",
+      "calls": 4,
+      "failed": false,
+      "name": "forced refresh"
+    },
+    {
+      "asOf": "2026-11-01T00:05:30Z",
+      "calls": 4,
+      "failed": false,
+      "name": "forced refresh throttled"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 5,
+      "failed": false,
+      "name": "forced refresh resumes"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 6,
+      "failed": true,
+      "name": "invalidation retains stale on denied refresh"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 7,
+      "failed": true,
+      "name": "denied refresh is not cached"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 8,
+      "failed": true,
+      "name": "warm outage"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 8,
+      "failed": false,
+      "name": "warm cooldown serves stale"
+    },
+    {
+      "asOf": "2026-11-01T00:06:30Z",
+      "calls": 9,
+      "failed": false,
+      "name": "warm recovery"
+    },
+    {
+      "asOf": "2026-11-01T00:06:30Z",
+      "calls": 10,
+      "failed": false,
+      "name": "write invalidation refreshes"
+    }
+  ],
   "conflict-exhaustion-recovery": [
     {
       "body": {

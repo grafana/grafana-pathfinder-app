@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -44,4 +45,30 @@ func fidelityHistory(t *testing.T, data []byte) any {
 		reports = append(reports, report)
 	}
 	return map[string]any{"completed": complete, "partial": partial, "reports": reports}
+}
+
+func newFidelityCache(t *testing.T) fidelityCacheDriver {
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+	advance := withFrozenTime(t, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
+	status := 0
+	lister := &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		if status != 0 {
+			return nil, &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+		return &completionRecordPage{}, nil
+	}}
+	return fidelityCacheDriver{
+		advance:    advance,
+		invalidate: func() { invalidateCompletionIndex("stacks-1") },
+		read: func(forced bool, nextStatus int) fidelityCacheResult {
+			status = nextStatus
+			index, err := getCompletionIndex(context.Background(), "stacks-1", lister, forced, log.DefaultLogger)
+			result := fidelityCacheResult{Calls: lister.callCount(), Failed: err != nil}
+			if index != nil {
+				result.AsOf = index.asOf.Format(time.RFC3339Nano)
+			}
+			return result
+		},
+	}
 }

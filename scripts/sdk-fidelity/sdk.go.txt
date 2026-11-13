@@ -57,3 +57,32 @@ func fidelityHistory(t *testing.T, data []byte) any {
 	}
 	return map[string]any{"completed": complete, "partial": partial, "reports": reports}
 }
+
+func newFidelityCache(t *testing.T) fidelityCacheDriver {
+	services.ResetCompletionCache()
+	t.Cleanup(services.ResetCompletionCache)
+	now := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	key := services.CallerCompletionCacheKey("stacks-1", "user:abc")
+	calls := 0
+	return fidelityCacheDriver{
+		advance:    func(duration time.Duration) { now = now.Add(duration) },
+		invalidate: func() { services.InvalidateCompletionIndex("stacks-1") },
+		read: func(forced bool, status int) fidelityCacheResult {
+			index, err := services.LoadCompletionIndex(context.Background(), key, forced, log.DefaultLogger,
+				func(context.Context) (*services.CompletionIndex, int, error) {
+					calls++
+					if status != 0 {
+						return nil, 0, &apierrors.StatusError{ErrStatus: metav1.Status{Code: int32(status)}}
+					}
+					return &services.CompletionIndex{AsOf: now}, 1, nil
+				}, func() time.Time { return now },
+				func(err error) bool { code := sdkErrorStatus(err); return code >= 400 && code != 401 && code != 403 },
+				func(error) string { return "upstream-error" })
+			result := fidelityCacheResult{Calls: calls, Failed: err != nil}
+			if index != nil {
+				result.AsOf = index.AsOf.Format(time.RFC3339Nano)
+			}
+			return result
+		},
+	}
+}

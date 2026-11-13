@@ -45,12 +45,14 @@ def main():
             dest = target / 'pkg' / package
             (dest / 'frozen_shared_test.go').write_text((HERE / 'shared.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_history_test.go').write_text((HERE / 'history.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
+            (dest / 'frozen_cache_test.go').write_text((HERE / 'cache.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_adapter_test.go').write_text((HERE / (mode + '.go.txt')).read_text())
             output = Path(temp) / (mode + '.json')
             env = dict(os.environ, FIDELITY_CORPUS=str(HERE / 'scenarios.json'), FIDELITY_OUTPUT=str(output), FIDELITY_HISTORY=str(HERE / 'history.json'))
             subprocess.run(['go', 'test', './pkg/' + package, '-run', '^TestFrozenFidelity', '-count=1'], cwd=target, env=env, check=True)
             transcripts.append(json.loads(output.read_text()))
             transcripts[-1]["history"] = json.loads(Path(str(output) + ".reads").read_text())
+            transcripts[-1]["cache"] = json.loads(Path(str(output) + ".cache").read_text())
         expected = HERE / 'baseline-writes.json'
         if args.record_baseline:
             expected.write_text(json.dumps(transcripts[0], indent=2, sort_keys=True) + '\n')
@@ -59,7 +61,7 @@ def main():
         # Explicit permitted difference: SDK POST responses add Cache-Control: no-store.
         # Assert both exact values before comparison; never discard arbitrary headers.
         for name in transcripts[0]:
-            if name == "history":
+            if name in ("history", "cache"):
                 continue
             for old, new in zip(transcripts[0][name], transcripts[1][name], strict=True):
                 if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
@@ -77,11 +79,20 @@ def main():
         mutation = subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityWrites$', '-count=1'], cwd=target, env=env, capture_output=True, text=True)
         if mutation.returncode == 0:
             mutated_output = json.loads(output.read_text())
-            clean_writes = {key: value for key, value in transcripts[1].items() if key != 'history'}
+            clean_writes = {key: value for key, value in transcripts[1].items() if key not in ('history', 'cache')}
             if not compare(clean_writes, mutated_output):
                 raise RuntimeError('production monotonicity mutation was not detected')
         else:
             raise RuntimeError('mutation did not produce a comparable transcript: ' + mutation.stdout + mutation.stderr)
+        cache = target / 'pkg/services/completion_cache.go'
+        cache_source = cache.read_text()
+        cache_needle = 'const completionCacheTTL = 5 * time.Minute'
+        if cache_source.count(cache_needle) != 1:
+            raise RuntimeError('cache mutation target changed; review the control')
+        cache.write_text(cache_source.replace(cache_needle, 'const completionCacheTTL = 10 * time.Minute'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityCache$', '-count=1'], cwd=target, env=env, check=True)
+        if not compare(transcripts[1]['cache'], json.loads(Path(str(output) + '.cache').read_text())):
+            raise RuntimeError('production cache TTL mutation was not detected')
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599
@@ -90,7 +101,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes and historical projections match; status and production monotonicity controls detected.')
+        print('Frozen writes, history, and cache transcripts match; status, monotonicity, and cache TTL controls detected.')
 
 
 if __name__ == '__main__':
