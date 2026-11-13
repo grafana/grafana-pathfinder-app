@@ -60,7 +60,7 @@
         "obsolete-key:markComplete.percentComplete"
       ],
       "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "pending"
+      "tracking": "#2412"
     },
     {
       "locales": [
@@ -80,7 +80,7 @@
       ],
       "violations": ["missing-key:myLearning.dueDayCount_one"],
       "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "pending"
+      "tracking": "#2412"
     },
     {
       "locales": [
@@ -106,7 +106,7 @@
       ],
       "violations": ["missing-key:guideVersionNotice.body", "missing-key:guideVersionNotice.title"],
       "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "pending"
+      "tracking": "#2412"
     },
     {
       "locales": [
@@ -183,7 +183,7 @@
         "obsolete-key:contextPanel.settings"
       ],
       "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "pending"
+      "tracking": "#2412"
     },
     {
       "locales": ["cs-CZ", "de-DE", "es-ES", "hu-HU", "it-IT", "nl-NL", "pl-PL", "pt-BR", "pt-PT", "ru-RU", "sv-SE"],
@@ -196,13 +196,13 @@
         "missing-key:myLearning.discoverMoreMilestones_one"
       ],
       "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "pending"
+      "tracking": "#2412"
     },
     {
       "locales": ["cs-CZ", "es-ES", "fr-FR", "it-IT", "pl-PL", "pt-BR", "pt-PT", "ru-RU"],
       "violations": ["missing-key:myLearning.dueDayCount_many", "missing-key:sidebarHub.dueInDays_many"],
       "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "pending"
+      "tracking": "#2412"
     },
     {
       "locales": ["cs-CZ", "es-ES", "it-IT", "pl-PL", "pt-BR", "pt-PT", "ru-RU"],
@@ -215,7 +215,7 @@
         "missing-key:myLearning.discoverMoreMilestones_many"
       ],
       "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "pending"
+      "tracking": "#2412"
     },
     {
       "locales": ["cs-CZ", "pl-PL", "ru-RU"],
@@ -230,7 +230,7 @@
         "missing-key:sidebarHub.dueInDays_few"
       ],
       "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "pending"
+      "tracking": "#2412"
     }
   ]
 }

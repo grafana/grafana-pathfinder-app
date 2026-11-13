@@ -221,7 +221,7 @@ Empty translations produce warnings, not failures. A new key can use an empty va
 
 CI publishes structural debt and empty-translation warnings, plus a job summary. The checker does not compare wording changes or identify translations that need editorial review.
 
-The baseline uses `tracking: "pending"` and produces a warning. Before merge, replace pending references with the approved debt issue #2412. Keep the baseline exceptions unchanged until translation paydown in separate PRs.
+Existing baseline exceptions reference [#2412](https://github.com/grafana/grafana-pathfinder-app/issues/2412). Translation paydown belongs in separate PRs after the enforcement PR merges.
 
 The check reads catalogs only. Strings that exist solely as defaults in code remain outside its scope.
 
