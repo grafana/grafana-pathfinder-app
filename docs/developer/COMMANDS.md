@@ -221,7 +221,7 @@ Empty translations produce warnings, not failures. A new key can use an empty va
 
 CI publishes structural debt and empty-translation warnings, plus a job summary. The checker does not compare wording changes or identify translations that need editorial review.
 
-The initial baseline uses `tracking: "pending"` because the operator deferred issue creation. This temporary value produces a warning. Before merge, replace it with the approved follow-up issue reference. Translation paydown belongs in separate PRs, not the enforcement PR.
+The baseline uses `tracking: "pending"` and produces a warning. Keep the existing references until a separate change approves their replacement. Translation paydown belongs in separate PRs.
 
 The check reads catalogs only. Strings that exist solely as defaults in code remain outside its scope.
 
