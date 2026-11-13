@@ -108,3 +108,7 @@ Enable it with the **Enable Assistant (Dev Mode)** checkbox on the configuration
 - **Selector generation**: generate optimal selectors for DOM elements
 - **Action detection**: analyze what actions can be performed on elements
 - **Assistant testing**: test assistant integration in OSS without Grafana Cloud
+
+## Kiosk PR previews
+
+The PR tester supports full-screen kiosk previews from public GitHub PRs, including unchanged kiosks whose guides or assets changed. See [Kiosk catalogs and PR previews](kiosk-authoring.md) for version 2 authoring, validation, and launch modes.

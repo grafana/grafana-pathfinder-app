@@ -1,4 +1,4 @@
-import { KioskCatalogSchema } from '../../types/kiosk-page.schema';
+import { KioskCatalogDocumentSchema } from '../../types/kiosk-page.schema';
 /**
  * Schema Command
  *
@@ -43,7 +43,18 @@ interface SchemaRegistryEntry {
  * Keys are the public names used on the CLI.
  */
 export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
-  kiosk: { schema: KioskCatalogSchema, description: 'Structured kiosk catalog', schemaVersion: '1' },
+  kiosk: {
+    schema: KioskCatalogDocumentSchema,
+    description: 'Legacy and structured kiosk catalogs',
+    schemaVersion: '2',
+    refinements: [
+      'Rule IDs and input variable names must be unique',
+      'All nested rule references must exist; launch forms require interactive guides',
+      'At most 50 blocks including containers',
+      'Images require alternative text or decorative: true',
+      'Backgrounds must share a readable black or white foreground at 4.5:1 contrast',
+    ],
+  },
   guide: {
     schema: JsonGuideSchemaStrict,
     description: 'Root JSON guide schema (strict, no extra fields)',
