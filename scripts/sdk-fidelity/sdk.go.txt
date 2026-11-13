@@ -1,0 +1,59 @@
+package provider
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	authlib "github.com/grafana/authlib/types"
+	"github.com/grafana/grafana-app-sdk/app"
+	"github.com/grafana/grafana-app-sdk/resource"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"io"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any) *httptest.ResponseRecorder {
+	store.createErr = nil
+	if step.Status != 0 {
+		store.createErr = &apierrors.StatusError{ErrStatus: metav1.Status{Code: int32(step.Status), Message: "injected"}}
+	}
+	store.replaceErrs = nil
+	for i := 0; i < step.Conflicts; i++ {
+		store.replaceErrs = append(store.replaceErrs, &apierrors.StatusError{ErrStatus: metav1.Status{Code: 409}})
+	}
+	raw, _ := json.Marshal(body)
+	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"})
+	handler := completionWriteHandler(store, func(context.Context, string, services.CompletionRecord) {})
+	w := httptest.NewRecorder()
+	if err := handler(ctx, w, &app.CustomRouteRequest{Method: http.MethodPost, Body: io.NopCloser(bytes.NewReader(raw)), ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+func fidelityHistory(t *testing.T, data []byte) any {
+	var corpus struct {
+		Records     []services.CompletionRecord `json:"records"`
+		Assignments []services.Assignment       `json:"assignments"`
+	}
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		t.Fatal(err)
+	}
+	complete, partial := services.CollateCompletions(corpus.Records)
+	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 1, 0)
+	evaluator := &services.ObligationEvaluator{Logger: log.DefaultLogger}
+	reports := []any{}
+	for _, historyComplete := range []bool{true, false} {
+		report := services.NewLearningInsightsResponse(from, to)
+		services.ShapeLearningInsights(&report, corpus.Records, corpus.Assignments, from, to, to, historyComplete, evaluator.GuideProgress)
+		reports = append(reports, report)
+	}
+	return map[string]any{"completed": complete, "partial": partial, "reports": reports}
+}

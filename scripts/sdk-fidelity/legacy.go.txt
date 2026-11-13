@@ -1,0 +1,47 @@
+package plugin
+
+import (
+	"encoding/json"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any) *httptest.ResponseRecorder {
+	store.createErr = nil
+	if step.Status != 0 {
+		store.createErr = &appPlatformUpstreamError{status: step.Status, msg: "injected"}
+	}
+	store.replaceErrs = nil
+	for i := 0; i < step.Conflicts; i++ {
+		store.replaceErrs = append(store.replaceErrs, &appPlatformUpstreamError{status: 409, msg: "injected"})
+	}
+	withCreator(t, store)
+	r := writeRequest(t, "user:abc", body, testGrafanaConfig())
+	// Model a valid stack/org pair; the baseline fixture's org 7 is deliberately synthetic.
+	r = r.WithContext(backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: "stacks-1", OrgID: 1}))
+	return doWrite(t, nil, r)
+}
+
+func fidelityHistory(t *testing.T, data []byte) any {
+	var corpus struct {
+		Records     []completionRecordSpec `json:"records"`
+		Assignments []assignmentSpec       `json:"assignments"`
+	}
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		t.Fatal(err)
+	}
+	complete, partial := collateCompletions(corpus.Records)
+	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 1, 0)
+	evaluator := &obligationEvaluator{logger: log.DefaultLogger}
+	reports := []any{}
+	for _, historyComplete := range []bool{true, false} {
+		report := newLearningInsightsResponse(from, to)
+		shapeLearningInsights(&report, corpus.Records, corpus.Assignments, from, to, to, historyComplete, evaluator.guideProgress)
+		reports = append(reports, report)
+	}
+	return map[string]any{"completed": complete, "partial": partial, "reports": reports}
+}
