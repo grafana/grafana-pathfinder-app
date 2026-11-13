@@ -307,3 +307,25 @@ func fidelityCollectionRead(t *testing.T, status int, catalogue bool) *httptest.
 	}
 	return response
 }
+
+func fidelityResourceMutation(t *testing.T, base, kind, method, name string, body []byte) *httptest.ResponseRecorder {
+	generator := sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(rest.Config{Host: base, APIPath: "/apis"}, resourceaccess.GuidePageMaxBytes))
+	guides, err := resourceaccess.NewGuideStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := resourceWriteHandler(kind, resourceaccess.GuidePageMaxBytes, guides.Write, guides.Delete)
+	if kind == "PathfinderSettings" {
+		settings, err := resourceaccess.NewSettingsStore(generator)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handler = resourceWriteHandler(kind, services.SettingsMaxBytes, settings.Write, nil)
+	}
+	ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "stacks-1"})
+	response := httptest.NewRecorder()
+	if err := handler(ctx, response, &app.CustomRouteRequest{Method: method, URL: &url.URL{RawQuery: "name=" + name}, Body: io.NopCloser(bytes.NewReader(body)), ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}

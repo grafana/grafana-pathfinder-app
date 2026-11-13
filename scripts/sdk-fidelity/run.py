@@ -46,6 +46,7 @@ def main():
             (dest / 'frozen_shared_test.go').write_text((HERE / 'shared.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_history_test.go').write_text((HERE / 'history.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_http_reads_test.go').write_text((HERE / 'http_reads.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
+            (dest / 'frozen_resources_test.go').write_text((HERE / 'resource_writes.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_concurrent_test.go').write_text((HERE / 'concurrent.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_cache_test.go').write_text((HERE / 'cache.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_adapter_test.go').write_text((HERE / (mode + '.go.txt')).read_text())
@@ -54,6 +55,7 @@ def main():
             subprocess.run(['go', 'test', './pkg/' + package, '-run', '^TestFrozenFidelity', '-count=1'], cwd=target, env=env, check=True)
             subprocess.run(['go', 'test', '-race', './pkg/' + package, '-run', '^TestFrozenFidelityConcurrent$', '-count=10'], cwd=target, env=env, check=True)
             transcripts.append(json.loads(output.read_text()))
+            transcripts[-1]["resources"] = json.loads(Path(str(output) + ".resources").read_text())
             transcripts[-1]["concurrent"] = json.loads(Path(str(output) + ".concurrent").read_text())
             transcripts[-1]["history"] = json.loads(Path(str(output) + ".reads").read_text())
             transcripts[-1]["cache"] = json.loads(Path(str(output) + ".cache").read_text())
@@ -66,7 +68,7 @@ def main():
         # Explicit permitted difference: SDK POST responses add Cache-Control: no-store.
         # Assert both exact values before comparison; never discard arbitrary headers.
         for name in transcripts[0]:
-            if name in ("history", "cache", "httpReads", "concurrent"):
+            if name in ("history", "cache", "httpReads", "concurrent", "resources"):
                 continue
             for old, new in zip(transcripts[0][name], transcripts[1][name], strict=True):
                 if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
@@ -78,6 +80,15 @@ def main():
                 if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
                     raise RuntimeError('unexpected assignment cache-control difference')
                 old['cacheControl'] = 'no-store'
+        for kind, rows in transcripts[0]['resources'].items():
+            for old, new in zip(rows, transcripts[1]['resources'][kind], strict=True):
+                if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
+                    raise RuntimeError('unexpected resource-write cache-control difference')
+                old['cacheControl'] = 'no-store'
+                if old['status'] >= 400 and 'metadata' not in old['body']:
+                    if new['body'].get('metadata') != {}:
+                        raise RuntimeError('unexpected resource-write error metadata')
+                    old['body']['metadata'] = {}
         diff = compare(*transcripts)
         # Mutate only the temporary SDK copy: the harness must catch a broken
         # monotonic-progress comparison in production code, not just a JSON edit.
@@ -90,7 +101,7 @@ def main():
         mutation = subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityWrites$', '-count=1'], cwd=target, env=env, capture_output=True, text=True)
         if mutation.returncode == 0:
             mutated_output = json.loads(output.read_text())
-            clean_writes = {key: value for key, value in transcripts[1].items() if key not in ('history', 'cache', 'httpReads', 'concurrent')}
+            clean_writes = {key: value for key, value in transcripts[1].items() if key not in ('history', 'cache', 'httpReads', 'concurrent', 'resources')}
             if not compare(clean_writes, mutated_output):
                 raise RuntimeError('production monotonicity mutation was not detected')
         else:
@@ -223,6 +234,17 @@ def main():
             if not compare(transcripts[1]['httpReads'][key], mutated_guides[key]):
                 raise RuntimeError('production guide pagination mutation was not detected: ' + key)
         guide_client.write_text(guide_source)
+        resource_client = target / 'pkg/resourceaccess/resource_writes.go'
+        resource_source = resource_client.read_text()
+        resource_needle = 'for key, value := range map[string]string'
+        if resource_source.count(resource_needle) != 1:
+            raise RuntimeError('resource metadata mutation target changed')
+        resource_client.write_text(resource_source.replace(resource_needle, 'delete(metadata, "annotations")\n ' + resource_needle))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityResourceWrites$', '-count=1'], cwd=target, env=env, check=True)
+        mutated_resources = json.loads(Path(str(output) + '.resources').read_text())
+        if not compare(transcripts[1]['resources'], mutated_resources):
+            raise RuntimeError('production resource metadata loss was not detected')
+        resource_client.write_text(resource_source)
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599

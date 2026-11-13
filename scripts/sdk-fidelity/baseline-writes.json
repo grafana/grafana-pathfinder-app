@@ -5670,6 +5670,377 @@
       "status": 200
     }
   ],
+  "resources": {
+    "InteractiveGuide": [
+      {
+        "body": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "draft",
+            "title": "Historical guide"
+          }
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "draft",
+            "title": "Historical guide"
+          }
+        },
+        "status": 201
+      },
+      {
+        "body": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "published",
+            "title": "Published guide"
+          }
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "published",
+            "title": "Published guide"
+          }
+        },
+        "status": 200
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 409,
+          "kind": "Status",
+          "message": "Conflict",
+          "reason": "Conflict",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "published",
+            "title": "Published guide"
+          }
+        },
+        "status": 409
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 403,
+          "kind": "Status",
+          "message": "Forbidden",
+          "reason": "Forbidden",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "published",
+            "title": "Published guide"
+          }
+        },
+        "status": 403
+      },
+      {
+        "body": {
+          "status": "Success"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": null,
+        "status": 200
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 404,
+          "kind": "Status",
+          "message": "NotFound",
+          "reason": "NotFound",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": null,
+        "status": 404
+      }
+    ],
+    "PathfinderSettings": [
+      {
+        "body": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "enableKioskMode": true,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "enableKioskMode": true,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "status": 201
+      },
+      {
+        "body": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "enableKioskMode": false,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "enableKioskMode": false,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "status": 200
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 409,
+          "kind": "Status",
+          "message": "Conflict",
+          "reason": "Conflict",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "enableKioskMode": false,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "status": 409
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 403,
+          "kind": "Status",
+          "message": "Forbidden",
+          "reason": "Forbidden",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "enableKioskMode": false,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "status": 403
+      }
+    ]
+  },
   "throttle": [
     {
       "assignment": {
