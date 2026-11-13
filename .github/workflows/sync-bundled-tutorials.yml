@@ -62,8 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
-      id-token: write
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -74,15 +74,10 @@ jobs:
           path: sync-artifact
       - name: Apply validated copies
         run: git apply --index --include='src/bundled-interactives/**' --include='src/constants/bundled-tutorials-source.json' sync-artifact/bundled-tutorials.patch
-      - name: Create repository-scoped token
-        id: app
-        uses: grafana/shared-workflows/actions/create-github-app-token@5bbb526b1728ca57fbe1750c4c27ab6ab06171c2 # create-github-app-token/v1.0
-        with:
-          github_app: updater-for-ci
       - name: Open or update sync PR
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
-          token: ${{ steps.app.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           branch: codex/sync-bundled-tutorials
           base: main
           sign-commits: true
@@ -97,3 +92,5 @@ jobs:
             Changed guides: ${{ needs.sync.outputs.changed }}.
 
             Package validation and repository freshness checks passed. Review and merge normally; this workflow does not auto-merge.
+
+            If checks await approval, a repository writer must select **Approve workflows to run** before merging.

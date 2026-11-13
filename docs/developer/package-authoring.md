@@ -526,18 +526,17 @@ completion evidence belongs to RSS and cannot satisfy the migrated dashboard tar
 
 ### Enable the daily sync
 
-Register `.github/workflows/sync-bundled-tutorials.yml` for the `updater-for-ci`
-GitHub App Token Broker in deployment_tools at
-`terraform/repositories/grafana-pathfinder-app/github-app-configs/config.yaml`.
-Scope its token to this repository with Contents and Pull requests write permissions,
-main-branch schedule and workflow_dispatch events. Merge and apply that broker
-configuration before enabling the workflow. The workflow uses short-lived OIDC
-credentials in a separate PR job; package installation and generation have no token
-minting permission. No GitHub App private key belongs in repository secrets.
+The workflow uses the repository's built-in `GITHUB_TOKEN` in a separate PR job
+with Contents and Pull requests write permissions. Package installation and generation
+retain read-only permissions. No GitHub App installation, token broker configuration,
+or repository secret is required. Repository Actions settings must allow GitHub Actions
+to create pull requests.
 After the upstream migration is merged and its seven packages are published,
 set repository variable `BUNDLED_TUTORIAL_SYNC_ENABLED` to `true` and manually run
 **Sync bundled tutorials**. Confirm it opens or updates the signed
-`codex/sync-bundled-tutorials` PR and that normal PR checks run. Subsequent checks
+`codex/sync-bundled-tutorials` PR. A repository writer must select **Approve workflows to run**
+when GitHub requests approval for the generated PR checks, then confirm they pass.
+See [GitHub’s workflow triggering rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow). Subsequent checks
 run daily at 06:17 UTC. Merge sync PRs normally; there is no automatic merge.
 Unset the enable variable to pause synchronization without affecting bundled content.
 
