@@ -39,6 +39,7 @@ test('OSS SDK guide authoring persists across reload and publishes', async ({ pa
   const name = original.metadata.name;
   const assignmentsUrl = prefix.replace('/backend/', '/assignments');
   const assignmentName = `e2e-${name}`;
+  const repeatAssignmentName = `${assignmentName}-repeat`;
   const user = await (await request.get('/api/user')).json();
   try {
     await page.reload();
@@ -117,11 +118,42 @@ test('OSS SDK guide authoring persists across reload and publishes', async ({ pa
     );
     const persistedAssignment = await (await request.get(`${assignmentsUrl}/${assignmentName}`)).json();
     expect(persistedAssignment.status.satisfied).toBe(true);
+    const repeatAssignment = await request.post(assignmentsUrl, {
+      data: {
+        ...assignmentBody.data,
+        metadata: { name: repeatAssignmentName, namespace: 'default' },
+        spec: {
+          ...assignmentBody.data.spec,
+          ruleId: 'sdk-e2e-repeat',
+          acceptCompletionsFrom: new Date().toISOString(),
+        },
+      },
+    });
+    expect(repeatAssignment.ok(), await repeatAssignment.text()).toBe(true);
+    await page.goto('/a/grafana-pathfinder-app/');
+    await assignedGuide.click();
+    const resetDialog = page.getByRole('dialog');
+    await expect(resetDialog).toContainText(title);
+    const previousWrites = completionWrites.filter((write) => write.guideId === name && write.ok).length;
+    await resetDialog.getByRole('button', { name: 'Reset and continue' }).click();
+    if (await page.getByTestId(testIds.markComplete.button).first().isVisible()) {
+      await markComplete(page);
+    }
+    await expect
+      .poll(() => completionWrites.filter((write) => write.guideId === name && write.ok).length)
+      .toBeGreaterThan(previousWrites);
+    await expect(async () => {
+      const result = await (await request.get(`${prefix}assignments/my`)).json();
+      expect(result.assignments).toEqual(
+        expect.arrayContaining([expect.objectContaining({ ruleId: 'sdk-e2e-repeat', satisfied: true })])
+      );
+    }).toPass({ intervals: [500, 1000], timeout: 15000 });
     const insights = page.waitForResponse((res) => res.url().includes(`${prefix}learning-insights`));
     await page.goto('/a/grafana-pathfinder-app/learning-insights');
     expect((await insights).ok()).toBe(true);
     expect(legacyRequests).toEqual([]);
   } finally {
+    await request.delete(`${assignmentsUrl}/${repeatAssignmentName}`);
     await request.delete(`${assignmentsUrl}/${assignmentName}`);
     const removed = await request.delete(`${prefix}custom-guide?name=${encodeURIComponent(name)}`);
     expect(removed.ok()).toBe(true);
