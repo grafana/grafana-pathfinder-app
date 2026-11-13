@@ -1,1023 +1,184 @@
-# Backend App Platform proxy pattern
-
-**Scope:** plugin-backend (`pkg/plugin/`) routes that proxy a paginated App Platform CRUD
-endpoint served by the pathfinder-backend aggregator. Both current proxies — completion records
-and the custom-guide catalogue — address `pathfinderbackend.ext.grafana.app/v1alpha1`; the older
-`pathfinderbackend.ext.grafana.com/v1alpha1` group is legacy and no longer gates either surface.
-A group's boot toggle says its aggregation layer is served, which is a precondition and not the
-availability answer — see §8.
-
-**Why this doc exists:** pathfinder-backend is CRD-only — only its manifest deploys, custom
-server code never runs — so every piece of intelligence (identity, caching, collation, failure
-handling) lives in plugin-backend proxies. Two such proxies were built contemporaneously
-([#1398](https://github.com/grafana/grafana-pathfinder-app/pull/1398) completion records,
-[#1400](https://github.com/grafana/grafana-pathfinder-app/pull/1400) custom guide catalogue) and
-diverged on nearly every load-bearing decision. This document synthesizes two independent design
-reviews of both PRs (2026-07-22), with every contested claim verified against the PR diffs, the
-baseline `pkg/plugin/package_recommendations.go`, and repo history. Future PRs of this shape
-should implement this pattern rather than re-deriving it; divergence should be deliberate and
-documented in the PR body.
-
-The shape, in one sentence: **a GET route that drains a paginated namespace LIST upstream, caches
-the shaped result in-process, serves it fast and availability-first, and rides the caller's own
-identity end to end.**
-
----
-
-## 1. Upstream client
-
-Use **one shared paginated LIST client** (lister-interface seam — these are API-server LISTs, not
-flat byte fetches). It must:
-
-- send `limit=<N>` and loop the k8s `metadata.continue` token until exhausted. **A proxy that
-  reads one page has a silent-truncation bug** — the aggregator's server-side default page size
-  truncates without any error, so a hard byte cap alone does not protect coverage;
-- bound each page body with `io.LimitReader(maxBytes+1)` + post-read check;
-- enforce an **aggregate budget across pages** — max-total-items or max-total-bytes — and **log
-  when it trips; never truncate silently**;
-- apply a **per-page timeout AND one aggregate deadline** around the whole drain. This is
-  load-bearing because the refresh runs detached from the request (see §4): without an aggregate
-  deadline, an N-page drain under `context.WithoutCancel` is bounded only by N × per-page-timeout
-  — detached must not mean unkillable. Derive the detach as
-  `context.WithTimeout(context.WithoutCancel(ctx), aggregateDeadline)`;
-- classify errors once, on two **orthogonal** axes. **Retryability**: transient (429 / 5xx /
-  network / timeout) vs terminal (other 4xx). **Scope**: namespace-global (a property of the
-  namespace, so shareable across callers) vs caller-scoped (upstream 401/403 for _this_ caller's
-  forwarded identity, or a failure to mint _this_ caller's on-behalf-of token). The combinations
-  are all reachable — a mint failure is caller-scoped **and** transient — so neither axis may be
-  derived from the other. Classify scope as an **allow-list**: only positively recognized
-  namespace-global shapes are shareable, so a statusless failure nobody has classified yet costs
-  re-probes rather than replaying one caller's error to another. Every downstream decision keys
-  off this classification;
-- take a per-kind decode callback (`items[].spec` → typed record) so one client serves every kind.
-
-URL construction: `url.PathEscape` every path segment via one shared
-`buildAppPlatformURL(appURL, gv, namespace, resource)`. With every component server-derived there
-is nothing to allowlist; host allowlists are for user-controllable URLs (the CDN baseline), not
-the fixed internal aggregator.
-
-## 2. Namespace
-
-- Derive the namespace **server-side** from the trusted plugin context:
-  `backend.PluginConfigFromContext(r.Context()).Namespace`.
-- **Never accept the namespace as a query parameter.** A caller-supplied namespace — even
-  charset-validated and `PathEscape`d — is avoidable URL-injection surface, a cross-namespace
-  probe, and it makes the cache map attacker-seedable. The trusted value makes all three problems
-  vanish. (The front-end already knows its own `config.namespace`; the backend has it too.)
-
-## 3. Caller identity
-
-### Inbound (browser → plugin)
-
-- Fail closed: absent or unverifiable identity → serve no data. Never guess, never fall
-  back to `X-Grafana-User` or a numeric id, never use a service account. On GET reads the refusal
-  is expressed as the §7 capability envelope (soft-200), not a 401 — "fail closed" constrains
-  _what_ is served (nothing), not the status code.
-- **Every proxy cryptographically verifies the ID token** before spending an upstream call:
-  ES256 signature against the issuing authority's published JWKS, `typ: "jwt"`, and `exp`/`nbf`.
-  Structural parsing is **not** sufficient — `X-Grafana-Id` is client-settable in the shapes
-  described in the canonical statement below, so an unsigned check accepts a forged `sub` (#1568).
-  One shared verifier does this (`pkg/plugin/auth/id_token.go`, over `authlib`); layered on top of
-  it, **reject `exp == 0`** — a forwarded Grafana ID token always carries `exp`, and go-jose
-  validates expiry only when the claim is present, so an `exp`-less token would otherwise verify
-  as non-expiring.
-- **Bind the token to this stack.** A signature no longer identifies the stack on its own:
-  auth-api's key set is cell-wide, so every Grafana Cloud stack in a cell is signed by the same
-  keys. Compare the token's `namespace` claim (authlib `IDTokenClaims.Namespace`, Grafana's
-  `<type>-<id>` form) against the **server-derived** namespace from §2 —
-  `backend.PluginConfigFromContext(r.Context()).Namespace` — for exact equality. Both halves must
-  be present: a token carrying no `namespace` claim is a **rejection**, and a request whose plugin
-  context carries no namespace is **unverifiable** (nothing this stack supplies can bind it). There
-  is nothing to compare either way, and skipping the comparison would accept a sibling stack's
-  token. The verifier takes the expected namespace as an argument and enforces it internally
-  (`auth.IDTokenVerifier.Verify`), so a new call site cannot forget the binding.
-- **Only per-user-data proxies extract `sub`** (verbatim, typed prefix included). A
-  namespace-global catalogue proxy needs a verified caller and nothing more; it has no per-user
-  need and must not grow one by accident. Ship this as one shared helper with two layers:
-  `validIDToken(r)` (everyone) and `subjectFromIDToken(r)` (per-user routes only). Both verify;
-  they differ only in whether a `sub` is required.
-- Reuse the verifier across requests to share authlib's key cache, but rebuild it against the same
-  signing-keys sources at least every five minutes. Authlib otherwise keeps successfully fetched keys
-  for the verifier lifetime, which would let a key removed from JWKS remain trusted indefinitely.
-- Use the SDK constant `backend.GrafanaUserSignInTokenHeaderName`, never a hardcoded
-  `"X-Grafana-Id"` string.
-- Missing/invalid identity on a GET read → **soft-200 capability envelope**
-  (`reason: "identity-unavailable"`), not 401 (see §7 for why).
-- The gate has **three** outcomes, not two, each carrying its own reason token. Route them from one
-  shared decision (`identityStatus` in `pkg/plugin/app_platform_identity.go`) so no route can
-  classify a failure its own way. The statuses below are named on the GET-read path; §11 states how
-  the POST-write path serves each:
-  - no token, or one the stack will not accept — bad signature, unknown `kid`, wrong `typ`,
-    expired, no `exp`, or a `namespace` naming another stack → soft-200 `identity-unavailable`;
-  - **nothing this stack supplies makes verification possible** — no app URL in the Grafana
-    config (which is also what a request carrying no config at all resolves to), or no
-    server-derived namespace to bind the token to → soft-200 `identity-unverifiable`;
-  - **no signing-keys endpoint reachable at all** — every source failed to fetch (5xx, timeout,
-    refused, DNS) → soft-200 `signing-keys-unreachable`. A source that answers with a key set not
-    carrying the token's `kid` is **not** this: that is the expected Grafana Cloud shape and lands
-    on `identity-unavailable`. Reaching nothing at all is far more likely to mean the configured
-    address is wrong than that the signing service is briefly down, so it is a standing condition
-    and not a 503.
-
-  None of the three is retryable, so all three are served in-band and each carries its own reason
-  token. Note what each channel actually separates: the **logs** tell the two key-lookup causes
-  apart on every deployment — the gate logs each under its own message, and both carry the
-  per-source `<name>: <cause>` detail naming the endpoint that failed — while the **envelope**
-  separates them only where no source answers at all. On a Grafana Cloud stack that is never the
-  case: its own endpoint answers `{"keys":null}`, which counts as an answer, so a dead auth-api
-  address there reports `identity-unavailable` and the logs are the diagnosis.
-
-- **A write serves the same three statuses in write-path shapes, not soft-200 envelopes**, and the
-  standing/transient distinction must survive the translation: rejected → **401** (transient, the
-  client retries after re-auth), and both unverifiable and signing-keys-unreachable → the
-  structural **404** carrying their own reason token. Neither standing status may collapse into
-  the 401: a status the client retries would retry every queued write to the 30-day horizon
-  without ever disarming. See §11.
-
-### Outbound (plugin → aggregator)
-
-- Send **one credential: an access token minted for the caller**, on `X-Access-Token`, via the
-  shared `pkg/plugin/auth` exchanger so proxies cannot drift.
-- **An ID token is not a credential.** It is an identity attestation, and nothing on the outbound
-  path accepts one on its own: Grafana's front door only reads an access token from
-  `X-Access-Token` (`ExtendedJWT`), and an ID token placed in `Authorization: Bearer` is claimed
-  by the API-key client and then fails to decode, so the request 401s at the plugin's own stack
-  and never reaches the aggregator. An earlier revision of this section recommended
-  `Authorization: Bearer <id-token>` + `X-Grafana-Id` on the strength of a dev-stack smoke that
-  had, in fact, only ever been run with a `glsa_` service-account token. Do not reintroduce it.
-- The exchange is the same flow `grafana-dbo11y-app` runs in production: exchange the inbound
-  `X-Grafana-Id` for an on-behalf-of access token at auth-api, using the CAP token
-  stack-state-service provisions into the plugin's `secureJsonData`, then send that. The minted
-  token carries the user in its actor claim, so no separate identity header goes with it. The
-  instance's embedded aggregator signs the onward hop to GAP itself, which is why the audience is
-  the stack's own front door (`grafana`) and not the API group.
-- **A stack with no provisioned CAP token is structurally unavailable** (`reason:
-"obo-unavailable"`), not a transient failure. A failed exchange, by contrast, is transient: it
-  carries no HTTP status, so the shared classifier retries rather than caching a terminal result.
-  It is also **caller-scoped** — auth-api can reject one subject token while serving others — so
-  it needs its own sentinel error and must never reach a shared negative cache (§1 scope axis).
-- **Never forward `Cookie`.** No branch in this repo's history has ever needed it against the
-  aggregator; the caller's full session is the broadest possible ambient grant and the classic
-  confused-deputy shape.
-- **Never replay the inbound `Authorization` header.** Grafana strips it before plugin resource
-  handlers, so replaying it forwards an absent header — dead code that reads as load-bearing.
-
-### The identity trust boundary — canonical statement
-
-This subsection is the single authoritative statement for **all** App Platform proxies. Do not
-re-argue this trade-off per PR; link here instead. (It previously lived in
-`docs/developer/CODA.md`, which was correct only by accident — it moved here when the Coda backend
-was extracted into the `grafana-coda-app` plugin and `CODA.md` became a consumer guide.)
-
-The `/completion-records/*` and `/custom-guide-repository` routes authenticate callers by
-**cryptographically verifying** the Grafana-forwarded ID token (`X-Grafana-Id`, via the SDK constant
-`backend.GrafanaUserSignInTokenHeaderName`) against the published JWKS of whichever authority issued
-it (`pkg/plugin/auth/id_token.go`, over `github.com/grafana/authlib`). Two sources are tried in
-order, and **both are full ES256 verification — neither is a relaxed check**:
-
-1. **the stack itself**, `GET {appURL}/api/signing-keys/keys` — the unauthenticated endpoint of the
-   same instance that issued the token. Self-hosted Grafana is its own issuer and populates this;
-   a Grafana Cloud stack serves `{"keys":null}` here. It is asked **first** because it is the
-   authority for its own callers. Asking an unauthenticated in-cluster address ahead of it would
-   let whatever answers that name decide who the caller is — and on a self-hosted cluster that
-   happens to run a service called `api-lb` in a namespace called `auth`, that name resolves.
-2. **auth-api**, `GET http://api-lb.auth.svc.cluster.local./v1/keys`. On Grafana Cloud the stack
-   issues ID tokens but does not sign them; auth-api does. The plugin already reaches that host for
-   the outbound on-behalf-of mint, and `deployment_tools` provisions the same URL into other
-   services as `AUTH_JWKS_URL` for this exact purpose. Reached only where the stack published no
-   matching key — which is exactly the Cloud shape, since `{"keys":null}` counts as an answer
-   without resolving the `kid`.
-
-That order costs one thing, and it is worth stating rather than leaving implied: on a colliding
-`kid`, a Grafana Cloud stack that published a stale or wrong key would now outrank auth-api, which
-is the actual issuer there. Cloud stacks publish `{"keys":null}` today, so this does not arise in
-practice — but the ordering is what would decide it if one ever did.
-
-Exhausting both sources splits two ways, and the split is what keeps a misconfigured auth-api from
-being worse than no auth-api: if **any** source served a key set that did not carry the token's
-`kid`, the key is genuinely unknown and the token is **rejected** (`identity-unavailable`). That is
-the normal shape on every Grafana Cloud stack, whose own endpoint answers `{"keys":null}`. Only
-when **no** source could be reached at all does the chain report `signing-keys-unreachable`. Both
-are soft-200 standing conditions, so a wrong auth-api host never becomes a 503 on every proxy
-route. They have different owners — one is a caller naming a key nobody publishes, the other is
-very likely our own address — and the gate's own log line plus its per-source detail tells them
-apart everywhere. The reason tokens differ too, but only where no source answers: a Cloud stack
-always answers its own endpoint, so a dead auth-api address there still reads
-`identity-unavailable` in the envelope. Verified:
-ES256 signature against a `kid` in the live key set, `typ: "jwt"` (an access token must not
-authenticate an identity), and `exp`/`nbf` with go-jose's one-minute leeway. `exp` **presence** is
-additionally required here, because go-jose validates expiry only when the claim is present and an
-`exp`-less token would otherwise verify as non-expiring. The `sub` claim is extracted verbatim
-only on routes that serve per-user data (`pkg/plugin/app_platform_identity.go`).
-
-The signature alone does **not** establish which stack the token belongs to. auth-api's key set is
-**cell-wide**: it signs the ID tokens of every Grafana Cloud stack in the cell, so a token minted
-for stack A carries a `kid` present in the very key set stack B's plugin fetches. The gate
-therefore also binds the token's **`namespace` claim** to the server-derived namespace from §2
-(`backend.PluginConfigFromContext(r.Context()).Namespace`), by exact string equality. The expected
-value comes only from the plugin context — never a request header, never the token itself. A
-token minted for a sibling stack is rejected even though it is genuine, correctly signed and
-unexpired; so is a token carrying no `namespace` claim, and so is a request whose plugin context
-carries none. `auth.IDTokenVerifier.Verify` takes the expected namespace as a parameter and
-enforces it internally, so the binding cannot be dropped by a future call site.
-
-The equality is deliberately **raw**, so a `namespace` claim of `"*"` is **refused** rather than
-matched. Authlib documents `*` as "all namespaces" and ships `types.NamespaceMatches`, which would
-treat it as a match against any expected namespace — do not swap that in here. These are
-browser-facing per-user proxy routes: a `*`-namespace identity is an inter-service caller, not a
-panel-open request, and accepting it would reopen exactly the cross-namespace hole this binding
-closes.
-
-Two properties hold together, and both are load-bearing:
-
-1. **The token was issued for this stack** — the `namespace` binding.
-2. **The caller named by `sub` genuinely is that user, per the issuing authority** — the ES256
-   signature against that authority's live key set.
-
-Because the signature is checked, the header's **authenticity** no longer depends on Grafana's
-server→plugin forwarding — which matters, since `X-Grafana-Id` is **not** on
-`ClearAuthHeadersMiddleware`'s strip-list and `ForwardIDMiddleware` overwrites rather than
-deletes, so a client-set value can survive to the plugin whenever the authenticated requester has
-no ID token of its own (#1568). That gap is what makes property 1 necessary: without it, a caller
-authenticated to stack B by a service-account token could present their own genuine token from
-stack A and be served stack A's identity.
-
-If the inbound trust boundary above were ever broken, the OBO design would fail open rather than
-closed — a forged identity's minted access token could remain valid for up to its configured
-lifetime (600s), which is the concrete reason the JWKS verification is load-bearing.
-
-What neither property establishes is that the caller presenting the token is its subject: a
-copied, still-unexpired token replayed on a per-user route **on the stack it was minted for**
-still verifies. Binding the token to its presenter is an accepted residual; nothing tracks it.
-
-Verification failures always fail **closed**, under the three outcomes listed in the inbound
-bullets above, all decided by one shared `identityStatus`
-(`pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way.
-
-Authlib caches fetched keys for the lifetime of one verifier. Pathfinder reuses that verifier for
-at most **five minutes**, then rebuilds it against the same signing-keys sources, so a key removed
-from JWKS remains trusted for no more than five minutes. The cache holds what a source **answered**,
-never a failure to reach one, so steady-state verification is free of network calls only for the
-sources that answered: a source nothing can reach is re-dialled on every verification. On a
-self-hosted stack the stack answers first, so a caller whose `kid` it publishes never reaches
-auth-api at all. A token naming a `kid` the stack does not publish still falls through — an answer
-without a match is not a match — and auth-api is dialled for that request; being the last source, it
-gets whatever is left of the budget. The **first** request bearing an unknown `kid` triggers an
-immediate re-fetch, so a newly published key
-need not wait for that interval; if the key is still unpublished at that moment, authlib
-negative-caches the `kid` and later requests carrying it are rejected without re-fetching until the
-rebuild. That re-fetch merges into the current verifier's cached set rather than replacing it, so it
-never prunes a retired key and the five-minute rebuild stays the revocation bound. The fetch itself
-is detached from the caller's cancellation and separately deadlined, because authlib dedupes it
-across concurrent callers with singleflight: one canceled request would otherwise fail every waiter
-with a spurious outage. Within that deadline each source gets its own slice of what is left, so a
-source that stalls to its own timeout cannot consume the budget the next one needs — otherwise a
-source publishing a perfectly good key set would be reported as an outage without ever getting to
-answer. The fetch refuses any redirect that leaves the endpoint's **origin** — scheme and
-host:port both, because a listener on another port or reached over another scheme serves different
-keys — and caps the chain at ten hops, since replacing net/http's `CheckRedirect` drops the cap that
-comes with it.
-
-Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
-on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the
-caller's `Cookie`, and never a replay of the inbound `Authorization` header.
-
-One deliberate omission: `aud` is not validated, because an ID token's audience is `org:<orgID>`,
-which tells a plugin nothing it can act on. This mirrors Grafana's own ExtendedJWT client. The
-stack binding rides on the `namespace` claim instead, which carries the same information in the
-form §2 already derives server-side.
-
-## 4. Cache
-
-- In-process, **keyed by the trusted-context namespace**. Once §2 holds, the key space is one
-  entry per process on hosted Grafana, so the map needs no eviction — **say so in a comment**
-  rather than leaving it implicit. (A cheap max-entries guard is acceptable belt-and-braces but
-  not required; the real fix is removing the caller-controlled key.)
-- **Every request — cache hit or miss — passes the §3 inbound identity gate first.** Warm bytes
-  are never served to an unauthenticated caller.
-- **Per-user data ⇒ identity-partitioned cache** (`byUser map[sub] → slice`, serve
-  `idx.byUser[userID]` only): a cache hit must be structurally incapable of exposing another
-  user's slice.
-- **Shared-blob data ⇒ prove and document identity-invariance.** Authorization is enforced at
-  cache-fill and shared for the TTL — state this in a comment. It is only sound if the upstream
-  LIST returns the same result for every authorized caller in the namespace; otherwise one
-  caller's richer RBAC view leaks to everyone for a TTL window. The invariance claim must be
-  written down, not assumed.
-- **Caller-scoped failures never enter the shared cache.** An upstream 401/403 for caller A's
-  token — or a failure to mint caller A's on-behalf-of token — must not become a cached error
-  served to caller B. Only failures positively classified as namespace-global on the §1 scope axis
-  are shareable; every other failure, transient or terminal, is a per-request response.
-- Cache the **shaped/collated result, not raw records**, so steady-state memory is bounded by the
-  meaningful entity count; the §1 aggregate budget bounds the transient build footprint.
-- TTL by data volatility (5 min for slowly-changing per-user records; 30 s for an
-  edited-in-place catalogue) — document the rationale next to each constant.
-- Optional `?refresh=1` bypass when the front-end writes and immediately re-reads;
-  **rate-limited server-side** (~30 s/namespace) so it cannot become a load lever.
-- Single-flight concurrent refreshes per namespace (`done`-channel pattern); waiters honor their
-  own `ctx.Done`; the fetch detaches with `context.WithoutCancel` **bounded by the §1 aggregate
-  deadline**.
-
-## 5. Failure semantics (availability-first)
-
-The baseline's model — error cached sticky for the full 6 h TTL, no stale-serve
-(`package_recommendations.go`) — is explicitly **rejected** for this shape:
-
-- **Warm cache + upstream failure → serve stale** at 200, with the envelope's `asOf` telling the
-  truth about age. Never overwrite last-good data with an error entry.
-- **Cold cache + transient failure → 503 + `Retry-After`.**
-- **Cold cache + terminal failure → soft-200 capability envelope** ("this will not fix itself by
-  retrying"), not a 503.
-- **Negative-cache cooldown** (~30 s), a _separate constant_ from the success TTL: single-flight
-  only collapses concurrent requests; the cooldown is what protects a struggling upstream from
-  the sequential stream.
-
-## 6. Response envelope
-
-- Self-describing JSON, camelCase: the data array (always `[]`, never `null`), **`asOf`** (when
-  the underlying LIST completed — the staleness contract), and the §7 capability object where the
-  route has structural failure modes.
-- Failure envelope is `{"error": "<stable-machine-token>"}` via the shared `writeError` in
-  `resources.go` — a token like `completion-records-unavailable`, not a human sentence. Plain
-  `http.Error` only for 405.
-- Additive evolution only; agree any envelope change with every consumer. These envelopes are
-  forward contracts — downstream PRs bind to them and they ossify immediately.
-- Every envelope is described twice, in two languages, across a process boundary, so it carries
-  **contract goldens** — see §10.
-
-## 7. Availability signaling
-
-- Three states the front-end genuinely needs to distinguish: **available**, **structurally
-  unavailable on this stack** (toggle off / identity not forwarded / no verifier buildable / no
-  signing-keys endpoint reachable / terminal upstream), and **transient hiccup** (a failing
-  upstream LIST on a cold cache). Every identity failure sits in the standing bucket — see §3.
-- Structural unavailability is signaled **in-band**: HTTP 200 with
-  `capability: { available: false, reason: "<machine-token>" }`. Split the token by cause rather
-  than lumping — the custom-guide route distinguishes missing identity, toggle off, no provisioned
-  on-behalf-of credential, and `upstream-<status>` for a terminal upstream. Its resolver also
-  defines `no app URL`, `no namespace` and `no Grafana config`, but the identity gate runs first
-  and needs the first two itself, so a stack missing either reports `identity-unverifiable` and
-  those two reasons never reach the wire. `no Grafana config` never reaches it either, for an
-  unrelated reason: its guard is `cfg == nil`, and the plugin SDK never returns a nil Grafana
-  config — a missing context value and a nil pointer both yield an empty one — so that branch is
-  dead whatever the gate ordering. The completion routes still collapse the config causes
-  into the catch-all `backend-unavailable`, while keeping identity itself split three ways into
-  `identity-unavailable` (no acceptable caller token),
-  `identity-unverifiable` (nothing this stack supplies makes verification possible), and
-  `signing-keys-unreachable` (no signing-keys endpoint answered at all — §3). The `reason*`
-  constants in `pkg/plugin/` are the definition, and the front-end gates on `available` and
-  ignores the string.
-  A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
-  not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`)
-  and silently renders empty with no retry, so a
-  transient 503 darkens the feature for that load exactly as if it were structurally absent. This
-  is also why missing identity on a GET read is soft-200, not 401: these routes gate whether a
-  feature renders at all.
-- **"Unavailable" ≠ "empty result."** `{items: []}` must mean the user genuinely has none.
-- A capability probe route makes the same transient/terminal distinction as the data route — a
-  probe that flips `false` during a 30-second blip greys out UI for everyone.
-- Name capability fields for what they measure. A read-derived signal must not promise write
-  capability; decide the read-vs-write semantics before any consumer binds.
-
-## 8. Shared plumbing (drift control — extract, don't copy)
-
-One definition each, package-wide:
-
-- the aggregation feature-toggle name — one Go constant per served group, never a scattered
-  literal: `completionRecordsAggregationToggle`
-  (`aggregation.pathfinderbackend-ext-grafana-app.enabled`, and `customGuideAggregationToggle` is
-  the same derived value — both surfaces are served on the `.app` group) and the older
-  `pathfinderBackendAggregationToggle` (`…-grafana-com.enabled`). The `.app` names derive from
-  `appPlatformGroup` via `aggregationToggle` so they cannot drift from the group; the legacy `.com`
-  literal is the named counterpart that pins that derivation. Note what the toggle does and
-  does not tell you: it reports that an aggregation layer is served, so a real stack can (and
-  does) report **both** true at once. It is a precondition, not the availability answer — route
-  availability is whatever the capability/resolver path returns, which additionally requires an
-  app URL, a namespace, and a provisioned on-behalf-of credential;
-- the identity helpers (§3): `validIDToken`, `subjectFromIDToken`, the `identityStatus` that
-  decides how each failure is served, the shared `IDTokenVerifier`, and the `pkg/plugin/auth`
-  token exchanger every proxy authenticates with;
-- the paginated LIST client + `buildAppPlatformURL` (§1);
-- the single-flight + cache scaffolding (done-channel, `WithoutCancel`, per-namespace map);
-- the existing `timeNow` seam (`package_recommendations.go`) — **all** time reads go through it:
-  TTL, cooldown, rate limits, token expiry. Direct `time.Now()` makes expiry logic untestable,
-  and the missing tests that follow are exactly where latent bugs hide.
-
-## 9. Observability
-
-- Expected-ish upstream unavailability logs at `Debug`/`Info` (not `Warn` per hit); log
-  stale-serve and cooldown **transitions** once, not per request.
-- Emit cache vital signs (refresh/failure counts, stale-serves, hit/miss, page/record counts) as
-  metrics or structured logs — a cache without them is undiagnosable on-call, and index-size
-  visibility is the early warning before a memory ceiling.
-- **First-request credential diagnostics:** on the first upstream LIST, log the response status
-  and which outbound credential was sent — the header **name** plus a redaction placeholder,
-  never the token or any part of it. Name the field for what it carries (`outboundCredential`):
-  a key that calls a bearer credential an identity header is the same category error that made
-  this proxy 401 everywhere, and it invites the next reader to treat a real credential as
-  non-sensitive. The most likely production incident for this shape is "the credential model
-  doesn't authenticate on a real stack" — this log turns that from a mystery into a one-line
-  diagnosis.
-
-## 10. Testing
-
-- Mocked-client unit tests cover: pagination draining (multi-page continue tokens), TTL expiry
-  (deterministic via `timeNow`), single-flight, refresh rate limit, identity fail-closed
-  **including `exp == 0` rejection**, cross-user isolation where data is per-user, the failure
-  matrix (cold-transient, cold-terminal, warm-stale, cooldown, and caller-scoped-not-shared for
-  both 401/403 and a failed token mint), and the config-resolution branch (toggle off / no app
-  URL) — don't let a test-only override short-circuit the structural-unavailability path out of
-  existence.
-- Mocked tests cannot prove the live credential path. Every PR of this shape carries a **runtime
-  smoke procedure** in its body (create a resource upstream, hit the route, see it shaped) and
-  treats that smoke as a **gate before dependent work binds to the route** — doubly so where the
-  outbound header set itself (§3) is smoke-dependent.
-
-### Contract goldens (Go ⇄ TypeScript)
-
-A new route's envelope is described twice — once in `pkg/plugin`, once in the client that consumes
-it — in two processes, so no compiler couples them. Two committed golden families do:
-
-- **Value goldens** captured from the real handler over `httptest`, in
-  `pkg/plugin/testdata/contract/<envelope-key>.<variant>.json`. Never marshalled from a hand-built
-  struct value: that cannot catch a handler that stops emitting a field its struct still declares.
-- **A reflected tag golden**, `struct-tags.json`, inventorying every reachable struct's json names,
-  types, normalized JSON wire types, and `omitempty` flags. The TypeScript test derives the same
-  normalized descriptors from Zod and compares every field, so regenerating cannot bless a type
-  widening whose existing fixture values still fit the old schema. Load-bearing, not
-  belt-and-braces: no fixture populates a
-  brand-new `omitempty` field, so a struct that _gains_ one leaves every value golden byte-identical
-  and both sides green while the frontend never learns the field exists.
-
-`pkg/plugin/contract_fixtures_test.go` writes both; `src/validation/backend-api-contract.test.ts`
-reads both and holds them against the Zod schemas in `src/types/backend-api.schema.ts`, so a Go
-change surfaces as a TypeScript failure that names the field. Those schemas track **wire truth**,
-not what the client interface wishes were on the wire.
-
-Adding a route means adding an envelope to `contractRoots()` plus at least one capture case, and a
-schema registered in `GO_STRUCT_SCHEMAS` / `BACKEND_RESPONSE_ENVELOPES`; the tests fail if either
-half is missing. Regenerate after an intentional change:
-
-```bash
-go test ./pkg/plugin -run TestContract -update
-```
-
-## 11. The write variant (POST create)
-
-The read shape above is a GET LIST proxy; the same aggregator kind also needs a **POST create**
-proxy (`pkg/plugin/completion_records_write.go`, epic
-[#1411](https://github.com/grafana/grafana-pathfinder-app/issues/1411)), which routes writes through
-plugin-backend so authoritative identity is stamped server-side. Authorization is delegated to App
-Platform RBAC on the caller's own forwarded identity — the proxy adds no privilege. On the served
-`.app` group the basic viewer role grants write on `CompletionRecord` (verified 2026-07-24 with a
-real Viewer user via a **direct** App Platform write — POST → 201, RBAC enforced — NOT through the
-deployed plugin proxy), so the proxy exists not to lend privilege but for
-what a direct client write does not do for us: server-stamp identity/org/stack fields (the CRD
-validates field presence, not truth), enforce a per-user rate limit, invalidate the read cache on
-create, and classify failures into the transient/terminal taxonomy the front-end queue consumes.
-**Trust model (today):** because a Viewer can create the same CRD directly, these are
-**lightweight self-reported records, not attested facts** — the server stamping is a best-effort
-convenience, not an enforced identity boundary. That is a **current, time-bounded limitation, not
-a permanent design property**: closing the forgery gap with a platform-side operator is under
-active discussion with the App Platform team, and this paragraph should be revisited when that
-lands. Until then, do not describe these records as enforced attribution — and do not describe the
-gap as unfixable. The residual merge gate
-is a live Viewer-attributed write through the _deployed_ plugin proxy — proving the proxy's identity
-forwarding end-to-end, not the RBAC layer, which is now cleared. The proxy reuses the read
-shape's shared machinery — the URL builder (§1), trusted-context namespace (§2), the identity
-helpers and the JWKS-verified trust boundary (§3), and the in-process cache (§4) — and diverges only
-where a create differs from a read:
-
-- **Identity/org/stack are stamped server-side**, never trusted from the body. The typed request
-  struct carries only client facts (guide id/source/title, category, `pathId`, `completedAt`,
-  duration, `completionPercent`, `platform`), so any identity a client smuggles in is dropped on
-  decode; `userId` (from the ID-token
-  `sub`), `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`, and `schemaVersion`
-  come from the verified request context. `userLogin`/`userDisplayName` are best-effort **display
-  snapshots** read from the signed ID token's `username`/`name` claims (Grafana authlib
-  `IDTokenClaims` — not `login`/`preferred_username`, which Grafana does not emit). There is
-  **no fallback**: an absent claim omits the field rather than substituting `PluginContext.User`,
-  the `X-Grafana-User` header, or anything else, and the write still succeeds (the omission is
-  logged). A plausible-but-unverified login is worse than an absent one because it reads as
-  verified, and these records are headed for compliance-grade use — absence is auditable, a
-  forgery is not. They gate nothing and the read path joins exclusively
-  on `userId`, so an absent claim yielding an empty snapshot is acceptable. The inbound gate (§3)
-  still applies, but a write **fails closed with a status, not the read path's soft-200** — and the
-  three failing statuses are not interchangeable, because the status IS the client's retry
-  instruction. A **rejected** token is the **401**: the client retries it as transient, since an
-  expired session or forwarded token recovers after re-auth. The other two are standing conditions
-  and both take the structural **404** carrying their own reason token: an **unverifiable** stack
-  (no app URL to build a verifier from, or no server-derived namespace to bind to →
-  `identity-unverifiable`) and an **unreachable signing-keys chain** (no source answered at all →
-  `signing-keys-unreachable`). Served as a 401 either would retry every queued write to the 30-day
-  horizon and never disarm, whereas the 404 disarms the session and RETAINS the records, re-arming
-  on a later app load so a stack that gains an app URL or a working signing-keys address starts
-  recording then.
-- **`metadata.name` is server-derived, deterministic, and identity-scoped.** A non-blank
-  `idempotencyKey` (the completion event's stable client id, #1434) is **required** — a blank or
-  missing key is a terminal 400, never a random-name fallback. The name is a DNS-safe
-  `hash(userId || sep || key)` over the trusted server-stamped `userId` and the exact key, so a
-  retried POST targets the same object and an upstream **409 "already exists" is an idempotent
-  success**, not a duplicate or a failure. Scoping the name to `userId` means two callers submitting
-  the same key hit **different** objects, so one caller's key can never collide with — or be
-  acknowledged against — another's record in the shared namespace. The contract is
-  **first-write-wins per `(userId, key)`**: the key must be stable per completion event (which is
-  what #1434 sends), so reusing a key for different content resolves to the first record for that
-  key. Client-supplied names are never accepted.
-- **Client fact fields are validated against the CRD's value domains** (source, category, and
-  platform enums; `completionPercent` bounds; per-field byte caps, a UTF-8 validity check, and a
-  control-character reject on the free-text fields; `durationMs` CLAMPED into `[0, 24h]` when out of
-  range — an out-of-range value is a producer bug in one denormalized convenience field, and
-  clamping it visibly, with a log line, beats discarding a completion the user really earned) and `completedAt` is bounded to
-  a sane window
-  (`[now − 30d, now + 5m]`) to tolerate delayed offline/queued retries while rejecting gross
-  backdating; any violation is a terminal 400. The **30-day backdating horizon is the durability
-  boundary of the whole feature**: a completion queued offline longer than 30 days is deterministically
-  dropped on its eventual retry, so the front-end queue must expire (and surface) items at the same
-  30-day bound rather than retrying a write the backend will reject.
-- **A per-user token-bucket write rate limit** (`completion_records_write_ratelimit.go`, §9 flood
-  guard) runs before any upstream work; exhaustion returns 429 with `Retry-After`.
-- **A successful create stales the namespace read cache** (§4), advances its generation, and
-  clears the negative-cache cooldown (a create is fresh proof the upstream is reachable). The
-  cached index is marked stale rather than deleted: staling is what skips the TTL fast path and
-  forces the refresh, while KEEPING the warm index as §7's stale-serve fallback, so a failed
-  post-write refresh still serves a slightly-stale 200 instead of a cold 503.
-  Any LIST that began before the write may finish for its caller but cannot repopulate that cache;
-  a post-write GET starts a new refresh.
-- **Assignment satisfaction is a second consumer of the raw rows**
-  (`assignment_satisfaction.go`). It reads `CompletionRecords` uncollated, because collation drops
-  the per-row `completedAt`, and evaluates each row on its own. #2218 **extends** this contract to source-qualified
-  `(guideId, guideSource)` identity: one matching row must have `completionPercent` of 100 and
-  a parseable `completedAt` at or after the assignment's `acceptCompletionsFrom` when set
-  (the cutoff is inclusive). An invalid cutoff leaves the target unresolved. Neither percentage
-  nor timestamp may be borrowed from another row. Direct guide targets require an explicit
-  source and no track, without a catalogue lookup. Path resolution tries bundled, custom, then
-  online, respecting `targetSource`; a found path with an unknown track or a missing or
-  unpublished custom member remains wholly unresolved, not partially satisfied. Online member
-  identity uses the public resolver source set (`online-cdn` for CDN resolution; `interactive-tutorials` for recommender resolution), not a
-  manifest-embedded repository or the old `bundled` default. Member IDs come from index path slugs;
-  member identity resolution uses index data without per-member manifest requests. A successful
-  create also triggers a background, best-effort `status.satisfied` write (a status-subresource
-  PUT) on the caller's assignments that the new completion newly meets; it never fails the
-  completion write. `GET /assignments/my` repairs any lost write, a 409 included: an assignment it
-  evaluates as met while `status.satisfied` is unset gets the same write in the background on the
-  learner's next read.
-  One failure rule governs `GET /assignments/my`. A whole-list failure that affects every
-  assignment (the assignments LIST or the completion read) is a 503 with `Retry-After`, or the
-  capability envelope when terminal or structural; the client keeps its last good list. A failure
-  scoped to one assignment, where no path-guide source (bundled catalogue and docs path index,
-  custom catalogue, online index) finds the target and at least one failed, is logged and the
-  assignment is omitted from the response; it is never served as unmet. An unknown target or a
-  missing track, with no source failing, stays an unresolved assignment.
-  The assignment and custom-guide LISTs are drained per caller with that caller's identity,
-  because their RBAC identity-invariance is unproven (see `custom_guide_repository.go`). The
-  raw-row completion drain is deliberately uncapped, bounded by its deadline and per-page size,
-  while `GET /completion-records/my` keeps its 50,000-record index cap.
-  Admin `GET /learning-insights` applies the existing per-caller assignment-read token bucket
-  to the verified subject before upstream work (429 with `Retry-After` on exhaustion). It shares
-  the evaluator but intentionally bounds each completion,
-  assignment, and custom-catalogue LIST to 20 pages / 10,000 retained rows, under one cancellable
-  30-second report deadline. It marks truncated history partial and unmet obligations unknown,
-  rather than claiming outstanding or overdue work without complete evidence. The learner drain
-  stays uncapped so truncation cannot turn finished work into unmet work. Its custom catalogue
-  uses the standard catalogue drain; insights uses its report bounds. Learner online resolution
-  uses the recommendations cache; insights fetches a fresh online index under the report context
-  and refuses an incomplete enrichment. Source precedence and successful identity/progress parity
-  are covered by `pkg/plugin/assignment_source_parity_test.go`; these different freshness and
-  drain policies are deliberate, not an identity-contract difference. Known limit: docs path
-  index lookups run sequentially, each bounded at 10s, so a stack that blackholes grafana.com
-  slows the response by up to that per distinct bundled URL target. Known limit: a failed online
-  package-index fetch is cached for the recommendations cache's full 6h TTL, so assignments only
-  the online index can resolve are omitted for that window; the UI resolves those paths through the
-  same index and could not render them either, and `status.satisfied` is repaired by
-  reconcile-on-read after recovery.
-- **Outcomes map onto the front-end retry-queue contract — four outcomes (created, retry,
-  disarm-and-keep, drop) across five status classes:** 201 created (durable);
-  **404 preserved verbatim** as the structural "route not deployed here" signal — the create POSTs
-  to the completionrecords **collection**, so an upstream 404 means the whole group/route is absent
-  (never a per-record miss). The client disarms writes for the session (persisted items survive for
-  the next load); the 404 is never a per-record drop and is never remapped to another status. There
-  are **four** ways into that 404: an upstream 404, a stack with no provisioned on-behalf-of
-  credential (`obo-unavailable`), an inbound identity this stack can never verify
-  (`identity-unverifiable`, §3), and no reachable signing-keys endpoint at all
-  (`signing-keys-unreachable`, §3) — all four are "never works here" on this load, and all four
-  keep the queued records.
-  The full status/outcome table: **201** created (durable); **401** transient — echoed verbatim and
-  retried client-side after re-auth (an expired session/token recovers), the one 4xx that is not a
-  drop; **404** structural disarm/keep (upstream 404, `obo-unavailable`,
-  `identity-unverifiable`, or `signing-keys-unreachable`); **408 / 429 / 5xx / 3xx / network /
-  token-exchange failure**
-  transient; **403** disarm/keep —
-  echoed verbatim; like 404 the client disarms writes for the session and RETAINS the queued
-  records for a later drain, because a missing grant can be added without the completion ever
-  happening again. It is logged at a Faro-visible level (warn), since a systemic RBAC/grant-rollout
-  denial will not fix itself by retrying; **all other
-  4xx** terminal (validation / schema — the client drops it). On the transient path the
-  client retries with capped exponential backoff — the proxy sets `Retry-After` as a standard hint,
-  but Grafana's `backendSrv` strips response headers from its thrown `FetchError`, so the front-end
-  client cannot honor it. Redirects are never followed on an
-  authenticated call: the outbound credential is now a **minted on-behalf-of access token** — a
-  live bearer credential, strictly worse to leak than an identity attestation — and Go does not
-  classify the custom `X-Access-Token` header as sensitive, so a followed cross-origin 3xx would
-  hand it (and, on 307/308, the POST body) to the redirect target. The App Platform create accepts
-  only 200/201, and any other 2xx or 3xx is
-  treated as an invalid upstream response and mapped to a retryable 502. The same idempotency key is
-  sent on every retry, so a committed-but-unacknowledged write resolves to a 409 idempotent success.
-- **Credential availability is structural, exchange failure is not.** The write resolver gates on a
-  provisioned on-behalf-of exchanger exactly as the read resolver does: absent → `obo-unavailable`
-  → 404 → the client disarms the session and keeps its queued facts. A _failed exchange_ on a
-  provisioned stack is the opposite case — an auth-api blip that recovers — so it carries no HTTP
-  status and rides the existing transient path. It is logged at **warn** (Faro-visible), because
-  the one bad shape here, a provisioned credential whose environment is missing its
-  delegated-permissions grant, would otherwise retry silently until the 30-day retention horizon.
-
-**Store cutover (`.com` → `.app`).** Completion records read and write exclusively on the `.app`
-group; `main` previously read the legacy `.com` group. The backend owner **confirmed the legacy
-`.com` CompletionRecord store empty (2026-07-30)**, so this is a **hard cut with no migration and no
-dual-read**. Reversibility is asymmetric: once `.app` writes land, a plain revert to the `.com`
-reader would orphan the new records, so **keep the `.app` reader if the POST route is ever backed
-out** — remove the write, not the read.
-
----
-
-## Author's checklist
-
-- [ ] Shared paginated LIST client; drains `continue`; per-page + aggregate deadlines; per-page
-      byte cap + aggregate budget with logged truncation
-- [ ] Namespace from `PluginConfigFromContext().Namespace` — never a query param
-- [ ] Inbound: JWKS signature verification everywhere via the shared verifier (plus `exp` present
-      and the §3 `namespace` binding); `sub` extraction only where data is per-user; fail closed,
-      with the three §3 outcomes routed from the one shared `identityStatus`. A new
-      `identityStatus` must be named in both `//exhaustive:enforce` switches —
-      `capabilityReason` and the completion write gate — which `npm run lint:go` enforces
-- [ ] Rebuild the verifier at least every 5 min; same-source rotation tests prove a removed key is
-      rejected and a newly published key is accepted after refresh
-- [ ] Outbound: shared identity-forwarding helper; ID-token-derived headers only; never `Cookie`;
-      never replay inbound `Authorization`
-- [ ] Per-user data ⇒ identity-partitioned cache; shared blob ⇒ identity-invariance proven &
-      documented; caller-scoped failures never cached shared
-- [ ] "Auth enforced at cache-fill, shared for TTL" comment present; no-eviction invariant
-      commented
-- [ ] Stale-serve on warm failure; 503+`Retry-After` cold-transient; capability envelope
-      cold-terminal; negative-cache cooldown as a separate constant
-- [ ] Envelope: `[]` never `null`; `asOf`; in-band capability; stable machine error tokens;
-      "empty ≠ unavailable"
-- [ ] Contract goldens: envelope in `contractRoots()`, ≥1 `httptest` capture case, Zod schema
-      registered — value goldens _and_ the reflected tag golden
-- [ ] One toggle const; SDK header constant; `timeNow` seam everywhere
-- [ ] Debug-level upstream logs; cache metrics; first-request credential diagnostics
-- [ ] Tests: pagination, TTL expiry, ID-token rejection matrix (forged signature, unknown `kid`,
-      wrong `typ`, `exp == 0`, expired, foreign/absent `namespace`), an unreachable signing-keys
-      chain fails closed, isolation, failure matrix, config branch
-- [ ] Runtime smoke procedure in the PR body, gating dependent work and the final outbound header
-      set
-
----
-
-## Appendix: conformance gaps in #1398 and #1400 as reviewed (2026-07-22)
-
-Delete this section once both PRs conform. Line references are to the PR diffs at review time.
-
-### PR #1400 (custom guide catalogue) — larger delta
-
-- Namespace from trusted context; delete `?namespace=` + `isValidNamespace` (§2)
-- Verify the ID token via the shared helper; fail closed before the upstream call
-  (§3) — today the token is forwarded verbatim with only a presence check
-- Outbound: mint an on-behalf-of access token from the inbound ID token and send it on
-  `X-Access-Token` via the shared `pkg/plugin/auth` exchanger (§3). Forwarding the ID token in any
-  header slot does not authenticate against the aggregator on a real stack. Both PRs must
-  terminate at the same exchanger
-- Missing/invalid identity → soft-200 `identity-unavailable` capability envelope, not 401 (§7);
-  an unreachable signing-keys chain is its own soft-200 `signing-keys-unreachable` (§3)
-- Paginate (`limit` + `continue`) + aggregate budget + aggregate deadline (§1) — today a single
-  request ignores `metadata.continue` entirely
-- Transient/terminal taxonomy + `Retry-After` — the fetcher already distinguishes 401/403 from
-  other non-200s internally but discards the distinction into a flat 503 (§5)
-- Separate failure cooldown + stale-serve; stop unconditionally overwriting last-good data with
-  error entries; caller-scoped failures never cached shared (§4, §5)
-- `timeNow` seam + TTL-expiry test (§8, §10)
-- Stable machine error token; add `asOf` (§6)
-- Document the shared-blob identity-invariance claim at the cache (§4)
-
-### PR #1398 (completion records) — smaller delta
-
-- Outbound headers: drop `Cookie`; drop the verbatim `Authorization` replay (Grafana strips the
-  inbound header, so it forwards nothing) and send only an access token minted from `X-Grafana-Id`
-  on `X-Access-Token`, via the shared `pkg/plugin/auth` exchanger (§3)
-- Reject `exp == 0` in `subjectFromIDToken`; the `typed prefix preserved verbatim` case in
-  `completion_identity_test.go` builds its token with no `exp` claim and asserts success — give
-  it a real `exp` and add an explicit missing-`exp` rejection case (§3, §10)
-- Aggregate budget across pages + aggregate deadline bounding the detached drain — today the
-  8 MiB cap is per-page with unbounded page count, and the `WithoutCancel` drain has no overall
-  deadline (§1)
-- Comment the no-eviction invariant on the namespace map (§4)
-
-### Both
-
-- Extract shared plumbing: identity helpers, toggle constant, paginated LIST client, URL builder,
-  single-flight/cache scaffolding (§8)
-- Document the ID-token trust boundary once, identically — it lives in §3 of this document; since
-  #1568 that boundary is authlib/JWKS signature verification, not a structural check (§3)
-- First-request credential diagnostics log (§9)
-- Runtime smoke procedure in the PR body, gating dependent work and the final outbound header set
-  (§3, §10)
-
-## Singleton settings reads
-
-`GET /pathfinder-settings` extends the caller-scoped OBO proxy pattern to the
-`pathfindersettings/default` singleton. It verifies the forwarded identity and
-uses the trusted plugin-context namespace, preserving the full spec and
-`metadata.resourceVersion` for optimistic concurrency. Reads have a 15-second
-deadline, a 1 MiB response bound, disabled redirects, and no shared cache.
-
-Settings distinguish a missing singleton from a missing route. The bounded upstream
-error body (2 KiB) must be a Kubernetes v1 `Status`, `Failure`, code 404,
-`reason: NotFound`, naming group `pathfinderbackend.ext.grafana.app`, resource
-`pathfindersettings`, and name `default`, with no causes. Clients request
-`?absence=explicit` to receive `200 {"state":"not-configured"}` for that case only.
-Every other upstream 404 (unrecognized, malformed, oversized, namespace or route),
-and confirmed absence without the opt-in, keeps the legacy
-`error: "settings-upstream-unavailable"` 404, as do upstream 405/501. The client
-falls back to `jsonData` for those without caching them, so a stack whose
-aggregation toggle is on but whose backend does not serve the kind keeps reading
-and saving through `jsonData`. Settings 404/405/501 are excluded from failure logs.
-Only the explicit successful absence response can populate the session cache.
-A missing plugin route, missing OBO configuration, or rejected identity must not
-permit a fallback write. Writes remain direct App Platform requests with existing
-authorization and optimistic concurrency checks.
-
-Startup may reuse confirmed absence from browser `sessionStorage` for ten minutes,
-scoped by namespace, Grafana subpath, organization, and user. Real records and
-errors are never cached there. Opening the learning panel or configuration form
-re-reads from the server only when the configuration on screen came from that
-cache, after the cached read has settled; concurrent opens share the re-read, and
-nothing supersedes a pending read, so a failed re-read keeps the published
-startup result. Every pre-save and read-after-save check also bypasses absence.
-Saves and authoritative record reads invalidate absence through a
-namespace/subpath-scoped `localStorage` generation, so another tab detects
-invalidation even after suspension or reload. A response started before
-invalidation cannot restore the marker. Storage failures degrade to reads rather
-than failing settings operations; cross-tab invalidation requires writable local
-storage. No settings values or credentials are persisted in this cache.
-
-Read budget per page load, against one settings read and one plugin-settings read
-before the cache: absence not cached (first load, a saved record, or expiry) is
-unchanged and later panel opens add nothing; cached absence with no panel or
-configuration open makes no settings read; cached absence with an open makes one
-settings read and a second plugin-settings read. The cost is propagation: a save
-from another browser, including `pathfinderEnabled: false`, reaches a tab's
-page-load registration decision within ten minutes, on the next panel or
-configuration open, or in a new tab session, where it previously applied on the
-next load.
-
-`GET /custom-guide?name=<resource name>` uses the same bounded, caller-scoped
-item reader for full InteractiveGuide resources. The backend fixes the resource
-kind and derives the namespace from plugin context; names cannot contain path
-separators, percent escapes, or control characters. Content loading and the
-package resolver's published-status probe both use this route. The proxy
-preserves draft content for existing share links; the resolver retains its
-published-status gate. Catalogue listing continues to use `/custom-guide-repository`.
-
-`GET /custom-guides` supplies the editor with complete InteractiveGuide resources,
-including all metadata and spec fields, through the same identity gate and caller-scoped
-OBO client. It drains pages of 100 resources with an 8 MiB page cap, a 32 MiB aggregate
-resource byte budget, a 50,000-item cap, and a 30-second aggregate deadline. Budget
-truncation is logged. Responses are `Cache-Control: no-store` and never cached
-across callers. Upstream 401 maps to 502; other upstream errors retain the single-item
-reader's mapping. The browser's existing optional-endpoint status handling remains
-unchanged. Editor writes continue to use App Platform directly.
-
-## Operational diagnostics
-
-App Platform failures carry optional `diagnostics` alongside existing error/capability
-responses. `stage` separates identity, configuration, token exchange and App Platform;
-`reason`, `resource`, and `operation` are bounded classifications. Upstream status is
-included only when known. Existing statuses, retry hints, caller isolation and completion
-queue behavior remain unchanged. A 503 is still retryable; its diagnostics identify the
-failed hop. Token-exchange failure does not prove an invalid provisioned credential.
-
-The shared upstream client emits `event=pathfinder_proxy_failure` once per failed operation
-(including a completion refresh that serves stale data), not once per cached response or
-frontend retry: a retried settings read sends `?attempt=N`, and attempts after the first log
-`event=pathfinder_proxy_retry_failure` with `attempt` instead. A read whose first attempt never
-reaches the plugin (a gateway 502 or 504) logs only retry events, so the alert undercounts it.
-Expected settings absence, unsupported collection routes, idempotent write conflicts,
-and cancellations are excluded. Internal logs retain trusted
-stack and trace context; diagnostic responses never include tokens or upstream bodies.
-An empty successful LIST is not classified as an authorization failure.
-
-### 11.1 Attempt upserts (incremental progress)
-
-A write body that carries `attemptId` is one guide attempt's progress, not a one-off completion.
-The handler is in `pkg/plugin/completion_records_attempt.go`. A body without `attemptId` takes the
-create-only path above, unchanged.
-
-- **One record per attempt.** The name is `hash(userID ‖ 0x00 ‖ "attempt" ‖ 0x00 ‖ attemptId)`. It
-  is scoped to the verified user like the create name, and disjoint from every create name.
-- **Read, then write.** The plugin GETs the record. A JSON `Status` with `reason: NotFound` means
-  create it; any other 404 is structural and passes through as for a create. A 409 on the create
-  means another write won the race, so it reads again.
-- **Never lower progress.** A stored percent at or above the incoming one is a `200` no-op. That
-  covers replays, retries and out-of-order arrivals.
-- **Optimistic concurrency.** Otherwise it PUTs the full object it read, minus
-  `metadata.managedFields`, at the `resourceVersion` it read. A stale version is a 409; the plugin
-  reads and retries, up to 3 tries, then answers `503 completion-write-contended` (retried).
-  A PUT `404` with a `NotFound` Status also restarts the loop, so a concurrent deletion permits recreation.
-  A structural `404` remains a route failure.
-- **Completion fields at 100% only.** A partial stores no `completedAt`, `source: objectives` and
-  `durationSeconds: 0`. The write that reaches 100% sets all three.
-- **Schema skew.** A partial's `422` maps to `503 schema-not-ready` only for an `Invalid` Status whose causes all require `spec.completedAt`.
-  Other validation errors remain terminal, including malformed Status bodies and every `422` on a completion.
-- **Foreign record.** A stored record for another user or guide is `409 attempt-conflict`
-  (terminal; the client drops it).
-- **One token.** GET, create and PUT share one on-behalf-of token per inbound request.
-
-Responses add `200` (updated or no-op) to the create path's `201`.
-A completed record triggers cache invalidation and assignment synchronization even on a no-op retry.
-Synchronization uses the stored completion fields, not a replay's timestamp or source. `capability.progressRecords: true` advertises that the build accepts attempt
-bodies; it says nothing about the caller's permissions.
-
-**Read side.** `/completion-records/my` counts only records with a `completedAt` as completions,
-so legacy records, which always have one, collate as before. `inProgress[]` (always present)
-lists the newest unfinished attempt per guide only when its start time is later than the latest `completedAt`.
-Attempt writes carry an optional `attemptStartedAt`, stored in the immutable `pathfinder.grafana.com/attempt-started-at` annotation.
-The plugin validates this client timestamp and preserves it through updates. It does not require a new CRD spec field.
-Older queued bodies use their client `completedAt` as the initial start-time fallback.
-Records without the annotation retain the legacy last-update ordering. Their original attempt order cannot be reconstructed reliably.
-The displayed `lastUpdatedAt` still uses `grafana.app/updatedTimestamp`, falling back to `spec.recordedAt`.
-
-The browser serializes attempt minting, completion, and reset through an origin-wide Web Lock.
-Without Web Locks, new attempts use analytics mode and send only legacy completions.
-A queue replacement must persist before the queue removes its predecessors or enforces capacity.
-Failed enqueueing does not advance the progress high-water mark. Reset removes unsent partials for the affected guide.
-Immutable attempt start times prevent a delayed, in-flight write from making an older attempt appear newer than a completion.
-
-### Rollout and rollback of attempt records
-
-The records and analytics flags both default to false. Local attempt tracking still persists on the device.
-The records flag controls partial transmission, not backend authorization or existing durable records.
-
-Before enabling partial writes:
-
-1. Deploy the schema that permits an absent `completedAt`.
-2. Deploy partial-aware collation and attempt upserts to every serving plugin replica.
-3. Verify one record across partial progress and completion, including assignment satisfaction.
-
-Costa confirmed the required Viewer OBO permissions through the RBAC permission set in Slack, as reported by Tom.
-This resolves the permission-model question, not the live end-to-end verification.
-A capability response advertises build support, not an authorization test. A 403 still disarms the session queue.
-The queue retains items for later retry, subject to its 30-day expiry.
-
-**CAUTION: Do not restore an older reader while partial records exist.** Older collation counts these records as completions.
-A new annotation cannot protect an older reader that ignores it.
-
-Before a plugin rollback:
-
-1. Disable `pathfinder.progress-records`.
-2. Stop writes at the deployment boundary, including requests from stale tabs.
-3. Wait for in-flight writes to finish.
-4. Back up the namespace's CompletionRecords with their names, UIDs, and resource versions.
-5. List all pages and identify unfinished records by absent or empty `spec.completedAt`.
-6. Delete only those records, with UID and resource-version preconditions from the inspected objects.
-7. If a precondition fails, read the record again before deciding whether it remains unfinished.
-8. Verify that no unfinished records remain.
-9. Restore the older plugin and resume writes.
-
-Cleanup requires authorized operator access, not a new browser-facing deletion route.
-If writer quiescence or safe cleanup is unavailable, retain the partial-aware reader and disable partial writes instead.
-Disabling the frontend flag alone does not remove stored partials or stop stale tabs.
-
-Accepted limitation: a completion can commit without its response reaching the browser.
-If its queued retry reaches a legacy writer after a downgrade, that writer can create a duplicate completion.
-Cross-version retry deduplication is out of scope.
-
-### Partial-record retention
-
-Abandoned partial records currently persist without expiry. Each attempt adds a record to the namespace's 50,000-record collation budget.
-The queue's 30-day expiry applies to unsent items, not stored records.
-
-Retention follow-up: define a stale-attempt age and owner before broad enablement.
-The cleanup design must use paginated discovery, last-update timestamps, dry-run counts, backups, and conditional deletion.
-Acceptance requires that a concurrent completion survives cleanup and that completed records remain unchanged.
-Capacity monitoring must report the total record count and warn before the collation budget is exhausted.
-
-## Mechanically enforced: reads proxied, writes direct
-
-The read/write split this document describes — a GET must go through a plugin-backend proxy,
-while an admin PUT/POST/PATCH/DELETE may stay on the direct App Platform API with its own
-optimistic-concurrency checks — is enforced by `src/validation/app-platform-transport.test.ts`
-for reads issued through `getBackendSrv()`, which is how every Pathfinder-owned App Platform
-resource is fetched. A direct App Platform read on another transport is outside that check:
-`src/utils/openfeature.ts` hands an `/apis/` base url to `OFREPWebProvider`, a Grafana-owned
-provider that predates and sits outside the #1966 contract. That test is the authority on the
-rule's exact precision (how a conditional method, a url builder, or a variable-held request
-object is resolved); see it rather than this paragraph for the mechanics.
-
-That test's allowlist contains only the [signed-in survey compatibility read](#signed-in-survey-compatibility-read) described below. Any other direct read fails the test.
-
-## Signed-in survey compatibility read
-
-The temporary saved-exploring experiment has one explicit browser-read exception, tracked in PR #2343: `src/lib/onboarding-survey-intent.ts` reads the existing `grafana-setupguide-app:<current-user-uid>` object in `userstorage.grafana.app/v0alpha1`. This is Grafana's own-user settings API, not the Pathfinder catalogue API. Its authorizer verifies the authenticated caller's UID against the record name, regardless of the service-name prefix. The adapter derives namespace and UID from the signed-in runtime context, never from a URL parameter, and uses the browser session. Anonymous users never read or enroll. There is no service-account credential, internal storage import, fabricated plugin context or Setupguide release dependency.
-
-This exception does not change the proxy requirement for any other resource. The transport ratchet explicitly detects and allowlists this single call, with a regression preventing it from becoming invisible to the scanner. The private survey key/schema and alpha resource require compatibility tests. Missing/malformed data, authentication failures and timeouts leave both experiment arms ineligible; legacy browser storage is not an identity-safe fallback. Revalidate on bounded navigation/visibility cycles only on configured experiment pages and discard stale responses. The source is the latest completed server save, not a guarantee that a newer, still-pending survey submission has completed. Remove the exception when retiring the experiment.
-
-## SDK runtime migration
-
-The SDK provider now exposes
-`GET /apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/pathfinder-settings`.
-The browser uses the bounded `backendRoute()` helper when both SDK registration
-flags are enabled and Grafana provides a namespace; otherwise it retains the legacy
-transport. Both settings routes use the settings-read
-service; SDK access uses the generated kind definition with `resource.Client.GetInto`
-to retain unknown JSON fields that a generated typed settings object would discard.
-The SDK adapter preserves the request context, binds its verified identity namespace
-to the route namespace, and uses the runtime's caller-delegating client generator.
-Its transport refuses redirects and bounds successful responses to 1 MiB and error
-responses to 2 KiB. The shared service applies the existing 15-second deadline.
-
-Local verification on Grafana 13.3.0 (commit
-`6f8ce3c693b493043ebcd4787566d2b6b118b0f0`) enabled
-`appplugins.loadAppManifest`, `appplugins.registerAPIServer`, and
-`grafana.useRouterMiddleware`. The plugin binary and generated manifest registered
-all four kinds. The SDK route returned the same complete settings resource as
-standard CRUD, retained it across a plugin restart, returned explicit confirmed
-absence before creation, and rejected unauthenticated and cross-namespace requests.
-A restricted user was rejected at ingress; this does not prove outbound delegation.
-The resource-access integration test separately exercises token exchange with the
-caller's token and namespace through the bounded SDK transport.
-
-Cloud coexistence with the manifest-only registration and real restricted-caller
-outbound authorization remain unverified. Cloud testing is deferred until after local
-implementation and does not block local endpoint migration or frontend validation.
-Do not remove or replace the Cloud registration or remove the legacy adapter on the
-strength of local registration alone. Retain the planned compatibility window.
-
-### Final local acceptance: OSS guide authoring
-
-After all required endpoints and direct Pathfinder resource writes have migrated,
-enable block editor creation and saving on the local OSS instance. Availability
-detection must recognize the SDK provider without depending exclusively on the
-Cloud aggregation toggle. Preserve authorization and namespace isolation; runtime
-feature flags alone are not evidence that an individual caller can write guides.
-
-Verify these journeys end to end through the migrated SDK routes:
-
-- Create a guide in the block editor and save it.
-- Reload Grafana, reopen the saved guide, edit it, and save again.
-- Exercise existing publishing and deletion actions where authorized.
-- Verify denied writes leave stored data unchanged and another namespace cannot
-  read or modify the guide.
-- Run settings, progress, assignment, and learning-insights journeys after the
-  complete endpoint migration.
-
-Leave the dedicated local OSS Grafana instance running with the built frontend,
-SDK plugin binary, and persistent test data. Report its URL, login, validation
-results, and any remaining limitations. Do not repurpose another local instance.
-
-### Browser transport boundary
-
-`src/lib/backend-routes.ts` permits only the named backend surfaces. It derives
-the namespace from Grafana runtime configuration and rejects unknown paths. These
-SDK custom handlers retain the verified caller context and enforce namespace
-binding before resource access. They are distinct from direct resource CRUD reads.
-The transport ratchet recognizes this exact helper module and declaration; an
-unrelated helper with the same name or a raw `/apis/` URL remains subject to the
-existing restrictions. Guide and settings mutations also use these SDK handlers.
-
-The provider owns settings, guide item/list/catalogue, personal completion reads,
-completion capability/writes, assignments, learning insights, recommendations, and
-health routes. Legacy adapters remain for the compatibility window. Recommendations
-retain their anonymous shared cache; authenticated user data must never enter it.
-
-Assignment status updates are a narrow exception to caller-delegated resource
-writes: Grafana reserves status mutations for service identities. After delegated
-reads establish caller ownership and completion satisfaction, `MarkSatisfied`
-checks the verified namespace and subject against the assignment, requires its
-resource version, and uses a bounded app-identity context to update status. Guide,
-settings, and completion writes continue to use caller delegation.
-
-SDK completion caches are keyed by namespace and authenticated subject. A caller
-never receives another caller's cached availability, failures, or completion index.
-Completion writes invalidate every caller entry in the affected namespace, including
-in-flight generations; the legacy namespace cache is also invalidated during the
-compatibility window.
-
-Run the dedicated local browser acceptance with:
+# SDK backend and resource access
+
+Pathfinder uses the Grafana App SDK provider in `pkg/provider`. The Go executable
+starts `sdkplugin.Run(provider, ...)`, following the
+[SDK test app](https://github.com/grafana/app-examples/tree/main/example-appsdktest-app).
+It has no `WithAppFunc`, legacy `CallResource` adapter, or `pkg/plugin` implementation.
+Grafana launches this executable to run the SDK application. Removing the executable
+would require a separately hosted application server.
+
+## Runtime and registration
+
+The verified local runtime is Grafana OSS 13.3.0 with these flags:
+
+- `appplugins.loadAppManifest`
+- `appplugins.registerAPIServer`
+- `grafana.useRouterMiddleware`
+
+The frontend plugin manifest and generated SDK app manifest ship together. The SDK
+provider registers the existing `pathfinderbackend.ext.grafana.app/v1alpha1` kinds
+and custom routes. Resource names, versions, and schemas remain unchanged. Existing
+resources remain in Grafana's resource store across plugin restarts.
+
+Cloud coexistence with the existing manifest-only registration is **not verified**.
+Cloud testing is deferred. Do not replace the Cloud registration or describe this
+local migration as Cloud deployment readiness. This SDK-only follow-up deliberately
+removes the compatibility adapter at the user's request; the parent migration PR
+is the code rollback point, not proof that the legacy transport works on this OSS
+instance. The former legacy settings adapter required OBO configuration absent here.
+
+The SDK runner supplies default plugin health integration. SDK `backend/health`
+also returns the application health response.
+
+## Route inventory
+
+All browser backend requests use:
+
+`/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/{route}`
+
+| Route                           | Methods                | Responsibility                                         |
+| ------------------------------- | ---------------------- | ------------------------------------------------------ |
+| `pathfinder-settings`           | GET, POST, PUT         | Read, create, and update the default settings resource |
+| `custom-guide`                  | GET, POST, PUT, DELETE | Guide item access and authoring                        |
+| `custom-guides`                 | GET                    | Complete guide resources for the authoring library     |
+| `custom-guide-repository`       | GET                    | Catalogue metadata                                     |
+| `completion-records`            | POST                   | Completion creation and attempt progress               |
+| `completion-records/my`         | GET                    | Current caller's collated progress                     |
+| `completion-records/capability` | GET                    | Completion availability and progress support           |
+| `assignments/my`                | GET                    | Current caller's assignments and satisfaction          |
+| `learning-insights`             | GET                    | Admin-only learning aggregation                        |
+| `package-recommendations`       | GET                    | Anonymous public recommendation catalogue              |
+| `health`                        | GET                    | SDK application health                                 |
+
+The frontend `backendRoute()` helper allows only this bounded route inventory,
+derives namespace from Grafana runtime configuration, and rejects missing or
+wildcard namespaces. Guide/settings URL helpers reject a namespace that differs
+from that runtime configuration. They have no legacy-route or raw-resource CRUD
+fallback. SDK availability requires the SDK registration flags and a concrete
+namespace; the old Cloud aggregation toggle alone is insufficient.
+
+## Identity and namespace boundaries
+
+SDK ingress supplies the authenticated authlib identity. Handlers use that verified
+context; browser headers and JSON identity fields are never an identity source.
+The context namespace must exactly equal the route namespace. Missing or wildcard
+namespaces fail closed. Admin authorization uses authenticated claims bound to the
+same subject and namespace. The URL namespace is a routing input, not authority.
+
+`pkg/resourceaccess` uses SDK-generated kind clients and the runtime's client
+generator, preserving request context and caller delegation. Resource clients
+refuse redirects, bound response bodies, and retain the authenticated namespace.
+Do not recreate a bespoke JWT verifier, OBO exchanger, service-account fallback,
+or cookie/header forwarding in a handler.
+
+Completion records derive user ID, profile, organization, and stack namespace from
+trusted identity. Client-supplied user, organization, and namespace fields cannot
+override these values. Read responses filter personal records by trusted subject.
+Unauthorized requests must not reach resource clients or reuse another user's cache.
+
+Assignment status synchronization is a narrow app-identity exception: Grafana
+reserves status mutations for service identities. Delegated reads first establish
+caller ownership and completion satisfaction. `MarkSatisfied` checks the verified
+namespace and subject against the assignment, requires its resource version, and
+uses a bounded app-identity context to update status. Guide, settings, and completion
+writes remain caller-delegated. Do not extend this exception to arbitrary CRUD.
+
+## Services and resource contracts
+
+`pkg/services` owns transport-independent behavior. `pkg/provider` owns SDK handlers
+and identity gates. `pkg/resourceaccess` owns generated-client access.
+`pkg/publiccontent` owns public recommendation caching and online assignment lookup.
+
+Preserve the existing contracts when editing these packages:
+
+- Drain continuation tokens, not just the first page. Retain per-page body bounds,
+  aggregate item/byte budgets, and aggregate deadlines. Report budget exhaustion;
+  do not silently treat an incomplete drain as complete evidence.
+- Keep existing page sizes, timeouts, retry delays, rate limits, capability envelopes,
+  diagnostics, and terminal-versus-transient error classification.
+- Confirm missing settings from the exact Kubernetes resource status; an arbitrary
+  404 does not prove the singleton is absent. Keep unknown JSON fields on read/update.
+- Preserve full guide resources in authoring and published visibility in consumers.
+  Catalogue metadata and optional manifest fields must survive round trips.
+- Assignment satisfaction requires matching guide identity/source, terminal progress,
+  and a valid completion timestamp at or after `acceptCompletionsFrom`. Missing
+  members and failed lookups must not become satisfied assignments.
+- Learning insights requires admin identity, preserves aggregation and partial-data
+  warnings, and keeps historical assignment evidence distinct from period totals.
+
+The Go contract fixtures in `pkg/provider/testdata/contract` capture SDK handler
+responses. Reflection inventories JSON fields, types, and omission rules; the
+frontend checks them against `src/types/backend-api.schema.ts`. Normalize only the
+validated dynamic `asOf` timestamp in fixture capture. Regenerate intentional
+changes with `go test ./pkg/provider -run TestContract -update` and review the wire
+diff. Identity denial for insights is an HTTP 403, covered by authorization tests.
+
+## Cache isolation
+
+SDK providers can serve more than one caller. Completion cache keys include both
+namespace and authenticated subject. Availability and error entries must not leak
+across either boundary. Writes invalidate every completion-cache entry in the
+affected namespace, including in-flight generations. Detached refreshes and
+assignment repairs retain identity context and have bounded resource operations.
+
+Recommendations are deliberately different: they fetch public CDN content
+anonymously and retain a shared process-wide cache. Per-user or tenant-private
+content must never enter this cache. Keep public fetch host validation, redirect
+restrictions, response-size limits, enrichment bounds, stale fallback, and existing
+failure responses. Online assignment lookup shares public content only.
+
+## Completion writes
+
+Stable names bind an idempotency key or attempt ID to the authenticated subject.
+Retries reuse the same record; both interrupted responses and duplicate requests
+must remain safe. Attempt updates use optimistic resource versions and bounded
+conflict retries. Progress is monotonic: equal/lower updates return stored progress,
+and retries never replace the original completion timestamp.
+
+Partial records omit `completedAt`; they are not completed-guide evidence. On
+reaching 100%, the completion fields are populated. Preserve unknown fields,
+metadata, and the original attempt-start annotation during updates. A schema that
+requires `completedAt` for a partial is a retryable `schema-not-ready` response;
+other validation errors retain their existing failure semantics.
+
+Committed completions synchronize assignments and invalidate caches. An unchanged
+completed retry still repairs assignments/cache state; an unchanged partial does
+not invent completion evidence. Never dual-write through two transports.
+
+Partial records persist without expiry. The browser queue's 30-day expiry does
+not delete stored partials. A rollback to a reader that does not understand partial
+records requires stopping writers and safely removing unfinished records first;
+otherwise retain the partial-aware reader. The parent SDK migration already reads
+partials. Retention policies, new admission rules, and background reconcilers remain
+separate work unless needed to preserve an existing guarantee.
+
+## Frontend transport enforcement
+
+`src/validation/app-platform-transport.test.ts` rejects direct App Platform resource
+reads through `getBackendSrv()` and recognizes the exact bounded SDK helper. A
+similarly named helper or arbitrary `/apis/` URL does not bypass the rule. All
+Pathfinder guide/settings mutations use SDK handlers as well.
+
+The signed-in survey compatibility read in `src/lib/onboarding-survey-intent.ts`
+remains a narrow exception: Grafana's own-user `userstorage.grafana.app/v0alpha1`
+API authorizes the record against the authenticated UID. Namespace and UID come
+from signed-in runtime context. Anonymous callers do not read or enroll; failures
+leave the experiment ineligible. This is unrelated to Pathfinder resource CRUD.
+
+## Local acceptance
+
+The dedicated instance is http://localhost:3302 (admin/admin). Do not repurpose
+another local Grafana instance. Run:
 
 ```sh
 PATHFINDER_SDK_E2E=1 GRAFANA_URL=http://localhost:3302 npx playwright test tests/sdk-guide-authoring.spec.ts --project=chromium
 ```
 
-The test enables the existing learning-insights rollout flag through Grafana's local
-OpenFeature override. Resource reads and writes use the real SDK provider and store.
-
-Local validation covers guide create/save/reload/edit/publish/delete, completion
-persistence, assignment satisfaction and stored status synchronization, admin insights,
-and settings save/reload. Viewer guide/settings writes and cross-namespace reads
-return 403. The full frontend coverage suite and Go service/client/provider checks
-pass. The dedicated OSS instance uses the SDK route path throughout these journeys.
-
-Legacy rollback remains a rollout prerequisite, not a locally proven result: the
-legacy settings adapter on this OSS instance returns `proxy-unavailable` because
-its former OBO configuration is absent. Keep compatibility routes and
-`WithAppFunc(plugin.NewApp)` until Cloud coexistence, rollback, and the planned
-compatibility window have been verified.
+Acceptance covers block-editor creation/save/reload/edit/publish/delete, settings,
+completion persistence, assignment satisfaction/status synchronization, and admin
+learning insights. Also verify denied writes and cross-namespace reads, SDK health,
+and absence of the old `/api/plugins/grafana-pathfinder-app/resources/*` handlers.
+Grafana 13.3 maps the SDK runner's unimplemented `CallResource` RPC to HTTP 500
+with `plugin.requestFailureError`; server logs identify `plugin.notImplemented`.
+Leave the built SDK-only instance running with persistent test data. Cloud testing
+and production rollout remain deferred.

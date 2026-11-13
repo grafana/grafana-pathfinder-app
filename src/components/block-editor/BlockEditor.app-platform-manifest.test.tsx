@@ -19,7 +19,7 @@ jest.mock('@grafana/runtime', () => {
     config: {
       ...actual.config,
       namespace: 'stacks-1',
-      featureToggles: { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true },
+      featureToggles: { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true },
       bootData: {
         ...actual.config.bootData,
         user: { name: 'Sam Rivera', login: 'sam', email: 'sam@example.com' },

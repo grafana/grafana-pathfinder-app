@@ -1,10 +1,10 @@
 import { config } from '@grafana/runtime';
-import { PLUGIN_BACKEND_URL } from '../constants';
 
 export function usesSdkBackend(): boolean {
   const toggles = config?.featureToggles as Record<string, boolean> | undefined;
   return (
     Boolean(config?.namespace) &&
+    config.namespace !== '*' &&
     toggles?.['appplugins.loadAppManifest'] === true &&
     toggles?.['appplugins.registerAPIServer'] === true
   );
@@ -28,8 +28,8 @@ export function backendRoute(path: (typeof backendPaths)[number]): string {
   if (!(backendPaths as readonly string[]).includes(path)) {
     throw new Error('Unknown backend route');
   }
-  if (!usesSdkBackend()) {
-    return `${PLUGIN_BACKEND_URL}/${path}`;
+  if (!config?.namespace || config.namespace === '*') {
+    throw new Error('SDK backend namespace is unavailable');
   }
   return `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${encodeURIComponent(config.namespace)}/backend/${path}`;
 }

@@ -5,7 +5,6 @@ import {
   fetchPathfinderSettingsSnapshot,
 } from '../../utils/pathfinder-settings-api';
 import { resolveTenantSettings } from '../../utils/resolve-tenant-settings';
-import { updatePluginSettings } from '../../utils/utils.plugin';
 
 export interface SaveTenantSettingsArgs {
   pluginId: string;
@@ -13,7 +12,7 @@ export interface SaveTenantSettingsArgs {
 }
 
 export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettingsArgs): Promise<void> {
-  const { config: current, pluginSettings, tenant } = await resolveTenantSettings(pluginId);
+  const { config: current, tenant } = await resolveTenantSettings(pluginId);
   const source = clampToKindBounds({ ...current, ...changes });
   const next = Object.fromEntries(
     TENANT_SETTING_KEYS.filter((key) => source[key] !== undefined).map((key) => [key, source[key]])
@@ -32,10 +31,5 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
     return;
   }
 
-  const { devModeOptIn: _devModeOptIn, ...legacy } = pluginSettings.jsonData;
-  await updatePluginSettings(pluginId, {
-    enabled: pluginSettings.enabled,
-    pinned: pluginSettings.pinned,
-    jsonData: { ...legacy, ...next },
-  });
+  throw new Error('The SDK settings API is unavailable; retry the save after the application is registered.');
 }

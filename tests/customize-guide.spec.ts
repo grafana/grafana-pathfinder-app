@@ -53,21 +53,30 @@ for (const repair of [false, true]) {
         configurable: true,
         get: () => bootData,
         set: (value: typeof window.grafanaBootData) => {
-          value.settings.featureToggles['aggregation.pathfinderbackend-ext-grafana-app.enabled'] = true;
+          value.settings.featureToggles['appplugins.loadAppManifest'] = true;
+          value.settings.featureToggles['appplugins.registerAPIServer'] = true;
+          value.settings.namespace = 'default';
           bootData = value;
         },
       });
     }, repair);
     await page.route(
-      (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+      (url) =>
+        url.pathname.endsWith(
+          '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/pathfinder-settings'
+        ),
       (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
     );
     const writes: unknown[] = [];
-    await page.route('**/api/plugins/grafana-pathfinder-app/resources/custom-guides', (route) =>
-      route.fulfill({ json: { items: writes.slice(-1) } })
+    await page.route(
+      '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/custom-guides',
+      (route) => route.fulfill({ json: { items: writes.slice(-1) } })
     );
     await page.route(
-      (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/custom-guide'),
+      (url) =>
+        url.pathname.endsWith(
+          '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/custom-guide'
+        ),
       (route) => {
         const name = new URL(route.request().url()).searchParams.get('name');
         const stored = (writes as Array<{ metadata?: { name?: string } }>)

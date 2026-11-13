@@ -16,7 +16,7 @@ import { observeGuideRequest, finishGuideLoad } from '../lib/telemetry/guide-loa
  * resolutions from here (see CompositePackageResolver's repository check).
  *
  * @coupling Types: PackageResolver, PackageResolution in package.types.ts
- * @coupling API: GET /api/plugins/grafana-pathfinder-app/resources/custom-guide?name={name}
+ * @coupling API: GET SDK backend/custom-guide?name={name}
  *   — group/version/availability come from utils/interactive-guides-api.ts (GAP).
  * @coupling Catalogue/listing needs (Custom Guides, My Learning) go through the
  *   separate /custom-guide-repository backend proxy instead of this resolver —

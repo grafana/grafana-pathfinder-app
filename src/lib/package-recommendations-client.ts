@@ -58,7 +58,7 @@ export interface PackageRecommendationsResponse {
  * `baseUrl` (`'///'`) or an empty `entryPath`. Callers should treat `''` as
  * "no usable URL" and skip the entry rather than fetching a relative path.
  *
- * Mirrors `buildPackageFileURL` in `pkg/plugin/package_recommendations.go`;
+ * Mirrors `buildPackageFileURL` in `pkg/publiccontent/recommendations.go`;
  * keep the two in sync.
  */
 export function buildPackageFileUrl(baseUrl: string, entryPath: string, fileName: string): string {

@@ -10,6 +10,7 @@ import {
 
 const mockFetch = jest.fn();
 jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'stacks-123' },
   getBackendSrv: jest.fn(),
 }));
 

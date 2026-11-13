@@ -2,10 +2,13 @@ import { of, throwError } from 'rxjs';
 
 import { fetchBackendGuides } from './fetchBackendGuides';
 import { isBackendApiAvailable } from './interactive-guides-api';
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from '../lib/backend-routes';
 
 const fetchMock = jest.fn();
-jest.mock('@grafana/runtime', () => ({ getBackendSrv: () => ({ fetch: fetchMock }) }));
+jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'stacks-123' },
+  getBackendSrv: () => ({ fetch: fetchMock }),
+}));
 jest.mock('./interactive-guides-api', () => ({ isBackendApiAvailable: jest.fn(() => true) }));
 
 beforeEach(() => {
@@ -13,7 +16,7 @@ beforeEach(() => {
   jest.mocked(isBackendApiAvailable).mockReturnValue(true);
 });
 
-it('reads full resources through the plugin proxy without sending a namespace', async () => {
+it('reads full resources through the namespace-bound SDK route', async () => {
   const items = [
     {
       metadata: {
@@ -30,7 +33,7 @@ it('reads full resources through the plugin proxy without sending a namespace', 
   fetchMock.mockReturnValueOnce(of({ data: { items } }));
   await expect(fetchBackendGuides('stacks-123')).resolves.toEqual(items);
   expect(fetchMock).toHaveBeenCalledWith({
-    url: `${PLUGIN_BACKEND_URL}/custom-guides`,
+    url: backendRoute('custom-guides'),
     method: 'GET',
     showErrorAlert: false,
   });

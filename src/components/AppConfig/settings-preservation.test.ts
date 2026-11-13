@@ -1,26 +1,3 @@
-/**
- * Regression tests for settings preservation on save.
- *
- * Grafana's plugin settings API replaces `jsonData` wholesale rather than merging
- * it, and Grafana Cloud provisioning writes to the same record. That produced two
- * separate incidents: a config save erased the provisioned `stackId` and broke
- * private guides (#1514), and a save that omitted `pinned` unpinned the plugin
- * from the nav (`aa1c2efd`).
- *
- * Tenant settings now live in their own App Platform resource, which shares no
- * document with provisioning. These tests cover both halves of that:
- *
- *   - the App Platform path is preferred and never carries fields it does not own;
- *   - the legacy `jsonData` fallback — still the only store on OSS, self-managed
- *     and local dev — preserves provisioned fields and echoes `enabled`/`pinned`.
- *
- * Unlike the earlier version of this file, these exercise `saveTenantSettings`
- * itself rather than re-simulating the spread pattern inline, so a call site that
- * stops preserving fields actually fails.
- *
- * @see https://grafana.com/developers/plugin-tools/how-to-guides/app-plugins/add-authentication-for-app-plugins
- */
-
 import { DEFAULT_ENABLE_AI_AUTO_HEAL, getConfigWithDefaults, PathfinderPluginConfig } from '../../constants';
 import { fetchPathfinderSettingsSnapshot, savePathfinderSettings } from '../../utils/pathfinder-settings-api';
 import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plugin';
@@ -58,7 +35,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockFetchPlugin.mockResolvedValue({ jsonData: {}, enabled: true, pinned: true });
   mockFetchTenant.mockResolvedValue(null);
-  mockSaveTenant.mockResolvedValue(false);
+  mockSaveTenant.mockResolvedValue(true);
   mockUpdatePlugin.mockResolvedValue(undefined);
 });
 
@@ -127,92 +104,6 @@ describe('saveTenantSettings — App Platform path', () => {
   });
 });
 
-describe('saveTenantSettings — legacy jsonData fallback', () => {
-  it('saves the opt-out without disabling or unpinning the plugin', async () => {
-    mockFetchPlugin.mockResolvedValue({
-      jsonData: provisionedJsonData({ tutorialUrl: 'stored' }),
-      enabled: true,
-      pinned: true,
-    });
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled: false } });
-    expect(mockUpdatePlugin).toHaveBeenCalledWith(PLUGIN_ID, {
-      enabled: true,
-      pinned: true,
-      jsonData: { stackId: '123456', tutorialUrl: 'stored', pathfinderEnabled: false },
-    });
-  });
-  it('preserves provisioned fields such as stackId', async () => {
-    // The #1514 regression. Without the leading spread, this save wipes stackId,
-    // which silently breaks the OBO token exchanger and private guides.
-    mockFetchPlugin.mockResolvedValue({
-      jsonData: provisionedJsonData({ recommenderServiceUrl: 'https://custom.example.com' }),
-      enabled: true,
-      pinned: true,
-    });
-
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
-
-    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as PathfinderPluginConfig;
-    expect(written.stackId).toBe('123456');
-    expect(written.recommenderServiceUrl).toBe('https://custom.example.com');
-    expect(written.tutorialUrl).toBe('https://new.example.com');
-  });
-
-  it('preserves fields it has never heard of', async () => {
-    mockFetchPlugin.mockResolvedValue({
-      jsonData: { someFutureProvisionedField: 'cloud-value' } as PathfinderPluginConfig,
-      enabled: true,
-      pinned: true,
-    });
-
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
-
-    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as Record<string, unknown>;
-    expect(written.someFutureProvisionedField).toBe('cloud-value');
-  });
-
-  it('echoes enabled and pinned from the authoritative read', async () => {
-    // The `aa1c2efd` regression: Grafana reads an omitted `pinned` as false, so a
-    // save that drops it unpins the plugin from the nav.
-    mockFetchPlugin.mockResolvedValue({ jsonData: {}, enabled: true, pinned: true });
-
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
-
-    expect(mockUpdatePlugin.mock.calls[0]![1]).toMatchObject({ enabled: true, pinned: true });
-  });
-
-  it('does not invent enabled or pinned when the stack really has them off', async () => {
-    mockFetchPlugin.mockResolvedValue({ jsonData: {}, enabled: false, pinned: false });
-
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
-
-    expect(mockUpdatePlugin.mock.calls[0]![1]).toMatchObject({ enabled: false, pinned: false });
-  });
-
-  it('never writes per-user state into the org-wide document', async () => {
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
-
-    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as Record<string, unknown>;
-    expect(written).not.toHaveProperty('devModeOptIn');
-  });
-
-  it('survives repeated saves without shedding provisioned fields', async () => {
-    let stored: PathfinderPluginConfig = provisionedJsonData();
-    mockFetchPlugin.mockImplementation(async () => ({ jsonData: stored, enabled: true, pinned: true }));
-    mockUpdatePlugin.mockImplementation(async (_id, data) => {
-      stored = data.jsonData as PathfinderPluginConfig;
-      return undefined;
-    });
-
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { acceptedTermsAndConditions: true } });
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://changed.example.com' } });
-
-    expect(stored.stackId).toBe('123456');
-    expect(stored.acceptedTermsAndConditions).toBe(true);
-    expect(stored.tutorialUrl).toBe('https://changed.example.com');
-  });
-});
-
 describe('saveTenantSettings — the kind is not served here', () => {
   it.each([403, 502])('does not save to either store when the authoritative read fails with %s', async (status) => {
     mockFetchTenant.mockRejectedValue(Object.assign(new Error('settings unavailable'), { status }));
@@ -225,18 +116,13 @@ describe('saveTenantSettings — the kind is not served here', () => {
     expect(mockUpdatePlugin).not.toHaveBeenCalled();
   });
 
-  it('falls back to jsonData rather than failing the save', async () => {
-    // The GAP aggregation toggle is shared with InteractiveGuide, so it can be on
-    // while `pathfindersettings` is not served — a stack running the plugin ahead
-    // of the backend. The writer reports that as `false`, and the save must land.
+  it('rejects an unavailable SDK store without mutating plugin configuration', async () => {
     mockSaveTenant.mockResolvedValue(false);
     mockFetchPlugin.mockResolvedValue({ jsonData: provisionedJsonData(), enabled: true, pinned: true });
-
-    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
-
-    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as PathfinderPluginConfig;
-    expect(written.tutorialUrl).toBe('https://new.example.com');
-    expect(written.stackId).toBe('123456');
+    await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'new' } })).rejects.toThrow(
+      'SDK settings API is unavailable'
+    );
+    expect(mockUpdatePlugin).not.toHaveBeenCalled();
   });
 
   it('surfaces a real write failure instead of quietly using the other store', async () => {
@@ -254,7 +140,7 @@ describe('saveTenantSettings — a field this tab does not own', () => {
   // set, because a written field stops tracking `DEFAULT_*` for that stack.
   // `enableAiAutoHeal` is the field it was written for — its default flipped to
   // true, and any stack whose settings had been saved once would have missed it.
-  it('does not materialize an unset field into the jsonData document', async () => {
+  it('does not materialize an unset field while migrating legacy settings into the SDK resource', async () => {
     mockFetchPlugin.mockResolvedValue({
       jsonData: { tutorialUrl: 'https://original.example.com' },
       enabled: true,
@@ -263,7 +149,7 @@ describe('saveTenantSettings — a field this tab does not own', () => {
 
     await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://changed.example.com' } });
 
-    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as Record<string, unknown>;
+    const written = mockSaveTenant.mock.calls[0]![0] as Record<string, unknown>;
     expect(written).not.toHaveProperty('enableAiAutoHeal');
     // Still resolves to the live default, which is the whole point of not writing it.
     expect(getConfigWithDefaults(written).enableAiAutoHeal).toBe(DEFAULT_ENABLE_AI_AUTO_HEAL);
@@ -278,7 +164,7 @@ describe('saveTenantSettings — a field this tab does not own', () => {
 
     await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://changed.example.com' } });
 
-    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as PathfinderPluginConfig;
+    const written = mockSaveTenant.mock.calls[0]![0] as PathfinderPluginConfig;
     expect(written.enableAiAutoHeal).toBe(false);
   });
 
