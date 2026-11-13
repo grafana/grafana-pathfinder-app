@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/grafana-app-sdk/app"
@@ -19,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -199,6 +201,41 @@ func fidelityAssignmentsRead(t *testing.T, status int, completions bool) *httpte
 	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"})
 	response := httptest.NewRecorder()
 	if err := assignmentsReadHandler(deps)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+type fidelityInsightsTransport struct {
+	status      int
+	completions bool
+}
+
+func (transport fidelityInsightsTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	status := 200
+	if strings.Contains(request.URL.Path, "/completionrecords") == transport.completions {
+		status = transport.status
+	}
+	return (fidelityReadTransport{status: status}).RoundTrip(request)
+}
+func fidelityInsightsRead(t *testing.T, status int, completions bool) *httptest.ResponseRecorder {
+	generator := sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityInsightsTransport{status: status, completions: completions}})
+	assignmentStore, err := resourceaccess.NewAssignmentStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completionStore, err := resourceaccess.NewCompletionStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := adminIdentity{completionIdentity: completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"}, idToken: "header." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user:abc","namespace":"stacks-1","role":"Admin"}`)) + ".signature"}
+	ctx := authlib.WithAuthInfo(context.Background(), identity)
+	handler := insightsReadHandler(completionStore, assignmentStore, func(ctx context.Context, ns string) *services.ObligationEvaluator {
+		return &services.ObligationEvaluator{Context: ctx, Logger: log.DefaultLogger}
+	}, func(string, string) (bool, time.Duration) { return true, 0 })
+	target, _ := url.Parse("http://local/learning-insights?from=2026-09-01T00:00:00Z&to=2026-10-01T00:00:00Z")
+	response := httptest.NewRecorder()
+	if err := handler(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: target, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
 		t.Fatal(err)
 	}
 	return response

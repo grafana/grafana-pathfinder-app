@@ -1824,6 +1824,671 @@
       "retryAfter": "30",
       "status": 503
     },
+    "insights/-1/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-1/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-2/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-2/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-4/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-4/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-5/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-5/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/200/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "complete",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/400/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/400/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/401/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/401/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/403/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/403/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/404/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/404/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/405/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/405/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/408/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/408/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/409/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/409/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/422/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/422/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/429/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/429/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/500/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/500/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/501/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/501/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/503/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/503/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/504/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/504/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
     "settings-absence/cause": {
       "body": {
         "diagnostics": {

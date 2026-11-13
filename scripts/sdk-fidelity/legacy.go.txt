@@ -178,3 +178,41 @@ func fidelityAssignmentsRead(t *testing.T, status int, completions bool) *httpte
 	response, _ := doMyAssignments(t, "user:abc")
 	return response
 }
+
+func fidelityInsightsRead(t *testing.T, status int, completions bool) *httptest.ResponseRecorder {
+	failure := func() error {
+		switch status {
+		case 200:
+			return nil
+		case -1:
+			var value any
+			return json.Unmarshal([]byte("not-json"), &value)
+		case -2:
+			return fidelityFailure("deadline")
+		case -4:
+			return fidelityFailure("cancelled")
+		case -5:
+			return fidelityFailure("network")
+		default:
+			return &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+	}
+	withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		if completions {
+			if err := failure(); err != nil {
+				return nil, err
+			}
+		}
+		return &completionRecordPage{}, nil
+	}})
+	withAssignmentLister(t, &fakeAssignmentLister{respond: func(string) (*assignmentPage, error) {
+		if !completions {
+			if err := failure(); err != nil {
+				return nil, err
+			}
+		}
+		return &assignmentPage{}, nil
+	}})
+	response, _ := insightsResponse(t, insightsRequest(t, "Admin", "user:abc"))
+	return response
+}

@@ -172,6 +172,17 @@ def main():
         if not compare(transcripts[1]['httpReads']['assignments/429/completions=false'], mutated_assignment):
             raise RuntimeError('production assignment retry classification mutation was not detected')
         assignment_route.write_text(assignment_source)
+        insights_route = target / 'pkg/provider/insights.go'
+        insights_source = insights_route.read_text()
+        insights_needle = 'response.Partial("completions-" + warning)'
+        if insights_source.count(insights_needle) != 1:
+            raise RuntimeError('insights partial-history mutation target changed')
+        insights_route.write_text(insights_source.replace(insights_needle, '_ = warning'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityHTTPReads$', '-count=1'], cwd=target, env=env, check=True)
+        mutated_insights = json.loads(Path(str(output) + '.httpreads').read_text())['insights/503/completions=true']
+        if not compare(transcripts[1]['httpReads']['insights/503/completions=true'], mutated_insights):
+            raise RuntimeError('production insights partial-history mutation was not detected')
+        insights_route.write_text(insights_source)
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599
@@ -180,7 +191,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, and diagnostic controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, insights completeness, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

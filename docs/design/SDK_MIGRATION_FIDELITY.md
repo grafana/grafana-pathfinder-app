@@ -61,6 +61,13 @@ side injects the equivalent list-client failures. Full response bodies and heade
 must match, except the explicit `no-store` addition below. A production mutation that treats upstream 429 as terminal must be
 caught. Populated assignment history and repair remain separate evidence below.
 
+Learning insights add 35 HTTP comparisons: an empty complete report and the same
+seventeen failures at each upstream read stage. These compare report completeness,
+warning ownership/classification, arrays, period, status, and headers; only a valid
+server `asOf` is normalized. A mutation that suppresses the completion-history
+warning must be detected. This is first-page failure coverage, not a comparison
+of partial multi-page history or platform ingress authentication.
+
 The runner exports the immutable baseline into a temporary directory and copies the
 current Go implementation into a separate temporary checkout. It does not switch
 branches, alter the local running instance, or execute the old plugin against live
@@ -140,7 +147,7 @@ acceptance gaps; they are not asserted runtime defects.
 | Assignment lifecycle, duplicate rules, last-page caller records                 | `ReadAssignments`                                                         | None                                        | `TestAssignmentCarryoverLifecycleRulesAndPagination`, `TestAssignmentCarryoverDoesNotServeIncompleteList`   | Empty and failure envelopes compared at both read stages; populated HTTP sequence remains open                     |
 | Assignment source precedence, cutoff and terminal evidence                      | `ObligationEvaluator`, provider source constructors                       | None                                        | Frozen history, migrated tutorial table, provider source parity tests                                       | Network source failures compared only by independent tests                                                         |
 | Insights admin gate, rate limit before upstream work                            | `pkg/provider/insights.go`                                                | SDK verified claims                         | `TestInsightsAuthorizationPrecedesReadsAndPeriodParsing`, `TestInsightsRateLimitPrecedesResourceReads`      | Platform ingress authentication differential                                                                       |
-| Insights bounded reads and incomplete-history honesty                           | `DrainInsights`, `ShapeLearningInsights`                                  | None                                        | Ported `TestLearningInsightsDrainBounds`, frozen complete/incomplete historical projections, evidence tests | Full handler outage/timeout comparative corpus                                                                     |
+| Insights bounded reads and incomplete-history honesty                           | `DrainInsights`, `ShapeLearningInsights`                                  | None                                        | Ported `TestLearningInsightsDrainBounds`, frozen complete/incomplete historical projections, evidence tests | First-page failures compared; partial multi-page HTTP history remains open                                         |
 | Settings exact missing status, unknown fields, optimistic saves                 | Settings services/client and frontend resolver                            | JSON fallback only without SDK registration | Services/resourceaccess settings tests; frontend preservation tests; local E2E                              | Frozen historical settings input/output corpus                                                                     |
 | Published guide visibility, catalogue metadata, authoring CRUD                  | Provider guides/catalogue and resourceaccess guides                       | SDK transport                               | Existing provider/client tests and local E2E                                                                | Frozen historical guide corpus                                                                                     |
 | Anonymous shared recommendation cache and bounded CDN fetch                     | `pkg/publiccontent`                                                       | New route                                   | Migrated publiccontent suite; `TestRecommendationsSDKFetchAndSharedCache`                                   | Schema golden remains synthetic; live CDN deployment is outside deterministic coverage                             |
