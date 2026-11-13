@@ -30,5 +30,7 @@ it('shows a friendly explanation for a known objective', () => {
 
 it('shows quotes and slashes in the explanation as plain text', () => {
   render(<CompletionWaitingStatus id="step" unmet="on-page:/connections" onCheck={jest.fn()} />);
-  expect(screen.getByRole('status')).toHaveTextContent("Waiting for completion: Navigate to the '/connections' page first.");
+  expect(screen.getByRole('status')).toHaveTextContent(
+    "Waiting for completion: Navigate to the '/connections' page first."
+  );
 });
