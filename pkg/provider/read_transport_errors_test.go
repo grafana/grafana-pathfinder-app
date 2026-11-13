@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	authlib "github.com/grafana/authlib/types"
@@ -89,6 +90,40 @@ func TestResourceRoutesPreserveTransportFailureCause(t *testing.T) {
 						t.Fatalf("status=%d retry=%q body=%s", response.Code, response.Header().Get("Retry-After"), response.Body)
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestSettingsRoutePreservesInvalidResponseDiagnostics(t *testing.T) {
+	for _, tc := range []struct{ name, body, reason string }{
+		{"malformed", "not-json", "invalid-json"},
+		{"oversized", strings.Repeat(" ", services.SettingsMaxBytes+1), "response-too-large"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			store, err := resourceaccess.NewSettingsStore(sdkplugin.BuildClientGenerator(resourceaccess.SettingsConfig(rest.Config{Host: server.URL, APIPath: "/apis"})))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "default"})
+			response := httptest.NewRecorder()
+			err = settingsReadHandler(store.Read)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body struct {
+				Diagnostics services.ProxyDiagnostic `json:"diagnostics"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if response.Code != 502 || body.Diagnostics.Reason != tc.reason || body.Diagnostics.UpstreamStatus != 200 {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body)
 			}
 		})
 	}

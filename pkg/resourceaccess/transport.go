@@ -38,13 +38,14 @@ func (t settingsTransport) RoundTrip(request *http.Request) (*http.Response, err
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		limit = 2048
 	}
-	response.Body = &boundedBody{ReadCloser: response.Body, remaining: limit}
+	response.Body = &boundedBody{ReadCloser: response.Body, remaining: limit, status: response.StatusCode}
 	return response, nil
 }
 
 type boundedBody struct {
 	io.ReadCloser
 	remaining int64
+	status    int
 }
 
 func (b *boundedBody) Read(p []byte) (int, error) {
@@ -55,6 +56,9 @@ func (b *boundedBody) Read(p []byte) (int, error) {
 		var extra [1]byte
 		n, err := b.ReadCloser.Read(extra[:])
 		if n != 0 {
+			if b.status >= 200 && b.status < 300 {
+				return 0, &ResponseValidationError{Reason: "response-too-large", Status: b.status}
+			}
 			return 0, errors.New("settings upstream response too large")
 		}
 		return 0, err
@@ -66,3 +70,11 @@ func (b *boundedBody) Read(p []byte) (int, error) {
 	b.remaining -= int64(n)
 	return n, err
 }
+
+// ResponseValidationError retains the successful upstream status when its body is rejected.
+type ResponseValidationError struct {
+	Reason string
+	Status int
+}
+
+func (e *ResponseValidationError) Error() string { return "invalid upstream response: " + e.Reason }

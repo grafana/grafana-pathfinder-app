@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 
+	"github.com/grafana/grafana-pathfinder-app/pkg/resourceaccess"
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 )
 
@@ -17,7 +18,11 @@ func upstreamDiagnostic(err error, resourceName, operation string) *services.Pro
 	var syntax *json.SyntaxError
 	var shape *json.UnmarshalTypeError
 	var network net.Error
+	var validation *resourceaccess.ResponseValidationError
 	switch {
+	case errors.As(err, &validation):
+		result.Reason = validation.Reason
+		result.UpstreamStatus = validation.Status
 	case errors.Is(err, context.DeadlineExceeded):
 		result.Reason = "timeout"
 	case errors.Is(err, context.Canceled):

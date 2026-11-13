@@ -24,6 +24,10 @@ func (s *SettingsStore) Read(ctx context.Context, namespace string) (json.RawMes
 	object := &rawSettings{}
 	err := s.client.GetInto(ctx, resource.Identifier{Namespace: namespace, Name: "default"}, object)
 	if err != nil {
+		var syntax *json.SyntaxError
+		if errors.As(err, &syntax) {
+			return nil, &ResponseValidationError{Reason: "invalid-json", Status: 200}
+		}
 		return nil, err
 	}
 	return object.body, nil
@@ -37,10 +41,10 @@ type rawSettings struct {
 
 func (r *rawSettings) UnmarshalJSON(body []byte) error {
 	if len(body) > services.SettingsMaxBytes {
-		return errors.New("settings response too large")
+		return &ResponseValidationError{Reason: "response-too-large", Status: 200}
 	}
 	if !json.Valid(body) {
-		return errors.New("invalid settings response")
+		return &ResponseValidationError{Reason: "invalid-json", Status: 200}
 	}
 	r.body = append(r.body[:0], body...)
 	return nil
