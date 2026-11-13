@@ -280,3 +280,11 @@ func fidelityInsightsRead(t *testing.T, status int, completions bool, paged ...b
 	}
 	return response
 }
+
+type fidelityStoredRecord = services.StoredCompletionRecord
+type fidelityWriteSpec = services.CompletionRecordWriteSpec
+
+func fidelityConcurrentUpsert(ctx context.Context, store *fidelityConcurrentStore, spec fidelityWriteSpec) (int, fidelityWriteSpec, error) {
+	outcome, persisted, err := services.UpsertCompletionAttempt(ctx, store, "stacks-1", "concurrent-attempt", spec, func(err error) (int, string) { return sdkErrorStatus(err), "" })
+	return int(outcome), persisted, err
+}

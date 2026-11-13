@@ -164,6 +164,179 @@
       "status": 201
     }
   ],
+  "concurrent": {
+    "100-first": {
+      "creates": 1,
+      "gets": 4,
+      "persisted": {
+        "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+        "kind": "CompletionRecord",
+        "metadata": {
+          "annotations": {
+            "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+          },
+          "name": "concurrent-attempt",
+          "namespace": "stacks-1",
+          "resourceVersion": "2"
+        },
+        "spec": {
+          "completedAt": "2026-11-01T01:00:00Z",
+          "completionPercent": 100,
+          "durationSeconds": 90,
+          "guideCategory": "interactive",
+          "guideId": "first-dashboard",
+          "guideSource": "bundled",
+          "guideTitle": "First dashboard",
+          "orgId": 1,
+          "pathId": "",
+          "platform": "cloud",
+          "recordedAt": "2026-11-01T01:00:00Z",
+          "schemaVersion": 1,
+          "source": "manual",
+          "stackNamespace": "stacks-1",
+          "userDisplayName": "",
+          "userId": "user:abc",
+          "userLogin": ""
+        }
+      },
+      "replaces": 2,
+      "results": {
+        "100": {
+          "Error": "",
+          "Outcome": 1,
+          "Percent": 100,
+          "Persisted": {
+            "completedAt": "2026-11-01T01:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 90,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "2026-11-01T01:00:00Z",
+            "schemaVersion": 1,
+            "source": "manual",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        },
+        "70": {
+          "Error": "",
+          "Outcome": 2,
+          "Percent": 70,
+          "Persisted": {
+            "completedAt": "2026-11-01T01:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 90,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "2026-11-01T01:00:00Z",
+            "schemaVersion": 1,
+            "source": "manual",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      }
+    },
+    "70-first": {
+      "creates": 1,
+      "gets": 4,
+      "persisted": {
+        "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+        "kind": "CompletionRecord",
+        "metadata": {
+          "annotations": {
+            "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+          },
+          "name": "concurrent-attempt",
+          "namespace": "stacks-1",
+          "resourceVersion": "3"
+        },
+        "spec": {
+          "completedAt": "2026-11-01T01:00:00Z",
+          "completionPercent": 100,
+          "durationSeconds": 90,
+          "guideCategory": "interactive",
+          "guideId": "first-dashboard",
+          "guideSource": "bundled",
+          "guideTitle": "First dashboard",
+          "orgId": 1,
+          "pathId": "",
+          "platform": "cloud",
+          "recordedAt": "2026-11-01T01:00:00Z",
+          "schemaVersion": 1,
+          "source": "manual",
+          "stackNamespace": "stacks-1",
+          "userDisplayName": "",
+          "userId": "user:abc",
+          "userLogin": ""
+        }
+      },
+      "replaces": 3,
+      "results": {
+        "100": {
+          "Error": "",
+          "Outcome": 1,
+          "Percent": 100,
+          "Persisted": {
+            "completedAt": "2026-11-01T01:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 90,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "2026-11-01T01:00:00Z",
+            "schemaVersion": 1,
+            "source": "manual",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        },
+        "70": {
+          "Error": "",
+          "Outcome": 1,
+          "Percent": 70,
+          "Persisted": {
+            "completionPercent": 70,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "2026-11-01T00:00:00Z",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      }
+    }
+  },
   "conflict-exhaustion-recovery": [
     {
       "assignment": {

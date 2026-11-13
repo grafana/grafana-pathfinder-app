@@ -46,12 +46,15 @@ def main():
             (dest / 'frozen_shared_test.go').write_text((HERE / 'shared.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_history_test.go').write_text((HERE / 'history.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_http_reads_test.go').write_text((HERE / 'http_reads.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
+            (dest / 'frozen_concurrent_test.go').write_text((HERE / 'concurrent.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_cache_test.go').write_text((HERE / 'cache.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_adapter_test.go').write_text((HERE / (mode + '.go.txt')).read_text())
             output = Path(temp) / (mode + '.json')
             env = dict(os.environ, FIDELITY_CORPUS=str(HERE / 'scenarios.json'), FIDELITY_OUTPUT=str(output), FIDELITY_HISTORY=str(HERE / 'history.json'))
             subprocess.run(['go', 'test', './pkg/' + package, '-run', '^TestFrozenFidelity', '-count=1'], cwd=target, env=env, check=True)
+            subprocess.run(['go', 'test', '-race', './pkg/' + package, '-run', '^TestFrozenFidelityConcurrent$', '-count=10'], cwd=target, env=env, check=True)
             transcripts.append(json.loads(output.read_text()))
+            transcripts[-1]["concurrent"] = json.loads(Path(str(output) + ".concurrent").read_text())
             transcripts[-1]["history"] = json.loads(Path(str(output) + ".reads").read_text())
             transcripts[-1]["cache"] = json.loads(Path(str(output) + ".cache").read_text())
             transcripts[-1]["httpReads"] = json.loads(Path(str(output) + ".httpreads").read_text())
@@ -63,7 +66,7 @@ def main():
         # Explicit permitted difference: SDK POST responses add Cache-Control: no-store.
         # Assert both exact values before comparison; never discard arbitrary headers.
         for name in transcripts[0]:
-            if name in ("history", "cache", "httpReads"):
+            if name in ("history", "cache", "httpReads", "concurrent"):
                 continue
             for old, new in zip(transcripts[0][name], transcripts[1][name], strict=True):
                 if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
@@ -87,11 +90,14 @@ def main():
         mutation = subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityWrites$', '-count=1'], cwd=target, env=env, capture_output=True, text=True)
         if mutation.returncode == 0:
             mutated_output = json.loads(output.read_text())
-            clean_writes = {key: value for key, value in transcripts[1].items() if key not in ('history', 'cache', 'httpReads')}
+            clean_writes = {key: value for key, value in transcripts[1].items() if key not in ('history', 'cache', 'httpReads', 'concurrent')}
             if not compare(clean_writes, mutated_output):
                 raise RuntimeError('production monotonicity mutation was not detected')
         else:
             raise RuntimeError('mutation did not produce a comparable transcript: ' + mutation.stdout + mutation.stderr)
+        concurrent_mutation = subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityConcurrent$', '-count=1'], cwd=target, env=env, capture_output=True, text=True)
+        if concurrent_mutation.returncode == 0 or 'progress regressed' not in concurrent_mutation.stdout:
+            raise RuntimeError('concurrent monotonicity mutation did not trigger the invariant: ' + concurrent_mutation.stdout + concurrent_mutation.stderr)
         attempt.write_text(original)
         write_route = target / 'pkg/provider/completion_write.go'
         write_source = write_route.read_text()
@@ -215,7 +221,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, insights completeness, guide responses, assignment repair, and diagnostic controls detected.')
+        print('Frozen writes, concurrent updates, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, insights completeness, guide responses, assignment repair, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

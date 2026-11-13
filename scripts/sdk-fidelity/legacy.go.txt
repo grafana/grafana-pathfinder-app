@@ -254,3 +254,12 @@ func fidelityInsightsRead(t *testing.T, status int, completions bool, paged ...b
 	response, _ := insightsResponse(t, insightsRequest(t, "Admin", "user:abc"))
 	return response
 }
+
+type fidelityStoredRecord = storedCompletionRecord
+type fidelityWriteSpec = completionRecordWriteSpec
+
+func fidelityConcurrentUpsert(ctx context.Context, store *fidelityConcurrentStore, spec fidelityWriteSpec) (int, fidelityWriteSpec, error) {
+	request := httptest.NewRequest(http.MethodPost, "/completion-records", nil).WithContext(ctx)
+	outcome, persisted, err := upsertCompletionAttempt(request, store, "stacks-1", "concurrent-attempt", spec)
+	return int(outcome), persisted, err
+}
