@@ -219,7 +219,7 @@ Resolved exceptions also fail the check. After a translation fix, run `npm run i
 
 Empty translations produce warnings, not failures. A new key can use an empty value until a translation is available. The check does not assess translation quality or detect English copies. Plural requirements use `Intl.PluralRules` for each locale. Source plural forms and explicit `_zero` overrides are also permitted.
 
-For wording warnings, run `npm run i18n:check -- --base origin/main`. The checker compares English values against the Git merge base. It identifies nonempty translations that did not change. These warnings require human review, not automatic translation edits. PR CI supplies the base reference and publishes warnings and a job summary. Push CI enforces structural parity without a wording comparison. The checkout must contain the base commit and its shared history.
+CI publishes structural debt and empty-translation warnings, plus a job summary. The checker does not compare wording changes or identify translations that need editorial review.
 
 The initial baseline uses `tracking: "pending"` because the operator deferred issue creation. This temporary value produces a warning. Before merge, replace it with the approved follow-up issue reference. Translation paydown belongs in separate PRs, not the enforcement PR.
 

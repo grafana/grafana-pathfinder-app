@@ -4,13 +4,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import {
-  changedTranslations,
-  compareBaseline,
-  flattenCatalog,
-  inspectCatalogs,
-  pruneBaseline,
-} from '../lib/i18n-ratchet.mjs';
+import { compareBaseline, flattenCatalog, inspectCatalogs, pruneBaseline } from '../lib/i18n-ratchet.mjs';
 import { escapeAnnotation } from '../check-i18n.mjs';
 
 const baseline = (locales, violations) => ({
@@ -108,29 +102,6 @@ test('prune splits shared groups, preserves metadata, and never adds exceptions'
   assert.equal(debt.groups.length, 1);
 });
 
-test('English changes warn only for unchanged, nonempty locale values', () => {
-  const before = { 'en-US': { key: 'Old' }, 'pt-BR': { key: 'Velho' }, 'de-DE': { key: 'Alt' }, 'fr-FR': { key: '' } };
-  const after = {
-    'en-US': { key: 'New', added: 'New key' },
-    'pt-BR': { key: 'Velho' },
-    'de-DE': { key: 'Neu' },
-    'fr-FR': { key: '' },
-  };
-  assert.deepEqual(changedTranslations(before, after), [
-    { key: 'key', before: 'Old', after: 'New', locales: ['pt-BR'] },
-  ]);
-});
-
-test('English plural changes also warn for unchanged locale-specific forms', () => {
-  const before = {
-    'en-US': { items_other: 'Items' },
-    'ja-JP': { items_other: '項目' },
-    'pt-BR': { items_many: 'Itens' },
-  };
-  const after = { ...before, 'en-US': { items_other: 'New items' } };
-  assert.deepEqual(changedTranslations(before, after)[0].locales, ['ja-JP', 'pt-BR']);
-});
-
 test('GitHub annotation escaping prevents injected workflow commands', () => {
   assert.equal(escapeAnnotation('100%\r\n::error::fake'), '100%25%0D%0A::error::fake');
 });
@@ -159,7 +130,6 @@ function fixture(t) {
         ...process.env,
         GITHUB_ACTIONS: 'true',
         GITHUB_STEP_SUMMARY: path.join(root, 'summary.md'),
-        I18N_BASE_REF: '',
       },
     });
   catalog('en-US', { key: 'Old' });
@@ -195,6 +165,7 @@ test('CLI fails on new debt and stale entries, and pruning cannot hide new debt'
 test('CLI rejects missing catalogs, invalid JSON, and unknown arguments', (t) => {
   const f = fixture(t);
   assert.equal(f.run('--unknown').status, 1);
+  assert.equal(f.run('--base', 'HEAD').status, 1);
   rmSync(path.join(f.root, 'src/locales/pt-BR/grafana-pathfinder-app.json'));
   assert.equal(f.run().status, 1);
   writeFileSync(path.join(f.root, 'src/locales/pt-BR/grafana-pathfinder-app.json'), '{');
@@ -241,41 +212,29 @@ test('CI skips unrelated changes and runs for translation or checker changes', (
   }
 });
 
-test('CLI summary renders catalog keys and values as literal Markdown code', (t) => {
+test('CLI reports structural counts only after wording-only edits', (t) => {
   const f = fixture(t);
   const key = 'key [review](https://example.invalid) `heading`';
-  const before = '[old](https://example.invalid)';
-  const after =
-    '[review](https://example.invalid) ![image](https://example.invalid/pixel) ' +
-    '<img src="https://example.invalid/image"> &amp; | `one` ``two`` ```three```\n# heading';
-  f.catalog('en-US', { [key]: before });
+  f.catalog('en-US', { [key]: 'Old' });
   f.catalog('pt-BR', { [key]: 'Tradução' });
   const base = f.commit();
-  f.catalog('en-US', { [key]: after });
-  const result = f.run('--base', base);
+  f.catalog('en-US', {
+    [key]: '[review](https://example.invalid) ![image](https://example.invalid/pixel) <img src="pixel"> ```\n# heading',
+  });
+  const summaryPath = path.join(f.root, 'summary.md');
+  const result = spawnSync(process.execPath, ['scripts/check-i18n.mjs'], {
+    cwd: f.root,
+    encoding: 'utf8',
+    env: { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summaryPath, I18N_BASE_REF: base },
+  });
   assert.equal(result.status, 0, result.stderr);
-  const summary = readFileSync(path.join(f.root, 'summary.md'), 'utf8');
-  assert.ok(summary.includes(`### \`\` ${JSON.stringify(key)} \`\``));
-  assert.ok(summary.includes(`- Before: \` ${JSON.stringify(before)} \``));
-  assert.ok(summary.includes(`- After: \`\`\`\` ${JSON.stringify(after)} \`\`\`\``));
-  assert.ok(!summary.includes('\n# heading'));
-});
-
-test('CLI uses the merge base and reports wording changes without failing', (t) => {
-  const f = fixture(t);
-  const original = f.commit();
-  f.catalog('en-US', { key: 'New' });
-  f.commit();
-  const feature = f.git('rev-parse', 'HEAD');
-  f.git('checkout', '-q', '-b', 'base', original);
-  f.catalog('pt-BR', { key: 'Novo' });
-  const base = f.commit();
-  f.git('checkout', '-q', '--detach', feature);
-  const result = f.run('--base', base);
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /You updated key/);
-  const summary = readFileSync(path.join(f.root, 'summary.md'), 'utf8');
-  assert.ok(summary.includes('- Before: ` "Old" `'));
-  assert.ok(summary.includes('- After: ` "New" `'));
-  assert.equal(f.run('--base', 'does-not-exist').status, 1);
+  assert.equal(result.stdout, 'Translation parity: 0 new violations, 0 resolved baseline entries.\n');
+  assert.equal(
+    readFileSync(summaryPath, 'utf8'),
+    '## Translation parity\n\n' +
+      '| Locale | Structural violations | Empty values |\n' +
+      '| --- | ---: | ---: |\n' +
+      '| pt-BR | 0 | 0 |\n\n' +
+      'New violations: 0. Resolved baseline entries: 0.\n'
+  );
 });

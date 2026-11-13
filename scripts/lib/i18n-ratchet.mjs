@@ -179,29 +179,3 @@ export function pruneBaseline(baseline, violations) {
     }),
   };
 }
-
-export function changedTranslations(before, after) {
-  const changes = [];
-  for (const [key, value] of Object.entries(after['en-US'])) {
-    if (!Object.hasOwn(before['en-US'], key) || before['en-US'][key] === value) {
-      continue;
-    }
-    const locales = [];
-    for (const [locale, catalog] of Object.entries(after)) {
-      if (locale === 'en-US') {
-        continue;
-      }
-      const root = key.replace(pluralSuffix, '');
-      const keys = Object.keys(catalog).filter(
-        (candidate) => candidate === key || (root !== key && candidate.replace(pluralSuffix, '') === root)
-      );
-      if (keys.some((candidate) => catalog[candidate].trim() && catalog[candidate] === before[locale]?.[candidate])) {
-        locales.push(locale);
-      }
-    }
-    if (locales.length) {
-      changes.push({ key, before: before['en-US'][key], after: value, locales });
-    }
-  }
-  return changes;
-}
