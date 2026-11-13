@@ -69,31 +69,26 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		current = created
 	}
 
-	awarded := map[string]bool{}
-	for range maxAttempts {
+	for attempt := 1; ; attempt++ {
 		out := evaluate(d, current, ev)
-		switch {
-		case !out.changed && (len(awarded) == 0 || out.decision.Reason.Transient()):
+		if !out.changed {
 			return out.decision
-		case !out.changed:
-			out.next = current
-			return d.reported(out, awarded)
 		}
 		for _, tierID := range out.decision.Awarded {
 			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, EarnedAt: e.now().UTC()}
-			switch err := e.store.CreateAward(ctx, person, award); {
-			case err == nil:
-				awarded[tierID] = true
-			case !errors.Is(err, ErrExists):
+			// A 409 is not a failure: the held set, not the create result, decides what is reported (RFC §6.3).
+			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
 				return d.unavailable(current)
 			}
 		}
 		_, err := e.store.SaveProgress(ctx, person, out.next)
 		switch {
 		case err == nil:
-			return d.reported(out, awarded)
+			return out.decision
 		case !errors.Is(err, ErrConflict):
 			return d.unavailable(current)
+		case attempt == maxAttempts:
+			return d.decision(KindIgnored, ReasonConflict, nil, heldSet(current.TierIDs), len(current.Units))
 		}
 		reloaded, ok := e.reload(ctx, person, d)
 		if !ok {
@@ -101,7 +96,6 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		}
 		current = reloaded
 	}
-	return d.decision(KindIgnored, ReasonConflict, nil, heldSet(current.TierIDs), len(current.Units))
 }
 
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {
