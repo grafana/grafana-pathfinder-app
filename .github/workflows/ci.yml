@@ -23,6 +23,49 @@ env:
   GOLANGCI_LINT_VERSION: 'v2.15.0'
 
 jobs:
+  i18n:
+    name: Translation parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Detect translation changes
+        id: changes
+        env:
+          CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          relevant=true
+          if [[ -n "$CHANGE_BASE" && ! "$CHANGE_BASE" =~ ^0+$ ]]; then
+            if git diff --quiet "$CHANGE_BASE...HEAD" -- \
+              src/locales/ \
+              scripts/check-i18n.mjs \
+              scripts/lib/i18n-ratchet.mjs \
+              scripts/tests/i18n-ratchet.test.mjs \
+              .github/workflows/ci.yml \
+              package.json; then
+              relevant=false
+            fi
+          fi
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+          if [[ "$relevant" == false ]]; then
+            echo "No translation or checker changes. Skipping translation checks."
+          fi
+      - if: steps.changes.outputs.relevant == 'true'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - if: steps.changes.outputs.relevant == 'true'
+        run: npm run test:i18n
+      - if: steps.changes.outputs.relevant == 'true'
+        run: npm run i18n:check
+        env:
+          I18N_BASE_REF: ${{ github.event.pull_request.base.sha }}
+
   # Parallel quality check jobs
   lint:
     name: Lint
@@ -331,7 +374,7 @@ jobs:
   # CI gate job for branch protection - aggregates all required checks
   ci-gate:
     name: CI Gate
-    needs: [lint, typecheck, prettier, test, validate-packages, build, lint-backend, test-backend, test-scripts]
+    needs: [lint, typecheck, prettier, test, validate-packages, build, lint-backend, test-backend, test-scripts, i18n]
     if: always()
     runs-on: ubuntu-latest
     permissions: {} # No permissions needed - only checks job results
@@ -347,6 +390,7 @@ jobs:
           echo "Lint backend: ${{ needs.lint-backend.result }}"
           echo "Test backend: ${{ needs.test-backend.result }}"
           echo "Test scripts: ${{ needs.test-scripts.result }}"
+          echo "Translation parity: ${{ needs.i18n.result }}"
 
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
@@ -354,7 +398,8 @@ jobs:
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.validate-packages.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
-             [[ "${{ needs.test-scripts.result }}" != "success" ]]; then
+             [[ "${{ needs.test-scripts.result }}" != "success" ]] || \
+             [[ "${{ needs.i18n.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
             exit 1
           fi
@@ -400,6 +445,7 @@ jobs:
         lint-backend,
         test-backend,
         test-scripts,
+        i18n,
         playwright-tests,
       ]
     if: >-
@@ -414,6 +460,7 @@ jobs:
        needs.build.result == 'failure' ||
        needs.lint-backend.result == 'failure' ||
        needs.test-backend.result == 'failure' ||
+       needs.i18n.result == 'failure' ||
        needs.playwright-tests.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
@@ -433,6 +480,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           LINT_BACKEND_RESULT: ${{ needs.lint-backend.result }}
           TEST_BACKEND_RESULT: ${{ needs.test-backend.result }}
+          I18N_RESULT: ${{ needs.i18n.result }}
           PLAYWRIGHT_RESULT: ${{ needs.playwright-tests.result }}
           RUN_ID: ${{ github.run_id }}
           SHA: ${{ github.sha }}
@@ -449,11 +497,12 @@ jobs:
             ["Build"]="$BUILD_RESULT"
             ["Lint backend"]="$LINT_BACKEND_RESULT"
             ["Test backend"]="$TEST_BACKEND_RESULT"
+            ["Translation parity"]="$I18N_RESULT"
           )
 
           nl=$'\n'
           text="*CI failed on \`main\`*${nl}*Failed jobs:*"
-          for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Build" "Lint backend" "Test backend"; do
+          for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Build" "Lint backend" "Test backend" "Translation parity"; do
             if [[ "${results[$name]}" == "failure" ]]; then
               url=$(echo "$jobs_json" | jq -r --arg n "$name" '.jobs[] | select(.name == $n) | .html_url')
               text="${text}${nl}• <${url}|${name}>"
