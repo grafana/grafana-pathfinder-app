@@ -151,3 +151,30 @@ func TestSettingsRouteDoesNotMistakeUpstreamFailureForAbsence(t *testing.T) {
 		}
 	}
 }
+
+func TestGuideRoutePreservesInvalidResponseDiagnostics(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("not-json"))
+	}))
+	defer server.Close()
+	store, err := resourceaccess.NewGuideStore(sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(rest.Config{Host: server.URL, APIPath: "/apis"}, resourceaccess.GuidePageMaxBytes)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "default"})
+	response := httptest.NewRecorder()
+	err = guideReadHandler(store)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: &url.URL{RawQuery: "name=test-guide"}, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Diagnostics services.ProxyDiagnostic `json:"diagnostics"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != 502 || body.Diagnostics.Reason != "invalid-json" || body.Diagnostics.UpstreamStatus != 200 || body.Diagnostics.Resource != "interactiveguides" {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+}

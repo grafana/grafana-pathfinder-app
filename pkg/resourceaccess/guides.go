@@ -25,6 +25,10 @@ func NewGuideStore(generator resource.ClientGenerator) (*GuideStore, error) {
 func (s *GuideStore) Read(ctx context.Context, namespace, name string) (json.RawMessage, error) {
 	object := &rawGuide{}
 	err := s.client.GetInto(ctx, resource.Identifier{Namespace: namespace, Name: name}, object)
+	var syntax *json.SyntaxError
+	if errors.As(err, &syntax) {
+		return nil, &ResponseValidationError{Reason: "invalid-json", Status: 200}
+	}
 	return object.body, err
 }
 
@@ -43,10 +47,10 @@ type rawGuide struct {
 
 func (r *rawGuide) UnmarshalJSON(body []byte) error {
 	if len(body) > GuidePageMaxBytes {
-		return errors.New("guide response too large")
+		return &ResponseValidationError{Reason: "response-too-large", Status: 200}
 	}
 	if !json.Valid(body) {
-		return errors.New("invalid guide response")
+		return &ResponseValidationError{Reason: "invalid-json", Status: 200}
 	}
 	r.body = append(r.body[:0], body...)
 	return nil
