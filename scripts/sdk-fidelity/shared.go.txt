@@ -35,11 +35,15 @@ func TestFrozenFidelityWrites(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Run(scenario.Name, func(t *testing.T) {
 			store := newFakeAttemptStore()
+			assignment := &fidelityAssignmentState{ResourceVersion: "7"}
 			rows := []any{}
 			for _, step := range scenario.Steps {
 				start := time.Now().Add(-time.Second)
 				bodyInput := map[string]any{"guideSource": "bundled", "guideId": "first-dashboard", "guideTitle": "First dashboard", "guideCategory": "interactive", "pathId": "", "completionPercent": step.Percent, "source": "objectives", "completedAt": "2026-11-01T00:00:00Z", "attemptStartedAt": "2026-11-01T00:00:00Z", "platform": "cloud", "idempotencyKey": "evt-default", "attemptId": "frozen-attempt"}
-				response := fidelityWrite(t, store, step, bodyInput)
+				response := fidelityWrite(t, store, step, bodyInput, assignment)
+				if assignment.Writes > 2 || (assignment.Writes < 2 && assignment.Satisfied) || (assignment.Writes == 2 && !assignment.Satisfied) {
+					t.Fatalf("invalid assignment repair state: %+v", assignment)
+				}
 				var body any
 				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 					t.Fatal(err)
@@ -65,7 +69,7 @@ func TestFrozenFidelityWrites(t *testing.T) {
 						}
 					}
 				}
-				rows = append(rows, map[string]any{"status": response.Code, "body": body, "cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"), "contentType": response.Header().Get("Content-Type"), "persisted": persisted, "discardResponse": step.DiscardResponse})
+				rows = append(rows, map[string]any{"status": response.Code, "body": body, "cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"), "contentType": response.Header().Get("Content-Type"), "persisted": persisted, "assignment": *assignment, "discardResponse": step.DiscardResponse})
 			}
 			results[scenario.Name] = rows
 		})
@@ -90,4 +94,25 @@ func fidelityFailure(kind string) error {
 	default:
 		return nil
 	}
+}
+
+type fidelityAssignmentState struct {
+	Reads           int    `json:"reads"`
+	HistoryReads    int    `json:"historyReads"`
+	Writes          int    `json:"writes"`
+	Satisfied       bool   `json:"satisfied"`
+	ResourceVersion string `json:"resourceVersion"`
+}
+
+func (state *fidelityAssignmentState) mark(t *testing.T, namespace, name, version string, satisfied bool) error {
+	if namespace != "stacks-1" || name != "assignment" || version != state.ResourceVersion || !satisfied {
+		t.Fatalf("invalid assignment update: %s %s %s %t", namespace, name, version, satisfied)
+	}
+	state.Writes++
+	if state.Writes == 1 {
+		return errors.New("interrupted status write")
+	}
+	state.Satisfied = true
+	state.ResourceVersion = "8"
+	return nil
 }

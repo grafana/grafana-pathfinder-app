@@ -198,6 +198,15 @@ def main():
         if not compare(transcripts[1]['httpReads']['guide/-1'], mutated_guide):
             raise RuntimeError('production guide diagnostic mutation was not detected')
         guide_client.write_text(guide_source)
+        repair_needle = 'if persisted.CompletedAt != "" {'
+        if write_source.count(repair_needle) != 1:
+            raise RuntimeError('assignment repair mutation target changed')
+        write_route.write_text(write_source.replace(repair_needle, 'if persisted.CompletedAt != "" && status == http.StatusCreated {'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityWrites$', '-count=1'], cwd=target, env=env, check=True)
+        mutated_repair = json.loads(output.read_text())['lost-acknowledgement'][-1]['assignment']
+        if not compare(transcripts[1]['lost-acknowledgement'][-1]['assignment'], mutated_repair):
+            raise RuntimeError('production completed-retry repair mutation was not detected')
+        write_route.write_text(write_source)
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599
@@ -206,7 +215,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, insights completeness, guide responses, and diagnostic controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, response bounds, settings absence, assignment retries, insights completeness, guide responses, assignment repair, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

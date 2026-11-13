@@ -87,6 +87,13 @@
   ],
   "completed-schema-rejection": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -107,6 +114,13 @@
       "status": 422
     },
     {
+      "assignment": {
+        "historyReads": 1,
+        "reads": 1,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 1
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -152,6 +166,13 @@
   ],
   "conflict-exhaustion-recovery": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -194,6 +215,13 @@
       "status": 201
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "error": "completion-write-contended"
       },
@@ -236,6 +264,13 @@
       "status": 503
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -280,6 +315,13 @@
   ],
   "conflict-retry": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -322,6 +364,13 @@
       "status": 201
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -366,6 +415,13 @@
   ],
   "forbidden-recovery": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -386,6 +442,13 @@
       "status": 403
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4017,6 +4080,13 @@
   },
   "invalid-percent": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "error": "completionPercent out of range"
       },
@@ -4030,6 +4100,13 @@
   ],
   "lost-acknowledgement": [
     {
+      "assignment": {
+        "historyReads": 1,
+        "reads": 1,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 1
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4073,6 +4150,13 @@
       "status": 201
     },
     {
+      "assignment": {
+        "historyReads": 2,
+        "reads": 2,
+        "resourceVersion": "8",
+        "satisfied": true,
+        "writes": 2
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4118,6 +4202,13 @@
   ],
   "mixed-validation": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -4138,6 +4229,13 @@
       "status": 422
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4182,6 +4280,13 @@
   ],
   "not-found": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -4204,6 +4309,13 @@
   ],
   "other-field-validation": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -4224,6 +4336,13 @@
       "status": 422
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4268,6 +4387,13 @@
   ],
   "outage-recovery": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -4288,6 +4414,13 @@
       "status": 503
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4332,6 +4465,13 @@
   ],
   "partial-schema-recovery": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "error": "schema-not-ready"
       },
@@ -4343,6 +4483,13 @@
       "status": 503
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4387,6 +4534,13 @@
   ],
   "progress-retry-out-of-order-complete": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4429,6 +4583,13 @@
       "status": 201
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4471,6 +4632,13 @@
       "status": 200
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4513,6 +4681,13 @@
       "status": 200
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4555,6 +4730,13 @@
       "status": 200
     },
     {
+      "assignment": {
+        "historyReads": 1,
+        "reads": 1,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 1
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4598,6 +4780,13 @@
       "status": 200
     },
     {
+      "assignment": {
+        "historyReads": 2,
+        "reads": 2,
+        "resourceVersion": "8",
+        "satisfied": true,
+        "writes": 2
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4643,6 +4832,13 @@
   ],
   "throttle": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -4665,6 +4861,13 @@
   ],
   "transport-cancelled-recovery": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -4684,6 +4887,13 @@
       "status": 503
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4728,6 +4938,13 @@
   ],
   "transport-deadline-recovery": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -4747,6 +4964,13 @@
       "status": 503
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },
@@ -4791,6 +5015,13 @@
   ],
   "transport-network-recovery": [
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "diagnostics": {
           "cacheAgeMs": 0,
@@ -4810,6 +5041,13 @@
       "status": 503
     },
     {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
       "body": {
         "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
       },

@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any) *httptest.ResponseRecorder {
+func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any, assignment *fidelityAssignmentState) *httptest.ResponseRecorder {
 	store.createErr = nil
 	if failure := fidelityFailure(step.Failure); failure != nil {
 		store.createErr = k8s.NewServerResponseError(failure, 503)
@@ -45,7 +45,26 @@ func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, bod
 	}
 	raw, _ := json.Marshal(body)
 	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"})
-	handler := completionWriteHandler(store, func(context.Context, string, services.CompletionRecord) {})
+	handler := completionWriteHandler(store, func(ctx context.Context, ns string, just services.CompletionRecord) {
+		assignment.Reads++
+		records := []services.Assignment{{Name: "assignment", ResourceVersion: assignment.ResourceVersion, StatusSatisfied: &assignment.Satisfied, UserID: "user:abc", TargetType: "guide", TargetID: "first-dashboard", TargetSource: "bundled", Lifecycle: "active"}}
+		ev := &services.ObligationEvaluator{Context: ctx, Logger: log.DefaultLogger}
+		services.SyncSatisfiedAssignments(records, just, ev, func() ([]services.CompletionRecord, error) {
+			assignment.HistoryReads++
+			records := []services.CompletionRecord{}
+			for _, object := range store.objects {
+				raw, _ := json.Marshal(object["spec"])
+				var rec services.CompletionRecord
+				if err := json.Unmarshal(raw, &rec); err != nil {
+					t.Fatal(err)
+				}
+				records = append(records, rec)
+			}
+			return records, nil
+		}, func(record services.Assignment) {
+			_ = assignment.mark(t, ns, record.Name, record.ResourceVersion, true)
+		}, log.DefaultLogger)
+	})
 	w := httptest.NewRecorder()
 	if err := handler(ctx, w, &app.CustomRouteRequest{Method: http.MethodPost, Body: io.NopCloser(bytes.NewReader(raw)), ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
 		t.Fatal(err)

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any) *httptest.ResponseRecorder {
+func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any, assignment *fidelityAssignmentState) *httptest.ResponseRecorder {
 	store.createErr = fidelityFailure(step.Failure)
 	if step.Status != 0 {
 		store.createErr = &appPlatformUpstreamError{status: step.Status, msg: "injected", body: step.ErrorBody}
@@ -22,6 +22,28 @@ func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, bod
 	for i := 0; i < step.Conflicts; i++ {
 		store.replaceErrs = append(store.replaceErrs, &appPlatformUpstreamError{status: 409, msg: "injected"})
 	}
+	withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		assignment.HistoryReads++
+		page := &completionRecordPage{}
+		for _, object := range store.objects {
+			raw, _ := json.Marshal(object["spec"])
+			var rec completionRecordSpec
+			if err := json.Unmarshal(raw, &rec); err != nil {
+				t.Fatal(err)
+			}
+			page.Records = append(page.Records, rec)
+		}
+		return page, nil
+	}})
+	withAssignmentLister(t, &fakeAssignmentLister{
+		respond: func(string) (*assignmentPage, error) {
+			assignment.Reads++
+			return &assignmentPage{Records: []assignmentSpec{{Name: "assignment", ResourceVersion: assignment.ResourceVersion, StatusSatisfied: &assignment.Satisfied, UserID: "user:abc", TargetType: "guide", TargetID: "first-dashboard", TargetSource: "bundled", Lifecycle: "active"}}}, nil
+		},
+		updateStatus: func(_ context.Context, ns, name, version string, satisfied bool) error {
+			return assignment.mark(t, ns, name, version, satisfied)
+		},
+	})
 	withCreator(t, store)
 	r := writeRequest(t, "user:abc", body, testGrafanaConfig())
 	// Model a valid stack/org pair; the baseline fixture's org 7 is deliberately synthetic.
