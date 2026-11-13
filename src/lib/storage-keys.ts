@@ -16,6 +16,7 @@ export const StorageKeys = {
   INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
+  CUSTOM_GUIDES_COLLAPSED: 'pathfinder-custom-guides-collapsed',
   INTERACTIVE_SKIPPED_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-skipped-steps-',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: see buildVersionedSectionStorageKey
   // Superseded per-content marker. Nothing reads it; kept so the discard sweep can recognise and remove it.
@@ -109,6 +110,7 @@ export const StorageKeys = {
   DEVTOOLS_PR_TESTER_MODE: 'pathfinder-pr-tester-mode',
   DEVTOOLS_PR_TESTER_FETCHED_FILES: 'pathfinder-pr-tester-files',
   DEVTOOLS_PR_TESTER_FETCHED_URL: 'pathfinder-pr-tester-fetched-url',
+  DEVTOOLS_PR_TESTER_FETCH_ID: 'pathfinder-pr-tester-fetch-id',
   DEVTOOLS_URL_TESTER_URL: 'pathfinder-url-tester-url',
   DEVTOOLS_PR_TESTER_EXPANDED: 'pathfinder-devtools-pr-tester-expanded',
   DEVTOOLS_URL_TESTER_EXPANDED: 'pathfinder-devtools-url-tester-expanded',

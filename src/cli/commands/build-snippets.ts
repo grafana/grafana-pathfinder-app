@@ -12,6 +12,7 @@ import { JsonSnippetSchema, SnippetCatalogSchema } from '../../types/json-snippe
 import type { SnippetCatalog, SnippetCatalogEntry, JsonSnippet } from '../../types/json-snippet.types';
 import { formatPath } from '../../validation/errors';
 import { validateGuidedActionsInBlocks } from '../../validation/guided-action-validator';
+import { validateGrotGuideGraphsInBlocks } from '../../validation/grot-guide-validator';
 import { readJsonFile } from '../../validation/package-io';
 import { defineCommand } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
@@ -70,6 +71,23 @@ export function buildSnippetCatalog(dir: string): {
         errors.push(`${file}: ${formatPath(issue.path)}: ${issue.message}`);
       }
       continue;
+    }
+
+    const grotIssues = validateGrotGuideGraphsInBlocks(snippet.blocks);
+    if (grotIssues.length > 0) {
+      let hasError = false;
+      for (const issue of grotIssues) {
+        const message = `${file}: ${formatPath(issue.path)}: ${issue.message}`;
+        if (issue.severity === 'error') {
+          errors.push(message);
+          hasError = true;
+        } else {
+          warnings.push(message);
+        }
+      }
+      if (hasError) {
+        continue;
+      }
     }
 
     // The resolver fetches `<id>.json`, so the file name must equal the id.

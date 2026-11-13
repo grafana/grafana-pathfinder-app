@@ -16,7 +16,6 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 | `learning-paths.hook.ts`                       | Main `useLearningPaths()` hook — unified state management                                               |
 | `streak-tracker.ts`                            | Streak calculation, milestones, and display helpers                                                     |
 | `fetch-path-guides.ts`                         | Fetches guide lists from remote `index.json` for URL-based paths                                        |
-| `useNextLearningAction.ts`                     | `useNextLearningAction()`, `computeNextAction()` and `resolveCurrentGuideUrl()` for the UserProfileBar  |
 | `useDiscoverMore.ts`                           | `useDiscoverMore()` hook — surfaces external learning paths for the My Learning "Discover more" section |
 | `hub-learning.ts`                              | Selectors for the sidebar hub: the path to resume and the tile counts                                   |
 | `learning-paths.test.ts`                       | Data-integrity tests for path, badge, and guide metadata definitions                                    |
@@ -26,7 +25,6 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 | `learning-paths.hook.test.ts`                  | Tests for hook fetching, metadata resolution, and App Platform merging                                  |
 | `learning-paths.completion-round-trip.test.ts` | Integration tests for guide completion flowing back into hook state                                     |
 | `reset-path-completion.test.ts`                | Integration tests for path reset behavior                                                               |
-| `useNextLearningAction.test.ts`                | Tests for next-action computation                                                                       |
 | `useDiscoverMore.test.ts`                      | Tests for the Discover more hook                                                                        |
 | `hub-learning.test.ts`                         | Tests for the sidebar hub selectors                                                                     |
 
@@ -71,7 +69,7 @@ The `useLearningPaths()` hook merges these dynamically fetched guides into the p
 
 `fetchAppPlatformLearningPaths()` reads the stack's private custom-guide catalogue through `fetchCustomGuideRepository()`. It includes only published packages whose manifest type is `path` or `journey`, and includes every published member returned by `getManifestMemberIds()` — `milestones` plus any guide referenced only by a `tracks[].guides` entry (Path Tracks RFC) — in each synthesized path. The adapter marks every synthesized path with `isPrivate: true` and builds metadata for every published catalogue entry, using `backend-guide:{id}` URLs so path members launch through the App Platform content resolver.
 
-These paths are fetched when `config.namespace` is available and appended after the bundled and URL-based paths. Their package manifest is carried on the `LearningPath` so the My Learning launch flow can preserve milestone context. In-progress private paths appear in the separate **Private paths** section, completed private paths join the shared **Completed** section, and their titles remain excluded from **Discover more**.
+These paths are fetched when `config.namespace` is available and appended after the bundled and URL-based paths. Their package manifest is carried on the `LearningPath` so the My Learning launch flow can preserve milestone context. Learn Home places outstanding assignments first, then started guides and paths, available paths, and topic links. Completed paths are excluded from Home and can be found with Explore’s Completed filter. The separate **Private paths**, **Completed**, and **Discover more** sections remain in the legacy `MyLearningTab` layout (`homepage=false`).
 
 ## Platform selection
 
@@ -170,7 +168,7 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 ### Marking guides completed
 
-`markGuideCompleted(guideId)` delegates to the Tier 2 coordinator in `badge-coordinator.ts`. The coordinator loads and persists progress through `learningProgressStorage`, updates the streak, evaluates and records new badges, reports badge analytics, and dispatches the progress event. The storage layer only persists learning progress and exposes focused mutation helpers. The coordinator function is also exported directly from the module's `index.ts` barrel for completion flows that do not need the hook. `docs-retrieval` reaches it — and `findPathByUrl`, which resolves a journey base URL to its path so `markMilestoneDone` can award the path badge — through the Tier 1 `lib/guide-completion-bridge.ts` seam rather than a lateral import; this barrel registers that implementation on load, so a consumer that imports a bare file from this module instead of the barrel gets the bridge's warn-and-degrade fallback.
+`markGuideCompleted(guideId)` delegates to the Tier 2 coordinator in `badge-coordinator.ts`. The coordinator loads and persists progress through `learningProgressStorage`, updates the streak, evaluates and records new badges, reports badge analytics, and dispatches the progress event. Direct `awardBadge()` calls also dispatch `LearningProgressUpdated` after a newly earned badge is saved, so mounted badge shelves reload progress without a page refresh. The storage layer only persists learning progress and exposes focused mutation helpers. The coordinator function is also exported directly from the module's `index.ts` barrel for completion flows that do not need the hook. `docs-retrieval` reaches it — and `findPathByUrl`, which resolves a journey base URL to its path so `markMilestoneDone` can award the path badge — through the Tier 1 `lib/guide-completion-bridge.ts` seam rather than a lateral import; this barrel registers that implementation on load, so a consumer that imports a bare file from this module instead of the barrel gets the bridge's warn-and-degrade fallback.
 
 ### Dismissing celebrations
 
@@ -188,7 +186,7 @@ Clearing interactive steps can fail: `interactiveStepStorage.clearAllForContent`
 
 After either reset path, the hook dispatches `CustomEvent('interactive-progress-cleared')` and reloads learning progress so UI components refresh.
 
-The My Learning **Reset all progress** action is broader: it discards queued durable completion writes, then clears all learning progress, journey completion, milestone checklists, interactive steps, interactive completion, and in-memory completion caches before dispatching the same refresh event. Clearing milestone storage prevents an old checklist from immediately re-crossing the whole-path completion threshold after the reset. The `discardQueuedCompletionWrites()` call runs first, before the reset's first `await`: a completion write that has not left the browser is still the user's to withdraw, and a drain scheduled before the reset would otherwise fire inside that window and mint durable records for the guides they just asked us to forget.
+The Learn **Reset progress** action is broader: it discards queued durable completion writes, then clears all learning progress, journey completion, milestone checklists, interactive steps, interactive completion, and in-memory completion caches before dispatching the same refresh event. Clearing milestone storage prevents an old checklist from immediately re-crossing the whole-path completion threshold after the reset. The `discardQueuedCompletionWrites()` call runs first, before the reset's first `await`: a completion write that has not left the browser is still the user's to withdraw, and a drain scheduled before the reset would otherwise fire inside that window and mint durable records for the guides they just asked us to forget.
 
 ## Key hooks and exports
 
@@ -217,33 +215,9 @@ The primary hook exported from the module. Returns `UseLearningPathsReturn`:
 
 A convenience hook that wraps `useLearningPaths()` and returns only `{ markGuideCompleted }`. Used by guide rendering components that need to mark completion without the full learning paths state.
 
-### `useNextLearningAction()`
-
-Returns a `LearningProfileSummary` for the UserProfileBar:
-
-| Property          | Type                         | Description                        |
-| ----------------- | ---------------------------- | ---------------------------------- |
-| `badgesEarned`    | `number`                     | Count of earned non-legacy badges  |
-| `badgesTotal`     | `number`                     | Count of non-legacy badges         |
-| `guidesCompleted` | `number`                     | Total completed guide count        |
-| `streakDays`      | `number`                     | Current streak days                |
-| `isActiveToday`   | `boolean`                    | Whether user has been active today |
-| `nextAction`      | `NextLearningAction \| null` | Next recommended guide to open     |
-| `isLoading`       | `boolean`                    | Loading state                      |
-
-### `computeNextAction()`
-
-A pure function (no hooks) that computes the next learning action. It sorts paths with the following priority:
-
-1. In-progress paths, ordered by highest completion percentage first
-2. Not-started paths
-3. Completed paths are skipped
-
-From the highest-priority path, it selects the first guide with `isCurrent: true`. It prefers the path-scoped URL already resolved on that guide, which opens the actual next module for URL-based paths and uses `backend-guide:` URLs for App Platform members. It then falls back to the path URL, static metadata, or `bundled:{guideId}` in that order.
-
 ### `useDiscoverMore()`
 
-Surfaces novel external learning paths for the My Learning "Discover more" section. It deliberately bypasses the context recommender's path-targeting — which returns few or zero packages on the home surface — and instead pulls the full upstream package index (`repository.json`, proxied by the backend) via `fetchOnlinePackageRecommendations`. It keeps only `path`-typed entries (whole learning paths, not individual guides), mapping each to a `DiscoverMoreItem` whose `contentUrl` points at the package's `content.json`. When an entry has an inlined manifest, the hook validates it with `ManifestJsonObjectSchema` and carries the valid result on the item. My Learning passes that manifest to `prepareGuideLaunch()` as `packageInfo`, avoiding a redundant manifest fetch while preserving milestone context; when it is absent or invalid, launch preparation can derive package context from the content URL. The hook returns up to `count` items (default 5), skipping any whose title is already shown elsewhere on the page (via `excludeTitles`). It fails soft: the client never throws and yields an empty index when offline, so the UI renders an empty state rather than an error.
+Supplies catalogue data to Learn Home and the legacy My Learning "Discover more" section. It deliberately bypasses the context recommender's path-targeting — which returns few or zero packages on the home surface — and instead pulls the full upstream package index (`repository.json`, proxied by the backend) via `fetchOnlinePackageRecommendations`. It keeps only `path`-typed entries (whole learning paths, not individual guides), mapping each to a `DiscoverMoreItem` whose `contentUrl` points at the package's `content.json`. When an entry has an inlined manifest, the hook validates it with `ManifestJsonObjectSchema` and carries the valid result on the item. The legacy layout passes that manifest to `prepareGuideLaunch()` as `packageInfo`, avoiding a redundant manifest fetch while preserving milestone context; when it is absent or invalid, launch preparation can derive package context from the content URL. The hook returns up to `count` items (default 5), skipping any whose title is already shown elsewhere on the page (via `excludeTitles`). It fails soft: the client never throws and yields an empty index when offline, so the UI renders an empty state rather than an error.
 
 ## Integration points
 
@@ -262,7 +236,7 @@ Static guide completion flows through `markGuideCompleted()` in `badge-coordinat
 
 ### UI components (`src/components/LearningPaths/`)
 
-The components consume the hooks exported from this module to render learning path cards, badge collections, streak indicators, and the learning dashboard. `MyLearningTab` separates incomplete paths by `isPrivate`: `PrivatePathsSection` renders organization-published paths above the curated courses and badges, while returning nothing when there are no private paths. The module provides the data and actions; the components handle rendering and user interaction.
+The components consume these hooks to render Learn Home, full-page Explore, and the Badges page. Home places assignments first and hides member guides when their parent path is already shown. Badge details render outside the page layout through a portal. Home prepares content before choosing its surface: reading-only guides open full screen and guides that drive Grafana open beside it. Explore opens content in the sidebar. The legacy `MyLearningTab` layout still renders `PrivatePathsSection` for incomplete organization paths. The module provides data and actions; the components handle rendering and user interaction.
 
 ### Content system (`src/docs-retrieval/`)
 

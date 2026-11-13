@@ -3,6 +3,7 @@ import {
   closeTabState,
   projectPersistedTabs,
   pruneGatedTabState,
+  restoredTrackGuideIds,
   type TabStateSnapshot,
 } from './tab-state-transitions';
 
@@ -283,10 +284,56 @@ describe('projectPersistedTabs', () => {
     expect(persistedFoundations).not.toHaveProperty('activeTrackPathId');
   });
 
+  it("leaves a track's resolved guides out of the persisted package info", () => {
+    const trackMilestones = [{ id: 'ops-1', number: 1, title: 'Ops 1', url: 'backend-guide:ops-1', isActive: false }];
+    const opened: LearningJourneyTab = {
+      ...tab('member', 'docs'),
+      packageInfo: { packageId: 'path-a', trackId: 'ops', trackMilestones },
+      activeTrackId: 'ops',
+      activeTrackPathId: 'path-a',
+      activeTrackMilestones: trackMilestones,
+    };
+
+    const [persisted] = projectPersistedTabs([opened]);
+
+    expect(persisted!.packageInfo).toEqual({ packageId: 'path-a', trackId: 'ops' });
+    expect(opened.packageInfo!.trackMilestones).toBe(trackMilestones);
+  });
+
   it.each([{ tabs: [] }, { tabs: [recommendations] }])(
     'returns an empty array for non-persistable input %#',
     ({ tabs }) => {
       expect(projectPersistedTabs(tabs)).toEqual([]);
     }
   );
+});
+
+describe('restoredTrackGuideIds', () => {
+  const manifest = {
+    id: 'path-a',
+    type: 'path',
+    milestones: ['intro'],
+    tracks: [{ trackId: 'ops', label: 'Ops', guides: ['ops-1', 'ops-2'] }],
+  };
+  const restored = (extra: Partial<LearningJourneyTab> = {}): LearningJourneyTab => ({
+    ...tab('member', 'docs'),
+    packageInfo: { packageId: 'path-a', packageManifest: manifest },
+    activeTrackId: 'ops',
+    activeTrackPathId: 'path-a',
+    ...extra,
+  });
+
+  it("returns the active track's guides for a restored tab that lost its resolved sequence", () => {
+    expect(restoredTrackGuideIds(restored())).toEqual(['ops-1', 'ops-2']);
+  });
+
+  it.each([
+    ['no track is selected', { activeTrackId: null }],
+    ['the sequence is already resolved', { activeTrackMilestones: [] }],
+    ['the track was recorded for another path', { activeTrackPathId: 'path-b' }],
+    ['the manifest has no such track', { activeTrackId: 'sales' }],
+    ['the tab has no path manifest', { packageInfo: { packageId: 'path-a' } }],
+  ])('returns nothing when %s', (_case, extra) => {
+    expect(restoredTrackGuideIds(restored(extra))).toBeUndefined();
+  });
 });

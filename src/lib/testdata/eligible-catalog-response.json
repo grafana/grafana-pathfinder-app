@@ -1,0 +1,119 @@
+{
+  "packages": [
+    {
+      "id": "healthy-guide",
+      "title": "Healthy guide",
+      "contentUrl": "https://interactive-learning.grafana.net/packages/healthy-guide/content.json",
+      "manifestUrl": "https://interactive-learning.grafana.net/packages/healthy-guide/manifest.json",
+      "repository": "interactive-tutorials",
+      "manifest": {
+        "id": "healthy-guide",
+        "type": "guide",
+        "description": "Learn with healthy-guide.",
+        "category": "dashboards",
+        "estimatedMinutes": 5
+      }
+    },
+    {
+      "id": "track-guide",
+      "title": "Track guide",
+      "contentUrl": "https://interactive-learning.grafana.net/packages/track-guide/content.json",
+      "manifestUrl": "https://interactive-learning.grafana.net/packages/track-guide/manifest.json",
+      "repository": "interactive-tutorials",
+      "manifest": {
+        "id": "track-guide",
+        "type": "guide",
+        "description": "Learn with track-guide.",
+        "category": "dashboards",
+        "estimatedMinutes": 5
+      }
+    },
+    {
+      "id": "valid-path",
+      "title": "Valid path",
+      "contentUrl": "https://interactive-learning.grafana.net/packages/valid-path/content.json",
+      "manifestUrl": "https://interactive-learning.grafana.net/packages/valid-path/manifest.json",
+      "repository": "interactive-tutorials",
+      "manifest": {
+        "id": "valid-path",
+        "type": "path",
+        "description": "Learn with valid-path.",
+        "category": "dashboards",
+        "estimatedMinutes": 5,
+        "milestones": ["healthy-guide"],
+        "tracks": [
+          {
+            "trackId": "extra",
+            "label": "Extra practice",
+            "guides": ["track-guide"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "broken-guide",
+      "title": "Broken guide",
+      "contentUrl": "https://untrusted.example/content.json",
+      "manifestUrl": "https://interactive-learning.grafana.net/packages/broken-guide/manifest.json",
+      "repository": "interactive-tutorials",
+      "manifest": {
+        "id": "broken-guide",
+        "type": "guide",
+        "description": "Learn with broken-guide.",
+        "category": "dashboards",
+        "estimatedMinutes": 5
+      }
+    },
+    {
+      "id": "broken-path",
+      "title": "Broken path",
+      "contentUrl": "https://interactive-learning.grafana.net/packages/broken-path/content.json",
+      "manifestUrl": "https://interactive-learning.grafana.net/packages/broken-path/manifest.json",
+      "repository": "interactive-tutorials",
+      "manifest": {
+        "id": "broken-path",
+        "type": "path",
+        "description": "Learn with broken-path.",
+        "category": "dashboards",
+        "estimatedMinutes": 5,
+        "milestones": ["healthy-guide"],
+        "tracks": [
+          {
+            "trackId": "extra",
+            "label": "Extra practice",
+            "guides": ["broken-guide"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "nested-journey",
+      "title": "Nested journey",
+      "contentUrl": "https://interactive-learning.grafana.net/packages/nested-journey/content.json",
+      "manifestUrl": "https://interactive-learning.grafana.net/packages/nested-journey/manifest.json",
+      "repository": "interactive-tutorials",
+      "manifest": {
+        "id": "nested-journey",
+        "type": "journey",
+        "description": "Learn with nested-journey.",
+        "category": "dashboards",
+        "estimatedMinutes": 5,
+        "milestones": ["broken-path"]
+      }
+    },
+    {
+      "id": "standalone-guide",
+      "title": "Standalone guide",
+      "contentUrl": "https://interactive-learning.grafana.net/packages/standalone-guide/content.json",
+      "manifestUrl": "https://interactive-learning.grafana.net/packages/standalone-guide/manifest.json",
+      "repository": "interactive-tutorials",
+      "manifest": {
+        "id": "standalone-guide",
+        "type": "guide",
+        "description": "Learn with standalone-guide.",
+        "category": "dashboards",
+        "estimatedMinutes": 5
+      }
+    }
+  ]
+}

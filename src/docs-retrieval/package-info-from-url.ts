@@ -1,3 +1,5 @@
+import { activePrPreview } from '../lib/pr-preview-fetch';
+import { fetchPrPackageInfo } from './pr-package';
 import type { GuideLoadContext } from '../types/guide-diagnostics.types';
 import { fetchGuideResource, finishGuideLoad } from '../lib/telemetry/guide-load';
 import { diagnoseGuideError, guideSource } from '../lib/guide-diagnostics';
@@ -46,7 +48,9 @@ function extractBackendGuideId(url: string): string | undefined {
 
 /** True if the URL is a package-content URL this module can resolve packageInfo for. */
 export function isPackageContentUrl(url: string): boolean {
-  return isInteractiveLearningPackageUrl(url) || extractBackendGuideId(url) !== undefined;
+  return (
+    Boolean(activePrPreview(url)) || isInteractiveLearningPackageUrl(url) || extractBackendGuideId(url) !== undefined
+  );
 }
 
 /**
@@ -97,6 +101,9 @@ export async function fetchPackageInfoFromUrl(
   url: string,
   context?: GuideLoadContext
 ): Promise<PackageOpenInfo | undefined> {
+  if (activePrPreview(url)) {
+    return fetchPrPackageInfo(url);
+  }
   const backendGuideId = extractBackendGuideId(url);
   if (backendGuideId) {
     return fetchAppPlatformPackageInfo(backendGuideId, context);

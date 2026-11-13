@@ -11,6 +11,7 @@ import {
 } from '../../../types/requirements.types';
 import { isAutoRecoverableRequirement } from '../../../recovery';
 import { StorageKeys } from '../../../lib/storage-keys';
+import { CLOUD_TOKEN_OBJECTIVE } from '../../../lib/workflow-objectives';
 import { usePersistedBoolean } from '../../../hooks';
 import { ChoiceConditionPicker } from './ChoiceConditionPicker';
 import { useChoiceInputs } from './ChoiceInputsContext';
@@ -48,18 +49,26 @@ const CHOICE_PICKER_OPTION: PickerOption = {
 };
 
 const PICKER_OPTIONS: PickerOption[] = [
+  {
+    value: CLOUD_TOKEN_OBJECTIVE,
+    label: 'Cloud token created',
+    description: 'The shared Cloud token form confirms successful creation in the current visible form',
+    isPrefix: false,
+  },
   ...FIXED_REQUIREMENTS.map((token): PickerOption => ({
     value: token,
     label: token,
     description: REQUIREMENT_DESCRIPTIONS[token] ?? '',
     isPrefix: false,
   })),
-  ...PARAMETERIZED_REQUIREMENT_PREFIXES.map((prefix): PickerOption => ({
-    value: prefix,
-    label: prefix,
-    description: REQUIREMENT_DESCRIPTIONS[prefix] ?? '',
-    isPrefix: true,
-  })),
+  ...PARAMETERIZED_REQUIREMENT_PREFIXES.filter((prefix) => prefix !== 'workflow-ready:').map(
+    (prefix): PickerOption => ({
+      value: prefix,
+      label: prefix,
+      description: REQUIREMENT_DESCRIPTIONS[prefix] ?? '',
+      isPrefix: true,
+    })
+  ),
 ];
 
 function tokensFromString(value: string): string[] {
@@ -96,10 +105,13 @@ export function ConditionChipsField({
   const styles = useStyles2(getStyles);
   const tokens = useMemo(() => tokensFromString(value), [value]);
   const choiceInputs = useChoiceInputs();
+  const modeOptions = PICKER_OPTIONS.filter(
+    (option) => mode !== 'requirements' || option.value !== CLOUD_TOKEN_OBJECTIVE
+  );
   const pickerOptions =
     choiceInputs.length > 0 && (mode === 'requirements' || mode === 'conditions')
-      ? [CHOICE_PICKER_OPTION, ...PICKER_OPTIONS]
-      : PICKER_OPTIONS;
+      ? [CHOICE_PICKER_OPTION, ...modeOptions]
+      : modeOptions;
   const choiceLabel = (token: string) => {
     const condition = parseChoiceRequirement(token);
     const input = choiceInputs.find((item) => item.variableName === condition?.variableName);

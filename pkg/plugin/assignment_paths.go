@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 
+	"github.com/grafana/grafana-pathfinder-app/src/constants"
 	"github.com/grafana/grafana-pathfinder-app/src/learning-paths"
 )
 
@@ -25,7 +26,18 @@ type assignmentGuideIdentity struct {
 }
 
 func assignmentGuideMatchesCompletion(guide assignmentGuideIdentity, rec completionRecordSpec) bool {
-	return guide.GuideID == rec.GuideID && guide.matchesSource(rec.GuideSource)
+	if guide.GuideID != rec.GuideID {
+		return false
+	}
+	if constants.IsBundledTutorial(guide.GuideID) && publicTutorialSource(guide.GuideSource) && publicTutorialSource(rec.GuideSource) {
+		// Historical online first-dashboard records describe the RSS tutorial, not the migrated guide.
+		return constants.LegacyOnlineTutorialID(guide.GuideID) == "" || rec.GuideSource == "bundled"
+	}
+	return guide.matchesSource(rec.GuideSource)
+}
+
+func publicTutorialSource(source string) bool {
+	return source == "bundled" || source == "interactive-tutorials" || source == "online-cdn"
 }
 
 func (guide assignmentGuideIdentity) matchesSource(source string) bool {

@@ -20,7 +20,7 @@ env:
   NODE_VERSION: '24'
   # Pinned so an upstream golangci-lint release cannot redden the repo on its own.
   # `npm run lint:go` reproduces CI exactly when your local golangci-lint matches this.
-  GOLANGCI_LINT_VERSION: 'v2.13.1'
+  GOLANGCI_LINT_VERSION: 'v2.15.0'
 
 jobs:
   # Parallel quality check jobs
@@ -147,6 +147,8 @@ jobs:
         run: npm ci
       - name: Build CLI
         run: npm run build:cli
+      - name: Test bundled tutorial sync
+        run: npm run test:sync-bundled-tutorials
       - name: Validate bundled packages
         run: npm run validate:packages
       - name: Check repository.json freshness

@@ -43,6 +43,7 @@ import {
   dashboardExistsCheck,
   datasourceConfiguredCheck,
 } from './checks/grafana-api';
+import { workflowReadyCheck } from './checks/workflow';
 import { onPageCheck } from './checks/location';
 import { hasFeatureCheck, inEnvironmentCheck, minVersionCheck, rendererCheck } from './checks/env';
 import { guideVariableCheck } from './checks/vars';
@@ -128,6 +129,7 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
     run: (c) => hasDashboardNamedCheck(c),
   },
   { id: 'dashboard-exists', match: (c) => c === 'dashboard-exists', run: (c) => dashboardExistsCheck(c) },
+  { id: 'workflow-ready:', match: (c) => c.startsWith('workflow-ready:'), run: (c) => workflowReadyCheck(c) },
   { id: 'on-page:', match: (c) => c.startsWith('on-page:'), run: (c) => onPageCheck(c) },
   { id: 'has-feature:', match: (c) => c.startsWith('has-feature:'), run: (c) => hasFeatureCheck(c) },
   { id: 'in-environment:', match: (c) => c.startsWith('in-environment:'), run: (c) => inEnvironmentCheck(c) },

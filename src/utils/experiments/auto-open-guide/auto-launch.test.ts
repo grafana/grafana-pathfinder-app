@@ -1,3 +1,10 @@
+const mockSurfaceListeners = new Set<(surface: string) => void>();
+jest.mock('../../../lib/telemetry/surface', () => ({
+  onPathfinderSurfaceChange: (listener: (surface: string) => void) => {
+    mockSurfaceListeners.add(listener);
+    return () => mockSurfaceListeners.delete(listener);
+  },
+}));
 const mockGetIsSidebarMounted = jest.fn();
 jest.mock('../../../global-state/sidebar', () => ({
   sidebarState: { getIsSidebarMounted: () => mockGetIsSidebarMounted() },
@@ -88,5 +95,34 @@ describe('installAutoLaunchOnMount', () => {
     document.removeEventListener('pathfinder-auto-launch-pending', pending);
 
     expect(pending).toHaveBeenCalledTimes(1);
+  });
+  it('does not replay a canceled launch on a later manual mount', () => {
+    const handler = capture();
+    const cancel = installAutoLaunchOnMount(DOC_PAGE);
+    cancel();
+    mount('sidebar');
+    jest.runAllTimers();
+    expect(handler).not.toHaveBeenCalled();
+  });
+  it('rechecks eligibility after the surface mounts, before guide delivery', () => {
+    const handler = capture();
+    let eligible = true;
+    installAutoLaunchOnMount(DOC_PAGE, () => eligible);
+    mount('sidebar');
+    eligible = false;
+    jest.runAllTimers();
+    expect(handler).not.toHaveBeenCalled();
+  });
+  it('does not replay on a manual reopen after dismissal during the delivery delay', () => {
+    const handler = capture();
+    installAutoLaunchOnMount(DOC_PAGE);
+    mount('sidebar');
+    jest.advanceTimersByTime(100);
+    mockGetIsSidebarMounted.mockReturnValue(false);
+    mockSurfaceListeners.forEach((listener) => listener('closed'));
+    mount('sidebar');
+    jest.runAllTimers();
+    expect(handler).not.toHaveBeenCalled();
+    expect(mockSurfaceListeners.size).toBe(0);
   });
 });

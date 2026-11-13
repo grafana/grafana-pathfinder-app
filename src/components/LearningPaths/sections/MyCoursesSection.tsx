@@ -1,8 +1,3 @@
-/**
- * Incomplete catalogue paths. Assigned paths lead, ranked by urgency;
- * unassigned paths keep the incoming order.
- */
-
 import React, { useCallback, useMemo } from 'react';
 import { Icon } from '@grafana/ui';
 import { cx } from '@emotion/css';
@@ -66,14 +61,18 @@ export function MyCoursesSection({
   const ordered = useMemo(() => orderCourses(courses, activeAssignment), [courses, activeAssignment]);
 
   return (
-    <div className={cx(styles.section, styles.columnSection)} data-testid={testIds.learningPaths.myCoursesSection}>
+    <div className={cx(styles.openSection, styles.columnSection)} data-testid={testIds.learningPaths.myCoursesSection}>
       <div className={styles.sectionHeader}>
-        <Icon name="book-open" size="md" className={styles.sectionIcon} />
-        <h2 className={styles.sectionTitle}>{t('myLearning.myCourses', 'My paths')}</h2>
+        <span className={styles.sectionIcon}>
+          <Icon name="book-open" size="lg" />
+        </span>
+        <div className={styles.sectionHeadingText}>
+          <h2 className={styles.sectionTitle}>{t('myLearning.myCourses', 'My paths')}</h2>
+          <p className={styles.sectionDescription}>
+            {t('myLearning.myCoursesDescription', "Assigned paths and paths you've started")}
+          </p>
+        </div>
       </div>
-      <p className={styles.sectionDescription}>
-        {t('myLearning.myCoursesDescription', "Assigned paths and paths you've started")}
-      </p>
 
       {ordered.length === 0 ? (
         <div className={styles.emptyMessage}>

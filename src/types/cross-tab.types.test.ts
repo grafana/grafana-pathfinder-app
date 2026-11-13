@@ -390,6 +390,15 @@ describe('observation message validation', () => {
       steps,
     });
 
+  it('accepts only boolean workflow observation flags, with omission supported for older peers', () => {
+    for (const observeWorkflows of [undefined, false, true]) {
+      expect(validateCrossTabMessage({ ...subscription([]), observeWorkflows })).not.toBeNull();
+    }
+    for (const observeWorkflows of ['true', 1, null, []]) {
+      expect(validateCrossTabMessage({ ...subscription([]), observeWorkflows })).toBeNull();
+    }
+  });
+
   it('accepts pending steps that still contain inert noop and popout actions', () => {
     const message = subscription([
       { id: 'info', cursor: 0, actions: [{ targetAction: 'noop' }] },

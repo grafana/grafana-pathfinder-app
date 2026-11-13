@@ -1,3 +1,4 @@
+import { bundledTutorialContentKey } from './bundled-tutorial-identity';
 import { isSafeResponseName, MAX_INPUT_LENGTH } from './input-value';
 /**
  * User storage abstraction for the Grafana Docs Plugin
@@ -47,7 +48,12 @@ import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
 import { collectKeysByPrefix, isKeyUnderPrefix } from './storage/key-utils';
-import { listProgressEntries, progressSectionKey, sweepDiscardedProgressRecords } from './storage/progress-keys';
+import {
+  listProgressEntries,
+  progressSectionKey,
+  sweepDiscardedProgressRecords,
+  migrateBundledTutorialProgress,
+} from './storage/progress-keys';
 import {
   HYBRID_TIMESTAMP_SUFFIX,
   PROGRESS_SECTION_PREFIXES,
@@ -73,13 +79,15 @@ const LearningProgressSchema = z.object({
   pendingCelebrations: z.array(z.string()),
 });
 
-const DEFAULT_PROGRESS: LearningProgress = {
-  completedGuides: [],
-  earnedBadges: [],
-  streakDays: 0,
-  lastActivityDate: '',
-  pendingCelebrations: [],
-};
+function createEmptyLearningProgress(): LearningProgress {
+  return {
+    completedGuides: [],
+    earnedBadges: [],
+    streakDays: 0,
+    lastActivityDate: '',
+    pendingCelebrations: [],
+  };
+}
 
 // ============================================================================
 // GUIDE RESPONSES SCHEMA (for input block variable storage)
@@ -255,6 +263,7 @@ export function setGlobalStorage(storage: UserStorage): void {
  * @returns UserStorage - Storage interface with async operations
  */
 export function createUserStorage(): UserStorage {
+  migrateBundledTutorialProgressOnce();
   return globalStorageInstance || createLocalStorage();
 }
 
@@ -465,6 +474,19 @@ export function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserSto
   };
 }
 
+let hasMigratedBundledTutorialProgress = false;
+function migrateBundledTutorialProgressOnce(): void {
+  if (hasMigratedBundledTutorialProgress) {
+    return;
+  }
+  try {
+    migrateBundledTutorialProgress();
+    hasMigratedBundledTutorialProgress = true;
+  } catch (error) {
+    logger.warn('Could not migrate bundled tutorial progress', { error });
+  }
+}
+
 /**
  * Module-level guard so the one-off discard of progress records left in the
  * superseded key shape runs once per page lifecycle rather than on every
@@ -483,6 +505,7 @@ function sweepDiscardedProgressOnce(): void {
     return;
   }
   hasSweptDiscardedProgress = true;
+  migrateBundledTutorialProgressOnce();
   const removed = sweepDiscardedProgressRecords();
   if (removed > 0) {
     logger.info('Discarded progress records left in the superseded key shape', { removed });
@@ -778,6 +801,7 @@ export function useUserStorage(): UserStorage {
  * quota exhaustion. Backed by `createBoundedRecordStorage`.
  */
 export const journeyCompletionStorage = createBoundedRecordStorage({
+  normalizeKey: bundledTutorialContentKey,
   storageKey: StorageKeys.JOURNEY_COMPLETION,
   limit: LIMITS.MAX_JOURNEY_COMPLETIONS,
   label: 'journey completion',
@@ -914,6 +938,7 @@ export const milestoneCompletionStorage = {
  * Same shape as `journeyCompletionStorage`, scoped to a different storage key.
  */
 export const interactiveCompletionStorage = createBoundedRecordStorage({
+  normalizeKey: bundledTutorialContentKey,
   storageKey: StorageKeys.INTERACTIVE_COMPLETION,
   limit: LIMITS.MAX_INTERACTIVE_COMPLETIONS,
   label: 'interactive completion',
@@ -1022,10 +1047,12 @@ function readStepIds(prefix: string, contentKey: string, sectionId: string): Set
 }
 
 function readSkippedSteps(contentKey: string, sectionId: string): Set<string> {
+  contentKey = bundledTutorialContentKey(contentKey);
   return readStepIds(StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX, contentKey, sectionId);
 }
 
 function writeSkippedSteps(contentKey: string, sectionId: string, skippedIds: ReadonlySet<string>): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   try {
     const key = progressSectionKey(StorageKeys.INTERACTIVE_SKIPPED_STEPS_PREFIX, contentKey, sectionId);
     if (skippedIds.size === 0) {
@@ -1057,6 +1084,7 @@ const completedIdsCache = new Map<string, readonly string[]>();
 const acknowledgedIdsCache = new Map<string, readonly string[]>();
 
 function invalidateProgressScanCaches(contentKey: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   completedIdsCache.delete(contentKey);
   acknowledgedIdsCache.delete(contentKey);
 }
@@ -1068,6 +1096,7 @@ export const interactiveStepStorage = {
   getSkipped: readSkippedSteps,
 
   listAllSkipped(contentKey: string): readonly string[] {
+    contentKey = bundledTutorialContentKey(contentKey);
     const skipped: string[] = [];
     for (const { sectionId, raw } of listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)) {
       const completed = new Set(parseStepIds(raw) ?? []);
@@ -1090,6 +1119,7 @@ export const interactiveStepStorage = {
    * Idempotent on unknown keys; safe to call from any tab.
    */
   invalidateCountCache(contentKey: string): void {
+    contentKey = bundledTutorialContentKey(contentKey);
     invalidateProgressScanCaches(contentKey);
   },
 
@@ -1097,6 +1127,7 @@ export const interactiveStepStorage = {
    * Gets completed step IDs for a specific content/section
    */
   async getCompleted(contentKey: string, sectionId: string): Promise<Set<string>> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
@@ -1114,6 +1145,7 @@ export const interactiveStepStorage = {
     skippedIds: ReadonlySet<string> = new Set(),
     clearedDuringLoad?: ReadonlySet<string>
   ): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     // A save while the section loads must not drop stored steps the load is about to restore.
     const keepsStored = (id: string) => clearedDuringLoad !== undefined && !clearedDuringLoad.has(id);
     const unloaded = clearedDuringLoad
@@ -1141,6 +1173,7 @@ export const interactiveStepStorage = {
   },
 
   async clear(contentKey: string, sectionId: string): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     writeSkippedSteps(contentKey, sectionId, new Set());
     try {
       completedIdsCache.delete(contentKey);
@@ -1155,6 +1188,7 @@ export const interactiveStepStorage = {
    * Check if any progress exists for a content key (any section)
    */
   async hasProgress(contentKey: string): Promise<boolean> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       return listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey).some(
         ({ raw }) => (parseStepIds(raw)?.length ?? 0) > 0
@@ -1169,6 +1203,7 @@ export const interactiveStepStorage = {
    * namespaces. Rejects rather than resolving if any record survives.
    */
   async clearAllForContent(contentKey: string): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     invalidateProgressScanCaches(contentKey);
     const storage = createUserStorage();
 
@@ -1242,6 +1277,7 @@ export const interactiveStepStorage = {
   },
 
   countAllCompleted(contentKey: string): number {
+    contentKey = bundledTutorialContentKey(contentKey);
     return interactiveStepStorage.listAllCompleted(contentKey).length;
   },
 
@@ -1257,6 +1293,7 @@ export const interactiveStepStorage = {
    * is not counted in getTotalDocumentSteps().
    */
   listAllCompleted(contentKey: string): readonly string[] {
+    contentKey = bundledTutorialContentKey(contentKey);
     const cached = completedIdsCache.get(contentKey);
     if (cached !== undefined) {
       return cached;
@@ -1290,6 +1327,7 @@ export const sectionCollapseStorage = {
    * Gets the collapse state for a specific section
    */
   async get(contentKey: string, sectionId: string): Promise<boolean> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
@@ -1304,6 +1342,7 @@ export const sectionCollapseStorage = {
    * Sets the collapse state for a specific section
    */
   async set(contentKey: string, sectionId: string, isCollapsed: boolean): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
@@ -1317,6 +1356,7 @@ export const sectionCollapseStorage = {
    * Clears collapse state for a specific section
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       await storage.removeItem(progressSectionKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId));
@@ -1352,6 +1392,7 @@ export const sectionAcknowledgementStorage = {
    *            layer is intentionally two-state.
    */
   async get(contentKey: string, sectionId: string): Promise<true | null> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
@@ -1369,6 +1410,7 @@ export const sectionAcknowledgementStorage = {
    * two-state (see `.get()`). Use `.clear()` to remove an entry.
    */
   async set(contentKey: string, sectionId: string, isAcknowledged: true): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       acknowledgedIdsCache.delete(contentKey);
       const storage = createUserStorage();
@@ -1386,6 +1428,7 @@ export const sectionAcknowledgementStorage = {
    * that a redo or full reset re-arms the gate.
    */
   async clear(contentKey: string, sectionId: string): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       acknowledgedIdsCache.delete(contentKey);
       const storage = createUserStorage();
@@ -1402,6 +1445,7 @@ export const sectionAcknowledgementStorage = {
    * without an async read.
    */
   countAllAcknowledged(contentKey: string): number {
+    contentKey = bundledTutorialContentKey(contentKey);
     return sectionAcknowledgementStorage.listAllAcknowledged(contentKey).length;
   },
 
@@ -1413,6 +1457,7 @@ export const sectionAcknowledgementStorage = {
    * evidence bridge is read from a render-path snapshot.
    */
   listAllAcknowledged(contentKey: string): readonly string[] {
+    contentKey = bundledTutorialContentKey(contentKey);
     const cached = acknowledgedIdsCache.get(contentKey);
     if (cached !== undefined) {
       return cached;
@@ -1438,6 +1483,7 @@ export const sectionAcknowledgementStorage = {
    * `interactiveStepStorage.invalidateCountCache`.
    */
   invalidateAcknowledgementCache(contentKey: string): void {
+    contentKey = bundledTutorialContentKey(contentKey);
     acknowledgedIdsCache.delete(contentKey);
   },
 };
@@ -1461,6 +1507,7 @@ export const sectionDoneStorage = {
    * `null`. Two-state shape mirrors `sectionAcknowledgementStorage`.
    */
   async get(contentKey: string, sectionId: string): Promise<true | null> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
@@ -1472,6 +1519,7 @@ export const sectionDoneStorage = {
   },
 
   async set(contentKey: string, sectionId: string, isDone: true): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       const key = progressSectionKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
@@ -1482,6 +1530,7 @@ export const sectionDoneStorage = {
   },
 
   async clear(contentKey: string, sectionId: string): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       await storage.removeItem(progressSectionKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId));
@@ -1501,21 +1550,41 @@ export const sectionDoneStorage = {
  *
  * Ordinary guides store `true`. Choice guides store the marked block keys
  * in the same entry. All reset paths therefore remove both the mark and its
- * path evidence, without removing the reader's saved input selections.
+ * path evidence, without removing the reader's saved input selections. A
+ * mark earned by seeing the end of a guide with no completable block also
+ * carries `method: 'viewed'`, so its source is not reported as a click.
  */
 function guideCompletionMarkKey(contentKey: string): string {
+  contentKey = bundledTutorialContentKey(contentKey);
   return buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, contentKey);
+}
+
+type StoredGuideCompletionMark = true | { choiceCompletionKeys?: string[]; method?: 'viewed' };
+
+function isGuideCompletionMark(value: unknown): value is StoredGuideCompletionMark {
+  if (value === true) {
+    return true;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const mark = value as { choiceCompletionKeys?: unknown; method?: unknown };
+  return Array.isArray(mark.choiceCompletionKeys) || mark.method === 'viewed';
+}
+
+function readGuideCompletionMark(contentKey: string): unknown {
+  contentKey = bundledTutorialContentKey(contentKey);
+  return JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
 }
 
 export const guideCompletionMarkStorage = {
   /** `true` when the guide carries the mark; otherwise `null`. */
   async get(contentKey: string): Promise<true | null> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
-      const marked = await storage.getItem<true | { choiceCompletionKeys: string[] }>(
-        guideCompletionMarkKey(contentKey)
-      );
-      return marked === true || (marked && Array.isArray(marked.choiceCompletionKeys)) ? true : null;
+      const marked = await storage.getItem<unknown>(guideCompletionMarkKey(contentKey));
+      return isGuideCompletionMark(marked) ? true : null;
     } catch {
       return null;
     }
@@ -1529,9 +1598,20 @@ export const guideCompletionMarkStorage = {
    * value is already there.
    */
   isMarked(contentKey: string): boolean {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
-      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
-      return marked === true || Array.isArray(marked?.choiceCompletionKeys);
+      return isGuideCompletionMark(readGuideCompletionMark(contentKey));
+    } catch {
+      return false;
+    }
+  },
+
+  /** Synchronous: the mark was earned by seeing the guide's end, not by a click. */
+  isViewed(contentKey: string): boolean {
+    contentKey = bundledTutorialContentKey(contentKey);
+    try {
+      const marked = readGuideCompletionMark(contentKey);
+      return isGuideCompletionMark(marked) && marked !== true && marked.method === 'viewed';
     } catch {
       return false;
     }
@@ -1539,9 +1619,10 @@ export const guideCompletionMarkStorage = {
 
   /** Read only content-keyed completion evidence, never saved input responses. */
   getChoiceCompletionKeys(contentKey: string): string[] {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
-      const marked = JSON.parse(localStorage.getItem(guideCompletionMarkKey(contentKey)) ?? 'null');
-      return Array.isArray(marked?.choiceCompletionKeys)
+      const marked = readGuideCompletionMark(contentKey);
+      return isGuideCompletionMark(marked) && marked !== true && Array.isArray(marked.choiceCompletionKeys)
         ? marked.choiceCompletionKeys.filter((key: unknown): key is string => typeof key === 'string')
         : [];
     } catch {
@@ -1551,6 +1632,7 @@ export const guideCompletionMarkStorage = {
 
   /** Only `true` is accepted; use `.clear()` to remove an entry. */
   async set(contentKey: string, isMarked: true, choiceCompletionKeys?: string[]): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       await storage.setItem(
@@ -1562,7 +1644,21 @@ export const guideCompletionMarkStorage = {
     }
   },
 
+  async setViewed(contentKey: string, choiceCompletionKeys?: string[]): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(guideCompletionMarkKey(contentKey), {
+        method: 'viewed',
+        ...(choiceCompletionKeys !== undefined && { choiceCompletionKeys }),
+      });
+    } catch (error) {
+      logger.warn('Failed to save guide completion mark', { error });
+    }
+  },
+
   async clear(contentKey: string): Promise<void> {
+    contentKey = bundledTutorialContentKey(contentKey);
     try {
       const storage = createUserStorage();
       await storage.removeItem(guideCompletionMarkKey(contentKey));
@@ -1702,7 +1798,7 @@ export const learningProgressStorage = {
       const stored = await storage.getItem<unknown>(StorageKeys.LEARNING_PROGRESS);
 
       if (!stored) {
-        return DEFAULT_PROGRESS;
+        return createEmptyLearningProgress();
       }
 
       // Validate stored data against schema to protect against corruption
@@ -1713,9 +1809,9 @@ export const learningProgressStorage = {
 
       // Log validation failure for debugging but return defaults gracefully
       logger.warn('Learning progress validation failed, using defaults', { issues: parsed.error.issues });
-      return DEFAULT_PROGRESS;
+      return createEmptyLearningProgress();
     } catch {
-      return DEFAULT_PROGRESS;
+      return createEmptyLearningProgress();
     }
   },
 

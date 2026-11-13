@@ -1,6 +1,6 @@
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
 import { getDueStatus } from './assignments-core';
-import { resolveCurrentGuideUrl } from './useNextLearningAction';
+import { getPathsData } from './paths-data';
 
 export interface HubLearningDeps {
   paths: readonly LearningPath[];
@@ -32,6 +32,17 @@ export interface HubStats {
   nextDue?: HubDue;
   inProgress: number;
   completed: number;
+}
+
+/** Per-guide URL first so a partially-completed URL-based path opens its next module, not its base (#744). */
+function resolveCurrentGuideUrl(path: Pick<LearningPath, 'url'>, guide: Pick<PathGuide, 'id' | 'url'>): string {
+  if (guide.url) {
+    return guide.url;
+  }
+  if (path.url) {
+    return path.url;
+  }
+  return getPathsData().guideMetadata[guide.id]?.url ?? `bundled:${guide.id}`;
 }
 
 function startedPaths(deps: HubLearningDeps): HubResume[] {

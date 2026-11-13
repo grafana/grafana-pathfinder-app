@@ -11,6 +11,12 @@ import type { JsonGuide } from '../types/json-guide.types';
 
 describe('Condition Validator', () => {
   describe('validateConditionString', () => {
+    it('rejects unknown workflow detectors', () => {
+      expect(validateConditionString('workflow-ready:unknown', [])).toEqual([
+        expect.objectContaining({ code: 'invalid_format' }),
+      ]);
+    });
+
     describe('valid fixed conditions', () => {
       it.each(Object.values(FixedRequirementType))('accepts fixed type: %s', (condition) => {
         const issues = validateConditionString(condition, []);
@@ -20,6 +26,7 @@ describe('Condition Validator', () => {
 
     describe('valid parameterized conditions', () => {
       const validParameterizedConditions: Array<[string, ParameterizedRequirementPrefix]> = [
+        ['workflow-ready:cloud-access-policy-token', ParameterizedRequirementPrefix.WORKFLOW_READY],
         ['has-permission:datasources.read', ParameterizedRequirementPrefix.HAS_PERMISSION],
         ['has-role:admin', ParameterizedRequirementPrefix.HAS_ROLE],
         ['has-role:editor', ParameterizedRequirementPrefix.HAS_ROLE],
@@ -456,6 +463,7 @@ describe('Condition Types Coverage', () => {
     ParameterizedRequirementPrefix.PLUGIN_ENABLED,
     ParameterizedRequirementPrefix.HAS_DASHBOARD_NAMED,
     ParameterizedRequirementPrefix.ON_PAGE,
+    ParameterizedRequirementPrefix.WORKFLOW_READY,
     ParameterizedRequirementPrefix.HAS_FEATURE,
     ParameterizedRequirementPrefix.IN_ENVIRONMENT,
     ParameterizedRequirementPrefix.MIN_VERSION,

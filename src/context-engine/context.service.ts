@@ -1,3 +1,10 @@
+import {
+  rankRecommendations,
+  sanitizeRelevance,
+  localRelevance,
+  legacyRelevance,
+  compareRelevance,
+} from '../lib/recommendation-ranking';
 import { getBackendSrv, config, locationService } from '@grafana/runtime';
 import {
   getDetectedDatasourceType,
@@ -25,6 +32,7 @@ import { logger } from '../lib/logging';
 import { fetchDataSources } from '../lib/grafana-api';
 import { withTimeout } from '../lib/async-utils';
 import { currentPlatform } from '../lib/platform';
+import { getRecommenderStackContext } from '../lib/recommender-context';
 import {
   buildTelemetryIdentity,
   recordRecommenderFallback,
@@ -114,17 +122,6 @@ export class ContextService {
   private static readonly STATIC_LINK_ACCURACY = 0.7;
   private static readonly BUNDLED_INTERACTIVE_ACCURACY = 0.8;
 
-  // Content type priority for sorting (lower number = higher priority).
-  // Interactive guides have the highest user value (they teach by doing), then
-  // packages (curated sequences), then learning journeys, then plain docs pages.
-  // Used as a tiebreaker after the recommender's confidence score.
-  private static readonly TYPE_PRIORITY: Record<string, number> = {
-    interactive: 0,
-    package: 1,
-    'learning-journey': 2,
-    'docs-page': 3,
-  };
-
   static async getContextData(): Promise<ContextData> {
     // Ensure EchoSrv is initialized (fallback if onPluginStart wasn't called)
     initializeEchoLogging();
@@ -206,7 +203,10 @@ export class ContextService {
         // recommendations hostage — a timed-out fetch keeps running and the
         // next recommendations cycle picks its result up from the cache.
         const onlinePackageRecommendations = await this.getOnlinePackageRecommendations(contextData);
-        const merged = [...bundledRecommendations, ...onlinePackageRecommendations];
+        const merged = [
+          ...bundledRecommendations,
+          ...this.deduplicateRecommendations(onlinePackageRecommendations, bundledRecommendations),
+        ];
         const fallbackResult = await this.getFallbackRecommendations(contextData, merged);
         return {
           ...fallbackResult,
@@ -252,7 +252,7 @@ export class ContextService {
     const processedRecommendations = await this.processLearningJourneys(allRecommendations);
 
     return {
-      recommendations: processedRecommendations,
+      recommendations: rankRecommendations(processedRecommendations, contextData.currentPath),
       error: null,
     };
   }
@@ -295,9 +295,6 @@ export class ContextService {
     return true;
   }
 
-  /**
-   * Get recommendations from external API service
-   */
   private static async getExternalRecommendations(
     contextData: ContextData,
     pluginConfig: PathfinderPluginConfig,
@@ -313,8 +310,7 @@ export class ContextService {
     // Time spent blocked on the completions attachment is not recommender latency.
     let completionsWaitMs = 0;
     const elapsedMs = () => performance.now() - recommenderStart - completionsWaitMs;
-    // One request settles telemetry exactly once — post-parse processing can
-    // still throw into the fail path after a successful fetch.
+    // Post-fetch processing can still fail, so settle telemetry only once.
     let telemetrySettled = false;
     const settleTelemetry = (outcome: RecommenderOutcome, durationMs: number) => {
       if (telemetrySettled) {
@@ -323,8 +319,6 @@ export class ContextService {
       telemetrySettled = true;
       recordRecommenderRequest(durationMs, outcome);
       if (outcome !== 'ok') {
-        // The fallback always merges bundled + static-link recommendations;
-        // there is no finer tier to distinguish once the recommender failed.
         recordRecommenderFallback(outcome, 'bundled+static');
       }
     };
@@ -335,7 +329,6 @@ export class ContextService {
     try {
       const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
-      // SECURITY: Validate recommender service URL before making request
       if (!this.validateRecommenderUrl(configWithDefaults.recommenderServiceUrl)) {
         return fail('other', 'Recommender service URL failed security validation');
       }
@@ -343,32 +336,7 @@ export class ContextService {
       // Started before the hashing awaits so the /my load overlaps them; never aborted at its budget.
       const completionsPromise = completionsForRecommend();
 
-      const isCloud = currentPlatform() === 'cloud';
-
-      // Extract and hash source hostname for privacy
-      // OSS play.grafana.org is left unhashed (public demo site)
-      const getHashedSource = async (): Promise<string | undefined> => {
-        try {
-          const hostname = window.location.hostname;
-
-          // OSS users on Grafana Play - public demo site, no need to hash
-          if (!isCloud && hostname === 'play.grafana.org') {
-            return 'play.grafana.org';
-          }
-
-          // OSS users on other hostnames - use generic identifier
-          if (!isCloud) {
-            return 'oss-source';
-          }
-
-          return hostname;
-        } catch (error) {
-          logger.warn('Failed to extract/hash source', { error });
-          return undefined;
-        }
-      };
-
-      const hashedSource = await getHashedSource();
+      const { source } = getRecommenderStackContext();
 
       const identity = await buildTelemetryIdentity();
       const waitStart = performance.now();
@@ -385,12 +353,11 @@ export class ContextService {
         user_email: identity.emailHash,
         user_role: identity.orgRole,
         platform: this.getCurrentPlatform(),
-        source: hashedSource,
+        source,
         language: this.getCurrentLanguage(),
         ...(completions && { completions }),
       };
 
-      // Add timeout to prevent hanging in air-gapped or slow connection scenarios
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), DEFAULT_RECOMMENDER_TIMEOUT);
 
@@ -405,7 +372,6 @@ export class ContextService {
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          // Handle specific HTTP error codes
           if (response.status === 404) {
             return fail('unavailable', 'Recommender service not found');
           }
@@ -414,49 +380,53 @@ export class ContextService {
             return fail('rate-limit', 'Recommender service is under strain');
           }
 
-          // Handle other HTTP errors
           return fail('other', `HTTP error! status: ${response.status}`);
         }
 
         const data: V1RecommenderResponse = await response.json();
-        // Captured here (processLearningJourneys does its own fetches, which
-        // would skew ok durations) but only emitted once processing succeeds.
+        // Exclude subsequent journey fetches from recommender latency.
         const okDurationMs = elapsedMs();
 
-        const mappedExternalRecommendations = (data.recommendations ?? []).map((rec) =>
-          this.sanitizeV1Recommendation(rec)
-        );
+        const mappedExternalRecommendations = (data.recommendations ?? [])
+          .map((rec) => this.sanitizeV1Recommendation(rec))
+          .map((rec) => ({ ...rec, relevance: rec.relevance ?? legacyRelevance(rec, contextData.currentPath) }));
 
-        // SECURITY: Sanitize featured recommendations using same logic
         const mappedFeaturedRecommendations = this.promoteFeaturedPackageMatches(
           (data.featured ?? []).map((rec) => this.sanitizeV1Recommendation(rec)),
           mappedExternalRecommendations
         );
 
-        // Deduplicate: bundled content always wins for packages that exist locally
-        const deduplicatedExternal = this.deduplicateRecommendations(
-          mappedExternalRecommendations,
-          bundledRecommendations
-        );
-        const deduplicatedFeatured = this.deduplicateRecommendations(
-          mappedFeaturedRecommendations,
-          bundledRecommendations
-        );
-        const allRecommendations = [...deduplicatedExternal, ...bundledRecommendations];
+        const remainingBundled = this.deduplicateRecommendations(bundledRecommendations, [
+          ...this.filterUsefulRecommendations(mappedExternalRecommendations),
+          ...mappedFeaturedRecommendations,
+        ]);
+        const enrichedBundled = remainingBundled.map((bundled) => {
+          const match = mappedExternalRecommendations.find(
+            (rec) => typeof rec.manifest?.id === 'string' && bundled.url === `bundled:${rec.manifest.id}`
+          );
+          return match && recHasStrongerEvidence(match, bundled)
+            ? {
+                ...bundled,
+                relevance: match.relevance,
+                matchedCriteria: match.matchedCriteria,
+                missingCriteria: match.missingCriteria,
+              }
+            : bundled;
+        });
+        const allRecommendations = [...mappedExternalRecommendations, ...enrichedBundled];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations);
+        const processedFeaturedRecommendations = await this.processLearningJourneys(mappedFeaturedRecommendations);
 
-        // Process featured recommendations separately (deduplicated against bundled)
-        const processedFeaturedRecommendations = await this.processLearningJourneys(deduplicatedFeatured);
-
-        // Filter and sort recommendations
         const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
-        const sortedRecommendations = this.sortRecommendations(filteredRecommendations);
+        const sortedRecommendations = rankRecommendations(filteredRecommendations, contextData.currentPath);
 
         // Featured recommendations are curated by the server, so don't filter by confidence
         // Just keep the server order and all items
-        const filteredFeaturedRecommendations = processedFeaturedRecommendations;
+        const filteredFeaturedRecommendations = processedFeaturedRecommendations.map((rec) => ({
+          ...rec,
+          editorialFeatured: true,
+        }));
 
-        // Clear any previous errors on successful call
         this.lastExternalRecommenderError = null;
 
         settleTelemetry('ok', okDurationMs);
@@ -475,15 +445,12 @@ export class ContextService {
       } catch (fetchError) {
         clearTimeout(timeoutId);
 
-        // Handle AbortError (timeout)
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
           return fail('unavailable', 'Recommender service timeout');
         }
 
-        // Handle network errors (CORS, network failures, etc.)
         const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
 
-        // Check if it's a CORS or network error
         if (
           errorMessage.includes('CORS') ||
           errorMessage.includes('NetworkError') ||
@@ -492,18 +459,13 @@ export class ContextService {
           return fail('unavailable', 'Recommender service unavailable');
         }
 
-        // Handle other errors
         return fail('other', errorMessage);
       }
     } catch (error) {
-      // Handle outer errors (hashing, payload construction, etc.)
       return fail('other', error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
-  /**
-   * Handle recommender service errors by falling back to static recommendations
-   */
   private static async handleRecommenderError(
     errorType: 'unavailable' | 'rate-limit' | 'other',
     errorMessage: string,
@@ -574,6 +536,13 @@ export class ContextService {
     const sanitizedType = validTypes.includes(rec.type) ? rec.type : 'docs-page';
 
     const base: Recommendation = {
+      relevance: sanitizeRelevance(rec.relevance),
+      matchedCriteria: Array.isArray(rec.matchedCriteria)
+        ? rec.matchedCriteria.filter((v): v is string => typeof v === 'string').slice(0, 100)
+        : undefined,
+      missingCriteria: Array.isArray(rec.missingCriteria)
+        ? rec.missingCriteria.filter((v): v is string => typeof v === 'string').slice(0, 100)
+        : undefined,
       title: sanitizeTextForDisplay(rec.title || ''),
       url: typeof rec.url === 'string' ? rec.url : '',
       summary: sanitizeTextForDisplay(rec.description || ''),
@@ -783,7 +752,7 @@ export class ContextService {
 
     const existing = featured.find((f) => f.url?.toLowerCase() === syntheticUrl);
     if (existing) {
-      return [existing, ...featured.filter((f) => f !== existing)];
+      return [{ ...existing, placement: 'experiment' }, ...featured.filter((f) => f !== existing)];
     }
 
     if (bundled.some((b) => b.url?.toLowerCase() === syntheticUrl)) {
@@ -793,36 +762,26 @@ export class ContextService {
     return [synthetic, ...featured];
   }
 
-  /**
-   * Deduplicate external recommendations against bundled ones.
-   * Matches on manifest.id (for package-backed) or title (for all types).
-   * External recommendations that duplicate a bundled one are dropped —
-   * bundled content always wins.
-   */
-  static deduplicateRecommendations(externalRecs: Recommendation[], bundledRecs: Recommendation[]): Recommendation[] {
-    const bundledIds = new Set<string>();
-    const bundledTitles = new Set<string>();
-
-    for (const rec of bundledRecs) {
-      bundledTitles.add(rec.title.toLowerCase());
-      const url = rec.url;
-      if (url?.startsWith('bundled:')) {
-        const id = url.replace('bundled:', '');
-        bundledIds.add(id);
+  static deduplicateRecommendations(candidates: Recommendation[], preferred: Recommendation[]): Recommendation[] {
+    const identity = (rec: Recommendation): string | undefined => {
+      if (rec.url?.startsWith('bundled:')) {
+        return rec.url.slice('bundled:'.length).replace(/\/content\.json$/, '');
       }
-    }
-
-    return externalRecs.filter((rec) => {
       const manifest = rec.manifest as Record<string, unknown> | undefined;
-      if (manifest && typeof manifest.id === 'string') {
-        if (bundledIds.has(manifest.id)) {
-          return false;
-        }
+      if (
+        rec.type === 'package' &&
+        rec.contentUrl &&
+        (rec.repository === 'interactive-tutorials' || rec.repository === 'online-cdn') &&
+        typeof manifest?.id === 'string'
+      ) {
+        return manifest.id;
       }
-      if (bundledTitles.has(rec.title.toLowerCase())) {
-        return false;
-      }
-      return true;
+      return undefined;
+    };
+    const preferredIds = new Set(preferred.map(identity).filter((id) => id !== undefined));
+    return candidates.filter((rec) => {
+      const id = identity(rec);
+      return id === undefined || !preferredIds.has(id);
     });
   }
 
@@ -1085,8 +1044,9 @@ export class ContextService {
     const isCreatingOrEditingViz = this.isCreatingOrEditingVisualization(pathSegments, searchParams);
     if (isCreatingOrEditingViz) {
       const echoDetectedVizType = getDetectedVisualizationType();
-      const vizType = echoDetectedVizType || 'timeseries'; // Default to timeseries if no event detected
-      tags.push(`panel-type:${vizType}`);
+      if (echoDetectedVizType) {
+        tags.push(`panel-type:${echoDetectedVizType}`);
+      }
     }
 
     // Add selected datasource from EchoSrv events (Phase 2: Echo-based detection)
@@ -1173,6 +1133,7 @@ export class ContextService {
     const entityMap: Record<string, string> = {
       d: 'dashboard',
       dashboard: 'dashboard',
+      dashboards: 'dashboard',
       datasources: 'datasource',
       connections: 'connection',
       explore: 'explore',
@@ -1298,27 +1259,6 @@ export class ContextService {
   }
 
   /**
-   * Sort recommendations by content type priority, then by accuracy
-   * Priority: interactive > learning-journey > docs-page
-   */
-  private static sortRecommendations(recommendations: Recommendation[]): Recommendation[] {
-    return recommendations.sort((a, b) => {
-      // Primary: sort by content type priority
-      const priorityA = this.TYPE_PRIORITY[a.type ?? 'docs-page'] ?? 2;
-      const priorityB = this.TYPE_PRIORITY[b.type ?? 'docs-page'] ?? 2;
-
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
-
-      // Secondary: sort by accuracy descending
-      const accuracyA = a.matchAccuracy ?? 0;
-      const accuracyB = b.matchAccuracy ?? 0;
-      return accuracyB - accuracyA;
-    });
-  }
-
-  /**
    * Get static link recommendations from static-links/*.json files
    * Only used when recommender is disabled - provides fallback recommendations
    * Uses simple URL prefix matching only (no complex tag logic)
@@ -1365,6 +1305,7 @@ export class ContextService {
                 url: rule.url,
                 type: rule.type || 'docs-page',
                 summary: rule.description || '',
+                relevance: localRelevance(rule.match, contextData.currentPath, currentPlatform),
                 matchAccuracy: this.STATIC_LINK_ACCURACY,
               });
             });
@@ -1673,6 +1614,7 @@ export class ContextService {
           matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
           contentUrl: buildPackageFileUrl(baseUrl, entry.path, 'content.json'),
           manifestUrl: buildPackageFileUrl(baseUrl, entry.path, 'manifest.json'),
+          relevance: localRelevance(entry.targeting?.match, contextData.currentPath, contextData.platform),
           repository: 'online-cdn',
           manifest,
         };
@@ -1734,6 +1676,11 @@ export class ContextService {
             const completionPercentage = await interactiveCompletionStorage.get(contentKey);
             return {
               title: interactive.title,
+              relevance: localRelevance(
+                { urlPrefix: contextData.currentPath },
+                contextData.currentPath,
+                contextData.platform
+              ),
               url: contentKey,
               type: 'interactive' as const,
               summary: interactive.summary,
@@ -1766,4 +1713,8 @@ export class ContextService {
       );
     });
   }
+}
+
+function recHasStrongerEvidence(rec: Recommendation, bundled: Recommendation): boolean {
+  return Boolean(rec.relevance && (!bundled.relevance || compareRelevance(rec.relevance, bundled.relevance) < 0));
 }

@@ -501,3 +501,11 @@ export interface DependencyGraph {
     edgeCount: number;
   };
 }
+
+/** The public CDN has a wire alias; omitted repositories use the manifest schema default. */
+export function isSamePackageRepository(left: unknown, right: unknown): boolean {
+  const normalize = (repository: unknown) =>
+    repository === undefined || repository === 'online-cdn' ? 'interactive-tutorials' : repository;
+  const normalizedLeft = normalize(left);
+  return typeof normalizedLeft === 'string' && normalizedLeft === normalize(right);
+}
