@@ -20,7 +20,7 @@ A worktree whose `node_modules` predates the SDK dependency reports a handful of
 
 The extractor sorts and rewrites all 21 locale files. For an ordinary change, edit the affected catalogs directly instead. The English catalog does not hold every `t()` key because some strings exist only as code defaults.
 
-See [Translation parity](COMMANDS.md#translation-parity) for catalog requirements, baseline maintenance, and wording warnings.
+See [Translation parity](COMMANDS.md#translation-parity) for catalog requirements and baseline maintenance.
 
 ## A local check fails on files you did not touch
 
