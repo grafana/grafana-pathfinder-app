@@ -52,7 +52,7 @@ func newFidelityCache(t *testing.T) fidelityCacheDriver {
 	t.Cleanup(resetCompletionRecordsCache)
 	advance := withFrozenTime(t, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
 	status := 0
-	lister := &fakeLister{respond: func(string) (*completionRecordPage, error) {
+	lister := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
 		if status != 0 {
 			return nil, &appPlatformUpstreamError{status: status, msg: "injected"}
 		}
@@ -74,7 +74,20 @@ func newFidelityCache(t *testing.T) fidelityCacheDriver {
 }
 
 func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest.ResponseRecorder {
-	lister := &fakeLister{respond: func(string) (*completionRecordPage, error) {
+	lister := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if status == -3 {
+			raw, next := fidelityReadPage(token)
+			page := &completionRecordPage{Continue: next}
+			for _, value := range raw {
+				var record completionRecordSpec
+				if err := json.Unmarshal(value, &record); err != nil {
+					t.Fatal(err)
+				}
+				record.LastUpdatedAt = recordLastUpdatedAt(nil, record.RecordedAt)
+				page.Records = append(page.Records, record)
+			}
+			return page, nil
+		}
 		if status == -1 {
 			var value any
 			return nil, json.Unmarshal([]byte("not-json"), &value)

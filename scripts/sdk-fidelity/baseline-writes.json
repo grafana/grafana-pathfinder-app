@@ -720,6 +720,65 @@
       "retryAfter": "30",
       "status": 503
     },
+    "-3/capability=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "capability": {
+          "available": true,
+          "progressRecords": true
+        },
+        "completions": [
+          {
+            "count": 2,
+            "guideCategory": "",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "latestCompletedAt": "2026-09-03T00:00:00Z",
+            "latestSource": "",
+            "maxCompletionPercent": 100,
+            "pathId": ""
+          },
+          {
+            "count": 1,
+            "guideCategory": "",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "latestCompletedAt": "2026-09-02T00:00:00Z",
+            "latestSource": "",
+            "maxCompletionPercent": 100,
+            "pathId": ""
+          }
+        ],
+        "inProgress": [
+          {
+            "completionPercent": 40,
+            "guideCategory": "",
+            "guideId": "partial",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "lastUpdatedAt": "2026-09-03T00:00:00Z",
+            "pathId": ""
+          }
+        ],
+        "userId": "user:abc"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "-3/capability=true": {
+      "body": {
+        "available": true,
+        "progressRecords": true
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
     "200/capability=false": {
       "body": {
         "asOf": "<validated-server-time>",

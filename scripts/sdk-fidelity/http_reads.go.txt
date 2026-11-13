@@ -10,7 +10,7 @@ import (
 
 func TestFrozenFidelityHTTPReads(t *testing.T) {
 	results := map[string]any{}
-	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2} {
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2, -3} {
 		for _, capability := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/capability=%t", status, capability), func(t *testing.T) {
 				response := fidelityCompletionRead(t, status, capability)
@@ -44,4 +44,18 @@ func TestFrozenFidelityHTTPReads(t *testing.T) {
 	if err := os.WriteFile(os.Getenv("FIDELITY_OUTPUT")+".httpreads", data, 0600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func fidelityReadPage(token string) ([]json.RawMessage, string) {
+	if token == "next" {
+		return []json.RawMessage{
+			json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"bundled","completionPercent":100,"completedAt":"2026-09-03T00:00:00Z"}`),
+			json.RawMessage(`{"userId":"user:abc","guideId":"partial","guideSource":"app-platform","completionPercent":40,"attemptId":"attempt","recordedAt":"2026-09-03T00:00:00Z"}`),
+		}, ""
+	}
+	return []json.RawMessage{
+		json.RawMessage(`{"userId":"user:other","guideId":"private","guideSource":"app-platform","completionPercent":100,"completedAt":"2026-09-01T00:00:00Z"}`),
+		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"bundled","completionPercent":100,"completedAt":"2026-09-01T00:00:00Z"}`),
+		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"app-platform","completionPercent":100,"completedAt":"2026-09-02T00:00:00Z"}`),
+	}, "next"
 }

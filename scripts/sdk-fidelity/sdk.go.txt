@@ -98,7 +98,15 @@ func (transport fidelityReadTransport) RoundTrip(request *http.Request) (*http.R
 	}
 	status := transport.status
 	body := []byte(`{"metadata":{},"items":[]}`)
-	if status == -1 {
+	if status == -3 {
+		status = 200
+		records, token := fidelityReadPage(request.URL.Query().Get("continue"))
+		items := []any{}
+		for _, record := range records {
+			items = append(items, map[string]any{"metadata": map[string]any{}, "spec": record})
+		}
+		body, _ = json.Marshal(map[string]any{"metadata": map[string]any{"continue": token}, "items": items})
+	} else if status == -1 {
 		status = 200
 		body = []byte("not-json")
 	} else if status != 200 {

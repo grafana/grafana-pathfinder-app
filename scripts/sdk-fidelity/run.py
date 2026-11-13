@@ -95,6 +95,17 @@ def main():
         subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityCache$', '-count=1'], cwd=target, env=env, check=True)
         if not compare(transcripts[1]['cache'], json.loads(Path(str(output) + '.cache').read_text())):
             raise RuntimeError('production cache TTL mutation was not detected')
+        completion_client = target / 'pkg/resourceaccess/completions.go'
+        client_source = completion_client.read_text()
+        pagination_needle = 'Continue: page.Continue'
+        if client_source.count(pagination_needle) != 1:
+            raise RuntimeError('pagination mutation target changed; review the control')
+        completion_client.write_text(client_source.replace(pagination_needle, 'Continue: ""'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityHTTPReads$', '-count=1'], cwd=target, env=env, check=True)
+        if not compare(transcripts[1]['httpReads'], json.loads(Path(str(output) + '.httpreads').read_text())):
+            raise RuntimeError('production pagination mutation was not detected')
+        completion_client.write_text(client_source)
+
         diagnostic = target / 'pkg/provider/diagnostics.go'
         diagnostic_source = diagnostic.read_text()
         diagnostic_needle = 'result.Reason = "invalid-json"'
@@ -112,7 +123,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, and diagnostic controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':
