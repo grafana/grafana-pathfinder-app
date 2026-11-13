@@ -1,4 +1,590 @@
 {
+  "assignmentHistory": {
+    "200/insights=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [
+          {
+            "assignedAt": "2026-09-05T00:00:00Z",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "last",
+                "guideSource": "bundled"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "last-page",
+            "satisfied": false,
+            "targetId": "last",
+            "targetSource": "bundled",
+            "targetType": "guide"
+          },
+          {
+            "assignedAt": "2026-09-05T00:00:00Z",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "partial",
+                "guideSource": "app-platform"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "partial",
+            "satisfied": false,
+            "targetId": "partial",
+            "targetSource": "app-platform",
+            "targetType": "guide"
+          },
+          {
+            "acceptCompletionsFrom": "2026-09-03T00:00:00Z",
+            "assignedAt": "2026-09-03T00:00:00Z",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "repeat",
+            "satisfied": false,
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide"
+          },
+          {
+            "assignedAt": "2026-09-02T00:00:00Z",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "app-platform"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "private",
+            "satisfied": true,
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "first",
+            "satisfied": true,
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide"
+          }
+        ],
+        "capability": {
+          "available": true
+        },
+        "userId": "user:abc"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "200/insights=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [
+          {
+            "assignedAt": "2026-09-05T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "last",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "last-page",
+            "status": "outstanding",
+            "targetId": "last",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-05T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "partial",
+                "guideSource": "app-platform"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "partial",
+            "status": "outstanding",
+            "targetId": "partial",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "first",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-02T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "app-platform"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "private",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-03T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "repeat",
+            "status": "outstanding",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "withdrawn",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "other",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "other",
+            "status": "outstanding",
+            "targetId": "other",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:other"
+          }
+        ],
+        "capability": {
+          "available": true
+        },
+        "completeness": "complete",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:other",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "403/insights=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-403"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "403/insights=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "first",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-02T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "app-platform"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "private",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-03T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "repeat",
+            "status": "outstanding",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "withdrawn",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "other",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "other",
+            "status": "outstanding",
+            "targetId": "other",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:other"
+          }
+        ],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:other",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "503/insights=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "503/insights=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "first",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-02T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "app-platform"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "private",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-03T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "repeat",
+            "status": "outstanding",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "withdrawn",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "other",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "other",
+            "status": "outstanding",
+            "targetId": "other",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:other"
+          }
+        ],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:other",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    }
+  },
   "cache": [
     {
       "asOf": "",

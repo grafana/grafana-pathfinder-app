@@ -329,3 +329,53 @@ func fidelityResourceMutation(t *testing.T, base, kind, method, name string, bod
 	}
 	return response
 }
+
+type fidelityAssignmentHistoryTransport struct{ status int }
+
+func (transport fidelityAssignmentHistoryTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	records := fidelityInsightsFirstPage()
+	next := ""
+	if strings.Contains(request.URL.Path, "/assignments") {
+		token := request.URL.Query().Get("continue")
+		if token == "next" && transport.status != 200 {
+			return (fidelityReadTransport{status: transport.status}).RoundTrip(request)
+		}
+		records = fidelityAssignmentHistoryPage(token)
+		if token == "" {
+			next = "next"
+		}
+	}
+	items := []any{}
+	for _, raw := range records {
+		items = append(items, map[string]any{"metadata": map[string]any{}, "spec": raw})
+	}
+	body, _ := json.Marshal(map[string]any{"metadata": map[string]any{"continue": next}, "items": items})
+	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: request}, nil
+}
+func fidelityAssignmentHistory(t *testing.T, status int, insights bool) *httptest.ResponseRecorder {
+	generator := sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityAssignmentHistoryTransport{status: status}})
+	assignments, err := resourceaccess.NewAssignmentStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completions, err := resourceaccess.NewCompletionStore(generator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := adminIdentity{completionIdentity: completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"}, idToken: "header." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user:abc","namespace":"stacks-1","role":"Admin"}`)) + ".signature"}
+	ctx := authlib.WithAuthInfo(context.Background(), identity)
+	evaluator := func(ctx context.Context, ns string) *services.ObligationEvaluator {
+		return &services.ObligationEvaluator{Context: ctx, Logger: log.DefaultLogger}
+	}
+	allow := func(string, string) (bool, time.Duration) { return true, 0 }
+	handler := assignmentsReadHandler(assignmentRouteDependencies{Assignments: assignments, ReadCompletions: completions.ReadCaller, Evaluator: evaluator, MarkSatisfied: func(context.Context, string, []services.Assignment) {}, Allow: allow})
+	if insights {
+		handler = insightsReadHandler(completions, assignments, evaluator, allow)
+	}
+	target, _ := url.Parse("http://local/?from=2026-09-01T00:00:00Z&to=2026-10-01T00:00:00Z")
+	response := httptest.NewRecorder()
+	if err := handler(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: target, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}

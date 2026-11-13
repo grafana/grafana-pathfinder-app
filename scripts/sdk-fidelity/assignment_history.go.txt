@@ -1,0 +1,64 @@
+package PACKAGE
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+	"time"
+)
+
+func fidelityAssignmentHistoryPage(token string) []json.RawMessage {
+	if token == "next" {
+		return []json.RawMessage{
+			json.RawMessage(`{"userId":"user:abc","targetType":"guide","targetId":"last","targetSource":"bundled","ruleId":"last-page","assignedAt":"2026-09-05T00:00:00Z","lifecycle":"active"}`),
+			json.RawMessage(`{"userId":"user:abc","targetType":"guide","targetId":"partial","targetSource":"app-platform","ruleId":"partial","assignedAt":"2026-09-05T00:00:00Z","lifecycle":"active"}`),
+		}
+	}
+	return []json.RawMessage{
+		json.RawMessage(`{"userId":"user:abc","targetType":"guide","targetId":"same","targetSource":"bundled","ruleId":"first","assignedAt":"2026-09-01T00:00:00Z","lifecycle":"active"}`),
+		json.RawMessage(`{"userId":"user:abc","targetType":"guide","targetId":"same","targetSource":"app-platform","ruleId":"private","assignedAt":"2026-09-02T00:00:00Z","lifecycle":"active"}`),
+		json.RawMessage(`{"userId":"user:abc","targetType":"guide","targetId":"same","targetSource":"bundled","ruleId":"repeat","assignedAt":"2026-09-03T00:00:00Z","acceptCompletionsFrom":"2026-09-03T00:00:00Z","lifecycle":"active"}`),
+		json.RawMessage(`{"userId":"user:other","targetType":"guide","targetId":"other","targetSource":"bundled","ruleId":"other","assignedAt":"2026-09-01T00:00:00Z","lifecycle":"active"}`),
+		json.RawMessage(`{"userId":"user:abc","targetType":"guide","targetId":"withdrawn","targetSource":"bundled","ruleId":"withdrawn","assignedAt":"2026-09-01T00:00:00Z","lifecycle":"withdrawn"}`),
+	}
+}
+func TestFrozenFidelityAssignmentHistory(t *testing.T) {
+	results := map[string]any{}
+	for _, status := range []int{200, 403, 503} {
+		for _, insights := range []bool{false, true} {
+			response := fidelityAssignmentHistory(t, status, insights)
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if stamp, ok := body["asOf"]; ok {
+				value, ok := stamp.(string)
+				if !ok {
+					t.Fatal("non-string asOf")
+				}
+				if _, err := time.Parse(time.RFC3339, value); err != nil {
+					t.Fatal(err)
+				}
+				body["asOf"] = "<validated-server-time>"
+			}
+			if status == 200 && !insights {
+				rows := body["assignments"].([]any)
+				if len(rows) != 5 {
+					t.Fatalf("lost or leaked assignments: %v", body)
+				}
+				if rows[0].(map[string]any)["ruleId"] != "last-page" && rows[0].(map[string]any)["ruleId"] != "partial" {
+					t.Fatalf("last page missing: %v", body)
+				}
+			}
+			results[fmt.Sprintf("%d/insights=%t", status, insights)] = map[string]any{"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"), "cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After")}
+		}
+	}
+	body, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv("FIDELITY_OUTPUT")+".assignmenthistory", body, 0600); err != nil {
+		t.Fatal(err)
+	}
+}

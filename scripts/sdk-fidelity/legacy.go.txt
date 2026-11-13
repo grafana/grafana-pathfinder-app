@@ -323,3 +323,41 @@ func fidelityResourceMutation(t *testing.T, base, kind, method, name string, bod
 	}
 	return recorder
 }
+
+func fidelityAssignmentHistory(t *testing.T, status int, insights bool) *httptest.ResponseRecorder {
+	withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		page := &completionRecordPage{}
+		for _, raw := range fidelityInsightsFirstPage() {
+			var record completionRecordSpec
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			record.LastUpdatedAt = recordLastUpdatedAt(nil, record.RecordedAt)
+			page.Records = append(page.Records, record)
+		}
+		return page, nil
+	}})
+	withAssignmentLister(t, &fakeAssignmentLister{respond: func(token string) (*assignmentPage, error) {
+		if token == "next" && status != 200 {
+			return nil, &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+		page := &assignmentPage{}
+		if token == "" {
+			page.Continue = "next"
+		}
+		for _, raw := range fidelityAssignmentHistoryPage(token) {
+			var record assignmentSpec
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			page.Records = append(page.Records, record)
+		}
+		return page, nil
+	}})
+	if insights {
+		response, _ := insightsResponse(t, insightsRequest(t, "Admin", "user:abc"))
+		return response
+	}
+	response, _ := doMyAssignments(t, "user:abc")
+	return response
+}
