@@ -37,6 +37,10 @@ func (s *GuideStore) ListPage(ctx context.Context, namespace, token string) (ser
 	defer cancel()
 	page := &rawGuideList{}
 	err := s.client.ListInto(ctx, namespace, resource.ListOptions{Limit: 100, Continue: token}, page)
+	var syntax *json.SyntaxError
+	if errors.As(err, &syntax) {
+		err = &ResponseValidationError{Reason: "invalid-json", Status: 200}
+	}
 	return services.GuidePage{Items: page.items, Continue: page.GetContinue()}, err
 }
 

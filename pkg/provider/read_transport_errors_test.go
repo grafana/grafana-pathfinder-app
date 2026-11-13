@@ -162,19 +162,32 @@ func TestGuideRoutePreservesInvalidResponseDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "default"})
-	response := httptest.NewRecorder()
-	err = guideReadHandler(store)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: &url.URL{RawQuery: "name=test-guide"}, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var body struct {
-		Diagnostics services.ProxyDiagnostic `json:"diagnostics"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != 502 || body.Diagnostics.Reason != "invalid-json" || body.Diagnostics.UpstreamStatus != 200 || body.Diagnostics.Resource != "interactiveguides" {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	for _, route := range []struct {
+		name    string
+		handler simple.AppCustomRouteHandler
+		status  int
+	}{
+		{"guide", guideReadHandler(store), 502},
+		{"guides", guidesReadHandler(store), 502},
+		{"catalogue", catalogueReadHandler(store), 503},
+	} {
+		t.Run(route.name, func(t *testing.T) {
+			ctx := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "default"})
+			response := httptest.NewRecorder()
+			err = route.handler(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, URL: &url.URL{RawQuery: "name=test-guide"}, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body struct {
+				Diagnostics services.ProxyDiagnostic `json:"diagnostics"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if response.Code != route.status || body.Diagnostics.Reason != "invalid-json" || body.Diagnostics.UpstreamStatus != 200 || body.Diagnostics.Resource != "interactiveguides" {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body)
+			}
+
+		})
 	}
 }
