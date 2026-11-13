@@ -328,20 +328,19 @@ export function useLearningPaths(): UseLearningPathsReturn {
     return [...merged, ...appPlatformData.paths];
   }, [rawPaths, dynamicGuideData, appPlatformData]);
 
-  /**
-   * Gets guide metadata, scoped to a specific path when provided.
-   *
-   * URL-based paths can share guide slugs (e.g. two paths each have an
-   * "intro" guide). When `pathId` is supplied, only that path's dynamic
-   * metadata is consulted, preventing cross-path collisions. When `pathId`
-   * is omitted (callers without path context), all dynamic metadata is
-   * scanned for backwards compatibility.
-   *
-   * Falls back to App Platform catalogue metadata, then to static metadata
-   * from paths.json / paths-cloud.json.
-   */
   const resolveGuideMetadata = useCallback(
     (guideId: string, pathId?: string): GuideMetadataEntry => {
+      const fallback = { title: guideId, estimatedMinutes: 5 };
+      const customMetadata = Object.hasOwn(appPlatformData.guideMetadata, guideId)
+        ? appPlatformData.guideMetadata[guideId]
+        : undefined;
+      if (
+        pathId &&
+        !rawPaths.some((path) => path.id === pathId) &&
+        appPlatformData.paths.some((path) => path.id === pathId)
+      ) {
+        return customMetadata ?? fallback;
+      }
       if (pathId) {
         const scoped = dynamicGuideData[pathId]?.guideMetadata[guideId];
         if (scoped) {
@@ -354,16 +353,16 @@ export function useLearningPaths(): UseLearningPathsReturn {
           }
         }
       }
-      if (appPlatformData.guideMetadata[guideId]) {
-        return appPlatformData.guideMetadata[guideId];
+      if (!pathId && customMetadata) {
+        return customMetadata;
       }
       const { guideMetadata } = getPathsData();
       // Bundled JSON keeps Object.prototype, so gate on own keys — otherwise a
       // guide id of `toString` resolves to a function and renders untitled.
       const staticEntry = Object.hasOwn(guideMetadata, guideId) ? guideMetadata[guideId] : undefined;
-      return staticEntry || { title: guideId, estimatedMinutes: 5 };
+      return staticEntry || fallback;
     },
-    [dynamicGuideData, appPlatformData]
+    [dynamicGuideData, appPlatformData, rawPaths]
   );
 
   // Load progress from storage
