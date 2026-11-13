@@ -45,6 +45,7 @@ def main():
             dest = target / 'pkg' / package
             (dest / 'frozen_shared_test.go').write_text((HERE / 'shared.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_history_test.go').write_text((HERE / 'history.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
+            (dest / 'frozen_http_reads_test.go').write_text((HERE / 'http_reads.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_cache_test.go').write_text((HERE / 'cache.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
             (dest / 'frozen_adapter_test.go').write_text((HERE / (mode + '.go.txt')).read_text())
             output = Path(temp) / (mode + '.json')
@@ -53,6 +54,7 @@ def main():
             transcripts.append(json.loads(output.read_text()))
             transcripts[-1]["history"] = json.loads(Path(str(output) + ".reads").read_text())
             transcripts[-1]["cache"] = json.loads(Path(str(output) + ".cache").read_text())
+            transcripts[-1]["httpReads"] = json.loads(Path(str(output) + ".httpreads").read_text())
         expected = HERE / 'baseline-writes.json'
         if args.record_baseline:
             expected.write_text(json.dumps(transcripts[0], indent=2, sort_keys=True) + '\n')
@@ -61,7 +63,7 @@ def main():
         # Explicit permitted difference: SDK POST responses add Cache-Control: no-store.
         # Assert both exact values before comparison; never discard arbitrary headers.
         for name in transcripts[0]:
-            if name in ("history", "cache"):
+            if name in ("history", "cache", "httpReads"):
                 continue
             for old, new in zip(transcripts[0][name], transcripts[1][name], strict=True):
                 if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
@@ -79,7 +81,7 @@ def main():
         mutation = subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityWrites$', '-count=1'], cwd=target, env=env, capture_output=True, text=True)
         if mutation.returncode == 0:
             mutated_output = json.loads(output.read_text())
-            clean_writes = {key: value for key, value in transcripts[1].items() if key not in ('history', 'cache')}
+            clean_writes = {key: value for key, value in transcripts[1].items() if key not in ('history', 'cache', 'httpReads')}
             if not compare(clean_writes, mutated_output):
                 raise RuntimeError('production monotonicity mutation was not detected')
         else:
@@ -93,6 +95,15 @@ def main():
         subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityCache$', '-count=1'], cwd=target, env=env, check=True)
         if not compare(transcripts[1]['cache'], json.loads(Path(str(output) + '.cache').read_text())):
             raise RuntimeError('production cache TTL mutation was not detected')
+        diagnostic = target / 'pkg/provider/diagnostics.go'
+        diagnostic_source = diagnostic.read_text()
+        diagnostic_needle = 'result.Reason = "invalid-json"'
+        if diagnostic_source.count(diagnostic_needle) != 1:
+            raise RuntimeError('diagnostic mutation target changed; review the control')
+        diagnostic.write_text(diagnostic_source.replace(diagnostic_needle, 'result.Reason = "unexpected-error"'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityHTTPReads$', '-count=1'], cwd=target, env=env, check=True)
+        if not compare(transcripts[1]['httpReads'], json.loads(Path(str(output) + '.httpreads').read_text())):
+            raise RuntimeError('production diagnostic mutation was not detected')
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599
@@ -101,7 +112,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, and cache transcripts match; status, monotonicity, and cache TTL controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/grafana-app-sdk/app"
+	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
 	"github.com/grafana/grafana-app-sdk/resource"
+	"github.com/grafana/grafana-pathfinder-app/pkg/resourceaccess"
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"io"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -85,4 +88,35 @@ func newFidelityCache(t *testing.T) fidelityCacheDriver {
 			return result
 		},
 	}
+}
+
+type fidelityReadTransport struct{ status int }
+
+func (transport fidelityReadTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if transport.status == -2 {
+		return nil, context.DeadlineExceeded
+	}
+	status := transport.status
+	body := []byte(`{"metadata":{},"items":[]}`)
+	if status == -1 {
+		status = 200
+		body = []byte("not-json")
+	} else if status != 200 {
+		body, _ = json.Marshal(map[string]any{"kind": "Status", "apiVersion": "v1", "status": "Failure", "code": status, "message": "injected"})
+	}
+	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: request}, nil
+}
+func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest.ResponseRecorder {
+	services.ResetCompletionCache()
+	t.Cleanup(services.ResetCompletionCache)
+	store, err := resourceaccess.NewCompletionStore(sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityReadTransport{status: status}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity: testIdentity{namespace: "stacks-1"}, subject: "user:abc"})
+	response := httptest.NewRecorder()
+	if err := completionReadHandler(store, capability)(ctx, response, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "stacks-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	return response
 }

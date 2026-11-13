@@ -72,3 +72,29 @@ func newFidelityCache(t *testing.T) fidelityCacheDriver {
 		},
 	}
 }
+
+func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest.ResponseRecorder {
+	lister := &fakeLister{respond: func(string) (*completionRecordPage, error) {
+		if status == -1 {
+			var value any
+			return nil, json.Unmarshal([]byte("not-json"), &value)
+		}
+		if status == -2 {
+			return nil, context.DeadlineExceeded
+		}
+		if status != 200 {
+			return nil, &appPlatformUpstreamError{status: status, msg: "injected"}
+		}
+		return &completionRecordPage{}, nil
+	}}
+	withLister(t, lister)
+	request := completionRequest(t, "/completion-records/my", "user:abc")
+	response := httptest.NewRecorder()
+	app := newTestApp(t)
+	if capability {
+		app.handleCompletionCapability(response, request)
+	} else {
+		app.handleMyCompletions(response, request)
+	}
+	return response
+}

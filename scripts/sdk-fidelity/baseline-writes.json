@@ -651,6 +651,612 @@
       }
     ]
   },
+  "httpReads": {
+    "-1/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-1/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-2/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "timeout",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-2/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "timeout",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "200/capability=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "capability": {
+          "available": true,
+          "progressRecords": true
+        },
+        "completions": [],
+        "inProgress": [],
+        "userId": "user:abc"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "200/capability=true": {
+      "body": {
+        "available": true,
+        "progressRecords": true
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "400/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 400
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "400/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "401/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "authentication-failed",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 401
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "401/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "403/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "authorization-denied",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 403
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "403/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "404/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 404
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "404/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "405/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 405
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "405/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "408/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "408/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "409/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 409
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "409/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "422/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 422
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "422/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "429/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "429/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "500/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "500/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "501/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "501/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "503/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "503/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "504/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "504/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    }
+  },
   "invalid-percent": [
     {
       "body": {

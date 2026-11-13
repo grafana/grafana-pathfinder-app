@@ -31,6 +31,15 @@ A negative control doubles the production SDK cache TTL and must change the
 transcript. This covers one caller; the SDK's intentional caller partitioning is
 covered separately by isolation tests. It does not claim HTTP diagnostic parity.
 
+Completion data and capability routes also run a 32-case HTTP comparison: empty
+success, thirteen upstream HTTP statuses, malformed JSON, and a transport deadline
+across both routes. Status, complete JSON body, content type, cache control, and
+Retry-After are compared. Only a successfully parsed server `asOf` is normalized.
+The SDK adapter uses the generated client and its real error wrappers. This caught
+lost `invalid-json` and `timeout` diagnostics, now repaired in #2404. A production
+mutation back to `unexpected-error` must be detected. Nonempty read/pagination
+transcripts and other read-route failure corpora remain open.
+
 The runner exports the immutable baseline into a temporary directory and copies the
 current Go implementation into a separate temporary checkout. It does not switch
 branches, alter the local running instance, or execute the old plugin against live
@@ -89,7 +98,7 @@ acceptance gaps; they are not asserted runtime defects.
 | Cache TTL, forced refresh interval, stale fallback, cooldown                    | `pkg/services/completion_cache.go`                                        | Per-caller keys                             | `TestCompletionCacheCarryover`, `TestFrozenFidelityCache`                                                   | Frozen single-caller transcript covers these transitions; multi-caller isolation has separate invariant tests |
 | Singleflight, waiter cancellation, invalidation fencing                         | Same                                                                      | Per-caller keys                             | `TestCompletionCacheSingleflightAndCancelledWaiter`, `TestCompletionCacheInvalidationFencesFlight`          | Stress scheduling is not exhaustive                                                                           |
 | Caller-specific failure isolation                                               | Provider completion cache key and services cache                          | Per-caller keys                             | `TestCompletionSDKCacheFiltersUsersAndInvalidates`, cache carryover test                                    | HTTP error cooldown classification needs broader negative controls                                            |
-| Completion collation, source separation, historical partials                    | `pkg/services/completions.go`                                             | None                                        | Frozen history projections; existing collation tests                                                        | Full HTTP read-route comparison                                                                               |
+| Completion collation, source separation, historical partials                    | `pkg/services/completions.go`                                             | None                                        | Frozen history projections; existing collation tests                                                        | Nonempty HTTP read/pagination comparison; empty and failure envelopes now compared                            |
 | Retry deduplication, monotonic progress, optimistic versions, partial semantics | `pkg/services/completion_attempt.go`, provider write route                | `no-store` header                           | Frozen write sequences, `TestCompletionAttemptConcurrentUpdatesNeverRegress`, SDK client conflict test      | Differential concurrent scheduling and physical connection-loss injection                                     |
 | Queue retry/retain/disarm/drop taxonomy                                         | Provider write errors and frontend write queue                            | Runtime authentication failure boundary     | Frozen failure statuses/bodies/Retry-After; existing `completion-write-client.test.ts` / queue tests        | Shared backend-to-browser classifier harness, schema-not-ready comparative case                               |
 | Completed retry repairs assignments and invalidates cache                       | Provider completion write, assignment dependencies                        | Narrow app-identity status write            | Existing provider completion-write and assignment repair tests; resourceaccess ownership/RV tests           | Differential repair effects are not captured by write harness; SDK adapter uses a no-op sync callback         |
