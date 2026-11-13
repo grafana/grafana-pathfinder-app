@@ -25,6 +25,7 @@ import {
   wrapEnvelope,
 } from './user-storage';
 import { StorageKeys } from './storage-keys';
+import { LEGACY_RESTORE_KEYS } from './storage/legacy-mirror-policy';
 
 // user-storage.ts statically imports from `@grafana/runtime`; provide a mock so
 // the module loads under jsdom.
@@ -212,6 +213,22 @@ describe('syncFromGrafanaStorage', () => {
     await syncFromGrafanaStorage(grafana);
     // Second call is a no-op: the guard short-circuits before any reads.
     expect(grafana.getItem.mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  it('reads the exact legacy restore policy in order', async () => {
+    const grafana = makeGrafanaStorage(
+      Object.fromEntries(LEGACY_RESTORE_KEYS.map((key) => [key, wrapEnvelope('null', 1)]))
+    );
+
+    await syncFromGrafanaStorage(grafana);
+
+    expect(grafana.getItem.mock.calls.map(([key]) => key)).toEqual([
+      StorageKeys.JOURNEY_COMPLETION,
+      StorageKeys.TABS,
+      StorageKeys.ACTIVE_TAB,
+      StorageKeys.LEARNING_PROGRESS,
+      StorageKeys.GUIDE_RESPONSES,
+    ]);
   });
 
   it('applies Grafana value to localStorage when Grafana is newer', async () => {
