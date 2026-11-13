@@ -195,7 +195,10 @@ npm run test:scripts
 
 ```bash
 # Internationalization
-npm run i18n-extract           # extract translatable strings into locales/
+npm run i18n-extract           # extract strings; rewrites every locale
+npm run i18n:check            # enforce the translation ratchet
+npm run test:i18n             # test the checker and CLI
+npm run i18n:baseline:prune    # remove resolved exceptions only
 
 # Live sessions / WebRTC signaling
 npm run peerjs-server          # start local PeerJS signaling server
@@ -203,6 +206,24 @@ npm run peerjs-server          # start local PeerJS signaling server
 # Coverage in watch mode
 npm run test:coverage:watch
 ```
+
+### Translation parity
+
+`npm run i18n:check` compares every locale catalog with `en-US`. The local pre-merge gate always runs the check.
+
+CI runs translation checks only when `src/locales/`, the checker, its tests, `package.json`, or the CI workflow changes. Unrelated changes skip Node setup, checker tests, and the catalog scan. The job still reports success so CI Gate can complete. If the change base is unavailable, CI runs the checks as a precaution.
+
+New missing keys, obsolete keys, and interpolation mismatches fail the check. Existing structural violations have exact exceptions in `src/locales/parity-baseline.json`. Groups share locale lists, violation lists, reasons, and tracking references. The checker expands each group into exact locale/violation pairs. Counts cannot hide replacement violations.
+
+Resolved exceptions also fail the check. After a translation fix, run `npm run i18n:baseline:prune`. This command removes resolved exceptions and splits shared groups as necessary. It never adds exceptions. Do not expand the baseline to permit new debt.
+
+Empty translations produce warnings, not failures. A new key can use an empty value until a translation is available. The check does not assess translation quality or detect English copies. Plural requirements use `Intl.PluralRules` for each locale. Source plural forms and explicit `_zero` overrides are also permitted.
+
+CI publishes structural debt and empty-translation warnings, plus a job summary. The checker does not compare wording changes or identify translations that need editorial review.
+
+Existing baseline exceptions reference [#2412](https://github.com/grafana/grafana-pathfinder-app/issues/2412). Translation paydown belongs in separate PRs after the enforcement PR merges.
+
+The check reads catalogs only. Strings that exist solely as defaults in code remain outside its scope.
 
 ## Development server
 
