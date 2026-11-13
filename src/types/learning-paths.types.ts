@@ -180,6 +180,7 @@ export const DEFAULT_LEARNING_PROGRESS: LearningProgress = {
 /** Assignment progress comes from server completion evidence; absent evidence is marked unavailable. */
 export interface ResolvedAssignment {
   targetId: string;
+  targetSource?: string;
   title: string;
   /** The manifest track this assignment targets; unset for a Foundations assignment or a track the manifest does not declare. */
   trackId?: string;

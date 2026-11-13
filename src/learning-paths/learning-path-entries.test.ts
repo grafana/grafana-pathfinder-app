@@ -51,3 +51,38 @@ it('keeps completed paths out of the available list but includes them for comple
   expect(selectLearningPathEntries(options)).toEqual([]);
   expect(selectLearningPathEntries({ ...options, includeCompleted: true })).toHaveLength(1);
 });
+
+it('applies assignment progress only to the matching path source', () => {
+  const publicAssignment: ResolvedAssignment = {
+    targetId: 'path',
+    targetSource: 'bundled',
+    title: 'Public',
+    overdue: false,
+    satisfied: false,
+    progress: 25,
+  };
+  const privateAssignment: ResolvedAssignment = {
+    ...publicAssignment,
+    targetSource: 'app-platform',
+    title: 'Private',
+    progress: 75,
+  };
+  const entries = selectLearningPathEntries({
+    ...defaults,
+    paths: [path, { ...path, isPrivate: true }],
+    assignmentByTargetId: new Map([
+      ['grafana:path', publicAssignment],
+      ['organization:path', privateAssignment],
+    ]),
+  });
+  expect(entries.map(({ key, percent, assignment }) => [key, percent, assignment?.title])).toEqual([
+    ['grafana:path', 25, 'Public'],
+    ['organization:path', 75, 'Private'],
+  ]);
+  const legacyKeyEntries = selectLearningPathEntries({
+    ...defaults,
+    paths: [path],
+    assignmentByTargetId: new Map([['path', privateAssignment]]),
+  });
+  expect(legacyKeyEntries[0]?.assignment).toBeUndefined();
+});

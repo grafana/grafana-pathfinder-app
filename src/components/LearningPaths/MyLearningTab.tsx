@@ -36,6 +36,7 @@ import {
   BADGES,
   getPathsData,
   getAssignmentGuideState,
+  getPathAssignment,
   type DiscoverMoreItem,
 } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
@@ -144,28 +145,28 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   // Outstanding assignments stay visible even when local progress reaches 100%.
   const inProgress = useMemo(() => {
     const local = paths.filter((path) => {
-      const assignment = assignmentByTargetId.get(path.id);
+      const assignment = getPathAssignment(assignmentByTargetId, path);
       const hasOutstandingAssignment = Boolean(assignment && !assignment.satisfied);
       return hasOutstandingAssignment || getPathProgress(path.id) < 100;
     });
-    const online = onlinePaths.filter((path) => !assignmentByTargetId.get(path.id)?.satisfied);
+    const online = onlinePaths.filter((path) => !getPathAssignment(assignmentByTargetId, path)?.satisfied);
     return [...local, ...online].sort(
       (a, b) =>
-        (assignmentByTargetId.get(b.id)?.progress ?? getPathProgress(b.id)) -
-        (assignmentByTargetId.get(a.id)?.progress ?? getPathProgress(a.id))
+        (getPathAssignment(assignmentByTargetId, b)?.progress ?? getPathProgress(b.id)) -
+        (getPathAssignment(assignmentByTargetId, a)?.progress ?? getPathProgress(a.id))
     );
   }, [paths, onlinePaths, getPathProgress, assignmentByTargetId]);
 
   const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
   // Assigned private paths also appear in My paths.
   const courses = useMemo(
-    () => inProgress.filter((path) => !path.isPrivate || assignmentByTargetId.get(path.id)),
+    () => inProgress.filter((path) => !path.isPrivate || getPathAssignment(assignmentByTargetId, path)),
     [inProgress, assignmentByTargetId]
   );
 
   const completedPaths = useMemo(() => {
     const local = paths.filter((path) => isPathCompleted(path.id));
-    const online = onlinePaths.filter((path) => assignmentByTargetId.get(path.id)?.satisfied);
+    const online = onlinePaths.filter((path) => getPathAssignment(assignmentByTargetId, path)?.satisfied);
     return [...local, ...online];
   }, [paths, onlinePaths, isPathCompleted, assignmentByTargetId]);
 
@@ -309,7 +310,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         const packageInfo: PackageOpenInfo = {
           packageId: path.id,
           packageManifest: { ...path.manifest, id: path.id },
-          trackId: assignmentByTargetId.get(path.id)?.trackId,
+          trackId: getPathAssignment(assignmentByTargetId, path)?.trackId,
         };
         const [navLink] = await resolvePackageNavLinks([path.id]);
         if (!mountedRef.current) {

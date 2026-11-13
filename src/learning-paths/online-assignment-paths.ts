@@ -81,7 +81,13 @@ export async function resolveOnlineAssignmentCard(
   };
 
   const progress = assignmentProgress(assignment.guides, 0);
-  const resolved = buildResolvedAssignment(assignment, path, progress, now, timeZone);
+  const resolved = buildResolvedAssignment(
+    { ...assignment, targetSource: assignment.targetSource || 'online-cdn' },
+    path,
+    progress,
+    now,
+    timeZone
+  );
 
   const track = findAssignedTrack(path, resolved.trackId);
   const trackGuideIds = track?.guides.flatMap((id) => {

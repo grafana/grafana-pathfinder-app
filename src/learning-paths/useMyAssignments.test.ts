@@ -154,7 +154,7 @@ describe('useMyAssignments', () => {
 
     expect(mockFetchMyAssignments).toHaveBeenCalledWith('stacks-123');
     expect(result.current.notDone.map((item) => item.title)).toEqual(['Grafana Fundamentals']);
-    expect(result.current.assignmentByTargetId.get('fundamentals')?.title).toBe('Grafana Fundamentals');
+    expect(result.current.assignmentByTargetId.get('grafana:fundamentals')?.title).toBe('Grafana Fundamentals');
     expect(logger.warn).not.toHaveBeenCalled();
     expect(mockReportUnresolvedAssignmentTargets).not.toHaveBeenCalled();
   });
@@ -432,4 +432,25 @@ it('starts a new caller fetch while the previous request is pending and ignores 
   expect(result.current.guideAssignments).toEqual([]);
   expect(result.current.isLoading).toBe(false);
   expect(mockFetchMyAssignments).toHaveBeenCalledTimes(2);
+});
+
+it('keeps same-ID public and organization assignments separate without retrying resolved records online', async () => {
+  mockFetchMyAssignments.mockResolvedValue({
+    ok: true,
+    assignments: [
+      assignment({ targetId: 'collision', targetSource: 'bundled', guides: [{ guideId: 'g', completed: false }] }),
+      assignment({ targetId: 'collision', targetSource: 'app-platform', guides: [{ guideId: 'g', completed: true }] }),
+      assignment({ targetId: 'collision', targetSource: 'online-cdn' }),
+    ],
+  });
+  const paths = [
+    path({ id: 'collision', title: 'Private', isPrivate: true }),
+    path({ id: 'collision', title: 'Public' }),
+  ];
+  const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths }));
+  await waitFor(() => expect(result.current.isLoading).toBe(false));
+  expect(result.current.assignmentByTargetId.get('grafana:collision')?.progress).toBe(0);
+  expect(result.current.assignmentByTargetId.get('organization:collision')?.progress).toBe(100);
+  expect(result.current.items.map(({ title }) => title)).toEqual(['Public', 'Private']);
+  expect(mockFetchOnlinePackageRecommendations).toHaveBeenCalledTimes(1);
 });

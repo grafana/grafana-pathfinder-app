@@ -1,5 +1,5 @@
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
-import { getDueStatus } from './assignments-core';
+import { getDueStatus, getPathAssignment } from './assignments-core';
 import { getPathsData } from './paths-data';
 
 export interface HubLearningDeps {
@@ -48,7 +48,7 @@ function resolveCurrentGuideUrl(path: Pick<LearningPath, 'url'>, guide: Pick<Pat
 function startedPaths(deps: HubLearningDeps): HubResume[] {
   const { paths, assignmentByTargetId, getPathProgress, isPathCompleted, getPathGuides } = deps;
   const resumes = paths.flatMap((path): HubResume[] => {
-    const assignment = assignmentByTargetId.get(path.id);
+    const assignment = getPathAssignment(assignmentByTargetId, path);
     const percent = assignment?.progress ?? getPathProgress(path.id);
     const done = assignment ? assignment.satisfied : isPathCompleted(path.id);
     if (done || !(percent > 0)) {

@@ -1,3 +1,4 @@
+import { getPathAssignment } from './assignments-core';
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
 import type { CatalogProgress } from './catalog-progress.hook';
@@ -53,7 +54,7 @@ export function selectLearningPathEntries({
   const knownPaths = [...paths, ...onlinePaths];
   for (const path of knownPaths) {
     const key = `${path.isPrivate ? 'organization' : 'grafana'}:${path.id}`;
-    const assignment = assignmentByTargetId.get(path.id);
+    const assignment = getPathAssignment(assignmentByTargetId, path);
     const item = catalogPaths.get(key);
     const percent = assignment?.progress ?? Math.max(getPathProgress(path.id), pathProgress.get(key) ?? 0);
     if (!includeCompleted && percent >= 100 && !(assignment && !assignment.satisfied)) {

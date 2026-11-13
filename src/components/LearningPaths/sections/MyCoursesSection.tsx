@@ -5,7 +5,7 @@ import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../../../types/learning-paths.types';
-import { compareResolvedAssignments } from '../../../learning-paths';
+import { compareResolvedAssignments, getPathAssignment } from '../../../learning-paths';
 import { useVerticalOverflow } from '../../../hooks';
 import { LearningPathCard } from '../LearningPathCard';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
@@ -26,11 +26,11 @@ interface MyCoursesSectionProps {
 // Array.prototype.sort is stable, so unassigned paths keep their incoming order.
 function orderCourses(
   courses: LearningPath[],
-  activeById: (id: string) => ResolvedAssignment | undefined
+  activeById: (path: LearningPath) => ResolvedAssignment | undefined
 ): LearningPath[] {
   return [...courses].sort((a, b) => {
-    const aAssignment = activeById(a.id);
-    const bAssignment = activeById(b.id);
+    const aAssignment = activeById(a);
+    const bAssignment = activeById(b);
     if (aAssignment && bAssignment) {
       return compareResolvedAssignments(aAssignment, bAssignment);
     }
@@ -52,8 +52,8 @@ export function MyCoursesSection({
 }: MyCoursesSectionProps) {
   const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
   const activeAssignment = useCallback(
-    (id: string) => {
-      const assignment = assignmentByTargetId.get(id);
+    (path: LearningPath) => {
+      const assignment = getPathAssignment(assignmentByTargetId, path);
       return assignment && !assignment.satisfied ? assignment : undefined;
     },
     [assignmentByTargetId]
@@ -85,13 +85,13 @@ export function MyCoursesSection({
           className={cx(styles.pathsGrid, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}
         >
           {ordered.map((path, index) => {
-            const assignment = activeAssignment(path.id);
+            const assignment = activeAssignment(path);
             const pathProgress = assignment ? assignment.progress : getPathProgress(path.id);
             const isFirstInProgress = index === 0 && pathProgress > 0;
 
             return (
               <LearningPathCard
-                key={path.id}
+                key={`${path.isPrivate ? 'organization' : 'grafana'}:${path.id}`}
                 path={path}
                 guides={getPathGuides(path.id)}
                 progress={pathProgress}

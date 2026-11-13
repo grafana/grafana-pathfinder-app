@@ -9,8 +9,9 @@ import { getUserScope } from '../lib/user-scope';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
 import {
   compareResolvedAssignments,
+  assignmentPathKey,
+  getPathAssignment,
   findAssignedTrack,
-  PATH_ASSIGNMENT_TARGET,
   resolveAssignments,
 } from './assignments-core';
 import { markCurrentGuide } from './mark-current-guide';
@@ -34,7 +35,7 @@ interface UseMyAssignmentsResult {
   /** Every resolved assignment, satisfied or not — sorted most-urgent-first. */
   items: ResolvedAssignment[];
   notDone: ResolvedAssignment[];
-  /** First-wins over `items`, so the most urgent duplicate governs. */
+  /** Most urgent assignment per source-qualified path key. */
   assignmentByTargetId: Map<string, ResolvedAssignment>;
   /** Paths for online-catalogue targets, absent from `paths`. */
   onlinePaths: LearningPath[];
@@ -115,7 +116,9 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     () => resolveAssignments(rawAssignments, paths, getPathProgress),
     [rawAssignments, paths, getPathProgress]
   );
-  const unresolvedKey = resolved.unresolvedTargetIds.join('\n');
+  const unresolvedKey = resolved.unresolvedAssignments
+    .map((assignment) => rawAssignments.indexOf(assignment))
+    .join(',');
 
   // Targets missing from `paths` are retried against the online catalogue; only
   // those still unresolved warn, and targetIds stay off the warn (they bridge to Faro).
@@ -127,11 +130,9 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     failed: boolean;
   } | null>(null);
   useEffect(() => {
-    const unresolvedIds = unresolvedKey ? unresolvedKey.split('\n') : [];
-    const unresolvedIdSet = new Set(unresolvedIds);
-    const candidates = rawAssignments.filter(
-      (a) => a.targetType === PATH_ASSIGNMENT_TARGET && unresolvedIdSet.has(a.targetId)
-    );
+    const indices = unresolvedKey ? unresolvedKey.split(',').map(Number) : [];
+    const candidates = indices.flatMap((index) => rawAssignments[index] ?? []);
+    const unresolvedIds = candidates.map((assignment) => assignment.targetId);
     let cancelled = false;
     void (async () => {
       const settled = await Promise.allSettled(candidates.map((a) => resolveOnlineAssignmentCard(a, resolveNavLinks)));
@@ -196,8 +197,9 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   const assignmentByTargetId = useMemo(() => {
     const map = new Map<string, ResolvedAssignment>();
     for (const assignment of items) {
-      if (!map.has(assignment.targetId)) {
-        map.set(assignment.targetId, assignment);
+      const key = assignmentPathKey(assignment.targetId, assignment.targetSource);
+      if (!map.has(key)) {
+        map.set(key, assignment);
       }
     }
     return map;
@@ -213,8 +215,8 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
       const baseGuides = onlineCard
         ? onlineCard.guides.map((guide) => ({ ...guide, completed: completedGuides.includes(guide.id) }))
         : getPathGuides(pathId);
-      const trackId = assignmentByTargetId.get(pathId)?.trackId;
-      const path = pathsById.get(pathId);
+      const path = onlineCard?.path ?? pathsById.get(pathId);
+      const trackId = path && getPathAssignment(assignmentByTargetId, path)?.trackId;
       const trackGuideIds = onlineCard?.trackGuideIds ?? (path && findAssignedTrack(path, trackId))?.guides;
       if (!trackGuideIds) {
         return onlineCard ? markCurrentGuide(baseGuides) : baseGuides;

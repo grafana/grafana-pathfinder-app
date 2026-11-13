@@ -256,6 +256,7 @@ jest.mock('../../learning-paths', () => ({
   formatDueDate: jest.requireActual('../../learning-paths/assignments-core').formatDueDate,
   compareResolvedAssignments: jest.requireActual('../../learning-paths/assignments-core').compareResolvedAssignments,
   getAssignmentGuideState: jest.requireActual('../../learning-paths/assignments-core').getAssignmentGuideState,
+  getPathAssignment: jest.requireActual('../../learning-paths/assignments-core').getPathAssignment,
   markCurrentGuide: jest.requireActual('../../learning-paths/mark-current-guide').markCurrentGuide,
 }));
 

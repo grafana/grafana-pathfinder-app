@@ -27,6 +27,7 @@ export interface ResolvedAssignments {
   items: ResolvedAssignment[];
   /** Path targetIds with no match in the catalogue passed to resolveAssignments. */
   unresolvedTargetIds: string[];
+  unresolvedAssignments: AssignmentEntry[];
 }
 
 /** Kebab/snake-case id -> Title Case. */
@@ -171,7 +172,7 @@ export function assignmentProgress(guides: AssignmentEntry['guides'], _localProg
 /** Builds one row from a raw assignment plus its resolved path and progress, shared by every catalogue source. */
 export function buildResolvedAssignment(
   assignment: AssignmentEntry,
-  path: Pick<LearningPath, 'title' | 'manifest'>,
+  path: Pick<LearningPath, 'title' | 'manifest' | 'isPrivate'>,
   progress: number,
   now: number = Date.now(),
   timeZone?: string
@@ -180,6 +181,7 @@ export function buildResolvedAssignment(
   const track = findAssignedTrack(path, assignment.trackId);
   return {
     targetId: assignment.targetId,
+    targetSource: assignment.targetSource || (path.isPrivate ? 'app-platform' : 'bundled'),
     title: path.title,
     trackId: track?.trackId,
     trackLabel: track?.label,
@@ -225,15 +227,19 @@ export function resolveAssignments(
   now: number = Date.now(),
   timeZone?: string
 ): ResolvedAssignments {
-  const byId = new Map(paths.map((path) => [path.id, path]));
   const unresolvedTargetIds: string[] = [];
+  const unresolvedAssignments: AssignmentEntry[] = [];
 
   const pathAssignments = assignments.filter((assignment) => assignment.targetType === PATH_ASSIGNMENT_TARGET);
   const resolved = pathAssignments
     .map((assignment): ResolvedAssignment | null => {
-      const path = byId.get(assignment.targetId);
+      const candidates = paths.filter((path) => path.id === assignment.targetId);
+      const path = assignment.targetSource
+        ? candidates.find((path) => assignment.targetSource === (path.isPrivate ? 'app-platform' : 'bundled'))
+        : (candidates.find((path) => !path.isPrivate) ?? candidates[0]);
       if (!path) {
         unresolvedTargetIds.push(assignment.targetId);
+        unresolvedAssignments.push(assignment);
         return null;
       }
       return buildResolvedAssignment(
@@ -248,5 +254,21 @@ export function resolveAssignments(
 
   const items = resolved.sort(compareResolvedAssignments);
 
-  return { items, unresolvedTargetIds };
+  return { items, unresolvedTargetIds, unresolvedAssignments };
+}
+
+export function assignmentPathKey(targetId: string, targetSource?: string): string {
+  return `${targetSource === 'app-platform' ? 'organization' : 'grafana'}:${targetId}`;
+}
+
+export function getPathAssignment(
+  assignments: ReadonlyMap<string, ResolvedAssignment>,
+  path: Pick<LearningPath, 'id' | 'isPrivate'>
+): ResolvedAssignment | undefined {
+  const key = assignmentPathKey(path.id, path.isPrivate ? 'app-platform' : 'bundled');
+  const assignment = assignments.get(key) ?? assignments.get(path.id);
+  if (assignment?.targetSource && assignmentPathKey(assignment.targetId, assignment.targetSource) !== key) {
+    return undefined;
+  }
+  return assignment;
 }
