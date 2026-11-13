@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/grafana/grafana-app-sdk/simple"
 	"github.com/grafana/grafana-pathfinder-app/pkg/resourceaccess"
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 type catalogueResponse struct {
@@ -74,22 +72,12 @@ func catalogueReadHandler(store *resourceaccess.GuideStore) simple.AppCustomRout
 			logging.DefaultLogger.Warn("custom guide repository: further decode warnings suppressed", "namespace", namespace, "warnings", warnings, "logged", 10)
 		}
 		if err != nil {
-			diagnostic := &services.ProxyDiagnostic{Stage: "app-platform", Resource: "interactiveguides", Operation: "list", Outcome: "error", Reason: "unexpected-error"}
-			var upstream apierrors.APIStatus
-			if errors.As(err, &upstream) {
-				status := int(upstream.Status().Code)
-				diagnostic.UpstreamStatus, diagnostic.Reason = status, "http-error"
-				if status == 401 {
-					diagnostic.Reason = "authentication-failed"
-				}
-				if status == 403 {
-					diagnostic.Reason = "authorization-denied"
-				}
-				if status >= 400 && status < 500 && status != 408 && status != 429 {
-					response.Capability.Reason = fmt.Sprintf("upstream-%d", status)
-					response.Diagnostics = diagnostic
-					return json.NewEncoder(w).Encode(response)
-				}
+			diagnostic := upstreamDiagnostic(err, "interactiveguides", "list")
+			status := diagnostic.UpstreamStatus
+			if status >= 400 && status < 500 && status != 408 && status != 429 {
+				response.Capability.Reason = fmt.Sprintf("upstream-%d", status)
+				response.Diagnostics = diagnostic
+				return json.NewEncoder(w).Encode(response)
 			}
 			w.Header().Set("Retry-After", "30")
 			w.WriteHeader(http.StatusServiceUnavailable)

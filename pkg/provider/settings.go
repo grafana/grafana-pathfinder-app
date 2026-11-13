@@ -37,28 +37,14 @@ func resourceReadHandler(resourceName, operation string, read func(context.Conte
 		}
 		body, err := read(ctx, namespace, request)
 		if err != nil {
-			diagnostic := services.ProxyDiagnostic{Stage: "app-platform", Resource: resourceName, Operation: operation, Outcome: "error", Reason: "unexpected-error"}
-			if errors.Is(err, context.DeadlineExceeded) {
-				diagnostic.Reason = "timeout"
-			}
-			if errors.Is(err, context.Canceled) {
-				diagnostic.Reason = "cancelled"
-			}
+			diagnostic := upstreamDiagnostic(err, resourceName, operation)
 			status := http.StatusBadGateway
 			message := "app platform read failed"
 			var upstream apierrors.APIStatus
 			if errors.As(err, &upstream) {
 				value := upstream.Status()
-				diagnostic.UpstreamStatus = int(value.Code)
-				diagnostic.Reason = "http-error"
-				if value.Code == 401 {
-					diagnostic.Reason = "authentication-failed"
-				}
-				if value.Code == 403 {
-					diagnostic.Reason = "authorization-denied"
-				}
-				if value.Code >= 400 && value.Code <= 599 && value.Code != http.StatusUnauthorized {
-					status = int(value.Code)
+				if diagnostic.UpstreamStatus >= 400 && diagnostic.UpstreamStatus <= 599 && diagnostic.UpstreamStatus != http.StatusUnauthorized {
+					status = diagnostic.UpstreamStatus
 				}
 				encoded, marshalErr := json.Marshal(value)
 				if resourceName == "pathfindersettings" && marshalErr == nil && request.URL != nil && request.URL.Query().Get("absence") == "explicit" && services.IsSettingsNotConfigured(int(value.Code), encoded) {
@@ -72,7 +58,7 @@ func resourceReadHandler(resourceName, operation string, read func(context.Conte
 			return json.NewEncoder(w).Encode(struct {
 				Error       string                   `json:"error"`
 				Diagnostics services.ProxyDiagnostic `json:"diagnostics"`
-			}{message, diagnostic})
+			}{message, *diagnostic})
 		}
 		return json.NewEncoder(w).Encode(body)
 	}
