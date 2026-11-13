@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"time"
 
@@ -91,7 +92,8 @@ func completionReadHandler(store *resourceaccess.CompletionStore, capabilityOnly
 			return &services.CompletionIndex{ByUser: completed, InProgressByUser: progress, AsOf: time.Now()}, pages, nil
 		}, time.Now, func(err error) bool {
 			status := sdkErrorStatus(err)
-			return status >= 400 && status != 401 && status != 403
+			var networkError net.Error
+			return (status >= 400 && status != 401 && status != 403) || errors.As(err, &networkError) || errors.Is(err, context.DeadlineExceeded)
 		}, func(error) string { return "upstream-error" })
 		var diagnostic *services.ProxyDiagnostic
 		if err != nil {

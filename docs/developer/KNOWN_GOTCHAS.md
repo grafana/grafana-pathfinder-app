@@ -30,9 +30,9 @@ A local tool that is newer or older than the CI pin can report findings CI does 
 
 Then reproduce on a pristine `origin/main` worktree. If main fails the same way, the failure is not yours. Never regenerate a golden file (for example with `go test -update`) under a toolchain that differs from the pin.
 
-## `go test -race -shuffle=on ./pkg/plugin` fails on main
+## Historical legacy-backend race on main
 
-The `withFrozenTime` helper in `pkg/plugin/package_recommendations_test.go` writes the package-global `timeNow` while a package-recommendations background refresh reads it. With `-shuffle=on`, the race fails most runs on plain main, and the blamed test changes from run to run. CI runs `-race` without `-shuffle`, so this never blocks a PR. Before investigating a shuffled failure, compare against a pristine main worktree.
+On the pre-SDK main branch, the `withFrozenTime` helper in `pkg/plugin/package_recommendations_test.go` writes the package-global `timeNow` while a package-recommendations background refresh reads it. With `-shuffle=on`, the race fails most runs on plain main, and the blamed test changes from run to run. CI runs `-race` without `-shuffle`, so this never blocks a PR. Before investigating a shuffled failure, compare against a pristine main worktree.
 
 ## A green CI Gate does not cover the e2e matrix
 

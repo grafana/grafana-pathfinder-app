@@ -101,7 +101,7 @@ No stale reporting payload is supplied after a failure. An unavailable response 
 
 ### Prerequisites and current verification limit
 
-Use an already deployed build containing both the page and plugin resource, with `pathfinder.learning-insights` enabled only for the test stack and Grafana reloaded. Obtain authorized current-org **Admin** and **Viewer** sessions, an available App Platform namespace, provisioned OBO exchange, and existing test records in that namespace. Do not assume Basic auth or a service-account token exercises the verified user-token/OBO path.
+Use an already deployed build containing both the page and plugin resource, with `pathfinder.learning-insights` enabled only for the test stack and Grafana reloaded. Obtain authorized current-org **Admin** and **Viewer** sessions, an available App Platform namespace, SDK registration and caller delegation, and existing test records in that namespace. Do not assume Basic auth or a service-account token exercises the SDK-verified caller path.
 
 The initial local probe reached `http://localhost:3000/api/health`, but `admin:admin` returned **401** for authenticated access. Actual authenticated live reporting, permission enforcement, and the upstream round trip therefore remain **unverified** by that probe. Health success alone proves neither plugin deployment nor authorization.
 
@@ -110,11 +110,11 @@ Use existing or separately authorized disposable fixtures. Useful records includ
 ### Checks
 
 1. Read `/api/health`. Confirm the intended plugin build is installed through the existing deployment/operator evidence; do not rebuild, restart, deploy, or change plugin settings merely to run this check.
-2. In the authorized Admin browser session, open `/a/grafana-pathfinder-app/learning-insights`. Inspect the GET resource response and `Cache-Control: no-store` in developer tools. Check availability, warnings, and `asOf` before interpreting totals. Verify the page uses the plugin resource rather than direct raw GAP reads.
+2. In the authorized Admin browser session, open `/a/grafana-pathfinder-app/learning-insights`. Inspect the GET resource response and `Cache-Control: no-store` in developer tools. Check availability, warnings, and `asOf` before interpreting totals. Verify the page uses the SDK custom route rather than direct raw GAP reads.
 3. Repeat the resource GET with explicit UTC bounds, for example:
 
    ```text
-   /api/plugins/grafana-pathfinder-app/resources/learning-insights?from=2026-07-01T00%3A00%3A00Z&to=2026-07-29T00%3A00%3A00Z
+   /apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/learning-insights?from=2026-07-01T00%3A00%3A00Z&to=2026-07-29T00%3A00%3A00Z
    ```
 
    Compare against the existing fixture inventory: earliest duplicate wins, `from` is included, `to` excluded, source collisions stay separate, and missing names retain subjects. Change only the chart period and confirm older accepted evidence still credits assignments. Compare unknown and withdrawn rows separately from outstanding.

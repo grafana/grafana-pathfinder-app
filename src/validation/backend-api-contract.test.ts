@@ -33,7 +33,7 @@ import { DependencyListSchema, PackageTypeSchema } from '../types/package.schema
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const CONTRACT_DIR = path.join(REPO_ROOT, 'pkg', 'provider', 'testdata', 'contract');
 const TAG_GOLDEN = 'struct-tags.json';
-const REGENERATE = 'go test ./pkg/plugin -run TestContract -update';
+const REGENERATE = 'go test ./pkg/provider -run TestContract -update';
 
 const GoFieldTagSchema = z.strictObject({
   field: z.string(),

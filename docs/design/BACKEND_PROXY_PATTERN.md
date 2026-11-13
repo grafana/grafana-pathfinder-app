@@ -20,12 +20,21 @@ provider registers the existing `pathfinderbackend.ext.grafana.app/v1alpha1` kin
 and custom routes. Resource names, versions, and schemas remain unchanged. Existing
 resources remain in Grafana's resource store across plugin restarts.
 
-Cloud coexistence with the existing manifest-only registration is **not verified**.
-Cloud testing is deferred. Do not replace the Cloud registration or describe this
-local migration as Cloud deployment readiness. This SDK-only follow-up deliberately
-removes the compatibility adapter at the user's request; the parent migration PR
-is the code rollback point, not proof that the legacy transport works on this OSS
-instance. The former legacy settings adapter required OBO configuration absent here.
+Cloud stacks already support the SDK prerequisites. Cloud execution and coexistence
+with the existing manifest-only registration have not been exercised in this local
+test run; that validation remains deferred. Do not change Cloud registration as part
+of local testing. The SDK-only implementation replaces the legacy transport; the
+parent migration PR is the code rollback point.
+
+OSS installations without SDK registration retain plugin `jsonData` settings reads
+and writes. They did not previously support App Platform backend features. Keep the
+existing frontend Grafana minimum; the verified runtime for the new backend features
+is OSS 13.3.0 with the flags above. Registered SDK failures never fall back to JSON
+writes. A settings resource already read remains authoritative.
+
+`grafana.useRouterMiddleware` is a server-only feature toggle (`Generate{Go: true}`
+in Grafana's registry), so the frontend cannot include it in `usesSdkBackend()`.
+It is a local runtime prerequisite, not an observable frontend capability flag.
 
 The SDK runner supplies default plugin health integration. SDK `backend/health`
 also returns the application health response.
