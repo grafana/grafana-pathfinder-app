@@ -69,3 +69,17 @@ it('resolves the online catalogue alias without matching a private guide', () =>
   );
   expect(entry?.assignedGuide).toBe(guide);
 });
+
+it('uses source-qualified local progress only to offer a reset, not to satisfy an assignment', () => {
+  const progress = new Map([
+    [publicGuide.key, { percent: 100 }],
+    [privateGuide.key, { percent: 0 }],
+  ]);
+  const [unstarted] = selectGuideAssignmentEntries([assignment], [publicGuide, privateGuide], progress);
+  expect(unstarted?.guides[0]?.completed).toBe(false);
+  progress.set(privateGuide.key, { percent: 100 });
+  const [needsReset] = selectGuideAssignmentEntries([assignment], [publicGuide, privateGuide], progress);
+  expect(needsReset?.guides[0]).toMatchObject({ completed: true, url: privateGuide.url });
+  expect(needsReset?.percent).toBe(0);
+  expect(needsReset?.assignment?.satisfied).toBe(false);
+});
