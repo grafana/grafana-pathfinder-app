@@ -259,6 +259,12 @@ func (a *App) handleMyAchievements(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := backend.reader.ListMine(r.Context(), person)
 	if err != nil {
+		if errors.Is(err, errAchievementRowMismatch) {
+			// A retry reads the same row, so this stands until the row is removed.
+			a.ctxLogger(r.Context()).Warn("achievement row names another user or achievement", "error", err)
+			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
+			return
+		}
 		if isTerminalCompletionError(err) {
 			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
 			return
