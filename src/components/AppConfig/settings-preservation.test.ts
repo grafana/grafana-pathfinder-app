@@ -1,7 +1,10 @@
+import { usesSdkBackend } from '../../lib/backend-routes';
 import { DEFAULT_ENABLE_AI_AUTO_HEAL, getConfigWithDefaults, PathfinderPluginConfig } from '../../constants';
 import { fetchPathfinderSettingsSnapshot, savePathfinderSettings } from '../../utils/pathfinder-settings-api';
 import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plugin';
 import { saveTenantSettings } from './save-settings';
+
+jest.mock('../../lib/backend-routes', () => ({ usesSdkBackend: jest.fn() }));
 
 jest.mock('../../utils/pathfinder-settings-api', () => ({
   ...jest.requireActual('../../utils/pathfinder-settings-api'),
@@ -33,6 +36,7 @@ function provisionedJsonData(extra: PathfinderPluginConfig = {}): PathfinderPlug
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(usesSdkBackend).mockReturnValue(true);
   mockFetchPlugin.mockResolvedValue({ jsonData: {}, enabled: true, pinned: true });
   mockFetchTenant.mockResolvedValue(null);
   mockSaveTenant.mockResolvedValue(true);
@@ -222,4 +226,36 @@ it('reports a failed verification read rather than declaring the save successful
   await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled: false } })).rejects.toThrow(
     'read failed'
   );
+});
+
+describe('settings on installations without SDK registration', () => {
+  beforeEach(() => jest.mocked(usesSdkBackend).mockReturnValue(false));
+
+  it('preserves plugin metadata and explicit settings when disabling learning', async () => {
+    mockFetchPlugin.mockResolvedValue({
+      jsonData: { stackId: '123', tutorialUrl: 'existing', devModeOptIn: true },
+      enabled: false,
+      pinned: false,
+    });
+    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled: false } });
+    expect(mockSaveTenant).not.toHaveBeenCalled();
+    expect(mockUpdatePlugin).toHaveBeenCalledWith(PLUGIN_ID, {
+      enabled: false,
+      pinned: false,
+      jsonData: { stackId: '123', tutorialUrl: 'existing', pathfinderEnabled: false },
+    });
+  });
+
+  it('does not abandon an existing authoritative resource', async () => {
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({ tutorialUrl: 'resource' }));
+    mockSaveTenant.mockResolvedValue(false);
+    await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: {} })).rejects.toThrow('SDK settings API');
+    expect(mockUpdatePlugin).not.toHaveBeenCalled();
+  });
+
+  it('surfaces plugin configuration write errors', async () => {
+    mockUpdatePlugin.mockRejectedValueOnce(new Error('forbidden'));
+    await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: {} })).rejects.toThrow('forbidden');
+    expect(mockSaveTenant).not.toHaveBeenCalled();
+  });
 });

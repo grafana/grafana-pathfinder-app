@@ -517,18 +517,18 @@ Faro filter exception and getter, the closed-surface experiment note in `TELEMET
 sections, and the remote flag/experiment. If no other experiment uses it, also remove `@grafana-experiments/sdk`
 and `src/lib/telemetry/experiments.ts`.
 
-## Backend aggregation toggles (not MTFF)
+## SDK backend registration (not MTFF)
 
-Separate from the OpenFeature flags above, Grafana **App Platform APIService aggregation toggles** gate whether the plugin's aggregated backend APIs are served on a stack. They live in core Grafana config (`config.featureToggles`), not MTFF, and are read server-side in the Go backend — not through `openfeature.ts`.
+`usesSdkBackend()` in `src/lib/backend-routes.ts` requires a concrete namespace and
+`appplugins.loadAppManifest` plus `appplugins.registerAPIServer`. These are Grafana
+runtime flags, not OpenFeature flags. Legacy aggregation flags alone do not select
+the SDK transport. Local OSS also requires the server-only
+`grafana.useRouterMiddleware` flag, which is not exposed to frontend checks.
 
-| Toggle                                                  | Gates                                                                                                                                                | Go constant                                                                                                                                                          | Group         |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `aggregation.pathfinderbackend-ext-grafana-app.enabled` | Every aggregated surface: the custom guide catalogue, the private `interactiveguides` resolver, and the completion-records read and write proxies    | `customGuideAggregationToggle` (`pkg/plugin/custom_guide_repository_client.go`) and `completionRecordsAggregationToggle` (`pkg/plugin/completion_records_client.go`) | GAP `.app`    |
-| `aggregation.pathfinderbackend-ext-grafana-com.enabled` | Nothing today — completion records cut over to `.app` with no migration or dual-read, so the named constant only pins the `.app` derivation in tests | `pathfinderBackendAggregationToggle` (`pkg/plugin/app_platform_client.go`)                                                                                           | legacy `.com` |
-
-The toggle name is the API group with dots replaced by dashes. The frontend derives the `.app` toggle in `src/utils/interactive-guides-api.ts`; the Go constants derive theirs from `appPlatformGroup` (`pkg/plugin/app_platform_client.go`) so they cannot drift from the group name.
-
-A toggle reports that the group's aggregation layer is served, which is a **precondition, not the availability signal** — a real stack reports both toggles true. Route availability is whatever the capability/resolver path returns, which additionally requires an app URL, a namespace, and a provisioned on-behalf-of (OBO) token on the stack. See [`docs/design/BACKEND_PROXY_PATTERN.md`](../design/BACKEND_PROXY_PATTERN.md) §7–§8.
+Cloud supports the SDK prerequisites. OSS without SDK registration retains JSON
+plugin settings; SDK backend features require a supported runtime. Registration
+flags do not prove route health: capability and resource responses remain authoritative.
+See [SDK backend and resource access](../design/BACKEND_PROXY_PATTERN.md).
 
 ---
 
