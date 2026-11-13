@@ -1,0 +1,1 @@
+{"capability":{"available":false,"reason":"identity-unavailable"},"diagnostics":{"cacheAgeMs":0,"operation":"list","outcome":"error","reason":"identity-unavailable","resource":"interactiveguides","stage":"identity"},"guides":[]}

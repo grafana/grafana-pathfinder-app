@@ -1,8 +1,7 @@
 import { test, expect } from './fixtures';
-import pluginJson from '../src/plugin.json';
 import { waitForGrafanaReady } from './helpers/grafana.helpers';
 
-const PACKAGE_RECOMMENDATIONS_PATH = `/api/plugins/${pluginJson.id}/resources/package-recommendations`;
+const PACKAGE_RECOMMENDATIONS_PATH = `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/package-recommendations`;
 
 test.describe('online package recommendations endpoint', () => {
   test('GET returns the proxied repository.json with baseUrl + packages', async ({ request }) => {

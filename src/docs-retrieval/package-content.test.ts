@@ -2002,14 +2002,15 @@ describe('fetchPackageContent path-type enrichment', () => {
 // `interactive-tutorials`. Both reach the launch surfaces through the catalogue
 // client, so the suppression gate is only sound if that client normalizes them.
 describe('fetchPackageContent — no public websiteUrl for catalogue-launched private paths', () => {
-  const GAP_TOGGLE = 'aggregation.pathfinderbackend-ext-grafana-app.enabled';
   const featureToggles = config.featureToggles as Record<string, boolean>;
   // setBackendSrv writes a module-level singleton, so the fake below outlives
   // this block and reaches every later describe unless afterEach puts it back.
   const originalBackendSrv = getBackendSrv();
 
   async function launchManifestFromCatalogue(manifest: Record<string, unknown>): Promise<Record<string, unknown>> {
-    featureToggles[GAP_TOGGLE] = true;
+    featureToggles['appplugins.loadAppManifest'] = true;
+    featureToggles['appplugins.registerAPIServer'] = true;
+    config.namespace = 'stacks-123';
     invalidateCustomGuideRepositoryCache();
     setBackendSrv({
       get: async () => ({ capability: { available: true }, guides: [{ id: 'fe-alerting-path', manifest }] }),
@@ -2042,7 +2043,8 @@ describe('fetchPackageContent — no public websiteUrl for catalogue-launched pr
 
   afterEach(() => {
     setBackendSrv(originalBackendSrv);
-    delete featureToggles[GAP_TOGGLE];
+    delete featureToggles['appplugins.loadAppManifest'];
+    delete featureToggles['appplugins.registerAPIServer'];
     invalidateCustomGuideRepositoryCache();
     setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
   });

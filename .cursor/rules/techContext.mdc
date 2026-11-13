@@ -47,10 +47,11 @@ Versions below are major versions only; `package.json`, `package-lock.json`, and
 - `@emotion/css` (11) for styling
 - `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` for drag-and-drop
 
-**Backend Runtime** (Go) — the three direct requires in `go.mod`:
-- `grafana-plugin-sdk-go` - Grafana plugin SDK
-- `grafana/authlib` - on-behalf-of access-token exchange for the App Platform proxies
-- `go-jose/go-jose/v4` - inbound Grafana ID-token signature verification (`pkg/plugin/auth/id_token.go`)
+**Backend runtime** (Go):
+- `grafana-app-sdk` - SDK provider, routes, generated clients, and plugin runtime
+- `grafana/authlib` - authenticated SDK identity and namespace types
+- `grafana-plugin-sdk-go` - plugin logging/runtime integration beneath the App SDK
+- Kubernetes client libraries - resource versions, status errors, and bounded REST access
 
 There is no WebSocket or SSH dependency: sandbox VMs and terminal streaming live in the separate `grafana-coda-app` plugin. See `.cursor/rules/systemPatterns.mdc` ("What is deliberately NOT here").
 

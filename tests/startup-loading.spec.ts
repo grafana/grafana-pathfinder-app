@@ -29,8 +29,9 @@ async function settings(page: Page | BrowserContext, overrides: Record<string, u
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...config } } });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
-    route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: config } })
+  await page.route(
+    '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/pathfinder-settings',
+    (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: config } })
   );
 }
 

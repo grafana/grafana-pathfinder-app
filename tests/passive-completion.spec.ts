@@ -24,13 +24,15 @@ for (const kind of ['guided', 'multistep'] as const) {
           json: { ...body, jsonData: { ...body.jsonData, enableTwoTabController: true } },
         });
       });
-      await context.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
-        route.fulfill({
-          json: {
-            metadata: { name: 'default', resourceVersion: '1' },
-            spec: { enableTwoTabController: true },
-          },
-        })
+      await context.route(
+        '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/pathfinder-settings',
+        (route) =>
+          route.fulfill({
+            json: {
+              metadata: { name: 'default', resourceVersion: '1' },
+              spec: { enableTwoTabController: true },
+            },
+          })
       );
       await context.route(guideUrl.replace('content.json', 'manifest.json'), (route) =>
         route.fulfill({ json: { id: 'passive-completion-test', type: 'guide', repository: 'interactive-tutorials' } })

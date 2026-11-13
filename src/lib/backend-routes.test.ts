@@ -8,9 +8,11 @@ beforeEach(() => {
   config.featureToggles = {};
 });
 
-it('retains legacy transport without SDK registration', () => {
+it('never falls back to legacy transport without SDK registration', () => {
   expect(usesSdkBackend()).toBe(false);
-  expect(backendRoute('custom-guide')).toBe('/api/plugins/grafana-pathfinder-app/resources/custom-guide');
+  expect(backendRoute('custom-guide')).toBe(
+    '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/custom-guide'
+  );
 });
 
 it('rejects unapproved paths even when supplied outside TypeScript', () => {
@@ -27,4 +29,9 @@ it('selects the namespace-bound SDK transport when both registration flags are e
   );
   config.namespace = '';
   expect(usesSdkBackend()).toBe(false);
+});
+
+it.each(['', '*'])('rejects missing or wildcard namespace %s', (namespace) => {
+  config.namespace = namespace;
+  expect(() => backendRoute('health')).toThrow('SDK backend namespace is unavailable');
 });

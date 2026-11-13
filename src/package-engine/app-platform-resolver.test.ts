@@ -11,7 +11,10 @@ const asPanelManifest = (manifest?: ManifestJson): Record<string, unknown> | und
   manifest as Record<string, unknown> | undefined;
 
 let mockNamespace: string | undefined = 'stacks-123';
-let mockFeatureToggles: Record<string, boolean> = { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true };
+let mockFeatureToggles: Record<string, boolean> = {
+  'appplugins.loadAppManifest': true,
+  'appplugins.registerAPIServer': true,
+};
 const mockFetch = jest.fn();
 
 jest.mock('@grafana/runtime', () => ({
@@ -43,7 +46,7 @@ const okResource = (overrides: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockNamespace = 'stacks-123';
-  mockFeatureToggles = { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true };
+  mockFeatureToggles = { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true };
 });
 
 it.each(['metadata-only', true] as const)(

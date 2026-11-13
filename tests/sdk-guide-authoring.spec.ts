@@ -70,7 +70,7 @@ test('OSS SDK guide authoring persists across reload and publishes', async ({ pa
     expect(guide.spec.status).toBe('published');
     expect(guide.spec.blocks).toHaveLength(2);
     expect(guide.metadata.resourceVersion).not.toBe(original.metadata.resourceVersion);
-    const assigned = await request.post(assignmentsUrl, {
+    const assignmentBody = {
       data: {
         apiVersion: 'pathfinderbackend.ext.grafana.app/v1alpha1',
         kind: 'Assignment',
@@ -86,8 +86,16 @@ test('OSS SDK guide authoring persists across reload and publishes', async ({ pa
           lifecycle: 'active',
         },
       },
-    });
-    expect(assigned.ok()).toBe(true);
+    };
+    await expect(async () => {
+      const assigned = await request.post(assignmentsUrl, assignmentBody);
+      if (assigned.status() === 409) {
+        const existing = await (await request.get(`${assignmentsUrl}/${assignmentName}`)).json();
+        expect(existing.spec).toMatchObject(assignmentBody.data.spec);
+      } else {
+        expect(assigned.ok(), await assigned.text()).toBe(true);
+      }
+    }).toPass({ intervals: [500, 1000, 2000], timeout: 15000 });
     await page.goto(`/a/grafana-pathfinder-app/fullscreen?doc=${encodeURIComponent(`api:${name}`)}`);
     await expect(page.getByText(title, { exact: true })).toBeVisible();
     if (await page.getByTestId(testIds.markComplete.button).first().isVisible()) {
@@ -136,5 +144,79 @@ test('OSS settings save uses the SDK and survives reload', async ({ page, reques
     const current = await (await request.get(url)).json();
     const restored = await request.put(url, { data: { ...current, spec: original.spec } });
     expect(restored.ok()).toBe(true);
+  }
+});
+
+test('SDK-only runtime rejects legacy routes and unauthorized resource access', async ({ request, playwright }) => {
+  test.skip(process.env.PATHFINDER_SDK_E2E !== '1', 'Requires the locally registered SDK provider');
+  const prefix = '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/';
+  expect((await request.get(`${prefix}health`)).ok()).toBe(true);
+  expect((await request.get('/api/plugins/grafana-pathfinder-app/health')).ok()).toBe(true);
+  for (const route of [
+    'health',
+    'pathfinder-settings',
+    'custom-guide-repository',
+    'custom-guides',
+    'completion-records/my',
+    'completion-records/capability',
+    'assignments/my',
+    'learning-insights',
+    'package-recommendations',
+  ]) {
+    const response = await request.get(`/api/plugins/grafana-pathfinder-app/resources/${route}`);
+    expect(response.status()).toBe(500);
+    expect(await response.json()).toMatchObject({ messageId: 'plugin.requestFailureError' });
+  }
+  const legacyWrite = await request.post('/api/plugins/grafana-pathfinder-app/resources/completion-records', {
+    data: {},
+  });
+  expect(legacyWrite.status()).toBe(500);
+  expect(await legacyWrite.json()).toMatchObject({ messageId: 'plugin.requestFailureError' });
+  const crossNamespace = await request.get(prefix.replace('/default/', '/org-99/') + 'pathfinder-settings');
+  expect(crossNamespace.status()).toBe(403);
+  const baseURL = process.env.GRAFANA_URL ?? 'http://localhost:3302';
+  const anonymous = await playwright.request.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
+  try {
+    expect((await anonymous.get(`${prefix}pathfinder-settings`)).status()).toBe(401);
+  } finally {
+    await anonymous.dispose();
+  }
+  const login = `sdk-viewer-${Date.now()}`;
+  const password = `local-${Date.now()}-Sdk!`;
+  const created = await request.post('/api/admin/users', {
+    data: { name: 'SDK E2E viewer', email: `${login}@localhost`, login, password },
+  });
+  expect(created.ok()).toBe(true);
+  const { id } = await created.json();
+  const viewer = await playwright.request.newContext({
+    baseURL,
+    storageState: { cookies: [], origins: [] },
+    httpCredentials: { username: login, password, send: 'always' },
+  });
+  try {
+    expect((await request.patch(`/api/org/users/${id}`, { data: { role: 'Viewer' } })).ok()).toBe(true);
+    expect((await (await viewer.get('/api/user')).json()).login).toBe(login);
+    const settings = await (await request.get(`${prefix}pathfinder-settings`)).json();
+    expect((await viewer.put(`${prefix}pathfinder-settings`, { data: settings })).status()).toBe(403);
+    const name = `denied-${login}`;
+    expect(
+      (
+        await viewer.post(`${prefix}custom-guide`, {
+          data: {
+            apiVersion: 'pathfinderbackend.ext.grafana.app/v1alpha1',
+            kind: 'InteractiveGuide',
+            metadata: { name },
+            spec: { id: name, title: 'Denied guide', status: 'draft', schemaVersion: '1.0', blocks: [] },
+          },
+        })
+      ).status()
+    ).toBe(403);
+    expect((await viewer.get(`${prefix}learning-insights`)).status()).toBe(403);
+    const after = await (await request.get(`${prefix}pathfinder-settings`)).json();
+    expect(after).toEqual(settings);
+    expect((await request.get(`${prefix}custom-guide?name=${name}`)).status()).toBe(404);
+  } finally {
+    await viewer.dispose();
+    expect((await request.delete(`/api/admin/users/${id}`)).ok()).toBe(true);
   }
 });

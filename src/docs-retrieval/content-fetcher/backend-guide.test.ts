@@ -202,10 +202,10 @@ describe('fetchBackendInteractive — path traversal guard (F3)', () => {
     await fetchBackendInteractive('backend-guide:../../etc/passwd');
 
     const calledUrl = mockFetch.mock.calls[0]![0].url as string;
-    expect(calledUrl).toContain('/resources/custom-guide?name=');
+    expect(calledUrl).toContain('/backend/custom-guide?name=');
     expect(calledUrl).toContain(encodeURIComponent('../../etc/passwd'));
     expect(new URL(calledUrl, 'http://localhost').pathname).toBe(
-      '/api/plugins/grafana-pathfinder-app/resources/custom-guide'
+      '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-123/backend/custom-guide'
     );
   });
 
@@ -215,7 +215,9 @@ describe('fetchBackendInteractive — path traversal guard (F3)', () => {
     await fetchBackendInteractive('backend-guide:my-guide');
 
     const calledUrl = mockFetch.mock.calls[0]![0].url as string;
-    expect(calledUrl).toBe('/api/plugins/grafana-pathfinder-app/resources/custom-guide?name=my-guide');
+    expect(calledUrl).toBe(
+      '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-123/backend/custom-guide?name=my-guide'
+    );
   });
 });
 

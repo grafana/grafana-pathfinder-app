@@ -92,13 +92,13 @@ For each `*.go` file in `pkg/` that the diff touches, check for:
 **B1. Allowlist bypass** (severity: Critical)
 
 - Any new HTTP request to an external URL that does not pass `isAllowedInteractiveLearningHost`, or the equivalent host-allowlist check.
-- The canonical check is `isAllowedInteractiveLearningHost` in `pkg/plugin/package_recommendations.go`, backed by the `allowedPackageRepositoryHosts` exact-match map. URL allowlists for the Coda API and relay now live in the `grafana-coda-app` plugin.
+- The canonical check is `isAllowedInteractiveLearningHost` in `pkg/publiccontent/recommendations.go`, backed by the `allowedPackageRepositoryHosts` exact-match map. URL allowlists for the Coda API and relay now live in the `grafana-coda-app` plugin.
 - Remediation: route the URL through the existing allowlist function or extend the allowlist with a documented justification.
 
 **B2. Forwarded identity without validation** (severity: High)
 
-- Any new App Platform proxy route that reads the caller's ID token without going through `validIDToken` / `subjectFromIDToken`, or that sets an outbound identity header other than `auth.AccessTokenHeader` (the only one `appPlatformClient.list` sets — the inbound ID token is never forwarded upstream).
-- Remediation: route through the helpers in `pkg/plugin/app_platform_identity.go` per `docs/design/BACKEND_PROXY_PATTERN.md`.
+- Any new SDK route that bypasses `callerNamespace`, trusts browser identity headers, or uses resource clients without preserving the authenticated caller context. Assignment status updates are the narrow documented app-identity exception.
+- Remediation: route through the helpers in `pkg/provider/identity.go` per `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 **B3. Hardcoded secrets** (severity: Critical)
 
@@ -225,8 +225,8 @@ This helps the reviewer scan the surface quickly.
 
 - `.cursor/rules/frontend-security.mdc` — F1-F6 canonical rules and Do / Don't examples.
 - `src/security/` — canonical sanitization APIs (`parseUrlSafely`, `sanitizeDocumentationHTML`, `validateTutorialUrl`, etc.).
-- `pkg/plugin/app_platform_identity.go` — forwarded-identity validation helpers.
-- `pkg/plugin/package_recommendations.go` — bounded memory + allowlist pattern.
+- `pkg/provider/identity.go` — SDK identity and namespace binding helpers.
+- `pkg/publiccontent/recommendations.go` — bounded memory + allowlist pattern.
 - `src/cli/mcp/transports/http.ts` — MCP HTTP transport safety caps.
 - `docs/design/CONCERNS.md` — security concern routing.
 - `docs/design/CONCERN_DETAILS.md` — security review questions and one-way doors; load through the review concern extractor.
@@ -322,7 +322,7 @@ See F4 in `.cursor/rules/frontend-security.mdc`.
   resp, err := http.Get(req.URL.String())
 
 Risk: allows arbitrary external requests from the plugin backend.
-Remediation: route through `isAllowedInteractiveLearningHost(req.URL.String())` (see `pkg/plugin/package_recommendations.go:144-154`).
+Remediation: route through `isAllowedInteractiveLearningHost(req.URL.String())` (see `pkg/publiccontent/recommendations.go:144-154`).
 
 ### Medium (0)
 

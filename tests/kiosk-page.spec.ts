@@ -58,7 +58,10 @@ async function installFixtures(
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...settings } } });
   });
   await page.route(
-    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+    (url) =>
+      url.pathname.endsWith(
+        '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/pathfinder-settings'
+      ),
     (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
   );
   await page.route(catalogUrl, (route) =>

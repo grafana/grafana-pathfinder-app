@@ -50,21 +50,23 @@ async function mockCoreConceptsPackage(page: Page) {
       ? route.fulfill({ json: response })
       : route.fulfill({ status: 404, body: 'Unknown fixture resource' });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/package-recommendations', (route) =>
-    route.fulfill({
-      json: {
-        baseUrl,
-        packages: [
-          {
-            id: milestoneId,
-            path: `${path}/data-sources/`,
-            title: 'Data sources',
-            type: 'guide',
-            manifest: milestoneManifest,
-          },
-        ],
-      },
-    })
+  await page.route(
+    '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/package-recommendations',
+    (route) =>
+      route.fulfill({
+        json: {
+          baseUrl,
+          packages: [
+            {
+              id: milestoneId,
+              path: `${path}/data-sources/`,
+              title: 'Data sources',
+              type: 'guide',
+              manifest: milestoneManifest,
+            },
+          ],
+        },
+      })
   );
 }
 
@@ -84,7 +86,10 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...settings } } });
   });
   await page.route(
-    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
+    (url) =>
+      url.pathname.endsWith(
+        '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/pathfinder-settings'
+      ),
     (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
   );
   await page.route(defaultUrl, (route) => route.fulfill({ json: catalog('Default kiosk') }));

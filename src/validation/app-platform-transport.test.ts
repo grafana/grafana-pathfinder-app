@@ -785,11 +785,12 @@ describe('App Platform transport ratchet: detector', () => {
     return evaluateCall(call, sourceFile, relPath, path.dirname(path.resolve(SRC_DIR, relPath)));
   }
 
-  /** Sits beside the real utils/interactive-guides-api.ts, so `collectionUrl`/`itemUrl` resolve to the shipped builders. */
   function evaluateSource(source: string): CallEvaluation {
     return evaluateModuleSource(
       'utils/detector-fixture.ts',
-      `import { collectionUrl, itemUrl } from './interactive-guides-api';\n${source}`
+      `function collectionUrl(namespace) { return '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/' + namespace + '/interactiveguides'; }
+       function itemUrl(namespace, name) { return collectionUrl(namespace) + '/' + name; }
+       ${source}`
     );
   }
 

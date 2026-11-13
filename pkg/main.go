@@ -7,8 +7,8 @@ import (
 	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 
-	"github.com/grafana/grafana-pathfinder-app/pkg/plugin"
 	"github.com/grafana/grafana-pathfinder-app/pkg/provider"
+	"github.com/grafana/grafana-pathfinder-app/pkg/publiccontent"
 )
 
 func main() {
@@ -17,9 +17,8 @@ func main() {
 
 	// Run blocks until Grafana shuts the process down or the plugin exits.
 	if err := sdkplugin.Run(
-		provider.New(plugin.OnlineAssignmentSource(), plugin.InsightsOnlineAssignmentSource, plugin.ReadRecommendations),
+		provider.New(publiccontent.OnlineAssignmentSource(), publiccontent.InsightsOnlineAssignmentSource, publiccontent.ReadRecommendations),
 		sdkplugin.WithPluginID("grafana-pathfinder-app"),
-		sdkplugin.WithAppFunc(plugin.NewApp),
 	); err != nil {
 		log.DefaultLogger.Error(err.Error())
 		os.Exit(1)

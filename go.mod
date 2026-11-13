@@ -3,12 +3,13 @@ module github.com/grafana/grafana-pathfinder-app
 go 1.27.3
 
 require (
-	github.com/go-jose/go-jose/v4 v4.1.9
-	github.com/grafana/authlib v0.0.0-20261108003752-80ed9e737add
+	github.com/grafana/authlib/types v0.0.0-20260930204439-665ccbf27cbe
 	github.com/grafana/grafana-app-sdk v0.63.2
 	github.com/grafana/grafana-app-sdk/logging v0.63.2
 	github.com/grafana/grafana-plugin-sdk-go v0.298.0
 	k8s.io/apimachinery v0.37.2
+	k8s.io/client-go v0.37.2
+	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098
 )
 
 require (
@@ -28,6 +29,7 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
 	github.com/getkin/kin-openapi v0.152.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
@@ -52,7 +54,7 @@ require (
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/grafana/authlib/types v0.0.0-20260930204439-665ccbf27cbe // indirect
+	github.com/grafana/authlib v0.0.0-20261108003752-80ed9e737add // indirect
 	github.com/grafana/dskit v0.0.0-20261014094829-7a896efbf053 // indirect
 	github.com/grafana/otel-profiling-go v0.7.0 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.12 // indirect
@@ -137,9 +139,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.37.2 // indirect
 	k8s.io/apiextensions-apiserver v0.37.2 // indirect
-	k8s.io/client-go v0.37.2 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
-	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
 	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab // indirect
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
