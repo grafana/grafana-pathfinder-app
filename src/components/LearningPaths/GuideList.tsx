@@ -1,12 +1,14 @@
 import React, { useId } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
+import { css, cx } from '@emotion/css';
+import type { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { cx } from '@emotion/css';
 
 import type { PathGuide } from '../../types/learning-paths.types';
 import { getGuideListStyles } from './learning-paths.styles';
 
 export interface GuideListProps {
+  fullPage?: boolean;
   guides: PathGuide[];
   isLoading?: boolean;
   className?: string;
@@ -38,9 +40,18 @@ function rowState(guide: PathGuide): 'completed' | 'up_next' | 'ahead' {
   return guide.isCurrent ? 'up_next' : 'ahead';
 }
 
-export function GuideList({ guides, isLoading = false, className, enableRowLinks = false }: GuideListProps) {
-  const styles = useStyles2(getGuideListStyles);
+export function GuideList({
+  guides,
+  isLoading = false,
+  className,
+  enableRowLinks = false,
+  fullPage = false,
+}: GuideListProps) {
+  const compactStyles = useStyles2(getGuideListStyles);
+  const fullPageStyles = useStyles2(getFullPageStyles);
+  const styles = fullPage ? { ...compactStyles, ...fullPageStyles } : compactStyles;
   const listId = useId();
+  const TextGroup = fullPage ? 'div' : 'span';
 
   return (
     <div className={cx(styles.list, className)}>
@@ -62,10 +73,11 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
               key={guide.id}
               className={cx(
                 styles.guideItem,
-                guide.isCurrent && styles.guideItemCurrent,
+                fullPage && index < guides.length - 1 && fullPageStyles.guideItemDivider,
+                !fullPage && guide.isCurrent && styles.guideItemCurrent,
                 isRowLink && styles.guideItemClickable,
-                showCurrentChrome && styles.guideItemCurrentCard,
-                guide.locked && styles.guideItemLocked
+                !fullPage && showCurrentChrome && styles.guideItemCurrentCard,
+                !fullPage && guide.locked && styles.guideItemLocked
               )}
               // Same attribute contract as the cover page's CTA button, picked
               // up by the shared click handler on contentRef's container
@@ -102,17 +114,26 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
                 )}
               >
                 {guide.completed ? (
-                  <Icon name="check" size="md" />
+                  <Icon name="check" size={fullPage ? 'lg' : 'md'} />
                 ) : guide.locked ? (
-                  <Icon name="lock" size="md" />
+                  <Icon name="lock" size={fullPage ? 'lg' : 'md'} />
                 ) : showCurrentChrome ? (
-                  <Icon name="play" size="md" />
+                  <Icon name="play" size={fullPage ? 'lg' : 'md'} />
                 ) : (
-                  <Icon name="circle" size="md" />
+                  <Icon name="circle" size={fullPage ? 'lg' : 'md'} />
                 )}
               </span>
-              <span className={styles.guideTextGroup}>
-                <span>{guide.title}</span>
+              <TextGroup
+                className={cx(
+                  styles.guideTextGroup,
+                  fullPage && !guide.description && !hasMeta && fullPageStyles.guideTextGroupTitleOnly
+                )}
+              >
+                {fullPage ? (
+                  <span className={fullPageStyles.guideTitle}>{guide.title}</span>
+                ) : (
+                  <span>{guide.title}</span>
+                )}
                 {guide.description && (
                   <span id={descriptionId} className={styles.guideDescription}>
                     {guide.description}
@@ -130,9 +151,11 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
                     {guide.locked && t('coverPage.locked', 'Locked')}
                   </span>
                 )}
-              </span>
-              {showCurrentChrome && <span className={styles.guideUpNext}>{t('coverPage.upNext', 'Up next')}</span>}
-              {isRowLink && <Icon name="angle-right" size="md" className={styles.guideChevron} />}
+              </TextGroup>
+              {showCurrentChrome && !fullPage && (
+                <span className={styles.guideUpNext}>{t('coverPage.upNext', 'Up next')}</span>
+              )}
+              {isRowLink && <Icon name="angle-right" size={fullPage ? 'lg' : 'md'} className={styles.guideChevron} />}
             </div>
           );
         })
@@ -140,3 +163,52 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
     </div>
   );
 }
+
+const getFullPageStyles = (theme: GrafanaTheme2) => ({
+  list: css({
+    display: 'flex',
+    flexDirection: 'column',
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.lg,
+    background: theme.colors.background.secondary,
+    overflow: 'hidden',
+  }),
+  guideItem: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(2),
+    border: 0,
+    borderRadius: 0,
+    background: 'transparent',
+    color: theme.colors.text.primary,
+    ...theme.typography.base,
+  }),
+  guideItemDivider: css({ borderBottom: `1px solid ${theme.colors.border.weak}` }),
+  guideTitle: css({ ...theme.typography.base, fontWeight: theme.typography.fontWeightMedium }),
+  guideTextGroup: css({ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: theme.spacing(0.25) }),
+  guideTextGroupTitleOnly: css({ alignSelf: 'center' }),
+  guideIconBadge: css({
+    width: theme.spacing(4),
+    height: theme.spacing(4),
+    borderRadius: theme.shape.radius.md,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+  }),
+  guideIconBadgeLocked: css({ background: theme.colors.background.primary, color: theme.colors.text.secondary }),
+  guideIconBadgeCompleted: css({ background: theme.colors.success.transparent, color: theme.colors.success.text }),
+  guideIconBadgeCurrent: css({ background: theme.colors.text.primary, color: theme.colors.background.primary }),
+  guideItemClickable: css({
+    cursor: 'pointer',
+    '&:hover': { backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})` },
+    '&:focus-visible': { outline: `2px solid ${theme.colors.text.primary}`, outlineOffset: -2 },
+  }),
+  guideDescription: css({
+    ...theme.typography.base,
+    color: theme.colors.text.secondary,
+    marginTop: 0,
+  }),
+});

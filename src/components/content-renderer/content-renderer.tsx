@@ -181,6 +181,7 @@ function recordCompletion(
 }
 
 interface ContentRendererProps {
+  fullPageOverview?: boolean;
   content: RawContent;
   onContentReady?: () => void;
   completion: ContentRendererCompletion;
@@ -231,6 +232,7 @@ const stripTrailingSlashes = (key: string): string => key.replace(/\/+$/, '');
 const COMPLETION_SETTLE_MS = 200;
 
 const ContentRendererInner = React.memo(function ContentRendererInner({
+  fullPageOverview = false,
   content,
   onContentReady,
   completion,
@@ -634,6 +636,12 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
         <Prerequisites prerequisites={prerequisites} />
         {hasCoverContents && journey && (
           <LearningPathTableOfContents
+            fullPage={fullPageOverview}
+            organization={(content.metadata.repository ?? packageManifest?.repository) === 'app-platform'}
+            estimatedMinutes={
+              typeof packageManifest?.estimatedMinutes === 'number' ? packageManifest.estimatedMinutes : undefined
+            }
+            category={typeof packageManifest?.category === 'string' ? packageManifest.category : undefined}
             milestones={journey.milestones}
             baseUrl={journey.baseUrl}
             pathId={pathId}

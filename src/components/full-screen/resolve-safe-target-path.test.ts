@@ -1,4 +1,9 @@
-import { resolveSafeTargetPath, extractTargetPathFromEventDetail } from './resolve-safe-target-path';
+import { PLUGIN_BASE_URL } from '../../constants';
+import {
+  resolveSafeTargetPath,
+  resolveCourseReturnPath,
+  extractTargetPathFromEventDetail,
+} from './resolve-safe-target-path';
 
 describe('resolveSafeTargetPath', () => {
   it('passes through a safe same-origin path', () => {
@@ -59,4 +64,22 @@ describe('extractTargetPathFromEventDetail', () => {
     expect(extractTargetPathFromEventDetail(undefined)).toBeUndefined();
     expect(extractTargetPathFromEventDetail('not-an-object')).toBeUndefined();
   });
+});
+
+describe('resolveCourseReturnPath', () => {
+  it('preserves the original learning catalog filters', () => {
+    const catalog = `${PLUGIN_BASE_URL}/browse?topic=metrics&view=all`;
+    expect(resolveCourseReturnPath(catalog)).toBe(catalog);
+  });
+
+  it('returns to the original Learn page', () => {
+    expect(resolveCourseReturnPath(PLUGIN_BASE_URL)).toBe(PLUGIN_BASE_URL);
+  });
+
+  it.each([null, 'https://example.com', '/dashboards', `${PLUGIN_BASE_URL}/fullscreen?doc=course`])(
+    'falls back to Learn when the entry is missing or outside learning navigation: %s',
+    (candidate) => {
+      expect(resolveCourseReturnPath(candidate)).toBe(PLUGIN_BASE_URL);
+    }
+  );
 });

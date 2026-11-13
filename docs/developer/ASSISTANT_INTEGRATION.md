@@ -4,6 +4,12 @@ This guide shows you how to make tutorial content customizable using the `<assis
 
 AI auto-heal is a separate feature that repairs failing interactive steps at runtime. See [AI auto-heal](AI_FIX.md) for its enablement, event contract, and patch flow.
 
+## Full-page course questions
+
+The full-screen course reader opens Grafana Assistant when it is available. `CourseAssistant` registers page context scoped to the full-screen route and updates it when the course, track, or lesson changes. Leaving the reader removes the registration.
+
+Context includes the course title and description, the selected track's module outline, and the current lesson JSON (up to 24,000 characters, with truncation identified). Other lesson bodies are not loaded. Opening Assistant does not submit a question. Sidebar and floating readers retain their existing presentation and do not automatically open Assistant.
+
 ## Table of contents
 
 - [Quick start](#quick-start)

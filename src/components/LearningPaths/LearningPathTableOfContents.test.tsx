@@ -1,13 +1,34 @@
 import React from 'react';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
-import { interactiveCompletionStorage, milestoneCompletionStorage } from '../../lib/user-storage';
+import {
+  interactiveCompletionStorage,
+  milestoneCompletionStorage,
+  learningProgressStorage,
+} from '../../lib/user-storage';
 import { resetMilestoneBackfillGuardForTests } from '../../docs-retrieval';
+import type { LearningProgress } from '../../types/learning-paths.types';
+import { StorageEvents } from '../../lib/event-names';
 import type { CoverPageTrack, Milestone } from '../../types/content.types';
 
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_t, p) => String(p) }),
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TextLink: ({
+    children,
+    inline: _inline,
+    variant: _variant,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { inline?: boolean; variant?: string }) => (
+    <a {...props}>{children}</a>
+  ),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
+  Badge: ({ text }: { text: React.ReactNode }) => <span>{text}</span>,
+  Button: ({ children, icon: _icon, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: string }) => (
+    <button {...props}>{children}</button>
+  ),
   TabsBar: ({ children, ...rest }: { children: React.ReactNode }) => (
     <div role="tablist" {...rest}>
       {children}
@@ -71,8 +92,19 @@ jest.mock('../../lib/user-storage', () => ({
   learningProgressStorage: { get: jest.fn(), save: jest.fn() },
 }));
 
+const emptyLearningProgress: LearningProgress = {
+  completedGuides: [],
+  earnedBadges: [],
+  streakDays: 0,
+  lastActivityDate: '',
+  pendingCelebrations: [],
+};
+
 const getBadgeForPathMock = jest.fn();
 jest.mock('../../learning-paths', () => ({
+  BADGES: jest.requireActual('../../learning-paths/badges').BADGES,
+  getPathsData: jest.requireActual('../../learning-paths/paths-data').getPathsData,
+  getCourseCompletionBadges: jest.requireActual('../../learning-paths/course-badges').getCourseCompletionBadges,
   getBadgeForPath: (...args: unknown[]) => getBadgeForPathMock(...args),
 }));
 
@@ -637,4 +669,121 @@ describe('LearningPathTableOfContents', () => {
       await Promise.resolve();
     });
   });
+});
+
+it('shows the topic above the title, groups progress with the action, and updates the heading and progress label for the selected track', () => {
+  const builderMilestones = [
+    milestones[0]!,
+    milestones[1]!,
+    { number: 3, title: 'Build', url: `${baseUrl}build/content.json`, isActive: false },
+  ];
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      title="Build dashboards"
+      category="visualization"
+      milestones={milestones}
+      baseUrl={baseUrl}
+      tracks={[{ trackId: 'builder', label: 'Builder', milestones: builderMilestones }]}
+    />
+  );
+  const hero = screen.getByTestId('learning-paths-cover-hero');
+  const eyebrow = within(hero).getByText('Dashboards');
+  const title = within(hero).getByRole('heading', { name: 'Build dashboards' });
+  expect(eyebrow).toBeInTheDocument();
+  expect(eyebrow.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(hero).not.toHaveTextContent('Learning path');
+  expect(screen.getByRole('heading', { name: '2 milestones in this path' })).toBeInTheDocument();
+  const fundamentalsProgress = screen.getByRole('progressbar', { name: /through Fundamentals/ });
+  expect(fundamentalsProgress).toHaveAttribute('aria-valuemax', '100');
+  expect(screen.getByTestId('learning-paths-toc-cta').parentElement).toContainElement(fundamentalsProgress);
+  expect(hero).not.toHaveTextContent('2 milestones');
+  fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+  expect(screen.getByRole('heading', { name: '3 milestones in this path' })).toBeInTheDocument();
+  const builderProgress = screen.getByRole('progressbar', { name: /through Builder/ });
+  expect(builderProgress).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Build' })).toHaveAttribute(
+    'data-milestone-url',
+    `${baseUrl}build/content.json`
+  );
+});
+
+it('shows available course metadata and does not reuse the default estimate for another track', () => {
+  getBadgeForPathMock.mockReturnValue({ id: 'core-badge', title: 'Core Concepts', icon: 'grafana' });
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      organization
+      estimatedMinutes={25}
+      pathId="core-grafana-concepts-lj"
+      title="Build dashboards"
+      category="visualization"
+      milestones={milestones}
+      baseUrl={baseUrl}
+      tracks={[{ trackId: 'builder', label: 'Builder', milestones }]}
+    />
+  );
+  expect(screen.getByRole('link', { name: 'Dashboards' })).toHaveAttribute(
+    'href',
+    '/a/grafana-pathfinder-app/browse?topic=dashboards'
+  );
+  expect(screen.getByText('Your organization')).toBeInTheDocument();
+  expect(screen.getByText('25 min')).toBeInTheDocument();
+  expect(screen.queryByText('Earn this badge')).not.toBeInTheDocument();
+  expect(screen.queryByText('Core Concepts')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
+  expect(screen.getByRole('tab', { name: 'Builder' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByText('25 min')).not.toBeInTheDocument();
+});
+
+it('shows icon-only learning path badges and refreshes their earned status in the shared dialog', async () => {
+  jest.mocked(learningProgressStorage.get).mockResolvedValue({ ...emptyLearningProgress, earnedBadges: [] });
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      title="Explore metrics"
+      pathId="drilldown-metrics"
+      baseUrl={baseUrl}
+      milestones={milestones}
+    />
+  );
+  expect(screen.getByText('Learning path badges')).toBeInTheDocument();
+  const badgeButton = screen.getByRole('button', { name: 'Metric Miner' });
+  expect(badgeButton).toBeInTheDocument();
+  expect(badgeButton).not.toHaveTextContent('Metric Miner');
+  expect(within(badgeButton).queryByRole('progressbar')).not.toBeInTheDocument();
+  expect(screen.queryByText('First steps')).not.toBeInTheDocument();
+  await waitFor(() => expect(learningProgressStorage.get).toHaveBeenCalled());
+  fireEvent.click(badgeButton);
+  expect(await screen.findByText('🔒 Locked')).toBeInTheDocument();
+  jest.mocked(learningProgressStorage.get).mockResolvedValue({
+    ...emptyLearningProgress,
+    earnedBadges: [{ id: 'metric-miner', earnedAt: Date.UTC(2026, 10, 11, 12) }],
+  });
+  act(() => window.dispatchEvent(new CustomEvent(StorageEvents.LearningProgressUpdated)));
+  expect(await screen.findByText('✨ Unlocked')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Metric Miner' })).not.toHaveTextContent('Metric Miner');
+});
+
+it('opens the shared badge details from a course reward and closes them with its close control', async () => {
+  jest
+    .mocked(learningProgressStorage.get)
+    .mockResolvedValue({ ...emptyLearningProgress, earnedBadges: [], completedGuides: ['set-up'] });
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      title="Explore metrics"
+      pathId="drilldown-metrics"
+      baseUrl={baseUrl}
+      milestones={milestones}
+    />
+  );
+  fireEvent.click(await screen.findByRole('button', { name: /Metric Miner/ }));
+  const details = screen.getByTestId('learning-paths-badges-modal');
+  expect(within(details).getByRole('heading', { name: 'Metric Miner' })).toBeInTheDocument();
+  expect(within(details).getByText('🔒 Locked')).toBeInTheDocument();
+  expect(within(details).getByText('Requirement')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('learning-paths-badges-modal-close'));
+  expect(screen.getByRole('button', { name: /Metric Miner/ })).toBeInTheDocument();
+  expect(screen.queryByTestId('learning-paths-badges-modal')).not.toBeInTheDocument();
 });

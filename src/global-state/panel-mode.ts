@@ -307,10 +307,11 @@ class PanelModeManager {
     this._priorPath = path;
   }
 
-  /**
-   * Consume and clear the captured prior path. Returns null if nothing
-   * was captured (e.g. cold-loaded `/fullscreen` URL with no entry route).
-   */
+  public getPriorPath(): string | null {
+    return this._priorPath;
+  }
+
+  /** Consume the entry route once; cold-loaded full-screen URLs have none. */
   public consumePriorPath(): string | null {
     const path = this._priorPath;
     this._priorPath = null;

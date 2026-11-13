@@ -8,33 +8,32 @@ export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
     width: '100%',
     height: '100%',
     minHeight: 0,
-    background: theme.colors.background.primary,
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    borderRadius: theme.shape.radius.lg,
+    isolation: 'isolate',
+    background: theme.colors.background.page,
   }),
-  // Pinned bar wrapping the header + optional subHeader so both stay
-  // visible as a single block while the user scrolls a long milestone
-  // body. In the happy path `.body` owns the scroll and this wrapper
-  // doesn't actually move; the sticky positioning is belt-and-braces
-  // for the cases where Grafana's `PageLayoutType.Custom` chain
-  // doesn't fully constrain height to the viewport and document-level
-  // scroll kicks in — without sticky, the user loses the dock-back
-  // affordance mid-journey.
+  // Keep the header outside the reader's scroll area.
   stickyTopBar: css({
     flexShrink: 0,
-    position: 'sticky',
-    top: 0,
-    zIndex: theme.zIndex.navbarFixed,
+    borderTopLeftRadius: theme.shape.radius.lg,
+    borderTopRightRadius: theme.shape.radius.lg,
+    overflow: 'clip',
+    position: 'relative',
+    zIndex: 1,
     background: theme.colors.background.primary,
   }),
-  // Compact header that mirrors the floating panel's chrome — small
-  // padding, body-small typography, icon-only actions. Avoids a "second
-  // page-header" feel stacked under Grafana's own navbar.
   header: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(0.5),
-    padding: theme.spacing(0.5, 1),
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.75, 0.75, 0.75, 1.25),
+    minHeight: theme.spacing(5),
+    boxSizing: 'border-box',
     borderBottom: `1px solid ${theme.colors.border.weak}`,
-    background: theme.colors.background.secondary,
+    background: theme.colors.background.primary,
     flexShrink: 0,
   }),
   headerTitle: css({
@@ -58,11 +57,12 @@ export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
   headerActions: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(0.25),
+    gap: theme.spacing(1),
     flexShrink: 0,
   }),
   body: css({
-    flex: 1,
+    flex: '1 1 0',
+    overscrollBehavior: 'contain',
     minHeight: 0,
     overflow: 'auto',
     display: 'flex',
