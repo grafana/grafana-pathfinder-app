@@ -1233,6 +1233,18 @@ export const JsonConditionalBlockSchema = z.object({
 export const CURRENT_SCHEMA_VERSION = '1.1.0';
 
 /**
+ * Root annotation on a guide compiled for a locale (docs/design/I18N.md §7.2).
+ * @coupling Type: GuideTranslationAnnotation
+ */
+export const GuideTranslationAnnotationSchema = z.object({
+  language: z.string().min(1),
+  canonicalLanguage: z.string().min(1),
+  canonicalTitle: z.string(),
+  staleBlockIds: z.array(z.string()),
+  fallbackBlockIds: z.array(z.string()),
+});
+
+/**
  * Root schema for JSON guide (strict - no extra fields allowed).
  * @coupling Type: JsonGuide
  */
@@ -1241,6 +1253,7 @@ export const JsonGuideSchemaStrict = z.object({
   id: z.string().min(1, 'Guide id is required'),
   title: z.string().min(1, 'Guide title is required'),
   blocks: z.array(JsonBlockSchema),
+  translation: GuideTranslationAnnotationSchema.optional(),
 });
 
 /**
@@ -1279,7 +1292,7 @@ type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_conditionalSectionC
  * `Record<string, …>` so callers can index with an unvalidated `block.type`.
  */
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
-  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks']),
+  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'translation']),
   _step: new Set([
     'id',
     'action',

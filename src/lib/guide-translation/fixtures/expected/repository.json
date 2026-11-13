@@ -1,0 +1,19 @@
+{
+  "translation-golden": {
+    "path": "translation-golden/",
+    "title": "Build your first dashboard",
+    "type": "guide",
+    "description": "Create a dashboard, add a panel and save it.",
+    "category": "dashboards",
+    "startingLocation": "/dashboards",
+    "targeting": {
+      "match": {
+        "urlPrefix": "/dashboards"
+      }
+    },
+    "testEnvironment": {
+      "tier": "cloud"
+    },
+    "translations": ["ja", "ja-JP"]
+  }
+}
