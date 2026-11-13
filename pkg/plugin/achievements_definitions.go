@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,9 +41,10 @@ type definitionsProvider interface {
 }
 
 // definitionsSource never replaces its last good copy with a failed or
-// unreadable fetch, nor with one that would stop evaluating a definition or
-// registry action the copy evaluates; such a degraded refresh counts as a
-// failure and backs off. A refresh that only adds or keeps entries replaces it.
+// unreadable fetch. Once a copy is loaded it also rejects, as a failed refresh
+// that backs off, a bundle that still carries a definition or registry action
+// the copy evaluates but cannot read, or one with no evaluable definition. An
+// entry the bundle leaves out is a deliberate removal and swaps in.
 type definitionsSource struct {
 	url           string
 	client        *http.Client
@@ -140,12 +142,20 @@ func (s *definitionsSource) refresh(done chan struct{}, etag string) {
 		return
 	}
 	if current := s.current.Load(); current != nil && snap != nil {
-		if achievementIDs, actions := lostEvaluable(current, snap); len(achievementIDs)+len(actions) > 0 {
+		achievementIDs, actions := unreadableEvaluable(current, snap)
+		reason := ""
+		switch {
+		case len(snap.Catalog.Achievements) == 0:
+			reason = "no-evaluable-definitions"
+		case len(achievementIDs)+len(actions) > 0:
+			reason = "unreadable-entries"
+		}
+		if reason != "" {
 			s.failures++
 			s.retryAt = now.Add(definitionsBackoff(s.failures))
-			s.logger.Warn(msgDefinitionsRefreshRejected,
+			s.logger.Warn(msgDefinitionsRefreshRejected, "reason", reason,
 				"definitionsVersion", current.Version, "rejectedDefinitionsVersion", snap.Version,
-				"lostAchievements", achievementIDs, "lostActions", actions, "failures", s.failures)
+				"unreadableAchievements", achievementIDs, "unreadableActions", actions, "failures", s.failures)
 			return
 		}
 	}
@@ -162,22 +172,44 @@ func (s *definitionsSource) refresh(done chan struct{}, etag string) {
 	s.current.Store(snap)
 }
 
-// lostEvaluable lists the definitions and registry actions current evaluates
-// that next does not, because next skipped them or dropped them.
-func lostEvaluable(current, next *achievements.Snapshot) (achievementIDs, actions []string) {
-	kept := map[string]bool{}
+// unreadableEvaluable lists the definitions and registry actions current
+// evaluates that next carries but skipped as unreadable. One next leaves out is
+// a removal, unless next also skipped entries it cannot name (an achievement
+// with no readable id, or skips past the listed cap): then an absent entry may
+// be one of them and is counted as unreadable.
+func unreadableEvaluable(current, next *achievements.Snapshot) (achievementIDs, actions []string) {
+	skippedDefs, skippedActions, skippedEntities := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	unnamedDefs, unnamedAll := false, false
+	for _, sk := range next.Skipped {
+		switch sk.What {
+		case "achievement":
+			if strings.HasPrefix(sk.ID, "#") {
+				unnamedDefs = true
+			}
+			skippedDefs[sk.ID] = true
+		case "action":
+			skippedActions[sk.ID] = true
+		case "entity":
+			skippedEntities[sk.ID] = true
+		case "bundle":
+			unnamedAll = true
+		}
+	}
+
+	evaluable := map[string]bool{}
 	for _, d := range next.Catalog.Achievements {
-		kept[d.ID] = true
+		evaluable[d.ID] = true
 	}
 	for _, d := range current.Catalog.Achievements {
-		if !kept[d.ID] {
+		if !evaluable[d.ID] && (skippedDefs[d.ID] || unnamedDefs || unnamedAll) {
 			achievementIDs = append(achievementIDs, d.ID)
 		}
 	}
 	for entity, e := range current.Registry.Entities {
 		for name := range e.Actions {
-			if _, ok := next.Registry.Entities[entity].Actions[name]; !ok {
-				actions = append(actions, entity+"."+name)
+			pair := entity + "." + name
+			if _, ok := next.Registry.Entities[entity].Actions[name]; !ok && (skippedActions[pair] || skippedEntities[entity] || unnamedAll) {
+				actions = append(actions, pair)
 			}
 		}
 	}

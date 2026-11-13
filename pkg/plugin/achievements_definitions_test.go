@@ -182,17 +182,50 @@ func TestDefinitionsSource_KeepsLastGoodAndRevalidates(t *testing.T) {
 	}
 }
 
-// degradedBundle skips dash-builder (a construct outside the grammar) and drops
-// the search.performed action, both of which the test bundle evaluates.
-func degradedBundle(t *testing.T) string {
+// unreadableBundle still carries dash-builder and search.performed, both of
+// which the test bundle evaluates, but in forms this build cannot read.
+func unreadableBundle(t *testing.T) string {
 	t.Helper()
 	b := strings.Replace(achievementsTestBundleJSON, `"counter":{"unit":"dashboard"`, `"streak":{"days":3},"counter":{"unit":"dashboard"`, 1)
-	b = strings.Replace(b, `,
-  "search":{"actions":{"performed":{"context":{}}}}`, "", 1)
-	if b == achievementsTestBundleJSON || strings.Contains(b, `"search"`) || !strings.Contains(b, `"streak"`) {
-		t.Fatal("degraded bundle fixture no longer matches the test bundle")
+	b = strings.Replace(b, `"performed":{"context":{}}`, `"performed":{"context":{"q":{"type":"nope"}}}`, 1)
+	if b == achievementsTestBundleJSON || !strings.Contains(b, `"streak"`) || !strings.Contains(b, `"nope"`) {
+		t.Fatal("unreadable bundle fixture no longer matches the test bundle")
 	}
 	return b
+}
+
+// absentBundle leaves out guide-routes and the search entity altogether.
+func absentBundle(t *testing.T) string {
+	t.Helper()
+	b := strings.Replace(achievementsTestBundleJSON, `,
+  "search":{"actions":{"performed":{"context":{}}}}`, "", 1)
+	from, to := strings.Index(b, `,
+  {"id":"guide-routes"`), strings.LastIndex(b, `
+]}}`)
+	if from < 0 || to < from || strings.Contains(b, `"search"`) {
+		t.Fatal("absent bundle fixture no longer matches the test bundle")
+	}
+	return b[:from] + b[to:]
+}
+
+// allUnreadableBundle carries both definitions in a form this build cannot read.
+func allUnreadableBundle(t *testing.T) string {
+	t.Helper()
+	b := strings.Replace(achievementsTestBundleJSON, `"counter":{"unit":"dashboard"`, `"streak":{"days":3},"counter":{"unit":"dashboard"`, 1)
+	b = strings.Replace(b, `"tiers":[{"id":"intro"`, `"streak":{"days":3},"tiers":[{"id":"intro"`, 1)
+	if strings.Count(b, `"streak"`) != 2 {
+		t.Fatal("all-unreadable bundle fixture no longer matches the test bundle")
+	}
+	return b
+}
+
+func emptyCatalogBundle(t *testing.T) string {
+	t.Helper()
+	at := strings.Index(achievementsTestBundleJSON, `"catalog":`)
+	if at < 0 {
+		t.Fatal("empty bundle fixture no longer matches the test bundle")
+	}
+	return achievementsTestBundleJSON[:at] + `"catalog":{"achievements":[]}}`
 }
 
 // grownBundle adds an achievement and a registry action and keeps the rest.
@@ -221,33 +254,33 @@ func warnFields(l *diagnosticLogger) map[string]interface{} {
 	return fields
 }
 
-func TestDefinitionsSource_RejectsADegradedRefresh(t *testing.T) {
+func TestDefinitionsSource_RejectsAnUnreadableRefresh(t *testing.T) {
 	cdn := newDefinitionsCDN(t)
 	source, clock := newTestDefinitionsSource(t, cdn)
 	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
 	source.logger = logger
 	first, _ := source.Snapshot(context.Background())
 
-	degraded := degradedBundle(t)
-	rejected, err := achievements.LoadBundle([]byte(degraded))
-	if err != nil || len(rejected.Skipped) == 0 {
-		t.Fatalf("the degraded bundle must load with skips: %v", err)
+	unreadable := unreadableBundle(t)
+	rejected, err := achievements.LoadBundle([]byte(unreadable))
+	if err != nil || len(rejected.Skipped) != 2 {
+		t.Fatalf("the unreadable bundle must load with two skips: %v %+v", err, rejected)
 	}
-	cdn.answer(http.StatusOK, degraded, `W/"degraded"`)
+	cdn.answer(http.StatusOK, unreadable, `W/"unreadable"`)
 	clock.advance(definitionsRevalidateAfter)
 	source.Snapshot(context.Background())
 	settle(t, source)
 
 	if source.current.Load() != first {
-		t.Fatal("a refresh that loses evaluable entries replaced the last good copy")
+		t.Fatal("a refresh with unreadable evaluable entries replaced the last good copy")
 	}
 	if !logger.warnedWith(msgDefinitionsRefreshRejected) {
 		t.Fatal("no rejection warning")
 	}
 	fields := warnFields(logger)
-	if fields["definitionsVersion"] != first.Version || fields["rejectedDefinitionsVersion"] != rejected.Version ||
-		!slices.Equal(fields["lostAchievements"].([]string), []string{"dash-builder"}) ||
-		!slices.Equal(fields["lostActions"].([]string), []string{"search.performed"}) {
+	if fields["reason"] != "unreadable-entries" || fields["definitionsVersion"] != first.Version || fields["rejectedDefinitionsVersion"] != rejected.Version ||
+		!slices.Equal(fields["unreadableAchievements"].([]string), []string{"dash-builder"}) ||
+		!slices.Equal(fields["unreadableActions"].([]string), []string{"search.performed"}) {
 		t.Fatalf("rejection fields = %#v", fields)
 	}
 	source.mu.Lock()
@@ -260,14 +293,11 @@ func TestDefinitionsSource_RejectsADegradedRefresh(t *testing.T) {
 	clock.advance(definitionsBackoffMin)
 	source.Snapshot(context.Background())
 	settle(t, source)
-	if source.current.Load() != first {
-		t.Fatal("the degraded bundle replaced the copy on retry")
-	}
 	source.mu.Lock()
 	backoff = source.retryAt.Sub(clock.Now())
 	source.mu.Unlock()
-	if backoff != 2*definitionsBackoffMin {
-		t.Fatalf("second rejection backoff = %v, want %v", backoff, 2*definitionsBackoffMin)
+	if source.current.Load() != first || backoff != 2*definitionsBackoffMin {
+		t.Fatalf("second rejection: replaced %v, backoff %v, want kept and %v", source.current.Load() != first, backoff, 2*definitionsBackoffMin)
 	}
 
 	mem := newMemAchievements()
@@ -285,8 +315,7 @@ func TestDefinitionsSource_RejectsADegradedRefresh(t *testing.T) {
 		t.Fatalf("search.performed on the kept copy: status %d body %s", rr.Code, rr.Body.String())
 	}
 
-	grown := grownBundle(t)
-	cdn.answer(http.StatusOK, grown, `W/"grown"`)
+	cdn.answer(http.StatusOK, grownBundle(t), `W/"grown"`)
 	clock.advance(2 * definitionsBackoffMin)
 	source.Snapshot(context.Background())
 	settle(t, source)
@@ -299,6 +328,55 @@ func TestDefinitionsSource_RejectsADegradedRefresh(t *testing.T) {
 	source.mu.Unlock()
 	if failures != 0 || !retryAt.IsZero() {
 		t.Fatalf("recovery left failures %d, retryAt %v", failures, retryAt)
+	}
+}
+
+func TestDefinitionsSource_RejectsABundleWithNoEvaluableDefinition(t *testing.T) {
+	for name, bundle := range map[string]func(*testing.T) string{
+		"empty catalog":  emptyCatalogBundle,
+		"all unreadable": allUnreadableBundle,
+	} {
+		t.Run(name, func(t *testing.T) {
+			cdn := newDefinitionsCDN(t)
+			source, clock := newTestDefinitionsSource(t, cdn)
+			logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+			source.logger = logger
+			first, _ := source.Snapshot(context.Background())
+
+			cdn.answer(http.StatusOK, bundle(t), `W/"`+name+`"`)
+			clock.advance(definitionsRevalidateAfter)
+			source.Snapshot(context.Background())
+			settle(t, source)
+			if source.current.Load() != first {
+				t.Fatal("a bundle with no evaluable definition replaced the copy")
+			}
+			if fields := warnFields(logger); fields["reason"] != "no-evaluable-definitions" {
+				t.Fatalf("rejection fields = %#v", fields)
+			}
+		})
+	}
+}
+
+func TestDefinitionsSource_AcceptsADeliberateRemoval(t *testing.T) {
+	cdn := newDefinitionsCDN(t)
+	source, clock := newTestDefinitionsSource(t, cdn)
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	source.logger = logger
+	first, _ := source.Snapshot(context.Background())
+
+	cdn.answer(http.StatusOK, absentBundle(t), `W/"absent"`)
+	clock.advance(definitionsRevalidateAfter)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	next := source.current.Load()
+	if next == first || logger.warnedWith(msgDefinitionsRefreshRejected) {
+		t.Fatal("a bundle that leaves entries out was rejected")
+	}
+	if len(next.Catalog.Achievements) != 1 || next.Catalog.Achievements[0].ID != "dash-builder" {
+		t.Fatalf("catalog = %+v", next.Catalog.Achievements)
+	}
+	if _, ok := next.Registry.Entities["search"]; ok {
+		t.Fatal("the removed search entity is still registered")
 	}
 }
 
@@ -322,9 +400,9 @@ func TestDefinitionsSource_AcceptsARefreshThatOnlyAddsOrKeeps(t *testing.T) {
 	}
 }
 
-func TestDefinitionsSource_FirstLoadTakesADegradedBundle(t *testing.T) {
+func TestDefinitionsSource_FirstLoadTakesABundleWithSkips(t *testing.T) {
 	cdn := newDefinitionsCDN(t)
-	cdn.answer(http.StatusOK, degradedBundle(t), `W/"degraded"`)
+	cdn.answer(http.StatusOK, unreadableBundle(t), `W/"unreadable"`)
 	source, _ := newTestDefinitionsSource(t, cdn)
 	snap, _ := source.Snapshot(context.Background())
 	if snap == nil || len(snap.Skipped) == 0 {
@@ -332,21 +410,34 @@ func TestDefinitionsSource_FirstLoadTakesADegradedBundle(t *testing.T) {
 	}
 }
 
-func TestLostEvaluable(t *testing.T) {
+func TestUnreadableEvaluable(t *testing.T) {
 	good := loadAchievementsTestBundle(t, achievementsTestBundleJSON)
-	degraded, err := achievements.LoadBundle([]byte(degradedBundle(t)))
-	if err != nil {
-		t.Fatal(err)
+	load := func(bundle string) *achievements.Snapshot {
+		t.Helper()
+		snap, err := achievements.LoadBundle([]byte(bundle))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap
 	}
-	ids, actions := lostEvaluable(good, degraded)
+	ids, actions := unreadableEvaluable(good, load(unreadableBundle(t)))
 	if !slices.Equal(ids, []string{"dash-builder"}) || !slices.Equal(actions, []string{"search.performed"}) {
-		t.Fatalf("lost = %v, %v", ids, actions)
+		t.Fatalf("unreadable = %v, %v", ids, actions)
 	}
-	if ids, actions := lostEvaluable(degraded, good); len(ids)+len(actions) != 0 {
-		t.Fatalf("gaining entries lost %v, %v", ids, actions)
+	if ids, actions := unreadableEvaluable(good, load(absentBundle(t))); len(ids)+len(actions) != 0 {
+		t.Fatalf("a removal counted as unreadable: %v, %v", ids, actions)
 	}
-	if ids, actions := lostEvaluable(good, good); len(ids)+len(actions) != 0 {
-		t.Fatalf("an identical copy lost %v, %v", ids, actions)
+	if ids, actions := unreadableEvaluable(load(unreadableBundle(t)), good); len(ids)+len(actions) != 0 {
+		t.Fatalf("gaining entries counted as unreadable: %v, %v", ids, actions)
+	}
+
+	noID := strings.Replace(absentBundle(t), `{"id":"dash-builder",`, `{"id":7,`, 1)
+	if ids, _ := unreadableEvaluable(good, load(noID)); !slices.Equal(ids, []string{"dash-builder", "guide-routes"}) {
+		t.Fatalf("with an achievement skipped by no readable id, absent definitions must count as unreadable: %v", ids)
+	}
+	entity := strings.Replace(achievementsTestBundleJSON, `"search":{"actions":{"performed":{"context":{}}}}`, `"search":{"actions":7}`, 1)
+	if _, actions := unreadableEvaluable(good, load(entity)); !slices.Equal(actions, []string{"search.performed"}) {
+		t.Fatalf("an unreadable entity must count its evaluable actions: %v", actions)
 	}
 }
 
