@@ -171,6 +171,9 @@ function walk(dir, found = []) {
 const resolver = new ESLint({ cwd: process.cwd() });
 const exempted = [];
 for (const file of walk(path.join(process.cwd(), 'src'))) {
+  if (await resolver.isPathIgnored(file)) {
+    continue;
+  }
   const config = await resolver.calculateConfigForFile(file);
   const entry = config.rules?.[RULE];
   const severity = Array.isArray(entry) ? entry[0] : entry;

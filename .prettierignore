@@ -7,6 +7,8 @@ node_modules/
 package-lock.json
 
 # Generated files
+src/generated/
+src/app-sdk-manifest.json
 *.min.js
 *.min.css
 

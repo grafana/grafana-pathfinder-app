@@ -91,6 +91,7 @@ export default defineConfig([
       '**/yarn-error.log*',
       '**/.pnpm-debug.log*',
       '**/node_modules/',
+      'src/generated/**',
       '.yarn/cache',
       '.yarn/unplugged',
       '.yarn/build-state.yml',
