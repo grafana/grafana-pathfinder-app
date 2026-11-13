@@ -93,19 +93,7 @@ func completionReadHandler(store *resourceaccess.CompletionStore, capabilityOnly
 			status := sdkErrorStatus(err)
 			return status >= 400 && status != 401 && status != 403
 		}, func(error) string { return "upstream-error" })
-		var diagnostic *services.ProxyDiagnostic
-		if err != nil {
-			diagnostic = &services.ProxyDiagnostic{Stage: "app-platform", Resource: "completionrecords", Operation: "list", Outcome: "error", Reason: "unexpected-error", UpstreamStatus: sdkErrorStatus(err)}
-			if diagnostic.UpstreamStatus != 0 {
-				diagnostic.Reason = "http-error"
-			}
-			if diagnostic.UpstreamStatus == 401 {
-				diagnostic.Reason = "authentication-failed"
-			}
-			if diagnostic.UpstreamStatus == 403 {
-				diagnostic.Reason = "authorization-denied"
-			}
-		}
+		diagnostic := upstreamDiagnostic(err, "completionrecords", "list")
 		if index == nil {
 			status := sdkErrorStatus(err)
 			if status >= 400 && status < 500 && status != 408 && status != 429 {
