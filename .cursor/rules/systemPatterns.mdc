@@ -210,9 +210,11 @@ contract every `Store` must pass, with an in-memory implementation.
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
 
-`package_recommendations.go` is the exception and must not be assimilated into that shape: it fetches
-a public CDN index anonymously behind a host allowlist, with no namespace and one process-wide
-6-hour cache. Because that cache is shared across users, per-user data must never be routed into it.
+`package_recommendations.go` and `achievements_definitions.go` are the exceptions and must not be
+assimilated into that shape: each fetches a public CDN file anonymously behind a host allowlist, with no
+namespace and one process-wide cache (the package index for 6 hours, the achievement definitions as a
+last good copy revalidated every 10 minutes). Because those caches are shared across users, per-user data
+must never be routed into them.
 
 **File map:**
 
@@ -231,6 +233,8 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | `plugin/assignments_client.go`      | Per-kind wrapper for the `Assignment` resource: LIST plus the `status` PUT. |
 | `plugin/assignment_paths.go`        | Path-guide sources for an assignment target: bundled, custom and online. |
 | `plugin/assignment_satisfaction.go` | Per-request satisfaction evaluation, plus background and on-read `status.satisfied` writes. |
+| `plugin/achievements.go`            | Achievements routes under `/api/v1/achievements/` (version in `achievementsAPIVersion`): `POST events` and `GET my`, with the people-only principal gate and a per-user limiter on events. Unavailable until a store adapter sets `App.achievementsBackendFor`. |
+| `plugin/achievements_definitions.go` | Process-wide source for the published definitions (`achievements.DefinitionsPath` on the interactive-learning CDN): host allowlist, no redirects, conditional GET, single fetch, last good copy in memory, backoff. A refresh that still carries a definition or registry action the copy evaluates but cannot read it, or that has no evaluable definition, is rejected like a failed fetch (warning `achievements definitions refresh rejected`); an entry the bundle leaves out is a deliberate removal and the bundle replaces the copy. No copy yet answers `503 definitions-unavailable`; also serves `GET definitions`, people only, the same answer for every person. |
 | `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
 | `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |
 | `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
@@ -243,7 +247,8 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 
 `/package-recommendations`, `/completion-records` (POST create), `/completion-records/my`,
 `/completion-records/capability`, `/assignments/my`, `/learning-insights` (GET, current-org Admin),
-`/custom-guide-repository`, `/health`.
+`/custom-guide-repository`, `/api/v1/achievements/events` (POST), `/api/v1/achievements/my`,
+`/api/v1/achievements/definitions`, `/health`.
 
 **Security boundaries:**
 
