@@ -29,6 +29,7 @@ import {
   getTotalMilestones,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
+  resolveSurfaceGuideIdentity,
 } from './learning-journey-helpers';
 import {
   fetchCustomGuideRepository,
@@ -421,6 +422,160 @@ describe('fetchPackageContent error handling', () => {
     global.fetch = originalFetch;
   });
 
+  it.each(['blocked', 'hung'])('opens the bundled copy when a recommendation CDN is %s', async (mode) => {
+    jest.useFakeTimers();
+    global.fetch =
+      mode === 'hung'
+        ? jest.fn(() => new Promise(() => {}))
+        : jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    try {
+      const pending = fetchPackageContent(
+        'https://interactive-learning.grafana.net/packages/first-dashboard/content.json',
+        { id: 'first-dashboard', type: 'guide', repository: 'interactive-tutorials' },
+        undefined,
+        'interactive-tutorials'
+      );
+      await jest.advanceTimersByTimeAsync(1_500);
+      const result = await pending;
+      expect(result.content).not.toBeNull();
+      expect(result.content?.url).toBe('bundled:first-dashboard');
+      expect(result.content?.metadata.repository).toBe('bundled');
+      expect(JSON.parse(result.content!.content).id).toBe('first-dashboard');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['blocked', 'welcome-to-grafana'],
+    ['hung', 'welcome-to-grafana'],
+    ['blocked', undefined],
+    ['hung', undefined],
+  ])('preserves path navigation when the CDN is %s and the explicit member is %s', async (mode, explicitGuideId) => {
+    jest.useFakeTimers();
+    global.fetch =
+      mode === 'hung'
+        ? jest.fn(() => new Promise(() => {}))
+        : jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const manifest = {
+      id: 'getting-started',
+      type: 'path',
+      milestones: ['first-dashboard', 'welcome-to-grafana', 'prometheus-grafana-101'],
+    };
+    const baseUrl = 'https://interactive-learning.grafana.net/packages/getting-started/content.json';
+    const milestones = manifest.milestones.map((id, index) => ({
+      id,
+      number: index + 1,
+      title: id,
+      url: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+      isActive: false,
+      packageManifest: { id, type: 'guide' },
+    }));
+    setPackageResolver(
+      makeResolver(
+        makeSuccessResolution({
+          id: manifest.id,
+          contentUrl: baseUrl,
+          repository: 'interactive-tutorials',
+        })
+      )
+    );
+
+    try {
+      const pending = fetchPackageContent(
+        milestones[1]!.url,
+        manifest,
+        milestones,
+        'interactive-tutorials',
+        undefined,
+        explicitGuideId,
+        baseUrl
+      );
+      await jest.advanceTimersByTimeAsync(1_500);
+      const { content } = await pending;
+
+      expect(content).not.toBeNull();
+      expect(content!.url).toBe('https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json');
+      expect(JSON.parse(content!.content).id).toBe('welcome-to-grafana');
+      expect(content!.type).toBe('learning-journey');
+      expect(content!.metadata).toMatchObject({
+        repository: 'interactive-tutorials',
+        packageManifest: { id: 'welcome-to-grafana', type: 'guide' },
+        journeyManifest: manifest,
+        learningJourney: { currentMilestone: 2, totalMilestones: 3, milestones, baseUrl },
+      });
+      expect(isJourneyCoverPage(content!)).toBe(false);
+      expect(getPreviousMilestoneUrl(content!)).toBe(milestones[0]!.url);
+      expect(getNextMilestoneUrl(content!)).toBe(milestones[2]!.url);
+      expect(
+        resolveSurfaceGuideIdentity({
+          contentUrl: content!.url,
+          currentUrl: content!.url,
+          metadata: content!.metadata,
+        })
+      ).toBeNull();
+    } finally {
+      jest.useRealTimers();
+      setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+    }
+  });
+
+  it('preserves a track member and its known path base when the CDN and path resolver fail', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const manifest = {
+      id: 'getting-started',
+      type: 'path',
+      milestones: ['first-dashboard'],
+      tracks: [{ trackId: 'extra', label: 'Extra', guides: ['welcome-to-grafana', 'prometheus-grafana-101'] }],
+    };
+    const baseUrl = 'https://interactive-learning.grafana.net/packages/getting-started/content.json';
+    const milestones = [
+      { id: 'first-dashboard', number: 1, title: 'First dashboard', url: 'bundled:first-dashboard', isActive: false },
+    ];
+    setPackageResolver(
+      makeResolver({ ok: false, id: 'unavailable', error: { code: 'not-found', message: 'offline' } })
+    );
+    try {
+      const { content } = await fetchPackageContent(
+        'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json',
+        manifest,
+        milestones,
+        'interactive-tutorials',
+        undefined,
+        'welcome-to-grafana',
+        baseUrl
+      );
+
+      expect(content).not.toBeNull();
+      expect(content!.url).toBe('https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json');
+      expect(JSON.parse(content!.content).id).toBe('welcome-to-grafana');
+      expect(content!.metadata).toMatchObject({
+        repository: 'interactive-tutorials',
+        packageManifest: { id: 'welcome-to-grafana', type: 'guide' },
+        journeyManifest: manifest,
+        trackMemberBaseUrl: baseUrl,
+      });
+      expect(content!.metadata.learningJourney).toBeUndefined();
+      const activeTrackMilestones = manifest.tracks[0]!.guides.map((id, index) => ({
+        id,
+        number: index + 1,
+        title: id,
+        url: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+        isActive: false,
+      }));
+      expect(getNextMilestoneUrl(content!, 'extra', activeTrackMilestones)).toBe(activeTrackMilestones[1]!.url);
+      expect(
+        resolveSurfaceGuideIdentity({
+          contentUrl: content!.url,
+          currentUrl: content!.url,
+          metadata: content!.metadata,
+        })
+      ).toBeNull();
+    } finally {
+      setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+    }
+  });
+
   it('returns an error result when CDN fetch rejects with a network error', async () => {
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
@@ -468,7 +623,7 @@ describe('fetchPackageById with resolved content', () => {
 
     const result = await fetchPackageById('first-dashboard', manifest);
 
-    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false, verifyPublished: true });
+    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: true, verifyPublished: true });
     if (result.content) {
       expect(result.content.metadata.packageManifest).toMatchObject(manifest);
       expect(result.content.type).toBe('interactive');
@@ -895,6 +1050,71 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(journey.tracks![0]!.milestones[0]!.title).toBe('Milestone: builder-1');
   });
 
+  it("keeps a PR-tester load, its catalog-resolved tracks, and its base URL under the load's marker", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `https://cdn.example/packages/${id}/content.json`,
+          manifestUrl: `https://cdn.example/packages/${id}/manifest.json`,
+          repository: 'interactive-tutorials',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: id === manifest.id ? manifest : { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+    const manifest = {
+      id: 'first-dashboard',
+      type: 'path',
+      milestones: ['step-1'],
+      tracks: [{ trackId: 'builder', label: 'Builder', guides: ['builder-1'] }],
+    };
+    const coverUrl = 'https://cdn.example/packages/first-dashboard/content.json#pf-pr-abc';
+    const preFetched = {
+      content: {
+        content: JSON.stringify({ id: 'first-dashboard', title: 'Cover', blocks: [] }),
+        metadata: { title: 'Cover' },
+        type: 'interactive',
+        url: coverUrl,
+        lastFetched: new Date().toISOString(),
+      },
+    } as unknown as Awaited<ReturnType<typeof fetchContent>>;
+
+    const result = await fetchPackageContent(coverUrl, manifest, undefined, undefined, preFetched);
+
+    const journey = result.content!.metadata.learningJourney!;
+    expect(journey.milestones.map((m) => m.url)).toEqual([
+      'https://cdn.example/packages/step-1/content.json#pf-pr-abc',
+    ]);
+    expect(journey.tracks![0]!.milestones.map((m) => m.url)).toEqual([
+      'https://cdn.example/packages/builder-1/content.json#pf-pr-abc',
+    ]);
+  });
+
+  it('emits an authoritative empty track list when all previously declared tracks were removed', async () => {
+    const owner = { id: 'first-dashboard', type: 'path', milestones: ['step-1'], tracks: [] };
+    setPackageResolver({
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          manifest: id === owner.id ? owner : { id, type: 'guide' },
+        })
+      ),
+    });
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      ...owner,
+      tracks: [{ trackId: 'removed', label: 'Removed', guides: ['old-member'] }],
+    });
+    expect(result.content?.metadata.learningJourney?.currentMilestone).toBe(0);
+    expect(result.content?.metadata.learningJourney?.tracks).toEqual([]);
+  });
+
   it('reads tracks from the package manifest when the caller manifest is a slim recommender projection', async () => {
     const packageManifest = {
       id: 'first-dashboard',
@@ -1065,7 +1285,7 @@ describe('fetchPackageContent path-type enrichment', () => {
 
   // Classification is a direct id lookup against `milestones`/`tracks`,
   // not a URL comparison: `explicitGuideId` is the manifest guide id the
-  // click target already carried (GuideList's current row, the cover
+  // click target already carried (a GuideList row, the cover
   // page's CTA). This single test exercises all three classifications
   // against the SAME manifest: a real cover-page load (no explicitGuideId
   // — the load behind no click, e.g. the initial open), a track-exclusive
@@ -2053,5 +2273,25 @@ describe('resolvePackageMilestones — website URL derivation', () => {
     const result = await resolvePackageMilestones(['any-id']);
 
     expect(result[0]).not.toHaveProperty('websiteUrl');
+  });
+});
+
+it('renders already validated tutorial content without fetching it a second time', async () => {
+  const content = { id: 'first-dashboard', title: 'Dashboard tutorial', blocks: [] };
+  const resolver = makeResolver(
+    makeSuccessResolution({
+      id: content.id,
+      repository: 'bundled',
+      contentUrl: 'bundled:first-dashboard/content.json',
+      content,
+      manifest: { id: content.id, type: 'guide', description: 'Create a dashboard' },
+    })
+  );
+  setPackageResolver(resolver);
+  const result = await fetchPackageById(content.id, undefined, 'interactive-tutorials');
+  expect(resolver.resolve).toHaveBeenCalledWith(content.id, { loadContent: true, verifyPublished: true });
+  expect(result.content).toMatchObject({
+    content: JSON.stringify(content),
+    metadata: { repository: 'bundled' },
   });
 });

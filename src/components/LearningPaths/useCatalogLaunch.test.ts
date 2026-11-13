@@ -18,6 +18,14 @@ jest.mock('../../lib/analytics', () => ({
   AnalyticsContentType: { InteractiveGuide: 'interactive-guide', LearningJourney: 'learning-journey' },
 }));
 const mockResolve = jest.fn();
+const mockResolveNavLinks = jest.fn();
+let mockGuideMetadata: Record<string, { title: string; url?: string }> = {};
+jest.mock('../../docs-retrieval', () => ({
+  resolvePackageNavLinks: (...args: unknown[]) => mockResolveNavLinks(...args),
+}));
+jest.mock('../../learning-paths', () => ({
+  getPathsData: () => ({ guideMetadata: mockGuideMetadata }),
+}));
 jest.mock('../../package-engine', () => ({
   AppPlatformPackageResolver: jest.fn().mockImplementation(() => ({ resolve: mockResolve })),
 }));
@@ -42,6 +50,8 @@ function deferred() {
 }
 beforeEach(() => {
   jest.clearAllMocks();
+  mockGuideMetadata = {};
+  mockResolveNavLinks.mockResolvedValue([]);
   prepareMock.mockResolvedValue({ ok: true, launch });
 });
 
@@ -188,4 +198,134 @@ it('hides old scope errors and ignores late failures after identity changes', as
   });
   expect(result.current.launchError).toBeNull();
   expect(result.current.launchingKey).toBeNull();
+});
+
+it('opens page launches immediately and lets the reader load the content', async () => {
+  prepareMock.mockReturnValue(new Promise(() => {}));
+  const { result } = renderHook(() => useCatalogLaunch([entry], 'org:1', progress, { loadInSidebar: true }));
+  await act(async () => {
+    await result.current.launch(entry);
+  });
+  expect(openGuideInSidebar).toHaveBeenCalledWith({ ...launch, packageInfo: undefined });
+  expect(prepareMock).not.toHaveBeenCalled();
+});
+
+it('still checks private package availability before an immediate page launch', async () => {
+  mockResolve.mockResolvedValue({ ok: false });
+  const privateEntry = { ...entry, source: 'organization' as const, url: 'backend-guide:guide' };
+  const { result } = renderHook(() => useCatalogLaunch([privateEntry], 'org:1', progress, { loadInSidebar: true }));
+  await act(async () => {
+    await result.current.launch(privateEntry);
+  });
+  expect(mockResolve).toHaveBeenCalledWith('guide', { loadContent: 'metadata-only' });
+  expect(openGuideInSidebar).not.toHaveBeenCalled();
+  expect(prepareMock).not.toHaveBeenCalled();
+});
+
+it('opens a missing-catalog organization path on its own cover without a public member fallback', async () => {
+  const manifest = { id: 'private-path', type: 'path', milestones: ['guide'] };
+  const path: CatalogPackage = {
+    key: 'assigned:organization:private-path',
+    id: 'private-path',
+    title: 'Private path',
+    format: 'path',
+    source: 'organization',
+    url: '',
+    memberIds: ['guide'],
+    curatedPath: {
+      id: 'private-path',
+      title: 'Private path',
+      description: '',
+      guides: ['guide'],
+      badgeId: '',
+      manifest,
+    },
+    packageInfo: { packageId: 'private-path', repository: 'app-platform', trackId: 'builder' },
+  };
+  mockResolve.mockResolvedValue({ ok: true, manifest });
+  const { result } = renderHook(() => useCatalogLaunch([path, entry], 'org:1', progress, { loadInSidebar: true }));
+
+  await act(async () => result.current.launch(path));
+
+  expect(openGuideInSidebar).toHaveBeenCalledWith({
+    url: 'backend-guide:private-path',
+    title: 'Private path',
+    source: 'package_browser',
+    packageInfo: {
+      packageId: 'private-path',
+      repository: 'app-platform',
+      packageManifest: manifest,
+      trackId: 'builder',
+    },
+  });
+  expect(mockResolveNavLinks).not.toHaveBeenCalled();
+  expect(result.current.launchError).toBeNull();
+});
+
+it('resolves a public manifest path to its cover when it is missing from the catalog', async () => {
+  const manifest = { id: 'public-path', type: 'path', milestones: ['guide'] };
+  const path: CatalogPackage = {
+    ...entry,
+    key: 'assigned:grafana:public-path',
+    id: 'public-path',
+    title: 'Public path',
+    format: 'path',
+    url: '',
+    curatedPath: { id: 'public-path', title: 'Public path', description: '', guides: ['guide'], badgeId: '', manifest },
+  };
+  const url = 'https://grafana.com/docs/learning-paths/public-path/';
+  mockResolveNavLinks.mockResolvedValue([
+    { packageId: path.id, title: path.title, contentUrl: url, manifest, repository: 'online-cdn' },
+  ]);
+  const { result } = renderHook(() => useCatalogLaunch([path, entry], 'org:1', progress, { loadInSidebar: true }));
+
+  await act(async () => result.current.launch(path));
+
+  expect(openGuideInSidebar).toHaveBeenCalledWith({
+    url,
+    title: path.title,
+    source: 'package_browser',
+    packageInfo: { packageId: path.id, packageManifest: manifest, repository: 'online-cdn' },
+  });
+  expect(mockResolve).not.toHaveBeenCalled();
+  mockResolveNavLinks.mockResolvedValue([
+    {
+      packageId: path.id,
+      title: 'Same-ID organization path',
+      contentUrl: 'backend-guide:public-path',
+      repository: 'app-platform',
+    },
+  ]);
+  jest.mocked(openGuideInSidebar).mockClear();
+  await act(async () => result.current.launch(path));
+  expect(openGuideInSidebar).not.toHaveBeenCalled();
+  expect(result.current.launchError?.key).toBe(path.key);
+});
+
+it('opens a known bundled guide missing from the catalog and rejects an unknown member', async () => {
+  const path: CatalogPackage = {
+    ...entry,
+    key: 'assigned:grafana:bundled-path',
+    id: 'bundled-path',
+    format: 'path',
+    url: '',
+    memberIds: ['bundled-next'],
+    curatedPath: { id: 'bundled-path', title: 'Bundled path', description: '', guides: ['bundled-next'], badgeId: '' },
+  };
+  mockGuideMetadata = { 'bundled-next': { title: 'Next bundled guide' } };
+  const { result } = renderHook(() => useCatalogLaunch([path], 'org:1', progress, { loadInSidebar: true }));
+
+  await act(async () => result.current.launch(path));
+
+  expect(openGuideInSidebar).toHaveBeenCalledWith({
+    url: 'bundled:bundled-next',
+    title: 'Next bundled guide',
+    source: 'package_browser',
+    packageInfo: undefined,
+  });
+  mockGuideMetadata = {};
+  jest.mocked(openGuideInSidebar).mockClear();
+  await act(async () => result.current.launch(path));
+  expect(openGuideInSidebar).not.toHaveBeenCalled();
+  expect(result.current.launchError?.key).toBe(path.key);
 });

@@ -1,34 +1,5 @@
-/**
- * The frozen block index for the currently-loaded guide.
- *
- * `computeGuideBlockIndex` runs once per content load, over the
- * PRE-inlining tree, and is frozen for the life of that content key —
- * later renders, snippet overlays, and re-parses never recompute it. Both
- * the denominator (`totalBlockCount`) and the numerator's positions
- * (`positionsById` / `positionsByStepId`) come from this one traversal, so
- * they can never disagree with each other or drift across a render.
- *
- * Why frozen: `content-renderer.tsx` parses the pre-inlining tree
- * synchronously for first paint, then swaps in a post-inlining overlay
- * asynchronously once the snippet CDN answers, so a live count would give a
- * different answer before and after the overlay lands, milliseconds apart, in
- * one session — progress is monotonic, so an earlier measurement can never be
- * corrected downward. Freezing the index at first paint removes that.
- *
- * Freezing does NOT make two different trees equivalent, and it never did:
- * `prepare-guide-launch.ts` hands the renderer an already-expanded tree, so
- * for a while the same guide could freeze a bigger total on that path than on
- * a direct open, for the life of the content key. That is closed upstream of
- * this store — an expanded payload carries the pre-inlining tree it was
- * expanded from (`lib/guide-counting-source.ts`) and the seam counts that —
- * not by anything here.
- *
- * Lives in `global-state/` (Tier 1) so the completion store (also Tier 1)
- * can read it without importing into a higher tier. `docs-retrieval` and
- * `snippet-engine` are Tier 2, so the tree is always pushed down by a
- * Tier 4 caller (`content-renderer.tsx`'s content-load seam) — never
- * pulled up.
- */
+import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
+// Freeze pre-inlining positions together with their denominator; migrated tutorials may load a new revision.
 
 import type { ChoiceProgressModel } from '../lib/guide-stats/choice-progress';
 import { evaluateChoiceConditions } from '../lib/choice-response';
@@ -39,6 +10,7 @@ export type ActiveGuideIndexDenominatorSource = 'live-pre-inlining' | 'live-post
 
 export interface ActiveGuideIndex {
   contentKey: string;
+  contentRevision?: string;
   index: GuideBlockIndex;
   denominatorSource: ActiveGuideIndexDenominatorSource;
   choiceModel?: ChoiceProgressModel;
@@ -55,6 +27,7 @@ export function setGuideSectionVisibility(
   sectionId: string,
   visible: boolean | undefined
 ): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   let sections = sectionVisibility.get(contentKey);
   if (!sections) {
     sections = new Map();
@@ -68,6 +41,7 @@ export function setGuideSectionVisibility(
 }
 
 export function forgetGuideSectionVisibility(contentKey: string, sectionId: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   const sections = sectionVisibility.get(contentKey);
   sections?.delete(sectionId);
   if (sections?.size === 0) {
@@ -76,6 +50,7 @@ export function forgetGuideSectionVisibility(contentKey: string, sectionId: stri
 }
 
 export function getHiddenGuideSections(contentKey: string): ReadonlySet<string> {
+  contentKey = bundledTutorialContentKey(contentKey);
   const model = activeIndexes.get(contentKey)?.choiceModel;
   return new Set(
     model?.positions
@@ -86,6 +61,7 @@ export function getHiddenGuideSections(contentKey: string): ReadonlySet<string> 
 
 /** Unknown responses or environment gates cannot exclude unfinished content. */
 export function isGuideChoiceProgressReady(contentKey: string): boolean {
+  contentKey = bundledTutorialContentKey(contentKey);
   const active = activeIndexes.get(contentKey);
   if (!active?.choiceModel) {
     return true;
@@ -108,6 +84,7 @@ export function setGuideChoiceResponses(
   contentKey: string,
   responses: Readonly<Record<string, unknown>> | undefined
 ): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   const active = activeIndexes.get(contentKey);
   if (active) {
     active.responses = responses;
@@ -164,14 +141,11 @@ export function getGuideIndexPublicationRevision(): number {
   return publicationRevision;
 }
 
-/**
- * Publish the frozen index for a content key. Idempotent: a later call for
- * a content key that already has one is ignored rather than overwriting —
- * the index is frozen for the life of that key, not just at first publish.
- * Notifies publication subscribers when a NEW index is actually inserted.
- */
+// Shared tutorial keys freeze each authored revision; switching copies can replace the revision.
 export function publishGuideIndex(entry: ActiveGuideIndex): void {
-  if (activeIndexes.has(entry.contentKey)) {
+  entry = { ...entry, contentKey: bundledTutorialContentKey(entry.contentKey) };
+  const previous = activeIndexes.get(entry.contentKey);
+  if (previous && (!entry.contentRevision || previous.contentRevision === entry.contentRevision)) {
     return;
   }
   activeIndexes.set(entry.contentKey, entry);
@@ -179,11 +153,13 @@ export function publishGuideIndex(entry: ActiveGuideIndex): void {
 }
 
 export function getGuideIndex(contentKey: string): ActiveGuideIndex | undefined {
+  contentKey = bundledTutorialContentKey(contentKey);
   return activeIndexes.get(contentKey);
 }
 
 /** Paired with `evictContentCache` — a reset must let the next load recompute a fresh index. */
 export function evictGuideIndex(contentKey: string): void {
+  contentKey = bundledTutorialContentKey(contentKey);
   if (activeIndexes.delete(contentKey)) {
     notifyEvicted();
   }

@@ -162,6 +162,11 @@ async function performFetch(): Promise<PackageRecommendationsResponse | null> {
   }
 }
 
+/** Read settled index metadata without starting or waiting for a request. */
+export function getCachedPackageRecommendations(): PackageRecommendationsResponse | null {
+  return cache;
+}
+
 // Concurrent callers share the request; explicit refresh clears session suppression.
 export async function fetchOnlinePackageRecommendations(
   options: { refresh?: boolean } = {}

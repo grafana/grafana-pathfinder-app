@@ -1,0 +1,64 @@
+{
+  "rules": [
+    {
+      "id": "tour",
+      "title": "Explore Grafana",
+      "description": "Take a guided tour of Grafana.",
+      "url": "https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json",
+      "type": "interactive",
+      "targetUrl": "https://play.grafana.org"
+    }
+  ],
+  "exitButtonLabel": "Return to Grafana",
+  "page": {
+    "version": 2,
+    "width": "wide",
+    "header": "minimal",
+    "appearance": {
+      "preset": "bold",
+      "accentColor": "#ff9830",
+      "density": "spacious",
+      "radius": "large"
+    },
+    "blocks": [
+      {
+        "type": "hero",
+        "eyebrow": "Explore together",
+        "title": "Make room for your next idea",
+        "description": "Try something new with a hands-on Grafana tour.",
+        "layout": "split",
+        "alignment": "start",
+        "titleSize": "extra-large",
+        "image": {
+          "src": "https://grafana.com/media/interactive-learning/kiosk/dem/v1/dem-overview-warm.png",
+          "decorative": true,
+          "aspectRatio": "wide"
+        },
+        "primaryAction": {
+          "ruleId": "tour",
+          "label": "Start the tour"
+        }
+      },
+      {
+        "type": "section",
+        "title": "Find your starting point",
+        "blocks": [
+          {
+            "type": "guide-links",
+            "layout": "cards",
+            "columns": 1,
+            "links": [
+              {
+                "ruleId": "tour",
+                "icon": "compass",
+                "badge": "Featured",
+                "featured": true,
+                "actionLabel": "Explore now"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

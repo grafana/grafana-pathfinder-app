@@ -1,15 +1,4 @@
-/**
- * GitHub API utilities for PR Tester
- *
- * Provides URL parsing and API fetch functions to retrieve
- * content.json AND manifest.json files from GitHub pull requests.
- *
- * Manifest files are surfaced alongside content so the PR tester can
- * detect path/journey packages and assemble a real `PackageOpenInfo`
- * (manifest + pre-resolved milestones) rather than synthesising a
- * single mega-guide.
- */
-
+import { snapshotFileUrl, type PrSnapshot } from '../../lib/pr-preview-core';
 import { z } from 'zod';
 
 import { ContentJsonSchema } from '../../types/package.schema';
@@ -37,7 +26,7 @@ export interface ParsedPrUrl {
 }
 
 /** Distinguishes the two file kinds the PR tester cares about. */
-export type PrJsonFileKind = 'content' | 'manifest';
+export type PrJsonFileKind = 'content' | 'manifest' | 'kiosk';
 
 /**
  * JSON file metadata from a PR.
@@ -65,7 +54,7 @@ export type GitHubApiError =
 
 /** GitHub API response for PR metadata */
 interface GitHubPrMetadata {
-  head?: { sha?: string };
+  head?: { sha?: string; repo?: { name?: string; owner?: { login?: string } } };
 }
 
 /** GitHub API response for a file in a PR */
@@ -76,63 +65,28 @@ interface GitHubPrFileEntry {
 
 /** Result type for PR content file fetching */
 export type FetchPrFilesResult =
-  { success: true; files: PrJsonFile[]; warning?: string } | { success: false; error: GitHubApiError };
+  | { success: true; files: PrJsonFile[]; snapshot: PrSnapshot; warning?: string }
+  | { success: false; error: GitHubApiError };
 
-// Pattern to extract owner, repo, and PR number from GitHub PR URL
-const PR_URL_PATTERN = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
-
-// SECURITY: Validates Git commit SHA format (40 hex characters)
-const SHA_PATTERN = /^[0-9a-f]{40}$/i;
-
-// SECURITY: Detects path traversal and control characters in file paths
-const UNSAFE_PATH_PATTERN = /\.\.|[\x00-\x1f\x7f]/;
-
-/**
- * Maximum files to fetch from GitHub API per request.
- *
- * The GitHub PR files API defaults to 30 files per page, but supports
- * up to 100 files per page via the `per_page` parameter. We request
- * the maximum (100) to minimize missed content.json files.
- *
- * Limitation: If a PR has >100 total files and content.json files appear
- * after the first 100 files, those guides won't be detected. This is a
- * reasonable tradeoff for a dev tool - PRs with >100 files are rare and
- * should generally be split up anyway.
- */
-const MAX_FILES_PER_PAGE = 100;
-
-/**
- * Parse a GitHub PR URL and extract components
- *
- * @param url - GitHub PR URL (e.g., https://github.com/grafana/interactive-tutorials/pull/70)
- * @returns Parsed components or null if invalid
- *
- * @example
- * parsePrUrl('https://github.com/grafana/interactive-tutorials/pull/70')
- * // Returns: { owner: 'grafana', repo: 'interactive-tutorials', prNumber: 70 }
- */
-export function parsePrUrl(url: string): ParsedPrUrl | null {
-  const match = url.match(PR_URL_PATTERN);
-  if (!match) {
+export function parsePrUrl(value: string): ParsedPrUrl | null {
+  try {
+    const url = new URL(value.startsWith('github.com/') ? `https://${value}` : value);
+    const match = url.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:\/.*)?$/);
+    if (
+      !['https://github.com', 'https://www.github.com'].includes(url.origin) ||
+      url.username ||
+      url.password ||
+      !match ||
+      Number(match[3]) <= 0
+    ) {
+      return null;
+    }
+    return { owner: match[1]!, repo: match[2]!, prNumber: Number(match[3]) };
+  } catch {
     return null;
   }
-
-  const [, owner, repo, prNumberStr] = match;
-  const prNumber = parseInt(prNumberStr!, 10);
-
-  if (isNaN(prNumber) || prNumber <= 0) {
-    return null;
-  }
-
-  return { owner: owner!, repo: repo!, prNumber };
 }
 
-/**
- * Validate a PR URL format without making API calls
- *
- * @param url - URL to validate
- * @returns true if URL matches expected PR URL format
- */
 export function isValidPrUrl(url: string): boolean {
   return parsePrUrl(url) !== null;
 }
@@ -147,7 +101,7 @@ export function isValidPrUrl(url: string): boolean {
 function extractDirectoryName(filePath: string): string {
   return (
     filePath
-      .replace(/\/?(content|manifest)\.json$/, '')
+      .replace(/\/?(content|manifest|rules)\.json$/, '')
       .split('/')
       .filter(Boolean)
       .join('/') || filePath
@@ -156,6 +110,9 @@ function extractDirectoryName(filePath: string): string {
 
 /** Returns the file kind for paths the PR tester cares about. */
 function classifyJsonFile(filePath: string): PrJsonFileKind | null {
+  if (/^kiosk\/.+\/rules\.json$/.test(filePath)) {
+    return 'kiosk';
+  }
   if (filePath.endsWith('/content.json') || filePath === 'content.json') {
     return 'content';
   }
@@ -174,236 +131,161 @@ function buildGitHubApiUrl(baseUrl: string, ...pathSegments: Array<string | numb
   return new URL(`/${encodedPath}`, baseUrl).toString();
 }
 
-/**
- * Build a raw.githubusercontent.com URL for a file in a repo.
- * Handles filenames with directory separators by encoding each path component individually.
- */
-function buildRawContentUrl(owner: string, repo: string, sha: string, filename: string): string {
-  const fileSegments = filename.split('/').map(encodeURIComponent);
-  const fullPath = [encodeURIComponent(owner), encodeURIComponent(repo), encodeURIComponent(sha), ...fileSegments].join(
-    '/'
-  );
-  return new URL(`/${fullPath}`, 'https://raw.githubusercontent.com').toString();
+class GitHubRequestError extends Error {
+  constructor(readonly detail: GitHubApiError) {
+    super(detail.message);
+  }
 }
 
-/**
- * Fetch content.json files from a GitHub PR
- *
- * Makes two sequential GitHub API calls:
- * 1. GET /repos/{owner}/{repo}/pulls/{number} - Get head SHA
- * 2. GET /repos/{owner}/{repo}/pulls/{number}/files - Get changed files
- *
- * Note: Returns at most MAX_CONTENT_FILES (100) files, matching the GitHub
- * API's default page size.
- *
- * @param owner - Repository owner
- * @param repo - Repository name
- * @param prNumber - Pull request number
- * @param signal - Optional AbortSignal for request cancellation
- * @returns Result containing files or error
- */
+async function githubJson(url: URL | string, signal?: AbortSignal): Promise<unknown> {
+  const response = await fetch(String(url), {
+    headers: { Accept: 'application/vnd.github.v3+json' },
+    cache: 'no-cache',
+    credentials: 'omit',
+    redirect: 'error',
+    signal,
+  });
+  if (!response.ok) {
+    const type =
+      response.status === 404
+        ? 'not_found'
+        : response.status === 403
+          ? response.headers.get('X-RateLimit-Remaining') === '0'
+            ? 'rate_limited'
+            : 'forbidden'
+          : 'api_error';
+    const message =
+      type === 'not_found'
+        ? 'PR not found. Check the URL or ensure the repo is public.'
+        : type === 'rate_limited'
+          ? 'GitHub API rate limit exceeded. Try again later.'
+          : type === 'forbidden'
+            ? 'Access denied. The repository may be private.'
+            : `GitHub request failed: ${response.status}`;
+    throw new GitHubRequestError({ type, message, status: response.status });
+  }
+  return response.json();
+}
+
 export async function fetchPrContentFiles(
   owner: string,
   repo: string,
   prNumber: number,
   signal?: AbortSignal
 ): Promise<FetchPrFilesResult> {
-  const baseUrl = 'https://api.github.com';
-
+  const composed = composeAbortSignals(...(signal ? [signal] : []), AbortSignal.timeout(30000));
   try {
-    // Step 1: Fetch PR metadata to get head SHA
-    const prApiUrl = buildGitHubApiUrl(baseUrl, 'repos', owner, repo, 'pulls', prNumber);
-    const prResponse = await fetch(prApiUrl, {
-      headers: {
-        Accept: 'application/vnd.github.v3+json',
-      },
-      signal,
-    });
-
-    if (prResponse.status === 404) {
-      return {
-        success: false,
-        error: {
-          type: 'not_found',
-          message: 'PR not found. Check the URL or ensure the repo is public.',
-        },
-      };
+    const api = (...parts: Array<string | number>) =>
+      buildGitHubApiUrl('https://api.github.com', 'repos', owner, repo, ...parts);
+    const metadata = (await githubJson(api('pulls', prNumber), composed.signal)) as GitHubPrMetadata;
+    const snapshot: PrSnapshot = {
+      owner: metadata.head?.repo?.owner?.login ?? owner,
+      repo: metadata.head?.repo?.name ?? repo,
+      sha: metadata.head?.sha ?? '',
+    };
+    try {
+      snapshotFileUrl(snapshot, 'content.json');
+    } catch {
+      throw new GitHubRequestError({ type: 'api_error', message: 'Could not determine PR head SHA', status: 0 });
     }
-
-    if (prResponse.status === 403) {
-      const rateLimitRemaining = prResponse.headers.get('X-RateLimit-Remaining');
-      if (rateLimitRemaining === '0') {
-        return {
-          success: false,
-          error: {
-            type: 'rate_limited',
-            message: 'GitHub API rate limit exceeded. Try again later.',
-          },
-        };
+    const entries: GitHubPrFileEntry[] = [];
+    let warning: string | undefined;
+    for (let page = 1; page <= 30; page++) {
+      const url = new URL(api('pulls', prNumber, 'files'));
+      url.searchParams.set('per_page', '100');
+      url.searchParams.set('page', String(page));
+      const data = await githubJson(url, composed.signal);
+      if (!Array.isArray(data)) {
+        throw new GitHubRequestError({ type: 'api_error', message: 'Unexpected API response format', status: 0 });
       }
-      // Not rate limited - likely access denied (private repo)
-      return {
-        success: false,
-        error: {
-          type: 'forbidden',
-          message: 'Access denied. The repository may be private.',
-        },
-      };
-    }
-
-    if (!prResponse.ok) {
-      return {
-        success: false,
-        error: {
-          type: 'api_error',
-          message: `Failed to fetch PR: ${prResponse.status}`,
-          status: prResponse.status,
-        },
-      };
-    }
-
-    const prData: GitHubPrMetadata = await prResponse.json();
-    const headSha = prData.head?.sha;
-
-    if (!headSha || !SHA_PATTERN.test(headSha)) {
-      return {
-        success: false,
-        error: {
-          type: 'api_error',
-          message: 'Could not determine PR head SHA',
-          status: 0,
-        },
-      };
-    }
-
-    // Step 2: Fetch PR files list (request max 100 files per page)
-    const filesApiUrl = new URL(buildGitHubApiUrl(baseUrl, 'repos', owner, repo, 'pulls', prNumber, 'files'));
-    filesApiUrl.searchParams.set('per_page', String(MAX_FILES_PER_PAGE));
-    const filesResponse = await fetch(filesApiUrl.toString(), {
-      headers: {
-        Accept: 'application/vnd.github.v3+json',
-      },
-      signal,
-    });
-
-    if (filesResponse.status === 403) {
-      const rateLimitRemaining = filesResponse.headers.get('X-RateLimit-Remaining');
-      if (rateLimitRemaining === '0') {
-        return {
-          success: false,
-          error: {
-            type: 'rate_limited',
-            message: 'GitHub API rate limit exceeded. Try again later.',
-          },
-        };
+      entries.push(...data);
+      if (data.length < 100) {
+        break;
       }
-      // Not rate limited - likely access denied
-      return {
-        success: false,
-        error: {
-          type: 'forbidden',
-          message: 'Access denied. The repository may be private.',
-        },
-      };
+      if (page === 30) {
+        warning = 'GitHub limits changed files to 3000. Some changed guides may be missing.';
+      }
     }
-
-    if (!filesResponse.ok) {
-      return {
-        success: false,
-        error: {
-          type: 'api_error',
-          message: `Failed to fetch PR files: ${filesResponse.status}`,
-          status: filesResponse.status,
-        },
-      };
-    }
-
-    const filesData: unknown = await filesResponse.json();
-
-    // Runtime validation: ensure response is an array
-    if (!Array.isArray(filesData)) {
-      return {
-        success: false,
-        error: {
-          type: 'api_error',
-          message: 'Unexpected API response format',
-          status: 0,
-        },
-      };
-    }
-
-    const totalFilesInPr = filesData.length;
-    const mightHaveMoreFiles = totalFilesInPr >= MAX_FILES_PER_PAGE;
-
-    // Filter for content.json + manifest.json and construct raw URLs.
-    const jsonFiles: PrJsonFile[] = (filesData as GitHubPrFileEntry[]).flatMap((file) => {
-      if (typeof file.filename !== 'string' || UNSAFE_PATH_PATTERN.test(file.filename)) {
+    const files: PrJsonFile[] = entries.flatMap((file) => {
+      if (typeof file.filename !== 'string' || file.status === 'removed') {
         return [];
       }
       const kind = classifyJsonFile(file.filename);
       if (!kind) {
         return [];
       }
-      return [
-        {
-          directoryName: extractDirectoryName(file.filename),
-          rawUrl: buildRawContentUrl(owner, repo, headSha, file.filename),
-          status: file.status as PrJsonFile['status'],
-          kind,
-        },
-      ];
+      try {
+        return [
+          {
+            directoryName: extractDirectoryName(file.filename),
+            rawUrl: snapshotFileUrl(snapshot, file.filename),
+            status: file.status as PrJsonFile['status'],
+            kind,
+          },
+        ];
+      } catch {
+        return [];
+      }
     });
-
-    const contentCount = jsonFiles.filter((f) => f.kind === 'content').length;
-    const manifestCount = jsonFiles.length - contentCount;
-
-    // Only fail when the PR has neither content nor manifest files we
-    // care about. A PR that only modifies a path package's `manifest.json`
-    // (e.g. fixing milestone order or targeting) is still useful to
-    // surface — PrTester will show the manifest preview and a clear
-    // "missing_cover" hint via the path-build pipeline so the author
-    // knows which sibling content.json to add.
-    if (jsonFiles.length === 0) {
+    try {
+      const url = new URL(
+        buildGitHubApiUrl(
+          'https://api.github.com',
+          'repos',
+          snapshot.owner,
+          snapshot.repo,
+          'git',
+          'trees',
+          snapshot.sha
+        )
+      );
+      url.searchParams.set('recursive', '1');
+      const tree = (await githubJson(url, composed.signal)) as {
+        tree?: Array<{ path: string; type: string }>;
+        truncated?: boolean;
+      };
+      if (!Array.isArray(tree.tree) || tree.truncated) {
+        throw new Error('Incomplete repository tree');
+      }
+      const known = new Set(files.map((file) => file.rawUrl));
+      for (const entry of tree.tree) {
+        if (entry.type !== 'blob' || classifyJsonFile(entry.path) !== 'kiosk') {
+          continue;
+        }
+        const rawUrl = snapshotFileUrl(snapshot, entry.path);
+        if (!known.has(rawUrl)) {
+          files.push({ directoryName: extractDirectoryName(entry.path), rawUrl, status: 'unchanged', kind: 'kiosk' });
+        }
+      }
+    } catch {
+      composed.signal.throwIfAborted();
+      warning = [warning, 'Could not discover unchanged kiosks. Re-fetch the PR to try again.']
+        .filter(Boolean)
+        .join(' ');
+    }
+    if (files.length === 0) {
       return {
         success: false,
         error: {
           type: 'no_files',
-          message: 'No content.json or manifest.json files found in this PR',
+          message: 'No content.json, manifest.json, or kiosk catalogs found in this PR snapshot.',
         },
       };
     }
-
-    // Generate warning if we hit the GitHub API pagination limit.
-    // The summary distinguishes content vs manifest counts so the user can
-    // tell at a glance which kinds of files we found in the first page.
-    const warning = mightHaveMoreFiles
-      ? `This PR has ${totalFilesInPr}+ files (GitHub API limit reached). Found ${contentCount} content.json and ${manifestCount} manifest.json file(s) in the first ${totalFilesInPr} files. There may be additional guides not shown. Consider splitting large PRs.`
-      : undefined;
-
-    return {
-      success: true,
-      files: jsonFiles,
-      warning,
-    };
+    return { success: true, files, snapshot, warning };
   } catch (error) {
-    // Handle abort errors separately
-    if (error instanceof Error && error.name === 'AbortError') {
-      return {
-        success: false,
-        error: {
-          type: 'aborted',
-          message: 'Request cancelled',
-        },
-      };
+    if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
+      return { success: false, error: { type: 'aborted', message: 'Request cancelled' } };
     }
-    // Network errors (offline, DNS failure, etc.)
+    if (error instanceof GitHubRequestError) {
+      return { success: false, error: error.detail };
+    }
     return {
       success: false,
-      error: {
-        type: 'network_error',
-        message: 'Network error. Check your connection and try again.',
-      },
+      error: { type: 'network_error', message: 'Network error. Check your connection and try again.' },
     };
+  } finally {
+    composed.dispose();
   }
 }
 

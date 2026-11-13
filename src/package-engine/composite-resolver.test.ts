@@ -525,7 +525,7 @@ describe('createCompositeResolver', () => {
   // (GAP off / no namespace) must NOT, or negative caching is repealed for every
   // tier. These run against the real createCompositeResolver, not a 1-resolver
   // composite, which is why the existing single-resolver tests missed it.
-  it('caches an all-miss when app-platform merely declines (untagged failure)', async () => {
+  it('caches a non-tutorial all-miss when app-platform merely declines (untagged failure)', async () => {
     (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
     (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
     // A cheap decline (e.g. GAP toggle off) — no request issued, no repository tag.
@@ -561,5 +561,65 @@ describe('createCompositeResolver', () => {
     await resolver.resolve('fe-x');
 
     expect(mockAppPlatformResolver.resolve).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('online-first bundled fallback', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (mockBundledResolver.resolve as jest.Mock).mockReset();
+    (mockRecommenderResolver.resolve as jest.Mock).mockReset();
+    (mockAppPlatformResolver.resolve as jest.Mock).mockReset();
+  });
+
+  it('prefers the recommender for a colliding bundled ID', async () => {
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_RECOMMENDER);
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    expect(await resolver.resolve('first-dashboard')).toEqual(SUCCESS_RECOMMENDER);
+    expect(mockBundledResolver.resolve).not.toHaveBeenCalled();
+  });
+
+  it('falls back on failure and retries online after recovery', async () => {
+    (mockRecommenderResolver.resolve as jest.Mock)
+      .mockResolvedValueOnce(NOT_FOUND)
+      .mockResolvedValueOnce(SUCCESS_RECOMMENDER);
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    expect(await resolver.resolve('first-dashboard', { loadContent: true })).toEqual(SUCCESS_BUNDLED);
+    expect(await resolver.resolve('first-dashboard', { loadContent: true })).toEqual(SUCCESS_RECOMMENDER);
+  });
+});
+
+describe('bundled-only resolution stays local and cached', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (mockBundledResolver.resolve as jest.Mock).mockReset();
+    (mockRecommenderResolver.resolve as jest.Mock).mockReset();
+    (mockAppPlatformResolver.resolve as jest.Mock).mockReset();
+  });
+
+  it.each(['block-editor-tutorial', 'json-guide-demo', 'e2e-framework-test'])(
+    '%s never contacts the enabled recommender',
+    async (id) => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue({ ...SUCCESS_BUNDLED, id });
+      (mockRecommenderResolver.resolve as jest.Mock).mockImplementation(() => new Promise(() => {}));
+      const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+      await expect(resolver.resolve(id, { loadContent: 'metadata-only' })).resolves.toMatchObject({
+        repository: 'bundled',
+      });
+      await resolver.resolve(id, { loadContent: 'metadata-only' });
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+      expect(mockRecommenderResolver.resolve).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps migrated tutorials local when consent is absent', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: false });
+    await resolver.resolve('first-dashboard');
+    await resolver.resolve('first-dashboard');
+    expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(mockRecommenderResolver.resolve).not.toHaveBeenCalled();
   });
 });

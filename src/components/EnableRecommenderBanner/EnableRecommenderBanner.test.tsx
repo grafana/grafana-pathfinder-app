@@ -19,6 +19,12 @@ jest.mock('@grafana/ui', () => {
   };
 });
 
+it('can explain catalog-specific enablement without changing the configuration action', () => {
+  render(<EnableRecommenderBanner description="Enable recommendations to browse public guides." />);
+  expect(screen.getByText('Enable recommendations to browse public guides.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /go to plugin configuration/i })).toBeInTheDocument();
+});
+
 it('keeps the configuration action secondary to learning actions', () => {
   render(<EnableRecommenderBanner />);
   expect(screen.getByRole('button', { name: /go to plugin configuration/i })).toHaveAttribute(

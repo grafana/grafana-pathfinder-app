@@ -10,6 +10,8 @@ import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import type { PreparedRawContent } from '../types/content.types';
 import type { LaunchSource } from '../recovery';
+import { isExtensionSidebarOwnedByOther } from '../lib/storage/extension-sidebar';
+import pluginJson from '../plugin.json';
 
 export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
 
@@ -167,7 +169,8 @@ class PanelModeManager {
    * to localStorage ONLY when no transient session is active; during a session
    * it updates the in-memory surface without touching the stored preference
    * (decision 2). Dispatches `pathfinder-panel-mode-change` and closes the
-   * extension sidebar when switching to floating/fullscreen. Deliberate surface
+   * extension sidebar when switching to floating/fullscreen, except when going
+   * floating while another plugin owns the docked sidebar. Deliberate surface
    * ADOPTIONS must use `setModePersisted` — see the class-level contract.
    */
   public setMode(mode: PanelMode): void {
@@ -224,11 +227,11 @@ class PanelModeManager {
     }
 
     if (mode === 'floating' || mode === 'fullscreen') {
-      // Close the Grafana extension sidebar to free the slot. Full screen
-      // also closes the sidebar so the two CombinedLearningJourneyPanel
-      // instances do not collide on the __DocsPluginActiveTabId window
-      // global or on tab storage writes.
-      getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
+      // Close the extension sidebar to free the slot (full screen avoids colliding panel instances).
+      // Floating skips it when another plugin owns the slot: core's close clears it regardless of owner.
+      if (!(mode === 'floating' && isExtensionSidebarOwnedByOther(pluginJson.id))) {
+        getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
+      }
       reportPathfinderSurface(mode);
     } else if (previous === 'floating' || previous === 'fullscreen') {
       // 'sidebar' mode does not mean the sidebar is open — `openSidebar` or its

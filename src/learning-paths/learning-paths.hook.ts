@@ -316,9 +316,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
     };
   }, []);
 
-  // Build effective paths: merge dynamic guides into URL-based paths, then
-  // append App Platform paths (bundled-first — matches the composite
-  // resolver's precedence convention, RFC §6.6).
+  // Bundled paths retain ownership; only the seven migrated tutorial guides resolve online-first.
   const paths = useMemo((): LearningPath[] => {
     const merged = rawPaths.map((path) => {
       const dynamic = dynamicGuideData[path.id];
