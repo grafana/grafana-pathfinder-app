@@ -1,0 +1,130 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "translation-golden",
+  "title": "最初のダッシュボードを作成する",
+  "blocks": [
+    {
+      "type": "markdown",
+      "id": "intro",
+      "content": "# ようこそ\n\nこのガイドでは、ダッシュボードを作成してパネルを追加します。"
+    },
+    {
+      "type": "image",
+      "id": "example-dashboard",
+      "src": "https://grafana.com/static/img/docs/dashboards/example-dashboard.png",
+      "alt": "3 つのパネルがあるダッシュボード"
+    },
+    {
+      "type": "video",
+      "id": "overview-video",
+      "src": "https://www.youtube.com/embed/vTiIkdDwT-0",
+      "provider": "youtube",
+      "title": "5 分でわかるダッシュボード"
+    },
+    {
+      "type": "section",
+      "id": "create-dashboard",
+      "title": "ダッシュボードを作成する",
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "open-dashboards",
+          "action": "navigate",
+          "reftarget": "/dashboards",
+          "content": "**Dashboards**（ダッシュボード）ページを開きます。",
+          "tooltip": "開けるダッシュボードはすべてここに表示されます。"
+        },
+        {
+          "type": "interactive",
+          "id": "name-dashboard",
+          "action": "formfill",
+          "reftarget": "input[data-testid='data-testid Dashboard settings Title input']",
+          "targetvalue": "My first dashboard",
+          "content": "ダッシュボードに名前を付けます。",
+          "hint": "名前は後で変更できます。",
+          "formHint": "ダッシュボード名を入力してください"
+        },
+        {
+          "type": "multistep",
+          "id": "add-panel",
+          "content": "ダッシュボードにパネルを追加します。",
+          "steps": [
+            {
+              "id": "open-add-menu",
+              "action": "button",
+              "reftarget": "[data-testid='data-testid Add button']",
+              "description": "**Add**（追加）メニューを開きます。",
+              "tooltip": "このメニューには追加できるものが表示されます。"
+            },
+            {
+              "id": "choose-visualization",
+              "action": "button",
+              "reftarget": "[data-testid='data-testid Add new visualization menu item']",
+              "description": "**Visualization**（可視化）を選択します。"
+            }
+          ]
+        },
+        {
+          "type": "conditional",
+          "id": "has-prometheus",
+          "conditions": ["has-datasource:prometheus"],
+          "display": "section",
+          "description": "次の手順は、Prometheus データソースがあるかどうかで変わります。",
+          "whenTrueSectionConfig": {
+            "title": "Prometheus のデータをクエリする"
+          },
+          "whenFalseSectionConfig": {
+            "title": "先に Prometheus を接続する"
+          },
+          "whenTrue": [
+            {
+              "type": "markdown",
+              "id": "query-tip",
+              "content": "クエリエディターでメトリクスを選びます。例: `up`。"
+            }
+          ],
+          "whenFalse": [
+            {
+              "type": "markdown",
+              "id": "connect-tip",
+              "content": "Prometheus データソースを追加してから、このガイドに戻ってください。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "guided",
+      "id": "save-dashboard",
+      "content": "ダッシュボードを保存します。",
+      "steps": [
+        {
+          "id": "open-save",
+          "action": "highlight",
+          "reftarget": "[data-testid='data-testid Save dashboard button']",
+          "description": "**Save dashboard**（ダッシュボードを保存）をクリックします。"
+        },
+        {
+          "id": "confirm-save",
+          "action": "highlight",
+          "reftarget": "[data-testid='data-testid Save dashboard drawer button']",
+          "description": "保存を確定します。",
+          "tooltip": "保存すると変更が保持されます。"
+        }
+      ]
+    },
+    {
+      "type": "callout",
+      "id": "next-steps",
+      "title": "Next steps",
+      "content": "Callouts are outside the projection table, so this text stays in English."
+    }
+  ],
+  "translation": {
+    "language": "ja",
+    "canonicalLanguage": "en",
+    "canonicalTitle": "Build your first dashboard",
+    "staleBlockIds": [],
+    "fallbackBlockIds": []
+  }
+}
