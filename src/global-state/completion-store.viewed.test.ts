@@ -126,3 +126,11 @@ it('never persists a block-editor preview', () => {
   expect(markGuideEndViewed(preview, true)).toBe(false);
   expect(guideCompletionMarkStorage.isMarked(preview)).toBe(false);
 });
+
+it('does not treat a guide whose actions are all conditional as prose-only', () => {
+  setActiveTabUrl(STEPS);
+  publish(STEPS, [{ type: 'conditional', id: 'workflow', whenTrue: [{ type: 'interactive', id: 'save' }] }]);
+  expect(markGuideEndViewed(STEPS, true)).toBe(false);
+  expect(guideCompletionMarkStorage.isMarked(STEPS)).toBe(false);
+  expect(peekGuidePercentage(STEPS)).toBe(0);
+});

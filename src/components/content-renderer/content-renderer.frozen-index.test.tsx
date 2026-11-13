@@ -1,3 +1,5 @@
+import { interactiveStepStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import { subscribeProgressEvent, type ProgressEventDetail } from '../../global-state/progress-events';
 /**
  * The content-load seam publishes the frozen block index (decision 1) under
  * the content key the reader is actually on.
@@ -10,12 +12,17 @@
  * The wrapper below reproduces exactly that ordering.
  */
 import React, { useLayoutEffect } from 'react';
-import { act, render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
 import { resetContentKeyForTests } from '../../global-state/content-key';
 import { evictAllGuideIndexes, getGuideIndex } from '../../global-state/active-guide-index';
-import { evictAllContentCaches, evictContentCache } from '../../global-state/completion-store';
+import {
+  evictAllContentCaches,
+  evictContentCache,
+  peekGuidePercentage,
+  takeLoadCompletionCrossing,
+} from '../../global-state/completion-store';
 import { ContentRenderer } from './content-renderer';
 import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
@@ -141,5 +148,69 @@ describe('ContentRenderer — the frozen block index', () => {
 
       expect(getGuideIndex(MILESTONE_ONE)?.index.totalBlockCount).toBe(3);
     });
+  });
+});
+
+describe('conditional completion on mount', () => {
+  it.each([
+    ['https://example.com/completed-conditional', 100],
+    ['custom-guide://completed-conditional', 100],
+    ['https://example.com/load-completed-conditional', 40],
+  ])('waits for branch registration before writing or announcing %s', async (url, baseline) => {
+    await interactiveStepStorage.setCompleted(url, 'section-workflow', new Set(['save']));
+    await interactiveCompletionStorage.set(url, baseline);
+    evictContentCache(url);
+    const writes = jest.spyOn(interactiveCompletionStorage, 'set');
+    const events: ProgressEventDetail[] = [];
+    const unsubscribe = subscribeProgressEvent((event) => {
+      if (event.kind === 'guide' && event.contentKey === url) {
+        events.push(event);
+      }
+    });
+    try {
+      render(
+        <PanelLike
+          content={{
+            ...makeContent(url, 1),
+            content: JSON.stringify({
+              id: 'completed-conditional',
+              title: 'Completed conditional',
+              blocks: [
+                {
+                  type: 'section',
+                  id: 'workflow',
+                  title: 'Workflow',
+                  blocks: [
+                    {
+                      type: 'conditional',
+                      id: 'editor',
+                      conditions: ['exists-reftarget'],
+                      reftarget: '#closed-editor',
+                      whenTrue: [
+                        { type: 'interactive', id: 'save', action: 'button', reftarget: '#save', content: 'Save' },
+                      ],
+                      whenFalse: [],
+                    },
+                  ],
+                },
+              ],
+            }),
+          }}
+        />
+      );
+      expect(writes).not.toHaveBeenCalled();
+      expect(events).toEqual([]);
+      expect(peekGuidePercentage(url)).toBe(baseline);
+      await waitFor(() => expect(writes).toHaveBeenCalledWith(url, 100));
+      await waitFor(() => expect(events.length).toBeGreaterThan(0));
+      expect(writes.mock.calls.every(([key, percent]) => key === url && percent === 100)).toBe(true);
+      expect(
+        events.every((event) => event.kind === 'guide' && event.percentage === 100 && event.origin === 'load')
+      ).toBe(true);
+      expect(takeLoadCompletionCrossing(url)).toBe(baseline < 100);
+    } finally {
+      unsubscribe();
+      writes.mockRestore();
+    }
   });
 });

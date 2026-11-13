@@ -1620,6 +1620,7 @@ function renderParsedElement(
       return (
         <InteractiveConditional
           key={key}
+          id={element.props.id}
           conditions={element.props.conditions || []}
           description={element.props.description}
           display={element.props.display || 'inline'}

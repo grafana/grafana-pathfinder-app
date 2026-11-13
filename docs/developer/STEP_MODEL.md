@@ -61,6 +61,14 @@ Completed-step arrays retain their existing shape. A separate per-section skippe
 
 Hydration is lazy and per-section. Preview-mode content keys (`block-editor://preview/...`, `devtools`) bypass storage writes entirely — the in-memory cache still updates so ephemeral preview UI keeps reacting.
 
+## Conditional branches
+
+Inline conditional children participate in their parent section's active step roster. They receive the same section ID, sequential eligibility, execution callbacks, and reset signal as direct children. Nested inline branches are resolved recursively. An unresolved branch prevents section completion and execution. Unfinished branches follow live conditions, but selection is held during action execution. Once all active branch steps complete, or a section-display branch is acknowledged, that branch stays selected until its completion evidence is reset. Stored evidence restores the completed branch when the guide remounts. Empty and prose-only inline branches do not lock automatically.
+
+The active roster controls ordering, not historical storage membership. Sections containing inline conditionals retain inactive step records, and section reset clears those records too. Branch children wait for parent ownership before mounting as executable steps. Section-display branches instead own separate sections, identified by conditional block ID and branch, and remount on branch changes to isolate acknowledgement and collapse state.
+
+Conditional checks preserve unavailable and invalid verdicts. With no confirmed branch, the reader sees a retry control; a transient failure retains the previous branch. Controller-mode checks keep guide variables and section completion local and send other checks to the live tab. DOM conditionals observe structural, attribute, text, and input changes; controller checks also poll without overlapping their own requests.
+
 ## Passive completion
 
 The active renderer owns one `CompletionCoordinator`. Interactive, guided, and multistep components register with it, including children of collapsed sections. Only the active conditional branch registers. Section objectives use the same scheduler; satisfying them still completes all subordinate steps.
