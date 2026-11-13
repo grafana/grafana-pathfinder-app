@@ -1,3 +1,0 @@
-providers:
-  github:
-    draft_pull_requests: true
