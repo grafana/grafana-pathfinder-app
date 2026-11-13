@@ -111,11 +111,25 @@ acceptance gaps; they are not asserted runtime defects.
 | Insights bounded reads and incomplete-history honesty                           | `DrainInsights`, `ShapeLearningInsights`                                  | None                                        | Ported `TestLearningInsightsDrainBounds`, frozen complete/incomplete historical projections, evidence tests | Full handler outage/timeout comparative corpus                                                                |
 | Settings exact missing status, unknown fields, optimistic saves                 | Settings services/client and frontend resolver                            | JSON fallback only without SDK registration | Services/resourceaccess settings tests; frontend preservation tests; local E2E                              | Frozen historical settings input/output corpus                                                                |
 | Published guide visibility, catalogue metadata, authoring CRUD                  | Provider guides/catalogue and resourceaccess guides                       | SDK transport                               | Existing provider/client tests and local E2E                                                                | Frozen historical guide corpus                                                                                |
-| Anonymous shared recommendation cache and bounded CDN fetch                     | `pkg/publiccontent`                                                       | New route                                   | Existing migrated publiccontent suite                                                                       | Golden is synthetic; real fetch-to-route capture still needed                                                 |
+| Anonymous shared recommendation cache and bounded CDN fetch                     | `pkg/publiccontent`                                                       | New route                                   | Migrated publiccontent suite; `TestRecommendationsSDKFetchAndSharedCache`                                   | Schema golden remains synthetic; live CDN deployment is outside deterministic coverage                        |
 | Capability envelopes and diagnostic classifications                             | SDK provider                                                              | Identity boundary changes above             | SDK contract suite; frozen write failure envelopes                                                          | Old 19 value fixtures not yet all exercised with identical SDK inputs; logs/metrics parity not established    |
 | Health/configuration integration                                                | SDK runner and health route                                               | Legacy adapter removed                      | Local E2E health and legacy-route checks                                                                    | Local binary rollback passed; other deployment configurations remain unverified                               |
 | Survey own-user exception                                                       | Existing frontend survey adapter                                          | None intended                               | Existing frontend transport/security tests                                                                  | Not part of this differential harness                                                                         |
 | Partial retention and rollback reader compatibility                             | Existing persisted schema and SDK reader                                  | None                                        | Existing partial-aware tests; no schema changes                                                             | Local binary rollback passed (below); Cloud rollout/rollback remains deferred                                 |
+
+## Public recommendation route
+
+`TestRecommendationsSDKFetchAndSharedCache` runs isolated child processes so each
+scenario begins with an empty public cache. It stubs the CDN HTTP transport while
+using the production fetcher, repository parser, manifest enrichment, cache,
+`ReadRecommendations`, and SDK route. Success checks the derived `/packages/`
+base URL and enriched manifest; outage and malformed-JSON scenarios check HTTP 503
+and diagnostic classification. An anonymous request followed by an authenticated
+request in another namespace must reuse the shared result without additional CDN
+fetches. Authorization and cookie headers must never reach the CDN.
+
+This is deterministic integration evidence, not a live CDN test or a replacement
+for the existing synthetic schema golden.
 
 ## Interrupted responses and local rollback
 
