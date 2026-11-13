@@ -203,6 +203,9 @@ source catalog, and each plugin build reads the version it was compiled for (`Fo
 entry this build cannot read. `cmd/achievements-check` builds, validates and compares the file with the same
 loader. The package does no I/O: storage and admission are interfaces for the plugin's App Platform store to
 implement, so it is tested on its own with golden tables and `testdata/bundle.json`.
+`pkg/plugin/achievements_store.go` is the unwired App Platform `Store` adapter (compare-and-swap on progress; a
+409 on an award create returns `ErrExists`, meaning already held) and `pkg/achievements/storetest` holds the
+contract every `Store` must pass, with an in-memory implementation.
 
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.
