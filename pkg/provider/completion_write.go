@@ -118,8 +118,8 @@ func completionSchemaNotReady(err error) bool {
 }
 
 func writeCompletionSDKError(w app.CustomRouteResponseWriter, err error) error {
-	status := sdkErrorStatus(err)
-	diagnostic := services.ProxyDiagnostic{Stage: "app-platform", Resource: "completionrecords", Operation: "create", Outcome: "error", Reason: "http-error", UpstreamStatus: status}
+	diagnostic := upstreamDiagnostic(err, "completionrecords", "create")
+	status := diagnostic.UpstreamStatus
 	message := "completion-write-rejected"
 	if status == 0 || status == 408 || status == 429 || status >= 500 || status < 400 {
 		message = "completion-write-unavailable"
@@ -130,20 +130,13 @@ func writeCompletionSDKError(w app.CustomRouteResponseWriter, err error) error {
 		w.Header().Set("Retry-After", strconv.Itoa(retry))
 		if status == 0 {
 			status = http.StatusServiceUnavailable
-			diagnostic.Reason = "unexpected-error"
 		} else if status < 400 {
 			status = http.StatusBadGateway
 		}
-	}
-	if status == 401 {
-		diagnostic.Reason = "authentication-failed"
-	}
-	if status == 403 {
-		diagnostic.Reason = "authorization-denied"
 	}
 	w.WriteHeader(status)
 	return json.NewEncoder(w).Encode(struct {
 		Error       string                   `json:"error"`
 		Diagnostics services.ProxyDiagnostic `json:"diagnostics"`
-	}{message, diagnostic})
+	}{message, *diagnostic})
 }

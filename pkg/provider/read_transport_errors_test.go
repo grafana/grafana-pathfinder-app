@@ -25,7 +25,7 @@ func (transport failedReadTransport) RoundTrip(*http.Request) (*http.Response, e
 	return nil, transport.err
 }
 
-func TestReadRoutesPreserveTransportFailureCause(t *testing.T) {
+func TestResourceRoutesPreserveTransportFailureCause(t *testing.T) {
 	for _, failure := range []struct {
 		name   string
 		err    error
@@ -45,6 +45,17 @@ func TestReadRoutesPreserveTransportFailureCause(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			writer, err := resourceaccess.NewCompletionWriter(generator)
+			if err != nil {
+				t.Fatal(err)
+			}
+			write := func(ctx context.Context, w app.CustomRouteResponseWriter, request *app.CustomRouteRequest) error {
+				err := writer.Create(ctx, request.ResourceIdentifier.Namespace, services.CompletionRecordObject{Metadata: services.CompletionRecordObjectMeta{Name: "test-record"}})
+				if !errors.Is(err, failure.err) {
+					t.Fatalf("lost transport error: %v", err)
+				}
+				return writeCompletionSDKError(w, err)
+			}
 			for _, route := range []struct {
 				name      string
 				handler   simple.AppCustomRouteHandler
@@ -53,6 +64,7 @@ func TestReadRoutesPreserveTransportFailureCause(t *testing.T) {
 				resource  string
 				operation string
 			}{
+				{"completion write", write, 503, "30", "completionrecords", "create"},
 				{"settings", settingsReadHandler(settings.Read), 502, "", "pathfindersettings", "get"},
 				{"catalogue", catalogueReadHandler(guides), 503, "30", "interactiveguides", "list"},
 			} {
