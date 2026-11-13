@@ -217,6 +217,11 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     if (manifest.stats !== undefined) {
       entry.stats = manifest.stats;
     }
+    // Named once the manifest schema declared it, so extension forwarding skips
+    // it. Copied as forwarding did until the build computes it from sidecars.
+    if (manifest.translations !== undefined) {
+      entry.translations = manifest.translations;
+    }
 
     const forwarding = forwardExtensionFields(manifest, entry);
     warnings.push(...forwarding.warnings);

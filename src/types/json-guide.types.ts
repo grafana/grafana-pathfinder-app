@@ -20,6 +20,22 @@ export interface JsonGuide {
   title: string;
   /** Content blocks that make up the guide */
   blocks: JsonBlock[];
+  /** Present only on a guide compiled for a locale (docs/design/I18N.md §7.2). */
+  translation?: GuideTranslationAnnotation;
+}
+
+/**
+ * Root annotation a compiled `content.<locale>.json` carries.
+ * @coupling Zod schema: GuideTranslationAnnotationSchema in json-guide.schema.ts
+ */
+export interface GuideTranslationAnnotation {
+  language: string;
+  canonicalLanguage: string;
+  canonicalTitle: string;
+  /** Blocks whose translation was made from older canonical text. */
+  staleBlockIds: string[];
+  /** Blocks rendered in the canonical language in a locale that stays available. */
+  fallbackBlockIds: string[];
 }
 
 // ============ BLOCK UNION ============
