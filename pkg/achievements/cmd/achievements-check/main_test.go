@@ -102,6 +102,7 @@ func TestBuildRejects(t *testing.T) {
 		{"art root that is not svg", map[string]string{"art/guides-finished-1.svg": `<html xmlns="http://www.w3.org/2000/svg"/>`}, "", `root element is "html"`},
 		{"art with a second root", map[string]string{"art/guides-finished-1.svg": testSVG + testSVG}, "", "more than one root element"},
 		{"art with text after the root", map[string]string{"art/guides-finished-1.svg": testSVG + "trailing"}, "", "text outside the svg root element"},
+		{"art with a non-XML space after the root", map[string]string{"art/guides-finished-1.svg": testSVG + "\u00a0"}, "", "text outside the svg root element"},
 		{"another extension", map[string]string{"catalog/notes.md": "x"}, "", "unexpected file"},
 		{"empty catalog", map[string]string{}, "catalog/guides-finished.json", "no definitions"},
 	}

@@ -320,8 +320,9 @@ func readDefinition(stem, path string) (json.RawMessage, string) {
 
 const svgNamespace = "http://www.w3.org/2000/svg"
 
-// readArt requires a well-formed document with one svg root element in the SVG
-// namespace, which a browser needs to render the file as an image.
+// readArt requires the file to parse as XML with one svg root element in the SVG
+// namespace, without which a browser does not render it as an image. It is not a
+// full XML conformance check.
 func readArt(path string) string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -352,7 +353,7 @@ func readArt(path string) string {
 		case xml.EndElement:
 			depth--
 		case xml.CharData:
-			if depth == 0 && len(bytes.TrimSpace(t)) > 0 {
+			if depth == 0 && len(bytes.Trim(t, " \t\r\n")) > 0 {
 				return "text outside the svg root element"
 			}
 		}
