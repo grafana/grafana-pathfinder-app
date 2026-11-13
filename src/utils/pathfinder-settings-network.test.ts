@@ -31,6 +31,8 @@ beforeEach(() => {
   localStorage.clear();
   jest.mocked(isBackendApiAvailable).mockReturnValue(true);
   config.namespace = 'stacks-123';
+  config.featureToggles = {};
+  Object.assign(config.featureToggles, { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true });
 });
 
 it('reads an existing resource with its concurrency token', async () => {
@@ -257,7 +259,7 @@ describe('existing resource update recovery', () => {
   });
 });
 
-it('rejects a save when SDK registration is absent without writing plugin settings', async () => {
+it('rejects unavailable registered SDK saves without writing plugin settings', async () => {
   jest.mocked(isBackendApiAvailable).mockReturnValue(false);
   fetchMock.mockReturnValueOnce(of({ data: { enabled: false, pinned: false, jsonData: { stackId: '123' } } }));
   await expect(

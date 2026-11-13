@@ -96,8 +96,12 @@ test('OSS SDK guide authoring persists across reload and publishes', async ({ pa
         expect(assigned.ok(), await assigned.text()).toBe(true);
       }
     }).toPass({ intervals: [500, 1000, 2000], timeout: 15000 });
-    await page.goto(`/a/grafana-pathfinder-app/fullscreen?doc=${encodeURIComponent(`api:${name}`)}`);
-    await expect(page.getByText(title, { exact: true })).toBeVisible();
+    await page.goto('/a/grafana-pathfinder-app/');
+    const assignedSection = page.getByRole('region', { name: 'Your assignments' });
+    const assignedGuide = assignedSection.getByRole('button', { name: title, exact: true });
+    await expect(assignedGuide).toBeVisible();
+    await assignedGuide.click();
+    await expect(page.getByText(title, { exact: true }).last()).toBeVisible();
     if (await page.getByTestId(testIds.markComplete.button).first().isVisible()) {
       await markComplete(page);
     }
@@ -218,5 +222,64 @@ test('SDK-only runtime rejects legacy routes and unauthorized resource access', 
   } finally {
     await viewer.dispose();
     expect((await request.delete(`/api/admin/users/${id}`)).ok()).toBe(true);
+  }
+});
+
+test('SDK resources remain isolated between OSS organisations', async ({ request, playwright }) => {
+  test.skip(process.env.PATHFINDER_SDK_E2E !== '1', 'Requires the locally registered SDK provider');
+  const name = `sdk-namespace-${Date.now()}`;
+  const created = await request.post('/api/orgs', { data: { name } });
+  expect(created.ok(), await created.text()).toBe(true);
+  const { orgId } = await created.json();
+  const other = await playwright.request.newContext({
+    baseURL: process.env.GRAFANA_URL ?? 'http://localhost:3302',
+    storageState: { cookies: [], origins: [] },
+    httpCredentials: { username: 'admin', password: 'admin', send: 'always' },
+    extraHTTPHeaders: { 'X-Grafana-Org-Id': String(orgId) },
+  });
+  const root = '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces';
+  const primaryRoute = `${root}/default/backend/custom-guide`;
+  const otherRoute = `${root}/org-${orgId}/backend/custom-guide`;
+  const guide = (title: string) => ({
+    apiVersion: 'pathfinderbackend.ext.grafana.app/v1alpha1',
+    kind: 'InteractiveGuide',
+    metadata: { name },
+    spec: { id: name, title, status: 'published', schemaVersion: '1.0', blocks: [] },
+  });
+  try {
+    expect((await other.get('/api/org')).ok()).toBe(true);
+    expect((await (await other.get('/api/org')).json()).id).toBe(orgId);
+    const first = await request.post(primaryRoute, { data: guide('Primary organisation guide') });
+    expect(first.status(), await first.text()).toBe(201);
+    const second = await other.post(otherRoute, { data: guide('Other organisation guide') });
+    expect(second.status(), await second.text()).toBe(201);
+    expect((await (await request.get(`${primaryRoute}?name=${name}`)).json()).spec.title).toBe(
+      'Primary organisation guide'
+    );
+    expect((await (await other.get(`${otherRoute}?name=${name}`)).json()).spec.title).toBe('Other organisation guide');
+    const memberLogin = `${name}-member`;
+    const memberCreated = await request.post('/api/admin/users', {
+      data: { name: 'SDK namespace member', email: `${memberLogin}@localhost`, login: memberLogin, password: name },
+    });
+    expect(memberCreated.ok()).toBe(true);
+    const { id: memberId } = await memberCreated.json();
+    const member = await playwright.request.newContext({
+      baseURL: process.env.GRAFANA_URL ?? 'http://localhost:3302',
+      storageState: { cookies: [], origins: [] },
+      httpCredentials: { username: memberLogin, password: name, send: 'always' },
+    });
+    try {
+      expect((await request.patch(`/api/org/users/${memberId}`, { data: { role: 'Viewer' } })).ok()).toBe(true);
+      expect((await member.get(`${primaryRoute}?name=${name}`)).status()).toBe(200);
+      expect((await member.get(`${otherRoute}?name=${name}`)).status()).toBe(403);
+    } finally {
+      await member.dispose();
+      expect((await request.delete(`/api/admin/users/${memberId}`)).ok()).toBe(true);
+    }
+  } finally {
+    await request.delete(`${primaryRoute}?name=${name}`);
+    await other.delete(`${otherRoute}?name=${name}`);
+    await other.dispose();
+    expect((await request.delete(`/api/orgs/${orgId}`)).ok()).toBe(true);
   }
 });
