@@ -230,6 +230,8 @@ export const CustomGuideManifestWireSchema = z.strictObject({
 /** @coupling Go struct: customGuideRepositoryEntry */
 export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
   id: z.string(),
+  name: z.string(),
+  creationTimestamp: z.string().optional(),
   title: z.string().optional(),
   status: z.string().optional(),
   manifest: CustomGuideManifestWireSchema.optional(),
@@ -246,11 +248,6 @@ export const CustomGuideRepositoryResponseWireSchema = z.strictObject({
   capability: CustomGuideCapabilityWireSchema,
   guides: z.array(CustomGuideRepositoryEntryWireSchema),
   asOf: z.string().optional(),
-});
-
-// Full resources stay arbitrary JSON so unknown metadata and spec fields survive.
-export const CustomGuidesResponseWireSchema = z.strictObject({
-  items: z.array(JsonValueSchema),
 });
 
 // ============ /package-recommendations ============
@@ -339,7 +336,6 @@ export const GO_STRUCT_SCHEMAS = {
   PackageEntry: PackageEntryWireSchema,
   PackageTargeting: PackageTargetingWireSchema,
   customGuideRepositoryResponse: CustomGuideRepositoryResponseWireSchema,
-  customGuidesResponse: CustomGuidesResponseWireSchema,
   customGuideCapability: CustomGuideCapabilityWireSchema,
   customGuideRepositoryEntry: CustomGuideRepositoryEntryWireSchema,
   customGuideManifest: CustomGuideManifestWireSchema,
@@ -371,7 +367,6 @@ export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
 export const BACKEND_RESPONSE_ENVELOPES = {
   'package-recommendations': 'PackageRecommendationsResponse',
   'custom-guide-repository': 'customGuideRepositoryResponse',
-  'custom-guides': 'customGuidesResponse',
   'completion-records-my': 'myCompletionsResponse',
   'completion-records-capability': 'completionCapability',
   'assignments-my': 'myAssignmentsResponse',

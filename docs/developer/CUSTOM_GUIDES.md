@@ -163,7 +163,7 @@ Draft guides are not shown in the docs panel. They can only be accessed through 
 
 ## The guide library
 
-The library (**•••** → **Library**) lists all guides stored in the Pathfinder backend — both drafts and published. The menu item stays available while the guide list loads or if a refresh fails, and is hidden only after a successful fetch confirms there are no saved guides. From here you can:
+The library (**•••** → **Library**) lists all guides stored in the Pathfinder backend — both drafts and published. It lists from the slim catalogue (`/custom-guide-repository`), so it stays fast on instances with many guides, and reads a guide in full only when you load it. If the backend cannot serve the catalogue, the library shows an error instead of an empty list. The menu item stays available while the guide list loads or if a refresh fails, and is hidden only after a successful fetch confirms there are no saved guides. From here you can:
 
 - **Load** a guide into the editor for editing.
 - **Delete** a guide permanently (requires confirmation).

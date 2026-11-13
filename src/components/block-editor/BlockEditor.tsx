@@ -26,14 +26,14 @@ import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuideDetails } from './hooks/useGuideDetails';
 import { authorNameToWrite, type DefaultedAuthor } from './utils/derive-manifest';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
-import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
+import { isBackendApiAvailable } from '../../utils/interactive-guides-api';
 import { currentUserAuthorName } from '../../utils/current-user-name';
 import { EDITOR_FALLBACK_AUTHOR } from '../../types/author-defaults';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { publishEditorChromeStatus, readStoredEditorGuide, resetEditorChromeStatus } from './editor-chrome-status';
 import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
-import { GuideLibraryModal } from './GuideLibraryModal';
+import { GuideLibraryModal, type StoredGuide } from './GuideLibraryModal';
 import { useActionRecorder } from '../../utils/devtools';
 import type { JsonGuide, JsonBlock, BlockOperations, BlockType, EditorBlock, PreviewTarget } from './types';
 import { isSectionBlock, isConditionalBlock, type JsonSectionBlock } from '../../types/json-guide.types';
@@ -714,9 +714,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
   }, [publishedStatus, hasUnsyncedChanges, isContentReady]);
 
   const handleLoadGuideFromBackend = useCallback(
-    (guide: JsonGuide, resourceName: string) => {
+    (guide: JsonGuide, resourceName: string, stored: StoredGuide) => {
       editor.loadGuide(guide);
-      trackLoadedGuide(guide, resourceName);
+      trackLoadedGuide(guide, resourceName, stored);
       resetDetails();
       editor.markSaved();
     },
@@ -824,7 +824,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     (title: string) => {
       editor.updateGuideMetadata({ title });
       if (!isIdLocked) {
-        const existingNames = backendGuides.guides.map((g) => g.metadata.name);
+        const existingNames = backendGuides.guides.map((g) => g.name);
         const newId = generateUniqueId(title, existingNames);
         editor.updateGuideMetadata({ id: newId });
       }
@@ -853,7 +853,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         onSaveDraft={backendSaveFlow.performSaveDraft}
         onPostToBackend={backendSaveFlow.handlePostToBackend}
         onUnpublish={backendSaveFlow.performUnpublish}
-        isPostingToBackend={backendGuides.isSaving}
+        isPostingToBackend={backendGuides.isSaving || backendSaveFlow.isBusy}
         onNewGuide={handleNewGuideClick}
         isBackendAvailable={backendAvailable}
         hasBackendGuides={hasManageableBackendGuides(backendGuides)}
@@ -949,6 +949,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         guides={backendGuides.guides}
         isLoading={backendGuides.isLoading}
         error={backendGuides.error}
+        readGuide={backendGuides.readGuide}
         onLoadGuide={handleLoadGuideFromBackend}
         onDeleteGuide={backendGuides.deleteGuide}
         onRefresh={backendGuides.refreshGuides}

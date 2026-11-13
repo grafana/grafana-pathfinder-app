@@ -20,7 +20,6 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 
 ### Utilities and configuration
 
-- `fetchBackendGuides.ts` - Shared utility for fetching backend guides from the API
 - `interactive-guides-api.ts` - App Platform API availability and URL helpers
 - `find-doc-page.ts` - Resolves deep-link document identifiers into loadable pages
 - `pathfinder-deep-link-handler.ts` - Processes deep links and coordinates panel launch
@@ -80,31 +79,6 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 
 ## Utility files
 
-### `fetchBackendGuides.ts`
-
-**Purpose**: Shared utility for fetching guides from the backend API.
-**Location**: `src/utils/fetchBackendGuides.ts`
-
-**Role**:
-
-- Calls the pathfinder backend API for interactive guides in a namespace
-- Returns empty array when endpoint is unavailable (400, 403, 404, 405, 501, 503)
-- Optionally returns only guides whose `spec.status` is `published`
-- Re-throws other errors for caller handling
-
-**Key Function**:
-
-```typescript
-async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): Promise<any[]>;
-```
-
-**Used By**:
-
-- `src/utils/usePublishedGuides.ts` - Published guides hook
-- `src/components/block-editor/hooks/useBackendGuides.ts` - Block editor backend guides
-
----
-
 ### `interactive-guides-api.ts`
 
 **Purpose**: Defines the InteractiveGuide App Platform API contract.
@@ -119,7 +93,6 @@ async function fetchBackendGuides(namespace: string, publishedOnly?: boolean): P
 
 - `src/docs-retrieval/content-fetcher/backend-guide.ts`
 - `src/components/block-editor/hooks/useBackendGuides.ts`
-- `src/utils/fetchBackendGuides.ts`
 
 ---
 

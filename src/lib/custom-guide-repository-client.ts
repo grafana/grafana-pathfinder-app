@@ -14,7 +14,7 @@ import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from '.
 import { config, getBackendSrv } from '@grafana/runtime';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
-import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
+import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
@@ -38,6 +38,9 @@ export interface CustomGuideManifest {
 
 export interface CustomGuideRepositoryEntry {
   id: string;
+  /** `metadata.name`, which the editor loads and saves by; it can differ from `id`. */
+  name: string;
+  creationTimestamp?: string;
   title?: string;
   status?: string;
   manifest?: CustomGuideManifest;
@@ -54,8 +57,9 @@ export interface CustomGuideRepositoryEntry {
  * (no signing-keys endpoint answered at all, which points at the configured
  * address rather than at the caller), `feature-toggle-disabled`,
  * `obo-unavailable` (no provisioned on-behalf-of token — check this first when
- * the surface is unexpectedly empty), or `upstream-<status>` for an upstream
- * error.
+ * the surface is unexpectedly empty), `guide-too-large` (one stored guide alone
+ * exceeds the proxy's 8 MiB LIST page cap), or `upstream-<status>` for an
+ * upstream error.
  *
  * The identity gate runs before the backend resolver, so that resolver's
  * `namespace-unavailable` and `app-url-unavailable` are unreachable on this
@@ -184,13 +188,15 @@ export async function fetchCustomGuideCatalogue(
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.result;
   }
-  const existing = inflight.get(key);
+  // A refresh follows a write, so a request already in flight may predate it and must not answer.
+  const existing = options.refresh ? undefined : inflight.get(key);
   if (existing) {
     return existing;
   }
-  const request = requestCatalogue()
+  // Only the latest request for a key caches its result, so a superseded one cannot overwrite a refresh.
+  const request: Promise<CustomGuideCatalogue> = requestCatalogue()
     .then(({ cacheable, ...result }) => {
-      if (cacheable) {
+      if (cacheable && inflight.get(key) === request) {
         cache.set(key, { result, at: Date.now() });
       }
       return result;
@@ -200,7 +206,9 @@ export async function fetchCustomGuideCatalogue(
       return { entries: [], available: false, reason: 'request-failed' };
     })
     .finally(() => {
-      inflight.delete(key);
+      if (inflight.get(key) === request) {
+        inflight.delete(key);
+      }
     });
   inflight.set(key, request);
   return request;

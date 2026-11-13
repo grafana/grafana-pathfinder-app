@@ -75,21 +75,15 @@ type appPlatformListPage struct {
 	Items []appPlatformListItem `json:"items"`
 }
 
-type appPlatformRawListPage struct {
-	Metadata struct {
-		Continue string `json:"continue"`
-	} `json:"metadata"`
-	Items []json.RawMessage `json:"items"`
-}
-
 // appPlatformListItem is one LIST element. metadata.name addresses the
 // object; resourceVersion is what a subsequent status update must echo back.
 // spec and status stay raw so each kind decodes its own schema.
 type appPlatformListItem struct {
 	Metadata struct {
-		Name            string            `json:"name"`
-		ResourceVersion string            `json:"resourceVersion"`
-		Annotations     map[string]string `json:"annotations"`
+		Name              string            `json:"name"`
+		ResourceVersion   string            `json:"resourceVersion"`
+		CreationTimestamp string            `json:"creationTimestamp"`
+		Annotations       map[string]string `json:"annotations"`
 	} `json:"metadata"`
 	Spec   json.RawMessage `json:"spec"`
 	Status json.RawMessage `json:"status"`
@@ -157,6 +151,10 @@ type appPlatformListClient struct {
 	logger     log.Logger
 	attempt    int
 
+	// shrinksOnOverflow marks a caller that re-reads an overflowing LIST page at
+	// a smaller size, so an overflow it will retry is not logged as a failure.
+	shrinksOnOverflow bool
+
 	// Object calls share one token per request; LIST drains may outlive a token.
 	objectTokenMu sync.Mutex
 	objectToken   string
@@ -201,16 +199,13 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	return page, nil
 }
 
-func (c *appPlatformListClient) listRawPage(ctx context.Context, namespace, continueToken string) (*appPlatformRawListPage, error) {
-	page := &appPlatformRawListPage{}
-	if err := c.listPageInto(ctx, customGuideGroupVersion, namespace, customGuideResource, continueToken, customGuidesPageSize, customGuideListMaxBytes, page); err != nil {
-		return nil, err
-	}
-	return page, nil
-}
-
 func (c *appPlatformListClient) listPageInto(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64, page any) (err error) {
-	defer func() { logAppPlatformResult(c.logger, namespace, resource, "list", c.attempt, err) }()
+	defer func() {
+		if c.shrinksOnOverflow && pageSize > 1 && isResponseTooLarge(err) {
+			return
+		}
+		logAppPlatformResult(c.logger, namespace, resource, "list", c.attempt, err)
+	}()
 	if namespace == "" {
 		return fmt.Errorf("app platform list: empty namespace")
 	}
@@ -535,6 +530,13 @@ func isTerminalUpstreamError(err error) bool {
 		return !isTransientUpstreamStatus(ue.status)
 	}
 	return false
+}
+
+// isResponseTooLarge reports whether an upstream read overflowed its byte cap.
+// The same request overflows the same way every time, so it never fixes itself.
+func isResponseTooLarge(err error) bool {
+	var typed *guideProxyError
+	return errors.As(err, &typed) && typed.diagnostic.Reason == "response-too-large"
 }
 
 // isNamespaceGlobalUpstreamError reports whether an upstream failure is a

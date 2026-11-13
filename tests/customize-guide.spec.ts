@@ -63,9 +63,6 @@ for (const repair of [false, true]) {
       (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
     );
     const writes: unknown[] = [];
-    await page.route('**/api/plugins/grafana-pathfinder-app/resources/custom-guides', (route) =>
-      route.fulfill({ json: { items: writes.slice(-1) } })
-    );
     await page.route(
       (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/custom-guide'),
       (route) => {

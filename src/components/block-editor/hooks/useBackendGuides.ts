@@ -6,7 +6,10 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import type { JsonGuide } from '../types';
-import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import {
+  fetchCustomGuideCatalogue,
+  type CustomGuideRepositoryEntry,
+} from '../../../lib/custom-guide-repository-client';
 import { APP_PLATFORM_API_VERSION, collectionUrl, guideReadUrl, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
 import {
@@ -127,9 +130,9 @@ function specWithAuthorDefault(spec: BackendGuideSpec, status: 'draft' | 'publis
 }
 
 /**
- * The stored resource, read singly right before a write. The loaded list cannot stand in for it:
- * `/custom-guides` truncates silently on large instances. Only a 404 means the guide is gone; any
- * other failure becomes an Error, because the save flow shows `message` only for Error instances.
+ * The stored resource, read singly. The library's catalogue cannot stand in for it: entries carry no
+ * blocks and no resourceVersion. Only a 404 means the guide is gone; any other failure becomes an
+ * Error, because the save flow shows `message` only for Error instances.
  */
 async function readStoredGuide(resourceName: string): Promise<BackendGuide | undefined> {
   try {
@@ -154,15 +157,27 @@ async function readStoredGuide(resourceName: string): Promise<BackendGuide | und
 export interface SaveGuideResult {
   /** The name this save chose for the guide, set only when it was not already authored by a real name. */
   defaultedAuthor?: DefaultedAuthor;
+  /** The resource the write answered with, carrying the resourceVersion the next save must echo. */
+  written?: BackendGuide;
+}
+
+/** The stored resource a write answered with, when the answer is one. */
+function writtenResource(data: unknown, resourceName: string): BackendGuide | undefined {
+  const resource = data as Partial<BackendGuide> | null | undefined;
+  return resource?.metadata?.name === resourceName && resource.metadata.resourceVersion && resource.spec
+    ? (resource as BackendGuide)
+    : undefined;
 }
 
 export interface UseBackendGuidesReturn {
-  guides: BackendGuide[];
+  /** The library's slim catalogue: no blocks, no resourceVersion. Read a guide with `readGuide`. */
+  guides: CustomGuideRepositoryEntry[];
   isLoading: boolean;
   error: string | null;
   /** True once the initial fetch has resolved (success or failure). */
   hasLoaded: boolean;
-  refreshGuides: () => Promise<BackendGuide[]>;
+  refreshGuides: () => Promise<CustomGuideRepositoryEntry[]>;
+  readGuide: (resourceName: string) => Promise<BackendGuide | undefined>;
   saveGuide: (
     guide: JsonGuide,
     existingResourceName?: string,
@@ -171,8 +186,8 @@ export interface UseBackendGuidesReturn {
     replacesForeignResource?: boolean,
     details?: GuideDetails
   ) => Promise<SaveGuideResult>;
-  publishGuide: (resourceName: string) => Promise<void>;
-  unpublishGuide: (resourceName: string) => Promise<void>;
+  publishGuide: (resourceName: string) => Promise<BackendGuide | undefined>;
+  unpublishGuide: (resourceName: string) => Promise<BackendGuide | undefined>;
   deleteGuide: (resourceName: string) => Promise<void>;
   isSaving: boolean;
 }
@@ -194,7 +209,7 @@ export function hasManageableBackendGuides(
  * Hook to manage guides from the Pathfinder backend
  */
 export function useBackendGuides(): UseBackendGuidesReturn {
-  const [guides, setGuides] = useState<BackendGuide[]>([]);
+  const [guides, setGuides] = useState<CustomGuideRepositoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -202,11 +217,11 @@ export function useBackendGuides(): UseBackendGuidesReturn {
 
   const namespace = config.namespace;
 
-  /**
-   * Fetch all guides from backend
-   */
   const isMountedRef = useRef(true);
-  const refreshGuides = useCallback(async (): Promise<BackendGuide[]> => {
+  // Refreshes overlap (mount, then one after every write), and a catalogue drain can be slow, so only the
+  // latest one may write state: an older drain landing last would restore pre-write rows or a stale error.
+  const refreshSeq = useRef(0);
+  const refreshGuides = useCallback(async (): Promise<CustomGuideRepositoryEntry[]> => {
     if (!namespace) {
       if (isMountedRef.current) {
         setError('No namespace available');
@@ -214,25 +229,32 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       return [];
     }
 
+    const seq = ++refreshSeq.current;
+    const isLatest = () => isMountedRef.current && seq === refreshSeq.current;
     if (isMountedRef.current) {
       setIsLoading(true);
       setError(null);
     }
 
     try {
-      const fetchedGuides = await fetchBackendGuides(namespace);
-      if (isMountedRef.current) {
-        setGuides(fetchedGuides);
+      // Bypasses the client cache so a guide just saved or deleted shows up as such.
+      const catalogue = await fetchCustomGuideCatalogue(namespace, { refresh: true });
+      // An unavailable catalogue is an empty list on the wire; showing it as "no guides" would hide them all.
+      if (!catalogue.available && catalogue.reason !== 'unsupported') {
+        throw new Error(`The guide library is unavailable (${catalogue.reason ?? 'unknown'}).`);
       }
-      return fetchedGuides;
+      if (isLatest()) {
+        setGuides(catalogue.entries);
+      }
+      return catalogue.entries;
     } catch (err) {
       logger.error('[useBackendGuides] Failed to fetch guides', { error: err });
-      if (isMountedRef.current) {
+      if (isLatest()) {
         setError(err instanceof Error ? err.message : 'Failed to fetch guides');
       }
       return [];
     } finally {
-      if (isMountedRef.current) {
+      if (isLatest()) {
         setIsLoading(false);
         setHasLoaded(true);
       }
@@ -304,8 +326,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           details,
         })?.defaulted;
 
-        await lastValueFrom(
-          getBackendSrv().fetch({
+        const response = await lastValueFrom(
+          getBackendSrv().fetch<unknown>({
             url: existingResourceName ? itemUrl(namespace, existingResourceName) : collectionUrl(namespace),
             method: existingResourceName ? 'PUT' : 'POST',
             data: k8sResource,
@@ -313,8 +335,9 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           })
         );
 
-        await refreshGuides();
-        return { defaultedAuthor };
+        // Not awaited: the save needs nothing from the list, and a drain on a large instance can take long.
+        void refreshGuides();
+        return { defaultedAuthor, written: writtenResource(response.data, resourceName) };
       } finally {
         setIsSaving(false);
       }
@@ -327,7 +350,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
    * content written is the stored content, so there is no editor-held version to conflict against.
    */
   const writeStatus = useCallback(
-    async (resourceName: string, status: 'draft' | 'published') => {
+    async (resourceName: string, status: 'draft' | 'published'): Promise<BackendGuide | undefined> => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -339,8 +362,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           throw new Error(`Guide "${resourceName}" was not found on the server`);
         }
 
-        await lastValueFrom(
-          getBackendSrv().fetch({
+        const response = await lastValueFrom(
+          getBackendSrv().fetch<unknown>({
             url: itemUrl(namespace, resourceName),
             method: 'PUT',
             data: {
@@ -353,7 +376,8 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           })
         );
 
-        await refreshGuides();
+        void refreshGuides();
+        return writtenResource(response.data, resourceName);
       } finally {
         setIsSaving(false);
       }
@@ -414,6 +438,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
     error,
     hasLoaded,
     refreshGuides,
+    readGuide: readStoredGuide,
     saveGuide,
     publishGuide,
     unpublishGuide,
