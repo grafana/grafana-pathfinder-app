@@ -1,3 +1,4 @@
+import tutorials from '../constants/bundled-tutorials.json';
 /**
  * Tests for `resolveCompletionIdentity` — the identity rule shared with the
  * Custom Guide Packages RFC: `(guideSource, guideId) = (repository, manifest.id)`,
@@ -7,6 +8,7 @@
  */
 import {
   resolveCompletionIdentity,
+  resolveMilestoneCompletionIdentity,
   resolveJourneyCompletionIdentity,
   resolveStandaloneGuideCompletionIdentity,
   manifestGuideId,
@@ -180,5 +182,47 @@ describe('resolveJourneyCompletionIdentity', () => {
       guideId: 'fallback',
     };
     expect(resolveJourneyCompletionIdentity(input)).toEqual(resolveStandaloneGuideCompletionIdentity(input));
+  });
+});
+
+describe('migrated tutorial milestone identity', () => {
+  it.each(
+    tutorials.flatMap(({ id }) =>
+      ['bundled', 'interactive-tutorials', 'online-cdn'].map((repository) => ({ id, repository }))
+    )
+  )('shares $id completion from $repository', ({ id, repository }) => {
+    expect(
+      resolveMilestoneCompletionIdentity({
+        repository,
+        milestoneSlug: id,
+        packageManifest: { id: 'enclosing-path', repository: 'app-platform' },
+      })
+    ).toEqual({ guideSource: 'bundled', guideId: id });
+  });
+
+  it.each(tutorials.map(({ id }) => id))('preserves private source isolation for %s', (id) => {
+    expect(
+      resolveMilestoneCompletionIdentity({
+        repository: 'app-platform',
+        milestoneSlug: id,
+        packageManifest: { repository: 'interactive-tutorials' },
+      })
+    ).toEqual({ guideSource: 'app-platform', guideId: id });
+  });
+
+  it('canonicalizes manifest-only public sources without using the enclosing path ID', () => {
+    expect(
+      resolveMilestoneCompletionIdentity({
+        milestoneSlug: 'first-dashboard',
+        packageManifest: { id: 'enclosing-path', repository: 'interactive-tutorials' },
+      })
+    ).toEqual({ guideSource: 'bundled', guideId: 'first-dashboard' });
+  });
+
+  it.each(['first-dashboard-rss', 'unrelated-guide'])('preserves the public source for %s', (id) => {
+    expect(resolveMilestoneCompletionIdentity({ repository: 'interactive-tutorials', milestoneSlug: id })).toEqual({
+      guideSource: 'interactive-tutorials',
+      guideId: id,
+    });
   });
 });

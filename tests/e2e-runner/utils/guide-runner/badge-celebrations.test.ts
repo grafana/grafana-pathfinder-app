@@ -176,13 +176,20 @@ describe('dismissBadgeCelebrations', () => {
   });
 
   it('throws a bounded error when the toast remains visible', async () => {
-    const { page, dismissDispatch, waitForTimeout } = createBadgeHarness(['First badge'], {
+    const { page, dismissDispatch, waitForTimeout, getElapsedMs } = createBadgeHarness(['First badge'], {
       remainsVisible: true,
     });
+    const dateNow = jest.spyOn(Date, 'now').mockImplementation(getElapsedMs);
 
-    const dismissal = dismissBadgeCelebrations(page);
-    await expect(dismissal).rejects.toBeInstanceOf(FatalTransitionError);
-    await expect(dismissal).rejects.toThrow('Badge celebration remained visible after attempt 1 of 3 (1000ms timeout)');
+    try {
+      const dismissal = dismissBadgeCelebrations(page);
+      await expect(dismissal).rejects.toBeInstanceOf(FatalTransitionError);
+      await expect(dismissal).rejects.toThrow(
+        'Badge celebration remained visible after attempt 1 of 3 (1000ms timeout)'
+      );
+    } finally {
+      dateNow.mockRestore();
+    }
     expect(dismissDispatch).toHaveBeenCalledTimes(1);
     expect(waitForTimeout).toHaveBeenCalledTimes(40);
   });

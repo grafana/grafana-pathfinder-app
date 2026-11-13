@@ -12,9 +12,9 @@
 import { decideStepCheck } from './step-decision';
 import { checkVerdict, combineCheckVerdicts } from '../lib/check-verdict';
 import { conditionTokens, conditionLabel, hasConditionPrefix, hasConditionToken } from '../lib/condition-input';
-import { useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useReducer, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { subscribeProgressEvent } from '../global-state/progress-events';
+import { subscribeProgressEvent, type ProgressOrigin } from '../global-state/progress-events';
 import {
   markStepCompleted,
   resetStep as resetStepInStore,
@@ -149,11 +149,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    */
   const storeSectionTarget: string | null | undefined = sectionId;
   const writeStoreCompletion = useCallback(
-    (reason: 'manual' | 'skipped' | 'objectives'): void => {
+    (reason: 'manual' | 'skipped' | 'objectives', origin?: ProgressOrigin): void => {
       if (storeSectionTarget === null) {
         return;
       }
-      markStepCompleted(stepId, storeSectionTarget ?? STANDALONE_SECTION_ID, reason);
+      markStepCompleted(stepId, storeSectionTarget ?? STANDALONE_SECTION_ID, reason, undefined, origin);
     },
     [stepId, storeSectionTarget]
   );
@@ -188,6 +188,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   // REACT: Track mounted state to prevent state updates after unmount (R4)
   const isMountedRef = useRef(true);
+  // Mirrors the passive coordinator's baseline: objectives met on their first
+  // answered check save as 'load', on the assumption the reader already had them.
+  // A reset swaps in a new baseline, so a check started before it cannot mark it.
+  const objectivesBaselineRef = useRef({ seenUnmet: false });
+  const [objectivesOrigin, setObjectivesOrigin] = useState<ProgressOrigin>('change');
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -212,6 +217,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // The async checkStep function can be mid-execution when eligibility changes, causing it to
   // use a stale captured value. This ref always has the current value.
   const isEligibleRef = useRef(isEligibleForChecking);
+  const isCheckingRef = useRef(state.isChecking);
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref: checkStep omits state from its deps, so a rebuild mid-check must not keep isChecking true after a reset
+  isCheckingRef.current = state.isChecking;
   /** A terminal status change seen while a check was running, still to be acted on. */
   const pendingTerminalRecheckRef = useRef(false);
   // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref read by async checkStep to avoid stale closures
@@ -368,6 +376,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           return {
             requirements: conditionLabel(requirements),
             pass: false,
+            verdict: 'unavailable',
             error: [
               {
                 requirement: conditionLabel(requirements) || 'unknown',
@@ -461,7 +470,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * 3. Requirements (validate if eligible)
    */
   const checkStep = useCallback(async () => {
-    if (state.isChecking) {
+    if (state.isChecking && isCheckingRef.current) {
       return;
     }
 
@@ -476,6 +485,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     }
 
     safeDispatch({ type: 'START_CHECK' });
+    const objectivesBaseline = objectivesBaselineRef.current;
 
     try {
       const decisionInput = {
@@ -510,7 +520,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           // Only an explicit `satisfied` verdict is completion evidence. `pass`
           // alone fails open for invalid tokens in `pre` mode, which is correct
           // for prerequisites but must never auto-complete a step.
-          objectivesPassed = checkVerdict(objectivesResult) === 'satisfied';
+          const verdict = checkVerdict(objectivesResult);
+          objectivesPassed = verdict === 'satisfied';
+          objectivesBaseline.seenUnmet ||= verdict === 'unsatisfied';
         } catch (objectivesError) {
           // Unavailable objectives must not prevent prerequisite checking.
           logger.warn('Objectives check failed; falling through to requirements', { error: objectivesError });
@@ -520,8 +532,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
 
       if (decision === 'completed') {
+        if (objectivesBaseline !== objectivesBaselineRef.current) {
+          return;
+        }
         const finalState = createObjectivesCompletedState(skippable);
         if (isMountedRef.current) {
+          setObjectivesOrigin(objectivesBaseline.seenUnmet ? 'change' : 'load');
           dispatch(actionFromBaseStepState(finalState));
           prevIsEnabledRef.current = true;
           enabledTimestampRef.current = Date.now();
@@ -839,6 +855,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       if (!options?.skipStoreWrite) {
         writeStoreReset();
       }
+      objectivesBaselineRef.current = { seenUnmet: false };
       dispatch({ type: 'RESET', canSkip: skippable });
       updateManager({
         isEnabled: false,
@@ -909,11 +926,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // `markStepsCompleted(..., 'objectives')` bulk write.
   useEffect(() => {
     if (state.completionReason === 'objectives' && !disabled) {
-      writeStoreCompletion('objectives');
+      writeStoreCompletion('objectives', objectivesOrigin);
       onStepComplete?.(stepId);
       onComplete?.();
     }
-  }, [state.completionReason, stepId, disabled, onStepComplete, onComplete, writeStoreCompletion]);
+  }, [state.completionReason, stepId, disabled, onStepComplete, onComplete, writeStoreCompletion, objectivesOrigin]);
 
   // Register step checker with global manager for targeted re-checking
   // This is called by context changes (EchoSrv), watchNextStep, and triggerStepCheck
@@ -971,9 +988,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   // Track state values in refs to avoid re-subscribing when they change during checks.
   /* eslint-disable react-hooks/refs -- intentional latest-value refs; read asynchronously by checkStep and event callbacks to avoid stale closures */
-  const isCheckingRef = useRef(state.isChecking);
-  isCheckingRef.current = state.isChecking;
-
   const isCompletedRef = useRef(state.isCompleted);
   isCompletedRef.current = state.isCompleted;
 
@@ -1175,6 +1189,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   return {
     ...state,
+    objectivesOrigin,
     checkStep,
     revalidate,
     markCompleted,

@@ -1,6 +1,7 @@
 import { beginGuideLoad, finishGuideLoad, markGuideLoadStage } from '../../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../../types/guide-diagnostics.types';
 import { diagnoseGuideError } from '../../../lib/guide-diagnostics';
+import { prPreviewContext } from '../../../lib/pr-preview-core';
 /**
  * One-shot launch preparation: fetch a guide's content once, expand its snippet
  * refs, and classify whether it drives the Grafana UI — all BEFORE a display
@@ -32,7 +33,7 @@ import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retr
 import { createPreparedContent } from '../../../lib/guide-counting-source';
 import { logger } from '../../../lib/logging';
 import { normalizeTelemetryUrl } from '../../../lib/telemetry';
-import { inlineSnippetRefsInGuideWithStatus } from '../../../snippet-engine';
+import { inlineSnippetRefsInGuideWithStatus, prSnippetResolver } from '../../../snippet-engine';
 import type { LaunchSource } from '../../../recovery';
 import type { PackageOpenInfo } from '../../../types/content-panel.types';
 import type { PreparedRawContent } from '../../../types/content.types';
@@ -125,7 +126,11 @@ export async function prepareGuideLaunch(
       return { ok: false, error: 'Guide content could not be parsed', errorCode: 'unparseable' };
     }
 
-    const validation = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
+    const validation = validateGuide(guide, {
+      allowDuplicateHeading: true,
+      allowUnsupportedGuidedAction: true,
+      allowGrotGraphErrors: true,
+    });
     if (!validation.isValid) {
       finishGuideLoad(loadContext, 'error', {
         source: loadContext.source,
@@ -143,14 +148,24 @@ export async function prepareGuideLaunch(
 
     // Expand the parsed guide, never `validation.guide`: only the root schema is
     // loose, so the validated copy has dropped unknown fields nested in blocks.
-    const { guide: expandedGuide, unresolvedSnippetIds } = await inlineSnippetRefsInGuideWithStatus(guide);
-    if (unresolvedSnippetIds.length > 0 && context.requireResolvedSnippets) {
+    const snapshotResolver = prSnippetResolver(url);
+    const { guide: expandedGuide, unresolvedSnippetIds } = await inlineSnippetRefsInGuideWithStatus(
+      guide,
+      snapshotResolver
+    );
+    if (unresolvedSnippetIds.length > 0 && (context.requireResolvedSnippets || snapshotResolver)) {
       finishGuideLoad(loadContext, 'error', {
         source: loadContext.source,
         stage: 'prepare',
         reason: 'snippet-unavailable',
       });
-      return { ok: false, error: 'All snippets must resolve before transferring inputs', errorCode: 'schema-invalid' };
+      return {
+        ok: false,
+        error: snapshotResolver
+          ? `PR snapshot snippets could not be loaded: ${unresolvedSnippetIds.join(', ')}. Check shared/snippets in this commit.`
+          : 'All snippets must resolve before transferring inputs',
+        errorCode: 'schema-invalid',
+      };
     }
     if (unresolvedSnippetIds.length > 0) {
       finishGuideLoad(loadContext, 'degraded', {
@@ -185,6 +200,10 @@ export async function prepareGuideLaunch(
     };
   } catch (error) {
     finishGuideLoad(loadContext, 'error', diagnoseGuideError(error, loadContext.source, 'prepare'));
-    return { ok: false, error: 'Guide could not be prepared', errorCode: 'fetch-failed' };
+    return {
+      ok: false,
+      error: prPreviewContext(url) && error instanceof Error ? error.message : 'Guide could not be prepared',
+      errorCode: 'fetch-failed',
+    };
   }
 }

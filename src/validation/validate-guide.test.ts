@@ -710,6 +710,217 @@ describe('JsonGuideSchema', () => {
       const result = validateGuideFromString(guide);
       expect(result.isValid).toBe(false);
     });
+
+    it('should warn on unreachable screens in grot-guide block', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'r1' }] },
+            screens: [
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+              {
+                type: 'result',
+                id: 'orphan',
+                title: 'Unreachable',
+                body: 'Never seen.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      const unreachableWarn = result.warnings.find(
+        (w) => w.type === 'invalid-graph' && w.message.includes('unreachable_screen')
+      );
+      expect(unreachableWarn).toBeDefined();
+    });
+
+    it('should error when a question screen has no path to any result', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'q1' }] },
+            screens: [
+              { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Loop', screenId: 'q2' }] },
+              { type: 'question', id: 'q2', title: 'Q2', options: [{ text: 'Loop', screenId: 'q1' }] },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      const noResultError = result.errors.find((e) => e.code === 'no_result_path');
+      expect(noResultError).toBeDefined();
+    });
+
+    it('should error on self-loop in grot-guide question screen', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'q1' }] },
+            screens: [
+              { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Self', screenId: 'q1' }] },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      const loopError = result.errors.find((e) => e.code === 'self_loop');
+      expect(loopError).toBeDefined();
+    });
+
+    it('should downgrade self-loop and no-result-path to invalid-graph warnings when allowGrotGraphErrors is set', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'q1' }] },
+            screens: [
+              { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Self', screenId: 'q1' }] },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide, { allowGrotGraphErrors: true });
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      const loopWarn = result.warnings.find((w) => w.type === 'invalid-graph' && w.message.includes('self_loop'));
+      expect(loopWarn).toBeDefined();
+    });
+
+    it('should keep allowGrotGraphErrors warnings as advisories even under strict mode', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: {
+              title: 'W',
+              body: 'B',
+              ctas: [
+                { text: 'Go', screenId: 'q1' },
+                { text: 'Skip', screenId: 'r1' },
+              ],
+            },
+            screens: [
+              { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Self', screenId: 'q1' }] },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide, { allowGrotGraphErrors: true, strict: true });
+      expect(result.isValid).toBe(true);
+      const noResultWarn = result.warnings.find(
+        (w) => w.type === 'invalid-graph' && w.message.includes('no_result_path')
+      );
+      expect(noResultWarn).toBeDefined();
+    });
+
+    it('should warn on duplicate screen IDs in grot-guide block', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: {
+              title: 'Welcome',
+              body: 'Hi',
+              ctas: [{ text: 'Go', screenId: 'dup' }],
+            },
+            screens: [
+              {
+                type: 'result',
+                id: 'dup',
+                title: 'R1',
+                body: 'One.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+              {
+                type: 'result',
+                id: 'dup',
+                title: 'R2',
+                body: 'Two.',
+                links: [{ title: 'Doc', linkText: 'Read', href: '/docs' }],
+              },
+            ],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+      const dupWarn = result.warnings.find(
+        (w) => w.type === 'invalid-graph' && w.message.includes('duplicate_screen_id')
+      );
+      expect(dupWarn).toBeDefined();
+    });
+
+    it('should warn on reachable result screen with no links', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'r1' }] },
+            screens: [{ type: 'result', id: 'r1', title: 'R1', body: 'Done.' }],
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      const emptyResultWarn = result.warnings.find(
+        (w) => w.type === 'invalid-graph' && w.message.includes('empty_result')
+      );
+      expect(emptyResultWarn).toBeDefined();
+    });
   });
 
   describe('leading heading duplicates title', () => {

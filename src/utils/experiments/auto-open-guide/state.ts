@@ -1,9 +1,11 @@
+import type { FeatureFlagName } from '../../openfeature';
 import type { AutoOpenGuideExperience } from './config';
 
 export interface AutoOpenGuideEnrollment {
   variant: 'control' | 'treatment';
   experiences: readonly AutoOpenGuideExperience[];
   offeredGuide?: string;
+  flag?: FeatureFlagName;
 }
 
 let enrollment: AutoOpenGuideEnrollment | null = null;

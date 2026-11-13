@@ -129,6 +129,32 @@ func (a *App) achievementsUnavailableReason(r *http.Request) string {
 	return ""
 }
 
+// achievementPerson is the people-only gate of the events and definitions
+// routes. On refusal it has written the answer.
+func (a *App) achievementPerson(w http.ResponseWriter, r *http.Request, op string) (achievements.Person, bool) {
+	sub, status := a.subjectFromIDToken(r)
+	//exhaustive:enforce
+	switch status {
+	case identityVerified:
+	case identityUnverifiable, identitySigningKeysDown:
+		a.writeAchievementsUnavailable(w, status.capabilityReason(), op)
+		return achievements.Person{}, false
+	case identityUnknown, identityRejected:
+		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
+		return achievements.Person{}, false
+	default:
+		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
+		return achievements.Person{}, false
+	}
+
+	person, err := personFromSubject(sub)
+	if err != nil {
+		a.writeError(w, reasonPrincipalNotSupported, http.StatusForbidden)
+		return achievements.Person{}, false
+	}
+	return person, true
+}
+
 // handleAchievementEvent serves POST /api/v1/achievements/events.
 func (a *App) handleAchievementEvent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -136,24 +162,8 @@ func (a *App) handleAchievementEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sub, status := a.subjectFromIDToken(r)
-	//exhaustive:enforce
-	switch status {
-	case identityVerified:
-	case identityUnverifiable, identitySigningKeysDown:
-		a.writeAchievementsUnavailable(w, status.capabilityReason(), "create")
-		return
-	case identityUnknown, identityRejected:
-		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
-		return
-	default:
-		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
-		return
-	}
-
-	person, err := personFromSubject(sub)
-	if err != nil {
-		a.writeError(w, reasonPrincipalNotSupported, http.StatusForbidden)
+	person, ok := a.achievementPerson(w, r, "create")
+	if !ok {
 		return
 	}
 

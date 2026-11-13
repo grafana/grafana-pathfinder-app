@@ -1074,7 +1074,7 @@ const ConditionalProps = {
   ),
 };
 
-const MAX_NESTING_DEPTH = 5;
+export const MAX_NESTING_DEPTH = 5;
 
 // Helper to create depth-limited block schema
 function createBlockSchemaWithDepth(currentDepth: number, insideSection = false): z.ZodType {

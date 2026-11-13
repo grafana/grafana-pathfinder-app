@@ -42,6 +42,7 @@ import {
   UserInteraction,
 } from '../../lib/analytics';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
+import { isPrTestUrl } from '../../lib/pr-test-marker';
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
@@ -260,23 +261,25 @@ export function MarkCompleteFooter({
       // Record before the celebration in case the reader navigates away.
       onMarkComplete?.();
 
-      const path = pathAnalytics(completionIdentity?.pathIdentity);
-      reportAppInteraction(
-        UserInteraction.MarkCompleteClicked,
-        {
-          ...(completionIdentity &&
-            guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity, guideTitle })),
-          ...path.properties,
-          interaction_location: 'content_footer',
-          completion_context: context,
-          completion_percentage_before: percentage,
-          block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
-          ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
-          ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
-          ...getGuideBlockCountProperties(contentKey),
-        },
-        path.options
-      );
+      if (!isPrTestUrl(contentKey)) {
+        const path = pathAnalytics(completionIdentity?.pathIdentity);
+        reportAppInteraction(
+          UserInteraction.MarkCompleteClicked,
+          {
+            ...(completionIdentity &&
+              guideIdentityAnalyticsProperties({ kind: 'guide', ...completionIdentity, guideTitle })),
+            ...path.properties,
+            interaction_location: 'content_footer',
+            completion_context: context,
+            completion_percentage_before: percentage,
+            block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
+            ...(context === 'milestone' && currentMilestone !== undefined && { current_milestone: currentMilestone }),
+            ...(context === 'milestone' && totalMilestones !== undefined && { total_milestones: totalMilestones }),
+            ...getGuideBlockCountProperties(contentKey),
+          },
+          path.options
+        );
+      }
       void (
         choiceCompletionKeys === undefined
           ? guideCompletionMarkStorage.set(contentKey, true)

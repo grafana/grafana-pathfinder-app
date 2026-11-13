@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -29,6 +31,8 @@ const (
 	definitionsColdStartWait   = 2 * time.Second
 
 	errDefinitionsUnavailable = "definitions-unavailable"
+
+	msgDefinitionsRefreshRejected = "achievements definitions refresh rejected"
 )
 
 // definitionsProvider returns nil and a retry delay when no definitions are loaded.
@@ -36,7 +40,11 @@ type definitionsProvider interface {
 	Snapshot(ctx context.Context) (*achievements.Snapshot, time.Duration)
 }
 
-// definitionsSource never replaces its last good copy with a failed or unreadable fetch.
+// definitionsSource never replaces its last good copy with a failed or
+// unreadable fetch. Once a copy is loaded it also rejects, as a failed refresh
+// that backs off, a bundle that still carries a definition or registry action
+// the copy evaluates but cannot read, or one with no evaluable definition. An
+// entry the bundle leaves out is a deliberate removal and swaps in.
 type definitionsSource struct {
 	url           string
 	client        *http.Client
@@ -133,6 +141,24 @@ func (s *definitionsSource) refresh(done chan struct{}, etag string) {
 		s.logger.Warn("achievement definitions fetch failed, keeping the last good copy", "error", err, "failures", s.failures, "loaded", s.current.Load() != nil)
 		return
 	}
+	if current := s.current.Load(); current != nil && snap != nil {
+		achievementIDs, actions := unreadableEvaluable(current, snap)
+		reason := ""
+		switch {
+		case len(snap.Catalog.Achievements) == 0:
+			reason = "no-evaluable-definitions"
+		case len(achievementIDs)+len(actions) > 0:
+			reason = "unreadable-entries"
+		}
+		if reason != "" {
+			s.failures++
+			s.retryAt = now.Add(definitionsBackoff(s.failures))
+			s.logger.Warn(msgDefinitionsRefreshRejected, "reason", reason,
+				"definitionsVersion", current.Version, "rejectedDefinitionsVersion", snap.Version,
+				"unreadableAchievements", achievementIDs, "unreadableActions", actions, "failures", s.failures)
+			return
+		}
+	}
 	s.failures = 0
 	s.retryAt = time.Time{}
 	s.checkedAt = now
@@ -144,6 +170,51 @@ func (s *definitionsSource) refresh(done chan struct{}, etag string) {
 	}
 	s.etag = newETag
 	s.current.Store(snap)
+}
+
+// unreadableEvaluable lists the definitions and registry actions current
+// evaluates that next carries but skipped as unreadable. One next leaves out is
+// a removal, unless next also skipped entries it cannot name (an achievement
+// with no readable id, or skips past the listed cap): then an absent entry may
+// be one of them and is counted as unreadable.
+func unreadableEvaluable(current, next *achievements.Snapshot) (achievementIDs, actions []string) {
+	skippedDefs, skippedActions, skippedEntities := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	unnamedDefs, unnamedAll := false, false
+	for _, sk := range next.Skipped {
+		switch sk.What {
+		case "achievement":
+			if strings.HasPrefix(sk.ID, "#") {
+				unnamedDefs = true
+			}
+			skippedDefs[sk.ID] = true
+		case "action":
+			skippedActions[sk.ID] = true
+		case "entity":
+			skippedEntities[sk.ID] = true
+		case "bundle":
+			unnamedAll = true
+		}
+	}
+
+	evaluable := map[string]bool{}
+	for _, d := range next.Catalog.Achievements {
+		evaluable[d.ID] = true
+	}
+	for _, d := range current.Catalog.Achievements {
+		if !evaluable[d.ID] && (skippedDefs[d.ID] || unnamedDefs || unnamedAll) {
+			achievementIDs = append(achievementIDs, d.ID)
+		}
+	}
+	for entity, e := range current.Registry.Entities {
+		for name := range e.Actions {
+			pair := entity + "." + name
+			if _, ok := next.Registry.Entities[entity].Actions[name]; !ok && (skippedActions[pair] || skippedEntities[entity] || unnamedAll) {
+				actions = append(actions, pair)
+			}
+		}
+	}
+	slices.Sort(actions)
+	return achievementIDs, actions
 }
 
 // fetch returns a nil snapshot and no error on 304.
@@ -215,9 +286,13 @@ type achievementDefinitionsResponse struct {
 }
 
 // handleAchievementDefinitions serves GET /api/v1/achievements/definitions.
+// The answer is the same for every person, but only people may read it.
 func (a *App) handleAchievementDefinitions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := a.achievementPerson(w, r, "read"); !ok {
 		return
 	}
 	if _, _, _, ok, reason := a.resolveCompletionConfig(r); !ok {

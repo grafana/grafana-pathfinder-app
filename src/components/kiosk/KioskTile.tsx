@@ -1,3 +1,5 @@
+import { KioskImage } from './KioskImage';
+import type { KioskMode, KioskLeafV2 } from '../../types/kiosk-page.schema';
 import { launchKioskGuide } from './launch-kiosk-guide';
 import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { Icon, useStyles2 } from '@grafana/ui';
@@ -8,9 +10,9 @@ import { testIds } from '../../constants/testIds';
 import { getKioskOverlayStyles } from './kiosk-mode.styles';
 import type { KioskRule } from './kiosk-rules';
 
-import type { KioskMode } from '../../types/kiosk-page.schema';
-
 interface KioskTileProps {
+  decoration?: Extract<KioskLeafV2, { type: 'guide-links' }>['links'][number];
+  catalogUrl?: string;
   rule: KioskRule;
   index: number;
   mode?: KioskMode;
@@ -18,7 +20,15 @@ interface KioskTileProps {
   blockIndex?: number;
 }
 
-export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'presentation', onLaunch, blockIndex }) => {
+export const KioskTile: React.FC<KioskTileProps> = ({
+  rule,
+  index,
+  mode = 'presentation',
+  onLaunch,
+  blockIndex,
+  decoration,
+  catalogUrl = '',
+}) => {
   const styles = useStyles2(getKioskOverlayStyles);
   const revision = useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision);
   const [progress, setProgress] = useState<{ url: string; type: string; percentage: number }>();
@@ -52,12 +62,21 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
   }, [rule, mode, onLaunch, blockIndex]);
 
   return (
-    <button type="button" className={styles.tile} onClick={handleClick} data-testid={testIds.kioskMode.tile(index)}>
+    <button
+      type="button"
+      className={styles.tile}
+      style={decoration?.featured ? { borderWidth: 2, borderColor: 'var(--kiosk-accent, currentColor)' } : undefined}
+      onClick={handleClick}
+      data-testid={testIds.kioskMode.tile(index)}
+    >
+      {decoration?.image && <KioskImage image={decoration.image} catalogUrl={catalogUrl} inline />}
       <span className={styles.tileIconRow}>
         <span className={styles.tileIcon}>
-          <Icon name="compass" size="lg" />
+          <Icon name={decoration?.icon ?? 'compass'} size="lg" />
         </span>
-        <span className={styles.tileBadge}>{rule.interactiveLearning === false ? 'Product' : rule.type}</span>
+        <span className={styles.tileBadge}>
+          {decoration?.badge ?? (rule.interactiveLearning === false ? 'Product' : rule.type)}
+        </span>
       </span>
       <span className={styles.tileTitle} data-testid={testIds.kioskMode.tileTitle(index)}>
         {rule.title}
@@ -70,7 +89,7 @@ export const KioskTile: React.FC<KioskTileProps> = ({ rule, index, mode = 'prese
         </span>
       )}
       <span className={styles.tileArrow}>
-        <span>{rule.interactiveLearning === false ? 'Open product' : 'Launch guide'}</span>
+        <span>{decoration?.actionLabel ?? (rule.interactiveLearning === false ? 'Open product' : 'Launch guide')}</span>
         <Icon name="arrow-right" size="sm" />
       </span>
     </button>

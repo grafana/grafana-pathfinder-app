@@ -330,9 +330,10 @@ describe('V1 /api/v1/recommend endpoint integration', () => {
     );
     expect(alerting).toBeDefined();
 
-    // welcome-to-grafana should not appear twice (deduplication by title)
     const welcomeRecs = result.recommendations.filter((r) => r.title.toLowerCase().includes('welcome to grafana'));
-    expect(welcomeRecs.length).toBe(1);
+    expect(welcomeRecs).toHaveLength(1);
+    expect(welcomeRecs[0]?.repository).toBe('interactive-tutorials');
+    expect(welcomeRecs[0]?.type).toBe('package');
   });
 });
 
@@ -461,7 +462,7 @@ describe('Additive V1 recommendation helpers', () => {
     expect((rec as any).polluted).toBeUndefined();
   });
 
-  it('should deduplicate by matching title (case-insensitive)', () => {
+  it('does not deduplicate matching titles without a usable package identity', () => {
     const deduplicateRecommendations = (ContextService as any).deduplicateRecommendations.bind(ContextService);
     const externalRecs: Recommendation[] = [
       {
@@ -480,7 +481,7 @@ describe('Additive V1 recommendation helpers', () => {
     ];
 
     const deduplicated = deduplicateRecommendations(externalRecs, bundledRecs);
-    expect(deduplicated).toEqual([]);
+    expect(deduplicated).toEqual(externalRecs);
   });
 });
 
@@ -921,5 +922,47 @@ describe('Package recommends/suggests deferred nav link resolution', () => {
     expect(resolved.resolvedSuggests![0]!.packageId).toBe('explore-drilldowns-101');
     expect(resolved.pendingRecommendIds).toBeUndefined();
     expect(resolved.pendingSuggestIds).toBeUndefined();
+  });
+});
+
+describe('online and bundled tutorial collisions', () => {
+  const online = {
+    type: 'package',
+    title: 'Welcome to Grafana',
+    repository: 'interactive-tutorials',
+    contentUrl: 'https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json',
+    manifestUrl: 'https://interactive-learning.grafana.net/packages/welcome-to-grafana/manifest.json',
+    manifest: { id: 'welcome-to-grafana', type: 'guide' },
+    matchAccuracy: 1,
+  };
+
+  it.each(['recommendations', 'featured'] as const)('prefers the online tutorial in %s', async (field) => {
+    mockFetch.mockReset().mockResolvedValueOnce({ ok: true, json: async () => makeV1Response({ [field]: [online] }) });
+    const result = await ContextService.fetchRecommendations(makeContextData({ currentPath: '/' }), PLUGIN_CONFIG);
+    expect(result.recommendations.some((rec) => rec.url === 'bundled:welcome-to-grafana')).toBe(false);
+    const selected = field === 'featured' ? result.featuredRecommendations : result.recommendations;
+    expect(selected).toEqual(expect.arrayContaining([expect.objectContaining({ contentUrl: online.contentUrl })]));
+  });
+
+  it('retains the bundled tutorial when the online match is filtered out', async () => {
+    mockFetch.mockReset().mockResolvedValueOnce({
+      ok: true,
+      json: async () =>
+        makeV1Response({
+          recommendations: [{ ...online, matchAccuracy: 0.1 }],
+        }),
+    });
+    const result = await ContextService.fetchRecommendations(makeContextData({ currentPath: '/' }), PLUGIN_CONFIG);
+    expect(result.recommendations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ url: 'bundled:welcome-to-grafana' })])
+    );
+  });
+
+  it('retains the bundled tutorial when the recommender omits it', async () => {
+    mockFetch.mockReset().mockResolvedValueOnce({ ok: true, json: async () => makeV1Response() });
+    const result = await ContextService.fetchRecommendations(makeContextData({ currentPath: '/' }), PLUGIN_CONFIG);
+    expect(result.recommendations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ url: 'bundled:welcome-to-grafana' })])
+    );
   });
 });

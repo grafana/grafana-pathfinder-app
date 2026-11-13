@@ -1,3 +1,4 @@
+import { bundledTutorialCompletionSource } from '../lib/bundled-tutorial-identity';
 /**
  * Resolve a `(guideSource, guideId)` completion key from the resolved package
  * manifest — never from a loader URL.
@@ -101,7 +102,7 @@ export function resolveCompletionIdentity(input: ResolveCompletionIdentityInput)
     asNonEmptyString(fallbackSource) ??
     DEFAULT_GUIDE_SOURCE;
 
-  return { guideSource, guideId };
+  return { guideSource: bundledTutorialCompletionSource(guideSource, guideId), guideId };
 }
 
 export interface ResolveMilestoneCompletionIdentityInput {
@@ -113,21 +114,15 @@ export interface ResolveMilestoneCompletionIdentityInput {
   milestoneSlug: string;
 }
 
-/**
- * The ONE identity derivation for a milestone-as-guide completion record.
- * Both `markMilestoneDone` (the writer) and the reset path call this rather
- * than `resolveCompletionIdentity` directly — a milestone's `guideId` is
- * always its slug, by construction, with no argument able to override that.
- * A manifest may exist for the owning journey/package, but a milestone is
- * addressed by URL, not by the journey's manifest id, so letting a manifest
- * id win here (as it correctly does for an ordinary guide) would key the
- * writer and a reset under different ids for the exact same milestone.
- */
+// Milestones use their own slug, even when the manifest belongs to the enclosing path.
 export function resolveMilestoneCompletionIdentity(input: ResolveMilestoneCompletionIdentityInput): CompletionKey {
   const guideSource =
     asNonEmptyString(input.repository) ?? asNonEmptyString(input.packageManifest?.repository) ?? 'bundled';
 
-  return { guideSource, guideId: input.milestoneSlug };
+  return {
+    guideSource: bundledTutorialCompletionSource(guideSource, input.milestoneSlug),
+    guideId: input.milestoneSlug,
+  };
 }
 
 export interface ResolveGuideCompletionIdentityInput {

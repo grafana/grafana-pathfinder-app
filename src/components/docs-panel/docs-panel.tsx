@@ -71,6 +71,7 @@ import {
   injectJourneyExtrasIntoJsonGuide,
   fetchPackageInfoFromUrl,
   isPackageContentUrl,
+  resolvePackageMilestones,
 } from '../../docs-retrieval';
 import { createCompositeResolver } from '../../package-engine';
 
@@ -119,8 +120,10 @@ import {
   closeTabState,
   pruneGatedTabState,
   projectPersistedTabs,
+  restoredTrackGuideIds,
   resolveDocsLoadAlignment,
   buildDocsLoadSuccessPatch,
+  titleFromLoadedContent,
   type TabGates,
 } from './utils';
 import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
@@ -138,6 +141,7 @@ import {
   useScrollTracking,
   useGlobalActiveTabExposure,
   useAutoOpenListener,
+  useAssistantPathfinderListener,
   useCatalogBrowserListener,
   usePopOutHandoff,
   useFullScreenHandoff,
@@ -146,7 +150,7 @@ import {
 
 // Import centralized types
 import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
-import { getPackageRenderType } from '../../types/package.types';
+import { getPackageRenderType, isSamePackageRepository } from '../../types/package.types';
 import type { Milestone, RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
@@ -300,6 +304,38 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     });
 
     this.initializeRestoredActiveTab();
+    this.restoreTrackMilestones();
+  }
+
+  private restoreTrackMilestones(): void {
+    for (const tab of this.state.tabs) {
+      const guideIds = restoredTrackGuideIds(tab);
+      if (!guideIds) {
+        continue;
+      }
+      const { id, activeTrackId, activeTrackPathId } = tab;
+      resolvePackageMilestones(guideIds).then(
+        (milestones) => {
+          const current = this.state.tabs.find((candidate) => candidate.id === id);
+          // A cover that mounted meanwhile, or a new track pick, already set the sequence.
+          if (
+            milestones.length === 0 ||
+            !current ||
+            current.activeTrackId !== activeTrackId ||
+            current.activeTrackPathId !== activeTrackPathId ||
+            current.activeTrackMilestones
+          ) {
+            return;
+          }
+          this.setState({
+            tabs: this.state.tabs.map((candidate) =>
+              candidate.id === id ? { ...candidate, activeTrackMilestones: milestones } : candidate
+            ),
+          });
+        },
+        () => logger.warn('[DocsPanel] Could not restore the active track sequence')
+      );
+    }
   }
 
   /**
@@ -613,7 +649,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           };
         }
 
-        const updatedTab = this.finishTabSuccess(tabId, () => ({ content, currentUrl: url }));
+        const updatedTab = this.finishTabSuccess(tabId, (tab) => {
+          const title = titleFromLoadedContent(tab, url, content);
+          return { content, currentUrl: url, ...(title ? { title } : {}) };
+        });
 
         // Completion readers key journey progress by the cover URL.
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
@@ -983,7 +1022,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       error: null,
       type: packageInfo ? getPackageRenderType(packageInfo.packageManifest) : 'docs',
       packageInfo,
-      ...(packageInfo?.trackId && { activeTrackId: packageInfo.trackId, activeTrackPathId: packageInfo.packageId }),
+      ...(packageInfo?.trackId && {
+        activeTrackId: packageInfo.trackId,
+        activeTrackPathId: packageInfo.packageId,
+        activeTrackMilestones: packageInfo.trackMilestones,
+      }),
     };
 
     this.setState({
@@ -1009,10 +1052,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     loadContext?: GuideLoadContext,
     keepContentVisible = false
   ): Promise<TabLoadOutcome> {
-    // Outgoing content preserves track identity if this load's path resolution fails.
     const outgoingContent = this.state.tabs.find((t) => t.id === tabId)?.content;
-    const knownBaseUrl =
-      outgoingContent?.metadata?.learningJourney?.baseUrl ?? outgoingContent?.metadata?.trackMemberBaseUrl;
 
     if (!keepContentVisible) {
       this.setTabLoading(tabId);
@@ -1025,6 +1065,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       if (!prefetched && !packageInfo && isPackageContentUrl(url)) {
         packageInfo = await fetchPackageInfoFromUrl(url, loadContext);
       }
+      const outgoingMetadata = outgoingContent?.metadata;
+      const outgoingOwner = outgoingMetadata?.journeyManifest ?? outgoingMetadata?.packageManifest;
+      const incomingOwner = packageInfo?.packageManifest;
+      const outgoingRepository = outgoingOwner?.repository ?? outgoingMetadata?.repository;
+      const incomingRepository = packageInfo?.repository ?? incomingOwner?.repository;
+      const sameOwner =
+        (incomingOwner?.type === 'path' || incomingOwner?.type === 'journey') &&
+        typeof incomingOwner.id === 'string' &&
+        outgoingOwner?.id === incomingOwner.id &&
+        isSamePackageRepository(outgoingRepository, incomingRepository);
+      const knownBaseUrl = sameOwner
+        ? (outgoingMetadata?.learningJourney?.baseUrl ?? outgoingMetadata?.trackMemberBaseUrl)
+        : undefined;
       // skipReadyToBegin cannot alter already-prefetched content.
       if (prefetched && skipReadyToBegin) {
         logger.warn('[DocsPanel] skipReadyToBegin ignored for prefetched content');
@@ -1059,7 +1112,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         const pendingAlignment = alignmentDecision ? { ...alignmentDecision, decidedAt: Date.now() } : undefined;
 
         const finalTab = this.finishTabSuccess(tabId, (tab) =>
-          buildDocsLoadSuccessPatch({ tab, requestedUrl: url, fetchedContent, packageInfo, pendingAlignment })
+          buildDocsLoadSuccessPatch({
+            tab,
+            requestedUrl: url,
+            fetchedContent,
+            packageInfo,
+            pendingAlignment,
+            isReload: launchSource === 'internal_reload',
+          })
         );
 
         if (pendingAlignment) {
@@ -1248,6 +1308,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
   useAutoOpenListener(model, 'sidebar');
+  useAssistantPathfinderListener(model, 'sidebar');
   // removed — using restored custom overflow state below
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;

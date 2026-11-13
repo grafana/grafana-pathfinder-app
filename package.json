@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.25.0",
+  "version": "2.27.0",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -30,6 +30,7 @@
     "test:coverage:watch": "jest --coverage --watch",
     "test:go": "mage -v test",
     "typecheck": "tsc --noEmit",
+    "generate:kinds": "node ./.config/app-sdk/generate-kinds.mjs",
     "lint": "eslint --cache .",
     "lint:fix": "npm run lint -- --fix && prettier --write --list-different .",
     "lint:go": "mage -v lint",
@@ -39,6 +40,9 @@
     "prettier": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,mjs,json,yaml,md}' --write",
     "prettier-test": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,mjs,json,yaml,md}'",
     "i18n-extract": "i18next --config src/locales/i18next-parser.config.js",
+    "i18n:check": "node scripts/check-i18n.mjs",
+    "i18n:baseline:prune": "node scripts/check-i18n.mjs --prune && prettier --write src/locales/parity-baseline.json",
+    "test:i18n": "node --test scripts/tests/i18n-ratchet.test.mjs",
     "build:cli": "tsc -p tsconfig.cli.json",
     "validate": "node dist/cli/cli/index.js validate --bundled",
     "validate:strict": "node dist/cli/cli/index.js validate --bundled --strict",
@@ -51,18 +55,20 @@
     "schema:export": "node dist/cli/cli/index.js schema --all",
     "eval:guide-search": "npm run build:cli && node scripts/guide-search-eval/evaluate.js",
     "check": "node scripts/check.js",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:sync-bundled-tutorials": "node --test scripts/tests/sync-bundled-tutorials.test.mjs scripts/tests/check-bundled-tutorial-publication.test.mjs",
+    "check:bundled-tutorial-publication": "node scripts/check-bundled-tutorial-publication.mjs"
   },
   "author": "Grafanalabs",
   "license": "AGPL-3.0",
   "devDependencies": {
     "@grafana/eslint-config": "^10.0.0",
     "@grafana/faro-webpack-plugin": "^0.14.0",
-    "@grafana/plugin-e2e": "^3.14.0",
+    "@grafana/plugin-e2e": "^4.0.0",
     "@grafana/sign-plugin": "^4.0.0",
     "@grafana/tsconfig": "^2.2.0",
     "@jest/test-sequencer": "^30.5.2",
-    "@playwright/test": "~1.64.0",
+    "@playwright/test": "~1.65.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@swc/core": "^1.16.13",
     "@swc/helpers": "^0.5.23",
@@ -88,7 +94,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-webpack-plugin": "^6.0.0",
     "fork-ts-checker-webpack-plugin": "^9.1.0",
-    "glob": "^13.0.6",
+    "glob": "^14.0.0",
     "husky": "^9.1.7",
     "i18next-parser": "^9.4.0",
     "identity-obj-proxy": "^3.0.0",
@@ -184,5 +190,5 @@
     ],
     "*.{json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
-  "packageManager": "npm@12.2.1"
+  "packageManager": "npm@12.2.2"
 }

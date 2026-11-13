@@ -43,6 +43,11 @@ function reportBadgeUnlocked(badgeId: string): void {
 export async function awardBadge(badgeId: string): Promise<boolean> {
   const newlyAwarded = await learningProgressStorage.awardBadge(badgeId);
   if (newlyAwarded) {
+    window.dispatchEvent(
+      new CustomEvent(StorageEvents.LearningProgressUpdated, {
+        detail: { type: 'badge-awarded', badgeId },
+      })
+    );
     reportBadgeUnlocked(badgeId);
   }
   return newlyAwarded;

@@ -12,6 +12,7 @@ export function LearningModuleList({
   itemTestId,
   numbered = true,
   compact = false,
+  currentIndex,
 }: {
   modules: Milestone[];
   onOpen?: (member: Milestone) => void | Promise<unknown>;
@@ -19,18 +20,29 @@ export function LearningModuleList({
   itemTestId?: (index: number) => string;
   numbered?: boolean;
   compact?: boolean;
+  /** The member to resume at, labelled "Up next" and scrolled into view inside a compact list. */
+  currentIndex?: number;
 }) {
   const styles = useStyles2(getLearningContentCardStyles);
   const [pending, setPending] = useState<number | null>(null);
   const [error, setError] = useState<number | null>(null);
   const mounted = useRef(true);
   const lock = useRef(false);
+  const listRef = useRef<HTMLOListElement & HTMLUListElement>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
+  useEffect(() => {
+    const list = listRef.current;
+    const row = currentIndex === undefined ? undefined : list?.children[currentIndex];
+    if (compact && list && row instanceof HTMLElement) {
+      // Half a row of the one before stays visible, so the list reads as scrollable.
+      list.scrollTop = Math.max(0, row.offsetTop - list.offsetTop - row.offsetHeight / 2);
+    }
+  }, [compact, currentIndex, modules.length]);
   const open = async (member: Milestone, index: number) => {
     if (lock.current || member.isLocked || !onOpen) {
       return;
@@ -53,10 +65,11 @@ export function LearningModuleList({
   };
   const List = numbered ? 'ol' : 'ul';
   return (
-    <List className={cx(styles.modules, compact && styles.modulesCompact)}>
+    <List ref={listRef} className={cx(styles.modules, compact && styles.modulesCompact)}>
       {modules.map((member, index) => {
         const percent = member.id ? progress?.[member.id] : undefined;
         const complete = percent === 100;
+        const current = index === currentIndex && !member.isLocked && !complete;
         const row = (
           <>
             <span
@@ -76,15 +89,17 @@ export function LearningModuleList({
               <span className={styles.moduleMeta}>
                 {member.isLocked
                   ? t('learningCard.unavailable', 'Unavailable')
-                  : complete
-                    ? t('learningCard.completed', 'Completed')
-                    : typeof percent === 'number' && percent > 0 && percent < 100
-                      ? t('learningCard.progress', '{{percent}}% complete', { percent })
-                      : typeof member.estimatedMinutes === 'number' &&
-                          Number.isFinite(member.estimatedMinutes) &&
-                          member.estimatedMinutes > 0
-                        ? t('learningCard.moduleTime', '{{minutes}} min', { minutes: member.estimatedMinutes })
-                        : null}
+                  : current
+                    ? t('coverPage.upNext', 'Up next')
+                    : complete
+                      ? t('learningCard.completed', 'Completed')
+                      : typeof percent === 'number' && percent > 0 && percent < 100
+                        ? t('learningCard.progress', '{{percent}}% complete', { percent })
+                        : typeof member.estimatedMinutes === 'number' &&
+                            Number.isFinite(member.estimatedMinutes) &&
+                            member.estimatedMinutes > 0
+                          ? t('learningCard.moduleTime', '{{minutes}} min', { minutes: member.estimatedMinutes })
+                          : null}
               </span>
             </span>
             {member.isLocked && <Icon name="lock" size="sm" />}
@@ -95,7 +110,13 @@ export function LearningModuleList({
           <li key={`${member.id || member.url || member.title}:${index}`}>
             {onOpen ? (
               <button
-                className={cx(styles.moduleRow, compact && styles.moduleRowCompact, styles.moduleLink)}
+                className={cx(
+                  styles.moduleRow,
+                  compact && styles.moduleRowCompact,
+                  styles.moduleLink,
+                  current && styles.moduleCurrent
+                )}
+                aria-current={current ? 'step' : undefined}
                 disabled={member.isLocked || pending !== null}
                 data-testid={itemTestId?.(index)}
                 onClick={() => {
@@ -105,7 +126,12 @@ export function LearningModuleList({
                 {row}
               </button>
             ) : (
-              <div className={cx(styles.moduleRow, compact && styles.moduleRowCompact)}>{row}</div>
+              <div
+                className={cx(styles.moduleRow, compact && styles.moduleRowCompact, current && styles.moduleCurrent)}
+                aria-current={current ? 'step' : undefined}
+              >
+                {row}
+              </div>
             )}
             {pending === index && <span role="status">{t('learningCard.opening', 'Opening…')}</span>}
             {error === index && (

@@ -41,6 +41,19 @@ describe('isAutoOpenGuideConfig', () => {
 });
 
 describe('matchesExperience', () => {
+  it.each(['/dashboards', '/profile', '/playlists'])('accepts the requested landing route %s', (path) => {
+    const target = experience('bundled:a', ['/dashboards', '/profile', '/playlists']);
+    expect(matchesExperience(target, path)).toBe(true);
+  });
+
+  it.each(['/profiles', '/profile/password', '/connections', '/playlists/play/test', '/d/a/dashboard'])(
+    'does not broaden the landing routes to %s',
+    (path) => {
+      const target = experience('bundled:a', ['/dashboards', '/profile', '/playlists']);
+      expect(matchesExperience(target, path)).toBe(false);
+    }
+  );
+
   it('matches any page pattern on a segment boundary', () => {
     const target = experience('bundled:a', ['/dashboards', '/explore*']);
     expect(matchesExperience(target, '/explore/metrics')).toBe(true);

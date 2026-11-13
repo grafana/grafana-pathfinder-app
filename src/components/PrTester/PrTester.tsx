@@ -1,3 +1,7 @@
+import { createTranslatedComponent } from '../App/TranslatedComponent';
+const KioskPrPreview = createTranslatedComponent(async () => ({
+  default: (await import('./KioskPrPreview')).KioskPrPreview,
+}));
 import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { Box, Button, Icon, Input, Combobox, useStyles2, RadioButtonGroup, type ComboboxOption } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
@@ -24,6 +28,7 @@ import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { createPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
 
 const PR_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_URL;
 const SELECTED_FILE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_FILE;
@@ -31,6 +36,7 @@ const SELECTED_PATH_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_PATH;
 const TEST_MODE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_MODE;
 const FETCHED_FILES_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCHED_FILES;
 const FETCHED_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCHED_URL;
+const FETCH_ID_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_FETCH_ID;
 
 const EMPTY_CATALOG_BY_ID: ReadonlyMap<string, OnlinePackageEntry> = new Map();
 
@@ -107,6 +113,19 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       // Ignore
     }
     return [];
+  });
+
+  // Marks every URL handed to the docs panel, so each fetch keeps its own progress records.
+  const [fetchId, setFetchId] = useState<string>(() => {
+    try {
+      const storedId = localStorage.getItem(FETCH_ID_STORAGE_KEY);
+      if (storedId) {
+        return storedId;
+      }
+    } catch {
+      // Ignore
+    }
+    return createPrTestFetchId();
   });
 
   // Initial fetch state reflects whether files were restored from storage.
@@ -206,13 +225,15 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       if (files.length > 0) {
         localStorage.setItem(FETCHED_FILES_STORAGE_KEY, JSON.stringify(files));
         localStorage.setItem(FETCHED_URL_STORAGE_KEY, prUrl);
+        localStorage.setItem(FETCH_ID_STORAGE_KEY, fetchId);
       }
     } catch {
       // Ignore localStorage errors
     }
-  }, [files, prUrl]);
+  }, [files, prUrl, fetchId]);
 
   // Content-only subset for single/all modes
+  const kioskFiles = useMemo(() => files.filter((file) => file.kind === 'kiosk'), [files]);
   const contentFiles = useMemo(() => files.filter((f) => f.kind === 'content'), [files]);
 
   /**
@@ -490,8 +511,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       prContentById,
       catalogById: catalog?.byId ?? EMPTY_CATALOG_BY_ID,
       catalogBaseUrl: catalog?.baseUrl ?? '',
+      fetchId,
     });
-  }, [selectedCandidate, prContentById, catalog]);
+  }, [selectedCandidate, prContentById, catalog, fetchId]);
 
   const hasAnyPathPackage = pathCandidates.length > 0;
 
@@ -503,8 +525,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       resolveEffectiveTestMode(testMode, {
         manifestsLoading: pathDiscoveryLoading,
         hasAnyPathPackage,
+        hasKiosks: kioskFiles.length > 0,
+        hasContent: contentFiles.length > 0,
       }),
-    [pathDiscoveryLoading, testMode, hasAnyPathPackage]
+    [pathDiscoveryLoading, testMode, hasAnyPathPackage, kioskFiles.length, contentFiles.length]
   );
 
   const handleFetchPr = useCallback(async () => {
@@ -517,8 +541,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     }
 
     abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
+    setFetchId(createPrTestFetchId());
     setFetchState('fetching');
     setError(null);
     setWarning(null);
@@ -527,7 +553,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     setPrContentById(new Map());
     setCatalog(null);
 
-    const result = await fetchPrContentFilesFromUrl(cleanedUrl, abortControllerRef.current.signal);
+    const result = await fetchPrContentFilesFromUrl(cleanedUrl, controller.signal);
+    if (controller.signal.aborted) {
+      return;
+    }
 
     if (!result.success && result.error.type === 'aborted') {
       return;
@@ -548,11 +577,11 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       if (!currentFile) {
         return;
       }
-      onOpenDocsPage(currentFile.rawUrl, currentFile.directoryName);
+      onOpenDocsPage(withPrTestMarker(currentFile.rawUrl, fetchId), currentFile.directoryName);
       setTestSuccess(true);
     } else if (effectiveTestMode === 'all') {
       contentFiles.forEach((file) => {
-        onOpenDocsPage(file.rawUrl, file.directoryName);
+        onOpenDocsPage(withPrTestMarker(file.rawUrl, fetchId), file.directoryName);
       });
       setTestSuccess(true);
     } else if (effectiveTestMode === 'path') {
@@ -564,9 +593,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     }
 
     successTimeoutRef.current = setTimeout(() => setTestSuccess(false), 2000);
-  }, [contentFiles, currentFile, onOpenDocsPage, pathBuild, effectiveTestMode]);
+  }, [contentFiles, currentFile, onOpenDocsPage, pathBuild, effectiveTestMode, fetchId]);
 
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    abortControllerRef.current?.abort();
     const newUrl = e.currentTarget.value;
     setPrUrl(newUrl);
     setTestSuccess(false);
@@ -582,6 +612,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         setCatalog(null);
         localStorage.removeItem(FETCHED_FILES_STORAGE_KEY);
         localStorage.removeItem(FETCHED_URL_STORAGE_KEY);
+        localStorage.removeItem(FETCH_ID_STORAGE_KEY);
       }
     } catch {
       setFetchState('idle');
@@ -628,6 +659,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
 
   // Path mode is only meaningful when at least one path/journey is testable.
   const modeOptions: Array<SelectableValue<TestMode>> = [
+    ...(kioskFiles.length > 0
+      ? [{ label: 'Kiosk', value: 'kiosk' as TestMode, description: 'Preview a kiosk and test its guides' }]
+      : []),
     { label: 'Single', value: 'single' as TestMode, description: 'Test one guide at a time' },
     { label: 'Open all', value: 'all' as TestMode, description: 'Open all guides in tabs' },
     {
@@ -704,7 +738,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         data-testid={testIds.prTester.prNumberInput}
       />
       <p className={styles.helpText}>
-        Paste a GitHub pull request URL. We look for content.json and manifest.json files.
+        Paste a GitHub pull request URL. We look for content.json, manifest.json, and kiosk catalogs.
       </p>
 
       <Box marginTop={1}>
@@ -720,7 +754,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </Button>
       </Box>
 
-      {hasFetched && (hasMultipleContentFiles || hasAnyPathPackage) && (
+      {hasFetched && (hasMultipleContentFiles || hasAnyPathPackage || kioskFiles.length > 0) && (
         <div className={styles.modeContainer}>
           <label className={styles.label}>Test mode</label>
           <RadioButtonGroup options={modeOptions} value={effectiveTestMode} onChange={handleTestModeChange} fullWidth />
@@ -800,6 +834,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </div>
       )}
 
+      {hasFetched && effectiveTestMode === 'kiosk' && (
+        <KioskPrPreview key={fetchId} files={kioskFiles} fetchId={fetchId} />
+      )}
+
       {hasFetched && effectiveTestMode === 'all' && (
         <div className={styles.allGuidesPreview}>
           <label className={styles.label}>Will open {contentFiles.length} guides:</label>
@@ -823,7 +861,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </div>
       )}
 
-      {hasFetched && (
+      {hasFetched && effectiveTestMode !== 'kiosk' && (
         <Box marginTop={1}>
           <Button variant="secondary" size="sm" onClick={handleTestGuide} disabled={isActionDisabled}>
             {getActionButtonText()}

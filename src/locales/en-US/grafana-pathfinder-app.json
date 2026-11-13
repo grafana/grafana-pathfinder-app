@@ -69,6 +69,7 @@
     "previousMilestone": "Previous milestone",
     "previousMilestoneTooltip": "Previous milestone (Alt + ←)",
     "recommendations": "Recommendations",
+    "refreshGuideErrorTitle": "Couldn't refresh the guide",
     "resetGuide": "Reset guide",
     "resetGuideErrorMessage": "Couldn't reset guide progress. Please try again or reload the page.",
     "resetGuideErrorTitle": "Reset failed",
@@ -98,6 +99,8 @@
     "milestoneButton": "Mark complete and continue"
   },
   "myLearning": {
+    "welcome": "Welcome",
+    "welcomeName": "Welcome, {{- name}}",
     "assignedBadge": "Assigned",
     "assignedBy": "Assigned by",
     "assignedTrack": "Track",
@@ -106,8 +109,9 @@
     "assignmentResetConfirm": "Reset and continue",
     "assignmentResetTitle": "Reset local progress?",
     "badges": "Badges",
-    "badgesDescription": "Earn badges by completing paths and maintaining streaks",
+    "badgesDescription": "Earn badges as you complete guides and learning paths.",
     "badgesEarned": "Badges earned",
+    "yourBadges": "Your badges",
     "collapse": "Collapse",
     "completed": "Completed",
     "completedDescription": "Courses and paths you've finished",
@@ -132,7 +136,7 @@
     "guidesCompleted": "Guides completed",
     "launchErrorMessage": "Something went wrong while loading the guide. Please try again.",
     "launchErrorTitle": "Could not open the guide",
-    "learningAltitude": "Learning altitude",
+    "learningAltitude": "Your learning altitude",
     "learningPaths": "Learning paths",
     "loadingGuides": "Loading guides...",
     "myCourses": "My paths",
@@ -143,7 +147,15 @@
     "privatePathsDescription": "Paths published for your organization",
     "resetPathErrorMessage": "Some of this path's progress could not be cleared. Reload the page and try again.",
     "resetPathErrorTitle": "Reset incomplete",
-    "subtitle": "Track your progress, earn badges, and master Grafana"
+    "subtitle": "Track your progress, earn badges, and master Grafana",
+    "summaryOneGuide": "1 guide",
+    "summaryGuides": "{{count}} guides",
+    "summaryOnePath": "1 learning path",
+    "summaryPaths": "{{count}} learning paths",
+    "summaryOneBadge": "1 badge",
+    "summaryBadges": "{{count}} badges",
+    "loadingAssignments": "Loading assignments…",
+    "assignmentsLoadError": "Assignments couldn’t be loaded."
   },
   "sidebarHub": {
     "actionLabel": "{{action}}: {{- title}}",
@@ -161,27 +173,9 @@
     "showAll": "Show all {{total}}",
     "start": "Start",
     "subtitle": "Learn Grafana at your own pace",
+    "track": "Track",
     "welcomeBack": "Welcome back",
     "welcomeBackName": "Welcome back, {{- name}}"
-  },
-  "userProfileBar": {
-    "allComplete": "All paths complete!",
-    "allCompleteTooltip": "You've completed every learning path — nice work!",
-    "badgesTooltip": "{{- earned}} of {{- total}} badges earned",
-    "days": "days",
-    "days_one": "day",
-    "days_other": "days",
-    "guides": "guides",
-    "guides_one": "guide",
-    "guides_other": "guides",
-    "guidesTooltip": "{{- count}} learning guides completed",
-    "guidesTooltip_one": "{{- count}} learning guide completed",
-    "guidesTooltip_other": "{{- count}} learning guides completed",
-    "nextGuide": "Next: {{- title}}",
-    "nextTooltip": "Continue \"{{- pathTitle}}\" — {{- percent}}% done",
-    "streakTooltip": "{{- days}}-day learning streak — keep it going!",
-    "streakTooltip_one": "{{- days}}-day learning streak — keep it going!",
-    "streakTooltip_other": "{{- days}}-day learning streak — keep it going!"
   },
   "feedbackButton": {
     "ariaLabel": "Give feedback about this plugin",
@@ -230,5 +224,8 @@
     "message": "Try interactive learning",
     "dismiss": "Dismiss learning hint",
     "learn": "Learn"
+  },
+  "common": {
+    "retry": "Retry"
   }
 }

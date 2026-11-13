@@ -50,6 +50,7 @@ export enum UserInteraction {
   HelpButtonClickedToolbar = 'help_button_clicked_toolbar',
   HelpButtonDismissedHint = 'help_button_dismissed_hint',
   AutoOpenGuideEligible = 'auto_open_guide_eligible',
+  OnboardingExploringEligible = 'onboarding_exploring_auto_open_eligible',
   PanelScroll = 'panel_scroll',
   CatalogInteraction = 'catalog_interaction',
 
@@ -184,7 +185,8 @@ export enum AnalyticsLinkType {
 }
 
 export const STEP_PERCENTAGE_RULE_VERSION = 'step-position-v1';
-export const BLOCK_PROGRESS_RULE_VERSION = 'block-position-v1';
+export const BLOCK_PROGRESS_RULE_VERSION = 'block-position-v2';
+export const CHOICE_PROGRESS_RULE_VERSION = 'choice-path-v2';
 export const AUTO_COMPLETION_RULE_VERSION = 'observed-block-v1';
 
 export type ResetScope = 'guide' | 'path' | 'assignment' | 'all';
@@ -755,7 +757,7 @@ export function getGuideBlockCountProperties(contentKey: string): Record<string,
   return {
     ...blockCountProperties(active.index),
     ...(active.choiceModel && {
-      block_progress_rule_version: 'choice-path-v1',
+      block_progress_rule_version: CHOICE_PROGRESS_RULE_VERSION,
       active_block_count: choicePathCompletionKeys(
         active.choiceModel,
         active.responses ?? {},

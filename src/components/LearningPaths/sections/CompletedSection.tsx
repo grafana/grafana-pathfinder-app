@@ -22,12 +22,16 @@ export function CompletedSection({ completed, styles }: CompletedSectionProps) {
   return (
     <div className={styles.section} data-testid={testIds.learningPaths.completedSection}>
       <div className={styles.sectionHeader}>
-        <Icon name="check-circle" size="md" className={styles.sectionIcon} />
-        <h2 className={styles.sectionTitle}>{t('myLearning.completed', 'Completed')}</h2>
+        <span className={styles.sectionIcon}>
+          <Icon name="check-circle" size="lg" />
+        </span>
+        <div className={styles.sectionHeadingText}>
+          <h2 className={styles.sectionTitle}>{t('myLearning.completed', 'Completed')}</h2>
+          <p className={styles.sectionDescription}>
+            {t('myLearning.completedDescription', "Courses and paths you've finished")}
+          </p>
+        </div>
       </div>
-      <p className={styles.sectionDescription}>
-        {t('myLearning.completedDescription', "Courses and paths you've finished")}
-      </p>
 
       {completed.length === 0 ? (
         <div className={styles.emptyMessage}>

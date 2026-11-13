@@ -19,6 +19,7 @@ const (
   "counter": {"unit": "guide", "evidence": [{"entity": "guides", "action": "completed", "countBy": "resource"}]},
   "tiers": [{"id": "bronze", "at": 1, "art": "guides-finished-1"}, {"id": "silver", "at": 5}]
 }`
+	testSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>`
 )
 
 func sourceTree(t *testing.T, files map[string]string) string {
@@ -47,7 +48,7 @@ func TestBuildWritesABundleThatLoads(t *testing.T) {
 	src := sourceTree(t, map[string]string{
 		"events/guides.json":           guidesEntity,
 		"catalog/guides-finished.json": guidesFinished,
-		"art/guides-finished-1.svg":    "<svg/>",
+		"art/guides-finished-1.svg":    testSVG,
 	})
 	out := filepath.Join(t.TempDir(), "definitions.json")
 	if code, _, stderr := runCmd("build", "-src", src, "-repo", "grafana/interactive-tutorials", "-commit", "abc", "-o", out); code != exitOK {
@@ -93,13 +94,21 @@ func TestBuildRejects(t *testing.T) {
 		{"entity with an unread field", map[string]string{"events/guides.json": strings.Replace(guidesEntity, `"owner"`, `"leak":"x","owner"`, 1)}, "", `unknown field "leak"`},
 		{"case-variant id", map[string]string{"catalog/guides-finished.json": strings.Replace(guidesFinished, `"title"`, `"ID": "other", "title"`, 1)}, "", "declare id exactly once"},
 		{"bad entity file name", map[string]string{"events/Bad Name.json": `{"actions":{"x":{"context":{}}}}`}, "", "entity Bad Name skipped"},
-		{"bad art file name", map[string]string{"art/Weird KEY.svg": ""}, "", "art #0 skipped"},
+		{"bad art file name", map[string]string{"art/Weird KEY.svg": testSVG}, "", "art #0 skipped"},
+		{"empty art file", map[string]string{"art/guides-finished-1.svg": ""}, "", "guides-finished-1.svg: no svg root element"},
+		{"art that is not XML", map[string]string{"art/guides-finished-1.svg": "\x89PNG"}, "", "guides-finished-1.svg: not well-formed XML"},
+		{"art left unclosed", map[string]string{"art/guides-finished-1.svg": `<svg xmlns="http://www.w3.org/2000/svg">`}, "", "not well-formed XML"},
+		{"art root without the SVG namespace", map[string]string{"art/guides-finished-1.svg": "<svg/>"}, "", `root element is "svg" in namespace ""`},
+		{"art root that is not svg", map[string]string{"art/guides-finished-1.svg": `<html xmlns="http://www.w3.org/2000/svg"/>`}, "", `root element is "html"`},
+		{"art with a second root", map[string]string{"art/guides-finished-1.svg": testSVG + testSVG}, "", "more than one root element"},
+		{"art with text after the root", map[string]string{"art/guides-finished-1.svg": testSVG + "trailing"}, "", "text outside the svg root element"},
+		{"art with a non-XML space after the root", map[string]string{"art/guides-finished-1.svg": testSVG + "\u00a0"}, "", "text outside the svg root element"},
 		{"another extension", map[string]string{"catalog/notes.md": "x"}, "", "unexpected file"},
 		{"empty catalog", map[string]string{}, "catalog/guides-finished.json", "no definitions"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			files := map[string]string{"events/guides.json": guidesEntity, "catalog/guides-finished.json": guidesFinished, "art/guides-finished-1.svg": ""}
+			files := map[string]string{"events/guides.json": guidesEntity, "catalog/guides-finished.json": guidesFinished, "art/guides-finished-1.svg": testSVG}
 			for k, v := range tc.files {
 				files[k] = v
 			}
@@ -109,6 +118,20 @@ func TestBuildRejects(t *testing.T) {
 				t.Errorf("code = %d stderr = %q stdout = %q, want %q and no bundle", code, stderr, stdout, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildAcceptsACommonSVGPrologue(t *testing.T) {
+	art := "\xef\xbb\xbf<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+		`<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">` + "\n" +
+		"<!-- exported -->\n" + `<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>` + "\n"
+	src := sourceTree(t, map[string]string{
+		"events/guides.json":           guidesEntity,
+		"catalog/guides-finished.json": guidesFinished,
+		"art/guides-finished-1.svg":    art,
+	})
+	if code, _, stderr := runCmd("build", "-src", src); code != exitOK {
+		t.Errorf("build = %d: %s", code, stderr)
 	}
 }
 
@@ -151,7 +174,7 @@ func TestBuildRefusesLinksAndDirectories(t *testing.T) {
 	src := sourceTree(t, map[string]string{
 		"events/guides.json":           guidesEntity,
 		"catalog/guides-finished.json": guidesFinished,
-		"art/guides-finished-1.svg":    "",
+		"art/guides-finished-1.svg":    testSVG,
 	})
 	if err := os.Symlink(outside, filepath.Join(src, "events", "leak.json")); err != nil {
 		t.Fatal(err)
@@ -169,7 +192,7 @@ func TestBuildRefusesToWriteThroughALink(t *testing.T) {
 	src := sourceTree(t, map[string]string{
 		"events/guides.json":           guidesEntity,
 		"catalog/guides-finished.json": guidesFinished,
-		"art/guides-finished-1.svg":    "",
+		"art/guides-finished-1.svg":    testSVG,
 	})
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")

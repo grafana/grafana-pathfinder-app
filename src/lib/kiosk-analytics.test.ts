@@ -80,3 +80,15 @@ it('ignores a name update from an old catalog load', () => {
   expect(getKioskName()).toBe('customer-onboarding');
   current.end();
 });
+
+it('suppresses preview interactions without suppressing later ordinary sessions', () => {
+  jest.mocked(reportAppInteraction).mockClear();
+  const preview = startKioskSession('pr-preview', true);
+  reportKioskInteraction('instance', undefined, { component: 'kiosk', action: 'exit', method: 'button' });
+  expect(reportAppInteraction).not.toHaveBeenCalled();
+  const regular = startKioskSession('demo');
+  preview.end();
+  reportKioskInteraction('instance', undefined, { component: 'kiosk', action: 'exit', method: 'button' });
+  expect(reportAppInteraction).toHaveBeenCalledTimes(1);
+  regular.end();
+});
