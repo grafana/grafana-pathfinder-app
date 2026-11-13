@@ -1448,6 +1448,42 @@
       "retryAfter": "30",
       "status": 503
     },
+    "settings/-1": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "settings/-2": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "response-too-large",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
     "settings/200": {
       "body": {
         "metadata": {

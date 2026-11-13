@@ -40,11 +40,14 @@ lost `invalid-json` and `timeout` diagnostics, now repaired in #2404. A producti
 mutation back to `unexpected-error` must be detected. A two-page populated transcript covers duplicate completions, private/public source
 collisions, partial progress, and caller filtering. A mutation that drops the SDK
 client continuation token must be detected. The legacy adapter invokes the frozen
-timestamp projection after decoding each spec, matching its LIST client. Settings additionally compare fourteen cases through real HTTP clients on both
+timestamp projection after decoding each spec, matching its LIST client. Settings additionally compare sixteen cases through real HTTP clients on both
 sides: a successful resource with an unknown nested field and resource version,
-plus thirteen upstream HTTP statuses. Full status, body, and cache/retry headers
-are compared. Missing-singleton classification, malformed bodies, and historical
-CRUD sequences remain open, as do other read-route failure corpora.
+plus thirteen upstream HTTP statuses, malformed JSON, and an oversized success
+body. Full status, body, and cache/retry headers are compared. This caught the SDK
+turning an oversized response into 503 instead of legacy 502 and losing the original
+200 diagnostic status. A production mutation must detect that regression.
+Missing-singleton classification and historical CRUD sequences remain open, as do
+other read-route failure corpora.
 
 The runner exports the immutable baseline into a temporary directory and copies the
 current Go implementation into a separate temporary checkout. It does not switch
