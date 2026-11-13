@@ -215,9 +215,13 @@ type achievementDefinitionsResponse struct {
 }
 
 // handleAchievementDefinitions serves GET /api/v1/achievements/definitions.
+// The answer is the same for every person, but only people may read it.
 func (a *App) handleAchievementDefinitions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := a.achievementPerson(w, r, "read"); !ok {
 		return
 	}
 	if _, _, _, ok, reason := a.resolveCompletionConfig(r); !ok {

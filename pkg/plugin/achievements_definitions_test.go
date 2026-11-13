@@ -15,6 +15,7 @@ import (
 	"time"
 
 	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
+	"github.com/grafana/grafana-plugin-sdk-go/experimental/featuretoggles"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 )
@@ -478,9 +479,28 @@ func TestAchievementDefinitions_DisplaysEveryPublishedDefinition(t *testing.T) {
 func TestAchievementDefinitions_HoldsNoPerUserData(t *testing.T) {
 	app, _ := appWithDefinitions(t, achievementsTestBundleWithSkipJSON)
 	a := getAchievementDefinitions(t, app, "user:1", testGrafanaConfig()).Body.String()
-	b := getAchievementDefinitions(t, app, "", testGrafanaConfig()).Body.String()
+	b := getAchievementDefinitions(t, app, "user:2", testGrafanaConfig()).Body.String()
 	if a != b {
 		t.Fatalf("answers differ by caller:\n%s\n%s", a, b)
+	}
+}
+
+func TestAchievementDefinitions_PeopleOnly(t *testing.T) {
+	app, _ := appWithDefinitions(t, achievementsTestBundleJSON)
+	for _, sub := range []string{"service-account:7", "anonymous:0", "render:1", "api-key:3", "no-type-prefix"} {
+		rr := getAchievementDefinitions(t, app, sub, testGrafanaConfig())
+		if rr.Code != http.StatusForbidden || errorToken(t, rr) != reasonPrincipalNotSupported {
+			t.Errorf("%s: status %d body %s", sub, rr.Code, rr.Body.String())
+		}
+	}
+	rr := getAchievementDefinitions(t, app, "", testGrafanaConfig())
+	if rr.Code != http.StatusUnauthorized || errorToken(t, rr) != "unauthenticated" {
+		t.Errorf("unauthenticated: status %d body %s", rr.Code, rr.Body.String())
+	}
+	noAppURL := map[string]string{featuretoggles.EnabledFeatures: completionRecordsAggregationToggle}
+	rr = getAchievementDefinitions(t, app, achievementsTestUser, noAppURL)
+	if rr.Code != http.StatusNotFound || errorToken(t, rr) != "achievements-unavailable/"+reasonIdentityUnverifiable {
+		t.Errorf("unverifiable identity: status %d body %s", rr.Code, rr.Body.String())
 	}
 }
 
