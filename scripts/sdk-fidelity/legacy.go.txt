@@ -3,8 +3,11 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -115,5 +118,30 @@ func fidelityCompletionRead(t *testing.T, status int, capability bool) *httptest
 	} else {
 		app.handleMyCompletions(response, request)
 	}
+	return response
+}
+
+func fidelitySettingsRead(t *testing.T, status int, body string) *httptest.ResponseRecorder {
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"token":"obo-token"}}`))
+	}))
+	defer exchange.Close()
+	exchanger, err := auth.New("cap-token", exchange.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == auth.SigningKeysPath {
+			_, _ = w.Write(jwksBody(testSigningKeyID, testSigningKey()))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer upstream.Close()
+	app := &App{logger: log.DefaultLogger, oboExchanger: exchanger}
+	response := httptest.NewRecorder()
+	app.handlePathfinderSettings(response, customGuideRequestWithConfig(t, "/pathfinder-settings", "user:1", map[string]string{sdkconfig.AppURL: upstream.URL}))
 	return response
 }

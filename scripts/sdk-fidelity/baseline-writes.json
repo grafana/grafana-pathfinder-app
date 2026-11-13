@@ -1447,6 +1447,256 @@
       "contentType": "application/json",
       "retryAfter": "30",
       "status": 503
+    },
+    "settings/200": {
+      "body": {
+        "metadata": {
+          "resourceVersion": "42"
+        },
+        "spec": {
+          "futureField": {
+            "enabled": true
+          }
+        }
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "settings/400": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 400
+    },
+    "settings/401": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "settings/403": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 403
+    },
+    "settings/404": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings/405": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 405
+    },
+    "settings/408": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 408
+    },
+    "settings/409": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 409
+    },
+    "settings/422": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 422
+    },
+    "settings/429": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 429
+    },
+    "settings/500": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 500
+    },
+    "settings/501": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 501
+    },
+    "settings/503": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 503
+    },
+    "settings/504": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 504
     }
   },
   "invalid-percent": [
