@@ -26,6 +26,7 @@ import {
   catalogIdentity,
   compareResolvedAssignments,
   selectLearningPathEntries,
+  selectPathAssignmentEntries,
   selectGuideAssignmentEntries,
   useLearningPaths,
   useDiscoverMore,
@@ -129,6 +130,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const {
     assignmentByTargetId,
     guideAssignments = [],
+    pathAssignments = [],
     onlinePaths,
     getPathGuides,
     isLoading: assignmentsLoading,
@@ -191,7 +193,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         catalogItems: catalog.items,
         catalogProgress,
         getPathProgress,
-        getPathGuides,
+        getPathGuides: (pathId) => getPathGuides(pathId, true),
         includeCompleted: true,
       }),
     [paths, onlinePaths, assignmentByTargetId, catalog.items, catalogProgress, getPathProgress, getPathGuides]
@@ -199,10 +201,13 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const homePathEntries = allHomePathEntries.filter(
     (entry) => entry.percent < 100 || (entry.assignment && !entry.assignment.satisfied)
   );
-  const homeAssignedPaths = [...homePathEntries, ...selectGuideAssignmentEntries(guideAssignments, catalog.items)]
+  const homeAssignedPaths = [
+    ...selectPathAssignmentEntries(pathAssignments, allHomePathEntries),
+    ...selectGuideAssignmentEntries(guideAssignments, catalog.items),
+  ]
     .filter((entry) => entry.assignment && !entry.assignment.satisfied)
     .sort((a, b) => compareResolvedAssignments(a.assignment!, b.assignment!));
-  const homeAssignedKeys = new Set(homeAssignedPaths.map((entry) => entry.key));
+  const homeAssignedKeys = new Set(homeAssignedPaths.map((entry) => entry.catalogKey ?? entry.key));
   const homeUnassignedPaths = homePathEntries.filter((entry) => !homeAssignedKeys.has(entry.key));
   const homeContinuePaths = homeUnassignedPaths
     .filter((entry) => entry.percent > 0 && entry.percent < 100)
@@ -300,7 +305,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
 
   // Lock before resolving the cover so repeated clicks cannot race the lookup.
   const openPathCover = useCallback(
-    async (path: LearningPath) => {
+    async (path: LearningPath, assignment?: { trackId?: string }) => {
       if (launchInFlightRef.current) {
         return;
       }
@@ -310,7 +315,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         const packageInfo: PackageOpenInfo = {
           packageId: path.id,
           packageManifest: { ...path.manifest, id: path.id },
-          trackId: getPathAssignment(assignmentByTargetId, path)?.trackId,
+          trackId: assignment ? assignment.trackId : getPathAssignment(assignmentByTargetId, path)?.trackId,
         };
         const [navLink] = await resolvePackageNavLinks([path.id]);
         if (!mountedRef.current) {
@@ -347,14 +352,14 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const allPaths = useMemo(() => [...paths, ...onlinePaths], [paths, onlinePaths]);
 
   const handleOpenGuide = useCallback(
-    (guideId: string, pathId: string, options?: { path: LearningPath }) => {
+    (guideId: string, pathId: string, options?: { path: LearningPath; assignment?: { trackId?: string } }) => {
       if (launchInFlightRef.current) {
         return;
       }
       const parentPath = options?.path ?? allPaths.find((p) => p.id === pathId);
 
       if (parentPath?.manifest && !parentPath.url) {
-        void openPathCover(parentPath);
+        void openPathCover(parentPath, options?.assignment);
         return;
       }
 
@@ -414,7 +419,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const openHomePath = (entry: HomePathEntry) => {
     selectCard(entry.key);
     const item = catalog.items.find(
-      (candidate) => candidate.format === 'path' && catalogIdentity(candidate) === entry.key
+      (candidate) => candidate.format === 'path' && catalogIdentity(candidate) === (entry.catalogKey ?? entry.key)
     );
     if (
       item &&
@@ -428,12 +433,12 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
         effectiveGuides.find((guide) => guide.isCurrent && !guide.completed) ??
         effectiveGuides.find((guide) => !guide.completed) ??
         effectiveGuides[0];
-      handleOpenGuide(nextGuide?.id ?? '', entry.path.id, { path: entry.path });
+      handleOpenGuide(nextGuide?.id ?? '', entry.path.id, { path: entry.path, assignment: entry.assignment });
     }
   };
 
   const handleHomePathView = (entry: HomePathEntry) => {
-    if (launchInFlightRef.current) {
+    if (entry.assignmentUnavailable || launchInFlightRef.current) {
       return;
     }
     if (entry.isGuideAssignment) {

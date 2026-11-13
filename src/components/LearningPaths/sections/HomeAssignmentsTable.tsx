@@ -47,11 +47,14 @@ export function HomeAssignmentsTable({
               data-assignment-key={entry.key}
               aria-current={selectedCardKey === entry.key ? 'true' : undefined}
               onClick={() => onView(entry)}
-              disabled={launchDisabled || (entry.isGuideAssignment && !entry.assignedGuide)}
+              disabled={
+                launchDisabled || entry.assignmentUnavailable || (entry.isGuideAssignment && !entry.assignedGuide)
+              }
               aria-busy={launchingKey === entry.key || undefined}
             >
               {entry.path.title}
             </button>
+            {entry.assignmentUnavailable && <span>{t('myLearning.assignedPathUnavailable', 'Path unavailable')}</span>}
             {entry.isGuideAssignment && !entry.assignedGuide && (
               <span>{t('myLearning.assignedGuideUnavailable', 'Guide unavailable')}</span>
             )}
@@ -140,7 +143,7 @@ export function HomeAssignmentsTable({
           .closest('tbody tr')
           ?.querySelector<HTMLButtonElement>('button[data-assignment-key]');
         const entry = entries.find((candidate) => candidate.key === button?.dataset.assignmentKey);
-        if (entry && !(entry.isGuideAssignment && !entry.assignedGuide)) {
+        if (entry && !entry.assignmentUnavailable && !(entry.isGuideAssignment && !entry.assignedGuide)) {
           onView(entry);
         }
       }}

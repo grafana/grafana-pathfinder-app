@@ -438,8 +438,16 @@ it('keeps same-ID public and organization assignments separate without retrying 
   mockFetchMyAssignments.mockResolvedValue({
     ok: true,
     assignments: [
-      assignment({ targetId: 'collision', targetSource: 'bundled', guides: [{ guideId: 'g', completed: false }] }),
-      assignment({ targetId: 'collision', targetSource: 'app-platform', guides: [{ guideId: 'g', completed: true }] }),
+      assignment({
+        targetId: 'collision',
+        targetSource: 'bundled',
+        guides: [{ guideId: 'g', guideSource: 'bundled', completed: false }],
+      }),
+      assignment({
+        targetId: 'collision',
+        targetSource: 'app-platform',
+        guides: [{ guideId: 'g', guideSource: 'app-platform', completed: true }],
+      }),
       assignment({ targetId: 'collision', targetSource: 'online-cdn' }),
     ],
   });

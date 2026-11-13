@@ -181,6 +181,8 @@ let mockDiscoverItems: Array<{
 }> = [];
 let mockDiscoverExcludeIdentities: Set<string> | undefined;
 type MockAssignment = {
+  ruleId?: string;
+  targetSource?: string;
   targetType: string;
   targetId: string;
   title: string;
@@ -207,6 +209,8 @@ jest.mock('../../learning-paths', () => ({
   selectGuideAssignmentEntries: jest.requireActual('../../learning-paths/guide-assignment-entries')
     .selectGuideAssignmentEntries,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
+  selectPathAssignmentEntries: jest.requireActual('../../learning-paths/learning-path-entries')
+    .selectPathAssignmentEntries,
   get BADGES() {
     return mockBadgeDefinitions;
   },
@@ -242,6 +246,7 @@ jest.mock('../../learning-paths', () => ({
     return {
       items,
       guideAssignments: mockGuideAssignments,
+      pathAssignments: items.map((item) => ({ ...item, targetType: 'path', lifecycle: 'active' })),
       notDone: mockAssignments,
       assignmentByTargetId,
       onlinePaths: mockOnlinePaths,
@@ -2618,4 +2623,46 @@ it('homepage retains an unavailable assigned guide without borrowing local progr
   expect(assigned.getByText('Guide unavailable')).toBeInTheDocument();
   expect(assigned.getByText('Cannot check')).toBeInTheDocument();
   expect(assigned.queryByText('0%')).not.toBeInTheDocument();
+});
+
+it('homepage retains unavailable paths and distinct rules for the same path', () => {
+  mockAssignments = [
+    {
+      targetType: 'path',
+      targetId: 'path-new',
+      ruleId: 'one',
+      title: 'New path',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+    {
+      targetType: 'path',
+      targetId: 'path-new',
+      ruleId: 'two',
+      title: 'New path',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+    {
+      targetType: 'path',
+      targetId: 'missing-private',
+      targetSource: 'app-platform',
+      title: 'Missing',
+      overdue: false,
+      satisfied: false,
+      progress: 0,
+    },
+  ];
+  const onOpenGuide = jest.fn();
+  render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+  const section = within(screen.getByRole('region', { name: 'Your assignments' }));
+  expect(section.getAllByRole('button', { name: 'New path' })).toHaveLength(2);
+  const unavailable = section.getByRole('button', { name: 'missing-private' });
+  expect(unavailable).toBeDisabled();
+  expect(section.getByText('Path unavailable')).toBeInTheDocument();
+  fireEvent.click(unavailable.closest('tr')!.querySelectorAll('td')[2]!);
+  expect(onOpenGuide).not.toHaveBeenCalled();
+  expect(section.queryByText('You’re all clear!')).not.toBeInTheDocument();
 });

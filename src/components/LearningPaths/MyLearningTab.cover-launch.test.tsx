@@ -48,6 +48,8 @@ jest.mock('../../learning-paths', () => ({
   selectGuideAssignmentEntries: jest.requireActual('../../learning-paths/guide-assignment-entries')
     .selectGuideAssignmentEntries,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
+  selectPathAssignmentEntries: jest.requireActual('../../learning-paths/learning-path-entries')
+    .selectPathAssignmentEntries,
   BADGES: [],
   pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
   selectContinueLearning: jest.requireActual('../../learning-paths/catalog-learning-core').selectContinueLearning,

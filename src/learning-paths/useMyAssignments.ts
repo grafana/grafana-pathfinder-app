@@ -25,13 +25,14 @@ interface UseMyAssignmentsOptions {
   /** The caller's learning-paths catalogue — resolution drops targets not found here. */
   paths: readonly LearningPath[];
   getPathProgress: (pathId: string) => number;
-  getPathGuides: (pathId: string) => PathGuide[];
+  getPathGuides: (pathId: string, includeAllTracks?: boolean) => PathGuide[];
   completedGuides: readonly string[];
   resolveNavLinks: PackageNavLinkResolver;
 }
 
 interface UseMyAssignmentsResult {
   guideAssignments: AssignmentEntry[];
+  pathAssignments: AssignmentEntry[];
   /** Every resolved assignment, satisfied or not — sorted most-urgent-first. */
   items: ResolvedAssignment[];
   notDone: ResolvedAssignment[];
@@ -40,7 +41,7 @@ interface UseMyAssignmentsResult {
   /** Paths for online-catalogue targets, absent from `paths`. */
   onlinePaths: LearningPath[];
   /** Online targets get local completion overlaid; everything else defers to the passed-in getter. */
-  getPathGuides: (pathId: string) => PathGuide[];
+  getPathGuides: (pathId: string, includeAllTracks?: boolean) => PathGuide[];
   /** True once the first fetch has settled, whether or not it succeeded. */
   hasLoaded: boolean;
   isLoading: boolean;
@@ -210,11 +211,14 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   // Wire completion can drift from local storage; overlaying local completion keeps the
   // card's mismatch detection meaningful.
   const getPathGuidesWithOnline = useCallback(
-    (pathId: string): PathGuide[] => {
+    (pathId: string, includeAllTracks = false): PathGuide[] => {
       const onlineCard = onlineCardsById.get(pathId);
       const baseGuides = onlineCard
         ? onlineCard.guides.map((guide) => ({ ...guide, completed: completedGuides.includes(guide.id) }))
         : getPathGuides(pathId);
+      if (includeAllTracks) {
+        return onlineCard ? markCurrentGuide(baseGuides) : baseGuides;
+      }
       const path = onlineCard?.path ?? pathsById.get(pathId);
       const trackId = path && getPathAssignment(assignmentByTargetId, path)?.trackId;
       const trackGuideIds = onlineCard?.trackGuideIds ?? (path && findAssignedTrack(path, trackId))?.guides;
@@ -231,6 +235,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     onlineResolution?.assignments === rawAssignments && onlineResolution.unresolvedKey === unresolvedKey;
 
   return {
+    pathAssignments: rawAssignments.filter((assignment) => assignment.targetType === 'path'),
     guideAssignments: rawAssignments.filter((assignment) => assignment.targetType === 'guide'),
     items,
     notDone,

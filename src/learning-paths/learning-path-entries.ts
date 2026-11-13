@@ -1,4 +1,5 @@
-import { getPathAssignment } from './assignments-core';
+import type { AssignmentEntry } from '../lib/assignments-client';
+import { assignmentProgress, buildResolvedAssignment, findAssignedTrack, getPathAssignment } from './assignments-core';
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
 import type { CatalogProgress } from './catalog-progress.hook';
@@ -14,6 +15,8 @@ export interface LearningPathEntry {
   assignment?: ResolvedAssignment;
   assignedGuide?: CatalogPackage;
   isGuideAssignment?: boolean;
+  assignmentUnavailable?: boolean;
+  catalogKey?: string;
 }
 
 export function selectLearningPathEntries({
@@ -103,4 +106,52 @@ export function selectLearningPathEntries({
     });
   }
   return [...entries.values()];
+}
+
+export function selectPathAssignmentEntries(
+  assignments: readonly AssignmentEntry[],
+  paths: readonly LearningPathEntry[]
+): LearningPathEntry[] {
+  return assignments
+    .filter((assignment) => assignment.targetType === 'path')
+    .map((assignment) => {
+      const entry = paths.find(
+        (candidate) =>
+          candidate.path.id === assignment.targetId &&
+          (!assignment.targetSource ||
+            (assignment.targetSource === 'app-platform') === Boolean(candidate.path.isPrivate))
+      );
+      const path = entry?.path ?? {
+        id: assignment.targetId,
+        title: assignment.targetId,
+        description: '',
+        guides: [],
+        badgeId: '',
+        isPrivate: assignment.targetSource === 'app-platform',
+      };
+      const percent = assignmentProgress(assignment.guides, 0);
+      const resolved = buildResolvedAssignment(assignment, path, percent);
+      const track = findAssignedTrack(path, assignment.trackId);
+      const guides = entry?.guides ?? [];
+      const guideIds = assignment.guides?.map((guide) => guide.guideId) ?? track?.guides;
+      return {
+        ...entry,
+        key: JSON.stringify([
+          'assignment',
+          assignment.targetSource,
+          assignment.targetId,
+          assignment.ruleId,
+          assignment.trackId,
+          assignment.assignedAt,
+        ]),
+        catalogKey: entry?.key,
+        path,
+        guides: guideIds
+          ? guideIds.flatMap((id) => guides.find((guide) => (guide.guideId ?? guide.id) === id) ?? [])
+          : guides,
+        percent,
+        assignment: resolved,
+        assignmentUnavailable: !entry,
+      };
+    });
 }

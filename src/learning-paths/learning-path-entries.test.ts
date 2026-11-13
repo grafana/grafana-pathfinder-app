@@ -1,6 +1,6 @@
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { LearningPath, ResolvedAssignment } from '../types/learning-paths.types';
-import { selectLearningPathEntries } from './learning-path-entries';
+import { selectLearningPathEntries, selectPathAssignmentEntries } from './learning-path-entries';
 
 const path: LearningPath = { id: 'path', title: 'Path', description: '', guides: ['guide'], badgeId: '' };
 const catalogPath: CatalogPackage = {
@@ -85,4 +85,55 @@ it('applies assignment progress only to the matching path source', () => {
     assignmentByTargetId: new Map([['path', privateAssignment]]),
   });
   expect(legacyKeyEntries[0]?.assignment).toBeUndefined();
+});
+
+it('keeps unavailable path obligations visible and preserves duplicate rule and track rows', () => {
+  const assignment = {
+    targetType: 'path',
+    targetId: 'path',
+    targetSource: 'app-platform',
+    ruleId: 'one',
+    lifecycle: 'active',
+    satisfied: false,
+    guides: [{ guideId: 'a', guideSource: 'app-platform', completed: true }],
+  };
+  const privatePath = {
+    ...path,
+    isPrivate: true,
+    manifest: { type: 'path', milestones: ['a'], tracks: [{ trackId: 'second', label: 'Second', guides: ['b'] }] },
+  };
+  const entries = selectPathAssignmentEntries(
+    [
+      assignment,
+      {
+        ...assignment,
+        ruleId: 'two',
+        trackId: 'second',
+        guides: [{ guideId: 'b', guideSource: 'app-platform', completed: false }],
+      },
+      { ...assignment, targetId: 'missing', guides: undefined },
+    ],
+    [
+      {
+        key: 'organization:path',
+        path: privatePath,
+        percent: 0,
+        guides: [
+          { id: 'a', title: 'A', completed: false, isCurrent: true },
+          { id: 'b', title: 'B', completed: false, isCurrent: false },
+        ],
+      },
+    ]
+  );
+  expect(new Set(entries.map(({ key }) => key)).size).toBe(3);
+  expect(entries.map(({ percent }) => percent)).toEqual([100, 0, 0]);
+  expect(entries[1]?.guides.map(({ id }) => id)).toEqual(['b']);
+  expect(entries[1]?.assignment?.trackId).toBe('second');
+  expect(entries[2]?.assignmentUnavailable).toBe(true);
+  expect(entries[2]?.assignment?.progressUnavailable).toBe(true);
+  expect(entries[2]?.path.title).toBe('missing');
+  expect(
+    selectPathAssignmentEntries([assignment], [{ key: 'grafana:path', path, guides: [], percent: 0 }])[0]
+      ?.assignmentUnavailable
+  ).toBe(true);
 });
