@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Compare frozen legacy and current SDK handlers without modifying either checkout."""
+import difflib
+import argparse
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tarfile
+import tempfile
+
+BASELINE = 'f106a8904174594c456b00edb1f67b6905f0cd8e'
+ROOT = Path(__file__).resolve().parents[2]
+HERE = Path(__file__).resolve().parent
+
+
+def compare(left, right):
+    return list(difflib.unified_diff(
+        json.dumps(left, indent=2, sort_keys=True).splitlines(),
+        json.dumps(right, indent=2, sort_keys=True).splitlines(),
+        fromfile='frozen baseline', tofile='SDK', lineterm=''))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--record-baseline', action='store_true')
+    args = parser.parse_args()
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
+    print(f'Legacy {BASELINE}; SDK {head}; workspace changes={dirty}', flush=True)
+    with tempfile.TemporaryDirectory(prefix='pathfinder-fidelity-') as temp:
+        transcripts = []
+        for mode, package in [('legacy', 'plugin'), ('sdk', 'provider')]:
+            target = Path(temp) / mode
+            target.mkdir()
+            archive = subprocess.check_output(['git', 'archive', BASELINE if mode == 'legacy' else 'HEAD'], cwd=ROOT)
+            with tarfile.open(fileobj=io.BytesIO(archive)) as source:
+                source.extractall(target, filter='data')
+            if mode == 'sdk':
+                shutil.copytree(ROOT / 'pkg', target / 'pkg', dirs_exist_ok=True)
+                for file in ['go.mod', 'go.sum']:
+                    shutil.copy2(ROOT / file, target / file)
+            dest = target / 'pkg' / package
+            (dest / 'frozen_shared_test.go').write_text((HERE / 'shared.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
+            (dest / 'frozen_history_test.go').write_text((HERE / 'history.go.txt').read_text().replace('package PACKAGE', 'package ' + package))
+            (dest / 'frozen_adapter_test.go').write_text((HERE / (mode + '.go.txt')).read_text())
+            output = Path(temp) / (mode + '.json')
+            env = dict(os.environ, FIDELITY_CORPUS=str(HERE / 'scenarios.json'), FIDELITY_OUTPUT=str(output), FIDELITY_HISTORY=str(HERE / 'history.json'))
+            subprocess.run(['go', 'test', './pkg/' + package, '-run', '^TestFrozenFidelity', '-count=1'], cwd=target, env=env, check=True)
+            transcripts.append(json.loads(output.read_text()))
+            transcripts[-1]["history"] = json.loads(Path(str(output) + ".reads").read_text())
+        expected = HERE / 'baseline-writes.json'
+        if args.record_baseline:
+            expected.write_text(json.dumps(transcripts[0], indent=2, sort_keys=True) + '\n')
+        if compare(json.loads(expected.read_text()), transcripts[0]):
+            raise RuntimeError('frozen baseline transcript drifted')
+        # Explicit permitted difference: SDK POST responses add Cache-Control: no-store.
+        # Assert both exact values before comparison; never discard arbitrary headers.
+        for name in transcripts[0]:
+            if name == "history":
+                continue
+            for old, new in zip(transcripts[0][name], transcripts[1][name], strict=True):
+                if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
+                    raise RuntimeError('unexpected cache-control difference')
+                old['cacheControl'] = 'no-store'
+        diff = compare(*transcripts)
+        # Mutate only the temporary SDK copy: the harness must catch a broken
+        # monotonic-progress comparison in production code, not just a JSON edit.
+        attempt = target / 'pkg/services/completion_attempt.go'
+        original = attempt.read_text()
+        needle = 'stored.Spec.CompletionPercent >= incoming.CompletionPercent'
+        if original.count(needle) != 1:
+            raise RuntimeError('monotonic mutation target changed; review the control')
+        attempt.write_text(original.replace(needle, 'stored.Spec.CompletionPercent <= incoming.CompletionPercent'))
+        mutation = subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityWrites$', '-count=1'], cwd=target, env=env, capture_output=True, text=True)
+        if mutation.returncode == 0:
+            mutated_output = json.loads(output.read_text())
+            clean_writes = {key: value for key, value in transcripts[1].items() if key != 'history'}
+            if not compare(clean_writes, mutated_output):
+                raise RuntimeError('production monotonicity mutation was not detected')
+        else:
+            raise RuntimeError('mutation did not produce a comparable transcript: ' + mutation.stdout + mutation.stderr)
+        # Negative control: a status regression must be visible to the comparator.
+        mutated = json.loads(json.dumps(transcripts[0]))
+        mutated['progress-retry-out-of-order-complete'][0]['status'] = 599
+        if not compare(transcripts[0], mutated):
+            raise RuntimeError('negative control failed')
+        if diff:
+            print('\n'.join(diff))
+            raise SystemExit(1)
+        print('Frozen writes and historical projections match; status and production monotonicity controls detected.')
+
+
+if __name__ == '__main__':
+    main()

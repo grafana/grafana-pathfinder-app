@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 )
 
 func TestInsightsAuthorizationPrecedesReadsAndPeriodParsing(t *testing.T) {
@@ -32,5 +33,23 @@ func TestInsightsAuthorizationPrecedesReadsAndPeriodParsing(t *testing.T) {
 				t.Fatalf("status %d want %d body %s", w.Code, want, w.Body.String())
 			}
 		})
+	}
+}
+
+func TestInsightsRateLimitPrecedesResourceReads(t *testing.T) {
+	payload := `{"sub":"user:1","namespace":"default","role":"Admin"}`
+	identity := adminIdentity{completionIdentity: completionIdentity{testIdentity: testIdentity{namespace: "default"}, subject: "user:1"}, idToken: "header." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".signature"}
+	handler := insightsReadHandler(nil, nil, nil, func(namespace, subject string) (bool, time.Duration) {
+		if namespace != "default" || subject != "user:1" {
+			t.Fatal("untrusted rate-limit key")
+		}
+		return false, 1500 * time.Millisecond
+	})
+	w := httptest.NewRecorder()
+	if err := handler(authlib.WithAuthInfo(context.Background(), identity), w, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}}); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 429 || w.Header().Get("Retry-After") != "2" || w.Body.String() != "{\"error\":\"rate-limited\"}\n" {
+		t.Fatalf("unexpected limit response: %d %s", w.Code, w.Body.String())
 	}
 }

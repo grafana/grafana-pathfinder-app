@@ -1,0 +1,24 @@
+[
+  {
+    "name": "progress-retry-out-of-order-complete",
+    "steps": [
+      { "percent": 40 },
+      { "percent": 40 },
+      { "percent": 20 },
+      { "percent": 70 },
+      { "percent": 100 },
+      { "percent": 100 }
+    ]
+  },
+  { "name": "lost-acknowledgement", "steps": [{ "percent": 100, "discardResponse": true }, { "percent": 100 }] },
+  { "name": "conflict-retry", "steps": [{ "percent": 40 }, { "percent": 70, "conflicts": 2 }] },
+  {
+    "name": "conflict-exhaustion-recovery",
+    "steps": [{ "percent": 40 }, { "percent": 70, "conflicts": 3 }, { "percent": 70 }]
+  },
+  { "name": "forbidden-recovery", "steps": [{ "percent": 40, "status": 403 }, { "percent": 40 }] },
+  { "name": "outage-recovery", "steps": [{ "percent": 40, "status": 503 }, { "percent": 40 }] },
+  { "name": "not-found", "steps": [{ "percent": 40, "status": 404 }] },
+  { "name": "throttle", "steps": [{ "percent": 40, "status": 429 }] },
+  { "name": "invalid-percent", "steps": [{ "percent": 101 }] }
+]

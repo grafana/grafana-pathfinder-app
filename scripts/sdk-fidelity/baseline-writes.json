@@ -1,0 +1,1033 @@
+{
+  "conflict-exhaustion-recovery": [
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    },
+    {
+      "body": {
+        "error": "completion-write-contended"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "completionPercent": 70,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    }
+  ],
+  "conflict-retry": [
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "completionPercent": 70,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    }
+  ],
+  "forbidden-recovery": [
+    {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 403
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "history": {
+    "completed": {
+      "user:1": [
+        {
+          "count": 1,
+          "guideCategory": "interactive",
+          "guideId": "first-dashboard",
+          "guideSource": "online-cdn",
+          "guideTitle": "",
+          "latestCompletedAt": "2026-09-03T00:00:00Z",
+          "latestSource": "",
+          "maxCompletionPercent": 100,
+          "pathId": ""
+        },
+        {
+          "count": 3,
+          "guideCategory": "interactive",
+          "guideId": "same",
+          "guideSource": "bundled",
+          "guideTitle": "",
+          "latestCompletedAt": "2026-09-02T00:00:00Z",
+          "latestSource": "",
+          "maxCompletionPercent": 100,
+          "pathId": ""
+        }
+      ],
+      "user:2": [
+        {
+          "count": 1,
+          "guideCategory": "interactive",
+          "guideId": "same",
+          "guideSource": "app-platform",
+          "guideTitle": "",
+          "latestCompletedAt": "2026-10-01T00:00:00Z",
+          "latestSource": "",
+          "maxCompletionPercent": 100,
+          "pathId": ""
+        }
+      ]
+    },
+    "partial": {
+      "user:1": [
+        {
+          "completionPercent": 40,
+          "guideCategory": "interactive",
+          "guideId": "partial",
+          "guideSource": "bundled",
+          "guideTitle": "",
+          "lastUpdatedAt": "",
+          "pathId": ""
+        }
+      ]
+    },
+    "reports": [
+      {
+        "asOf": "",
+        "assignments": [
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "first-dashboard",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "rss-is-not-dashboard",
+            "status": "outstanding",
+            "targetId": "first-dashboard",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "one",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "two",
+            "status": "outstanding",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:2"
+          }
+        ],
+        "capability": {
+          "available": false
+        },
+        "completeness": "complete",
+        "completions": [
+          {
+            "completedAt": "2026-09-01T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "Current title",
+            "source": "",
+            "userId": "user:1"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "first-dashboard",
+            "guideSource": "online-cdn",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:1"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:1",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:2",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      },
+      {
+        "asOf": "",
+        "assignments": [
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "first-dashboard",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "completion-history-incomplete",
+            "ruleId": "rss-is-not-dashboard",
+            "status": "unknown",
+            "targetId": "first-dashboard",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "one",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "completion-history-incomplete",
+            "ruleId": "two",
+            "status": "unknown",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:2"
+          }
+        ],
+        "capability": {
+          "available": false
+        },
+        "completeness": "complete",
+        "completions": [
+          {
+            "completedAt": "2026-09-01T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "Current title",
+            "source": "",
+            "userId": "user:1"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "first-dashboard",
+            "guideSource": "online-cdn",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:1"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:1",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:2",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      }
+    ]
+  },
+  "invalid-percent": [
+    {
+      "body": {
+        "error": "completionPercent out of range"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 400
+    }
+  ],
+  "lost-acknowledgement": [
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": true,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    }
+  ],
+  "not-found": [
+    {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 404
+    }
+  ],
+  "outage-recovery": [
+    {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "completion-write-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "progress-retry-out-of-order-complete": [
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "completionPercent": 70,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "3"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    },
+    {
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "3"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    }
+  ],
+  "throttle": [
+    {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "completion-write-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 429
+    }
+  ]
+}

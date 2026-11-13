@@ -1,0 +1,75 @@
+package PACKAGE
+
+import (
+	"encoding/json"
+	"os"
+	"testing"
+	"time"
+)
+
+type fidelityStep struct {
+	Percent         int  `json:"percent"`
+	Status          int  `json:"status"`
+	Conflicts       int  `json:"conflicts"`
+	DiscardResponse bool `json:"discardResponse"`
+}
+
+func TestFrozenFidelityWrites(t *testing.T) {
+	data, err := os.ReadFile(os.Getenv("FIDELITY_CORPUS"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scenarios []struct {
+		Name  string         `json:"name"`
+		Steps []fidelityStep `json:"steps"`
+	}
+	if err := json.Unmarshal(data, &scenarios); err != nil {
+		t.Fatal(err)
+	}
+	results := map[string]any{}
+	for _, scenario := range scenarios {
+		t.Run(scenario.Name, func(t *testing.T) {
+			store := newFakeAttemptStore()
+			rows := []any{}
+			for _, step := range scenario.Steps {
+				start := time.Now().Add(-time.Second)
+				bodyInput := map[string]any{"guideSource": "bundled", "guideId": "first-dashboard", "guideTitle": "First dashboard", "guideCategory": "interactive", "pathId": "", "completionPercent": step.Percent, "source": "objectives", "completedAt": "2026-11-01T00:00:00Z", "attemptStartedAt": "2026-11-01T00:00:00Z", "platform": "cloud", "idempotencyKey": "evt-default", "attemptId": "frozen-attempt"}
+				response := fidelityWrite(t, store, step, bodyInput)
+				var body any
+				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				raw, _ := json.Marshal(store.objects)
+				var persisted map[string]any
+				if err := json.Unmarshal(raw, &persisted); err != nil {
+					t.Fatal(err)
+				}
+				for _, object := range persisted {
+					spec := object.(map[string]any)["spec"].(map[string]any)
+					stamp, err := time.Parse(time.RFC3339, spec["recordedAt"].(string))
+					if err != nil || stamp.Before(start) || stamp.After(time.Now()) {
+						t.Fatalf("invalid server timestamp: %v", spec["recordedAt"])
+					}
+					spec["recordedAt"] = "<validated-server-time>"
+					if spec["userId"] != "user:abc" {
+						t.Fatal("untrusted identity persisted")
+					}
+					if spec["completionPercent"].(float64) < 100 {
+						if _, exists := spec["completedAt"]; exists {
+							t.Fatal("partial became completion evidence")
+						}
+					}
+				}
+				rows = append(rows, map[string]any{"status": response.Code, "body": body, "cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"), "contentType": response.Header().Get("Content-Type"), "persisted": persisted, "discardResponse": step.DiscardResponse})
+			}
+			results[scenario.Name] = rows
+		})
+	}
+	output, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv("FIDELITY_OUTPUT"), output, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
