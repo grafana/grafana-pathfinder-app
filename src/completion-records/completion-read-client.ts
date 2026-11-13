@@ -1,7 +1,7 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout } from 'rxjs';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from '../lib/backend-routes';
 import { logger } from '../lib/logging';
 import { MyCompletionsResponseWireSchema, type MyCompletionsResponseWire } from '../types/backend-api.schema';
 import { onCompletionPublished } from './completion-write-hook';
@@ -9,7 +9,6 @@ import { onCompletionPublished } from './completion-write-hook';
 export type MyCompletionsResult =
   { kind: 'ok'; data: MyCompletionsResponseWire } | { kind: 'unavailable' } | { kind: 'invalid' };
 
-const MY_COMPLETIONS_URL = `${PLUGIN_BACKEND_URL}/completion-records/my`;
 const TRANSPORT_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 60_000;
 
@@ -30,7 +29,7 @@ async function fetchMyCompletions(): Promise<Fetched> {
   try {
     const response = await lastValueFrom(
       getBackendSrv()
-        .fetch<unknown>({ url: MY_COMPLETIONS_URL, method: 'GET', showErrorAlert: false })
+        .fetch<unknown>({ url: backendRoute('completion-records/my'), method: 'GET', showErrorAlert: false })
         .pipe(timeout(TRANSPORT_TIMEOUT_MS))
     );
     const parsed = MyCompletionsResponseWireSchema.safeParse(response.data);

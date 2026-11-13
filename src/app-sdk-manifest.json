@@ -1819,7 +1819,705 @@
                         },
                         "conversion": false
                     }
-                ]
+                ],
+                "routes": {
+                    "namespaced": {
+                        "/backend/assignments/my": {
+                            "get": {
+                                "operationId": "getBackendAssignments",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/completion-records": {
+                            "post": {
+                                "operationId": "createBackendCompletion",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/completion-records/capability": {
+                            "get": {
+                                "operationId": "getBackendCompletionCapability",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/completion-records/my": {
+                            "get": {
+                                "operationId": "getBackendCompletions",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/custom-guide": {
+                            "get": {
+                                "operationId": "getBackendGuide",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "put": {
+                                "operationId": "replaceBackendGuide",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "post": {
+                                "operationId": "createBackendGuide",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "delete": {
+                                "operationId": "deleteBackendGuide",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/custom-guide-repository": {
+                            "get": {
+                                "operationId": "getBackendCatalogue",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/custom-guides": {
+                            "get": {
+                                "operationId": "getBackendGuides",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "items"
+                                                    ],
+                                                    "properties": {
+                                                        "items": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "additionalProperties": true
+                                                            }
+                                                        }
+                                                    },
+                                                    "additionalProperties": false
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/health": {
+                            "get": {
+                                "operationId": "getBackendHealth",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/learning-insights": {
+                            "get": {
+                                "operationId": "getBackendLearningInsights",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/package-recommendations": {
+                            "get": {
+                                "operationId": "getBackendRecommendations",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "/backend/pathfinder-settings": {
+                            "get": {
+                                "operationId": "getBackendSettings",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "put": {
+                                "operationId": "replaceBackendSettings",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "post": {
+                                "operationId": "createBackendSettings",
+                                "responses": {
+                                    "default": {
+                                        "description": "Default OK response",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "openapi": {
+                    "paths": {
+                        "/namespaces/{namespace}/backend/assignments/my": {
+                            "get": {
+                                "operationId": "getBackendAssignments",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ]
+                        },
+                        "/namespaces/{namespace}/backend/completion-records": {
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ],
+                            "post": {
+                                "operationId": "createBackendCompletion",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            }
+                        },
+                        "/namespaces/{namespace}/backend/completion-records/capability": {
+                            "get": {
+                                "operationId": "getBackendCompletionCapability",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ]
+                        },
+                        "/namespaces/{namespace}/backend/completion-records/my": {
+                            "get": {
+                                "operationId": "getBackendCompletions",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ]
+                        },
+                        "/namespaces/{namespace}/backend/custom-guide": {
+                            "delete": {
+                                "operationId": "deleteBackendGuide",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "get": {
+                                "operationId": "getBackendGuide",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ],
+                            "post": {
+                                "operationId": "createBackendGuide",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "put": {
+                                "operationId": "replaceBackendGuide",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            }
+                        },
+                        "/namespaces/{namespace}/backend/custom-guide-repository": {
+                            "get": {
+                                "operationId": "getBackendCatalogue",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ]
+                        },
+                        "/namespaces/{namespace}/backend/custom-guides": {
+                            "get": {
+                                "operationId": "getBackendGuides",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                        "items": {
+                                                            "items": {
+                                                                "additionalProperties": true,
+                                                                "type": "object"
+                                                            },
+                                                            "type": "array"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "items"
+                                                    ],
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ]
+                        },
+                        "/namespaces/{namespace}/backend/health": {
+                            "get": {
+                                "operationId": "getBackendHealth",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ]
+                        },
+                        "/namespaces/{namespace}/backend/learning-insights": {
+                            "get": {
+                                "operationId": "getBackendLearningInsights",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ]
+                        },
+                        "/namespaces/{namespace}/backend/package-recommendations": {
+                            "get": {
+                                "operationId": "getBackendRecommendations",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ]
+                        },
+                        "/namespaces/{namespace}/backend/pathfinder-settings": {
+                            "get": {
+                                "operationId": "getBackendSettings",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "parameters": [
+                                {
+                                    "in": "path",
+                                    "name": "namespace",
+                                    "required": true,
+                                    "schema": {
+                                        "type": "string"
+                                    }
+                                }
+                            ],
+                            "post": {
+                                "operationId": "createBackendSettings",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            },
+                            "put": {
+                                "operationId": "replaceBackendSettings",
+                                "responses": {
+                                    "default": {
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "additionalProperties": true,
+                                                    "type": "object"
+                                                }
+                                            }
+                                        },
+                                        "description": "Default OK response"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         ],
         "preferredVersion": "v1alpha1",

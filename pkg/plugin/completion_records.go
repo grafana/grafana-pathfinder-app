@@ -2,10 +2,9 @@ package plugin
 
 import (
 	"context"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
-	"sort"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -100,40 +99,10 @@ type completionCapability struct {
 
 // inProgressCompletion is a guide the user has started but whose most recent
 // activity is an unfinished attempt.
-type inProgressCompletion struct {
-	GuideSource       string `json:"guideSource"`
-	GuideID           string `json:"guideId"`
-	GuideTitle        string `json:"guideTitle"`
-	GuideCategory     string `json:"guideCategory"`
-	PathID            string `json:"pathId"`
-	CompletionPercent int64  `json:"completionPercent"`
-	LastUpdatedAt     string `json:"lastUpdatedAt"`
-	AttemptStartedAt  string `json:"attemptStartedAt,omitempty"`
-}
+type inProgressCompletion = services.InProgressCompletion
 
 // collatedCompletion is one entry per (guideSource, guideId) for a single user.
-type collatedCompletion struct {
-	GuideSource          string `json:"guideSource"`
-	GuideID              string `json:"guideId"`
-	GuideTitle           string `json:"guideTitle"`
-	GuideCategory        string `json:"guideCategory"`
-	PathID               string `json:"pathId"`
-	Count                int    `json:"count"`
-	LatestCompletedAt    string `json:"latestCompletedAt"`
-	LatestSource         string `json:"latestSource"`
-	MaxCompletionPercent int64  `json:"maxCompletionPercent"`
-
-	// LatestDurationSeconds is the latest completion's duration; omitted when
-	// 0 because legacy writes made it optional.
-	LatestDurationSeconds int64 `json:"latestDurationSeconds,omitempty"`
-	// LastRecordedAt is the newest LastUpdatedAt across every record of the
-	// guide, completions and attempts alike. Superseded attempts hidden from
-	// inProgress still count toward recency.
-	LastRecordedAt string `json:"lastRecordedAt,omitempty"`
-	// LatestAttemptStartedAt is the newest AttemptStartedAt across every
-	// record of the guide.
-	LatestAttemptStartedAt string `json:"latestAttemptStartedAt,omitempty"`
-}
+type collatedCompletion = services.CollatedCompletion
 
 // myCompletionsResponse is the GET /completion-records/my envelope.
 type myCompletionsResponse struct {
@@ -150,279 +119,19 @@ type myCompletionsResponse struct {
 // completionIndex is the collated, per-user view of a namespace's records.
 // Raw records are dropped after collation, so the footprint is bounded by
 // distinct (user, guide) pairs, not completion volume. Serving reads only
-// idx.byUser[caller] — a cache hit is structurally incapable of exposing
+// idx.ByUser[caller] — a cache hit is structurally incapable of exposing
 // another user's slice.
-type completionIndex struct {
-	byUser           map[string][]collatedCompletion
-	inProgressByUser map[string][]inProgressCompletion
-	asOf             time.Time
-}
+type completionIndex = services.CompletionIndex
 
-type completionCacheEntry struct {
-	index *completionIndex
+var completionListerOverride completionRecordLister
+var completionCreatorOverride completionRecordCreator
 
-	// stale marks an entry a write has superseded: too old to serve on the TTL
-	// fast path, but still worth keeping as the fallback when the refresh it
-	// forces fails. See invalidateCompletionIndex.
-	stale bool
-}
-
-// completionFailure records the most recent namespace-global upstream refresh
-// failure so the cooldown can suppress re-probes and cold callers can still
-// distinguish a terminal (4xx) from a transient error while throttled.
-type completionFailure struct {
-	at  time.Time
-	err error
-}
-
-// completionRefreshFlight is a single-flight handle: concurrent cache-miss
-// callers for a namespace wait on `done` and share one upstream LIST.
-type completionRefreshFlight struct {
-	done       chan struct{}
-	generation uint64
-	index      *completionIndex
-	err        error
-}
-
-// completionCacheStats are per-namespace vital signs, included in refresh-time
-// structured logs so the cache is diagnosable on-call.
-type completionCacheStats struct {
-	hits            int
-	misses          int
-	staleServes     int
-	refreshes       int
-	refreshFailures int
-}
-
-// All maps below are keyed by the trusted-context namespace (never
-// caller-supplied), so on hosted Grafana the key space is one entry per
-// process — the maps need no eviction.
-var (
-	completionCacheMu      sync.Mutex
-	completionCacheEntries map[string]*completionCacheEntry
-	completionFlights      map[string]*completionRefreshFlight
-	completionLastForced   map[string]time.Time
-	completionLastFailure  map[string]completionFailure
-	completionStats        map[string]*completionCacheStats
-	completionGenerations  map[string]uint64
-
-	// completionListerOverride injects a fake lister in tests. nil selects the
-	// real per-request HTTP client. Config resolution (feature toggle, app
-	// URL, namespace) is checked BEFORE this override so the structural-
-	// unavailability path stays testable.
-	completionListerOverride completionRecordLister
-
-	// completionCreatorOverride injects a fake creator in tests (write path),
-	// mirroring completionListerOverride. Config resolution is checked BEFORE
-	// this override so the structural-unavailability path stays testable.
-	completionCreatorOverride completionRecordCreator
-)
-
-func completionCacheInit() {
-	if completionCacheEntries == nil {
-		completionCacheEntries = map[string]*completionCacheEntry{}
-	}
-	if completionFlights == nil {
-		completionFlights = map[string]*completionRefreshFlight{}
-	}
-	if completionLastForced == nil {
-		completionLastForced = map[string]time.Time{}
-	}
-	if completionLastFailure == nil {
-		completionLastFailure = map[string]completionFailure{}
-	}
-	if completionStats == nil {
-		completionStats = map[string]*completionCacheStats{}
-	}
-	if completionGenerations == nil {
-		completionGenerations = map[string]uint64{}
-	}
-}
-
-func completionStatsFor(namespace string) *completionCacheStats {
-	s := completionStats[namespace]
-	if s == nil {
-		s = &completionCacheStats{}
-		completionStats[namespace] = s
-	}
-	return s
-}
-
-// resetCompletionRecordsCache clears all cached state. Test-only.
-func resetCompletionRecordsCache() {
-	completionCacheMu.Lock()
-	defer completionCacheMu.Unlock()
-	completionCacheEntries = nil
-	completionFlights = nil
-	completionLastForced = nil
-	completionLastFailure = nil
-	completionStats = nil
-	completionGenerations = nil
-}
-
-// invalidateCompletionIndex stales a namespace's collated read cache so the
-// next GET /completion-records/my refreshes from upstream. Called after a
-// successful write so the new record surfaces promptly rather than after the
-// TTL. The failure cooldown is cleared too: a successful create is fresh proof
-// the upstream is reachable, and a lingering cooldown would replay a stale
-// error to exactly the post-write read this invalidation serves. Forced/stats
-// bookkeeping is left intact.
-//
-// The entry is marked stale rather than deleted, and that distinction is the
-// whole point: getCompletionIndex serves a warm-but-stale index when a refresh
-// fails, so deleting here would throw that fallback away on every write —
-// turning the next upstream blip into a cold 503 for a reader who could have
-// had a slightly-stale 200. Marking it skips the TTL fast path (which is what
-// actually forces the refresh — the generation bump only coalesces in-flight
-// refreshes) while leaving the fallback intact.
-func invalidateCompletionIndex(namespace string) {
-	completionCacheMu.Lock()
-	defer completionCacheMu.Unlock()
-	completionCacheInit()
-	completionGenerations[namespace]++
-	if entry := completionCacheEntries[namespace]; entry != nil {
-		completionCacheEntries[namespace] = &completionCacheEntry{index: entry.index, stale: true}
-	}
-	delete(completionLastFailure, namespace)
-}
-
-// getCompletionIndex returns the collated index for a namespace, refreshing at
-// most once per TTL (or immediately when a rate-limit-permitted forced refresh
-// is requested). On refresh failure it serves a warm (stale) index when one
-// exists; a cold failure returns (nil, err). After a namespace-global failure
-// a short cooldown suppresses TTL-driven re-attempts; only failures positively
-// classified as namespace-global enter that shared negative cache — caller A's
-// denied token or failed token mint must not become a cached error served to
-// caller B. Concurrent refreshes single-flight.
+func resetCompletionRecordsCache()               { services.ResetCompletionCache() }
+func invalidateCompletionIndex(namespace string) { services.InvalidateCompletionIndex(namespace) }
 func getCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, forced bool, logger log.Logger) (*completionIndex, error) {
-	completionCacheMu.Lock()
-	completionCacheInit()
-
-	entry := completionCacheEntries[namespace]
-	stats := completionStatsFor(namespace)
-
-	effectiveForced := false
-	if forced {
-		last, seen := completionLastForced[namespace]
-		if !seen || timeNow().Sub(last) >= completionForcedRefreshInterval {
-			effectiveForced = true
-			completionLastForced[namespace] = timeNow()
-		}
-	}
-
-	if entry != nil && !entry.stale && !effectiveForced && timeNow().Sub(entry.index.asOf) < completionCacheTTL {
-		stats.hits++
-		idx := entry.index
-		completionCacheMu.Unlock()
-		return idx, nil
-	}
-	stats.misses++
-
-	// Negative-cache cooldown: after a recent namespace-global refresh failure,
-	// don't re-probe a struggling upstream on every TTL-expired request. Serve
-	// the stale index when warm, or replay the sticky error when cold, until
-	// the cooldown elapses. A rate-limit-permitted ?refresh=1 bypasses this.
-	if !effectiveForced {
-		if fail, ok := completionLastFailure[namespace]; ok && timeNow().Sub(fail.at) < completionFailureCooldown {
-			if entry != nil {
-				stats.staleServes++
-				idx := entry.index
-				completionCacheMu.Unlock()
-				return idx, nil
-			}
-			err := fail.err
-			completionCacheMu.Unlock()
-			return nil, err
-		}
-	}
-
-	generation := completionGenerations[namespace]
-	if fl := completionFlights[namespace]; fl != nil && fl.generation == generation {
-		completionCacheMu.Unlock()
-		select {
-		case <-fl.done:
-			return fl.index, fl.err
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-
-	fl := &completionRefreshFlight{done: make(chan struct{}), generation: generation}
-	completionFlights[namespace] = fl
-	completionCacheMu.Unlock()
-
-	// Detach from the caller's cancellation so a canceled request (panel
-	// closed mid-flight) doesn't abort a refresh other waiters depend on,
-	// bounded by the aggregate deadline so detached never means unkillable.
-	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), completionAggregateDeadline)
-	idx, pages, err := buildCompletionIndex(fetchCtx, namespace, lister, logger)
-	cancel()
-
-	completionCacheMu.Lock()
-	stats = completionStatsFor(namespace)
-	if completionGenerations[namespace] != fl.generation {
-		// Fenced off by a concurrent write: this result serves its own waiters but
-		// must not repopulate the cache. It is still counted, or the per-namespace
-		// vital signs (§9) stop reconciling against stats.misses exactly when the
-		// write path is busiest — the condition an operator would be diagnosing.
-		if err == nil {
-			stats.refreshes++
-			fl.index = idx
-		} else {
-			stats.refreshFailures++
-			if entry != nil {
-				stats.staleServes++
-				fl.index = entry.index
-			}
-			fl.err = err
-		}
-		if completionFlights[namespace] == fl {
-			delete(completionFlights, namespace)
-		}
-		completionCacheMu.Unlock()
-		close(fl.done)
-		return fl.index, fl.err
-	}
-	if err == nil {
-		stats.refreshes++
-		if _, hadFailure := completionLastFailure[namespace]; hadFailure {
-			logger.Info("completion index recovered", "namespace", namespace)
-		}
-		completionCacheEntries[namespace] = &completionCacheEntry{index: idx}
-		delete(completionLastFailure, namespace)
-		fl.index = idx
-		logger.Debug("completion index refreshed",
-			"namespace", namespace, "pages", pages, "users", len(idx.byUser),
-			"hits", stats.hits, "misses", stats.misses,
-			"staleServes", stats.staleServes, "refreshFailures", stats.refreshFailures)
-	} else {
-		stats.refreshFailures++
-		namespaceGlobal := isNamespaceGlobalCompletionError(err)
-		if namespaceGlobal {
-			completionLastFailure[namespace] = completionFailure{at: timeNow(), err: err}
-		}
-		// Refresh attempts are throttled by TTL + cooldown, so this logs state
-		// transitions, not every request.
-		logger.Info("completion index refresh failed",
-			"namespace", namespace, "reason", classifyGuideProxyError(err).Reason,
-			"namespaceGlobal", namespaceGlobal, "servingStale", entry != nil,
-			"refreshFailures", stats.refreshFailures)
-		if entry != nil {
-			// Warm cache + upstream failure: serve stale. asOf reflects true age.
-			stats.staleServes++
-			fl.index = entry.index
-			fl.err = err
-		} else {
-			fl.err = err
-		}
-	}
-	if completionFlights[namespace] == fl {
-		delete(completionFlights, namespace)
-	}
-	completionCacheMu.Unlock()
-	close(fl.done)
-
-	return fl.index, fl.err
+	return services.LoadCompletionIndex(ctx, namespace, forced, logger, func(ctx context.Context) (*completionIndex, int, error) {
+		return buildCompletionIndex(ctx, namespace, lister, logger)
+	}, func() time.Time { return timeNow() }, isNamespaceGlobalCompletionError, func(err error) string { return classifyGuideProxyError(err).Reason })
 }
 
 // buildCompletionIndex drains the namespace LIST across pages — up to the
@@ -434,9 +143,9 @@ func buildCompletionIndex(ctx context.Context, namespace string, lister completi
 	}
 	byUser, inProgressByUser := collateCompletions(records)
 	return &completionIndex{
-		byUser:           byUser,
-		inProgressByUser: inProgressByUser,
-		asOf:             timeNow(),
+		ByUser:           byUser,
+		InProgressByUser: inProgressByUser,
+		AsOf:             timeNow(),
 	}, pages, nil
 }
 
@@ -480,208 +189,7 @@ func drainCompletionRecords(ctx context.Context, namespace string, lister comple
 // newest attempt is reported in inProgress only if it started after the last
 // completion. Server arrival time cannot order delayed writes after a reset.
 func collateCompletions(records []completionRecordSpec) (map[string][]collatedCompletion, map[string][]inProgressCompletion) {
-	type key struct{ source, id string }
-	// Per user: (guideSource,guideId) -> accumulating entry + latest timestamp.
-	type acc struct {
-		entry      collatedCompletion
-		latestTime time.Time
-		latestOK   bool
-		has        bool
-
-		// Latest completion event time, independent of retry arrival.
-		doneUpdated   time.Time
-		doneUpdatedOK bool
-
-		partial     inProgressCompletion
-		partialTime time.Time
-		partialOK   bool
-		hasPartial  bool
-
-		recorded       latestStamp
-		attemptStarted latestStamp
-	}
-
-	perUser := map[string]map[key]*acc{}
-	for _, rec := range records {
-		if rec.UserID == "" {
-			continue
-		}
-		groups := perUser[rec.UserID]
-		if groups == nil {
-			groups = map[key]*acc{}
-			perUser[rec.UserID] = groups
-		}
-		k := key{rec.GuideSource, rec.GuideID}
-		a := groups[k]
-		if a == nil {
-			a = &acc{entry: collatedCompletion{GuideSource: rec.GuideSource, GuideID: rec.GuideID}}
-			groups[k] = a
-		}
-
-		a.recorded.offer(rec.LastUpdatedAt)
-		a.attemptStarted.offer(rec.AttemptStartedAt)
-
-		updated, updatedOK := parseCompletionTime(rec.CompletedAt)
-		if rec.CompletedAt == "" {
-			updated, updatedOK = parseCompletionTime(rec.AttemptStartedAt)
-			if !updatedOK {
-				updated, updatedOK = parseCompletionTime(rec.LastUpdatedAt)
-			}
-			if shouldReplaceLatest(a.partialTime, a.partialOK, a.hasPartial, updated, updatedOK) {
-				a.partialTime, a.partialOK, a.hasPartial = updated, updatedOK, true
-				a.partial = inProgressCompletion{
-					GuideSource:       rec.GuideSource,
-					GuideID:           rec.GuideID,
-					GuideTitle:        rec.GuideTitle,
-					GuideCategory:     rec.GuideCategory,
-					PathID:            rec.PathID,
-					CompletionPercent: rec.CompletionPercent,
-					LastUpdatedAt:     rec.LastUpdatedAt,
-					AttemptStartedAt:  rec.AttemptStartedAt,
-				}
-			}
-			continue
-		}
-		if updatedOK && (!a.doneUpdatedOK || updated.After(a.doneUpdated)) {
-			a.doneUpdated, a.doneUpdatedOK = updated, true
-		}
-
-		a.entry.Count++
-		if rec.CompletionPercent > a.entry.MaxCompletionPercent {
-			a.entry.MaxCompletionPercent = rec.CompletionPercent
-		}
-
-		t, ok := parseCompletionTime(rec.CompletedAt)
-		if shouldReplaceLatest(a.latestTime, a.latestOK, a.has, t, ok) {
-			a.latestTime, a.latestOK, a.has = t, ok, true
-			a.entry.LatestCompletedAt = rec.CompletedAt
-			a.entry.LatestSource = rec.Source
-			a.entry.LatestDurationSeconds = rec.DurationSeconds
-			a.entry.GuideTitle = rec.GuideTitle
-			a.entry.GuideCategory = rec.GuideCategory
-			a.entry.PathID = rec.PathID
-		}
-	}
-
-	result := map[string][]collatedCompletion{}
-	inProgress := map[string][]inProgressCompletion{}
-	for userID, groups := range perUser {
-		entries := make([]collatedCompletion, 0, len(groups))
-		var partials []inProgressCompletion
-		for _, a := range groups {
-			if a.entry.Count > 0 {
-				a.entry.LastRecordedAt = a.recorded.raw
-				a.entry.LatestAttemptStartedAt = a.attemptStarted.raw
-				entries = append(entries, a.entry)
-			}
-			// A partial shows when nothing is completed yet, or when it is
-			// provably newer than the latest completed record.
-			if a.hasPartial && (a.entry.Count == 0 || (a.partialOK && a.doneUpdatedOK && a.partialTime.After(a.doneUpdated))) {
-				partials = append(partials, a.partial)
-			}
-		}
-		sort.SliceStable(entries, func(i, j int) bool {
-			return completionEntryLess(entries[j], entries[i]) // descending by latestCompletedAt
-		})
-		sort.SliceStable(partials, func(i, j int) bool {
-			return inProgressLess(partials[j], partials[i]) // descending by lastUpdatedAt
-		})
-		if len(entries) > 0 {
-			result[userID] = entries
-		}
-		if len(partials) > 0 {
-			inProgress[userID] = partials
-		}
-	}
-	return result, inProgress
-}
-
-// inProgressLess orders partials by LastUpdatedAt ascending, like
-// completionEntryLess. Its guide-identity tiebreak runs the other way (">"),
-// so the descending sort in collateCompletions yields ascending identity.
-func inProgressLess(x, y inProgressCompletion) bool {
-	tx, okx := parseCompletionTime(x.LastUpdatedAt)
-	ty, oky := parseCompletionTime(y.LastUpdatedAt)
-	if okx && oky && !tx.Equal(ty) {
-		return tx.Before(ty)
-	}
-	if okx != oky {
-		return oky
-	}
-	if x.GuideSource != y.GuideSource {
-		return x.GuideSource > y.GuideSource
-	}
-	return x.GuideID > y.GuideID
-}
-
-// latestStamp tracks the newest of a series of timestamp strings with
-// shouldReplaceLatest's rules, keeping the winner's original text. An empty
-// string is never offered; an unparseable one never beats a parseable one.
-type latestStamp struct {
-	raw string
-	t   time.Time
-	ok  bool
-	has bool
-}
-
-func (l *latestStamp) offer(s string) {
-	if s == "" {
-		return
-	}
-	t, ok := parseCompletionTime(s)
-	if shouldReplaceLatest(l.t, l.ok, l.has, t, ok) {
-		l.raw, l.t, l.ok, l.has = s, t, ok, true
-	}
-}
-
-// shouldReplaceLatest reports whether a candidate record should become the
-// group's latest snapshot. The first record in a group always wins. After
-// that, a parseable timestamp beats the current one only when strictly newer;
-// a parseable candidate also replaces a current snapshot that had no parseable
-// timestamp. When neither parses, the first-seen snapshot is kept for
-// determinism.
-func shouldReplaceLatest(curTime time.Time, curOK, has bool, t time.Time, ok bool) bool {
-	if !has {
-		return true
-	}
-	if ok && curOK {
-		return t.After(curTime)
-	}
-	if ok && !curOK {
-		return true
-	}
-	return false
-}
-
-// completionEntryLess orders entries by LatestCompletedAt ascending (parseable
-// timestamps chronologically; unparseable ones sort last, then lexically).
-func completionEntryLess(x, y collatedCompletion) bool {
-	tx, okx := parseCompletionTime(x.LatestCompletedAt)
-	ty, oky := parseCompletionTime(y.LatestCompletedAt)
-	if okx && oky {
-		if tx.Equal(ty) {
-			return x.LatestCompletedAt < y.LatestCompletedAt
-		}
-		return tx.Before(ty)
-	}
-	if okx != oky {
-		return oky // the one that parsed is "smaller" (earlier), so unparseable sorts last in ascending
-	}
-	return x.LatestCompletedAt < y.LatestCompletedAt
-}
-
-// parseCompletionTime parses an ISO 8601 / RFC 3339 completedAt timestamp.
-func parseCompletionTime(s string) (time.Time, bool) {
-	if s == "" {
-		return time.Time{}, false
-	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t, true
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t, true
-	}
-	return time.Time{}, false
+	return services.CollateCompletions(records)
 }
 
 // handleMyCompletions serves GET /completion-records/my.
@@ -736,15 +244,15 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	diagnostic := appPlatformDiagnostic(err, "completionrecords", "list")
 	if diagnostic != nil {
 		diagnostic.Outcome, diagnostic.Cache = "degraded", "stale"
-		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.asOf).Milliseconds())
+		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.AsOf).Milliseconds())
 	}
 	a.writeMyCompletions(w, myCompletionsResponse{
 		Capability:  completionCapability{Available: true, ProgressRecords: true},
 		Diagnostics: diagnostic,
 		UserID:      userID,
-		Completions: idx.byUser[userID],
-		InProgress:  idx.inProgressByUser[userID],
-		AsOf:        idx.asOf.UTC().Format(time.RFC3339),
+		Completions: idx.ByUser[userID],
+		InProgress:  idx.InProgressByUser[userID],
+		AsOf:        idx.AsOf.UTC().Format(time.RFC3339),
 	})
 }
 
@@ -784,7 +292,7 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 	diagnostic := appPlatformDiagnostic(err, "completionrecords", "list")
 	if diagnostic != nil {
 		diagnostic.Outcome, diagnostic.Cache = "degraded", "stale"
-		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.asOf).Milliseconds())
+		diagnostic.CacheAgeMS = max(0, timeNow().Sub(idx.AsOf).Milliseconds())
 	}
 	a.writeJSON(w, completionCapability{Available: true, ProgressRecords: true, Diagnostics: diagnostic}, http.StatusOK)
 }

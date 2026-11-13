@@ -47,12 +47,12 @@ func completionsFor(path bundledPath, when string) []completionRecordSpec {
 }
 
 func newTestEvaluator(sources ...pathGuideSource) *obligationEvaluator {
-	return &obligationEvaluator{ctx: context.Background(), logger: log.DefaultLogger, sources: sources}
+	return &obligationEvaluator{Context: context.Background(), Logger: log.DefaultLogger, Sources: sources}
 }
 
 func mustGuideProgress(t *testing.T, ev *obligationEvaluator, asg assignmentSpec, completions []completionRecordSpec) []assignmentGuideEntry {
 	t.Helper()
-	guides, err := ev.guideProgress(asg, completions)
+	guides, err := ev.GuideProgress(asg, completions)
 	if err != nil {
 		t.Fatalf("guideProgress: %v", err)
 	}

@@ -1,7 +1,7 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from '../lib/backend-routes';
 import { isBackendApiAvailable } from './interactive-guides-api';
 
 // Re-exported so existing importers (e.g. BlockEditor) keep a stable path.
@@ -25,7 +25,7 @@ export async function fetchBackendGuides(namespace: string, publishedOnly?: bool
   try {
     const response = await lastValueFrom(
       getBackendSrv().fetch<BackendGuidesList>({
-        url: `${PLUGIN_BACKEND_URL}/custom-guides`,
+        url: backendRoute('custom-guides'),
         method: 'GET',
         showErrorAlert: false,
       })

@@ -6,7 +6,7 @@
  */
 import { getBackendSrv } from '@grafana/runtime';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from './backend-routes';
 import type { AssignmentEntryWire, MyAssignmentsResponseWire } from '../types/backend-api.schema';
 import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
@@ -15,8 +15,6 @@ import { recordAssignmentsUnavailable } from './telemetry/facade';
 
 /** Wire shape of one assignment. The target is (targetType, targetId); this client does not filter on targetType. */
 export type AssignmentEntry = AssignmentEntryWire;
-
-const ASSIGNMENTS_URL = `${PLUGIN_BACKEND_URL}/assignments/my`;
 
 // Several surfaces fetch on open concurrently; a stored TTL would stale the live evaluation.
 const inflight = new Map<string, Promise<MyAssignmentsResult>>();
@@ -41,10 +39,15 @@ function reportFetchFailure(err: unknown): void {
 const MALFORMED_REASON = 'malformed-response';
 
 async function requestAssignments(): Promise<MyAssignmentsResult> {
-  const response = await getBackendSrv().get<MyAssignmentsResponseWire>(ASSIGNMENTS_URL, undefined, undefined, {
-    showErrorAlert: false,
-    showSuccessAlert: false,
-  });
+  const response = await getBackendSrv().get<MyAssignmentsResponseWire>(
+    backendRoute('assignments/my'),
+    undefined,
+    undefined,
+    {
+      showErrorAlert: false,
+      showSuccessAlert: false,
+    }
+  );
   if (response?.capability?.available === false) {
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[assignments] unavailable', { reason });

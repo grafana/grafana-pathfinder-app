@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -459,10 +460,10 @@ func TestAttemptWrite_UnchangedCompletionRepairsAssignmentsAndCache(t *testing.T
 	if err := store.Create(context.Background(), testNamespace, completionRecordObject{Metadata: completionRecordObjectMeta{Name: name}, Spec: spec}); err != nil {
 		t.Fatal(err)
 	}
-	completionCacheMu.Lock()
-	completionCacheInit()
-	generation := completionGenerations[testNamespace]
-	completionCacheMu.Unlock()
+	services.CompletionCacheMu.Lock()
+	services.InitCompletionCache()
+	generation := services.CompletionGenerations[testNamespace]
+	services.CompletionCacheMu.Unlock()
 	// A replay's timestamp must not replace the stored completion used for assignment matching.
 	spec.CompletedAt = "2020-01-01T00:00:00Z"
 	w := httptest.NewRecorder()
@@ -470,9 +471,9 @@ func TestAttemptWrite_UnchangedCompletionRepairsAssignmentsAndCache(t *testing.T
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d", w.Code)
 	}
-	completionCacheMu.Lock()
-	invalidated := completionGenerations[testNamespace] > generation
-	completionCacheMu.Unlock()
+	services.CompletionCacheMu.Lock()
+	invalidated := services.CompletionGenerations[testNamespace] > generation
+	services.CompletionCacheMu.Unlock()
 	if !invalidated {
 		t.Fatal("unchanged completion did not invalidate cache")
 	}
@@ -614,7 +615,7 @@ func TestCompletionHTTPClient_UpsertSharesOneTokenAndStripsManagedFields(t *test
 	if stored.Spec.CompletionPercent != 40 || stored.Spec.UserID != "user:abc" {
 		t.Fatalf("decoded spec = %+v", stored.Spec)
 	}
-	if err := c.Replace(context.Background(), testNamespace, "completion-x", mergeAttemptUpdate(stored, completionRecordWriteSpec{CompletionPercent: 70})); err != nil {
+	if err := c.Replace(context.Background(), testNamespace, "completion-x", services.MergeAttemptUpdate(stored, completionRecordWriteSpec{CompletionPercent: 70})); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 

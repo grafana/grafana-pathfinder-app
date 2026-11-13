@@ -98,6 +98,28 @@ manifest: {
 // v1alpha1 is the v1alpha1 version of the app's API.
 // It includes kinds which the v1alpha1 API serves, and (future) custom routes served globally from the v1alpha1 version.
 v1alpha1: {
+ routes: namespaced: {
+"/backend/package-recommendations": "GET": {name: "getBackendRecommendations", responseMetadata: typeMeta: false, response: {...}}
+"/backend/health": "GET": {name: "getBackendHealth", responseMetadata: typeMeta: false, response: {...}}
+"/backend/custom-guide": "POST": {name: "createBackendGuide", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+"/backend/custom-guide": "PUT": {name: "replaceBackendGuide", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+"/backend/custom-guide": "DELETE": {name: "deleteBackendGuide", responseMetadata: typeMeta: false, response: {...}}
+"/backend/pathfinder-settings": "POST": {name: "createBackendSettings", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+"/backend/pathfinder-settings": "PUT": {name: "replaceBackendSettings", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+ "/backend/completion-records": "POST": {name: "createBackendCompletion", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+ "/backend/learning-insights": "GET": {name: "getBackendLearningInsights", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/assignments/my": "GET": {name: "getBackendAssignments", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/completion-records/my": "GET": {name: "getBackendCompletions", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/completion-records/capability": "GET": {name: "getBackendCompletionCapability", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/custom-guide-repository": "GET": {name: "getBackendCatalogue", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/custom-guide": "GET": {name: "getBackendGuide", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/custom-guides": "GET": {name: "getBackendGuides", responseMetadata: typeMeta: false, response: {items: [...{...}]}}
+ }
+ routes: namespaced: "/backend/pathfinder-settings": "GET": {
+ name: "getBackendSettings"
+ responseMetadata: typeMeta: false
+ response: {...}
+ }
     // kinds is the list of kinds served by this version
     kinds: [interactiveguidev1alpha1, completionrecordv1alpha1, pathfindersettingsv1alpha1, assignmentv1alpha1]
     // [OPTIONAL]

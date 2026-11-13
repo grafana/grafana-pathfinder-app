@@ -1,14 +1,13 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout } from 'rxjs';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from '../lib/backend-routes';
 import { logger } from '../lib/logging';
 import { CompletionCapabilityWireSchema } from '../types/backend-api.schema';
 import { getFeatureFlagValue } from '../utils/openfeature';
 
 export type ProgressRecordsCapability = 'yes' | 'no' | 'unknown';
 
-const CAPABILITY_URL = `${PLUGIN_BACKEND_URL}/completion-records/capability`;
 const FLAG_POLL_MS = 5_000;
 const MAX_BACKOFF_MS = 5 * 60_000;
 
@@ -21,7 +20,9 @@ export function progressRecordsCapability(): ProgressRecordsCapability {
 
 async function fetchCapability(): Promise<ProgressRecordsCapability> {
   const response = await lastValueFrom(
-    getBackendSrv().fetch<unknown>({ url: CAPABILITY_URL, method: 'GET', showErrorAlert: false }).pipe(timeout(10_000))
+    getBackendSrv()
+      .fetch<unknown>({ url: backendRoute('completion-records/capability'), method: 'GET', showErrorAlert: false })
+      .pipe(timeout(10_000))
   );
   const parsed = CompletionCapabilityWireSchema.safeParse(response.data);
   if (!parsed.success) {

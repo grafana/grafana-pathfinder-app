@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
 	"time"
 )
@@ -34,29 +35,14 @@ func (a *App) handleCustomGuides(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *appPlatformListClient) drainGuideResources(ctx context.Context, namespace string, maxBytes int64) ([]json.RawMessage, error) {
-	items := make([]json.RawMessage, 0)
-	totalBytes := int64(len(`{"items":[]}`))
-	continueToken := ""
-	for {
-		page, err := c.listRawPage(ctx, namespace, continueToken)
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range page.Items {
-			itemBytes := int64(len(item))
-			if len(items) > 0 {
-				itemBytes++
+	return services.ReadGuideResources(ctx, namespace, maxBytes, customGuideListMaxTotalEntries,
+		func(ctx context.Context, namespace, token string) (services.GuidePage, error) {
+			page, err := c.listRawPage(ctx, namespace, token)
+			if err != nil {
+				return services.GuidePage{}, err
 			}
-			if totalBytes+itemBytes > maxBytes || len(items) >= customGuideListMaxTotalEntries {
-				c.logger.Warn("custom guides: list truncated", "namespace", namespace, "items", len(items), "bytes", totalBytes, "maxBytes", maxBytes)
-				return items, nil
-			}
-			items = append(items, item)
-			totalBytes += itemBytes
-		}
-		continueToken = page.Metadata.Continue
-		if continueToken == "" {
-			return items, nil
-		}
-	}
+			return services.GuidePage{Items: page.Items, Continue: page.Metadata.Continue}, nil
+		}, func(items int, bytes int64) {
+			c.logger.Warn("custom guides: list truncated", "namespace", namespace, "items", items, "bytes", bytes, "maxBytes", maxBytes)
+		})
 }

@@ -354,6 +354,14 @@ function calleeAddressesAppPlatform(name: string, scope: UrlScope): boolean {
     return false;
   }
 
+  // Only this bounded helper targets SDK handlers that enforce the backend identity boundary.
+  if (
+    path.resolve(SRC_DIR, resolved.sourceFile.fileName) === path.resolve(SRC_DIR, 'lib/backend-routes.ts') &&
+    resolved.declaration.name?.getText() === 'backendRoute'
+  ) {
+    return false;
+  }
+
   const key = `${resolved.sourceFile.fileName}#${name}`;
   if (scope.followed.has(key)) {
     return false;
@@ -784,6 +792,24 @@ describe('App Platform transport ratchet: detector', () => {
       `import { collectionUrl, itemUrl } from './interactive-guides-api';\n${source}`
     );
   }
+
+  it('permits the bounded SDK handler helper, including an aliased import', () => {
+    const result = evaluateModuleSource(
+      'utils/detector-fixture.ts',
+      `import { backendRoute as route } from '../lib/backend-routes';
+       getBackendSrv().get(route('custom-guides'));`
+    );
+    expect(result.violation).toBeNull();
+  });
+
+  it('does not permit another function merely named backendRoute', () => {
+    const result = evaluateModuleSource(
+      'utils/detector-fixture.ts',
+      `function backendRoute() { return '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/interactiveguides'; }
+       getBackendSrv().get(backendRoute());`
+    );
+    expect(result.violation?.method).toBe('GET');
+  });
 
   it('flags a direct GET read addressed via the collectionUrl builder', () => {
     const result = evaluateSource(`

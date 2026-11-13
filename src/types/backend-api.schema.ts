@@ -51,7 +51,7 @@ export const CompletionCapabilityWireSchema = z.strictObject({
 
 // ============ /completion-records/my ============
 
-/** @coupling Go struct: collatedCompletion */
+/** @coupling Go struct: CollatedCompletion */
 export const CollatedCompletionWireSchema = z.strictObject({
   guideSource: z.string(),
   guideId: z.string(),
@@ -69,7 +69,7 @@ export const CollatedCompletionWireSchema = z.strictObject({
 
 /**
  * A guide whose most recent activity is an unfinished attempt.
- * @coupling Go struct: inProgressCompletion
+ * @coupling Go struct: InProgressCompletion
  */
 export const InProgressCompletionWireSchema = z.strictObject({
   guideSource: z.string(),
@@ -104,8 +104,8 @@ export const MyCompletionsResponseWireSchema = z.strictObject({
 // ============ /assignments/my ============
 
 /**
- * `assignmentCapability` (pkg/plugin/assignments.go).
- * @coupling Go struct: assignmentCapability
+ * `AssignmentCapability` (pkg/plugin/assignments.go).
+ * @coupling Go struct: AssignmentCapability
  */
 export const AssignmentCapabilityWireSchema = z.strictObject({
   available: z.boolean(),
@@ -115,7 +115,7 @@ export const AssignmentCapabilityWireSchema = z.strictObject({
 /**
  * One guide within an assignment's target, on the wire — the per-guide
  * detail behind `satisfied`.
- * @coupling Go struct: assignmentGuideEntry
+ * @coupling Go struct: AssignmentGuideEntry
  */
 export const AssignmentGuideEntryWireSchema = z.strictObject({
   guideId: z.string(),
@@ -125,7 +125,7 @@ export const AssignmentGuideEntryWireSchema = z.strictObject({
 
 /**
  * One assigned obligation.
- * @coupling Go struct: assignmentEntry
+ * @coupling Go struct: AssignmentEntry
  */
 export const AssignmentEntryWireSchema = z.strictObject({
   targetType: z.string(),
@@ -166,13 +166,13 @@ export const CustomGuideCapabilityWireSchema = z.strictObject({
   reason: z.string().optional(),
 });
 
-/** @coupling Go struct: customGuideManifest.author */
+/** @coupling Go struct: CatalogueManifest.author */
 export const CustomGuideAuthorWireSchema = z.strictObject({
   name: z.string().optional(),
   team: z.string().optional(),
 });
 
-/** @coupling Go struct: customGuideManifest.tracks */
+/** @coupling Go struct: CatalogueManifest.tracks */
 export const CustomGuideTrackWireSchema = z.strictObject({
   trackId: z.string(),
   label: z.string(),
@@ -189,7 +189,7 @@ export const CustomGuideTrackWireSchema = z.strictObject({
  * non-negative invariant every member carries. `strictObject` adds only the
  * closed-shape rule the rest of this module's wire schemas apply.
  *
- * @coupling Go struct: customGuideStats
+ * @coupling Go struct: CatalogueStats
  */
 export const CustomGuideStatsWireSchema = z.strictObject(GuideStatsSummarySchema.shape);
 
@@ -213,7 +213,7 @@ export const CustomGuideStatsWireSchema = z.strictObject(GuideStatsSummarySchema
  *   will reach the browser untyped — the client declares no `stats` field for a
  *   reader to use.
  *
- * @coupling Go struct: customGuideManifest
+ * @coupling Go struct: CatalogueManifest
  */
 export const CustomGuideManifestWireSchema = z.strictObject({
   type: z.string(),
@@ -227,7 +227,7 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   stats: CustomGuideStatsWireSchema.optional(),
 });
 
-/** @coupling Go struct: customGuideRepositoryEntry */
+/** @coupling Go struct: CatalogueEntry */
 export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
   id: z.string(),
   title: z.string().optional(),
@@ -341,23 +341,23 @@ export const GO_STRUCT_SCHEMAS = {
   customGuideRepositoryResponse: CustomGuideRepositoryResponseWireSchema,
   customGuidesResponse: CustomGuidesResponseWireSchema,
   customGuideCapability: CustomGuideCapabilityWireSchema,
-  customGuideRepositoryEntry: CustomGuideRepositoryEntryWireSchema,
-  customGuideManifest: CustomGuideManifestWireSchema,
-  customGuideStats: CustomGuideStatsWireSchema,
-  'customGuideManifest.author': CustomGuideAuthorWireSchema,
-  'customGuideManifest.tracks': CustomGuideTrackWireSchema,
+  CatalogueEntry: CustomGuideRepositoryEntryWireSchema,
+  CatalogueManifest: CustomGuideManifestWireSchema,
+  CatalogueStats: CustomGuideStatsWireSchema,
+  'CatalogueManifest.author': CustomGuideAuthorWireSchema,
+  'CatalogueManifest.tracks': CustomGuideTrackWireSchema,
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,
-  collatedCompletion: CollatedCompletionWireSchema,
-  inProgressCompletion: InProgressCompletionWireSchema,
+  CollatedCompletion: CollatedCompletionWireSchema,
+  InProgressCompletion: InProgressCompletionWireSchema,
   myAssignmentsResponse: MyAssignmentsResponseWireSchema,
-  assignmentCapability: AssignmentCapabilityWireSchema,
-  assignmentEntry: AssignmentEntryWireSchema,
-  assignmentGuideEntry: AssignmentGuideEntryWireSchema,
-  learningInsightsResponse: LearningInsightsResponseWireSchema,
-  learningInsightsPerson: LearningInsightsPersonWireSchema,
-  learningInsightsCompletion: LearningInsightsCompletionWireSchema,
-  learningInsightsAssignment: LearningInsightsAssignmentWireSchema,
+  AssignmentCapability: AssignmentCapabilityWireSchema,
+  AssignmentEntry: AssignmentEntryWireSchema,
+  AssignmentGuideEntry: AssignmentGuideEntryWireSchema,
+  LearningInsightsResponse: LearningInsightsResponseWireSchema,
+  LearningInsightsPerson: LearningInsightsPersonWireSchema,
+  LearningInsightsCompletion: LearningInsightsCompletionWireSchema,
+  LearningInsightsAssignment: LearningInsightsAssignmentWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
@@ -375,7 +375,7 @@ export const BACKEND_RESPONSE_ENVELOPES = {
   'completion-records-my': 'myCompletionsResponse',
   'completion-records-capability': 'completionCapability',
   'assignments-my': 'myAssignmentsResponse',
-  'learning-insights': 'learningInsightsResponse',
+  'learning-insights': 'LearningInsightsResponse',
 } as const satisfies Record<string, GoStructName>;
 
 export type BackendResponseEnvelopeKey = keyof typeof BACKEND_RESPONSE_ENVELOPES;
