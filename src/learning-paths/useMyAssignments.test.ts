@@ -1,3 +1,6 @@
+let mockUserScope = 'stacks-123:1:1';
+jest.mock('../lib/user-scope', () => ({ getUserScope: () => mockUserScope }));
+
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import type { LearningPath } from '../types/learning-paths.types';
@@ -73,6 +76,7 @@ const baseOptions = {
 };
 
 beforeEach(() => {
+  mockUserScope = 'stacks-123:1:1';
   jest.clearAllMocks();
   mockNamespace = 'stacks-123';
   mockFetchOnlinePackageRecommendations.mockResolvedValue({ baseUrl: '', packages: [] });
@@ -367,4 +371,38 @@ describe('useMyAssignments', () => {
       expect(mockReportUnresolvedAssignmentTargets).toHaveBeenCalledTimes(2);
     });
   });
+});
+
+it('clears visible assignments when the caller changes even if the new fetch fails', async () => {
+  mockFetchMyAssignments.mockResolvedValueOnce({
+    ok: true,
+    assignments: [assignment({ targetId: 'private', targetType: 'guide' })],
+  });
+  const { result, rerender } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+  await waitFor(() => expect(result.current.guideAssignments).toHaveLength(1));
+  mockUserScope = 'stacks-123:1:2';
+  mockFetchMyAssignments.mockResolvedValueOnce({ ok: false });
+  rerender();
+  expect(result.current.guideAssignments).toEqual([]);
+  await waitFor(() => expect(result.current.hasError).toBe(true));
+  expect(result.current.guideAssignments).toEqual([]);
+});
+
+it('starts a new caller fetch while the previous request is pending and ignores its late result', async () => {
+  let resolve!: (value: unknown) => void;
+  mockFetchMyAssignments.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      })
+  );
+  const { result, rerender } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+  mockUserScope = 'stacks-123:1:2';
+  mockFetchMyAssignments.mockResolvedValueOnce({ ok: true, assignments: [] });
+  rerender();
+  await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+  await act(async () => resolve({ ok: true, assignments: [assignment({ targetId: 'private', targetType: 'guide' })] }));
+  expect(result.current.guideAssignments).toEqual([]);
+  expect(result.current.isLoading).toBe(false);
+  expect(mockFetchMyAssignments).toHaveBeenCalledTimes(2);
 });

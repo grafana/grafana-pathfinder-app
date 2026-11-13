@@ -82,3 +82,5 @@ export { catalogIdentity, pathCatalogIdentities, selectContinueLearning } from '
 
 export { selectLearningPathEntries } from './learning-path-entries';
 export type { LearningPathEntry } from './learning-path-entries';
+
+export { selectGuideAssignmentEntries } from './guide-assignment-entries';

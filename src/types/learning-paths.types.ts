@@ -177,7 +177,7 @@ export const DEFAULT_LEARNING_PROGRESS: LearningProgress = {
 // COMPONENT PROP TYPES
 // ============================================================================
 
-/** One assignment resolved against a catalogue path. `progress` is guide-completion-derived when `guides` is present, local path progress otherwise. */
+/** Assignment progress comes from server completion evidence; absent evidence is marked unavailable. */
 export interface ResolvedAssignment {
   targetId: string;
   title: string;
@@ -193,6 +193,7 @@ export interface ResolvedAssignment {
   satisfied: boolean;
   guides?: AssignmentEntryWire['guides'];
   progress: number;
+  progressUnavailable?: boolean;
 }
 
 /**

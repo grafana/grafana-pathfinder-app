@@ -158,11 +158,11 @@ export function isOverdue(dueAt: string | undefined, satisfied: boolean, now: nu
  * Progress against the assignment's own target guides (completion records),
  * not the whole path's local progress — local progress can include guides
  * outside the assignment's track, or drift from what's actually on record.
- * Falls back to local progress when the wire didn't resolve a guide list.
+ * Missing evidence is unknown, never inferred from local progress.
  */
-export function assignmentProgress(guides: AssignmentEntry['guides'], localProgress: number): number {
+export function assignmentProgress(guides: AssignmentEntry['guides'], _localProgress: number): number {
   if (!guides || guides.length === 0) {
-    return localProgress;
+    return 0;
   }
   const completed = guides.filter((guide) => guide.completed).length;
   return Math.round((100 * completed) / guides.length);
@@ -190,6 +190,7 @@ export function buildResolvedAssignment(
     satisfied,
     guides: assignment.guides,
     progress,
+    progressUnavailable: !assignment.guides?.length,
   };
 }
 

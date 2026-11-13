@@ -11,6 +11,8 @@ export interface LearningPathEntry {
   percent: number;
   topic?: string;
   assignment?: ResolvedAssignment;
+  assignedGuide?: CatalogPackage;
+  isGuideAssignment?: boolean;
 }
 
 export function selectLearningPathEntries({

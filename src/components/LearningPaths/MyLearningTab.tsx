@@ -26,6 +26,7 @@ import {
   catalogIdentity,
   compareResolvedAssignments,
   selectLearningPathEntries,
+  selectGuideAssignmentEntries,
   useLearningPaths,
   useDiscoverMore,
   useCatalogProgress,
@@ -126,6 +127,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
 
   const {
     assignmentByTargetId,
+    guideAssignments = [],
     onlinePaths,
     getPathGuides,
     isLoading: assignmentsLoading,
@@ -196,7 +198,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   const homePathEntries = allHomePathEntries.filter(
     (entry) => entry.percent < 100 || (entry.assignment && !entry.assignment.satisfied)
   );
-  const homeAssignedPaths = homePathEntries
+  const homeAssignedPaths = [...homePathEntries, ...selectGuideAssignmentEntries(guideAssignments, catalog.items)]
     .filter((entry) => entry.assignment && !entry.assignment.satisfied)
     .sort((a, b) => compareResolvedAssignments(a.assignment!, b.assignment!));
   const homeAssignedKeys = new Set(homeAssignedPaths.map((entry) => entry.key));
@@ -433,6 +435,12 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
     if (launchInFlightRef.current) {
       return;
     }
+    if (entry.isGuideAssignment) {
+      if (entry.assignedGuide) {
+        void catalogLaunch.launch(entry.assignedGuide);
+      }
+      return;
+    }
     const { mismatchedGuides } = getAssignmentGuideState(entry.guides, entry.assignment?.guides);
     if (mismatchedGuides.length > 0) {
       setPendingAssignment({ entry, mismatchedGuides });
@@ -651,6 +659,22 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
           icon="user"
           entries={homeAssignedPaths}
           {...homeLaunchState}
+          launchingKey={
+            homeAssignedPaths.find((entry) => entry.assignedGuide?.key === catalogLaunch.launchingKey)?.key ??
+            homeLaunchState.launchingKey
+          }
+          launchError={
+            catalogLaunch.launchError
+              ? {
+                  ...catalogLaunch.launchError,
+                  key:
+                    homeAssignedPaths.find((entry) => entry.assignedGuide?.key === catalogLaunch.launchError?.key)
+                      ?.key ??
+                    homeLaunchState.launchError?.key ??
+                    '',
+                }
+              : homeLaunchState.launchError
+          }
           selectedCardKey={selectedCardKey}
           assignmentsLoading={assignmentsLoading}
           assignmentsError={assignmentsError}

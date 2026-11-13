@@ -14,6 +14,7 @@ jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: jest.fn(() => true
  */
 
 import React from 'react';
+import type { AssignmentEntry } from '../../lib/assignments-client';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { reportPathfinderSurface } from '../../lib/telemetry/surface';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
@@ -194,6 +195,7 @@ type MockAssignment = {
   guides?: Array<{ guideId: string; completed: boolean }>;
 };
 let mockAssignments: MockAssignment[] = [];
+let mockGuideAssignments: AssignmentEntry[] = [];
 let mockAssignedCompleted: MockAssignment[] = [];
 let mockOnlinePaths: any[] = [];
 let mockAssignmentsLoading = false;
@@ -202,6 +204,8 @@ const mockRetryAssignments = jest.fn();
 
 jest.mock('../../learning-paths', () => ({
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectGuideAssignmentEntries: jest.requireActual('../../learning-paths/guide-assignment-entries')
+    .selectGuideAssignmentEntries,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   get BADGES() {
     return mockBadgeDefinitions;
@@ -237,6 +241,7 @@ jest.mock('../../learning-paths', () => ({
     }
     return {
       items,
+      guideAssignments: mockGuideAssignments,
       notDone: mockAssignments,
       assignmentByTargetId,
       onlinePaths: mockOnlinePaths,
@@ -340,6 +345,7 @@ beforeEach(() => {
   mockCatalogProgress = new Map();
   mockDiscoverExcludeIdentities = undefined;
   mockAssignments = [];
+  mockGuideAssignments = [];
   mockAssignedCompleted = [];
   mockAssignmentsLoading = false;
   mockAssignmentsError = false;
@@ -2548,3 +2554,67 @@ it.each([false, true])(
     expect(within(featuredCard as HTMLElement).getByRole('heading', { name: expectedOrder[0] })).toBeInTheDocument();
   }
 );
+
+it('homepage displays and opens a directly assigned guide through its catalogue URL', async () => {
+  jest.requireMock('../../package-engine').AppPlatformPackageResolver.mockImplementation(() => ({
+    resolve: async () => ({ ok: true, manifest: { id: 'private-guide', type: 'guide' } }),
+  }));
+  const onOpenGuide = jest.fn();
+  mockGuideAssignments = [
+    {
+      targetType: 'guide',
+      targetId: 'private-guide',
+      targetSource: 'app-platform',
+      ruleId: 'rule',
+      satisfied: false,
+      lifecycle: 'active',
+      guides: [{ guideId: 'private-guide', guideSource: 'app-platform', completed: false }],
+    },
+  ];
+  mockCatalogItems = [
+    {
+      key: 'app-platform:private-guide',
+      id: 'private-guide',
+      title: 'Assigned private guide',
+      source: 'organization',
+      format: 'guide',
+      url: 'backend-guide:private-guide',
+    },
+  ];
+  render(<MyLearningTab homepage onOpenGuide={onOpenGuide} />);
+  const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
+  expect(assigned.getByText('0%')).toBeInTheDocument();
+  fireEvent.click(assigned.getByRole('button', { name: 'Assigned private guide' }));
+  await waitFor(() =>
+    expect(onOpenGuide).toHaveBeenCalledWith(expect.objectContaining({ url: 'backend-guide:private-guide' }))
+  );
+});
+
+it('homepage retains an unavailable assigned guide without borrowing local progress or another source', () => {
+  mockGuideAssignments = [
+    {
+      targetType: 'guide',
+      targetId: 'missing-guide',
+      targetSource: 'app-platform',
+      ruleId: 'rule',
+      satisfied: false,
+      lifecycle: 'active',
+    },
+  ];
+  mockCatalogItems = [
+    {
+      key: 'bundled:missing-guide',
+      id: 'missing-guide',
+      title: 'Different public guide',
+      source: 'grafana',
+      format: 'guide',
+      url: 'bundled:missing-guide',
+    },
+  ];
+  render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+  const assigned = within(screen.getByRole('region', { name: 'Your assignments' }));
+  expect(assigned.getByRole('button', { name: 'missing-guide' })).toBeDisabled();
+  expect(assigned.getByText('Guide unavailable')).toBeInTheDocument();
+  expect(assigned.getByText('Cannot check')).toBeInTheDocument();
+  expect(assigned.queryByText('0%')).not.toBeInTheDocument();
+});

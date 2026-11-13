@@ -146,14 +146,15 @@ describe('resolveAssignments', () => {
     expect(result.notDone[0]!.progress).toBe(50);
   });
 
-  it('falls back to local progress when the wire resolved no guide list', () => {
+  it('marks missing backend evidence unknown instead of borrowing local progress', () => {
     const result = resolve({
       entries: [assignment({ targetId: 'p1' })],
       paths: [path({ id: 'p1', title: 'P1' })],
       getPathProgress: () => 42,
     });
 
-    expect(result.notDone[0]!.progress).toBe(42);
+    expect(result.notDone[0]!.progress).toBe(0);
+    expect(result.notDone[0]!.progressUnavailable).toBe(true);
     expect(result.notDone[0]!.guides).toBeUndefined();
   });
 
