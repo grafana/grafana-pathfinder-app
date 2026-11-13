@@ -170,6 +170,8 @@ Set `interactiveLearning: false` on a rule to open a product directly. This requ
 
 The optional `page` for a guide must be a safe internal Grafana path. URL-launched kiosks ignore `targetUrl` destinations, keeping learners on the current instance. Guide URLs must be accepted content sources. Custom HTML banners are sanitized before display.
 
+Structured catalogs can use version 2 pages for branded colors, gradients, images, sections, columns, and richer guide cards. Version 1 pages and legacy banner catalogs remain supported. Version 2 requires a plugin release that supports it.
+
 Without a custom catalog, the kiosk shows the bundled Grafana learning catalog. If a selected catalog fails, Pathfinder tries the configured default, then the generic online catalog, and finally a bundled fallback. Loading guide content can still require a network connection.
 
 ## Optional sandbox terminals and live sessions

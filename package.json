@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.26.1",
+  "version": "2.27.0",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -30,6 +30,7 @@
     "test:coverage:watch": "jest --coverage --watch",
     "test:go": "mage -v test",
     "typecheck": "tsc --noEmit",
+    "generate:kinds": "node ./.config/app-sdk/generate-kinds.mjs",
     "lint": "eslint --cache .",
     "lint:fix": "npm run lint -- --fix && prettier --write --list-different .",
     "lint:go": "mage -v lint",

@@ -1,3 +1,7 @@
+import { createTranslatedComponent } from '../App/TranslatedComponent';
+const KioskPrPreview = createTranslatedComponent(async () => ({
+  default: (await import('./KioskPrPreview')).KioskPrPreview,
+}));
 import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { Box, Button, Icon, Input, Combobox, useStyles2, RadioButtonGroup, type ComboboxOption } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
@@ -229,6 +233,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   }, [files, prUrl, fetchId]);
 
   // Content-only subset for single/all modes
+  const kioskFiles = useMemo(() => files.filter((file) => file.kind === 'kiosk'), [files]);
   const contentFiles = useMemo(() => files.filter((f) => f.kind === 'content'), [files]);
 
   /**
@@ -520,8 +525,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       resolveEffectiveTestMode(testMode, {
         manifestsLoading: pathDiscoveryLoading,
         hasAnyPathPackage,
+        hasKiosks: kioskFiles.length > 0,
+        hasContent: contentFiles.length > 0,
       }),
-    [pathDiscoveryLoading, testMode, hasAnyPathPackage]
+    [pathDiscoveryLoading, testMode, hasAnyPathPackage, kioskFiles.length, contentFiles.length]
   );
 
   const handleFetchPr = useCallback(async () => {
@@ -534,7 +541,8 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     }
 
     abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     setFetchId(createPrTestFetchId());
     setFetchState('fetching');
@@ -545,7 +553,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     setPrContentById(new Map());
     setCatalog(null);
 
-    const result = await fetchPrContentFilesFromUrl(cleanedUrl, abortControllerRef.current.signal);
+    const result = await fetchPrContentFilesFromUrl(cleanedUrl, controller.signal);
+    if (controller.signal.aborted) {
+      return;
+    }
 
     if (!result.success && result.error.type === 'aborted') {
       return;
@@ -585,6 +596,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   }, [contentFiles, currentFile, onOpenDocsPage, pathBuild, effectiveTestMode, fetchId]);
 
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    abortControllerRef.current?.abort();
     const newUrl = e.currentTarget.value;
     setPrUrl(newUrl);
     setTestSuccess(false);
@@ -647,6 +659,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
 
   // Path mode is only meaningful when at least one path/journey is testable.
   const modeOptions: Array<SelectableValue<TestMode>> = [
+    ...(kioskFiles.length > 0
+      ? [{ label: 'Kiosk', value: 'kiosk' as TestMode, description: 'Preview a kiosk and test its guides' }]
+      : []),
     { label: 'Single', value: 'single' as TestMode, description: 'Test one guide at a time' },
     { label: 'Open all', value: 'all' as TestMode, description: 'Open all guides in tabs' },
     {
@@ -723,7 +738,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         data-testid={testIds.prTester.prNumberInput}
       />
       <p className={styles.helpText}>
-        Paste a GitHub pull request URL. We look for content.json and manifest.json files.
+        Paste a GitHub pull request URL. We look for content.json, manifest.json, and kiosk catalogs.
       </p>
 
       <Box marginTop={1}>
@@ -739,7 +754,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </Button>
       </Box>
 
-      {hasFetched && (hasMultipleContentFiles || hasAnyPathPackage) && (
+      {hasFetched && (hasMultipleContentFiles || hasAnyPathPackage || kioskFiles.length > 0) && (
         <div className={styles.modeContainer}>
           <label className={styles.label}>Test mode</label>
           <RadioButtonGroup options={modeOptions} value={effectiveTestMode} onChange={handleTestModeChange} fullWidth />
@@ -819,6 +834,10 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </div>
       )}
 
+      {hasFetched && effectiveTestMode === 'kiosk' && (
+        <KioskPrPreview key={fetchId} files={kioskFiles} fetchId={fetchId} />
+      )}
+
       {hasFetched && effectiveTestMode === 'all' && (
         <div className={styles.allGuidesPreview}>
           <label className={styles.label}>Will open {contentFiles.length} guides:</label>
@@ -842,7 +861,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
         </div>
       )}
 
-      {hasFetched && (
+      {hasFetched && effectiveTestMode !== 'kiosk' && (
         <Box marginTop={1}>
           <Button variant="secondary" size="sm" onClick={handleTestGuide} disabled={isActionDisabled}>
             {getActionButtonText()}

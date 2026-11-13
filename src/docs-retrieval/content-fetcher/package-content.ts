@@ -1,3 +1,5 @@
+import { activePrPreview } from '../../lib/pr-preview-fetch';
+import { resolvePrPath } from '../pr-package';
 import { bundledTutorialContentKey, isBundledTutorial } from '../../lib/bundled-tutorial-identity';
 import { identifyGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
@@ -392,21 +394,33 @@ export async function fetchPackageContent(
   // Track-only direct opens need classification even without a cover-page click.
   const tracksEligible = needsMilestones && packageManifest?.type === 'path';
 
+  const preview = activePrPreview(contentUrl);
+  const previewPath =
+    preview && needsMilestones && packageManifest ? await resolvePrPath(contentUrl, packageManifest) : undefined;
+  if (previewPath) {
+    knownBaseUrl = previewPath.baseUrl;
+    preResolvedMilestones = previewPath.milestones;
+  }
+
   const [result, unmarkedMilestones, baseUrlResolution, unmarkedPathTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
-    shouldResolveMilestones && !offlinePath
-      ? resolvePackageMilestones(milestoneIds, pathSlug)
-      : Promise.resolve(undefined),
-    manifestId && !offlinePath
+    previewPath
+      ? Promise.resolve(previewPath.milestones)
+      : shouldResolveMilestones && !offlinePath
+        ? resolvePackageMilestones(milestoneIds, pathSlug)
+        : Promise.resolve(undefined),
+    manifestId && !offlinePath && !preview
       ? getPackageResolver().then((resolver) =>
           resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
         )
       : Promise.resolve(undefined),
-    offlinePath
-      ? Promise.resolve(offlinePath.pathTracks)
-      : tracksEligible
-        ? resolvePathTracks(manifestId, packageManifest, pathSlug)
-        : Promise.resolve(undefined),
+    previewPath
+      ? Promise.resolve(previewPath.tracks)
+      : offlinePath
+        ? Promise.resolve(offlinePath.pathTracks)
+        : tracksEligible
+          ? resolvePathTracks(manifestId, packageManifest, pathSlug)
+          : Promise.resolve(undefined),
   ]);
   // Derived URLs must retain PR-test isolation from production progress.
   const prTestFetchId = getPrTestFetchId(contentUrl);
@@ -474,7 +488,7 @@ export async function fetchPackageContent(
           ? getAllTrackGuideIds(manifestTracks).includes(explicitGuideId)
           : tracks.some((track) => track.milestones.some((m) => !m.isLocked && m.url === contentUrl)));
 
-      if (!offlinePath && !explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
+      if (!offlinePath && !preview && !explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
         const lockedTrackGuideIds = tracks
           .flatMap((track) => track.milestones.filter((m) => m.isLocked))
           .map((m) => m.id)
@@ -525,7 +539,7 @@ export async function fetchPackageContent(
         trackMemberBaseUrl = markForPrTest(baseUrlResolution.contentUrl);
       } else if (knownBaseUrl) {
         trackMemberBaseUrl = knownBaseUrl;
-      } else if (manifestId && !offlinePath) {
+      } else if (manifestId && !offlinePath && !preview) {
         const retriedBaseUrl = await resolvePackageUrlBypassCache(manifestId);
         if (retriedBaseUrl) {
           trackMemberBaseUrl = markForPrTest(retriedBaseUrl);

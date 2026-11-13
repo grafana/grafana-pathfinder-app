@@ -109,7 +109,7 @@ export const getKioskOverlayStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
     gap: theme.spacing(2),
     padding: theme.spacing(2.5),
-    borderRadius: theme.shape.radius.default,
+    borderRadius: `var(--kiosk-radius, ${theme.shape.radius.default}px)`,
     border: `1px solid ${theme.colors.border.weak}`,
     background: theme.colors.background.primary,
     color: theme.colors.text.primary,

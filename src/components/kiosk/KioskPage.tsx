@@ -6,7 +6,7 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { Button, Field, Input, Combobox, Icon, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
-import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
+import type { KioskPageV1 as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
 import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { KioskFormError, MAX_INPUT_LENGTH, describeHttpInput } from '../../lib/input-value';
@@ -118,7 +118,7 @@ interface Props {
   onLaunch?: () => void;
 }
 
-function Command({
+export function Command({
   command,
   language = 'bash',
   mode,
@@ -186,7 +186,7 @@ function Command({
   );
 }
 
-function LaunchForm({
+export function LaunchForm({
   block,
   blockIndex,
   rule,

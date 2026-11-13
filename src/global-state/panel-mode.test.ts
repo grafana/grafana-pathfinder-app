@@ -8,6 +8,8 @@
 
 import { panelModeManager, requestSidebarHandoffAndWait, isGrafanaDrivingHandoffNeeded } from './panel-mode';
 import { StorageKeys } from '../lib/storage-keys';
+import { EXTENSION_SIDEBAR_DOCKED_KEY } from '../lib/storage/extension-sidebar';
+import pluginJson from '../plugin.json';
 import { REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 import { getPanelSessionId, getPathfinderSurface, reportPathfinderSurface } from '../lib/telemetry/surface';
 
@@ -66,6 +68,36 @@ describe('panelModeManager', () => {
     it('publishes close-extension-sidebar when entering floating (regression)', () => {
       panelModeManager.setMode('floating');
       expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }));
+    });
+
+    describe('extension sidebar ownership', () => {
+      const dock = (pluginId: string) =>
+        localStorage.setItem(EXTENSION_SIDEBAR_DOCKED_KEY, JSON.stringify({ pluginId, componentTitle: 'x' }));
+      const closePublished = () =>
+        publishMock.mock.calls.some(([event]) => (event as { type: string }).type === 'close-extension-sidebar');
+
+      it('keeps another plugin docked sidebar open when entering floating', () => {
+        dock('grafana-assistant-app');
+        panelModeManager.setMode('floating');
+        expect(closePublished()).toBe(false);
+      });
+
+      it('still closes the sidebar when entering floating and Pathfinder owns it', () => {
+        dock(pluginJson.id);
+        panelModeManager.setMode('floating');
+        expect(closePublished()).toBe(true);
+      });
+
+      it('still closes the sidebar when entering floating with nothing docked', () => {
+        panelModeManager.setMode('floating');
+        expect(closePublished()).toBe(true);
+      });
+
+      it('still closes another plugin docked sidebar when entering fullscreen', () => {
+        dock('grafana-assistant-app');
+        panelModeManager.setMode('fullscreen');
+        expect(closePublished()).toBe(true);
+      });
     });
 
     it('does not publish close-extension-sidebar when returning to sidebar', () => {

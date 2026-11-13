@@ -1,0 +1,43 @@
+{
+  "grammar": "1.0",
+  "builtFrom": { "repo": "grafana/interactive-tutorials", "commit": "0000000000000000000000000000000000000000" },
+  "registry": {
+    "entities": {
+      "guides": {
+        "actions": {
+          "completed": {
+            "context": {
+              "guideSource": { "type": "string" },
+              "guideId": { "type": "string" },
+              "guideCategory": { "type": "string", "enum": ["interactive", "documentation", "learning-journey"] },
+              "pathId": { "type": "string" }
+            },
+            "resources": [
+              { "unit": "guide", "id": ["guideSource", "guideId"] },
+              { "unit": "guide-category", "id": ["guideCategory"] }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "catalog": {
+    "achievements": [
+      {
+        "id": "guides-finished",
+        "title": "Guide finisher",
+        "description": "Finish guides in Grafana.",
+        "counter": {
+          "unit": "guide",
+          "evidence": [{ "entity": "guides", "action": "completed", "countBy": "resource" }]
+        },
+        "tiers": [
+          { "id": "bronze", "at": 1, "art": "guides-finished-1" },
+          { "id": "silver", "at": 5, "art": "guides-finished-2" },
+          { "id": "gold", "at": 15, "art": "guides-finished-3" }
+        ]
+      }
+    ]
+  },
+  "art": ["guides-finished-1", "guides-finished-2", "guides-finished-3"]
+}
