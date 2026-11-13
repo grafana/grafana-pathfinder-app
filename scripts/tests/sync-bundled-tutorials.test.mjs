@@ -112,9 +112,10 @@ test('workflow updates one signed PR and keeps the schedule gated', () => {
   assert.match(workflow, /branch: codex\/sync-bundled-tutorials/);
   assert.match(workflow, /BUNDLED_TUTORIAL_SYNC_ENABLED == 'true'/);
   assert.match(workflow, /sign-commits: true/);
-  assert.match(workflow, /grafana\/shared-workflows\/actions\/create-github-app-token@/);
+  assert.match(workflow, /token: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   assert.doesNotMatch(workflow, /private-key:|BUNDLED_TUTORIAL_SYNC_PRIVATE_KEY/);
-  assert.match(workflow, /id-token: write/);
+  assert.doesNotMatch(workflow, /id-token:|create-github-app-token/);
+  assert.match(workflow, /permissions:\n      contents: write\n      pull-requests: write/);
   assert.match(workflow, /cron: '17 6 \* \* \*'/);
 });
 
