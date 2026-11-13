@@ -10,6 +10,7 @@ import {
   interactiveCompletionStorage,
   interactiveStepStorage,
   journeyCompletionStorage,
+  listPrTestContentKeys,
   milestoneCompletionStorage,
   sectionAcknowledgementStorage,
   sectionCollapseStorage,
@@ -370,6 +371,54 @@ describe('interactiveStepStorage.clearAll', () => {
 
   it('should not throw on empty localStorage', async () => {
     await expect(interactiveStepStorage.clearAll()).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// PR-tester preview record discovery
+// ============================================================================
+
+describe('listPrTestContentKeys', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setGlobalStorage(createLocalStorage());
+  });
+
+  const marked = (url: string, fetchId: string) => `${url}#pf-pr-${fetchId}`;
+
+  it('returns every content key carrying a PR-test marker and no real guide key', () => {
+    const previewOne = marked('https://example.com/raw/guide.json', 'abc1');
+    const previewTwo = marked('https://example.com/raw/guide.json', 'def2');
+    localStorage.setItem(
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, previewOne, 'section-1'),
+      JSON.stringify(['step-1'])
+    );
+    localStorage.setItem(
+      buildVersionedSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, previewTwo, 'section-1'),
+      JSON.stringify(['section-1'])
+    );
+    localStorage.setItem(
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, 'bundled:welcome-to-grafana', 'section-1'),
+      JSON.stringify(['real-step'])
+    );
+
+    expect(new Set(listPrTestContentKeys())).toEqual(new Set([previewOne, previewTwo]));
+  });
+
+  it('includes a preview key that only has a completion-percentage record', async () => {
+    const preview = marked('https://example.com/raw/guide.json', 'ghi3');
+    await interactiveCompletionStorage.set(preview, 50);
+
+    expect(listPrTestContentKeys()).toContain(preview);
+  });
+
+  it('returns an empty list when no preview records exist', () => {
+    localStorage.setItem(
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, 'bundled:welcome-to-grafana', 'section-1'),
+      JSON.stringify(['real-step'])
+    );
+
+    expect(listPrTestContentKeys()).toEqual([]);
   });
 });
 
