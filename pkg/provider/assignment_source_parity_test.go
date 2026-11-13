@@ -46,6 +46,7 @@ func TestAssignmentSourceChainParity(t *testing.T) {
 		name, target, source string
 		want                 []services.AssignmentGuideIdentity
 	}{
+		{"OSS bundled", "getting-started", "bundled", services.GuideIdentities([]string{"welcome-to-grafana", "prometheus-grafana-101", "first-dashboard"}, "bundled")},
 		{"bundled first", bundled.ID, "", services.GuideIdentities(bundled.Guides, "bundled")},
 		{"custom before online", "parity-custom", "", services.GuideIdentities([]string{"custom-member"}, "app-platform")},
 		{"qualified custom", bundled.ID, "app-platform", services.GuideIdentities([]string{"custom-member"}, "app-platform")},

@@ -76,11 +76,24 @@ func lastPathSegment(p string) string {
 }
 
 var localCatalogue = sync.OnceValues(func() ([]BundledPath, error) {
-	var file struct {
-		Paths []BundledPath `json:"paths"`
+	paths := []BundledPath{}
+	seen := map[string]bool{}
+	for _, data := range [][]byte{learningpaths.PathsCloudJSON, learningpaths.PathsOSSJSON} {
+		var file struct {
+			Paths []BundledPath `json:"paths"`
+		}
+		if err := json.Unmarshal(data, &file); err != nil {
+			return nil, err
+		}
+		for _, path := range file.Paths {
+			if seen[path.ID] {
+				return nil, fmt.Errorf("duplicate bundled path ID %q", path.ID)
+			}
+			seen[path.ID] = true
+			paths = append(paths, path)
+		}
 	}
-	err := json.Unmarshal(learningpaths.PathsCloudJSON, &file)
-	return file.Paths, err
+	return paths, nil
 })
 
 func LoadLocalCatalogue() ([]BundledPath, error) { return localCatalogue() }
