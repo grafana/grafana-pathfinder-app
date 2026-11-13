@@ -129,6 +129,10 @@ def main():
         subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityHTTPReads$', '-count=1'], cwd=target, env=env, check=True)
         if not compare(transcripts[1]['httpReads'], json.loads(Path(str(output) + '.httpreads').read_text())):
             raise RuntimeError('production pagination mutation was not detected')
+        paged_insights = 'insights-paged/503/completions=true'
+        mutated_pagination = json.loads(Path(str(output) + '.httpreads').read_text())
+        if not compare(transcripts[1]['httpReads'][paged_insights], mutated_pagination[paged_insights]):
+            raise RuntimeError('production pagination mutation did not change partial insights')
         completion_client.write_text(client_source)
 
         diagnostic = target / 'pkg/provider/diagnostics.go'

@@ -143,6 +143,29 @@ func TestFrozenFidelityHTTPReads(t *testing.T) {
 			}
 		}
 	}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2, -4, -5} {
+		for _, completions := range []bool{true} {
+			response := fidelityInsightsRead(t, status, completions, true)
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if stamp, ok := body["asOf"]; ok {
+				value, ok := stamp.(string)
+				if !ok {
+					t.Fatal("non-string insights asOf")
+				}
+				if _, err := time.Parse(time.RFC3339, value); err != nil {
+					t.Fatal(err)
+				}
+				body["asOf"] = "<validated-server-time>"
+			}
+			results[fmt.Sprintf("insights-paged/%d/completions=%t", status, completions)] = map[string]any{
+				"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"),
+				"cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"),
+			}
+		}
+	}
 	data, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -164,4 +187,12 @@ func fidelityReadPage(token string) ([]json.RawMessage, string) {
 		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"bundled","completionPercent":100,"completedAt":"2026-09-01T00:00:00Z"}`),
 		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"app-platform","completionPercent":100,"completedAt":"2026-09-02T00:00:00Z"}`),
 	}, "next"
+}
+
+func fidelityInsightsFirstPage() []json.RawMessage {
+	return []json.RawMessage{
+		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"bundled","completionPercent":100,"completedAt":"2026-09-02T00:00:00Z"}`),
+		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"app-platform","completionPercent":100,"completedAt":"2026-09-03T00:00:00Z"}`),
+		json.RawMessage(`{"userId":"user:abc","guideId":"partial","guideSource":"app-platform","completionPercent":40,"attemptId":"attempt","recordedAt":"2026-09-03T00:00:00Z"}`),
+	}
 }

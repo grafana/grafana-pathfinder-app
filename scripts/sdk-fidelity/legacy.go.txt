@@ -179,7 +179,7 @@ func fidelityAssignmentsRead(t *testing.T, status int, completions bool) *httpte
 	return response
 }
 
-func fidelityInsightsRead(t *testing.T, status int, completions bool) *httptest.ResponseRecorder {
+func fidelityInsightsRead(t *testing.T, status int, completions bool, paged ...bool) *httptest.ResponseRecorder {
 	failure := func() error {
 		switch status {
 		case 200:
@@ -197,7 +197,19 @@ func fidelityInsightsRead(t *testing.T, status int, completions bool) *httptest.
 			return &appPlatformUpstreamError{status: status, msg: "injected"}
 		}
 	}
-	withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
+	withLister(t, &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if len(paged) > 0 && paged[0] && token == "" {
+			page := &completionRecordPage{Continue: "next"}
+			for _, value := range fidelityInsightsFirstPage() {
+				var record completionRecordSpec
+				if err := json.Unmarshal(value, &record); err != nil {
+					t.Fatal(err)
+				}
+				record.LastUpdatedAt = recordLastUpdatedAt(nil, record.RecordedAt)
+				page.Records = append(page.Records, record)
+			}
+			return page, nil
+		}
 		if completions {
 			if err := failure(); err != nil {
 				return nil, err

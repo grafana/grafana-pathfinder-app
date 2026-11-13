@@ -209,17 +209,26 @@ func fidelityAssignmentsRead(t *testing.T, status int, completions bool) *httpte
 type fidelityInsightsTransport struct {
 	status      int
 	completions bool
+	paged       bool
 }
 
 func (transport fidelityInsightsTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	status := 200
 	if strings.Contains(request.URL.Path, "/completionrecords") == transport.completions {
+		if transport.paged && request.URL.Query().Get("continue") == "" {
+			items := []any{}
+			for _, record := range fidelityInsightsFirstPage() {
+				items = append(items, map[string]any{"metadata": map[string]any{}, "spec": record})
+			}
+			body, _ := json.Marshal(map[string]any{"metadata": map[string]any{"continue": "next"}, "items": items})
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: request}, nil
+		}
 		status = transport.status
 	}
 	return (fidelityReadTransport{status: status}).RoundTrip(request)
 }
-func fidelityInsightsRead(t *testing.T, status int, completions bool) *httptest.ResponseRecorder {
-	generator := sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityInsightsTransport{status: status, completions: completions}})
+func fidelityInsightsRead(t *testing.T, status int, completions bool, paged ...bool) *httptest.ResponseRecorder {
+	generator := sdkplugin.BuildClientGenerator(rest.Config{Host: "https://fidelity.invalid", APIPath: "/apis", Transport: fidelityInsightsTransport{status: status, completions: completions, paged: len(paged) > 0 && paged[0]}})
 	assignmentStore, err := resourceaccess.NewAssignmentStore(generator)
 	if err != nil {
 		t.Fatal(err)

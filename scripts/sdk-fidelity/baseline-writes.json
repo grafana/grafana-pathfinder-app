@@ -1824,6 +1824,762 @@
       "retryAfter": "30",
       "status": 503
     },
+    "insights-paged/-1/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/-2/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/-4/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/-5/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/200/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "complete",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/400/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/401/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/403/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/404/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/405/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/408/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/409/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/422/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/429/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/500/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/501/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/503/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/504/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
     "insights/-1/completions=false": {
       "body": {
         "asOf": "<validated-server-time>",
