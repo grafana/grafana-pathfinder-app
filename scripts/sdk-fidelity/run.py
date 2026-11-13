@@ -32,6 +32,7 @@ def main():
     print(f'Legacy {BASELINE}; SDK {head}; workspace changes={dirty}', flush=True)
     with tempfile.TemporaryDirectory(prefix='pathfinder-fidelity-') as temp:
         transcripts = []
+        goldens = []
         for mode, package in [('legacy', 'plugin'), ('sdk', 'provider')]:
             target = Path(temp) / mode
             target.mkdir()
@@ -53,6 +54,8 @@ def main():
             (dest / 'frozen_adapter_test.go').write_text((HERE / (mode + '.go.txt')).read_text())
             output = Path(temp) / (mode + '.json')
             env = dict(os.environ, FIDELITY_CORPUS=str(HERE / 'scenarios.json'), FIDELITY_OUTPUT=str(output), FIDELITY_HISTORY=str(HERE / 'history.json'))
+            subprocess.run(['go', 'test', './pkg/' + package, '-run', '^TestContractValueGoldens$', '-count=1'], cwd=target, env=env, check=True)
+            goldens.append({file.name: json.loads(file.read_text()) for file in (dest / 'testdata/contract').glob('*.json') if file.name != 'struct-tags.json'})
             subprocess.run(['go', 'test', './pkg/' + package, '-run', '^TestFrozenFidelity', '-count=1'], cwd=target, env=env, check=True)
             subprocess.run(['go', 'test', '-race', './pkg/' + package, '-run', '^TestFrozenFidelityConcurrent$', '-count=10'], cwd=target, env=env, check=True)
             transcripts.append(json.loads(output.read_text()))
@@ -69,6 +72,12 @@ def main():
             raise RuntimeError('frozen baseline transcript drifted')
         # Explicit permitted difference: SDK POST responses add Cache-Control: no-store.
         # Assert both exact values before comparison; never discard arbitrary headers.
+        unavailable = goldens[0].pop('learning-insights.unavailable.json')
+        if unavailable['capability'] != {'available': False, 'reason': 'identity-unavailable'}:
+            raise RuntimeError('legacy unavailable-identity contract changed')
+        if len(goldens[0]) != 18 or compare(goldens[0], goldens[1]):
+            raise RuntimeError('historical value goldens differ: ' + '\n'.join(compare(goldens[0], goldens[1])))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestInsightsWithoutIdentityRejectsBeforeResourceReads$', '-count=1'], cwd=target, env=env, check=True)
         for name in transcripts[0]:
             if name in ("history", "cache", "httpReads", "concurrent", "resources", "assignmentHistory"):
                 continue
@@ -263,6 +272,16 @@ def main():
         if mutation.returncode == 0 or 'lost or leaked assignments' not in mutation.stdout:
             raise RuntimeError('assignment last-page invariant did not detect mutation: ' + mutation.stdout + mutation.stderr)
         assignment_client.write_text(assignment_client_source)
+        completion_route = target / 'pkg/provider/completions.go'
+        completion_source = completion_route.read_text()
+        cooldown_needle = 'if errors.Is(err, context.Canceled) {'
+        if completion_source.count(cooldown_needle) != 1:
+            raise RuntimeError('cancellation cooldown mutation target changed')
+        completion_route.write_text(completion_source.replace(cooldown_needle, 'if false {'))
+        mutation = subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestCompletionFailureCooldownPreservesCauseAndCallerIsolation$', '-count=1'], cwd=target, env=env, capture_output=True, text=True)
+        if mutation.returncode == 0 or 'same caller upstream calls=1, want 2' not in mutation.stdout:
+            raise RuntimeError('cancellation cooldown regression not detected: ' + mutation.stdout + mutation.stderr)
+        completion_route.write_text(completion_source)
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599

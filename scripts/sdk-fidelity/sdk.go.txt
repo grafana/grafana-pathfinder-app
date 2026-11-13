@@ -111,7 +111,7 @@ func newFidelityCache(t *testing.T) fidelityCacheDriver {
 					}
 					return &services.CompletionIndex{AsOf: now}, 1, nil
 				}, func() time.Time { return now },
-				func(err error) bool { code := sdkErrorStatus(err); return code >= 400 && code != 401 && code != 403 },
+				completionFailureCooldown,
 				func(error) string { return "upstream-error" })
 			result := fidelityCacheResult{Calls: calls, Failed: err != nil}
 			if index != nil {

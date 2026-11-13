@@ -142,23 +142,24 @@ below is checked on both sides before being accounted for.
 | Legacy resource endpoints removed                                                  | Deliberate SDK-only architecture; existing browser adapters use SDK routes                                                         | Local E2E expects legacy RPC rejection; third-party callers must migrate                                                   |
 | OSS without SDK uses plugin JSON settings                                          | Preserves pre-existing OSS settings support; does not introduce an alternate SDK write store                                       | `settings-preservation.test.ts`; registered SDK failures cannot switch stores                                              |
 | Raw guide/settings browser writes become SDK routes                                | Preserves caller authorization while moving server responsibilities to SDK                                                         | Local authoring/settings E2E; full historical CRUD differential corpus remains open                                        |
-| Legacy unavailable-identity diagnostics and insights unavailable capture           | SDK ingress owns authentication failure; injected-context tests do not establish every platform failure response                   | Explicit runtime failure matrix still required; do not mark equivalent by deleting an old fixture                          |
+| Legacy unavailable-identity diagnostics and insights unavailable capture           | SDK ingress owns authentication failure; injected-context tests do not establish every platform failure response                   | Local E2E and provider identity tests cover rejection; Cloud ingress remains deferred                                      |
 
 ## Guarantee-to-evidence matrix
 
 Paths below are relative to the repository root. “Current tests” means independent
-invariants on the SDK implementation, not differential evidence. Open items remain
-acceptance gaps; they are not asserted runtime defects.
+invariants on the SDK implementation, not differential evidence. The final column records coverage boundaries. Cloud execution remains deferred;
+non-exhaustive scheduling and independent invariant tests are not claims of
+differential coverage.
 
-| Baseline guarantee                                                              | New owner                                                                 | Permitted difference                        | Test/evidence                                                                                               | Unresolved gap                                                                                                              |
+| Baseline guarantee                                                              | New owner                                                                 | Permitted difference                        | Test/evidence                                                                                               | Coverage boundary                                                                                                           |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Stable subject and record names; no browser identity override                   | `pkg/provider/completion_identity.go`, `pkg/services/completion_names.go` | SDK identity source                         | `TestExchangedTokenPreservesLegacyCompletionSubject`, provider write identity tests, frozen write snapshots | Runtime exchanged-token verification across deployment configurations                                                       |
 | Name claim has no email/login fallback                                          | `completionCaller`                                                        | None                                        | `TestCompletionDisplayNameDoesNotUseProfileFallback`                                                        | None for claim projection                                                                                                   |
 | Exact namespace binding; no cross-tenant resources                              | `callerNamespace`, `pkg/resourceaccess`                                   | SDK context                                 | Provider identity tests, `TestSettingsStoreDelegatesCallerThroughBoundedTransport`, local E2E               | Cloud execution deferred                                                                                                    |
-| Redirect/body bounds, caller delegation, complete pagination                    | `pkg/resourceaccess`, `pkg/services/catalogue.go`                         | Generated clients                           | Resourceaccess guide/completion/assignment pagination and bounded transport tests                           | Comparative transport deadline/error corpus                                                                                 |
+| Redirect/body bounds, caller delegation, complete pagination                    | `pkg/resourceaccess`, `pkg/services/catalogue.go`                         | Generated clients                           | Resourceaccess guide/completion/assignment pagination and bounded transport tests                           | Frozen read/write HTTP corpus covers deadlines, cancellation, network errors, malformed and oversized responses             |
 | Cache TTL, forced refresh interval, stale fallback, cooldown                    | `pkg/services/completion_cache.go`                                        | Per-caller keys                             | `TestCompletionCacheCarryover`, `TestFrozenFidelityCache`                                                   | Frozen single-caller transcript covers these transitions; multi-caller isolation has separate invariant tests               |
 | Singleflight, waiter cancellation, invalidation fencing                         | Same                                                                      | Per-caller keys                             | `TestCompletionCacheSingleflightAndCancelledWaiter`, `TestCompletionCacheInvalidationFencesFlight`          | Stress scheduling is not exhaustive                                                                                         |
-| Caller-specific failure isolation                                               | Provider completion cache key and services cache                          | Per-caller keys                             | `TestCompletionSDKCacheFiltersUsersAndInvalidates`, cache carryover test                                    | HTTP error cooldown classification needs broader negative controls                                                          |
+| Caller-specific failure isolation                                               | Provider completion cache key and services cache                          | Per-caller keys                             | `TestCompletionSDKCacheFiltersUsersAndInvalidates`, cache carryover test                                    | Nine real SDK failure cases pin cooldown and caller isolation; removing the cancellation guard must fail                    |
 | Completion collation, source separation, historical partials                    | `pkg/services/completions.go`                                             | None                                        | Frozen history projections; existing collation tests                                                        | Two-page populated, empty, and failure envelopes compared; broader pagination limits have independent tests                 |
 | Retry deduplication, monotonic progress, optimistic versions, partial semantics | `pkg/services/completion_attempt.go`, provider write route                | `no-store` header                           | Frozen write sequences, `TestCompletionAttemptConcurrentUpdatesNeverRegress`, SDK client conflict test      | Two forced concurrent schedules compared under the race detector; physical connection loss independently tested             |
 | Queue retry/retain/disarm/drop taxonomy                                         | Provider write errors and frontend write queue                            | Runtime authentication failure boundary     | Frozen failure statuses/bodies/Retry-After; existing `completion-write-client.test.ts` / queue tests        | Frozen write responses drive the real frontend client, queue, and storage; platform ingress failures remain separate        |
@@ -170,10 +171,43 @@ acceptance gaps; they are not asserted runtime defects.
 | Settings exact missing status, unknown fields, optimistic saves                 | Settings services/client and frontend resolver                            | JSON fallback only without SDK registration | Services/resourceaccess settings tests; frontend preservation tests; local E2E                              | Shared create/update/conflict/denial sequence plus real browser preservation and E2E tests                                  |
 | Published guide visibility, catalogue metadata, authoring CRUD                  | Provider guides/catalogue and resourceaccess guides                       | SDK transport                               | Existing provider/client tests and local E2E                                                                | Shared guide reads/lists and create/update/publish/delete sequence; live authoring E2E                                      |
 | Anonymous shared recommendation cache and bounded CDN fetch                     | `pkg/publiccontent`                                                       | New route                                   | Migrated publiccontent suite; `TestRecommendationsSDKFetchAndSharedCache`                                   | Schema golden remains synthetic; live CDN deployment is outside deterministic coverage                                      |
-| Capability envelopes and diagnostic classifications                             | SDK provider                                                              | Identity boundary changes above             | SDK contract suite; frozen write failure envelopes                                                          | Old 19 value fixtures not yet all exercised with identical SDK inputs; logs/metrics parity not established                  |
+| Capability envelopes and diagnostic classifications                             | SDK provider                                                              | Identity boundary changes above             | SDK contract suite; frozen write failure envelopes                                                          | 18 historical value fixtures now match exactly; missing-identity insights explicitly changes to 403 before resource access  |
 | Health/configuration integration                                                | SDK runner and health route                                               | Legacy adapter removed                      | Local E2E health and legacy-route checks                                                                    | Local binary rollback passed; other deployment configurations remain unverified                                             |
 | Survey own-user exception                                                       | Existing frontend survey adapter                                          | None intended                               | Existing frontend transport/security tests                                                                  | Not part of this differential harness                                                                                       |
 | Partial retention and rollback reader compatibility                             | Existing persisted schema and SDK reader                                  | None                                        | Existing partial-aware tests; no schema changes                                                             | Local binary rollback passed (below); Cloud rollout/rollback remains deferred                                               |
+
+## Final fixture and diagnostic audit
+
+The gate runs both implementations' value-golden tests and compares all 18 shared
+historical fixtures without normalizing their bodies. Assignment and insights
+capture inputs retain the original dates, rules and catalogue members. The three
+recommendation captures retain the original base URL and refresh diagnostics;
+`TestRecommendationsSDKFetchAndSharedCache` separately exercises the actual fetch,
+enrichment and shared cache rather than only injecting its response.
+
+The nineteenth legacy fixture, `learning-insights.unavailable`, represented a 200
+capability envelope for unavailable identity. SDK insights rejects missing identity
+with 403 before any resource read. `TestInsightsWithoutIdentityRejectsBeforeResourceReads`
+pins this intentional authentication-boundary change; it is not silently omitted
+from the audit.
+
+`TestCompletionFailureCooldownPreservesCauseAndCallerIsolation` drives real SDK
+clients through 401, 403, 404, 429, 503, cancellation, deadline, network and malformed
+JSON failures. Cancellation must re-probe, while outages cool down; a different
+caller always performs its own read. This caught and fixed the SDK's synthetic 503
+causing cancelled requests to enter the cooldown. The gate removes that guard as a
+negative control. The cache transcript now calls the production classifier.
+
+Cache transition logs retain namespace-only values, lowercase `misses` and
+`refreshFailures`, and classified failure reasons. A focused logging test prevents
+the caller cache key from leaking into the namespace field. Counters are now scoped
+per caller with their cache; SDK transport logs replace the removed bespoke
+verification/client logs. Exact log byte identity is not an acceptance requirement.
+
+Direct guide assignments reuse the existing reset confirmation when local progress
+is complete but server assignment evidence requires a fresh completion. Tests cover
+cancel, failed reset, a single awaited reset before launch, and a same-ID path that
+must not become the direct guide's reset owner.
 
 ## Populated assignment views
 
@@ -283,10 +317,10 @@ compare the same reads on the parent, then restore the SDK-only binary in a
 
 ## Acceptance decision
 
-This follow-up establishes a repeatable comparative gate and closes selected missing
-carryover tests. It does **not** certify comprehensive equivalence. Reviewers should
-resolve the open rows before declaring that standard met, and attach results to the
-actual head they tested. Do not convert an open evidence gap into a claimed defect.
+The local migration acceptance work is covered by the frozen comparisons,
+independent invariants, browser journeys, and binary rollback above. The full local
+pre-merge checks pass; attach CI results to the actual head tested. The corpus is
+bounded and does not claim every possible concurrent schedule or deployment.
 
 Cloud already supports the SDK prerequisites. Cloud execution/coexistence and Cloud rollout/rollback remain deferred; the
 local rollback evidence above does not close those deployment-specific rows. Admin CLI, exporter, repository consolidation, admission rules and

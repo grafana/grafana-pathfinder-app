@@ -108,7 +108,16 @@ func doCompletionGolden(t *testing.T, subject string, capability bool, records .
 	return captureSDK(t, subject, completionReadHandler(store, capability))
 }
 func captureRecommendations(t *testing.T, entries []publiccontent.PackageEntry) *httptest.ResponseRecorder {
-	body, err := json.Marshal(publiccontent.PackageRecommendationsResponse{BaseURL: "https://interactive-learning.grafana.net/", Packages: entries})
+	body, err := json.Marshal(publiccontent.PackageRecommendationsResponse{BaseURL: "https://interactive-learning.grafana.net/packages/", Packages: entries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	envelope["diagnostics"] = map[string]any{"outcome": "ok", "cache": "refresh", "cacheAgeMs": 0}
+	body, err = json.Marshal(envelope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,11 +155,34 @@ func contractAssignment(user string) services.Assignment {
 	return services.Assignment{Name: "onboarding-alex", UserID: user, TargetType: "guide", TargetID: "welcome-to-grafana", TargetSource: "bundled", Lifecycle: "active", RuleID: "onboarding", AssignedBy: "gtm-enablement", AssignedAt: "2026-03-26T00:00:00Z", DueAt: "2026-05-15T00:00:00Z", AcceptCompletionsFrom: "2026-01-01T00:00:00Z"}
 }
 func captureMyAssignmentsDefault(t *testing.T) *httptest.ResponseRecorder {
-	unresolved := contractAssignment("user:1")
-	unresolved.TargetType = "path"
-	unresolved.TrackID = "seller"
-	unresolved.TargetID = "unknown-path"
-	return doAssignmentsGolden(t, "user:1", contractAssignment("user:1"), unresolved, contractAssignment("user:2"))
+	assignment := func(target, track, rule, assigned string) services.Assignment {
+		return services.Assignment{UserID: "user:1", TargetType: "path", TargetID: target, TrackID: track, RuleID: rule, AssignedAt: assigned, AssignedBy: "l-and-d", Lifecycle: "active"}
+	}
+	bare := assignment("grafana-fundamentals", "", "all-new-joiners", "2026-03-30T09:00:00Z")
+	track := assignment("grafana-fundamentals", "seller", "sales-executives-seller-track", "2026-03-29T09:00:00Z")
+	track.AssignedBy = "gtm-enablement"
+	track.DueAt = "2026-05-15T00:00:00Z"
+	bounded := assignment("security-awareness", "", "annual-compliance-2026", "2026-03-28T09:00:00Z")
+	bounded.DueAt = "2026-04-15T00:00:00Z"
+	bounded.AcceptCompletionsFrom = "2026-01-01T00:00:00Z"
+	completed := assignment("cloud-getting-started", "", "onboarding-cohort", "2026-03-26T09:00:00Z")
+	other := assignment("alerting-essentials", "", "oncall-rotation", "2026-03-27T09:00:00Z")
+	other.UserID = "user:2"
+	deps := assignmentRouteDependencies{
+		Assignments: assignmentReaderFunc(func(context.Context, string, string) (*services.AssignmentPage, error) {
+			return &services.AssignmentPage{Records: []services.Assignment{bare, track, bounded, completed, other}}, nil
+		}),
+		ReadCompletions: func(context.Context, string, string) ([]services.CompletionRecord, error) {
+			return []services.CompletionRecord{rec("user:1", "bundled", "first-dashboard-cloud", "first-dashboard-cloud", "interactive", "cloud-getting-started", "objectives", "2026-03-27T15:00:00Z", 100)}, nil
+		},
+		Evaluator: func(ctx context.Context, _ string) *services.ObligationEvaluator {
+			return &services.ObligationEvaluator{Context: ctx, Logger: log.DefaultLogger, Sources: []services.PathGuideSource{services.BundledPathGuides(log.DefaultLogger, func() ([]services.BundledPath, error) {
+				return []services.BundledPath{{ID: "cloud-getting-started", Guides: []string{"first-dashboard-cloud"}}}, nil
+			}, nil)}}
+		},
+		MarkSatisfied: func(context.Context, string, []services.Assignment) {}, Allow: func(string, string) (bool, time.Duration) { return true, 0 },
+	}
+	return captureSDK(t, "user:1", assignmentsReadHandler(deps))
 }
 func captureMyAssignmentsEmpty(t *testing.T) *httptest.ResponseRecorder {
 	return doAssignmentsGolden(t, "user:nobody", contractAssignment("user:1"))
@@ -166,7 +198,7 @@ func captureLearningInsightsDefault(t *testing.T) *httptest.ResponseRecorder {
 		if strings.Contains(r.URL.Path, "completionrecords") {
 			return map[string]any{"items": completionItems([]services.CompletionRecord{completion})}
 		}
-		return map[string]any{"items": []any{map[string]any{"metadata": map[string]string{"name": "onboarding-alex"}, "spec": contractAssignment("user:1")}}}
+		return map[string]any{"items": []any{map[string]any{"metadata": map[string]string{"name": "onboarding-alex"}, "spec": services.Assignment{UserID: "user:1", TargetType: "guide", TargetID: "welcome-to-grafana", TargetSource: "bundled", RuleID: "onboarding", AssignedBy: "l-and-d", AssignedAt: "2026-09-01T00:00:00Z", Lifecycle: "active"}}}}
 	})
 	completions, err := resourceaccess.NewCompletionStore(generator)
 	if err != nil {

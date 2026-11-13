@@ -53,3 +53,13 @@ func TestInsightsRateLimitPrecedesResourceReads(t *testing.T) {
 		t.Fatalf("unexpected limit response: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestInsightsWithoutIdentityRejectsBeforeResourceReads(t *testing.T) {
+	response := httptest.NewRecorder()
+	if err := insightsReadHandler(nil, nil, nil, nil)(context.Background(), response, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}}); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusForbidden || response.Body.String() != "{\"error\":\"learning-insights-forbidden\"}\n" {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+}
