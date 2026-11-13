@@ -22,7 +22,7 @@ export function CompletionWaitingStatus({ id, unmet, onCheck }: CompletionWaitin
     >
       <span>
         {friendlyExplanation
-          ? t('completion.waiting-reason', 'Waiting for completion: {{reason}}', { reason: friendlyExplanation })
+          ? t('completion.waiting-reason', 'Waiting for completion: {{- reason}}', { reason: friendlyExplanation })
           : t('completion.waiting', 'Waiting for completion')}
       </span>{' '}
       <Button
