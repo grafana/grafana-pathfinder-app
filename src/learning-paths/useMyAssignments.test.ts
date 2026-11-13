@@ -218,6 +218,33 @@ describe('useMyAssignments', () => {
     expect(result.current.notDone.map((entry) => entry.targetId)).toEqual(['new-path']);
   });
 
+  it('settles failed online resolution, retains successful paths, and clears the error after retry', async () => {
+    const assignments = [assignment({ targetId: 'unavailable' }), assignment({ targetId: 'available' })];
+    mockFetchMyAssignments.mockImplementation(async () => ({ ok: true, assignments: [...assignments] }));
+    mockFetchOnlinePackageRecommendations.mockResolvedValue({
+      baseUrl: '',
+      packages: assignments.map(({ targetId }) => ({ id: targetId, type: 'path', path: targetId })),
+    });
+    mockResolveNavLinks.mockImplementation(async ([id]: string[]) => {
+      if (id === 'unavailable') {
+        throw new Error('temporary lookup failure');
+      }
+      return [{ title: id, manifest: { id, type: 'path', milestones: [] } }];
+    });
+    const { result } = renderHook(() => useMyAssignments({ ...baseOptions, paths: [] }));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasError).toBe(true);
+    expect(result.current.onlinePaths.map(({ id }) => id)).toEqual(['available']);
+
+    mockResolveNavLinks.mockImplementation(async ([id]: string[]) => [
+      { title: id, manifest: { id, type: 'path', milestones: [] } },
+    ]);
+    await act(async () => result.current.retry());
+    await waitFor(() => expect(result.current.onlinePaths).toHaveLength(2));
+    expect(result.current.hasError).toBe(false);
+  });
+
   it("reflects local completion in an online target's guides", async () => {
     mockFetchMyAssignments.mockResolvedValue({ ok: true, assignments: [assignment({ targetId: 'online-path' })] });
     mockFetchOnlinePackageRecommendations.mockResolvedValue({

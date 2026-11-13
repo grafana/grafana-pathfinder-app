@@ -124,6 +124,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   const [onlineResolution, setOnlineResolution] = useState<{
     assignments: AssignmentEntry[];
     unresolvedKey: string;
+    failed: boolean;
   } | null>(null);
   useEffect(() => {
     const unresolvedIds = unresolvedKey ? unresolvedKey.split('\n') : [];
@@ -133,11 +134,11 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     );
     let cancelled = false;
     void (async () => {
-      const settled = await Promise.all(candidates.map((a) => resolveOnlineAssignmentCard(a, resolveNavLinks)));
+      const settled = await Promise.allSettled(candidates.map((a) => resolveOnlineAssignmentCard(a, resolveNavLinks)));
       if (cancelled || scope !== getUserScope()) {
         return;
       }
-      const cards = settled.filter((card): card is OnlineAssignmentCard => card !== undefined);
+      const cards = settled.flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []));
       setOnlineSnapshot({ scope, cards });
 
       const resolvedOnlineIds = new Set(cards.map((card) => card.resolved.targetId));
@@ -145,6 +146,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
       setOnlineResolution({
         assignments: rawAssignments,
         unresolvedKey,
+        failed: settled.some((result) => result.status === 'rejected'),
       });
       const emitKey = [...stillUnresolved].sort().join('\n');
       if (stillUnresolved.length === 0) {
@@ -235,7 +237,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     getPathGuides: getPathGuidesWithOnline,
     hasLoaded,
     isLoading: !hasLoaded || isFetching || (unresolvedKey.length > 0 && !hasResolvedOnlineTargets),
-    hasError,
+    hasError: hasError || (hasResolvedOnlineTargets && onlineResolution.failed),
     retry: refresh,
   };
 }
