@@ -63,6 +63,14 @@ field, and mixed validation causes, each followed by a successful retry. They
 compare retry hints, status, body, and persisted state. A mutation that accepts
 unrelated validation causes as schema-not-ready must change the transcript.
 
+Write transport scenarios compare deadline, cancellation, and connection failures,
+each followed by recovery. The SDK fake store returns the SDK's real synthetic
+503 wrapper around the same cause used by the frozen adapter. Status, retry hint,
+full diagnostic body, and persisted effects must match. A mutation that replaces
+the underlying cause with a generic HTTP diagnostic must be detected.
+`TestResourceRoutesPreserveTransportFailureCause` additionally exercises the real
+SDK completion writer and transport, alongside settings and catalogue readers.
+
 `history.json` supplies identical historical completions, partials, source collisions,
 duplicate completions, report boundaries, assignment cutoffs, duplicate rules,
 withdrawal and the first-dashboard RSS identity case. It compares collation and

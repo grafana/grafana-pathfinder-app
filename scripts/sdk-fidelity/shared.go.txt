@@ -1,13 +1,17 @@
 package PACKAGE
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"os"
 	"testing"
 	"time"
 )
 
 type fidelityStep struct {
+	Failure         string          `json:"failure"`
 	ErrorBody       json.RawMessage `json:"errorBody"`
 	Percent         int             `json:"percent"`
 	Status          int             `json:"status"`
@@ -72,5 +76,18 @@ func TestFrozenFidelityWrites(t *testing.T) {
 	}
 	if err := os.WriteFile(os.Getenv("FIDELITY_OUTPUT"), output, 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func fidelityFailure(kind string) error {
+	switch kind {
+	case "deadline":
+		return context.DeadlineExceeded
+	case "cancelled":
+		return context.Canceled
+	case "network":
+		return &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
+	default:
+		return nil
 	}
 }

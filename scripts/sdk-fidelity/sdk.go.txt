@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/grafana-app-sdk/app"
+	"github.com/grafana/grafana-app-sdk/k8s"
 	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
 	"github.com/grafana/grafana-app-sdk/resource"
 	"github.com/grafana/grafana-pathfinder-app/pkg/resourceaccess"
@@ -23,6 +24,9 @@ import (
 
 func fidelityWrite(t *testing.T, store *fakeAttemptStore, step fidelityStep, body map[string]any) *httptest.ResponseRecorder {
 	store.createErr = nil
+	if failure := fidelityFailure(step.Failure); failure != nil {
+		store.createErr = k8s.NewServerResponseError(failure, 503)
+	}
 	if step.Status != 0 {
 		status := metav1.Status{Code: int32(step.Status), Message: "injected"}
 		if len(step.ErrorBody) > 0 {

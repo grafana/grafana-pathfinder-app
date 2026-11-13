@@ -97,6 +97,14 @@ def main():
         if not compare(clean_writes, json.loads(output.read_text())):
             raise RuntimeError('production schema validation mutation was not detected')
         write_route.write_text(write_source)
+        transport_needle = 'status := diagnostic.UpstreamStatus'
+        if write_source.count(transport_needle) != 1:
+            raise RuntimeError('write transport diagnostic mutation target changed')
+        write_route.write_text(write_source.replace(transport_needle, transport_needle + '\n if status == 0 { diagnostic.Reason = "http-error"; diagnostic.UpstreamStatus = 503 }'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityWrites$', '-count=1'], cwd=target, env=env, check=True)
+        if not compare(clean_writes, json.loads(output.read_text())):
+            raise RuntimeError('production write transport diagnostic mutation was not detected')
+        write_route.write_text(write_source)
         cache = target / 'pkg/services/completion_cache.go'
         cache_source = cache.read_text()
         cache_needle = 'const completionCacheTTL = 5 * time.Minute'
@@ -134,7 +142,7 @@ def main():
         if diff:
             print('\n'.join(diff))
             raise SystemExit(1)
-        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, and diagnostic controls detected.')
+        print('Frozen writes, history, cache, and HTTP reads match; status, monotonicity, cache TTL, pagination, schema validation, write transport, and diagnostic controls detected.')
 
 
 if __name__ == '__main__':

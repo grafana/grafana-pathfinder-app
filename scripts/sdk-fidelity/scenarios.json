@@ -218,5 +218,41 @@
         "percent": 40
       }
     ]
+  },
+  {
+    "name": "transport-deadline-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "failure": "deadline"
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "transport-cancelled-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "failure": "cancelled"
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "transport-network-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "failure": "network"
+      },
+      {
+        "percent": 40
+      }
+    ]
   }
 ]
