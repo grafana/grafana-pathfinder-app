@@ -213,6 +213,16 @@ def main():
         if not compare(transcripts[1]['lost-acknowledgement'][-1]['assignment'], mutated_repair):
             raise RuntimeError('production completed-retry repair mutation was not detected')
         write_route.write_text(write_source)
+        guide_pagination_needle = 'Continue: page.GetContinue()'
+        if guide_source.count(guide_pagination_needle) != 1:
+            raise RuntimeError('guide pagination mutation target changed')
+        guide_client.write_text(guide_source.replace(guide_pagination_needle, 'Continue: ""'))
+        subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityHTTPReads$', '-count=1'], cwd=target, env=env, check=True)
+        mutated_guides = json.loads(Path(str(output) + '.httpreads').read_text())
+        for key in ['guide-list/200/catalogue=false', 'guide-list/200/catalogue=true']:
+            if not compare(transcripts[1]['httpReads'][key], mutated_guides[key]):
+                raise RuntimeError('production guide pagination mutation was not detected: ' + key)
+        guide_client.write_text(guide_source)
         # Negative control: a status regression must be visible to the comparator.
         mutated = json.loads(json.dumps(transcripts[0]))
         mutated['progress-retry-out-of-order-complete'][0]['status'] = 599

@@ -3,6 +3,7 @@ package PACKAGE
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -192,6 +193,28 @@ func TestFrozenFidelityHTTPReads(t *testing.T) {
 			}
 		}
 	}
+	for _, status := range []int{200, 400, 401, 403, 404, 405, 408, 409, 422, 429, 500, 501, 503, 504, -1, -2} {
+		for _, catalogue := range []bool{false, true} {
+			response := fidelityCollectionRead(t, status, catalogue)
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if stamp, ok := body["asOf"]; ok {
+				value, ok := stamp.(string)
+				if !ok {
+					t.Fatal("non-string catalogue asOf")
+				}
+				if _, err := time.Parse(time.RFC3339, value); err != nil {
+					t.Fatal(err)
+				}
+				body["asOf"] = "<validated-server-time>"
+			}
+			results[fmt.Sprintf("guide-list/%d/catalogue=%t", status, catalogue)] = map[string]any{
+				"status": response.Code, "body": body, "contentType": response.Header().Get("Content-Type"), "cacheControl": response.Header().Get("Cache-Control"), "retryAfter": response.Header().Get("Retry-After"),
+			}
+		}
+	}
 	data, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -220,5 +243,24 @@ func fidelityInsightsFirstPage() []json.RawMessage {
 		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"bundled","completionPercent":100,"completedAt":"2026-09-02T00:00:00Z"}`),
 		json.RawMessage(`{"userId":"user:abc","guideId":"same","guideSource":"app-platform","completionPercent":100,"completedAt":"2026-09-03T00:00:00Z"}`),
 		json.RawMessage(`{"userId":"user:abc","guideId":"partial","guideSource":"app-platform","completionPercent":40,"attemptId":"attempt","recordedAt":"2026-09-03T00:00:00Z"}`),
+	}
+}
+
+func fidelityCollectionResponse(w http.ResponseWriter, r *http.Request, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	switch status {
+	case -1:
+		_, _ = w.Write([]byte("not-json"))
+	case -2:
+		_, _ = w.Write([]byte(strings.Repeat(" ", 8*1024*1024+1)))
+	case 200:
+		body := `{"metadata":{"continue":"next"},"items":[{"metadata":{"name":"draft","resourceVersion":"7"},"spec":{"id":"draft","title":"Draft","status":"draft","blocks":[{"type":"markdown","content":"private draft"}],"futureField":true}},{"metadata":{"name":"published","resourceVersion":"8"},"spec":{"id":"published","title":"Published","status":"published","blocks":[{"type":"markdown","content":"published content"}],"manifest":{"type":"guide","description":"Metadata"}}}]}`
+		if r.URL.Query().Get("continue") == "next" {
+			body = `{"metadata":{},"items":[{"metadata":{"name":"last","resourceVersion":"9"},"spec":{"id":"last","title":"Last page","status":"published","manifest":{"type":"guide"}}}]}`
+		}
+		_, _ = w.Write([]byte(body))
+	default:
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]any{"kind": "Status", "apiVersion": "v1", "status": "Failure", "code": status, "message": "injected"})
 	}
 }

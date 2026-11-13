@@ -263,3 +263,33 @@ func fidelityConcurrentUpsert(ctx context.Context, store *fidelityConcurrentStor
 	outcome, persisted, err := upsertCompletionAttempt(request, store, "stacks-1", "concurrent-attempt", spec)
 	return int(outcome), persisted, err
 }
+
+func fidelityCollectionRead(t *testing.T, status int, catalogue bool) *httptest.ResponseRecorder {
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"token":"obo-token"}}`))
+	}))
+	defer exchange.Close()
+	exchanger, err := auth.New("cap-token", exchange.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == auth.SigningKeysPath {
+			_, _ = w.Write(jwksBody(testSigningKeyID, testSigningKey()))
+			return
+		}
+		fidelityCollectionResponse(w, r, status)
+	}))
+	defer upstream.Close()
+	cfg := testGrafanaConfig()
+	cfg[sdkconfig.AppURL] = upstream.URL
+	app := &App{logger: log.DefaultLogger, oboExchanger: exchanger}
+	response := httptest.NewRecorder()
+	request := customGuideRequestWithConfig(t, "/custom-guides", "user:abc", cfg)
+	if catalogue {
+		app.handleCustomGuideRepository(response, request)
+	} else {
+		app.handleCustomGuides(response, request)
+	}
+	return response
+}

@@ -77,8 +77,14 @@ a draft with blocks, an unknown field, and a resource version; thirteen upstream
 error statuses; malformed JSON; and a response exceeding the 8 MiB bound. The
 full resource and error envelopes must match. This caught loss of the successful
 upstream status when JSON decoding fails; a production mutation must detect it.
-Guide lists, catalogue visibility, and historical write sequences remain separate
-from these individual-resource reads.
+Guide lists and catalogue reads add 32 cases through real HTTP clients: two-page
+resources with draft/published entries, blocks, unknown fields and resource versions,
+thirteen upstream statuses, malformed JSON, and oversized responses. Both routes
+must retain the final page; dropping continuation is a targeted production mutation.
+The catalogue preserves status metadata and omits blocks, including draft metadata
+as legacy does. The frontend paths test consumes this frozen response and verifies
+that only published guide metadata reaches learning views; resolver tests separately
+reject opening drafts. Historical write sequences remain separate from these reads.
 
 The runner exports the immutable baseline into a temporary directory and copies the
 current Go implementation into a separate temporary checkout. It does not switch

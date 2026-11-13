@@ -2060,6 +2060,673 @@
       "retryAfter": "30",
       "status": 503
     },
+    "guide-list/-1/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide-list/-1/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/-2/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "response-too-large",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide-list/-2/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "response-too-large",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/200/catalogue=false": {
+      "body": {
+        "items": [
+          {
+            "metadata": {
+              "name": "draft",
+              "resourceVersion": "7"
+            },
+            "spec": {
+              "blocks": [
+                {
+                  "content": "private draft",
+                  "type": "markdown"
+                }
+              ],
+              "futureField": true,
+              "id": "draft",
+              "status": "draft",
+              "title": "Draft"
+            }
+          },
+          {
+            "metadata": {
+              "name": "published",
+              "resourceVersion": "8"
+            },
+            "spec": {
+              "blocks": [
+                {
+                  "content": "published content",
+                  "type": "markdown"
+                }
+              ],
+              "id": "published",
+              "manifest": {
+                "description": "Metadata",
+                "type": "guide"
+              },
+              "status": "published",
+              "title": "Published"
+            }
+          },
+          {
+            "metadata": {
+              "name": "last",
+              "resourceVersion": "9"
+            },
+            "spec": {
+              "id": "last",
+              "manifest": {
+                "type": "guide"
+              },
+              "status": "published",
+              "title": "Last page"
+            }
+          }
+        ]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/200/catalogue=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "capability": {
+          "available": true
+        },
+        "guides": [
+          {
+            "id": "draft",
+            "status": "draft",
+            "title": "Draft"
+          },
+          {
+            "id": "published",
+            "manifest": {
+              "description": "Metadata",
+              "type": "guide"
+            },
+            "status": "published",
+            "title": "Published"
+          },
+          {
+            "id": "last",
+            "manifest": {
+              "type": "guide"
+            },
+            "status": "published",
+            "title": "Last page"
+          }
+        ]
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/400/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 400
+    },
+    "guide-list/400/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-400"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/401/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide-list/401/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-401"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/403/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 403
+    },
+    "guide-list/403/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-403"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/404/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "guide-list/404/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-404"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/405/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 405
+    },
+    "guide-list/405/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-405"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/408/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 408
+    },
+    "guide-list/408/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/409/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 409
+    },
+    "guide-list/409/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-409"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/422/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 422
+    },
+    "guide-list/422/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-422"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/429/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 429
+    },
+    "guide-list/429/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/500/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 500
+    },
+    "guide-list/500/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/501/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 501
+    },
+    "guide-list/501/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/503/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 503
+    },
+    "guide-list/503/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/504/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 504
+    },
+    "guide-list/504/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
     "guide/-1": {
       "body": {
         "diagnostics": {
