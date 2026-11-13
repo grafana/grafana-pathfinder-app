@@ -45,6 +45,8 @@ let pathProgress = 0;
 
 jest.mock('../../learning-paths', () => ({
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectGuideAssignmentEntries: jest.requireActual('../../learning-paths/guide-assignment-entries')
+    .selectGuideAssignmentEntries,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   BADGES: [],
   pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
