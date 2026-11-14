@@ -973,7 +973,7 @@ present.** Resetting one guide clears its mark
 (`learning-paths.hook.ts`); "Reset all learning progress" clears the whole
 namespace (`MyLearningTab.tsx`). A rollback removes those sweepers along with the
 writer, so marks written beforehand stay in localStorage unread — inert, but not
-reachable by any in-app control. `syncFromGrafanaStorage`'s `keysToSync` is a
+reachable by any in-app control. `syncFromGrafanaStorage`'s `LEGACY_RESTORE_KEYS` is a
 fixed list of exact keys and cannot express a prefix, so the Grafana-side copies
 are not reachable either.
 

@@ -21,8 +21,9 @@
  *     thing that makes the discard happen for a real reader, so it is pinned
  *     here rather than only at `sweepDiscardedProgressRecords` itself.
  *
- * These tests are deliberately about *backend selection*, not the queue or
- * sync internals — those are pinned in `user-storage.plumbing.test.ts`.
+ * Queue and reconciliation internals remain pinned in
+ * `user-storage.plumbing.test.ts`; the boundary test here covers their
+ * observable behavior through live domain helpers.
  */
 import { renderHook, act } from '@testing-library/react';
 
@@ -49,6 +50,7 @@ import {
   buildVersionedContentStorageKey,
   buildVersionedSectionStorageKey,
 } from './storage-keys';
+import { LEGACY_RESTORE_KEYS } from './storage/legacy-mirror-policy';
 
 const usePluginUserStorageMock = jest.fn();
 
@@ -226,20 +228,26 @@ describe('useUserStorage — legacy mirror boundary', () => {
     );
     const sectionDoneKey = buildVersionedSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, CONTENT_KEY, SECTION_ID);
     const guideMarkKey = buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, CONTENT_KEY);
-    const currentMirroredKeys = [
-      StorageKeys.TABS,
-      StorageKeys.ACTIVE_TAB,
-      StorageKeys.LEARNING_PROGRESS,
-      StorageKeys.GUIDE_RESPONSES,
-      StorageKeys.JOURNEY_COMPLETION,
+    const intendedMirroredKeys: ReadonlySet<string> = new Set(LEGACY_RESTORE_KEYS);
+    const currentOnlyMirroredKeys = [
       StorageKeys.INTERACTIVE_COMPLETION,
       sectionStepKey,
       sectionAcknowledgedKey,
       sectionDoneKey,
       guideMarkKey,
     ];
+    const currentMirroredKeys = [
+      StorageKeys.TABS,
+      StorageKeys.ACTIVE_TAB,
+      StorageKeys.LEARNING_PROGRESS,
+      StorageKeys.GUIDE_RESPONSES,
+      StorageKeys.JOURNEY_COMPLETION,
+      ...currentOnlyMirroredKeys,
+    ];
     expect(grafana.setItem.mock.calls.map(([key]) => key)).toEqual(currentMirroredKeys);
     expect([...grafana.store.keys()]).toEqual(currentMirroredKeys);
+    expect(currentMirroredKeys.filter((key) => intendedMirroredKeys.has(key))).toHaveLength(intendedMirroredKeys.size);
+    expect(currentMirroredKeys.filter((key) => !intendedMirroredKeys.has(key))).toEqual(currentOnlyMirroredKeys);
 
     firstMount.unmount();
     localStorage.clear();
