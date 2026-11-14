@@ -29,6 +29,7 @@ import { StorageKeys } from '../../lib/storage-keys';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { createPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
+import { resetPrTestProgress } from '../docs-panel/hooks/resetGuideProgress';
 
 const PR_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_URL;
 const SELECTED_FILE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_FILE;
@@ -553,6 +554,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    resetPrTestProgress().catch((error) => logger.warn('Failed to clear earlier PR preview progress', { error }));
     setFetchId(createPrTestFetchId());
     setFetchState('fetching');
     setError(null);
