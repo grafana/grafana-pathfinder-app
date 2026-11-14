@@ -1778,19 +1778,8 @@ export const completionEmittedStorage = createCompletionGuardStorage(StorageKeys
 
 export const completionReportedStorage = createCompletionGuardStorage(StorageKeys.COMPLETION_REPORTED_PREFIX);
 
-/**
- * Every content key with stored progress records that belongs to a PR-tester
- * preview fetch — recognised by the `#pf-pr-` marker the fetch rides in its
- * URL. Each fetch mints a new marker and therefore a new content key, so a
- * reviewer who tests many previews accumulates one record set per fetch with
- * no way to remove the earlier ones.
- *
- * Scans the per-content progress namespaces that key records by the full
- * marked URL (the ones `resetGuideProgress` clears): interactive steps,
- * skipped steps, section state, the completion percentage, and the guide
- * completion mark. Real guide keys never carry the marker, so they are never
- * returned.
- */
+// PR-tester preview keys carry the #pf-pr- marker; real guide keys never do.
+// Scans the per-content progress namespaces resetGuideProgress clears.
 export function listPrTestContentKeys(): string[] {
   const prefixes = [...PROGRESS_SECTION_PREFIXES, StorageKeys.GUIDE_COMPLETION_MARK_PREFIX];
   const contentKeys = new Set<string>();

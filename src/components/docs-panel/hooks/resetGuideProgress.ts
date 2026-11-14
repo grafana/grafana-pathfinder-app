@@ -108,13 +108,8 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
   );
 }
 
-/**
- * Remove the progress records left behind by earlier PR-tester preview
- * fetches. Every fetch marks its URL with a fresh `#pf-pr-` id, so a new
- * fetch orphans the previous fetch's records; this clears all of them through
- * the same reset path a single guide uses. Real guide progress carries no
- * marker and is never touched.
- */
+// PR-tester preview keys carry the #pf-pr- marker; real guide keys never do.
+// Clears every orphaned preview record through the single-guide reset path.
 export async function resetPrTestProgress(): Promise<void> {
   await Promise.all(listPrTestContentKeys().map((contentKey) => resetGuideProgress(contentKey)));
 }

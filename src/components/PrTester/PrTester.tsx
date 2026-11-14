@@ -537,7 +537,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
-    void resetPrTestProgress();
+    resetPrTestProgress().catch((error) => logger.warn('Failed to clear earlier PR preview progress', { error }));
     setFetchId(createPrTestFetchId());
     setFetchState('fetching');
     setError(null);
