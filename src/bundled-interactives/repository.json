@@ -173,10 +173,10 @@
     },
     "stats": {
       "version": 2,
-      "blockCount": 26,
+      "blockCount": 27,
       "sectionCount": 2,
-      "completableBlockCount": 21,
-      "finalCompletablePosition": 25
+      "completableBlockCount": 22,
+      "finalCompletablePosition": 26
     }
   },
   "prometheus-advanced-queries": {
@@ -243,10 +243,10 @@
     },
     "stats": {
       "version": 2,
-      "blockCount": 33,
+      "blockCount": 34,
       "sectionCount": 3,
-      "completableBlockCount": 27,
-      "finalCompletablePosition": 32
+      "completableBlockCount": 28,
+      "finalCompletablePosition": 33
     }
   },
   "welcome-to-grafana": {
