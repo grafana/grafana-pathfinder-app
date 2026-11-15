@@ -1,0 +1,8 @@
+{
+  "name": "pathfinder-bombadil-pilot",
+  "private": true,
+  "description": "Bounded Bombadil pilot for guide-lifecycle properties (see README.md).",
+  "devDependencies": {
+    "@antithesishq/bombadil": "0.7.10"
+  }
+}
