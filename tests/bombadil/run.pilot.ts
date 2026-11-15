@@ -158,6 +158,11 @@ test('bounded guide-lifecycle exploration', async ({ page }) => {
   };
 
   if (REPLAY && run.status === 2) {
+    // Same starting state as the original run: nothing stored, and the once-per-tab reset armed again.
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
     await page.goto(start);
     const replay = await runBombadil(bombadil, [
       ...common,

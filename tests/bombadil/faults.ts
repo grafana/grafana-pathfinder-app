@@ -35,6 +35,9 @@ export function faultInitScript(fault: Fault, ids: { guideB: string; preview: st
       later(() => {
         if (loadedAsPreview) queued(ids.preview);
       });
+      document.addEventListener('pathfinder-auto-open-docs', (event) => {
+        if (String(event.detail && event.detail.url).includes('pf-pr-')) setTimeout(() => queued(ids.preview), 600);
+      });
     }
     if (fault === 'reopen-mints') {
       later(() => queued('fault-reopen-' + Date.now()));

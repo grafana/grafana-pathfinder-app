@@ -40,6 +40,17 @@ const openPreview = registerCustomAction('open-preview', async (_document, windo
   window.location.assign(`/?doc=${encodeURIComponent(url)}`);
 });
 
+// In-app launch through the same event link interception uses: no page load, so no Grafana reboot.
+const switchGuide = registerCustomAction('switch-guide', async (document, _window, id: string, preview: boolean) => {
+  const base = `https://interactive-learning.grafana.net/packages/${id}/content.json`;
+  document.dispatchEvent(
+    new CustomEvent('pathfinder-auto-open-docs', {
+      cancelable: true,
+      detail: { url: preview ? `${base}#pf-pr-bombadil1` : base, title: id, source: 'link_interception' },
+    })
+  );
+});
+
 const clickTestId = (document: Document, testId: string): boolean => {
   const element = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
   if (!element) {
@@ -226,7 +237,7 @@ const lifecycle = actions(() => {
   }
   if (!panelOpen.current) {
     // Panel still loading, or the reader closed it: give the page time, or reopen it from stored tabs.
-    return [...Array(10).fill('Wait'), reopenPanel(), openGuide(GUIDE_A)];
+    return ['Wait', 'Wait', reopenPanel(), reopenPanel(), reopenPanel(), switchGuide(GUIDE_A, false)];
   }
   const reader = [
     ...(doItAvailable.current ? [doIt(), doIt(), doIt()] : []),
@@ -234,15 +245,9 @@ const lifecycle = actions(() => {
     resetGuide(),
     closePanel(),
   ];
-  return [
-    ...reader,
-    ...reader,
-    openGuide(GUIDE_A),
-    openGuide(GUIDE_B),
-    openPreview(GUIDE_PREVIEW),
-    openPreview(GUIDE_PREVIEW),
-    'Wait',
-  ];
+  const switches = [switchGuide(GUIDE_A, false), switchGuide(GUIDE_B, false), switchGuide(GUIDE_PREVIEW, true)];
+  // Full page loads stay in the mix, but rarely: each one is a Grafana reboot.
+  return [...reader, ...reader, ...switches, ...switches, openGuide(GUIDE_A), 'Wait'];
 });
 
 // Reload only with a guide on screen, and rarely: a reload mid-boot restarts Grafana's startup and the page never settles.
