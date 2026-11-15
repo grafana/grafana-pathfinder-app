@@ -25,6 +25,7 @@ export interface ObservationStep {
   executing: boolean;
   completed: boolean;
   readCompleted?(): Promise<boolean>;
+  readTargetState?(): Promise<boolean | undefined>;
   commit(reason: ObservationReason, origin: ProgressOrigin): void;
 }
 
@@ -594,14 +595,23 @@ export class CompletionCoordinator {
           continue;
         }
         const objectiveGate = hasObjectives(step.objectives);
-        const conditions = objectiveGate
-          ? step.objectives
-          : entry.requested
-            ? completionGate(step, entry.skipVerify)
-            : undefined;
         if (!objectiveGate && !entry.requested) {
+          const met = step.eligible ? await step.readTargetState?.() : undefined;
+          if (met === undefined || revision !== entry.revision || entry.requested) {
+            continue;
+          }
+          if (!met) {
+            entry.seenUnmet = true;
+            continue;
+          }
+          try {
+            this.commit(entry, 'objectives', entry.seenUnmet ? 'change' : 'load');
+          } catch (error) {
+            logger.warn('[completion-coordinator] completion callback failed', { stepId: step.stepId, error });
+          }
           continue;
         }
+        const conditions = objectiveGate ? step.objectives : completionGate(step, entry.skipVerify);
         if (conditions && !isPassiveCondition(conditions) && !entry.checkCommand) {
           continue;
         }
