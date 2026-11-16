@@ -1022,3 +1022,31 @@ legacy settings adapter on this OSS instance returns `proxy-unavailable` because
 its former OBO configuration is absent. Keep compatibility routes and
 `WithAppFunc(plugin.NewApp)` until Cloud coexistence, rollback, and the planned
 compatibility window have been verified.
+
+### Achievement routes
+
+The SDK also serves `backend/api/v1/achievements/events` (POST),
+`backend/api/v1/achievements/my` (GET), and
+`backend/api/v1/achievements/definitions` (GET). The compatibility path retains
+`api/v1/achievements/...`. Both transports use the same evaluator, response shaping,
+and persistence service. The SDK wires persistence; main's compatibility routes
+still report unavailable until their store builder is configured.
+
+Only authenticated user principals can submit or read achievements. SDK writes
+stamp the caller and namespace from verified authentication and use delegated
+clients. Award names remain deterministic and awards are create-only. Progress
+uses resource-version concurrency; a successful save with an unreadable response
+remains durable and forces the next update to reload. The events limit is 30
+requests with a refill of 0.5 per second, isolated by namespace and user.
+
+Personal reads drain both resource kinds with 100-item pages, a 50,000-record
+aggregate cap, 15-second page deadlines, and a 30-second overall deadline. They
+filter the caller before shaping the result, expose truncation, and do not cache
+personal state. Public CDN definitions retain their existing shared cache and
+failure backoff; caller credentials never reach the CDN.
+
+Achievement schemas are copied from the exact backend revision used by the
+merged store tests (`84c582fdae1916910e5197a44bd0078018315135`, backend PR #146).
+Their resource names, versions, schemas, and award create-only role are preserved.
+The local SDK provider registers these kinds; this is not evidence of Cloud
+registration or deployment. There is no new achievement frontend in this change.

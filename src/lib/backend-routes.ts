@@ -22,6 +22,9 @@ const backendPaths = [
   'learning-insights',
   'package-recommendations',
   'health',
+  'api/v1/achievements/events',
+  'api/v1/achievements/my',
+  'api/v1/achievements/definitions',
 ] as const;
 
 export function backendRoute(path: (typeof backendPaths)[number]): string {

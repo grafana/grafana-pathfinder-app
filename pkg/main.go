@@ -17,7 +17,7 @@ func main() {
 
 	// Run blocks until Grafana shuts the process down or the plugin exits.
 	if err := sdkplugin.Run(
-		provider.New(plugin.OnlineAssignmentSource(), plugin.InsightsOnlineAssignmentSource, plugin.ReadRecommendations),
+		provider.New(plugin.OnlineAssignmentSource(), plugin.InsightsOnlineAssignmentSource, plugin.ReadRecommendations, plugin.AchievementDefinitions()),
 		sdkplugin.WithPluginID("grafana-pathfinder-app"),
 		sdkplugin.WithAppFunc(plugin.NewApp),
 	); err != nil {

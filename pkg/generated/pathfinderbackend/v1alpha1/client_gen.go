@@ -29,6 +29,69 @@ func NewCustomRouteClientFromGenerator(generator resource.ClientGenerator, defau
 	return NewCustomRouteClient(client), nil
 }
 
+type GetBackendAchievementDefinitionsRequest struct {
+	Headers http.Header
+}
+
+func (c *CustomRouteClient) GetBackendAchievementDefinitions(ctx context.Context, namespace string, request GetBackendAchievementDefinitionsRequest) (*GetBackendAchievementDefinitionsResponse, error) {
+	resp, err := c.NamespacedRequest(ctx, namespace, resource.CustomRouteRequestOptions{
+		Path:    "/backend/api/v1/achievements/definitions",
+		Verb:    "GET",
+		Headers: request.Headers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cast := GetBackendAchievementDefinitionsResponse{}
+	err = json.Unmarshal(resp, &cast)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal response bytes into GetBackendAchievementDefinitionsResponse: %w", err)
+	}
+	return &cast, nil
+}
+
+type CreateBackendAchievementEventRequest struct {
+	Headers http.Header
+}
+
+func (c *CustomRouteClient) CreateBackendAchievementEvent(ctx context.Context, namespace string, request CreateBackendAchievementEventRequest) (*CreateBackendAchievementEventResponse, error) {
+	resp, err := c.NamespacedRequest(ctx, namespace, resource.CustomRouteRequestOptions{
+		Path:    "/backend/api/v1/achievements/events",
+		Verb:    "POST",
+		Headers: request.Headers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cast := CreateBackendAchievementEventResponse{}
+	err = json.Unmarshal(resp, &cast)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal response bytes into CreateBackendAchievementEventResponse: %w", err)
+	}
+	return &cast, nil
+}
+
+type GetBackendAchievementsRequest struct {
+	Headers http.Header
+}
+
+func (c *CustomRouteClient) GetBackendAchievements(ctx context.Context, namespace string, request GetBackendAchievementsRequest) (*GetBackendAchievementsResponse, error) {
+	resp, err := c.NamespacedRequest(ctx, namespace, resource.CustomRouteRequestOptions{
+		Path:    "/backend/api/v1/achievements/my",
+		Verb:    "GET",
+		Headers: request.Headers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cast := GetBackendAchievementsResponse{}
+	err = json.Unmarshal(resp, &cast)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal response bytes into GetBackendAchievementsResponse: %w", err)
+	}
+	return &cast, nil
+}
+
 type GetBackendAssignmentsRequest struct {
 	Headers http.Header
 }

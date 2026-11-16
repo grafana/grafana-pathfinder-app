@@ -120,7 +120,7 @@ export const AchievementDecisionWireSchema = z.strictObject({
 
 /**
  * `decisions` is always an array, `[]` when no achievement matched the event.
- * @coupling Go struct: achievementEventsResponse
+ * @coupling Go struct: AchievementEventsResponse
  */
 export const AchievementEventsResponseWireSchema = z.strictObject({
   eventId: z.string(),
@@ -128,13 +128,13 @@ export const AchievementEventsResponseWireSchema = z.strictObject({
   decisions: z.array(AchievementDecisionWireSchema),
 });
 
-/** @coupling Go struct: achievementCapability */
+/** @coupling Go struct: AchievementCapability */
 export const AchievementCapabilityWireSchema = z.strictObject({
   available: z.boolean(),
   reason: z.string().optional(),
 });
 
-/** @coupling Go struct: achievementAward */
+/** @coupling Go struct: AchievementAward */
 export const AchievementAwardWireSchema = z.strictObject({
   achievementId: z.string(),
   tierId: z.string(),
@@ -142,14 +142,14 @@ export const AchievementAwardWireSchema = z.strictObject({
   earnedAt: z.string(),
 });
 
-/** @coupling Go struct: achievementProgress */
+/** @coupling Go struct: AchievementProgress */
 export const AchievementProgressWireSchema = z.strictObject({
   achievementId: z.string(),
   units: z.number().int(),
   next: z.number().int().nullable(),
 });
 
-/** @coupling Go struct: legacyBadge */
+/** @coupling Go struct: LegacyBadge */
 export const LegacyBadgeWireSchema = z.strictObject({
   source: z.string(),
   name: z.string(),
@@ -160,7 +160,7 @@ export const LegacyBadgeWireSchema = z.strictObject({
  * All three arrays are required, never nullable: the handler builds non-nil
  * slices unconditionally, including in the unavailable answer.
  *
- * @coupling Go struct: myAchievementsResponse
+ * @coupling Go struct: MyAchievementsResponse
  */
 export const MyAchievementsResponseWireSchema = z.strictObject({
   asOf: z.string().optional(),
@@ -459,13 +459,13 @@ export const GO_STRUCT_SCHEMAS = {
   LearningInsightsPerson: LearningInsightsPersonWireSchema,
   LearningInsightsCompletion: LearningInsightsCompletionWireSchema,
   LearningInsightsAssignment: LearningInsightsAssignmentWireSchema,
-  achievementEventsResponse: AchievementEventsResponseWireSchema,
+  AchievementEventsResponse: AchievementEventsResponseWireSchema,
   Decision: AchievementDecisionWireSchema,
-  myAchievementsResponse: MyAchievementsResponseWireSchema,
-  achievementCapability: AchievementCapabilityWireSchema,
-  achievementAward: AchievementAwardWireSchema,
-  achievementProgress: AchievementProgressWireSchema,
-  legacyBadge: LegacyBadgeWireSchema,
+  MyAchievementsResponse: MyAchievementsResponseWireSchema,
+  AchievementCapability: AchievementCapabilityWireSchema,
+  AchievementAward: AchievementAwardWireSchema,
+  AchievementProgress: AchievementProgressWireSchema,
+  LegacyBadge: LegacyBadgeWireSchema,
   achievementDefinitionsResponse: AchievementDefinitionsResponseWireSchema,
   Display: AchievementDisplayWireSchema,
   DisplayTier: AchievementDisplayTierWireSchema,
@@ -487,8 +487,8 @@ export const BACKEND_RESPONSE_ENVELOPES = {
   'completion-records-capability': 'completionCapability',
   'assignments-my': 'myAssignmentsResponse',
   'learning-insights': 'LearningInsightsResponse',
-  'achievements-events': 'achievementEventsResponse',
-  'achievements-my': 'myAchievementsResponse',
+  'achievements-events': 'AchievementEventsResponse',
+  'achievements-my': 'MyAchievementsResponse',
   'achievements-definitions': 'achievementDefinitionsResponse',
 } as const satisfies Record<string, GoStructName>;
 

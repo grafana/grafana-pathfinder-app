@@ -313,3 +313,11 @@ func (a *App) handleAchievementDefinitions(w http.ResponseWriter, r *http.Reques
 		Achievements: append([]achievements.Display{}, snap.Display...),
 	}, http.StatusOK)
 }
+
+func AchievementDefinitions() definitionsProvider {
+	source, err := processDefinitions()
+	if err != nil {
+		return nil
+	}
+	return source
+}
