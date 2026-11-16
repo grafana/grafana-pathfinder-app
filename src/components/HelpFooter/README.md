@@ -34,36 +34,11 @@ Styling is handled in `src/styles/help-footer.styles.ts`.
 
 ## Keyboard Shortcuts Implementation
 
-The component currently includes a **simplified keyboard shortcuts modal** as a placeholder. To integrate Grafana's full HelpModal:
-
-1. **Copy the full HelpModal implementation** from `public/app/core/components/help/HelpModal.tsx` in the Grafana repository
-2. **Replace the placeholder modal** in `HelpFooter.tsx` with the full implementation
-3. **Import required dependencies** like `@grafana/i18n` and any missing utilities
-
-### Current Implementation
-
-```tsx
-// Simple placeholder modal with basic shortcuts
-<Modal title="Keyboard Shortcuts" isOpen={isOpen} onDismiss={onClose}>
-  {/* Simplified shortcuts display */}
-</Modal>
-```
-
-### Full Implementation (to replace)
-
-```tsx
-// Import the complete HelpModal from Grafana core
-import { HelpModal } from './path/to/HelpModal';
-
-// Use in component
-{
-  isHelpModalOpen && <HelpModal onDismiss={handleCloseHelpModal} />;
-}
-```
+The links come from Grafana's help nav item (`useHelpNavItem`). An item without a URL, such as Keyboard Shortcuts, renders as a `Button` that calls the nav item's own `onClick`, so Grafana opens its native shortcuts modal. The component holds no modal state.
 
 ## Files
 
-- `HelpFooter.tsx` - Main component with modal state management
+- `HelpFooter.tsx` - Main component that renders the help nav item links
 - `../../styles/help-footer.styles.ts` - Emotion CSS styles
 - `index.ts` - Barrel export
 - `README.md` - This documentation
