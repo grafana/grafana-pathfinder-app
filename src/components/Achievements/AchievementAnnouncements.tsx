@@ -43,9 +43,6 @@ export function AchievementAnnouncementHost() {
   const dismissToast = useCallback((key: string) => setToasts((current) => current.filter((c) => c.key !== key)), []);
   const dismissOverlay = useCallback(() => setOverlays((current) => current.slice(1)), []);
 
-  if (toasts.length === 0 && overlays.length === 0) {
-    return null;
-  }
   return (
     <ThemeContext.Provider value={config.theme2}>
       <AchievementAnnouncementsView
@@ -80,7 +77,23 @@ export function AchievementAnnouncementsView({
   return (
     <>
       {overlay && <TierUpOverlay key={overlay.key} card={overlay} onDismiss={onDismissOverlay} />}
-      <div className={styles.toastStack} role="status" aria-live="polite">
+      {/* Mounted before any overlay: screen readers skip a live region that arrives with its text. */}
+      <div
+        className={styles.visuallyHidden}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid={testIds.achievements.overlayAnnouncement}
+      >
+        {overlay && (
+          <React.Fragment key={overlay.key}>
+            <div>{overlay.eyebrow}</div>
+            <div>{overlay.title}</div>
+            <div>{overlay.detail}</div>
+          </React.Fragment>
+        )}
+      </div>
+      <div className={styles.toastStack} role="status" aria-live="polite" data-testid={testIds.achievements.toastStack}>
         {toasts.map((card) => (
           <AchievementToast key={card.key} card={card} onDismiss={onDismissToast} />
         ))}
@@ -158,6 +171,17 @@ const slideIn = keyframes({
 });
 
 const getStyles = (theme: GrafanaTheme2) => ({
+  visuallyHidden: css({
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    margin: -1,
+    padding: 0,
+    border: 0,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+  }),
   toastStack: css({
     position: 'fixed',
     right: theme.spacing(2),

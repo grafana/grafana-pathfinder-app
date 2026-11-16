@@ -311,8 +311,10 @@ export const testIds = {
     hubRow: (achievementId: string) => `my-learning-achievement-${achievementId}`,
     toast: (achievementId: string) => `achievement-toast-${achievementId}`,
     toastDismiss: 'achievement-toast-dismiss',
+    toastStack: 'achievement-toast-stack',
     overlay: 'achievement-tier-up-overlay',
     overlayDismiss: 'achievement-tier-up-overlay-dismiss',
+    overlayAnnouncement: 'achievement-tier-up-announcement',
   },
 
   // Live Session

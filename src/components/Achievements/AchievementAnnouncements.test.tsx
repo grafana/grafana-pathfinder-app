@@ -152,8 +152,37 @@ describe('AchievementAnnouncementHost', () => {
 
   it('shows nothing when /definitions is unavailable', async () => {
     __setAchievementDisplayDepsForTests({ fetchDefinitions: async () => null });
-    const { container } = render(<AchievementAnnouncementHost />);
+    render(<AchievementAnnouncementHost />);
     await announce(response('award', ['bronze']));
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByTestId(testIds.achievements.toast('guides-finished'))).not.toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.achievements.overlay)).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.achievements.overlayAnnouncement)).toBeEmptyDOMElement();
+  });
+
+  it('announces a tier-up to screen readers through a polite live region that is mounted before it', async () => {
+    render(<AchievementAnnouncementHost />);
+    const region = screen.getByTestId(testIds.achievements.overlayAnnouncement);
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveAttribute('aria-atomic', 'true');
+    expect(region).toBeEmptyDOMElement();
+
+    await announce(response('tier_up', ['silver']));
+    expect(screen.getByTestId(testIds.achievements.overlayAnnouncement)).toBe(region);
+    expect(region).toHaveTextContent(/^Tier upGuide finisherSilver$/);
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.click(screen.getByTestId(testIds.achievements.overlayDismiss));
+    expect(region).toBeEmptyDOMElement();
+  });
+
+  it('keeps the toast stack live region mounted before the first toast', async () => {
+    render(<AchievementAnnouncementHost />);
+    const stack = screen.getByTestId(testIds.achievements.toastStack);
+    expect(stack).toHaveAttribute('role', 'status');
+    expect(stack).toBeEmptyDOMElement();
+
+    await announce(response('award', ['bronze']));
+    expect(within(stack).getByTestId(testIds.achievements.toast('guides-finished'))).toBeInTheDocument();
   });
 });
