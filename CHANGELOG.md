@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.28.0
+
+### Added
+
+- **Flexible kiosk layouts and previews**: Build branded, responsive kiosk pages with sections, columns, images, Markdown, and theme controls. Preview catalogs and unpublished guides together from a captured PR commit, with progress kept separate from published learning content. Existing catalogs remain supported. (#2358)
+- **Refresh guides from Grafana Assistant**: Reload an open guide and its title when the Assistant sends a refresh event in the same browser tab. Existing content stays visible if the refresh fails. (#2339)
+- **App SDK foundation**: Add managed resource kinds and an app provider for Grafana App Platform registration. Existing plugin resource-proxy routes remain in place. (#2401)
+- **Achievement backend groundwork**: Add an evaluator, App Platform storage adapter, and routes for definitions, events, and personal progress. Achievements are not yet exposed in the learning interface; event and progress routes still require storage wiring. (#2269, #2280, #2281)
+
+### Fixed
+
+- **Keep Grafana Assistant open**: Opening a floating guide preserves a sidebar owned by another plugin, including the Assistant. (#2340)
+- **Readable completion messages**: Waiting reasons display quotes and slashes as text instead of HTML entities. (#2342)
+- **Correct milestone preview destinations**: Learning path previews use each milestone's declared starting page, falling back to the path's page only when the milestone has none. (#2415)
+- **Brazilian Portuguese translations**: Fill missing translations across guide pages, panel actions, and learning navigation, and improve existing wording. (#2372)
+- **Achievement retry reporting**: Report earned tiers after a partially failed save is retried, including awards already stored by the earlier attempt. (#2410)
+
+### Chore
+
+- **Bundled tutorial sync authentication**: Use the repository token to create signed tutorial sync PRs without a separate GitHub App installation. (#2409)
+- **Translation catalog checks**: Reject new missing keys, obsolete keys, and placeholder mismatches, and remove resolved Brazilian Portuguese exceptions from the baseline. (#2411, #2417)
+- **Achievement contract coverage**: Align storage tests with award reporting after a retry. (#2413)
+
 ## 2.27.0
 
 ### Added
