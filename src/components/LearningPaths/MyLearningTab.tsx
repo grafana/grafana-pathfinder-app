@@ -67,7 +67,7 @@ import { HeroStats } from './sections/HeroStats';
 import { MyCoursesSection } from './sections/MyCoursesSection';
 import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
-import { AchievementsSection } from '../Achievements/AchievementsSection';
+import { AchievementsSection, HomeAchievementsShelf } from '../Achievements/AchievementsSection';
 import { useLegacyBadgesHidden } from '../Achievements/useLegacyBadgesHidden';
 import { HomeBadgesSummary } from './sections/HomeBadgesSummary';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
@@ -644,7 +644,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
       <div className={styles.intro}>
         {Header ? <Header>{summary}</Header> : summary}
 
-        {homepage && homeBadges}
+        {homepage && (legacyBadgesHidden ? <HomeAchievementsShelf styles={styles} /> : homeBadges)}
       </div>
 
       {homepage && (

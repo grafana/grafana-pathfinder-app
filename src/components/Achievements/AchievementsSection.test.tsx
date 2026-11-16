@@ -15,10 +15,17 @@ import { testIds } from '../../constants/testIds';
 import { MyAchievementsResponseWireSchema } from '../../types/backend-api.schema';
 import type { getMyLearningStyles } from '../LearningPaths/MyLearningTab.styles';
 
-import { AchievementsSection } from './AchievementsSection';
-import { buildAchievementsView } from './achievements-view';
+import {
+  AchievementsList,
+  AchievementsListView,
+  AchievementsSection,
+  HomeAchievementsShelf,
+  HomeAchievementsShelfView,
+} from './AchievementsSection';
+import { buildAchievementsView, type AchievementRowView } from './achievements-view';
 
 const mockFlag = jest.fn(() => true);
+jest.mock('../../utils/utils.routing', () => ({ prefixRoute: (route: string) => `/a/app/${route}` }));
 jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => mockFlag() }));
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
@@ -167,6 +174,103 @@ describe('AchievementsSection', () => {
     });
     expect(screen.queryByTestId(testIds.achievements.hubSection)).not.toBeInTheDocument();
     expect(fetchMy).not.toHaveBeenCalled();
+  });
+});
+
+function rowsOf(count: number): AchievementRowView[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `a${i}`,
+    title: `Achievement ${i}`,
+    description: 'Do things.',
+    earned: null,
+    progress: { units: 1, next: 2 },
+  }));
+}
+
+describe('HomeAchievementsShelf', () => {
+  it('shows achievement rows under an Achievements header that links to the badges page', () => {
+    render(
+      <HomeAchievementsShelfView view={buildAchievementsView(myFixture('default'), definitions)} styles={styles} />
+    );
+    const shelf = screen.getByRole('region', { name: 'Achievements' });
+    expect(shelf).toHaveAttribute('data-testid', testIds.achievements.homeShelf);
+    expect(within(shelf).getByRole('heading', { name: 'Achievements', level: 2 })).toBeInTheDocument();
+    expect(within(shelf).getByRole('link', { name: 'Show all achievements' })).toHaveAttribute('href', '/a/app/badges');
+    expect(within(shelf).getByTestId(testIds.achievements.hubRow('dash-builder'))).toBeInTheDocument();
+    expect(within(shelf).getByText('3 of 5 toward the next tier')).toBeInTheDocument();
+  });
+
+  it('shows at most four rows, leaving the rest to the badges page', () => {
+    render(<HomeAchievementsShelfView view={{ kind: 'ready', rows: rowsOf(6), truncated: false }} styles={styles} />);
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
+    expect(screen.queryByTestId(testIds.achievements.hubRow('a4'))).not.toBeInTheDocument();
+  });
+
+  it('shows the empty note when nothing is earned yet', () => {
+    render(<HomeAchievementsShelfView view={buildAchievementsView(myFixture('empty'), definitions)} styles={styles} />);
+    expect(screen.getByTestId(testIds.achievements.hubEmpty)).toBeInTheDocument();
+  });
+
+  it('shows the unavailable note when the rows cannot be read', () => {
+    render(<HomeAchievementsShelfView view={{ kind: 'unavailable' }} styles={styles} />);
+    expect(screen.getByTestId(testIds.achievements.homeShelf)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.achievements.hubUnavailable)).toBeInTheDocument();
+  });
+
+  it('renders nothing while loading or when achievements are hidden', () => {
+    const { rerender } = render(<HomeAchievementsShelfView view={{ kind: 'loading' }} styles={styles} />);
+    expect(screen.queryByTestId(testIds.achievements.homeShelf)).not.toBeInTheDocument();
+    rerender(<HomeAchievementsShelfView view={{ kind: 'hidden' }} styles={styles} />);
+    expect(screen.queryByTestId(testIds.achievements.homeShelf)).not.toBeInTheDocument();
+  });
+
+  it('reads /my and /definitions when the flag is on', async () => {
+    __setAchievementDisplayDepsForTests({
+      fetchMy: async () => myFixture('default'),
+      fetchDefinitions: async () => definitions,
+    });
+    render(<HomeAchievementsShelf styles={styles} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByTestId(testIds.achievements.hubRow('dash-builder'))).toBeInTheDocument();
+  });
+
+  it('renders nothing and requests nothing when the flag is off', async () => {
+    mockFlag.mockReturnValue(false);
+    const fetchMy = jest.fn(async () => myFixture('default'));
+    __setAchievementDisplayDepsForTests({ fetchMy });
+    render(<HomeAchievementsShelf styles={styles} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.queryByTestId(testIds.achievements.homeShelf)).not.toBeInTheDocument();
+    expect(fetchMy).not.toHaveBeenCalled();
+  });
+});
+
+describe('AchievementsList', () => {
+  it('lists every row, with no cap', () => {
+    render(<AchievementsListView view={{ kind: 'ready', rows: rowsOf(6), truncated: false }} styles={styles} />);
+    expect(within(screen.getByTestId(testIds.achievements.pageList)).getAllByRole('listitem')).toHaveLength(6);
+  });
+
+  it('shows the empty and unavailable notes', () => {
+    const { rerender } = render(
+      <AchievementsListView view={buildAchievementsView(myFixture('empty'), definitions)} styles={styles} />
+    );
+    expect(screen.getByTestId(testIds.achievements.hubEmpty)).toBeInTheDocument();
+    rerender(<AchievementsListView view={{ kind: 'unavailable' }} styles={styles} />);
+    expect(screen.getByTestId(testIds.achievements.hubUnavailable)).toBeInTheDocument();
+  });
+
+  it('renders nothing when the flag is off', async () => {
+    mockFlag.mockReturnValue(false);
+    render(<AchievementsList styles={styles} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.queryByTestId(testIds.achievements.pageList)).not.toBeInTheDocument();
   });
 });
 

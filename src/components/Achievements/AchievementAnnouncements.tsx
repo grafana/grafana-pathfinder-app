@@ -186,7 +186,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0,
   }),
   eyebrow: css({
-    fontSize: theme.typography.bodySmall.fontSize,
+    fontSize: theme.typography.sm.fontSize,
     color: theme.colors.text.secondary,
   }),
   toastTitle: css({
@@ -195,7 +195,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     overflowWrap: 'anywhere',
   }),
   toastTier: css({
-    fontSize: theme.typography.bodySmall.fontSize,
+    fontSize: theme.typography.sm.fontSize,
     color: theme.colors.text.primary,
   }),
   overlay: css({

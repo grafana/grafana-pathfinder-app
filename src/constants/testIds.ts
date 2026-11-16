@@ -306,6 +306,8 @@ export const testIds = {
     hubSection: 'my-learning-achievements-section',
     hubEmpty: 'my-learning-achievements-empty',
     hubUnavailable: 'my-learning-achievements-unavailable',
+    homeShelf: 'home-achievements-shelf',
+    pageList: 'badges-page-achievements-list',
     hubRow: (achievementId: string) => `my-learning-achievement-${achievementId}`,
     toast: (achievementId: string) => `achievement-toast-${achievementId}`,
     toastDismiss: 'achievement-toast-dismiss',

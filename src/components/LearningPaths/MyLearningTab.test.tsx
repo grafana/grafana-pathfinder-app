@@ -279,6 +279,7 @@ const mockLegacyBadgesHidden = jest.fn(() => false);
 jest.mock('../Achievements/useLegacyBadgesHidden', () => ({ useLegacyBadgesHidden: () => mockLegacyBadgesHidden() }));
 jest.mock('../Achievements/AchievementsSection', () => ({
   AchievementsSection: () => <section data-testid="my-learning-achievements-section" />,
+  HomeAchievementsShelf: () => <aside data-testid="home-achievements-shelf" />,
 }));
 
 const prepareMock = prepareGuideLaunch as jest.MockedFunction<typeof prepareGuideLaunch>;
@@ -671,6 +672,24 @@ describe('MyLearningTab launch flow', () => {
     expect(screen.queryByTestId(testIds.learningPaths.badgesSection)).not.toBeInTheDocument();
     expect(screen.queryByText('Badges earned')).not.toBeInTheDocument();
     expect(screen.getByTestId(testIds.achievements.hubSection)).toBeInTheDocument();
+    mockLegacyBadgesHidden.mockReturnValue(false);
+  });
+
+  it('keeps the legacy badge shelf on the Learn home while achievements are not available', () => {
+    mockLegacyBadgesHidden.mockReturnValue(false);
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+
+    expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.achievements.homeShelf)).not.toBeInTheDocument();
+  });
+
+  it('puts the achievements shelf in the badge shelf slot on the Learn home once achievements are available', () => {
+    mockLegacyBadgesHidden.mockReturnValue(true);
+    render(<MyLearningTab homepage onOpenGuide={jest.fn()} />);
+
+    expect(screen.queryByTestId(testIds.learningPaths.badgesSection)).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.achievements.homeShelf)).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.achievements.hubSection)).not.toBeInTheDocument();
     mockLegacyBadgesHidden.mockReturnValue(false);
   });
 
