@@ -18,7 +18,9 @@ A worktree whose `node_modules` predates the SDK dependency reports a handful of
 
 ## `npm run i18n-extract` rewrites every locale file
 
-`src/locales/en-US/grafana-pathfinder-app.json` does not hold every `t()` key; many ship only as defaults in code. Running the extractor re-sorts and rewrites all 21 locale files, so do not run it for an ordinary change. Add a key to `en-US` by hand only when a reviewer or test asks for it.
+The extractor sorts and rewrites all 21 locale files. For an ordinary change, edit the affected catalogs directly instead. The English catalog does not hold every `t()` key because some strings exist only as code defaults.
+
+See [Translation parity](COMMANDS.md#translation-parity) for catalog requirements and baseline maintenance.
 
 ## A local check fails on files you did not touch
 

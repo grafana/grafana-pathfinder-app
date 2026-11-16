@@ -247,6 +247,7 @@ import {
   getNextMilestoneIdFromContent,
   getPreviousMilestoneIdFromContent,
 } from '../../docs-retrieval';
+import { tabStorage } from '../../lib/user-storage';
 import type { PreparedRawContent } from '../../types/content.types';
 
 // ---------------------------------------------------------------------------
@@ -999,5 +1000,38 @@ describe('reader return loader routing', () => {
       expect.objectContaining({ type: 'learning-journey', currentUrl: milestone.url })
     );
     expect(loadDocsTabContentResult).not.toHaveBeenCalled();
+  });
+});
+
+describe('CombinedLearningJourneyPanel.loadTab — internal reload retitles a backend guide', () => {
+  const url = 'backend-guide:my-guide';
+  const guideTab = { ...makeTab('guide-tab'), title: 'Old title', baseUrl: url, currentUrl: url };
+  const fetched = { ...preparedContent, url, metadata: { title: 'New title' } };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(true);
+  });
+
+  it('updates the title and the persisted tab projection', async () => {
+    (loadDocsTabContentResult as jest.Mock).mockResolvedValue({ content: fetched });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [guideTab as any], activeTabId: 'guide-tab' });
+
+    await panel.loadTab('guide-tab', url, { source: 'internal_reload', rejectOnError: true });
+
+    expect((panel as any).state.tabs[0].title).toBe('New title');
+    const saved = (tabStorage.setTabs as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(saved[0].title).toBe('New title');
+  });
+
+  it('keeps the old title when the reload fails', async () => {
+    (loadDocsTabContentResult as jest.Mock).mockResolvedValue({ content: null, error: 'x', errorType: 'other' });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [guideTab as any], activeTabId: 'guide-tab' });
+
+    await panel.loadTab('guide-tab', url, { source: 'internal_reload', rejectOnError: true }).catch(() => {});
+
+    expect((panel as any).state.tabs[0].title).toBe('Old title');
   });
 });

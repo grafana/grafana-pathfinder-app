@@ -801,6 +801,7 @@ frontend retry: a retried settings read sends `?attempt=N`, and attempts after t
 `event=pathfinder_proxy_retry_failure` with `attempt` instead. A read whose first attempt never
 reaches the plugin (a gateway 502 or 504) logs only retry events, so the alert undercounts it.
 Expected settings absence, unsupported collection routes, idempotent write conflicts,
+achievement compare-and-swap conflicts and not-yet-created achievement rows,
 and cancellations are excluded. Internal logs retain trusted
 stack and trace context; diagnostic responses never include tokens or upstream bodies.
 An empty successful LIST is not classified as an authorization failure.

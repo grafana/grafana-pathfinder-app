@@ -280,14 +280,20 @@ func (c *appPlatformListClient) listPageInto(ctx context.Context, groupVersion, 
 // appPlatformUpstreamError carrying the upstream status (and Retry-After, when
 // present) so the caller can classify transient/terminal/identity-scoped and
 // echo the upstream backpressure hint.
-func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) (err error) {
+func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) error {
+	_, err := c.createRead(ctx, groupVersion, namespace, resource, obj, maxBytes)
+	return err
+}
+
+// createRead is create that also returns the stored object's response body.
+func (c *appPlatformListClient) createRead(ctx context.Context, groupVersion, namespace, resource string, obj []byte, maxBytes int64) (body []byte, err error) {
 	defer func() { logAppPlatformResult(c.logger, namespace, resource, "create", c.attempt, err) }()
 	if namespace == "" {
-		return fmt.Errorf("app platform create: empty namespace")
+		return nil, fmt.Errorf("app platform create: empty namespace")
 	}
 
 	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource)
-	return c.sendObject(ctx, http.MethodPost, endpoint, namespace, resource, "create", obj, maxBytes, func(status int) {
+	return c.sendObjectRead(ctx, http.MethodPost, endpoint, namespace, resource, "create", obj, maxBytes, func(status int) {
 		createDiagOnce.Do(func() {
 			c.logger.Info("app platform proxy: first upstream create",
 				"resource", resource,
@@ -346,13 +352,19 @@ func (c *appPlatformListClient) get(ctx context.Context, groupVersion, namespace
 }
 
 // The object must retain its resourceVersion for optimistic concurrency.
-func (c *appPlatformListClient) replace(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) (err error) {
+func (c *appPlatformListClient) replace(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) error {
+	_, err := c.replaceRead(ctx, groupVersion, namespace, resource, name, obj, maxBytes)
+	return err
+}
+
+// replaceRead is replace that also returns the stored object's response body.
+func (c *appPlatformListClient) replaceRead(ctx context.Context, groupVersion, namespace, resource, name string, obj []byte, maxBytes int64) (body []byte, err error) {
 	defer func() { logAppPlatformResult(c.logger, namespace, resource, "update", c.attempt, err) }()
 	if namespace == "" || name == "" {
-		return fmt.Errorf("app platform update: empty name")
+		return nil, fmt.Errorf("app platform update: empty name")
 	}
 	endpoint := buildAppPlatformURL(c.appURL, groupVersion, namespace, resource) + "/" + url.PathEscape(name)
-	return c.sendObject(ctx, http.MethodPut, endpoint, namespace, resource, "update", obj, maxBytes, nil)
+	return c.sendObjectRead(ctx, http.MethodPut, endpoint, namespace, resource, "update", obj, maxBytes, nil)
 }
 
 // sharedObjectToken returns the per-request token for single-object calls,
@@ -385,17 +397,24 @@ func (c *appPlatformListClient) updateStatus(ctx context.Context, groupVersion, 
 // sendObject sends a JSON object and returns nil on 200/201. A non-2xx becomes an
 // appPlatformUpstreamError carrying the status and Retry-After.
 func (c *appPlatformListClient) sendObject(ctx context.Context, method, endpoint, namespace, resource, op string, obj []byte, maxBytes int64, onResponse func(status int)) error {
+	_, err := c.sendObjectRead(ctx, method, endpoint, namespace, resource, op, obj, maxBytes, onResponse)
+	return err
+}
+
+// sendObjectRead is sendObject that also returns the response body, read
+// best-effort up to maxBytes.
+func (c *appPlatformListClient) sendObjectRead(ctx context.Context, method, endpoint, namespace, resource, op string, obj []byte, maxBytes int64, onResponse func(status int)) ([]byte, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
 	accessToken, err := c.sharedObjectToken(reqCtx, namespace)
 	if err != nil {
-		return fmt.Errorf("app platform %s: %w", op, err)
+		return nil, fmt.Errorf("app platform %s: %w", op, err)
 	}
 
 	req, err := http.NewRequestWithContext(reqCtx, method, endpoint, bytes.NewReader(obj))
 	if err != nil {
-		return fmt.Errorf("app platform %s: build request: %w", op, err)
+		return nil, fmt.Errorf("app platform %s: build request: %w", op, err)
 	}
 	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -403,7 +422,7 @@ func (c *appPlatformListClient) sendObject(ctx context.Context, method, endpoint
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("app platform %s: %w", op, err)
+		return nil, fmt.Errorf("app platform %s: %w", op, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -413,7 +432,7 @@ func (c *appPlatformListClient) sendObject(ctx context.Context, method, endpoint
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return &appPlatformUpstreamError{
+		return nil, &appPlatformUpstreamError{
 			status:     resp.StatusCode,
 			retryAfter: resp.Header.Get("Retry-After"),
 			body:       body,
@@ -421,12 +440,12 @@ func (c *appPlatformListClient) sendObject(ctx context.Context, method, endpoint
 		}
 	}
 
-	// 200/201 means the record is already durable upstream and the body is unused,
-	// so a body read error or an over-cap body must NEVER become a retryable
-	// failure: surfacing an error would mask a durable success as failed. Drain
-	// best-effort up to the cap so the connection can be reused.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBytes))
-	return nil
+	// 200/201 means the record is already durable upstream, so a body read error
+	// or an over-cap body must NEVER become a retryable failure: surfacing an
+	// error would mask a durable success as failed. Read best-effort up to the
+	// cap so the connection can be reused.
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+	return body, nil
 }
 
 // resolveAppPlatformConfig is the structural "is the aggregated API reachable here" gate
