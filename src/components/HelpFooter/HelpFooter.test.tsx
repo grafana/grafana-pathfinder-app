@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { LinkButton } from '@grafana/ui';
 import { HelpFooter } from './HelpFooter';
 import { testIds } from '../../constants/testIds';
 
@@ -40,6 +41,27 @@ describe('HelpFooter', () => {
     const button = screen.getByRole('button', { name: 'Keyboard shortcuts' });
     expect(button).toHaveStyle({ fontSize: '11.5px', borderWidth: '0px' });
     expect(link).not.toHaveStyle({ fontSize: '11.5px' });
+  });
+
+  it('renders href-backed controls with the text fill appearance', () => {
+    const reference = (fill: 'text' | 'solid') => {
+      const { container, unmount } = render(
+        <LinkButton variant="secondary" size="sm" fill={fill} href="https://example.com">
+          ref
+        </LinkButton>
+      );
+      const { className } = container.querySelector('a')!;
+      unmount();
+      return className;
+    };
+
+    const textClass = reference('text');
+    const solidClass = reference('solid');
+    render(<HelpFooter />);
+    const footerClass = screen.getByRole('link', { name: 'Documentation' }).className;
+
+    expect(textClass).not.toEqual(solidClass);
+    expect(footerClass).toEqual(textClass);
   });
 
   it('invokes the callback once per click', () => {
