@@ -995,3 +995,51 @@ it('keeps workflow observation until the last objective or verification step is 
   expect(coordinator.needsWorkflowObservation()).toBe(false);
   coordinator.stop();
 });
+
+describe('a step whose control already holds its target state', () => {
+  const deferred = () => {
+    let resolve!: (met: boolean | undefined) => void;
+    const promise = new Promise<boolean | undefined>((done) => (resolve = done));
+    return { promise, resolve };
+  };
+
+  it('completes as objectives once the step is eligible', async () => {
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({ eligible: false, readTargetState: jest.fn().mockResolvedValue(true) });
+    coordinator.register(item);
+    coordinator.start();
+    await settle();
+    expect(item.commit).not.toHaveBeenCalled();
+    coordinator.update(item.id, { ...item, eligible: true });
+    await settle();
+    expect(item.commit).toHaveBeenCalledWith('objectives', 'load');
+    coordinator.stop();
+  });
+
+  it('ignores a read that settles after the reader asked for completion', async () => {
+    const read = deferred();
+    const coordinator = new CompletionCoordinator(jest.fn().mockResolvedValue(false));
+    const item = step({ verify: ['on-page:/never-here'], readTargetState: () => read.promise });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.request(item.id);
+    read.resolve(true);
+    await settle();
+    expect(item.commit).not.toHaveBeenCalled();
+    expect(coordinator.waiting(item.id)).toBe(true);
+    coordinator.stop();
+  });
+
+  it('ignores a read that settles after the step started running', async () => {
+    const read = deferred();
+    const coordinator = new CompletionCoordinator(jest.fn());
+    const item = step({ readTargetState: () => read.promise });
+    coordinator.register(item);
+    coordinator.start();
+    coordinator.update(item.id, { ...item, executing: true });
+    read.resolve(true);
+    await settle();
+    expect(item.commit).not.toHaveBeenCalled();
+    coordinator.stop();
+  });
+});

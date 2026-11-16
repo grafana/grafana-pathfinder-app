@@ -29,6 +29,7 @@ import { StorageKeys } from '../../lib/storage-keys';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { createPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
+import { resetPrTestProgress } from '../docs-panel/hooks/resetGuideProgress';
 
 const PR_URL_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_URL;
 const SELECTED_FILE_STORAGE_KEY = StorageKeys.DEVTOOLS_PR_TESTER_SELECTED_FILE;
@@ -493,6 +494,14 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     [pathCandidates]
   );
 
+  const prManifestById = useMemo(() => {
+    const next = new Map<string, Record<string, unknown>>();
+    for (const manifest of allManifests.values()) {
+      next.set(manifest.id, manifest as unknown as Record<string, unknown>);
+    }
+    return next;
+  }, [allManifests]);
+
   /**
    * Build the path package preview for the selected candidate by overlaying the
    * PR's changed content on the published catalog. Pure derivation from fetched
@@ -509,11 +518,12 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
       coverFromPr: prContentById.get(selectedCandidate.id)?.file,
       packageManifest: selectedCandidate.manifest,
       prContentById,
+      prManifestById,
       catalogById: catalog?.byId ?? EMPTY_CATALOG_BY_ID,
       catalogBaseUrl: catalog?.baseUrl ?? '',
       fetchId,
     });
-  }, [selectedCandidate, prContentById, catalog, fetchId]);
+  }, [selectedCandidate, prContentById, prManifestById, catalog, fetchId]);
 
   const hasAnyPathPackage = pathCandidates.length > 0;
 
@@ -544,6 +554,7 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    resetPrTestProgress().catch((error) => logger.warn('Failed to clear earlier PR preview progress', { error }));
     setFetchId(createPrTestFetchId());
     setFetchState('fetching');
     setError(null);
