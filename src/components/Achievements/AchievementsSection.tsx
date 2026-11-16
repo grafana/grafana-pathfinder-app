@@ -38,7 +38,6 @@ export function AchievementsSectionView({ view, styles }: AchievementsSectionPro
 
 const HOME_SHELF_ROWS = 4;
 
-/** Takes the legacy badge shelf's slot on the Learn home. */
 export function HomeAchievementsShelf({ styles }: AchievementsSectionProps) {
   return <HomeAchievementsShelfView view={useAchievementsView()} styles={styles} />;
 }
@@ -66,7 +65,6 @@ export function HomeAchievementsShelfView({ view, styles }: AchievementsSectionP
   );
 }
 
-/** Takes the legacy badge gallery's place on the badges page. */
 export function AchievementsList({ styles }: AchievementsSectionProps) {
   return <AchievementsListView view={useAchievementsView()} styles={styles} />;
 }
