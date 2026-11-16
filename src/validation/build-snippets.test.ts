@@ -136,6 +136,63 @@ describe('buildSnippetCatalog', () => {
     expect(catalog['good-guided']).toBeDefined();
   });
 
+  it('accepts a snippet with a valid grot-guide block', () => {
+    writeJson(
+      path.join(tmpDir, 'good-grot.json'),
+      validBody('good-grot', {
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'r1' }] },
+            screens: [
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done',
+                links: [{ title: 'D', linkText: 'L', href: '/d' }],
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    const { catalog, errors } = buildSnippetCatalog(tmpDir);
+
+    expect(errors).toHaveLength(0);
+    expect(catalog['good-grot']).toBeDefined();
+  });
+
+  it('drops a snippet with a grot-guide self-loop error', () => {
+    writeJson(
+      path.join(tmpDir, 'loop-grot.json'),
+      validBody('loop-grot', {
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'q1' }] },
+            screens: [
+              { type: 'question', id: 'q1', title: 'Q1', options: [{ text: 'Self', screenId: 'q1' }] },
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done',
+                links: [{ title: 'D', linkText: 'L', href: '/d' }],
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    const { catalog, errors } = buildSnippetCatalog(tmpDir);
+
+    expect(catalog['loop-grot']).toBeUndefined();
+    expect(errors.some((e) => e.includes('self_loop'))).toBe(true);
+  });
+
   // Each invalid body must be dropped from the catalog and reported as an error.
   it.each([
     {

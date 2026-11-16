@@ -46,7 +46,7 @@ describe('fetchMyAssignments', () => {
     });
   });
 
-  it('fails when the proxy reports itself unavailable', async () => {
+  it('distinguishes an unavailable capability from a failed request', async () => {
     mockGet.mockResolvedValue({
       capability: { available: false, reason: 'obo-unavailable' },
       assignments: [],
@@ -54,7 +54,7 @@ describe('fetchMyAssignments', () => {
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual({ ok: false });
+    expect(result).toEqual({ ok: false, reason: 'capability-unavailable' });
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('obo-unavailable');
   });
 
@@ -77,7 +77,7 @@ describe('fetchMyAssignments', () => {
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual({ ok: false });
+    expect(result).toEqual({ ok: false, reason: 'capability-unavailable' });
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('feature-toggle-disabled');
   });
 
@@ -88,13 +88,16 @@ describe('fetchMyAssignments', () => {
     expect(mockGet).not.toHaveBeenCalled();
   });
 
-  it('fails when the response is malformed', async () => {
-    mockGet.mockResolvedValue({ capability: { available: true } });
+  it.each([undefined, null, {}, { capability: { available: true } }])(
+    'fails when the response envelope is malformed (%p)',
+    async (response) => {
+      mockGet.mockResolvedValue(response);
 
-    const result = await fetchMyAssignments('stacks-123');
+      const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual({ ok: false });
-  });
+      expect(result).toEqual({ ok: false });
+    }
+  );
 
   it.each([
     { shape: 'an object', assignments: { fundamentals: {} } },

@@ -2,7 +2,7 @@
 # This image is separate from Dockerfile.cli because it includes Playwright,
 # Chromium, and the browser runner.
 
-FROM node:26-bookworm@sha256:fa52d1669505e29b58c042875b1d65c229e0787a3610fd52869b22b68e480853
+FROM node:26-bookworm@sha256:b7087bc4d973034b30854b378ba107f9fab622b47514cb7e2592e41b8bab8d49
 
 ARG RUNNER_VERSION=source
 ENV PATHFINDER_E2E_RUNNER_VERSION=${RUNNER_VERSION}

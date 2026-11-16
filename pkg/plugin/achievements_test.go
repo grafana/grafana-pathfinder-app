@@ -624,6 +624,14 @@ func TestMyAchievements_ReadFailures(t *testing.T) {
 			t.Fatalf("status %d capability %+v", rr.Code, body.Capability)
 		}
 	})
+	t.Run("row names someone else", func(t *testing.T) {
+		mem := newMemAchievements()
+		mem.listErr = fmt.Errorf("read award: %w", errAchievementRowMismatch)
+		rr, body := getMyAchievements(t, newAchievementsTestApp(t, mem), achievementsTestUser)
+		if rr.Code != http.StatusOK || rr.Header().Get("Retry-After") != "" || body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
+			t.Fatalf("status %d retry-after %q capability %+v, want the standing backend-unavailable answer", rr.Code, rr.Header().Get("Retry-After"), body.Capability)
+		}
+	})
 	t.Run("transient", func(t *testing.T) {
 		mem := newMemAchievements()
 		mem.listErr = fmt.Errorf("timeout")

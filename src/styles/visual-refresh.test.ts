@@ -42,6 +42,20 @@ describe.each(['dark', 'light'] as const)('visual refresh in %s mode', (mode) =>
     expect(rules(journeyContentHtml(theme))).toContain(`border-left:3px solid ${theme.colors.accent.main}`);
   });
 
+  it('styles disabled bottom-nav journey buttons with disabled action tokens and no hover lift', () => {
+    const styles = rules(journeyContentHtml(theme)) ?? '';
+    const navButtonsDisabled = styles.match(
+      /\.journey-nav-prev, & \.journey-nav-next\{[^}]+&:disabled\{([^}]+)&:hover\{([^}]+)\}\}/
+    );
+    expect(navButtonsDisabled).not.toBeNull();
+    const [, baseDisabled, hoverDisabled] = navButtonsDisabled!;
+    expect(baseDisabled).toContain(`background-color:${theme.colors.action.disabledBackground}`);
+    expect(baseDisabled).toContain(`color:${theme.colors.action.disabledText}`);
+    expect(baseDisabled).toContain('cursor:not-allowed');
+    expect(baseDisabled).toContain('transform:none');
+    expect(hoverDisabled).toContain('transform:none');
+  });
+
   it('renders guide styles on development hosts without accent tokens', () => {
     const legacyTheme = createTheme({ colors: { mode } });
     Reflect.deleteProperty(legacyTheme.colors, 'accent');

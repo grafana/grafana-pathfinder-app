@@ -23,7 +23,7 @@ export const getActiveExperiments = (): ExperimentAnalyticsEntry[] => {
 
   const autoOpenGuide = getAutoOpenGuideEnrollment();
   if (autoOpenGuide) {
-    entries.push({ flag: AUTO_OPEN_GUIDE_EXPERIMENT_FLAG, variant: autoOpenGuide.variant });
+    entries.push({ flag: autoOpenGuide.flag ?? AUTO_OPEN_GUIDE_EXPERIMENT_FLAG, variant: autoOpenGuide.variant });
   }
 
   const banner = getEnrolledInteractiveLearningBannerConfig();

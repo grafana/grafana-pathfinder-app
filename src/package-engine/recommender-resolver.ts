@@ -1,3 +1,4 @@
+import { isBundledTutorial } from '../lib/bundled-tutorial-identity';
 import type { GuideDiagnostic, GuideLoadContext } from '../types/guide-diagnostics.types';
 import { diagnoseGuideError } from '../lib/guide-diagnostics';
 import { fetchGuideResource, finishGuideLoad } from '../lib/telemetry/guide-load';
@@ -13,6 +14,7 @@ import { fetchGuideResource, finishGuideLoad } from '../lib/telemetry/guide-load
  * @coupling API: GET /api/v1/packages/{id} in grafana-recommender openapi.yaml
  */
 
+import { isTrustedFinalUrl } from '../security';
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 import { ContentJsonSchema } from '../types/package.schema';
 import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
@@ -48,6 +50,35 @@ export class RecommenderPackageResolver implements PackageResolver {
   }
 
   async resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<PackageResolution>((resolve) => {
+      timer = setTimeout(
+        () => {
+          controller.abort();
+          resolve(
+            failure(packageId, 'network-error', 'Package resolution timed out', {
+              source: 'cdn',
+              stage: 'fetch',
+              reason: 'timeout',
+            })
+          );
+        },
+        isBundledTutorial(packageId) ? 1_500 : 5_000
+      );
+    });
+    try {
+      return await Promise.race([this.resolveWithSignal(packageId, controller.signal, options), deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async resolveWithSignal(
+    packageId: string,
+    signal: AbortSignal,
+    options?: ResolveOptions
+  ): Promise<PackageResolution> {
     let resolutionData: V1PackageResolutionResponse;
     try {
       const endpoint = new URL(`/api/v1/packages/${encodeURIComponent(packageId)}`, this.baseUrl);
@@ -57,6 +88,7 @@ export class RecommenderPackageResolver implements PackageResolver {
         {
           method: 'GET',
           headers: { Accept: 'application/json' },
+          signal,
         },
         options?.loadContext,
         'index'
@@ -91,6 +123,15 @@ export class RecommenderPackageResolver implements PackageResolver {
       }
 
       resolutionData = await response.json();
+      if (
+        resolutionData?.id !== packageId ||
+        typeof resolutionData.repository !== 'string' ||
+        !resolutionData.contentUrl ||
+        !isTrustedFinalUrl(resolutionData.contentUrl) ||
+        (resolutionData.manifestUrl && !isTrustedFinalUrl(resolutionData.manifestUrl))
+      ) {
+        return failure(packageId, 'validation-error', 'Invalid package resolution');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown network error';
       return failure(
@@ -117,7 +158,7 @@ export class RecommenderPackageResolver implements PackageResolver {
       }
 
       const metadataOnly = options.loadContent === 'metadata-only';
-      const loaded = await this.loadFromCdn(resolutionData, packageId, metadataOnly, options.loadContext);
+      const loaded = await this.loadFromCdn(resolutionData, packageId, metadataOnly, options.loadContext, signal);
       if (!loaded.ok) {
         return loaded;
       }
@@ -132,12 +173,13 @@ export class RecommenderPackageResolver implements PackageResolver {
     resolutionData: V1PackageResolutionResponse,
     packageId: string,
     metadataOnly = false,
-    context?: GuideLoadContext
+    context?: GuideLoadContext,
+    signal?: AbortSignal
   ): Promise<{ ok: true; content?: ContentJson; manifest?: ManifestJson } | PackageResolutionFailure> {
     try {
       let content: ContentJson | undefined;
       if (!metadataOnly) {
-        const contentResponse = await fetchGuideResource(resolutionData.contentUrl, undefined, context, 'content');
+        const contentResponse = await fetchGuideResource(resolutionData.contentUrl, { signal }, context, 'content');
         if (!contentResponse.ok) {
           return failure(packageId, 'network-error', `Failed to fetch content: HTTP ${contentResponse.status}`, {
             source: 'cdn',
@@ -148,12 +190,12 @@ export class RecommenderPackageResolver implements PackageResolver {
         }
         const rawContent = await contentResponse.json();
         const contentResult = ContentJsonSchema.safeParse(rawContent);
-        if (!contentResult.success) {
+        if (!contentResult.success || contentResult.data.id !== packageId) {
           return failure(packageId, 'validation-error', 'Invalid content.json', {
             source: 'cdn',
             stage: 'validate',
             reason: 'schema-invalid',
-            validationCount: contentResult.error.issues.length,
+            validationCount: contentResult.success ? 1 : contentResult.error.issues.length,
           });
         }
         content = contentResult.data as ContentJson;
@@ -163,7 +205,12 @@ export class RecommenderPackageResolver implements PackageResolver {
       if (resolutionData.manifestUrl) {
         let diagnostic: GuideDiagnostic | undefined;
         try {
-          const manifestResponse = await fetchGuideResource(resolutionData.manifestUrl, undefined, context, 'manifest');
+          const manifestResponse = await fetchGuideResource(
+            resolutionData.manifestUrl,
+            { signal },
+            context,
+            'manifest'
+          );
           if (manifestResponse.ok) {
             const rawManifest = await manifestResponse.json();
             const manifestResult = RuntimeManifestJsonObjectSchema.safeParse(rawManifest);
@@ -188,6 +235,9 @@ export class RecommenderPackageResolver implements PackageResolver {
         }
       }
 
+      if (isBundledTutorial(packageId) && manifest?.id !== packageId) {
+        return failure(packageId, 'validation-error', 'Missing or mismatched tutorial manifest');
+      }
       return { ok: true, content, manifest };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'CDN fetch failed';

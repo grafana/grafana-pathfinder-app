@@ -2,7 +2,12 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { useCatalogProgress } from './catalog-progress.hook';
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { LearningPath } from '../types/learning-paths.types';
-import { interactiveCompletionStorage, journeyCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import {
+  interactiveCompletionStorage,
+  journeyCompletionStorage,
+  learningProgressStorage,
+  milestoneCompletionStorage,
+} from '../lib/user-storage';
 import { dispatchProgress } from '../global-state/progress-events';
 import { getOrMintAttempt } from '../completion-records/guide-attempts';
 
@@ -10,6 +15,7 @@ jest.mock('../lib/user-storage', () => ({
   interactiveCompletionStorage: { getAll: jest.fn(), set: jest.fn(), clear: jest.fn() },
   journeyCompletionStorage: { getAll: jest.fn(), set: jest.fn(), clear: jest.fn() },
   learningProgressStorage: { get: jest.fn(), update: jest.fn() },
+  milestoneCompletionStorage: { getCompletedSync: jest.fn(() => new Set()) },
 }));
 jest.mock('../completion-records/guide-attempts', () => ({ getOrMintAttempt: jest.fn() }));
 
@@ -32,6 +38,7 @@ const emptyProgress = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(milestoneCompletionStorage.getCompletedSync).mockReturnValue(new Set());
   jest.mocked(interactiveCompletionStorage.getAll).mockResolvedValue({});
   jest.mocked(journeyCompletionStorage.getAll).mockResolvedValue({});
   jest.mocked(learningProgressStorage.get).mockResolvedValue(emptyProgress);
@@ -176,4 +183,64 @@ it('refreshes persisted progress after the shared guide progress event', async (
   jest.mocked(interactiveCompletionStorage.getAll).mockResolvedValue({ 'bundled:dashboard': 30 });
   act(() => dispatchProgress({ kind: 'guide', contentKey: 'bundled:dashboard', percentage: 30, hasProgress: true }));
   await waitFor(() => expect(result.current.get('bundled:dashboard')?.percent).toBe(30));
+});
+
+it('recalculates a catalogue path from its members and refreshes it when guide progress changes', async () => {
+  const items = [
+    item('path', 'bundled:path/content.json', { id: 'path', format: 'path', memberIds: ['first', 'second'] }),
+    item('first', 'bundled:first/content.json', { id: 'first' }),
+    item('second', 'bundled:second/content.json', { id: 'second' }),
+  ];
+  jest.mocked(journeyCompletionStorage.getAll).mockResolvedValue({ 'bundled:path/content.json': 33 });
+  jest.mocked(interactiveCompletionStorage.getAll).mockResolvedValue({ 'bundled:first/content.json': 100 });
+  const { result } = renderHook(() => useCatalogProgress(items, 'scope'));
+  await waitFor(() => expect(result.current.get('path')).toEqual({ percent: 50, nextId: 'second' }));
+
+  jest.mocked(interactiveCompletionStorage.getAll).mockResolvedValue({
+    'bundled:first/content.json': 100,
+    'bundled:second/content.json': 50,
+  });
+  act(() =>
+    dispatchProgress({ kind: 'guide', contentKey: 'bundled:second/content.json', percentage: 50, hasProgress: true })
+  );
+  await waitFor(() => expect(result.current.get('path')).toEqual({ percent: 75, nextId: 'second' }));
+  expect(journeyCompletionStorage.set).not.toHaveBeenCalled();
+});
+
+it('includes legacy milestone completions in the catalogue path percentage before opening its sidebar', async () => {
+  const items = [
+    item('path', 'https://grafana.com/docs/learning-paths/path/', {
+      id: 'path',
+      format: 'path',
+      memberIds: ['first', 'second'],
+    }),
+    item('first', 'https://grafana.com/docs/learning-paths/path/first/', { id: 'first' }),
+    item('second', 'https://grafana.com/docs/learning-paths/path/second/', { id: 'second' }),
+  ];
+  jest.mocked(milestoneCompletionStorage.getCompletedSync).mockReturnValue(new Set(['first']));
+  const { result } = renderHook(() => useCatalogProgress(items, 'scope'));
+  await waitFor(() => expect(result.current.get('path')).toEqual({ percent: 50, nextId: 'second' }));
+  expect(milestoneCompletionStorage.getCompletedSync).toHaveBeenCalledWith(items[0]!.url, [
+    items[1]!.url,
+    items[2]!.url,
+  ]);
+  expect(interactiveCompletionStorage.set).not.toHaveBeenCalled();
+});
+
+it('keeps a path member in its own source and excludes members missing from that catalogue', async () => {
+  const items = [
+    item('public-path', 'bundled:public-path/content.json', {
+      id: 'public-path',
+      format: 'path',
+      memberIds: ['shared', 'unpublished'],
+    }),
+    item('public-guide', 'bundled:shared/content.json', { id: 'shared' }),
+    item('private-guide', 'backend-guide:shared', { id: 'shared', source: 'organization' }),
+  ];
+  jest.mocked(interactiveCompletionStorage.getAll).mockResolvedValue({
+    'bundled:shared/content.json': 25,
+    'backend-guide:shared': 100,
+  });
+  const { result } = renderHook(() => useCatalogProgress(items, 'scope'));
+  await waitFor(() => expect(result.current.get('public-path')).toEqual({ percent: 25, nextId: 'shared' }));
 });

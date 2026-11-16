@@ -27,12 +27,15 @@ const STEPS = [
   'lint',
   'prettier-test',
   'docs:sync-terms:check',
+  'test:i18n',
+  'i18n:check',
   'lint:go',
   'test:go',
   'test:coverage',
   'test:review-contract',
   'test:review-lite',
   'test:scripts',
+  'test:sync-bundled-tutorials',
 ];
 
 const root = path.resolve(__dirname, '..');

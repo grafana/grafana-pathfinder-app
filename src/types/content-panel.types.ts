@@ -104,12 +104,14 @@ export interface PersistedTabData {
   /** Optional for records written before tab kind became a required runtime invariant. */
   type?: LearningJourneyTabType;
   packageInfo?: PackageOpenInfo;
-  /** Persisted so the selected Path Tracks tab survives a surface switch; `activeTrackMilestones` is re-derived by the cover page. */
+  /** Persisted so the selected Path Tracks tab survives a surface switch; `activeTrackMilestones` is re-resolved on restore and by the cover page. */
   activeTrackId?: string | null;
   activeTrackPathId?: string | null;
 }
 
 export interface PackageOpenInfo {
+  /** Resolved owning path locator, bound to the manifest identity and source across tab restore. */
+  resolvedPath?: { id: string; repository?: string; baseUrl: string };
   packageId?: string;
   packageManifest?: Record<string, unknown>;
   /** Recommendation-level repository (sibling of manifest in the V1 wire shape;
@@ -123,6 +125,8 @@ export interface PackageOpenInfo {
   launchSource?: string;
   /** Path Tracks tab the cover page opens on. */
   trackId?: string;
+  /** That track's resolved guides, for a member opened without its cover, so Next/Previous stay on the track. Not persisted. */
+  trackMilestones?: Milestone[];
 }
 
 export interface ContextPanelState extends SceneObjectState {

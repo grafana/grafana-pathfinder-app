@@ -19,6 +19,15 @@ export interface CatalogPackage {
   curatedPath?: LearningPath;
 }
 
+export interface EligibleCatalogEntry {
+  id: string;
+  title: string;
+  contentUrl: string;
+  manifestUrl: string;
+  repository: string;
+  manifest: Record<string, unknown>;
+}
+
 export interface CatalogFilters {
   query: string;
   format: 'all' | 'guide' | 'path';

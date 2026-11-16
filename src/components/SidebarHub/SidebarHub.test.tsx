@@ -38,7 +38,7 @@ const stats: HubStats = { assignments: 2, inProgress: 1, completed: 7 };
 function renderHub(props: Partial<React.ComponentProps<typeof SidebarHub>> = {}, onClickAbove?: () => void) {
   const onOpenMyLearning = jest.fn();
   const onResume = jest.fn();
-  render(
+  const result = render(
     <div onClick={onClickAbove}>
       <SidebarHub
         userName="Ada"
@@ -56,7 +56,7 @@ function renderHub(props: Partial<React.ComponentProps<typeof SidebarHub>> = {},
       />
     </div>
   );
-  return { onOpenMyLearning, onResume };
+  return { ...result, onOpenMyLearning, onResume };
 }
 
 describe('SidebarHub', () => {
@@ -454,6 +454,8 @@ describe('SidebarHub', () => {
   });
 
   describe('custom guides', () => {
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
     const customGuides = ['One', 'Two', 'Three', 'Four', 'Five'].map((name) =>
       guide(`Custom ${name}`, { organization: true, summary: undefined })
     );
@@ -472,6 +474,25 @@ describe('SidebarHub', () => {
 
       fireEvent.click(within(section).getByRole('button', { name: 'Show less' }));
       expect(within(section).getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(3);
+    });
+
+    it('remembers hiding and reopening custom guides across sidebar mounts', () => {
+      const first = renderHub({ customGuides });
+      fireEvent.click(screen.getByRole('button', { name: 'Custom guides' }));
+      expect(screen.queryByRole('button', { name: /^Start: Custom/ })).not.toBeInTheDocument();
+      expect(screen.getByText('Featured guide')).toBeVisible();
+      first.unmount();
+
+      const second = renderHub({ customGuides: customGuides.slice(0, 1) });
+      expect(screen.getByRole('button', { name: 'Custom guides' })).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByRole('button', { name: /^Start: Custom/ })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Custom guides' }));
+      expect(screen.getByRole('button', { name: 'Start: Custom One' })).toBeVisible();
+      second.unmount();
+
+      renderHub({ customGuides });
+      expect(screen.getByRole('button', { name: 'Custom guides' })).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getAllByRole('button', { name: /^Start: Custom/ })).toHaveLength(3);
     });
 
     it('has no expand control when the list already fits', () => {

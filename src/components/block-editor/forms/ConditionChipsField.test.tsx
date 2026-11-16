@@ -99,6 +99,49 @@ describe('ConditionChipsField — chip rendering', () => {
 });
 
 describe('ConditionChipsField — adding a chip', () => {
+  it.each(['requirements', 'objectives', 'conditions', 'verify'] as const)(
+    'scopes workflow choices in %s mode',
+    (mode) => {
+      render(<ConditionChipsField value="" onChange={jest.fn()} mode={mode} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+      expect(screen.queryByRole('option', { name: 'workflow-ready:' })).not.toBeInTheDocument();
+      expect(!!screen.queryByRole('option', { name: 'Cloud token created' })).toBe(mode !== 'requirements');
+    }
+  );
+
+  it('adds the Cloud token objective without an argument and preserves it in raw mode', () => {
+    const onChange = jest.fn();
+    const { rerender } = render(
+      <ConditionChipsField
+        value="on-page:/a/grafana-collector-app/alloy"
+        onChange={onChange}
+        mode="objectives"
+        testId="rf"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    expect(screen.getByRole('option', { name: 'Cloud token created' })).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('rf-add-type'), {
+      target: { value: 'workflow-ready:cloud-access-policy-token' },
+    });
+    expect(screen.queryByTestId('rf-add-arg')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    const value = 'on-page:/a/grafana-collector-app/alloy, workflow-ready:cloud-access-policy-token';
+    expect(onChange).toHaveBeenCalledWith(value);
+    rerender(<ConditionChipsField value={value} onChange={onChange} mode="objectives" testId="rf" />);
+    fireEvent.click(screen.getByRole('button', { name: 'View raw' }));
+    expect(screen.getByRole('textbox')).toHaveValue(value);
+    const edited = 'workflow-ready:cloud-access-policy-token';
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: edited } });
+    expect(onChange).toHaveBeenLastCalledWith(edited);
+    rerender(<ConditionChipsField value={edited} onChange={onChange} mode="objectives" testId="rf" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use chip editor' }));
+    expect(screen.getByLabelText(`Remove ${edited}`)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Remove on-page:/a/grafana-collector-app/alloy')).not.toBeInTheDocument();
+  });
+
   it('adds a fixed requirement directly when picked', () => {
     const onChange = jest.fn();
     render(<ConditionChipsField value="" onChange={onChange} mode="requirements" testId="rf" />);

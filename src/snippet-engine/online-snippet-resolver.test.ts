@@ -125,6 +125,44 @@ describe('OnlineCdnSnippetResolver.resolve', () => {
     warn.mockRestore();
   });
 
+  it('resolves a published snippet whose grot-guide block has an unreachable screen, warning instead of dropping it', async () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    mockFetchResolved({
+      ok: true,
+      json: async () => ({
+        ...validSnippet,
+        blocks: [
+          {
+            type: 'grot-guide',
+            welcome: { title: 'W', body: 'B', ctas: [{ text: 'Go', screenId: 'r1' }] },
+            screens: [
+              {
+                type: 'result',
+                id: 'r1',
+                title: 'R1',
+                body: 'Done',
+                links: [{ title: 'D', linkText: 'L', href: '/d' }],
+              },
+              {
+                type: 'result',
+                id: 'orphan',
+                title: 'Orphan',
+                body: 'Never seen',
+                links: [{ title: 'D', linkText: 'L', href: '/d' }],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const result = await createOnlineSnippetResolver().resolve('datasource-picker');
+
+    expect(result).toMatchObject({ ok: true, id: 'datasource-picker', source: 'online-cdn' });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unreachable_screen'));
+    warn.mockRestore();
+  });
+
   it('returns a network-error failure when fetch rejects', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch;
 

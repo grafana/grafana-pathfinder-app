@@ -37,7 +37,7 @@ The components are organized into logical groups with clear responsibilities:
 
 - **EnableRecommenderBanner/**: Banner for enabling recommendation service
 - **HelpFooter/**: Help content and footer integration
-- **SidebarHub/**: The Recommended tab content behind the `pathfinder.sidebar-hub` flag: welcome header, featured recommendation, resume card, count tiles, expandable "More recommended" rows, an expandable "Other documentation" list, and a temporary custom guides list
+- **SidebarHub/**: The Recommended tab content: welcome header, featured recommendation, resume card, count tiles, expandable "More recommended" rows, an expandable "Other documentation" list, and the organization's custom guides. A custom path row expands to its milestones (`CustomGuides.tsx`): resolved on first expand, with completion, the milestone to resume at, and a switch between Fundamentals and the path's tracks. Any milestone opens directly; a track milestone carries its track so Next and Previous stay on it. The "Recommended next" and "You might also like" links are not rebuilt in the hub
 - **DomPathTooltip/**: DOM path visualization tooltip for element inspection
 - **SkeletonLoader/**: Loading state skeleton UI with multiple variants
 - **FeedbackButton/**: User feedback collection button

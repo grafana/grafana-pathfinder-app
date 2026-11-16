@@ -1,7 +1,9 @@
+import { isAllowedContentUrl } from '../../../security';
 import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../../recovery';
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
-import { getPackageRenderType } from '../../../types/package.types';
+import { getPackageRenderType, isSamePackageRepository } from '../../../types/package.types';
+import { getInteractiveLearningUrlTitle } from '../../../utils/doc-page-title';
 
 export interface DocsLoadAlignmentInput {
   requestedUrl: string;
@@ -75,16 +77,29 @@ export interface DocsLoadSuccessPatchInput {
   fetchedContent: RawContent;
   packageInfo?: PackageOpenInfo;
   pendingAlignment?: PendingAlignment;
+  isReload?: boolean;
 }
 
-/** An `api:` open titles the tab with the resource id; take `spec.title` only while it still is. */
-export function titleFromBackendGuide(tab: LearningJourneyTab, fetchedContent: RawContent): string | undefined {
+export function titleFromLoadedContent(
+  tab: LearningJourneyTab,
+  requestedUrl: string,
+  fetchedContent: RawContent,
+  isReload = false
+): string | undefined {
   const fetched = fetchedContent.metadata.title?.trim();
   if (!fetched) {
     return undefined;
   }
-  const resourceName = backendGuideResourceName(tab.baseUrl) ?? backendGuideResourceName(fetchedContent.url);
-  if (!resourceName || tab.title !== resourceName || fetched === resourceName) {
+  const isOwnBackendGuide =
+    tab.baseUrl.startsWith('backend-guide:') && requestedUrl === tab.baseUrl && fetchedContent.url === tab.baseUrl;
+  if (isReload && isOwnBackendGuide) {
+    return fetched === tab.title ? undefined : fetched;
+  }
+  const placeholder =
+    backendGuideResourceName(tab.baseUrl) ??
+    backendGuideResourceName(fetchedContent.url) ??
+    (requestedUrl === tab.baseUrl ? getInteractiveLearningUrlTitle(tab.baseUrl) : undefined);
+  if (!placeholder || tab.title !== placeholder || fetched === placeholder) {
     return undefined;
   }
   return fetched;
@@ -108,9 +123,10 @@ export function buildDocsLoadSuccessPatch({
   fetchedContent,
   packageInfo,
   pendingAlignment,
+  isReload,
 }: DocsLoadSuccessPatchInput): Partial<LearningJourneyTab> {
   const learningJourney = fetchedContent.metadata.learningJourney;
-  const title = titleFromBackendGuide(tab, fetchedContent);
+  const title = titleFromLoadedContent(tab, requestedUrl, fetchedContent, isReload);
 
   return {
     content: fetchedContent,
@@ -123,8 +139,53 @@ export function buildDocsLoadSuccessPatch({
         : fetchedContent.type === 'interactive'
           ? 'interactive'
           : tab.type,
-    packageInfo: packageInfo ?? tab.packageInfo,
+    packageInfo: retainResolvedPath(packageInfo ?? tab.packageInfo, fetchedContent),
     pathContext: learningJourney ? { learningJourney } : undefined,
-    pendingAlignment,
+    pendingAlignment: pendingAlignment === undefined && isReload ? tab.pendingAlignment : pendingAlignment,
+  };
+}
+
+function retainResolvedPath(
+  packageInfo: PackageOpenInfo | undefined,
+  content: RawContent
+): PackageOpenInfo | undefined {
+  const manifest = packageInfo?.packageManifest;
+  const metadata = content.metadata;
+  const owner = metadata.journeyManifest ?? metadata.packageManifest;
+  const baseUrl = metadata.learningJourney?.baseUrl ?? metadata.trackMemberBaseUrl;
+  const repository = packageInfo?.repository ?? manifest?.repository;
+  if (
+    !packageInfo ||
+    !manifest ||
+    (manifest.type !== 'path' && manifest.type !== 'journey') ||
+    typeof manifest.id !== 'string' ||
+    owner?.id !== manifest.id ||
+    (owner.repository !== undefined && !isSamePackageRepository(owner.repository, repository)) ||
+    !baseUrl ||
+    !isAllowedContentUrl(baseUrl)
+  ) {
+    return packageInfo;
+  }
+  const resolvedTracks = metadata.learningJourney?.tracks;
+  const tracks = resolvedTracks?.map((track) => ({
+    trackId: track.trackId,
+    label: track.label,
+    guides: track.milestones.flatMap((milestone) => (milestone.id ? [milestone.id] : [])),
+  }));
+  const packageManifest: Record<string, unknown> = {
+    ...manifest,
+    ...((owner.type === 'path' || owner.type === 'journey') && owner),
+    ...(tracks !== undefined && { tracks }),
+  };
+  const foundationsChanged = JSON.stringify(packageManifest.milestones) !== JSON.stringify(manifest.milestones);
+  return {
+    ...packageInfo,
+    packageManifest,
+    ...(foundationsChanged && { resolvedMilestones: undefined }),
+    resolvedPath: {
+      id: manifest.id,
+      ...(typeof repository === 'string' && { repository }),
+      baseUrl,
+    },
   };
 }

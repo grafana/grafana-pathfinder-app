@@ -1,4 +1,4 @@
-import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { BLOCK_PROGRESS_RULE_VERSION, reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 import type { CompletionFact } from './types';
 import { completionAttemptAnalyticsProperties } from './progress-analytics';
@@ -23,7 +23,7 @@ export function completionAnalytics(fact: CompletionFact): {
       completable_block_count: fact.guideStats.completableBlockCount,
       section_count: fact.guideStats.sectionCount,
       guide_stats_version: fact.guideStats.version,
-      block_progress_rule_version: 'block-position-v1',
+      block_progress_rule_version: BLOCK_PROGRESS_RULE_VERSION,
     }),
     ...(fact.durationMs !== undefined && { duration_ms: fact.durationMs }),
   };

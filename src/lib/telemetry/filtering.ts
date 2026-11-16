@@ -20,17 +20,21 @@ import {
 import {
   AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
   AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+  ONBOARDING_EXPLORING_EXPERIMENT_ID,
+  ONBOARDING_EXPLORING_ELIGIBLE_EVENT,
 } from '../../constants/auto-open-guide-experiment';
 
 // Experiments that enroll while Pathfinder is closed: their control arms never open it.
 const CLOSED_SURFACE_EXPERIMENT_IDS: ReadonlySet<string> = new Set([
   HELP_BUTTON_EXPERIMENT_ID,
   AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+  ONBOARDING_EXPLORING_EXPERIMENT_ID,
 ]);
 const CLOSED_SURFACE_EXPERIMENT_EVENTS: ReadonlySet<string> = new Set([
   HELP_BUTTON_CLICK_EVENT,
   HELP_BUTTON_DISMISS_EVENT,
   AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
+  ONBOARDING_EXPLORING_ELIGIBLE_EVENT,
 ]);
 
 const APP_NAME = packageJson.name;

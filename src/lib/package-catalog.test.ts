@@ -1,5 +1,7 @@
 import {
   bundledCatalog,
+  eligibleCatalog,
+  eligibleDiscoveryCatalog,
   filterCatalog,
   mergeCatalog,
   onlineCatalog,
@@ -26,6 +28,235 @@ const repository: RepositoryJson = {
 };
 
 describe('package catalog', () => {
+  it('uses eligible IDs as the authority for bundled and curated discovery', () => {
+    const bundled = bundledCatalog(repository, {});
+    const online = eligibleCatalog([
+      {
+        id: 'intro',
+        title: 'Introduction',
+        repository: 'interactive-tutorials',
+        contentUrl: 'https://interactive-learning.grafana.net/packages/intro/content.json',
+        manifestUrl: 'https://interactive-learning.grafana.net/packages/intro/manifest.json',
+        manifest: { id: 'intro', type: 'guide', estimatedMinutes: 4, stats },
+      },
+    ]);
+    const curated: CatalogPackage[] = [
+      {
+        key: 'curated:valid',
+        id: 'valid',
+        title: 'Valid path',
+        format: 'path',
+        source: 'grafana',
+        url: '',
+        memberIds: ['intro'],
+      },
+      {
+        key: 'curated:invalid',
+        id: 'invalid',
+        title: 'Invalid path',
+        format: 'path',
+        source: 'grafana',
+        url: '',
+        memberIds: ['intro', 'unknown'],
+      },
+    ];
+    expect(online[0]).toMatchObject({ estimatedMinutes: 4, activityCount: 4 });
+    expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.key)).toEqual([
+      'bundled:intro',
+      'curated:valid',
+    ]);
+    expect(eligibleDiscoveryCatalog(bundled, [], curated)).toEqual([]);
+  });
+
+  it('excludes eligible-catalog fixtures and paths that reference them', () => {
+    const entry = (id: string, type: 'guide' | 'path', category?: string, milestones?: string[]) => ({
+      id,
+      title: id,
+      repository: 'interactive-tutorials',
+      contentUrl: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+      manifestUrl: `https://interactive-learning.grafana.net/packages/${id}/manifest.json`,
+      manifest: { id, type, category, milestones },
+    });
+    const online = eligibleCatalog([
+      entry('healthy', 'guide'),
+      entry('e2e-framework-test', 'guide'),
+      entry('json-guide-demo', 'guide'),
+      entry('other-fixture', 'guide', 'testing'),
+      entry('path-to-fixture', 'path', undefined, ['healthy', 'other-fixture']),
+    ]);
+    expect(online.map((item) => item.id)).toEqual(['healthy', 'path-to-fixture']);
+    const bundled = bundledCatalog(
+      {
+        'path-to-fixture': { type: 'path', path: 'path-to-fixture/', milestones: ['healthy', 'other-fixture'] },
+      },
+      {}
+    );
+    const curated: CatalogPackage[] = [
+      {
+        key: 'curated:fixture',
+        id: 'curated-fixture',
+        title: 'Fixture path',
+        format: 'path',
+        source: 'grafana',
+        url: '',
+        memberIds: ['json-guide-demo'],
+      },
+    ];
+    expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.id)).toEqual(['healthy']);
+  });
+
+  it.each(['', '../malformed', 'x'.repeat(254)])(
+    'omits a public path with malformed track-only member ID %p',
+    (memberId) => {
+      const entry = (id: string, manifest: Record<string, unknown>) => ({
+        id,
+        title: id,
+        repository: 'interactive-tutorials',
+        contentUrl: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+        manifestUrl: `https://interactive-learning.grafana.net/packages/${id}/manifest.json`,
+        manifest: { id, ...manifest },
+      });
+      const online = eligibleCatalog([
+        entry('healthy', { type: 'guide' }),
+        entry('broken-path', {
+          type: 'path',
+          milestones: ['healthy'],
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: [memberId] }],
+        }),
+        entry('nested', { type: 'journey', milestones: ['broken-path'] }),
+      ]);
+      expect(online.map((item) => item.id)).toEqual(['healthy', 'nested']);
+      const bundled = bundledCatalog(
+        {
+          'broken-path': {
+            type: 'path',
+            path: 'broken-path/',
+            milestones: ['healthy'],
+            tracks: [{ trackId: 'extra', label: 'Extra', guides: [memberId] }],
+          },
+          nested: { type: 'journey', path: 'nested/', milestones: ['broken-path'] },
+        },
+        {}
+      );
+      const curated: CatalogPackage[] = [
+        {
+          key: 'curated:parent',
+          id: 'parent',
+          title: 'Parent',
+          format: 'path',
+          source: 'grafana',
+          url: '',
+          memberIds: ['nested'],
+        },
+      ];
+      expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.id)).toEqual(['healthy']);
+    }
+  );
+
+  it('does not substitute a bundled path that would restore an ineligible milestone', () => {
+    const path: CatalogPackage = {
+      key: 'official:path',
+      id: 'path',
+      title: 'Path',
+      format: 'path',
+      source: 'grafana',
+      url: 'https://interactive-learning.grafana.net/path/content.json',
+    };
+    const bundledPath = { ...path, key: 'bundled:path', memberIds: ['excluded-guide'] };
+    expect(eligibleDiscoveryCatalog([bundledPath], [path], [])).toEqual([path]);
+  });
+
+  it.each(['path', 'journey'] as const)(
+    'excludes online %s with ineligible milestones or track guides while keeping eligible paths',
+    (type) => {
+      const entry = (id: string, manifest: Record<string, unknown>) => ({
+        id,
+        title: id,
+        repository: 'interactive-tutorials',
+        contentUrl: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+        manifestUrl: `https://interactive-learning.grafana.net/packages/${id}/manifest.json`,
+        manifest: { id, ...manifest },
+      });
+      const online = eligibleCatalog([
+        entry('healthy', { type: 'guide' }),
+        entry('valid', { type, milestones: ['healthy'] }),
+        entry('excluded-milestone', { type, milestones: ['healthy', 'unhealthy'] }),
+        entry('excluded-track', {
+          type,
+          milestones: ['healthy'],
+          tracks: [{ trackId: 'extra', label: 'Extra', guides: ['unhealthy'] }],
+        }),
+      ]);
+      const bundled = online.map((item) => ({ ...item, key: `bundled:${item.id}` }));
+      const curated: CatalogPackage[] = [
+        { ...online[1]!, key: 'curated:valid', id: 'curated-valid', packageInfo: undefined },
+        { ...online[2]!, key: 'curated:excluded', id: 'curated-excluded', packageInfo: undefined },
+      ];
+      expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.key)).toEqual([
+        'bundled:healthy',
+        'bundled:valid',
+        'curated:valid',
+      ]);
+    }
+  );
+
+  it('excludes nested online, bundled, and curated paths with an ineligible descendant', () => {
+    const entry = (id: string, type: 'guide' | 'path' | 'journey', milestones: string[]) => ({
+      id,
+      title: id,
+      repository: 'interactive-tutorials',
+      contentUrl: `https://interactive-learning.grafana.net/packages/${id}/content.json`,
+      manifestUrl: `https://interactive-learning.grafana.net/packages/${id}/manifest.json`,
+      manifest: { id, type, milestones },
+    });
+    const online = eligibleCatalog([
+      entry('healthy', 'guide', []),
+      entry('broken', 'path', ['unhealthy']),
+      entry('nested', 'journey', ['broken']),
+      entry('valid', 'path', ['healthy']),
+    ]);
+    const bundled: CatalogPackage[] = [
+      { ...online[2]!, key: 'bundled:nested' },
+      { ...online[3]!, key: 'bundled:valid' },
+    ];
+    const curated: CatalogPackage[] = [
+      { ...online[2]!, id: 'curated-broken', key: 'curated:broken', packageInfo: undefined },
+      {
+        ...online[2]!,
+        id: 'curated-parent',
+        key: 'curated:parent',
+        memberIds: ['curated-broken'],
+        packageInfo: undefined,
+      },
+      {
+        ...online[3]!,
+        id: 'curated-valid',
+        key: 'curated:valid',
+        packageInfo: undefined,
+      },
+      {
+        ...online[3]!,
+        id: 'curated-valid-parent',
+        key: 'curated:valid-parent',
+        memberIds: ['curated-valid'],
+        packageInfo: undefined,
+      },
+      {
+        ...online[3]!,
+        id: 'curated-to-broken',
+        key: 'curated:to-broken',
+        memberIds: ['broken'],
+        packageInfo: undefined,
+      },
+    ];
+    expect(eligibleDiscoveryCatalog(bundled, online, curated).map((item) => item.key)).toEqual([
+      'bundled:valid',
+      'interactive-tutorials:healthy',
+      'curated:valid',
+      'curated:valid-parent',
+    ]);
+  });
+
   it.each(['future', 42, { future: true }, 'markdown'])(
     'preserves path metadata and exact prerequisite labels for format %p',
     (format) => {

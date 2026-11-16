@@ -32,6 +32,14 @@ test('copies a public guide, protects the draft and publishes a separate private
     route.fulfill({ json: { items: resources } })
   );
   await page.route(
+    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/custom-guide'),
+    (route) => {
+      const name = new URL(route.request().url()).searchParams.get('name');
+      const stored = resources.find((entry) => entry.metadata.name === name);
+      return stored ? route.fulfill({ json: stored }) : route.fulfill({ status: 404, json: { message: 'not found' } });
+    }
+  );
+  await page.route(
     '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/*/interactiveguides**',
     async (route) => {
       const request = route.request();

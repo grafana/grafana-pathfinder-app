@@ -15,7 +15,6 @@ type outcome struct {
 	// next is the progress to persist; meaningful only when changed.
 	next    Progress
 	changed bool
-	added   bool
 }
 
 // evaluate is the pure step 4 of RFC §6.3: one event against one achievement's
@@ -79,7 +78,6 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 		decision: d.decision(kind, reason, awarded, after, len(ledger)),
 		next:     next,
 		changed:  added || len(awarded) > 0,
-		added:    added,
 	}
 }
 
@@ -94,24 +92,6 @@ func (d *Definition) kind(awarded []string, before, after map[string]bool, added
 	default:
 		return KindIgnored, ReasonDuplicate
 	}
-}
-
-// reported rebuilds the decision around the award rows this event created,
-// across re-runs, so a row that already existed is never reported as new.
-func (d *Definition) reported(out outcome, created map[string]bool) Decision {
-	after := heldSet(out.next.TierIDs)
-	before := maps.Clone(after)
-	awarded := []string{}
-	for _, t := range d.Tiers {
-		if created[t.ID] {
-			awarded = append(awarded, t.ID)
-			delete(before, t.ID)
-		}
-	}
-	dec := out.decision
-	dec.Awarded = awarded
-	dec.Decision, dec.Reason = d.kind(awarded, before, after, out.added)
-	return dec
 }
 
 func (d *Definition) decision(kind Kind, reason Reason, awarded []string, held map[string]bool, units int) Decision {

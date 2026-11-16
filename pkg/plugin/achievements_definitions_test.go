@@ -3,10 +3,12 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
+	"github.com/grafana/grafana-plugin-sdk-go/experimental/featuretoggles"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 )
@@ -176,6 +179,265 @@ func TestDefinitionsSource_KeepsLastGoodAndRevalidates(t *testing.T) {
 				t.Fatalf("fetches = %d, want one (no redirect followed)", cdn.fetches.Load()-before)
 			}
 		})
+	}
+}
+
+// unreadableBundle still carries dash-builder and search.performed, both of
+// which the test bundle evaluates, but in forms this build cannot read.
+func unreadableBundle(t *testing.T) string {
+	t.Helper()
+	b := strings.Replace(achievementsTestBundleJSON, `"counter":{"unit":"dashboard"`, `"streak":{"days":3},"counter":{"unit":"dashboard"`, 1)
+	b = strings.Replace(b, `"performed":{"context":{}}`, `"performed":{"context":{"q":{"type":"nope"}}}`, 1)
+	if b == achievementsTestBundleJSON || !strings.Contains(b, `"streak"`) || !strings.Contains(b, `"nope"`) {
+		t.Fatal("unreadable bundle fixture no longer matches the test bundle")
+	}
+	return b
+}
+
+// absentBundle leaves out guide-routes and the search entity altogether.
+func absentBundle(t *testing.T) string {
+	t.Helper()
+	b := strings.Replace(achievementsTestBundleJSON, `,
+  "search":{"actions":{"performed":{"context":{}}}}`, "", 1)
+	from, to := strings.Index(b, `,
+  {"id":"guide-routes"`), strings.LastIndex(b, `
+]}}`)
+	if from < 0 || to < from || strings.Contains(b, `"search"`) {
+		t.Fatal("absent bundle fixture no longer matches the test bundle")
+	}
+	return b[:from] + b[to:]
+}
+
+// allUnreadableBundle carries both definitions in a form this build cannot read.
+func allUnreadableBundle(t *testing.T) string {
+	t.Helper()
+	b := strings.Replace(achievementsTestBundleJSON, `"counter":{"unit":"dashboard"`, `"streak":{"days":3},"counter":{"unit":"dashboard"`, 1)
+	b = strings.Replace(b, `"tiers":[{"id":"intro"`, `"streak":{"days":3},"tiers":[{"id":"intro"`, 1)
+	if strings.Count(b, `"streak"`) != 2 {
+		t.Fatal("all-unreadable bundle fixture no longer matches the test bundle")
+	}
+	return b
+}
+
+func emptyCatalogBundle(t *testing.T) string {
+	t.Helper()
+	at := strings.Index(achievementsTestBundleJSON, `"catalog":`)
+	if at < 0 {
+		t.Fatal("empty bundle fixture no longer matches the test bundle")
+	}
+	return achievementsTestBundleJSON[:at] + `"catalog":{"achievements":[]}}`
+}
+
+// grownBundle adds an achievement and a registry action and keeps the rest.
+func grownBundle(t *testing.T) string {
+	t.Helper()
+	b := strings.Replace(achievementsTestBundleJSON, `"search":{"actions":{"performed":{"context":{}}}}`,
+		`"search":{"actions":{"performed":{"context":{}}}},
+  "alert-rules":{"actions":{"created":{"context":{}}}}`, 1)
+	b = strings.Replace(b, `
+]}}`, `,
+  {"id":"alert-starter","title":"Alert starter","description":"Create an alert rule.",
+   "counter":{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},
+   "tiers":[{"id":"bronze","at":1}]}
+]}}`, 1)
+	if !strings.Contains(b, `"alert-starter"`) || !strings.Contains(b, `"alert-rules"`) {
+		t.Fatal("grown bundle fixture no longer matches the test bundle")
+	}
+	return b
+}
+
+func warnFields(l *diagnosticLogger) map[string]interface{} {
+	fields := map[string]interface{}{}
+	for i := 0; i+1 < len(l.fields); i += 2 {
+		fields[l.fields[i].(string)] = l.fields[i+1]
+	}
+	return fields
+}
+
+func TestDefinitionsSource_RejectsAnUnreadableRefresh(t *testing.T) {
+	cdn := newDefinitionsCDN(t)
+	source, clock := newTestDefinitionsSource(t, cdn)
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	source.logger = logger
+	first, _ := source.Snapshot(context.Background())
+
+	unreadable := unreadableBundle(t)
+	rejected, err := achievements.LoadBundle([]byte(unreadable))
+	if err != nil || len(rejected.Skipped) != 2 {
+		t.Fatalf("the unreadable bundle must load with two skips: %v %+v", err, rejected)
+	}
+	cdn.answer(http.StatusOK, unreadable, `W/"unreadable"`)
+	clock.advance(definitionsRevalidateAfter)
+	source.Snapshot(context.Background())
+	settle(t, source)
+
+	if source.current.Load() != first {
+		t.Fatal("a refresh with unreadable evaluable entries replaced the last good copy")
+	}
+	if !logger.warnedWith(msgDefinitionsRefreshRejected) {
+		t.Fatal("no rejection warning")
+	}
+	fields := warnFields(logger)
+	if fields["reason"] != "unreadable-entries" || fields["definitionsVersion"] != first.Version || fields["rejectedDefinitionsVersion"] != rejected.Version ||
+		!slices.Equal(fields["unreadableAchievements"].([]string), []string{"dash-builder"}) ||
+		!slices.Equal(fields["unreadableActions"].([]string), []string{"search.performed"}) {
+		t.Fatalf("rejection fields = %#v", fields)
+	}
+	source.mu.Lock()
+	backoff, etag := source.retryAt.Sub(clock.Now()), source.etag
+	source.mu.Unlock()
+	if backoff != definitionsBackoffMin || etag != `W/"one"` {
+		t.Fatalf("a rejected refresh must back off like a failed fetch and keep the old ETag: backoff %v, etag %q", backoff, etag)
+	}
+
+	clock.advance(definitionsBackoffMin)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	source.mu.Lock()
+	backoff = source.retryAt.Sub(clock.Now())
+	source.mu.Unlock()
+	if source.current.Load() != first || backoff != 2*definitionsBackoffMin {
+		t.Fatalf("second rejection: replaced %v, backoff %v, want kept and %v", source.current.Load() != first, backoff, 2*definitionsBackoffMin)
+	}
+
+	mem := newMemAchievements()
+	app := newAchievementsTestApp(t, mem)
+	app.definitions = source
+	rr := postAchievementEvent(t, app, achievementsTestUser, dashboardEventBody("evt-1", "uid-a"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("events on the kept copy: status %d body %s", rr.Code, rr.Body.String())
+	}
+	if d := decodeEvents(t, rr).Decisions; len(d) != 1 || d[0].AchievementID != "dash-builder" || !slices.Equal(d[0].Awarded, []string{"bronze"}) {
+		t.Fatalf("the kept copy did not evaluate dash-builder: %+v", d)
+	}
+	search := fmt.Sprintf(`{"schemaVersion":1,"eventId":"s","entity":"search","action":"performed","occurredAt":%q}`, timeNow().UTC().Format(time.RFC3339))
+	if rr := postAchievementEvent(t, app, achievementsTestUser, search); rr.Code != http.StatusOK {
+		t.Fatalf("search.performed on the kept copy: status %d body %s", rr.Code, rr.Body.String())
+	}
+
+	cdn.answer(http.StatusOK, grownBundle(t), `W/"grown"`)
+	clock.advance(2 * definitionsBackoffMin)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	recovered := source.current.Load()
+	if recovered == first || len(recovered.Catalog.Achievements) != 3 {
+		t.Fatalf("a good bundle after a rejection was not swapped in: %+v", recovered.Catalog)
+	}
+	source.mu.Lock()
+	failures, retryAt := source.failures, source.retryAt
+	source.mu.Unlock()
+	if failures != 0 || !retryAt.IsZero() {
+		t.Fatalf("recovery left failures %d, retryAt %v", failures, retryAt)
+	}
+}
+
+func TestDefinitionsSource_RejectsABundleWithNoEvaluableDefinition(t *testing.T) {
+	for name, bundle := range map[string]func(*testing.T) string{
+		"empty catalog":  emptyCatalogBundle,
+		"all unreadable": allUnreadableBundle,
+	} {
+		t.Run(name, func(t *testing.T) {
+			cdn := newDefinitionsCDN(t)
+			source, clock := newTestDefinitionsSource(t, cdn)
+			logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+			source.logger = logger
+			first, _ := source.Snapshot(context.Background())
+
+			cdn.answer(http.StatusOK, bundle(t), `W/"`+name+`"`)
+			clock.advance(definitionsRevalidateAfter)
+			source.Snapshot(context.Background())
+			settle(t, source)
+			if source.current.Load() != first {
+				t.Fatal("a bundle with no evaluable definition replaced the copy")
+			}
+			if fields := warnFields(logger); fields["reason"] != "no-evaluable-definitions" {
+				t.Fatalf("rejection fields = %#v", fields)
+			}
+		})
+	}
+}
+
+func TestDefinitionsSource_AcceptsADeliberateRemoval(t *testing.T) {
+	cdn := newDefinitionsCDN(t)
+	source, clock := newTestDefinitionsSource(t, cdn)
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	source.logger = logger
+	first, _ := source.Snapshot(context.Background())
+
+	cdn.answer(http.StatusOK, absentBundle(t), `W/"absent"`)
+	clock.advance(definitionsRevalidateAfter)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	next := source.current.Load()
+	if next == first || logger.warnedWith(msgDefinitionsRefreshRejected) {
+		t.Fatal("a bundle that leaves entries out was rejected")
+	}
+	if len(next.Catalog.Achievements) != 1 || next.Catalog.Achievements[0].ID != "dash-builder" {
+		t.Fatalf("catalog = %+v", next.Catalog.Achievements)
+	}
+	if _, ok := next.Registry.Entities["search"]; ok {
+		t.Fatal("the removed search entity is still registered")
+	}
+}
+
+func TestDefinitionsSource_AcceptsARefreshThatOnlyAddsOrKeeps(t *testing.T) {
+	cdn := newDefinitionsCDN(t)
+	source, clock := newTestDefinitionsSource(t, cdn)
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	source.logger = logger
+	first, _ := source.Snapshot(context.Background())
+
+	cdn.answer(http.StatusOK, grownBundle(t), `W/"grown"`)
+	clock.advance(definitionsRevalidateAfter)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	next := source.current.Load()
+	if next == first || len(next.Catalog.Achievements) != 3 || logger.warnedWith(msgDefinitionsRefreshRejected) {
+		t.Fatalf("a growing refresh was not accepted: %d achievements", len(next.Catalog.Achievements))
+	}
+	if _, ok := next.Registry.Entities["alert-rules"].Actions["created"]; !ok {
+		t.Fatal("the added registry action is missing")
+	}
+}
+
+func TestDefinitionsSource_FirstLoadTakesABundleWithSkips(t *testing.T) {
+	cdn := newDefinitionsCDN(t)
+	cdn.answer(http.StatusOK, unreadableBundle(t), `W/"unreadable"`)
+	source, _ := newTestDefinitionsSource(t, cdn)
+	snap, _ := source.Snapshot(context.Background())
+	if snap == nil || len(snap.Skipped) == 0 {
+		t.Fatalf("with no copy loaded, a bundle with skips must still load: %+v", snap)
+	}
+}
+
+func TestUnreadableEvaluable(t *testing.T) {
+	good := loadAchievementsTestBundle(t, achievementsTestBundleJSON)
+	load := func(bundle string) *achievements.Snapshot {
+		t.Helper()
+		snap, err := achievements.LoadBundle([]byte(bundle))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap
+	}
+	ids, actions := unreadableEvaluable(good, load(unreadableBundle(t)))
+	if !slices.Equal(ids, []string{"dash-builder"}) || !slices.Equal(actions, []string{"search.performed"}) {
+		t.Fatalf("unreadable = %v, %v", ids, actions)
+	}
+	if ids, actions := unreadableEvaluable(good, load(absentBundle(t))); len(ids)+len(actions) != 0 {
+		t.Fatalf("a removal counted as unreadable: %v, %v", ids, actions)
+	}
+	if ids, actions := unreadableEvaluable(load(unreadableBundle(t)), good); len(ids)+len(actions) != 0 {
+		t.Fatalf("gaining entries counted as unreadable: %v, %v", ids, actions)
+	}
+
+	noID := strings.Replace(absentBundle(t), `{"id":"dash-builder",`, `{"id":7,`, 1)
+	if ids, _ := unreadableEvaluable(good, load(noID)); !slices.Equal(ids, []string{"dash-builder", "guide-routes"}) {
+		t.Fatalf("with an achievement skipped by no readable id, absent definitions must count as unreadable: %v", ids)
+	}
+	entity := strings.Replace(achievementsTestBundleJSON, `"search":{"actions":{"performed":{"context":{}}}}`, `"search":{"actions":7}`, 1)
+	if _, actions := unreadableEvaluable(good, load(entity)); !slices.Equal(actions, []string{"search.performed"}) {
+		t.Fatalf("an unreadable entity must count its evaluable actions: %v", actions)
 	}
 }
 
@@ -478,9 +740,28 @@ func TestAchievementDefinitions_DisplaysEveryPublishedDefinition(t *testing.T) {
 func TestAchievementDefinitions_HoldsNoPerUserData(t *testing.T) {
 	app, _ := appWithDefinitions(t, achievementsTestBundleWithSkipJSON)
 	a := getAchievementDefinitions(t, app, "user:1", testGrafanaConfig()).Body.String()
-	b := getAchievementDefinitions(t, app, "", testGrafanaConfig()).Body.String()
+	b := getAchievementDefinitions(t, app, "user:2", testGrafanaConfig()).Body.String()
 	if a != b {
 		t.Fatalf("answers differ by caller:\n%s\n%s", a, b)
+	}
+}
+
+func TestAchievementDefinitions_PeopleOnly(t *testing.T) {
+	app, _ := appWithDefinitions(t, achievementsTestBundleJSON)
+	for _, sub := range []string{"service-account:7", "anonymous:0", "render:1", "api-key:3", "no-type-prefix"} {
+		rr := getAchievementDefinitions(t, app, sub, testGrafanaConfig())
+		if rr.Code != http.StatusForbidden || errorToken(t, rr) != reasonPrincipalNotSupported {
+			t.Errorf("%s: status %d body %s", sub, rr.Code, rr.Body.String())
+		}
+	}
+	rr := getAchievementDefinitions(t, app, "", testGrafanaConfig())
+	if rr.Code != http.StatusUnauthorized || errorToken(t, rr) != "unauthenticated" {
+		t.Errorf("unauthenticated: status %d body %s", rr.Code, rr.Body.String())
+	}
+	noAppURL := map[string]string{featuretoggles.EnabledFeatures: completionRecordsAggregationToggle}
+	rr = getAchievementDefinitions(t, app, achievementsTestUser, noAppURL)
+	if rr.Code != http.StatusNotFound || errorToken(t, rr) != "achievements-unavailable/"+reasonIdentityUnverifiable {
+		t.Errorf("unverifiable identity: status %d body %s", rr.Code, rr.Body.String())
 	}
 }
 

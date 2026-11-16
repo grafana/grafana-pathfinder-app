@@ -67,7 +67,7 @@ export interface BackendSaveFlowGuidesInterface {
     details?: GuideDetails
   ) => Promise<{ defaultedAuthor?: DefaultedAuthor } | void>;
   refreshGuides: () => Promise<BackendSaveFlowGuideEntry[]>;
-  unpublishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
+  unpublishGuide: (resourceName: string) => Promise<void>;
 }
 
 export interface UseBackendSaveFlowOptions {
@@ -337,11 +337,11 @@ export function useBackendSaveFlow({
 
   /** Unpublish a published guide — sets it back to draft, removing it from the docs panel */
   const performUnpublish = useCallback(async () => {
-    if (!currentGuideResourceName || !currentGuideMetadata) {
+    if (!currentGuideResourceName) {
       return;
     }
     try {
-      await backendGuides.unpublishGuide(currentGuideResourceName, currentGuideMetadata);
+      await backendGuides.unpublishGuide(currentGuideResourceName);
 
       await backendGuides.refreshGuides();
       // Keep lastPublishedJson set — guide content is unchanged, only status changed.
@@ -352,7 +352,7 @@ export function useBackendSaveFlow({
       logger.error('[BlockEditor] Failed to unpublish guide', { error });
       notify('error', 'Unpublish failed', error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [backendGuides, currentGuideResourceName, currentGuideMetadata, editor]);
+  }, [backendGuides, currentGuideResourceName, editor]);
 
   // Publish/update guide to backend handler
   const handlePostToBackend = useCallback(async () => {

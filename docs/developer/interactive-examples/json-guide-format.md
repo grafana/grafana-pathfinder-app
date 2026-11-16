@@ -302,9 +302,15 @@ never instructs someone to flip a control that is already correct. This applies
 to "Show me", to each step of a multistep, and to guided steps, which complete
 straight away rather than waiting for a click that would undo the state.
 
-Note that `targetstate` does not auto-complete a top-level step on arrival — the
-user still presses "Do it", it just does nothing. Auto-completing an
-already-satisfied step is what `objectives` is for.
+A top-level `button` or `highlight` step with no `objectives` completes on its
+own when its control is already in the requested state, and is saved with the
+`objectives` reason. Authored `objectives` stay the only completion evidence for
+a step that has them. A control that exposes no readable state never completes a
+step this way, and neither does a state reached while "Do it" runs, which saves
+as an assisted completion after any `verify`. Steps inside a section still wait
+for "Do it". The check needs passive completion (the **Automatic completion**
+setting) and reads the sidebar's own tab, so a paired pop-out still waits for
+"Do it".
 
 **Formfill Validation:**
 
@@ -1113,14 +1119,14 @@ A choose-your-own-adventure decision tree where each screen offers options that 
       "id": "prometheus",
       "title": "Set up Prometheus",
       "body": "Open the connections page to add a Prometheus data source.",
-      "links": []
+      "links": [{ "title": "Prometheus docs", "linkText": "View documentation", "href": "https://grafana.com/docs" }]
     },
     {
       "type": "result",
       "id": "loki",
       "title": "Set up Loki",
       "body": "Open the connections page to add a Loki data source.",
-      "links": []
+      "links": [{ "title": "Loki docs", "linkText": "View documentation", "href": "https://grafana.com/docs" }]
     }
   ]
 }
@@ -1133,6 +1139,17 @@ A choose-your-own-adventure decision tree where each screen offers options that 
 | `screens` | `GrotGuideScreen[]` | ✅       | Question and result screens       |
 
 Welcome CTAs and question options use `{ "text", "screenId" }`; every `screenId` must resolve to a screen. A question screen has `type: "question"` and an `options` array. A result screen has `type: "result"`, markdown `body`, and optional links. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
+
+##### Graph validation guarantees
+
+A post-schema validation pass analyzes the directed graph of screens:
+
+- **Unreachable screens (`unreachable_screen`, warning)**: Screens defined in `screens` that cannot be reached from any welcome CTA.
+- **Duplicate screen IDs (`duplicate_screen_id`, warning)**: Multiple screens sharing the same ID (last-write-wins at runtime).
+- **Empty result screens (`empty_result`, warning)**: Reachable result screens that have no `links`, leaving the learner at a dead end.
+- **No path to result (`no_result_path`, error)**: Reachable question screens that cannot reach any terminal result screen (soft-lock). Cycles with escape edges to a result remain valid; cycles with no escape path fail with this error.
+- **Self-loops (`self_loop`, error)**: An option pointing directly to its enclosing screen ID.
+- **Broken screen references (`dangling_screen_ref`) and empty questions (`empty_question`)**: Rejected by the Zod schema.
 
 #### Challenge block
 
@@ -1597,6 +1614,7 @@ The prescriptive coupling checklist and the limits of the automated drift checks
 - [Selectors reference](./selectors-reference.md) — targeting DOM elements with the enhanced selector engine
 - [Requirements reference](./requirements-reference.md) — pre-condition and post-condition system
 - [Guided interactions](./guided-interactions.md) — user-performed action mode
+- [Where a guide completes](../CUSTOM_GUIDES.md#where-a-guide-completes) — a guide completes at its last interactive block; prose-only guides complete when read to the end
 
 ### Website URL inputs
 

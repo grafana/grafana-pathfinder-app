@@ -174,8 +174,22 @@ fi
 # omit. Existing values are preserved — set "status": "draft" in the
 # spec to upload as a draft instead of published.
 SPEC_JSON=$(echo "$SPEC_JSON" | jq '
+  def encode_divider:
+    if type != "object" then .
+    elif .type == "divider" then
+      {type: "markdown"}
+      + (if (.id | type) == "string" then {id: .id} else {} end)
+      + {content: "<!-- pathfinder:block=divider;v=1 -->\n---"}
+    else
+      reduce ["blocks", "whenTrue", "whenFalse"][] as $field (.;
+        if (.[$field] | type) == "array"
+        then .[$field] |= map(encode_divider)
+        else .
+        end)
+    end;
   (if (.schemaVersion // "") == "" then .schemaVersion = "1.0.0" else . end)
   | (if (.status // "") == "" then .status = "published" else . end)
+  | (if (.blocks | type) == "array" then .blocks |= map(encode_divider) else . end)
 ')
 
 RAW_NAME=$(echo "$SPEC_JSON" | jq -r '.id // .title // empty')

@@ -32,7 +32,7 @@ export function __resetDeepLinkHandlerStateForTests(): void {
   lastProcessedSearch = null;
 }
 
-function rewriteCurrentUrl(mutate: (url: URL) => void): void {
+function rewriteCurrentUrl(mutate: (url: URL) => void, deduplicateCleanup = true): void {
   const url = new URL(window.location.href);
   mutate(url);
   // Router replacement notifies listeners synchronously, including during partial panelMode cleanup.
@@ -48,7 +48,7 @@ function rewriteCurrentUrl(mutate: (url: URL) => void): void {
   } finally {
     rewritingUrl = false;
     // The async loader can deliver this cleanup notification after the synchronous guard clears.
-    lastProcessedSearch = url.search;
+    lastProcessedSearch = deduplicateCleanup ? url.search : null;
   }
 }
 
@@ -76,6 +76,8 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   if (onFullScreenRoute && panelModeParam === undefined && kioskSessionParam === undefined) {
     return false;
   }
+  // Fullscreen owns doc-only cleanup, so its re-fire is inert and must not gate the next route.
+  const deduplicatePanelModeCleanup = !onFullScreenRoute || kioskSessionParam !== undefined;
 
   if (search === lastProcessedSearch) {
     return false;
@@ -89,10 +91,10 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
 
   if (panelModeParam === 'sidebar') {
     panelModeManager.setModePersisted('sidebar');
-    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
+    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'), deduplicatePanelModeCleanup);
   } else if (panelModeParam === 'floating') {
     panelModeManager.setModePersisted('floating');
-    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));
+    rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'), deduplicatePanelModeCleanup);
   } else if (panelModeParam === 'fullscreen') {
     panelModeManager.setModePersisted('fullscreen');
     rewriteCurrentUrl((url) => url.searchParams.delete('panelMode'));

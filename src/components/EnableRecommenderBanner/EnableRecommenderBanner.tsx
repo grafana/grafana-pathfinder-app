@@ -8,15 +8,15 @@ import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
 interface EnableRecommenderBannerProps {
   className?: string;
+  description?: string;
 }
 
-export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = ({ className }) => {
+export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = ({ className, description }) => {
   const styles = useStyles2(getStyles);
   const { config: configWithDefaults } = usePathfinderPluginConfig();
   const user = config.bootData?.user;
   const canAccessPluginSettings = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
 
-  // Only show if recommender is disabled (uses centralized config with platform defaults)
   if (configWithDefaults.acceptedTermsAndConditions) {
     return null;
   }
@@ -27,8 +27,6 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
       action: 'navigate_to_recommendations_config',
     });
 
-    // Navigate to the Recommendations configuration tab
-    // Use query parameter format as shown in the URL
     locationService.push('/plugins/grafana-pathfinder-app?page=recommendations-config');
   };
 
@@ -40,8 +38,8 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
             <div className={styles.messageText}>
               <strong>Context-aware recommendations are disabled</strong>
               <p>
-                Enable recommendations based on your current Grafana context for more relevant documentation
-                suggestions.
+                {description ??
+                  'Enable recommendations based on your current Grafana context for more relevant documentation suggestions.'}
               </p>
             </div>
           </div>

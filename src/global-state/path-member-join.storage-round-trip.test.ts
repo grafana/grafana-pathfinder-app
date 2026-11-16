@@ -116,7 +116,7 @@ describe('path member join over the record the product actually writes', () => {
       memberId: 'first-dashboard',
       percent: 50,
       source: 'persisted',
-      contentKey: 'bundled:first-dashboard/content.json',
+      contentKey: 'bundled:first-dashboard',
     });
   });
 
@@ -131,8 +131,7 @@ describe('path member join over the record the product actually writes', () => {
     });
 
     expect(persistedPercentages).toEqual({
-      'bundled:first-dashboard': 25,
-      'bundled:first-dashboard/content.json': 75,
+      'bundled:first-dashboard': 75,
     });
     expect(result.members[0]!.percent).toBe(75);
   });

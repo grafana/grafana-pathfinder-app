@@ -127,6 +127,7 @@ jest.mock('./link-handler.hook', () => ({
 }));
 
 jest.mock('../../security', () => ({
+  isAllowedContentUrl: jest.requireActual('../../security').isAllowedContentUrl,
   parseUrlSafely: jest.fn((url: string) => {
     try {
       return new URL(url);

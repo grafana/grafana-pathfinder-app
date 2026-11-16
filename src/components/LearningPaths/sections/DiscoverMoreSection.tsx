@@ -45,8 +45,15 @@ export function DiscoverMoreSection({
   return (
     <div className={styles.section} data-testid={testIds.learningPaths.discoverMoreSection}>
       <div className={styles.sectionHeader}>
-        <Icon name="compass" size="md" className={styles.sectionIcon} />
-        <h2 className={styles.sectionTitle}>{t('myLearning.discoverMore', 'Discover more')}</h2>
+        <span className={styles.sectionIcon}>
+          <Icon name="compass" size="lg" />
+        </span>
+        <div className={styles.sectionHeadingText}>
+          <h2 className={styles.sectionTitle}>{t('myLearning.discoverMore', 'Discover more')}</h2>
+          <p className={styles.sectionDescription}>
+            {t('myLearning.discoverMoreDescription', 'Structured paths to help you master Grafana step by step')}
+          </p>
+        </div>
         {browseEnabled && (
           <Button
             size="sm"
@@ -57,9 +64,6 @@ export function DiscoverMoreSection({
           </Button>
         )}
       </div>
-      <p className={styles.sectionDescription}>
-        {t('myLearning.discoverMoreDescription', 'Structured paths to help you master Grafana step by step')}
-      </p>
 
       {isLoading ? (
         <SkeletonLoader type="recommendations" />

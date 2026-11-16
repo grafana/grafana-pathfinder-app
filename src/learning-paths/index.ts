@@ -8,10 +8,6 @@
 // Main hook
 export { useLearningPaths, useGuideCompletion } from './learning-paths.hook';
 
-// Profile summary hook
-export { useNextLearningAction, computeNextAction } from './useNextLearningAction';
-export type { LearningProfileSummary, NextLearningAction } from './useNextLearningAction';
-
 // Discover More (external package index)
 export { useDiscoverMore, toDiscoverMoreItem } from './useDiscoverMore';
 export type { DiscoverMoreItem, UseDiscoverMoreReturn } from './useDiscoverMore';
@@ -68,6 +64,7 @@ export {
   compareResolvedAssignments,
   formatDueDate,
   getDueStatus,
+  getAssignmentGuideState,
 } from './assignments-core';
 export type { DueStatus } from './assignments-core';
 export type { ResolvedAssignment } from '../types/learning-paths.types';
@@ -82,3 +79,6 @@ export { useCatalogProgress } from './catalog-progress.hook';
 export type { CatalogProgress } from './catalog-progress.hook';
 
 export { catalogIdentity, pathCatalogIdentities, selectContinueLearning } from './catalog-learning-core';
+
+export { selectLearningPathEntries } from './learning-path-entries';
+export type { LearningPathEntry } from './learning-path-entries';

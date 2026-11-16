@@ -8,6 +8,7 @@ export function getLearningTopicMetadata(topic: string | undefined, kind: 'guide
     .replace(/[\s_]+/g, '-');
   let icon: IconName = kind === 'path' ? 'book-open' : kind === 'docs' ? 'file-alt' : 'compass';
   let label: string | undefined;
+  let paletteColor: string | undefined;
   let darkColor: string | undefined;
   let lightColor: string | undefined;
   switch (normalized) {
@@ -62,6 +63,12 @@ export function getLearningTopicMetadata(topic: string | undefined, kind: 'guide
       darkColor = '#fb77ab';
       lightColor = '#b52b66';
       break;
+    case 'uncategorized':
+    case 'other':
+      icon = 'layer-group';
+      label = t('packageBrowser.uncategorized', 'Other topics');
+      paletteColor = 'yellow';
+      break;
     case 'getting-started':
     case 'onboarding':
       icon = 'compass';
@@ -70,7 +77,7 @@ export function getLearningTopicMetadata(topic: string | undefined, kind: 'guide
       lightColor = '#a85806';
       break;
   }
-  return { icon, label, darkColor, lightColor };
+  return { icon, label, darkColor, lightColor, paletteColor };
 }
 
 export function getLearningTopicVisual(
@@ -78,8 +85,10 @@ export function getLearningTopicVisual(
   theme: GrafanaTheme2,
   kind: 'guide' | 'path' | 'docs' = 'guide'
 ) {
-  const { icon, label, darkColor, lightColor } = getLearningTopicMetadata(topic, kind);
-  const color = (theme.isDark ? darkColor : lightColor) ?? theme.colors.info.text;
+  const { icon, label, darkColor, lightColor, paletteColor } = getLearningTopicMetadata(topic, kind);
+  const color = paletteColor
+    ? theme.visualization.getColorByName(paletteColor)
+    : ((theme.isDark ? darkColor : lightColor) ?? theme.colors.info.text);
   return {
     icon,
     color,

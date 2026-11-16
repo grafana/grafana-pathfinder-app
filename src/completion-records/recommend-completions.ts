@@ -1,3 +1,4 @@
+import { isBundledTutorial, legacyOnlineTutorialId } from '../lib/bundled-tutorial-identity';
 import type { MyCompletionsResponseWire } from '../types/backend-api.schema';
 import {
   RECOMMEND_COMPLETIONS_MAX_ITEMS,
@@ -145,6 +146,13 @@ export function projectRecommendCompletions(my: MyCompletionsResponseWire): Reco
     ...my.inProgress.filter((p) => isPublicGuideSource(p.guideSource, p.guideId)).map(partialRow),
   ];
   for (const row of rows) {
+    // The old online first-dashboard was the RSS tutorial, not the bundled dashboard guide.
+    const legacyId = legacyOnlineTutorialId(row.id);
+    if (row.source === 'interactive-tutorials' && legacyId) {
+      row.id = legacyId;
+    } else if (row.source === 'bundled' && isBundledTutorial(row.id)) {
+      row.source = 'interactive-tutorials';
+    }
     const key = JSON.stringify([row.source, row.id]);
     const existing = merged.get(key);
     merged.set(key, existing ? mergeRows(existing, row) : row);

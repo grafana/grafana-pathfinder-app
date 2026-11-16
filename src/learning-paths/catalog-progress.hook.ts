@@ -1,11 +1,19 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { CatalogPackage } from '../types/package-catalog.types';
-import { interactiveCompletionStorage, journeyCompletionStorage, learningProgressStorage } from '../lib/user-storage';
+import { getManifestMemberIds, type RepositoryJson } from '../types/package.types';
+import { resolvePathMemberPercentages } from '../global-state/path-member-join';
+import { getMilestoneSlug } from '../lib/learning-journey-url';
+import { pathSequences } from './path-sequences';
+import {
+  interactiveCompletionStorage,
+  journeyCompletionStorage,
+  learningProgressStorage,
+  milestoneCompletionStorage,
+} from '../lib/user-storage';
 import { meanOfMemberPercentages } from '../lib/guide-stats/rollup';
 import { sanitizeContentKey } from '../global-state/content-key';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../global-state/progress-events';
 import bundledRepository from '../bundled-interactives/repository.json';
-import type { RepositoryJson } from '../types/package.types';
 
 export interface CatalogProgress {
   percent: number;
@@ -30,6 +38,57 @@ function isBundledGuide(item: CatalogPackage): boolean {
     item.key === `bundled:${item.id}` &&
     (item.url === `bundled:${item.id}` || item.url === `bundled:${item.id}/content.json`) &&
     (bundledRepository as RepositoryJson)[item.id]?.type === 'guide'
+  );
+}
+
+function readPathProgress(
+  item: CatalogPackage,
+  items: CatalogPackage[],
+  persistedPercentages: Record<string, number>
+): CatalogProgress | undefined {
+  if (!item.memberIds?.length) {
+    return undefined;
+  }
+  const manifest = item.packageInfo?.packageManifest;
+  const manifestMembers = getManifestMemberIds(manifest);
+  const memberIds = manifestMembers.length ? manifestMembers : item.memberIds;
+  const guides = new Map(
+    items.filter((entry) => entry.source === item.source && entry.format === 'guide').map((entry) => [entry.id, entry])
+  );
+  if (!memberIds.some((id) => guides.has(id))) {
+    return undefined;
+  }
+  const completed = milestoneCompletionStorage.getCompletedSync(
+    item.url,
+    memberIds.flatMap((id) => guides.get(id)?.url ?? [])
+  );
+  const percentages = new Map(
+    memberIds.map((id) => {
+      const url = guides.get(id)?.url;
+      const { resolvedPercentages } = resolvePathMemberPercentages([{ id: url ? getMilestoneSlug(url) : id, url }], {
+        pathBaseUrl: item.url,
+        completedMemberIds: [...completed],
+        persistedPercentages,
+      });
+      return [id, resolvedPercentages[0]];
+    })
+  );
+  const sequences = pathSequences({
+    id: item.id,
+    title: item.title,
+    description: '',
+    badgeId: '',
+    guides: memberIds,
+    manifest,
+  });
+  return sequences.reduce<CatalogProgress>(
+    (best, ids) => {
+      const rollup = meanOfMemberPercentages(ids.flatMap((id) => percentages.get(id) ?? []));
+      return rollup.percent >= best.percent
+        ? { percent: rollup.percent, nextId: ids.find((id) => (percentages.get(id) ?? 0) < 100) }
+        : best;
+    },
+    { percent: 0 }
   );
 }
 
@@ -67,6 +126,11 @@ export function useCatalogProgress(items: CatalogPackage[], scope: string): Map<
                 item.curatedPath.guides[percentages.findIndex((value) => value < 100)] ?? item.curatedPath.guides[0],
             });
           } else {
+            const pathProgress = item.format === 'path' ? readPathProgress(item, items, guides) : undefined;
+            if (pathProgress) {
+              values.set(item.key, pathProgress);
+              continue;
+            }
             const percent =
               item.format === 'guide'
                 ? isBundledGuide(item) && progress.completedGuides.includes(item.id)

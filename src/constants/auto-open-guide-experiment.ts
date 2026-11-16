@@ -3,3 +3,7 @@ export const AUTO_OPEN_GUIDE_EXPERIMENT_FLAG = 'pathfinder.auto-open-guide-exper
 export const AUTO_OPEN_GUIDE_EXPERIMENT_GROUP = 'matched-page-closed-panel';
 export const AUTO_OPEN_GUIDE_ELIGIBLE_EVENT = 'pathfinder_auto_open_guide_eligible';
 export const AUTO_OPEN_GUIDE_MAX_EXPERIENCES = 3;
+export const ONBOARDING_EXPLORING_EXPERIMENT_ID = 'pathfinder-onboarding-exploring-auto-open-v1';
+export const ONBOARDING_EXPLORING_EXPERIMENT_FLAG = 'pathfinder.onboarding-exploring-auto-open-experiment';
+export const ONBOARDING_EXPLORING_EXPERIMENT_GROUP = 'saved-exploring-matched-page-closed-panel';
+export const ONBOARDING_EXPLORING_ELIGIBLE_EVENT = 'pathfinder_onboarding_exploring_auto_open_eligible';

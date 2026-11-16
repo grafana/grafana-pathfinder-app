@@ -110,6 +110,14 @@ describe('resolveAssignments', () => {
     expect(result.notDone[0]!.assignedBy).toBe('L And D');
   });
 
+  it('preserves the assigned date from the API for display', () => {
+    const result = resolve({
+      entries: [assignment({ targetId: 'p', assignedAt: '2026-06-01T15:30:00Z' })],
+      paths: [path({ id: 'p', title: 'P' })],
+    });
+    expect(result.notDone[0]!.assignedAt).toBe('2026-06-01T15:30:00Z');
+  });
+
   it('puts a wire-satisfied assignment in completed, not notDone', () => {
     const result = resolve({
       entries: [assignment({ targetId: 'p1', satisfied: true })],

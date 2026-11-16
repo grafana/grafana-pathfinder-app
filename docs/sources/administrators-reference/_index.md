@@ -55,13 +55,15 @@ To keep guides available while stopping context-aware recommendation requests:
 1. Turn off **Enable context-aware recommendations**.
 1. Select **Save settings**.
 
-This is separate from **Enable interactive learning**. Bundled guides remain available, and online browsers can fetch the public guide catalog and content. For details about data usage, refer to [Terms and conditions](../terms-and-conditions/).
+This is separate from **Enable interactive learning**. Other learning surfaces still provide access to bundled guides. Explore hides public guides, bundled copies, and curated paths until recommendation consent is enabled and the first catalog request succeeds. Organization guides remain available independently. For Explore catalog behavior, refer to [Interactive learning architecture](../architecture/#explore-catalog). For details about data usage, refer to [Terms and conditions](../terms-and-conditions/).
 
 ## Configure recommendations
 
 Context-aware recommendations use the current Grafana page and other contextual information to suggest relevant documentation and guides.
 
-The service is enabled by default in Grafana Cloud. On self-managed Grafana, an administrator must review the data usage notice and enable **Enable context-aware recommendations** on the **Recommendations** tab, then select **Save settings**.
+The service is enabled by default in Grafana Cloud. Recommendations are off by default on open source Grafana (OSS). Explore initially shows “Enable recommendations to browse public guides and learning paths.” plus any available organization guides.
+
+On self-managed Grafana, an administrator must review the data usage notice. Enable **Enable context-aware recommendations** on the **Recommendations** tab, then select **Save settings**.
 
 For an overview of content sources and data handling, refer to [Interactive learning architecture](../architecture/).
 
@@ -167,6 +169,8 @@ A catalog can be a rules array or an object containing `rules` and an optional H
 Set `interactiveLearning: false` on a rule to open a product directly. This requires a safe internal `page`; the guide `url` is retained but ignored. These rules show no guide completion progress and cannot be used by launch forms. Omit the field or set it to `true` to launch a guide. Deploy a Pathfinder version supporting this field before publishing the catalog: earlier strict catalog readers reject it.
 
 The optional `page` for a guide must be a safe internal Grafana path. URL-launched kiosks ignore `targetUrl` destinations, keeping learners on the current instance. Guide URLs must be accepted content sources. Custom HTML banners are sanitized before display.
+
+Structured catalogs can use version 2 pages for branded colors, gradients, images, sections, columns, and richer guide cards. Version 1 pages and legacy banner catalogs remain supported. Version 2 requires a plugin release that supports it.
 
 Without a custom catalog, the kiosk shows the bundled Grafana learning catalog. If a selected catalog fails, Pathfinder tries the configured default, then the generic online catalog, and finally a bundled fallback. Loading guide content can still require a network connection.
 

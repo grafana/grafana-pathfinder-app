@@ -6,24 +6,53 @@
 
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
+import { getLearningCardInteractionStyles } from '../LearningContentCard/learning-card-interaction.styles';
 
 const SCROLL_FADE_HEIGHT = 40;
 // Deliberately shorter than the fade band: the padding keeps the last item
 // legible once fully scrolled, while the uncovered remainder lets the next item
 // peek through the gradient so "there is more below" stays visible.
 const SCROLL_FADE_PADDING = 12;
-// Height cap for the My paths / Badges columns, and for the Discover more list.
-const COLUMN_MAX_HEIGHT = 440;
-const DISCOVER_LIST_MAX_HEIGHT = 352;
+// Height cap for the Discover more list.
 
-export const getMyLearningStyles = (theme: GrafanaTheme2) => {
+export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = false) => {
   const isDark = theme.isDark;
   const accentColor = isDark ? '#8B7CF6' : '#6C63FF';
-  const accentLight = isDark ? 'rgba(139, 124, 246, 0.15)' : 'rgba(108, 99, 255, 0.12)';
 
   // Vibrant success green for earned badges
   const successGreen = '#22C55E';
-  const successGreenGlow = isDark ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)';
+
+  const iconCallout = (size: number, tint?: string, bright = false) =>
+    css({
+      position: 'relative',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: theme.spacing(size),
+      height: theme.spacing(size),
+      flexShrink: 0,
+      color: tint ?? theme.colors.text.primary,
+      border: tint
+        ? '1px solid transparent'
+        : `1px solid ${bright ? theme.colors.border.medium : theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.md,
+      boxSizing: 'border-box',
+      isolation: 'isolate',
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        inset: theme.spacing(0.25),
+        backgroundColor: bright ? theme.colors.background.elevated : theme.colors.background.secondary,
+        backgroundImage: bright
+          ? `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`
+          : tint
+            ? `linear-gradient(oklch(from ${tint} l c h / 12%), oklch(from ${tint} l c h / 12%))`
+            : undefined,
+        borderRadius: `calc(${theme.shape.radius.md} - 1px - ${theme.spacing(0.25)})`,
+        zIndex: -1,
+        pointerEvents: 'none',
+      },
+    });
 
   const badgeFadeIn = keyframes`
     from {
@@ -36,41 +65,44 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
     }
   `;
 
-  const successGlow = keyframes`
-    0%, 100% { box-shadow: 0 0 8px ${successGreenGlow}; }
-    50% { box-shadow: 0 0 16px ${successGreenGlow}; }
-  `;
-
   return {
+    homeAssignmentsList: css({
+      background: theme.colors.background.primary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.lg,
+      containerType: 'inline-size',
+      '&[data-has-assignments]': {
+        maxHeight: theme.spacing(31),
+        overflow: 'auto',
+        overscrollBehavior: 'contain',
+        scrollbarGutter: 'stable',
+        scrollbarWidth: 'thin',
+      },
+      '& > div': { overflow: 'visible' },
+      '& > p': { ...theme.typography.base, color: theme.colors.text.secondary, margin: theme.spacing(2) },
+      '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
+    }),
     container: css({
       display: 'flex',
       flexDirection: 'column',
-      gap: theme.spacing(2),
-      padding: theme.spacing(1), // Match recommendations tab horizontal padding
+      gap: theme.spacing(hideSectionIcons ? 6 : 4),
       height: '100%',
-      overflowY: 'auto',
+      overflowY: hideSectionIcons ? 'visible' : 'auto',
+      ...(hideSectionIcons && {
+        containerType: 'inline-size',
+        '& [data-learning-card] [data-learning-topic-icon]': {
+          width: theme.spacing(5),
+          height: theme.spacing(5),
+          '& svg': { width: 22, height: 22 },
+        },
+      }),
     }),
 
-    // Query context for the two-column row. Deliberately scoped to this wrapper
-    // rather than the page container: `container-type` implies layout
-    // containment, which would make the container a containing block for
-    // `position: fixed` descendants and trap the BadgeDetailCard overlay inside
-    // the panel instead of covering the viewport.
-    columnsContainer: css({
-      containerType: 'inline-size',
-    }),
-
-    // 7:5 of the design's 12-column grid. The query resolves against the
-    // wrapper's own width, not the viewport, so the row stacks in the docked
-    // sidebar and splits when floating.
+    columnsContainer: css({}),
     columnsRow: css({
-      display: 'grid',
-      gridTemplateColumns: '1fr',
-      gap: theme.spacing(2),
-      alignItems: 'stretch',
-      '@container (min-width: 640px)': {
-        gridTemplateColumns: '7fr 5fr',
-      },
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(hideSectionIcons ? 6 : 4),
     }),
 
     // Fills the leftover height of its section so the region's bottom edge is
@@ -98,16 +130,24 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       maskImage: `linear-gradient(to bottom, #000 calc(100% - ${SCROLL_FADE_HEIGHT}px), transparent 100%)`,
     }),
 
-    // Hero Section
-    heroSection: css({
-      background: `linear-gradient(135deg, ${accentLight} 0%, ${theme.colors.background.primary} 100%)`,
-      borderRadius: theme.shape.radius.default,
-      padding: theme.spacing(2.5),
-      border: `1px solid ${theme.colors.border.weak}`,
+    learningSummary: css({
+      ...theme.typography.base,
+      fontSize: 18,
+      fontWeight: theme.typography.fontWeightMedium,
+      lineHeight: 1.6,
+      color: theme.colors.text.secondary,
+      maxWidth: 700,
+      margin: 0,
+      '& strong': {
+        color: theme.colors.text.primary,
+        fontWeight: theme.typography.fontWeightMedium,
+        whiteSpace: 'nowrap',
+      },
     }),
-    heroContent: css({
-      textAlign: 'center',
-      marginBottom: theme.spacing(2),
+    heroSection: css({
+      containerType: 'inline-size',
+      paddingBottom: theme.spacing(1),
+      flexShrink: 0,
     }),
     previewNotice: css({
       display: 'flex',
@@ -116,7 +156,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(0.75),
       marginTop: theme.spacing(1.5),
       padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
-      borderRadius: theme.shape.radius.default,
+      borderRadius: theme.shape.radius.md,
       backgroundColor: isDark ? 'rgba(140, 140, 140, 0.1)' : 'rgba(0, 0, 0, 0.04)',
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
@@ -125,76 +165,58 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
         flexShrink: 0,
       },
     }),
-    heroTitle: css({
-      margin: 0,
-      fontSize: theme.typography.h4.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      background: `linear-gradient(90deg, ${accentColor}, ${theme.colors.primary.main})`,
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
-    }),
-    heroSubtitle: css({
-      margin: 0,
-      fontSize: theme.typography.body.fontSize,
-      color: theme.colors.text.secondary,
-    }),
-
-    // Stats Row - compact to fit on single line at narrow widths
     statsRow: css({
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      gap: theme.spacing(1.5),
-      flexWrap: 'wrap',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: theme.spacing(2),
+      '@container (min-width: 960px)': {
+        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+      },
+      '@container (max-width: 399px)': {
+        gridTemplateColumns: '1fr',
+      },
     }),
     statItem: css({
-      textAlign: 'center',
-      minWidth: 70,
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(2),
+      padding: theme.spacing(1.5),
+      minWidth: 0,
+      backgroundColor: theme.colors.background.primary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.md,
+    }),
+    statIcon: iconCallout(5),
+    statIconCompleted: iconCallout(5, theme.colors.success.text),
+    statIconBadges: iconCallout(5, theme.colors.info.text),
+    statIconStreak: iconCallout(5, theme.visualization.getColorByName('red')),
+    statIconAltitude: iconCallout(5, theme.visualization.getColorByName('purple')),
+    statContent: css({
+      minWidth: 0,
     }),
     statValue: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
+      ...theme.typography.lg,
       color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
     }),
     statValueBadges: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      color: accentColor,
+      ...theme.typography.lg,
+      color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
     }),
     statValueStreak: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      color: isDark ? '#FF8C5A' : '#FF6B35',
+      ...theme.typography.lg,
+      color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: theme.spacing(0.5),
     }),
-    // The static "learning altitude" value — a gradient accent word, matching
-    // the hero title treatment so it reads as a status rather than a metric.
     statValueAltitude: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      background: `linear-gradient(90deg, ${accentColor}, ${theme.colors.primary.main})`,
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
-    }),
-    fireEmoji: css({
-      fontSize: '1.1em',
+      ...theme.typography.md,
+      color: theme.colors.text.primary,
+      overflowWrap: 'anywhere',
     }),
     statLabel: css({
-      fontSize: '11px',
+      ...theme.typography.sm,
       color: theme.colors.text.secondary,
-    }),
-    statDivider: css({
-      width: 1,
-      height: 28,
-      backgroundColor: theme.colors.border.weak,
     }),
 
     // Sections
@@ -202,41 +224,165 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       flexDirection: 'column',
       minWidth: 0,
-      backgroundColor: theme.colors.background.secondary,
-      borderRadius: theme.shape.radius.default,
-      padding: theme.spacing(2),
-      border: `1px solid ${theme.colors.border.weak}`,
+      paddingTop: theme.spacing(1),
     }),
-    // Caps the two side-by-side columns so a long list scrolls in place instead
-    // of stretching the row. Both columns hit the same cap, so their bottom
-    // edges — and their fades — line up. Only while side by side: stacked in the
-    // docked sidebar, capping would nest a scroller inside the scrolling page
-    // for no alignment benefit.
-    columnSection: css({
-      '@container (min-width: 640px)': {
-        maxHeight: COLUMN_MAX_HEIGHT,
+    intro: hideSectionIcons
+      ? css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(4) })
+      : css({ display: 'contents' }),
+    achievements: css({
+      '&&': { paddingTop: 0 },
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(1),
+    }),
+    achievementsAction: css({ alignSelf: 'flex-start' }),
+    homeBadgeShelf: css({
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: theme.spacing(2),
+      minWidth: 0,
+      '& h2': {
+        ...theme.typography.md,
+        fontSize: theme.typography.size.lg,
+        color: theme.colors.text.primary,
+        margin: 0,
       },
+      '& p': { ...theme.typography.sm, color: theme.colors.text.secondary, margin: 0 },
+    }),
+    homeBadgeHeader: css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: theme.spacing(1) }),
+    homeBadgeGroup: css({
+      display: 'flex',
+      flexWrap: 'wrap',
+      alignItems: 'stretch',
+      gap: 0,
+    }),
+    badgeSummaryItem: css({
+      '&&': {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: theme.spacing(1),
+        width: theme.spacing(8),
+        minHeight: theme.spacing(8),
+        padding: theme.spacing(1),
+        textAlign: 'center',
+        background: 'none',
+        border: '1px solid transparent',
+        borderRadius: theme.shape.radius.lg,
+        boxShadow: 'none',
+        animation: 'none',
+        opacity: 1,
+        ...getLearningCardInteractionStyles(theme),
+        '&:hover:not([data-selected="true"])': { borderColor: 'transparent' },
+      },
+    }),
+    homeBadgeTarget: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1.5),
+      maxWidth: '100%',
+      minWidth: 0,
+      minHeight: theme.spacing(8),
+      padding: theme.spacing(1),
+      background: 'none',
+      border: '1px solid transparent',
+      borderRadius: theme.shape.radius.lg,
+      color: theme.colors.text.primary,
+      textAlign: 'left',
+      cursor: 'pointer',
+      ...getLearningCardInteractionStyles(theme),
+      '&:hover:not([data-selected="true"])': { borderColor: 'transparent' },
+    }),
+    homeBadgeTargetBody: css({
+      ...theme.typography.base,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(0.25),
+      minWidth: 0,
+      maxWidth: theme.spacing(44),
+    }),
+    homeBadgeTargetDescription: css({
+      ...theme.typography.sm,
+      color: theme.colors.text.secondary,
+    }),
+    homeBadgeTargetName: css({ fontWeight: theme.typography.fontWeightMedium }),
+    homeBadgeTargetTrack: css({
+      width: theme.spacing(28),
+      maxWidth: '100%',
+      height: theme.spacing(0.5),
+      borderRadius: theme.shape.radius.pill,
+    }),
+    achievementsRow: css({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: theme.spacing(2),
+    }),
+    achievementsGrid: css({
+      '& > button': {
+        background: 'none',
+        borderColor: 'transparent',
+        boxShadow: 'none',
+        animation: 'none',
+        opacity: 1,
+        minHeight: theme.spacing(10),
+        width: 80,
+      },
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, 80px)',
+      flex: '1 1 280px',
+      columnGap: 0,
+      rowGap: theme.spacing(1),
+    }),
+    badgeGallery: css({
+      '&&': {
+        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+        gridAutoRows: '1fr',
+        gap: theme.spacing(1.5),
+        '& > button': {
+          width: '100%',
+          minHeight: theme.spacing(24),
+          padding: theme.spacing(3, 2, 2),
+          gap: theme.spacing(2),
+          background: theme.colors.background.primary,
+          border: `1px solid ${theme.colors.border.weak}`,
+          borderRadius: theme.shape.radius.lg,
+          boxShadow: 'none',
+          '& > div': { gap: theme.spacing(1) },
+          '& > div:has(time)': { gap: theme.spacing(0.25) },
+          ...getLearningCardInteractionStyles(theme),
+        },
+      },
+    }),
+    columnSection: css({}),
+    openSection: css({
+      display: 'flex',
+      flexDirection: 'column',
+      minWidth: 0,
+      paddingTop: theme.spacing(1),
     }),
     sectionHeader: css({
       display: 'flex',
       alignItems: 'center',
-      gap: theme.spacing(1),
-      marginBottom: theme.spacing(0.5),
+      gap: theme.spacing(1.5),
+      marginBottom: theme.spacing(2),
+      minHeight: theme.spacing(4.5),
     }),
-    sectionIcon: css({
-      color: accentColor,
-    }),
+    sectionIcon: iconCallout(5, undefined, hideSectionIcons),
+    sectionHeadingText: css({ flex: 1, minWidth: 0 }),
     sectionTitle: css({
       margin: 0,
-      fontSize: theme.typography.h6.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
+      ...(hideSectionIcons ? theme.typography.h3 : theme.typography.md),
       color: theme.colors.text.primary,
       flex: 1,
     }),
     sectionDescription: css({
       margin: 0,
-      marginBottom: theme.spacing(1.5),
-      fontSize: theme.typography.bodySmall.fontSize,
+      marginTop: theme.spacing(0.5),
+      ...(hideSectionIcons ? theme.typography.base : theme.typography.sm),
       color: theme.colors.text.secondary,
     }),
     // Empty-state message shared by sections with no items yet
@@ -255,10 +401,54 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       color: theme.colors.text.disabled,
     }),
 
-    // Paths Grid
-    pathsGrid: css({
+    homeContinueLayout: css({
+      '--continue-card-limit': '6',
+      display: 'grid',
+      gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 2.8fr)',
+      gap: theme.spacing(1.5),
+      alignItems: 'stretch',
+      '&[data-single-card]': { gridTemplateColumns: 'minmax(0, 480px)' },
+      '@container learning-continue (max-width: 1200px)': {
+        '--continue-card-limit': '4',
+        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.5fr)',
+      },
+      '@container learning-continue (max-width: 960px)': {
+        '--continue-card-limit': '6',
+        gridTemplateColumns: 'minmax(0, 1fr)',
+        '&[data-single-card]': { gridTemplateColumns: 'minmax(0, 1fr)' },
+      },
+    }),
+    homeContinuePrimary: css({ minWidth: 0, display: 'flex', '& > div, & > article': { width: '100%' } }),
+    homeContinueSecondary: css({
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gridAutoRows: 'minmax(0, 1fr)',
+      alignSelf: 'start',
+      gap: theme.spacing(1.5),
+      minWidth: 0,
+      '@container learning-continue (max-width: 1200px)': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
+      '@container learning-continue (max-width: 960px)': { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
+      '@container learning-continue (max-width: 760px)': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
+      '@container learning-continue (max-width: 440px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+    }),
+    homeContinueOverflow: css({
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))',
+      gap: theme.spacing(1.5),
+    }),
+    homeContinueStack: css({
+      containerType: 'inline-size',
+      containerName: 'learning-continue',
       display: 'flex',
       flexDirection: 'column',
+      gap: theme.spacing(1.5),
+    }),
+    pathsGrid: css({
+      display: 'grid',
+      gridTemplateColumns: hideSectionIcons
+        ? 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))'
+        : 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
+      alignItems: 'stretch',
       gap: theme.spacing(1.5),
     }),
 
@@ -268,7 +458,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
     // intrinsic size and clamp two-line badge names to one line.
     badgesGrid: css({
       display: 'grid',
-      gridTemplateColumns: 'repeat(3, 1fr)',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
       gridAutoRows: 'min-content',
       gap: theme.spacing(1),
     }),
@@ -280,120 +470,31 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(0.75),
       padding: theme.spacing(1),
       minHeight: 104,
-      borderRadius: theme.shape.radius.default,
+      borderRadius: theme.shape.radius.md,
       backgroundColor: theme.colors.background.primary,
       border: `1px solid ${theme.colors.border.weak}`,
       cursor: 'pointer',
-      transition: 'all 0.2s ease',
       animation: `${badgeFadeIn} 0.3s ease-out forwards`,
       opacity: 0,
       textAlign: 'center',
-      '&:hover': {
-        transform: 'translateY(-2px)',
-        boxShadow: `0 4px 12px rgba(0, 0, 0, 0.15)`,
-        borderColor: accentColor,
-      },
+      ...getLearningCardInteractionStyles(theme),
     }),
-    badgeTileEarned: css({
-      borderColor: successGreen,
-      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.08)' : 'rgba(34, 197, 94, 0.06)',
-      animation: `${badgeFadeIn} 0.3s ease-out forwards, ${successGlow} 3s ease-in-out infinite`,
-    }),
-    badgeTileLocked: css({
-      borderStyle: 'dashed',
-      backgroundColor: isDark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.03)',
-      '& svg': {
-        color: theme.colors.text.disabled,
-        filter: 'grayscale(100%)',
-        opacity: 0.5,
-      },
-    }),
-    badgeTileLegacy: css({
-      borderColor: isDark ? 'rgba(161, 136, 107, 0.5)' : 'rgba(139, 119, 101, 0.5)',
-      backgroundColor: isDark ? 'rgba(161, 136, 107, 0.15)' : 'rgba(139, 119, 101, 0.1)',
-      filter: 'sepia(20%)',
-      '& svg': {
-        color: isDark ? '#A1886B' : '#8B7765',
-      },
-    }),
-    badgeTileIconWrapper: css({
-      position: 'relative',
-      flexShrink: 0,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: 40,
-    }),
-    badgeEmoji: css({
-      fontSize: 40,
-      lineHeight: 1,
-    }),
-    badgeTileEmoji: css({
-      fontSize: 34,
-      lineHeight: 1,
-    }),
-    badgeCheckmark: css({
-      position: 'absolute',
-      bottom: -4,
-      right: -4,
-      width: 16,
-      height: 16,
-      borderRadius: '50%',
-      backgroundColor: successGreen,
-      color: 'white',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      border: `2px solid ${theme.colors.background.primary}`,
-      '& svg': {
-        color: 'white !important',
-        filter: 'none !important',
-        opacity: '1 !important',
-      },
-    }),
-    badgeLegacyIndicator: css({
-      position: 'absolute',
-      bottom: -4,
-      right: -4,
-      width: 16,
-      height: 16,
-      borderRadius: '50%',
-      backgroundColor: isDark ? '#A1886B' : '#8B7765',
-      color: 'white',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      border: `2px solid ${theme.colors.background.primary}`,
-      '& svg': {
-        color: 'white !important',
-        filter: 'none !important',
-        opacity: '1 !important',
-      },
-    }),
-    badgeTileLabel: css({
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.primary,
-      lineHeight: 1.2,
-      display: '-webkit-box',
-      WebkitLineClamp: 2,
-      WebkitBoxOrient: 'vertical',
-      overflow: 'hidden',
-    }),
-    badgeTileLabelLocked: css({
-      color: theme.colors.text.secondary,
-    }),
-    badgeTileLabelLegacy: css({
-      color: isDark ? '#A1886B' : '#8B7765',
-      fontStyle: 'italic',
-    }),
-    badgeTileProgress: css({
+    badgeTileBody: css({
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center',
-      gap: theme.spacing(0.25),
+      gap: theme.spacing(0.5),
       width: '100%',
-      marginTop: 'auto',
+      minWidth: 0,
+    }),
+    badgeTileLabel: css({
+      ...theme.typography.base,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.secondary,
+      '&[data-earned="true"]': { color: theme.colors.text.primary },
+    }),
+    badgeTileEarnedDate: css({
+      ...theme.typography.sm,
+      color: theme.colors.text.secondary,
     }),
     badgeTileProgressTrack: css({
       width: '100%',
@@ -409,18 +510,11 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       transition: 'width 0.3s ease',
       minWidth: 0,
     }),
-    badgeTileProgressText: css({
-      fontSize: 9,
-      color: theme.colors.text.secondary,
-      fontVariantNumeric: 'tabular-nums',
-    }),
-
-    // Discover More list
     discoverList: css({
-      display: 'flex',
-      flexDirection: 'column',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
+      alignItems: 'start',
       gap: theme.spacing(1.5),
-      maxHeight: DISCOVER_LIST_MAX_HEIGHT,
     }),
 
     // Completed list
@@ -434,7 +528,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       gap: theme.spacing(1.5),
       padding: theme.spacing(1.5),
-      borderRadius: theme.shape.radius.default,
+      borderRadius: theme.shape.radius.md,
       backgroundColor: theme.colors.background.primary,
       border: `1px solid ${theme.colors.border.weak}`,
     }),
@@ -483,7 +577,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
     }),
     resetButton: css({
       padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      borderRadius: theme.shape.radius.default,
+      borderRadius: theme.shape.radius.md,
       backgroundColor: 'transparent',
       color: theme.colors.text.secondary,
       fontSize: theme.typography.bodySmall.fontSize,

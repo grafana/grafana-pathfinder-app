@@ -142,17 +142,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
   }),
-  editButton: css({
-    color: theme.colors.primary.text,
-    backgroundColor: theme.colors.primary.transparent,
-    borderRadius: theme.shape.radius.default,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      backgroundColor: theme.colors.primary.shade,
-      color: theme.colors.primary.contrastText,
-    },
-  }),
   actionButton: css({
     opacity: 0.7,
     transition: 'all 0.15s ease',
@@ -1041,7 +1030,7 @@ export function StepEditor({
                           size="md"
                           aria-label="Edit"
                           onClick={() => handleStartEdit(index)}
-                          className={styles.editButton}
+                          variant="secondary"
                           tooltip="Edit step"
                         />
                         <IconButton

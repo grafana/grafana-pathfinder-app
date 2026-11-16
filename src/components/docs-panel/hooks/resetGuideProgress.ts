@@ -8,10 +8,12 @@ import {
 import { evictContentCache } from '../../../global-state/completion-store';
 import { StorageEvents } from '../../../lib/event-names';
 import { getMilestoneSlug } from '../../../lib/learning-journey-url';
+import { isPrTestUrl } from '../../../lib/pr-test-marker';
 import {
   guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
+  listPrTestContentKeys,
   milestoneCompletionStorage,
 } from '../../../lib/user-storage';
 
@@ -56,11 +58,20 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
   await interactiveStepStorage.clearAllForContent(contentKey);
   await interactiveCompletionStorage.clear(contentKey);
   await guideCompletionMarkStorage.clear(contentKey);
-  if (identity?.milestoneSlug && identity.journeyBaseUrl) {
+  if (!isPrTestUrl(contentKey) && identity?.milestoneSlug && identity.journeyBaseUrl) {
     await milestoneCompletionStorage.removeCompleted(identity.journeyBaseUrl, identity.milestoneSlug, [contentKey]);
   }
   // Storage removal does not invalidate mounted completion-store subscribers.
   evictContentCache(contentKey);
+  // A PR-tester guide has no real identity guard to lift.
+  if (isPrTestUrl(contentKey)) {
+    window.dispatchEvent(
+      new CustomEvent(StorageEvents.InteractiveProgressCleared, {
+        detail: { contentKey },
+      })
+    );
+    return;
+  }
   // Lifts the write-side exactly-once guard and forgets the guide's attempt, so
   // re-marking this guide after the reset emits a fresh durable record instead
   // of deduping against the completion this reset just erased. A milestone's identity is derived
@@ -95,4 +106,10 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
       detail: { contentKey },
     })
   );
+}
+
+// PR-tester preview keys carry the #pf-pr- marker; real guide keys never do.
+// Clears every orphaned preview record through the single-guide reset path.
+export async function resetPrTestProgress(): Promise<void> {
+  await Promise.all(listPrTestContentKeys().map((contentKey) => resetGuideProgress(contentKey)));
 }

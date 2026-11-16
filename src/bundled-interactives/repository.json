@@ -184,7 +184,7 @@
     "title": "Advanced Prometheus queries",
     "type": "guide",
     "description": "Practice advanced PromQL in Explore: aggregation, joins, time comparisons, histograms, and rule expressions. Customize queries for your data with Grafana Assistant.",
-    "category": "querying",
+    "category": "explore-and-queries",
     "author": {
       "name": "Interactive Learning",
       "team": "Grafana Developer Advocacy"
@@ -254,7 +254,7 @@
     "title": "Welcome to Grafana",
     "type": "guide",
     "description": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
-    "category": "getting-started",
+    "category": "onboarding",
     "author": {
       "name": "Interactive Learning",
       "team": "Grafana Developer Advocacy"
@@ -290,7 +290,7 @@
     "title": "Welcome to Grafana Cloud",
     "type": "guide",
     "description": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
-    "category": "getting-started",
+    "category": "onboarding",
     "author": {
       "name": "Interactive Learning",
       "team": "Grafana Developer Advocacy"

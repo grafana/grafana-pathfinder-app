@@ -4,7 +4,7 @@ A modular footer component that provides quick access to Grafana help resources 
 
 ## Features
 
-- **Help Buttons Grid**: 2-column grid layout with 6 help buttons
+- **Help Links**: borderless text links, wrapped and centered
   - Documentation (links to Grafana documentation)
   - Support (links to Grafana support page)
   - Community (links to Grafana community forum)
@@ -13,9 +13,8 @@ A modular footer component that provides quick access to Grafana help resources 
   - Keyboard Shortcuts (triggers native shortcuts modal)
 
 - **Version Display**: Shows current Grafana version and commit hash
-- **Grafana Design System**: Uses secondary small button styling for consistency
 - **Accessibility**: Proper focus states and keyboard navigation
-- **Responsive**: Grid layout adapts to container width
+- **Responsive**: Links wrap to the container width
 
 ## Usage
 
@@ -27,14 +26,11 @@ import { HelpFooter } from '../HelpFooter';
 
 // With custom className
 <HelpFooter className="custom-footer-class" />
-
-// Borderless text links without icons (used by the sidebar hub)
-<HelpFooter variant="compact" />
 ```
 
 ## Styling
 
-The component uses Grafana's secondary button style (small size) and follows the design system patterns. Styling is handled in `src/styles/help-footer.styles.ts` using the `createSecondaryButton` utility from `button-utils.ts`.
+Styling is handled in `src/styles/help-footer.styles.ts`.
 
 ## Keyboard Shortcuts Implementation
 
@@ -68,6 +64,6 @@ import { HelpModal } from './path/to/HelpModal';
 ## Files
 
 - `HelpFooter.tsx` - Main component with modal state management
-- `../../styles/help-footer.styles.ts` - Emotion CSS styles using secondary button utility
+- `../../styles/help-footer.styles.ts` - Emotion CSS styles
 - `index.ts` - Barrel export
 - `README.md` - This documentation

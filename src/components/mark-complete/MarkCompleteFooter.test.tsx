@@ -364,7 +364,7 @@ describe('MarkCompleteFooter', () => {
         interaction_location: 'content_footer',
         completion_context: 'guide',
         completion_percentage_before: 25,
-        block_progress_rule_version: 'block-position-v1',
+        block_progress_rule_version: 'block-position-v2',
       },
       { privatePath: false }
     );
@@ -444,7 +444,7 @@ describe('MarkCompleteFooter', () => {
           interaction_location: 'content_footer',
           completion_context: 'guide',
           completion_percentage_before: 25,
-          block_progress_rule_version: 'block-position-v1',
+          block_progress_rule_version: 'block-position-v2',
           guide_stats_version: 2,
           total_block_count: 3,
           completable_block_count: 1,
@@ -466,7 +466,7 @@ describe('MarkCompleteFooter', () => {
           interaction_location: 'content_footer',
           completion_context: 'guide',
           completion_percentage_before: 25,
-          block_progress_rule_version: 'block-position-v1',
+          block_progress_rule_version: 'block-position-v2',
         },
         { privatePath: false }
       );

@@ -1,5 +1,6 @@
 import {
   getPackageRenderType,
+  isSamePackageRepository,
   getManifestTracks,
   getAllTrackGuideIds,
   getManifestMemberIds,
@@ -182,5 +183,30 @@ describe('getManifestMemberIds', () => {
       tracks: [{ trackId: 'builder', label: 'Builder', guides: ['a', 'b'] }],
     });
     expect(result).toEqual(['a', 'b']);
+  });
+});
+
+describe('isSamePackageRepository', () => {
+  it.each([
+    ['online-cdn', 'interactive-tutorials'],
+    ['interactive-tutorials', 'online-cdn'],
+    [undefined, 'interactive-tutorials'],
+    ['interactive-tutorials', undefined],
+    [undefined, 'online-cdn'],
+    ['bundled', 'bundled'],
+    ['app-platform', 'app-platform'],
+    ['custom', 'custom'],
+  ])('matches %s and %s', (left, right) => {
+    expect(isSamePackageRepository(left, right)).toBe(true);
+  });
+  it.each([
+    ['app-platform', 'interactive-tutorials'],
+    ['bundled', 'online-cdn'],
+    ['custom', undefined],
+    ['app-platform', undefined],
+    [null, undefined],
+  ])('keeps %s separate from %s in both directions', (left, right) => {
+    expect(isSamePackageRepository(left, right)).toBe(false);
+    expect(isSamePackageRepository(right, left)).toBe(false);
   });
 });

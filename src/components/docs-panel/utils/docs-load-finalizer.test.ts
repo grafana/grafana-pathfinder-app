@@ -1,5 +1,7 @@
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
+import { fetchContent } from '../../../docs-retrieval/content-fetcher';
+import { findDocPage } from '../../../utils/find-doc-page';
 import { buildDocsLoadSuccessPatch, resolveDocsLoadAlignment } from './docs-load-finalizer';
 
 function tab(overrides: Partial<LearningJourneyTab> = {}): LearningJourneyTab {
@@ -156,6 +158,35 @@ describe('resolveDocsLoadAlignment', () => {
 });
 
 describe('buildDocsLoadSuccessPatch', () => {
+  it('keeps the PR-tester marker on the content key after a real load', async () => {
+    const markedUrl = 'https://interactive-learning.grafana.net/packages/guide-two/v1.0.0/content.json#pf-pr-abc123';
+    const originalFetch = global.fetch;
+    const fetchSpy = jest.fn((input: RequestInfo | URL) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        url: String(input),
+        text: async () => JSON.stringify({ id: 'guide-two', title: 'Guide two', blocks: [] }),
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+      } as Response)
+    );
+    global.fetch = fetchSpy;
+    try {
+      const { content: fetchedContent } = await fetchContent(markedUrl);
+      const patch = buildDocsLoadSuccessPatch({
+        tab: tab({ baseUrl: markedUrl, currentUrl: markedUrl }),
+        requestedUrl: markedUrl,
+        fetchedContent: fetchedContent!,
+      });
+
+      expect(patch.currentUrl).toBe(markedUrl);
+      expect(patch.content?.url).toBe(markedUrl);
+      expect(fetchSpy.mock.calls.every(([input]) => !String(input).includes('#'))).toBe(true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it.each([
     {
       name: 'keeps an existing base URL',
@@ -202,6 +233,55 @@ describe('buildDocsLoadSuccessPatch', () => {
     expect(patch.packageInfo).toBe(packageInfo);
   });
 
+  it.each(['content.json', 'unstyled.html', '', 'content.json?source=website#start'])(
+    'replaces a CDN deep-link placeholder with the fetched title (%s)',
+    (suffix) => {
+      const url = `https://interactive-learning.grafana.net/packages/alerting-intro-lj/${suffix}`;
+      const page = findDocPage(url)!;
+      const patch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: page.title, baseUrl: page.url }),
+        requestedUrl: page.url,
+        fetchedContent: content({ metadata: { title: 'Getting started with alerting' } }),
+        packageInfo: { packageId: 'alerting-intro-lj', packageManifest: { type: 'path' } },
+      });
+
+      expect(patch.title).toBe('Getting started with alerting');
+    }
+  );
+
+  it.each(['', '   '])('keeps a CDN placeholder when the fetched title is empty (%j)', (title) => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Alerting Intro Lj', baseUrl: url }),
+      requestedUrl: url,
+      fetchedContent: content({ metadata: { title } }),
+    });
+
+    expect(patch.title).toBeUndefined();
+  });
+
+  it('preserves an established CDN title on reload', () => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Getting started with alerting', baseUrl: url }),
+      requestedUrl: url,
+      fetchedContent: content({ metadata: { title: 'Another title' } }),
+    });
+
+    expect(patch.title).toBeUndefined();
+  });
+
+  it('does not replace a path title with a milestone title even when it matches the URL slug', () => {
+    const url = 'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Alerting Intro Lj', baseUrl: url }),
+      requestedUrl: 'https://interactive-learning.grafana.net/packages/first-rule/content.json',
+      fetchedContent: content({ metadata: { title: 'Create your first alert rule' } }),
+    });
+
+    expect(patch.title).toBeUndefined();
+  });
+
   it('replaces a backend-guide resource name with the fetched guide title', () => {
     const patch = buildDocsLoadSuccessPatch({
       tab: tab({ title: 'alerting-intro-lj', baseUrl: 'backend-guide:alerting-intro-lj' }),
@@ -232,6 +312,78 @@ describe('buildDocsLoadSuccessPatch', () => {
 
     expect(launched.title).toBeUndefined();
     expect(bundled.title).toBeUndefined();
+  });
+
+  describe('title on internal reload', () => {
+    const guideUrl = 'backend-guide:alerting-intro-lj';
+    const reload = (tabOverrides: Partial<LearningJourneyTab>, fetched: Partial<RawContent>, isReload = true) =>
+      buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: guideUrl, ...tabOverrides }),
+        requestedUrl: guideUrl,
+        fetchedContent: content({ url: guideUrl, metadata: { title: 'New title' }, ...fetched }),
+        isReload,
+      });
+
+    it('adopts the fetched title for a backend guide', () => {
+      expect(reload({}, {}).title).toBe('New title');
+    });
+
+    it('does not adopt without the reload flag', () => {
+      expect(reload({}, {}, false).title).toBeUndefined();
+    });
+
+    it('does not adopt when the fetched content is a different guide than the tab base', () => {
+      expect(reload({}, { url: 'backend-guide:alerting-intro-rules' }).title).toBeUndefined();
+    });
+
+    it('is a no-op for a blank or unchanged title', () => {
+      expect(reload({}, { metadata: { title: '  ' } }).title).toBeUndefined();
+      expect(reload({}, { metadata: { title: 'Old title' } }).title).toBeUndefined();
+    });
+
+    it('leaves CDN and bundled tabs untouched even with the flag', () => {
+      const cdn = 'https://interactive-learning.grafana.net/packages/x/content.json';
+      const cdnPatch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: cdn }),
+        requestedUrl: cdn,
+        fetchedContent: content({ url: cdn, metadata: { title: 'New title' } }),
+        isReload: true,
+      });
+      const bundledPatch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: 'bundled:x' }),
+        requestedUrl: 'bundled:x',
+        fetchedContent: content({ url: 'bundled:x', metadata: { title: 'New title' } }),
+        isReload: true,
+      });
+
+      expect(cdnPatch.title).toBeUndefined();
+      expect(bundledPatch.title).toBeUndefined();
+    });
+  });
+
+  describe('pending alignment on reload', () => {
+    const pending = { startingLocation: '/explore' } as unknown as LearningJourneyTab['pendingAlignment'];
+    const patch = (isReload: boolean, pendingAlignment?: LearningJourneyTab['pendingAlignment']) =>
+      buildDocsLoadSuccessPatch({
+        tab: tab({ pendingAlignment: pending }),
+        requestedUrl: 'backend-guide:g',
+        fetchedContent: content({ url: 'backend-guide:g' }),
+        pendingAlignment,
+        isReload,
+      });
+
+    it('keeps an unanswered prompt when reloading with no new decision', () => {
+      expect(patch(true).pendingAlignment).toBe(pending);
+    });
+
+    it('clears the prompt on a normal load with no decision', () => {
+      expect(patch(false).pendingAlignment).toBeUndefined();
+    });
+
+    it('uses a new decision over the existing prompt on reload', () => {
+      const next = { startingLocation: '/other' } as unknown as LearningJourneyTab['pendingAlignment'];
+      expect(patch(true, next).pendingAlignment).toBe(next);
+    });
   });
 
   it('uses interactive type without package info for interactive content', () => {
@@ -348,5 +500,160 @@ describe('buildDocsLoadSuccessPatch', () => {
     expect(fetchedContent.metadata).toEqual(originalMetadata);
     expect(fetchedContent.metadata.learningJourney).toBe(learningJourney);
     expect(packageInfo).toEqual({ packageId: 'path-1', packageManifest: { type: 'path' } });
+  });
+});
+
+describe('resolved path locator capture', () => {
+  it.each([
+    ['online-cdn', 'interactive-tutorials'],
+    ['interactive-tutorials', 'online-cdn'],
+    [undefined, 'interactive-tutorials'],
+  ])('captures public owner across source aliases %s / %s', (repository, ownerRepository) => {
+    const manifest = { id: 'owner', type: 'path' };
+    const baseUrl = 'https://interactive-learning.grafana.net/custom-path/content.json';
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ packageInfo: { packageManifest: manifest, repository } }),
+      requestedUrl: baseUrl,
+      fetchedContent: content({
+        metadata: {
+          title: 'Owner',
+          packageManifest: { ...manifest, repository: ownerRepository, milestones: ['new'] },
+          trackMemberBaseUrl: baseUrl,
+        },
+      }),
+    });
+    expect(patch.packageInfo?.resolvedPath).toEqual({ id: 'owner', repository, baseUrl });
+    expect(patch.packageInfo?.packageManifest?.milestones).toEqual(['new']);
+  });
+
+  it('retains resolved foundation rows when a matching owner refresh leaves foundations unchanged', () => {
+    const manifest = { id: 'owner', type: 'path', milestones: ['same'] };
+    const resolvedMilestones = [
+      { id: 'same', number: 1, title: 'Same', url: 'bundled:same/content.json', isActive: false },
+    ];
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ packageInfo: { packageManifest: manifest, resolvedMilestones } }),
+      requestedUrl: 'bundled:owner/content.json',
+      fetchedContent: content({
+        metadata: {
+          title: 'Owner',
+          packageManifest: { ...manifest, title: 'Updated' },
+          trackMemberBaseUrl: 'bundled:owner/content.json',
+        },
+      }),
+    });
+    expect(patch.packageInfo?.packageManifest?.title).toBe('Updated');
+    expect(patch.packageInfo?.resolvedMilestones).toBe(resolvedMilestones);
+  });
+
+  it.each([
+    { type: 'path', repository: 'interactive-tutorials', expected: ['new'] },
+    { type: 'journey', repository: 'interactive-tutorials', expected: ['new'] },
+    { type: 'guide', repository: 'interactive-tutorials', expected: ['old'] },
+    { type: 'path', repository: 'app-platform', expected: ['old'] },
+  ])('refreshes foundations only from a matching path owner: %j', ({ type, repository, expected }) => {
+    const manifest = {
+      id: 'owner',
+      type: 'path',
+      milestones: ['old'],
+      tracks: [{ trackId: 'old-track', label: 'Old', guides: ['old'] }],
+      description: 'Retained description',
+    };
+    const owner = {
+      id: 'owner',
+      type,
+      repository,
+      milestones: ['new'],
+      tracks: [{ trackId: 'new-track', label: 'New', guides: ['new'] }],
+    };
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({
+        packageInfo: { packageManifest: manifest, repository: 'interactive-tutorials', resolvedMilestones: [] },
+      }),
+      requestedUrl: 'bundled:owner/content.json',
+      fetchedContent: content({
+        metadata: {
+          title: 'Owner',
+          journeyManifest: owner,
+          trackMemberBaseUrl: 'bundled:owner/content.json',
+        },
+      }),
+    });
+    expect(patch.packageInfo?.packageManifest?.milestones).toEqual(expected);
+    expect(patch.packageInfo?.packageManifest?.tracks).toEqual(expected[0] === 'new' ? owner.tracks : manifest.tracks);
+    expect(patch.packageInfo?.packageManifest?.description).toBe('Retained description');
+    expect(patch.packageInfo?.resolvedMilestones).toEqual(expected[0] === 'new' ? undefined : []);
+    expect(manifest.milestones).toEqual(['old']);
+  });
+
+  it.each([
+    { name: 'reordered members', ids: ['b', 'a'], lockedId: undefined },
+    { name: 'removed member', ids: ['a'], lockedId: undefined },
+    { name: 'locked unresolved member', ids: ['b', 'a'], lockedId: 'b' },
+    { name: 'removed all tracks', ids: undefined, lockedId: undefined },
+  ])('persists authoritative resolved tracks with $name', ({ ids, lockedId }) => {
+    const manifest = {
+      id: 'owner',
+      type: 'path',
+      tracks: [
+        { trackId: 'advanced', label: 'Old label', guides: ['a', 'b'] },
+        { trackId: 'removed', label: 'Removed track', guides: ['c'] },
+      ],
+    };
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ packageInfo: { packageManifest: manifest } }),
+      requestedUrl: 'bundled:owner/content.json',
+      fetchedContent: content({
+        metadata: {
+          title: 'Owner',
+          packageManifest: manifest,
+          learningJourney: {
+            baseUrl: 'bundled:owner/content.json',
+            currentMilestone: 0,
+            totalMilestones: 0,
+            milestones: [],
+            tracks: ids
+              ? [
+                  {
+                    trackId: 'advanced',
+                    label: 'Current label',
+                    milestones: ids.map((id, index) => ({
+                      id,
+                      number: index + 1,
+                      title: id,
+                      url: id === lockedId ? '' : `bundled:${id}/content.json`,
+                      isActive: false,
+                      isLocked: id === lockedId,
+                    })),
+                  },
+                ]
+              : [],
+          },
+        },
+      }),
+    });
+    expect(patch.packageInfo?.packageManifest?.tracks).toEqual(
+      ids ? [{ trackId: 'advanced', label: 'Current label', guides: ids }] : []
+    );
+    expect(manifest.tracks[0]?.guides).toEqual(['a', 'b']);
+    expect(manifest.tracks).toHaveLength(2);
+  });
+
+  it.each([
+    { owner: { id: 'other', type: 'path' }, baseUrl: 'bundled:owner/content.json' },
+    { owner: { id: 'owner', type: 'path', repository: 'app-platform' }, baseUrl: 'bundled:owner/content.json' },
+    { owner: { id: 'owner', type: 'path' }, baseUrl: 'javascript:alert(1)' },
+  ])('does not capture mismatched or unsafe metadata: %j', ({ owner, baseUrl }) => {
+    const packageInfo: PackageOpenInfo = {
+      packageManifest: { id: 'owner', type: 'path' },
+      repository: 'interactive-tutorials',
+    };
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ packageInfo }),
+      requestedUrl: 'bundled:member/content.json',
+      fetchedContent: content({ metadata: { title: 'Member', journeyManifest: owner, trackMemberBaseUrl: baseUrl } }),
+    });
+    expect(patch.packageInfo).toBe(packageInfo);
+    expect(patch.packageInfo?.resolvedPath).toBeUndefined();
   });
 });

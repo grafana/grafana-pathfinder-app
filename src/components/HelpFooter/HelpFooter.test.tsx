@@ -14,17 +14,8 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 describe('HelpFooter', () => {
-  it('renders every help link with its icon by default', () => {
+  it('renders every help link without icons, and the version', () => {
     render(<HelpFooter />);
-
-    expect(screen.getByRole('link', { name: 'Documentation' })).toHaveAttribute('href', 'https://grafana.com/docs/');
-    expect(screen.getByRole('button', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
-    expect(screen.getByTestId(testIds.helpFooter.container).querySelectorAll('svg').length).toBeGreaterThan(0);
-    expect(screen.getByText('Grafana v13.0.0')).toBeInTheDocument();
-  });
-
-  it('renders the same links and version without icons in the compact variant', () => {
-    render(<HelpFooter variant="compact" />);
 
     expect(screen.getByRole('link', { name: 'Documentation' })).toHaveAttribute('href', 'https://grafana.com/docs/');
     expect(screen.getByRole('button', { name: 'Keyboard shortcuts' })).toBeInTheDocument();

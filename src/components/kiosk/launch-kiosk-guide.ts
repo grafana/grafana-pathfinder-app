@@ -1,3 +1,4 @@
+import { prPreviewContext } from '../../lib/pr-preview-core';
 import type { PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { guideLaunchStore } from '../../global-state/guide-launch';
 import { sidebarState } from '../../global-state/sidebar';
@@ -14,7 +15,7 @@ import { getKioskName, getKioskSessionId, reportKioskInteraction } from '../../l
 import { setPathfinderHandoff } from '../../lib/telemetry/surface';
 import type { KioskRule } from './kiosk-rules';
 import { parseKioskWebUrl } from '../../security/kiosk-url';
-import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
+import { isTrustedFinalUrl, isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
 
 import type { KioskMode } from '../../types/kiosk-page.schema';
 
@@ -36,7 +37,12 @@ export function launchKioskGuide(
   blockIndex?: number
 ): void {
   const page = rule.page === undefined ? undefined : validateInternalNavigationPath(rule.page);
-  if (page === null || (rule.interactiveLearning !== false && !isAllowedContentUrl(rule.url))) {
+  if (
+    page === null ||
+    (rule.interactiveLearning !== false &&
+      !isAllowedContentUrl(rule.url) &&
+      !(rule.preview && prPreviewContext(rule.url) && isTrustedFinalUrl(rule.url)))
+  ) {
     return;
   }
   const current = locationService.getLocation();
@@ -109,15 +115,17 @@ export function launchKioskGuide(
   const sessionId = getKioskSessionId() ?? crypto.randomUUID();
   const kioskName = getKioskName() ?? 'unknown';
 
-  reportAppInteraction(UserInteraction.KioskDemoStarted, {
-    kiosk_session_id: sessionId,
-    kiosk_name: kioskName,
-    guide_url: rule.url,
-    guide_title: rule.title,
-    guide_type: rule.type === 'learning-journey' ? toAnalyticsValue(rule.type) : rule.type,
-    launch_mode: mode,
-    target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
-  });
+  if (!rule.preview) {
+    reportAppInteraction(UserInteraction.KioskDemoStarted, {
+      kiosk_session_id: sessionId,
+      kiosk_name: kioskName,
+      guide_url: rule.url,
+      guide_title: rule.title,
+      guide_type: rule.type === 'learning-journey' ? toAnalyticsValue(rule.type) : rule.type,
+      launch_mode: mode,
+      target_instance: mode === 'instance' ? window.location.origin : rule.targetUrl || window.location.origin,
+    });
+  }
 
   if (!prepared) {
     url.searchParams.set('doc', rule.url);

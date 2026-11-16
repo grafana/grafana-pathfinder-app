@@ -1,0 +1,37 @@
+[
+  {
+    "id": "welcome-to-grafana",
+    "url": ["/"],
+    "targetPlatform": "oss"
+  },
+  {
+    "id": "welcome-to-grafana-cloud",
+    "url": ["/"],
+    "targetPlatform": "cloud"
+  },
+  {
+    "id": "prometheus-advanced-queries",
+    "url": ["/explore"]
+  },
+  {
+    "id": "prometheus-grafana-101",
+    "url": ["/connections"],
+    "targetPlatform": "oss"
+  },
+  {
+    "id": "loki-grafana-101",
+    "url": ["/connections"],
+    "targetPlatform": "oss"
+  },
+  {
+    "id": "first-dashboard",
+    "legacyOnlineId": "first-dashboard-rss",
+    "url": ["/"],
+    "targetPlatform": "oss"
+  },
+  {
+    "id": "first-dashboard-cloud",
+    "url": ["/"],
+    "targetPlatform": "cloud"
+  }
+]

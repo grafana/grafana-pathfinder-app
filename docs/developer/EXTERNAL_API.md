@@ -417,7 +417,7 @@ these:
 The two path rows differ, and only the cover page is a transport problem.
 
 **Path cover page — the value never arrives.** `packageInfoForPath`
-(`src/components/docs-panel/CustomGuidesSection.tsx`) builds the cover's
+(`src/utils/custom-guide-launch.ts`) builds the cover's
 `packageManifest` from the catalogue-proxy entry, and that proxy's
 `customGuideManifest` (`pkg/plugin/custom_guide_repository_client.go`) declares
 no `additionalFields`, so `encoding/json` drops the key at the wire boundary

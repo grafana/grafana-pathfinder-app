@@ -31,16 +31,16 @@
     },
     {
       "id": "validation-added",
-      "purpose": "A change adds imperfect validation where base had none; the pre-existing limitation must not be reported as a widened boundary.",
+      "purpose": "An explicitly partial validation change must not be called a regression merely because the base was worse.",
       "doubles_as": ["single-agent-no-delegation"],
-      "request": "Review this PR with review-lite: 'Block script URLs in documentation links'. Subagents are not available in this run.",
+      "request": "Review this PR with review-lite: 'Block literal javascript: URLs in documentation links'. The accepted scope is only literal javascript: prefixes; subagents are not available in this run.",
       "base": {
         "src/docs-retrieval/link-opener.ts": "export function openDocLink(href: string, target: Pick<Window, 'open'> = window): void {\n  target.open(href, '_blank', 'noopener,noreferrer');\n}\n",
         "src/docs-retrieval/content-links.ts": "import { openDocLink } from './link-opener';\n\nexport function handleContentClick(event: MouseEvent): void {\n  const anchor = (event.target as HTMLElement).closest('a');\n  if (!anchor) {\n    return;\n  }\n  event.preventDefault();\n  openDocLink(anchor.getAttribute('href') ?? '');\n}\n"
       },
       "rounds": [
         {
-          "message": "Block script URLs in documentation links",
+          "message": "Block literal javascript: URLs in documentation links",
           "files": {
             "src/docs-retrieval/link-opener.ts": "const BLOCKED_SCHEMES = ['javascript:', 'data:', 'vbscript:'];\n\nexport function isSafeDocHref(href: string): boolean {\n  const normalized = href.trim().toLowerCase();\n  return !BLOCKED_SCHEMES.some((scheme) => normalized.startsWith(scheme));\n}\n\nexport function openDocLink(href: string, target: Pick<Window, 'open'> = window): void {\n  if (!isSafeDocHref(href)) {\n    return;\n  }\n  target.open(href, '_blank', 'noopener,noreferrer');\n}\n",
             "src/docs-retrieval/link-opener.test.ts": "import { isSafeDocHref, openDocLink } from './link-opener';\n\ntest('blocks script schemes', () => {\n  expect(isSafeDocHref('javascript:alert(1)')).toBe(false);\n  expect(isSafeDocHref(' JavaScript:alert(1)')).toBe(false);\n  expect(isSafeDocHref('data:text/html,hi')).toBe(false);\n});\n\ntest('opens ordinary links', () => {\n  const open = jest.fn();\n  openDocLink('https://grafana.com/docs/', { open });\n  expect(open).toHaveBeenCalledWith('https://grafana.com/docs/', '_blank', 'noopener,noreferrer');\n});\n"
@@ -48,14 +48,14 @@
         }
       ],
       "expected": {
-        "headline": "No blocking findings",
-        "must_find": "Nothing blocking. A denylist that misses embedded control characters (for example java\\tscript:) is acceptable as a follow-up, since base opened every href unchecked.",
-        "must_not": "Claim the PR widens a trust boundary, or require an allowlist rewrite as a merge condition."
+        "headline": "Approve",
+        "must_find": "Nothing blocking. The embedded-control-character bypass (for example java\\tscript:) remains outside the stated literal-prefix scope; it may be maintainer-owned separate work only with that accepted scope decision, not vague follow-up homework.",
+        "must_not": "Claim the PR widens a trust boundary, or require an allowlist rewrite as a merge condition without rejecting the explicit partial scope."
       }
     },
     {
       "id": "two-round-fix",
-      "purpose": "Round 1 has a blocker; round 2 fixes it. The reviewer verifies the fix, carries accepted follow-ups, and adds no new merge requirement.",
+      "purpose": "Round 1 has a blocker; round 2 fixes it. The reviewer verifies the fix, carries prior separate work, and adds no new merge requirement.",
       "doubles_as": [],
       "request": "Review round 1 of this PR with review-lite: 'Pulse the highlighted element during Show me'. Then review round 2 with the round 1 state.",
       "base": {
@@ -80,9 +80,75 @@
       "expected": {
         "round_1_headline": "Changes requested",
         "round_1_must_find": "The interval is never cleared, so every Show me leaks a timer that keeps toggling a class on the element after the step ends.",
-        "round_2_headline": "No blocking findings",
-        "round_2_must_find": "The round 1 blocker is resolved with head evidence; any round 1 follow-up (for example reduced-motion handling) is carried, not re-raised as a requirement.",
-        "must_not": "Introduce a new round 2 merge requirement that round 1 could have raised, or ask again for an accepted follow-up."
+        "round_2_headline": "Approve",
+        "round_2_must_find": "The round 1 blocker is resolved with head evidence; any legitimate round 1 separate work (for example reduced-motion handling) is carried, not re-raised as a requirement.",
+        "must_not": "Introduce a new round 2 merge requirement that round 1 could have raised, or turn carried maintainer-owned separate work into author homework."
+      }
+    },
+    {
+      "id": "material-schema-retry",
+      "purpose": "A declared external schema is material to a loader. An unavailable pinned source prevents a complete approval.",
+      "doubles_as": ["material-governing-input"],
+      "request": "Review this PR with review-lite: 'Move package loading to schema v2'. The PR cites https://schemas.example.invalid/packages/v2/9f4a3b7 as the normative schema, but that source cannot be fetched in this run.",
+      "base": {
+        "src/package-engine/loader.ts": "export async function loadPackage(fetcher: () => Promise<{ version: 1; name: string }>): Promise<string> {\n  return (await fetcher()).name;\n}\n"
+      },
+      "rounds": [
+        {
+          "message": "Move package loading to schema v2",
+          "files": {
+            "src/package-engine/loader.ts": "// Contract: https://schemas.example.invalid/packages/v2/9f4a3b7\nexport async function loadPackage(fetcher: () => Promise<{ version: number; name: string }>): Promise<string> {\n  const value = await fetcher();\n  if (value.version !== 2) {\n    return value.name;\n  }\n  return value.name;\n}\n"
+          }
+        }
+      ],
+      "expected": {
+        "headline": "Review incomplete",
+        "must_find": "Register the PR-cited schema as a material governing input and leave the assessment incomplete while its pinned source is unavailable; do not approve from a green generic suite.",
+        "must_not": "Treat the unavailable schema as optional merely because the changed loader has no obvious caller in this fixture."
+      }
+    },
+    {
+      "id": "unwired-in-scope-defect",
+      "purpose": "An introduced defect in the PR's named deliverable remains a blocker even when the new code is not wired to a caller yet.",
+      "doubles_as": ["separate-work-calibration"],
+      "request": "Review this PR with review-lite: 'Reject non-finite or fractional tutorial progress before it can be persisted'. The helper is intentionally introduced for the next wiring change, but correctness of the claimed finite-integer validation is in scope now.",
+      "base": {
+        "src/interactive-engine/progress.ts": "export interface Progress { step: number }\n"
+      },
+      "rounds": [
+        {
+          "message": "Reject non-finite or fractional tutorial progress before it can be persisted",
+          "files": {
+            "src/interactive-engine/progress.ts": "export interface Progress { step: number }\n\nexport function isValidProgress(value: Progress): boolean {\n  return value.step >= 0;\n}\n"
+          }
+        }
+      ],
+      "expected": {
+        "headline": "Changes requested",
+        "must_find": "The claimed validator accepts Infinity and fractional values, so it does not establish a finite-integer persisted progress value; require that invariant before merge.",
+        "must_not": "Move this introduced, in-scope correctness defect to separate work solely because no caller currently invokes the helper."
+      }
+    },
+    {
+      "id": "schema-retry-preserves-reload",
+      "purpose": "A conflict retry must preserve the newer schema returned by its reload rather than overwrite it with the stale first read.",
+      "doubles_as": ["risk-verification", "newer-schema-retry"],
+      "request": "Review this PR with review-lite: 'Retry package save after a conflict'. The package contract says a retry must persist the freshly reloaded package unchanged.",
+      "base": {
+        "src/package-engine/save.ts": "export async function savePackage(read: () => Promise<{ name: string }>, write: (value: { name: string }) => Promise<void>): Promise<void> {\n  await write(await read());\n}\n"
+      },
+      "rounds": [
+        {
+          "message": "Retry package save after a conflict",
+          "files": {
+            "src/package-engine/save.ts": "type Package = { name: string; schemaVersion: number };\n\nexport async function savePackage(read: () => Promise<Package>, write: (value: Package) => Promise<void>): Promise<void> {\n  const original = await read();\n  try {\n    await write(original);\n  } catch {\n    await read();\n    await write(original);\n  }\n}\n"
+          }
+        }
+      ],
+      "expected": {
+        "headline": "Changes requested",
+        "must_find": "After conflict, the second read is discarded and the stale original package is written again, overwriting the newer schema; require a retry scenario that proves the reloaded value is the one persisted.",
+        "must_not": "Approve merely because the retry path is rare or because the normal first write still succeeds."
       }
     },
     {
@@ -103,7 +169,7 @@
         }
       ],
       "expected": {
-        "headline": "No blocking findings",
+        "headline": "Approve",
         "must_find": "Nothing blocking.",
         "must_not": "Raise any blocker."
       }
@@ -111,15 +177,19 @@
   ],
   "adoption_benchmark": {
     "status": "proposed; not run as part of the prototype",
-    "arms": [
-      { "id": "generic", "description": "The same model with a generic code-review prompt and no concern workflow." },
-      { "id": "review-lite", "description": "The same model with this prototype skill." },
+    "skills": [
       {
-        "id": "review-full",
-        "description": "The current /review pipeline. Without independent skeptics it is a constrained variant, not a faithful baseline; record subagent availability per run."
+        "id": "review-lite-frozen",
+        "description": "The pre-evidence-gates review-lite revision, retained unchanged for comparison."
+      },
+      {
+        "id": "review-lite-revised",
+        "description": "This evidence-gated review-lite revision; do not promote it by plan alone."
       }
     ],
-    "controls": "Same model, revision, tools, knowledge snapshot (pass --knowledge pinned to one registry revision), and execution permissions across arms. Disclose possible future-knowledge leakage for historical PRs.",
+    "models": ["Record each selected model version exactly; include the target contemporary models."],
+    "design": "Fully cross every frozen/revised skill with every selected model on the same pinned fixture or PR revision. This is a controlled model × skill promotion test, not a comparison with /review.",
+    "controls": "Hold revision, tools, knowledge snapshot (pass --knowledge pinned to one registry revision), execution permissions, and adjudication rubric constant within each model × skill cell. Disclose possible future-knowledge leakage for historical PRs.",
     "historical_candidates": [
       { "pr": 2009, "claim": "A shortcut review missed three blocking regressions that the full pipeline found." },
       { "pr": 1971, "claim": "Validation-adding PR: most 'boundary widened' findings were inverted." },
@@ -142,7 +212,7 @@
       "wall-clock latency",
       "billed usage or cost where available; character counts and summed tokens are proxies only"
     ],
-    "trials": "Repeat at least three trials per arm on a subset including clean controls; report sample size limits instead of claiming equivalence.",
-    "proposed_threshold": "Agree before scoring. Suggested: no additional adjudicated material misses, no increase in unsupported blockers, and at least 50% lower median billed cost on routine cases."
+    "trials": "Repeat at least three trials per model × skill cell on a subset including clean controls; report sample size limits instead of claiming equivalence.",
+    "proposed_threshold": "Agree before scoring. Suggested: no additional adjudicated material misses, no increase in unsupported blockers, and no material median wall-clock or billed-cost regression versus frozen review-lite on routine cases. Measure any retained cost advantage over full review separately; it is not a promotion threshold for this comparison."
   }
 }

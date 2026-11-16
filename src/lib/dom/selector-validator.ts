@@ -124,7 +124,7 @@ function cleanWhitespace(selector: string): string {
 /**
  * Validate action type matches selector type
  */
-function validateActionType(
+export function validateActionType(
   selector: string,
   action: ActionType
 ): {

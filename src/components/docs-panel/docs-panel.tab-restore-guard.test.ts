@@ -16,6 +16,7 @@ jest.mock('../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() =>
 
 const mockRestoreTabsFromStorage = jest.fn();
 const mockRestoreActiveTabFromStorage = jest.fn();
+const mockResolvePackageMilestones = jest.fn();
 
 jest.mock('@grafana/scenes', () => {
   class SceneObjectBase {
@@ -78,6 +79,7 @@ jest.mock('../../docs-retrieval', () => ({
   injectJourneyExtrasIntoJsonGuide: jest.fn(),
   isPackageContentUrl: jest.fn(() => false),
   fetchPackageInfoFromUrl: jest.fn(async () => undefined),
+  resolvePackageMilestones: (...args: unknown[]) => mockResolvePackageMilestones(...args),
 }));
 
 jest.mock('../../package-engine', () => ({
@@ -225,6 +227,7 @@ jest.mock('../../constants/testIds', () => ({
 
 jest.mock('../../types/package.types', () => ({
   getPackageRenderType: jest.fn(),
+  getManifestTracks: jest.requireActual('../../types/package.types').getManifestTracks,
 }));
 
 jest.mock('../../hooks', () => ({}));
@@ -238,6 +241,7 @@ import { tabStorage } from '../../lib/user-storage';
 import { CombinedLearningJourneyPanel } from './docs-panel';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
+import { resolveActiveMilestoneSequence } from '../../docs-retrieval';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -798,4 +802,88 @@ describe('reader return position', () => {
       }
     }
   );
+});
+
+describe('restored track navigation', () => {
+  const manifest = {
+    id: 'workshop',
+    type: 'path',
+    milestones: ['setup'],
+    tracks: [{ trackId: 'ops', label: 'Ops', guides: ['setup', 'ops-1', 'ops-2'] }],
+  };
+  const trackMember = {
+    id: 'member-tab',
+    title: 'Workshop',
+    baseUrl: 'backend-guide:ops-1',
+    currentUrl: 'backend-guide:ops-1',
+    content: null,
+    isLoading: false,
+    error: null,
+    type: 'docs' as const,
+    packageInfo: { packageId: 'workshop', packageManifest: manifest },
+    activeTrackId: 'ops',
+    activeTrackPathId: 'workshop',
+  };
+  const resolved = ['setup', 'ops-1', 'ops-2'].map((id, index) => ({
+    id,
+    number: index + 1,
+    title: id,
+    url: `backend-guide:${id}`,
+    isActive: false,
+  }));
+  const onTrackMember = {
+    url: 'backend-guide:ops-1',
+    type: 'interactive',
+    content: '',
+    metadata: { title: 'Ops 1', trackMemberBaseUrl: 'backend-guide:workshop' },
+  } as any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRestoreActiveTabFromStorage.mockResolvedValue('member-tab');
+    mockResolvePackageMilestones.mockResolvedValue(resolved);
+  });
+
+  it("re-resolves a track member's sequence after a reload, so Next and Previous stay on the track", async () => {
+    mockRestoreTabsFromStorage.mockResolvedValue([trackMember]);
+    const panel = new CombinedLearningJourneyPanel();
+    jest.spyOn(panel, 'loadTab').mockResolvedValue();
+
+    await panel.restoreTabsAsync();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockResolvePackageMilestones).toHaveBeenCalledWith(['setup', 'ops-1', 'ops-2']);
+    const tab = panel.state.tabs.find((candidate) => candidate.id === 'member-tab')!;
+    expect(tab.activeTrackMilestones).toEqual(resolved);
+    expect(resolveActiveMilestoneSequence(onTrackMember, tab.activeTrackId, tab.activeTrackMilestones)).toEqual({
+      currentMilestone: 2,
+      milestones: resolved,
+    });
+  });
+
+  it('keeps a sequence the cover set while the restore was resolving', async () => {
+    let finish: (milestones: typeof resolved) => void = () => {};
+    mockResolvePackageMilestones.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    mockRestoreTabsFromStorage.mockResolvedValue([trackMember]);
+    const panel = new CombinedLearningJourneyPanel();
+    jest.spyOn(panel, 'loadTab').mockResolvedValue();
+
+    await panel.restoreTabsAsync();
+    const fromCover = resolved.slice(0, 1);
+    panel.setActiveTrackId('member-tab', 'ops', fromCover, 'workshop');
+    finish(resolved);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(panel.state.tabs.find((candidate) => candidate.id === 'member-tab')!.activeTrackMilestones).toBe(fromCover);
+  });
+
+  it('leaves a track recorded for a different path alone', async () => {
+    mockRestoreTabsFromStorage.mockResolvedValue([{ ...trackMember, activeTrackPathId: 'other-path' }]);
+    const panel = new CombinedLearningJourneyPanel();
+    jest.spyOn(panel, 'loadTab').mockResolvedValue();
+
+    await panel.restoreTabsAsync();
+
+    expect(mockResolvePackageMilestones).not.toHaveBeenCalled();
+  });
 });

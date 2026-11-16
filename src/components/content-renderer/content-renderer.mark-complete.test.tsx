@@ -419,7 +419,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
             interaction_location: 'content_footer',
             completion_context: discriminator,
             completion_percentage_before: 0,
-            block_progress_rule_version: 'block-position-v1',
+            block_progress_rule_version: 'block-position-v2',
             ...milestoneProperties,
           },
           { privatePath: false },

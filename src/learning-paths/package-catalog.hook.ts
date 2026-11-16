@@ -6,11 +6,14 @@ import type { CatalogPackage } from '../types/package-catalog.types';
 import {
   bundledCatalog,
   curatedCatalog,
+  eligibleDiscoveryCatalog,
   mergeCatalog,
   onlineCatalog,
   organizationCatalog,
 } from '../lib/package-catalog';
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
+import { fetchEligibleCatalog } from '../lib/eligible-catalog-client';
+import { getRecommenderStackContext } from '../lib/recommender-context';
 import { fetchCustomGuideCatalogue } from '../lib/custom-guide-repository-client';
 import { getPathsData } from './paths-data';
 
@@ -22,10 +25,21 @@ const ABSENT_ORGANIZATION_CAPABILITIES = new Set([
   'identity-unverifiable',
 ]);
 
-export function usePackageCatalog(options: { enabled?: boolean; publicOnly?: boolean } = {}) {
-  const { enabled = true, publicOnly = false } = options;
+export function usePackageCatalog(
+  options: {
+    enabled?: boolean;
+    publicOnly?: boolean;
+    discovery?: { enabled: boolean; serviceUrl: string };
+  } = {}
+) {
+  const { enabled = true, publicOnly = false, discovery } = options;
   const namespace = config.namespace || '';
   const scope = `${namespace}:${config.bootData?.user?.orgId ?? ''}:${config.bootData?.user?.id ?? ''}`;
+  const isDiscovery = discovery !== undefined;
+  const serviceUrl = discovery?.serviceUrl ?? '';
+  const publicEnabled = enabled && (!isDiscovery || discovery.enabled);
+  const stack = getRecommenderStackContext();
+  const publicKey = JSON.stringify([scope, isDiscovery, serviceUrl, publicEnabled, stack.source, stack.platform]);
   const local = useMemo(() => {
     const data = getPathsData();
     return {
@@ -34,101 +48,105 @@ export function usePackageCatalog(options: { enabled?: boolean; publicOnly?: boo
     };
   }, []);
   const [revision, setRevision] = useState(0);
-  const [remote, setRemote] = useState<{
-    scope: string;
-    online: CatalogPackage[];
-    organization: CatalogPackage[];
+  const [online, setOnline] = useState<{
+    key: string;
+    items: CatalogPackage[];
     loading: boolean;
-    publicUnavailable: boolean;
-    privateUnavailable: boolean;
-  }>({
-    scope,
-    online: [],
-    organization: [],
-    loading: true,
-    publicUnavailable: false,
-    privateUnavailable: false,
-  });
+    unavailable: boolean;
+  }>();
+  const [organization, setOrganization] = useState<{
+    scope: string;
+    items: CatalogPackage[];
+    loading: boolean;
+    unavailable: boolean;
+  }>();
 
   useEffect(() => {
-    if (!enabled) {
+    if (!publicEnabled) {
       return;
     }
     let cancelled = false;
-    const publicRequest = fetchOnlinePackageRecommendations({ refresh: revision > 0 }).then((response) => {
-      if (!cancelled) {
-        setRemote((current) => ({
-          ...(current.scope === scope
-            ? current
-            : {
-                scope,
-                online: [],
-                organization: [],
-                loading: true,
-                publicUnavailable: false,
-                privateUnavailable: false,
-              }),
-          scope,
-          online: onlineCatalog(response),
-          publicUnavailable: response.available === false,
+    const request = isDiscovery
+      ? fetchEligibleCatalog(serviceUrl, scope, { refresh: revision > 0 })
+      : fetchOnlinePackageRecommendations({ refresh: revision > 0 }).then((response) => ({
+          items: onlineCatalog(response),
+          available: response.available !== false,
         }));
-      }
-    });
-    const privateRequest = publicOnly
-      ? Promise.resolve()
-      : fetchCustomGuideCatalogue(namespace, { refresh: revision > 0 }).then((response) => {
-          if (!cancelled) {
-            setRemote((current) => ({
-              ...(current.scope === scope
-                ? current
-                : {
-                    scope,
-                    online: [],
-                    organization: [],
-                    loading: true,
-                    publicUnavailable: false,
-                    privateUnavailable: false,
-                  }),
-              scope,
-              organization: organizationCatalog(response.entries),
-              privateUnavailable:
-                response.available === false && !ABSENT_ORGANIZATION_CAPABILITIES.has(response.reason ?? ''),
-            }));
-          }
-        });
-    void Promise.allSettled([publicRequest, privateRequest]).then(() => {
-      if (!cancelled) {
-        setRemote((current) => ({ ...current, scope, loading: false }));
-      }
-    });
+    void request
+      .then((response) => {
+        if (!cancelled) {
+          setOnline({ key: publicKey, items: response.items, loading: false, unavailable: !response.available });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOnline((current) =>
+            current?.key === publicKey
+              ? { ...current, loading: false }
+              : { key: publicKey, items: [], loading: false, unavailable: true }
+          );
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, [namespace, scope, revision, enabled, publicOnly]);
+  }, [publicEnabled, isDiscovery, serviceUrl, scope, publicKey, revision]);
 
-  const current = remote.scope === scope ? remote : undefined;
+  useEffect(() => {
+    if (!enabled || publicOnly) {
+      return;
+    }
+    let cancelled = false;
+    void fetchCustomGuideCatalogue(namespace, { refresh: revision > 0 })
+      .then((response) => {
+        if (!cancelled) {
+          setOrganization({
+            scope,
+            items: organizationCatalog(response.entries),
+            loading: false,
+            unavailable: response.available === false && !ABSENT_ORGANIZATION_CAPABILITIES.has(response.reason ?? ''),
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOrganization((current) => ({
+            scope,
+            items: current?.scope === scope ? current.items : [],
+            loading: false,
+            unavailable: true,
+          }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, publicOnly, namespace, scope, revision]);
+
+  const currentPublic = publicEnabled && online?.key === publicKey ? online : undefined;
+  const currentPrivate = enabled && !publicOnly && organization?.scope === scope ? organization : undefined;
   const retry = useCallback(() => {
-    setRemote((current) => ({ ...current, loading: true }));
+    setOnline((current) => (current ? { ...current, loading: true } : current));
+    setOrganization((current) => (current ? { ...current, loading: true } : current));
     setRevision((value) => value + 1);
   }, []);
-  const items = useMemo(
-    () =>
-      enabled
-        ? mergeCatalog(
-            local.bundled,
-            current?.online ?? [],
-            local.curated,
-            publicOnly ? [] : (current?.organization ?? [])
-          )
-        : [],
-    [local, current, enabled, publicOnly]
-  );
+  const items = useMemo(() => {
+    if (!enabled) {
+      return [];
+    }
+    const official = isDiscovery
+      ? eligibleDiscoveryCatalog(local.bundled, currentPublic?.items ?? [], local.curated)
+      : mergeCatalog(local.bundled, currentPublic?.items ?? [], local.curated);
+    return mergeCatalog(official, currentPrivate?.items ?? []);
+  }, [enabled, isDiscovery, local, currentPublic, currentPrivate]);
   return {
     scope,
     items,
-    loading: enabled && (current?.loading ?? true),
-    publicUnavailable: current?.publicUnavailable ?? false,
-    privateUnavailable: current?.privateUnavailable ?? false,
+    loading:
+      (publicEnabled && (currentPublic?.loading ?? true)) ||
+      (enabled && !publicOnly && (currentPrivate?.loading ?? true)),
+    publicUnavailable: currentPublic?.unavailable ?? false,
+    privateUnavailable: currentPrivate?.unavailable ?? false,
     retry,
   };
 }

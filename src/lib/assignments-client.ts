@@ -22,7 +22,8 @@ const ASSIGNMENTS_URL = `${PLUGIN_BACKEND_URL}/assignments/my`;
 const inflight = new Map<string, Promise<MyAssignmentsResult>>();
 
 /** `ok: false` means the listing could not be read, so callers must keep any last good state rather than treat it as empty. */
-export type MyAssignmentsResult = { ok: true; assignments: AssignmentEntry[] } | { ok: false };
+export type MyAssignmentsResult =
+  { ok: true; assignments: AssignmentEntry[] } | { ok: false; reason?: 'capability-unavailable' };
 
 const FETCH_FAILED: MyAssignmentsResult = { ok: false };
 const NOTHING_ASSIGNED: MyAssignmentsResult = { ok: true, assignments: [] };
@@ -44,13 +45,13 @@ async function requestAssignments(): Promise<MyAssignmentsResult> {
     showErrorAlert: false,
     showSuccessAlert: false,
   });
-  if (!response?.capability?.available) {
+  if (response?.capability?.available === false) {
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[assignments] unavailable', { reason });
     recordAssignmentsUnavailable(reason);
-    return FETCH_FAILED;
+    return { ok: false, reason: 'capability-unavailable' };
   }
-  if (!Array.isArray(response.assignments)) {
+  if (!response?.capability?.available || !Array.isArray(response.assignments)) {
     logger.warn('[assignments] malformed response', { reason: MALFORMED_REASON });
     recordAssignmentsUnavailable(MALFORMED_REASON);
     return FETCH_FAILED;

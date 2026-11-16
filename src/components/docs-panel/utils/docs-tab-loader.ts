@@ -1,3 +1,5 @@
+import { isSamePackageRepository } from '../../../types/package.types';
+import { isAllowedContentUrl } from '../../../security';
 import type { GuideLoadContext } from '../../../types/guide-diagnostics.types';
 import { fetchContent, fetchPackageById, fetchPackageContent } from '../../../docs-retrieval';
 import type { PackageOpenInfo } from '../../../types/content-panel.types';
@@ -39,7 +41,7 @@ export async function loadDocsTabContentResult(
         packageInfo.repository,
         undefined,
         explicitGuideId,
-        knownBaseUrl,
+        knownBaseUrl ?? matchingPersistedPathBaseUrl(packageInfo),
         options.loadContext
       );
     }
@@ -71,4 +73,20 @@ export async function loadDocsTabContentResult(
   }
 
   return fetchContent(normalizedUrl, { skipReadyToBegin, loadContext: options.loadContext });
+}
+
+function matchingPersistedPathBaseUrl(packageInfo: PackageOpenInfo): string | undefined {
+  const { resolvedPath, packageManifest, repository } = packageInfo;
+  const ownerRepository = repository ?? packageManifest?.repository;
+  if (
+    !resolvedPath ||
+    (packageManifest?.type !== 'path' && packageManifest?.type !== 'journey') ||
+    resolvedPath.id !== packageManifest.id ||
+    !isSamePackageRepository(resolvedPath.repository, ownerRepository) ||
+    typeof resolvedPath.baseUrl !== 'string' ||
+    !isAllowedContentUrl(resolvedPath.baseUrl)
+  ) {
+    return undefined;
+  }
+  return resolvedPath.baseUrl;
 }

@@ -110,7 +110,7 @@ A stamped manifest carries a top-level `stats` key, which reaches `repository.js
 
 ### Package IDs must not collide across repositories
 
-A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
+Outside the seven synchronized fallback tutorials, a bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The default lookup order is bundled → recommender or CDN → App Platform. Only the seven migrated tutorials prefer an enabled recommender before bundled. The first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
 
 ---
 
@@ -487,3 +487,70 @@ node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bund
 - [Authoring interactive guides](./interactive-examples/authoring-interactive-journeys.md) — starting point for all guide authoring
 - [Pathfinder package design](../design/PATHFINDER-PACKAGE-DESIGN.md) — the full design spec (for design review, not day-to-day authoring)
 - [Dependencies design](../design/package/dependencies.md) — deep dive on the dependency model
+
+## Bundled fallback tutorials
+
+The seven guides in `src/constants/bundled-tutorials.json` are maintained in
+[grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials).
+Edit the upstream guide, then use the sync workflow to update the offline copies.
+Editor, demo, and test packages remain maintained in this repository.
+
+To reproduce a sync locally, check out an upstream commit without tracked edits,
+run `npm run build:cli`, then run:
+
+```bash
+node scripts/sync-bundled-tutorials.mjs /path/to/interactive-tutorials FULL_COMMIT_SHA
+```
+
+The sync validates all selected packages before replacing any copies, regenerates
+the indexes, and records the source commit only when generated content changes.
+Run `npm run test:sync-bundled-tutorials` to test the sync without network access.
+
+Recommender resolution validates trusted content and manifest URLs and matching content IDs
+for every package, with a 5-second aggregate deadline. The seven fallback tutorials also
+require a matching manifest ID and use a shorter 1.5-second deadline. Their recommendation
+clicks fall back locally if the CDN fails or exceeds 1.5 seconds; explicit bundled links
+stay local. Online fallback results are retried on the next open. Path-member fallback
+uses only already-resolved or cached path metadata, so parent and track lookups do not
+extend that deadline. Tabs retain the validated owning-path URL for restoration. If an
+older saved tab has neither that URL nor a cached path entry, its guide remains readable,
+but path completion waits until ownership can be resolved. Unavailable required members
+remain in the sequence and cannot accidentally shorten the path needed for a badge.
+
+Before releasing this migration, merge and publish interactive-tutorials #714 and verify
+all seven package manifests plus `first-dashboard-rss` on the CDN with
+`npm run check:bundled-tutorial-publication` (also enforced by the release workflow). Confirm that
+`first-dashboard/content.json` is the Explore/dashboard tutorial, not the RSS tutorial.
+Audit existing public `first-dashboard` assignments before release: historical online
+completion evidence belongs to RSS and cannot satisfy the migrated dashboard target.
+
+### Enable the daily sync
+
+The workflow uses the repository's built-in `GITHUB_TOKEN` in a separate PR job
+with Contents and Pull requests write permissions. Package installation and generation
+retain read-only permissions. No GitHub App installation, token broker configuration,
+or repository secret is required. Repository Actions settings must allow GitHub Actions
+to create pull requests.
+After the upstream migration is merged and its seven packages are published,
+set repository variable `BUNDLED_TUTORIAL_SYNC_ENABLED` to `true` and manually run
+**Sync bundled tutorials**. Confirm it opens or updates the signed
+`codex/sync-bundled-tutorials` PR. A repository writer must select **Approve workflows to run**
+when GitHub requests approval for the generated PR checks, then confirm they pass.
+See [GitHub’s workflow triggering rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow). Subsequent checks
+run daily at 06:17 UTC. Merge sync PRs normally; there is no automatic merge.
+Unset the enable variable to pause synchronization without affecting bundled content.
+
+### Identity compatibility
+
+Recommender packages win over bundled recommendations when enabled. Explicit
+`bundled:` links stay local, and consent-disabled resolution stays bundled-first.
+The seven mapped guides retain their bundled progress identity across delivery
+sources; loading telemetry still identifies the actual delivery source. The Go
+assignment evaluator embeds the same allowlist and accepts their shared public/bundled
+identity for both direct targets and path members, while preserving private-source isolation.
+
+The former upstream RSS tutorial is now `first-dashboard-rss`. Its historical
+online `first-dashboard` completion records remain stored and are projected to
+that RSS identity for recommendations. They must never grant completion to the
+migrated bundled dashboard tutorial. Deploy the upstream rename before releasing
+this client mapping.

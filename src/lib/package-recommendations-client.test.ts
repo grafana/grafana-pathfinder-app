@@ -10,6 +10,7 @@ import {
   __resetPackageRecommendationsClientForTests,
   buildPackageFileUrl,
   fetchOnlinePackageRecommendations,
+  getCachedPackageRecommendations,
 } from './package-recommendations-client';
 
 const mockGet = jest.fn();
@@ -259,4 +260,22 @@ it('distinguishes index failure from an empty successful catalogue and deduplica
   const empty = await fetchOnlinePackageRecommendations();
   expect(empty.available).not.toBe(false);
   expect(empty.packages).toEqual([]);
+});
+
+it('only exposes settled cached metadata without starting or awaiting a request', async () => {
+  expect(getCachedPackageRecommendations()).toBeNull();
+  expect(mockGet).not.toHaveBeenCalled();
+  let settle!: (value: typeof samplePayload) => void;
+  mockGet.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        settle = resolve;
+      })
+  );
+  const pending = fetchOnlinePackageRecommendations();
+  expect(getCachedPackageRecommendations()).toBeNull();
+  settle(samplePayload);
+  await pending;
+  expect(getCachedPackageRecommendations()).toEqual(expect.objectContaining(samplePayload));
+  expect(mockGet).toHaveBeenCalledTimes(1);
 });

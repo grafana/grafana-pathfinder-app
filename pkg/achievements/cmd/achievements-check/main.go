@@ -6,7 +6,8 @@
 //	achievements-check compat <live.json> <next.json>
 //
 // The source directory holds catalog/<achievement-id>.json (one definition per
-// file), events/<entity>.json (one registry entity per file) and art/<key>.svg.
+// file), events/<entity>.json (one registry entity per file) and art/<key>.svg
+// (one SVG document per file).
 // build writes the file for achievements.FormatVersion, published at
 // achievements/<FormatVersion>/definitions.json. Every source definition must be
 // expressible in that format; once several versions are published, each
@@ -16,6 +17,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
@@ -247,6 +249,9 @@ func build(src, repo, commit string) ([]byte, []string, error) {
 		problems = append(problems, fmt.Sprintf("%s: no definitions", filepath.Join(src, "catalog")))
 	}
 	for _, f := range files["art"] {
+		if problem := readArt(f.path); problem != "" {
+			problems = append(problems, fmt.Sprintf("%s: %s", f.path, problem))
+		}
 		b.Art = append(b.Art, f.stem)
 	}
 
@@ -311,6 +316,52 @@ func readDefinition(stem, path string) (json.RawMessage, string) {
 		return nil, fmt.Sprintf("id %q must match the file name %q", d.ID, stem)
 	}
 	return json.RawMessage(raw), ""
+}
+
+const svgNamespace = "http://www.w3.org/2000/svg"
+
+// readArt requires the file to parse as XML with one svg root element in the SVG
+// namespace, without which a browser does not render it as an image. It is not a
+// full XML conformance check.
+func readArt(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err.Error()
+	}
+	dec := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf"))))
+	depth, roots := 0, 0
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "not well-formed XML: " + err.Error()
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if depth == 0 {
+				roots++
+				if roots > 1 {
+					return "more than one root element"
+				}
+				if t.Name.Local != "svg" || t.Name.Space != svgNamespace {
+					return fmt.Sprintf("root element is %q in namespace %q; want svg in %s", t.Name.Local, t.Name.Space, svgNamespace)
+				}
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+		case xml.CharData:
+			if depth == 0 && len(bytes.Trim(t, " \t\r\n")) > 0 {
+				return "text outside the svg root element"
+			}
+		}
+	}
+	if roots == 0 {
+		return "no svg root element"
+	}
+	return ""
 }
 
 type sourceFile struct{ path, stem string }

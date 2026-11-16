@@ -5,16 +5,17 @@
  * `learning-journey-helpers.ts`.
  */
 import { RawContent, Milestone } from '../types/content.types';
+import { getMilestoneSlug } from '../lib/learning-journey-url';
 
 /**
  * The milestone sequence Next/Previous should traverse. On the cover page,
  * a selected track redirects to that track's guides via this content's own
  * fresh `tracks` field, not the caller's persisted `activeTrackMilestones`
  * snapshot (see `LearningJourneyTab.activeTrackMilestones`), which can go
- * stale. Past the cover, `tracks` is never populated, so staying
- * track-aware there requires that persisted snapshot instead, matched
- * against this content's own URL. Falls through to Foundations when the
- * current guide isn't part of the active track.
+ * stale. Members use locally resolved offline tracks when available, otherwise
+ * the caller's sequence, matched against this content's own URL. Already-resolved
+ * rows can fill unavailable local members without changing the declared order.
+ * Falls through to Foundations when the current guide isn't part of the active track.
  *
  * The match runs even with no `learningJourney` at all, since a track-only
  * guide carries none — gating on it would leave such a guide's Next/Previous
@@ -33,10 +34,27 @@ export function resolveActiveMilestoneSequence(
       if (track) {
         return { currentMilestone: 0, milestones: [...track.milestones] };
       }
-    } else if (activeTrackMilestones) {
-      const current = activeTrackMilestones.find((m) => m.url === content.url);
-      if (current) {
-        return { currentMilestone: current.number, milestones: [...activeTrackMilestones] };
+    } else {
+      const offlineMilestones = content.metadata.offlinePathTracks?.find(
+        (track) => track.trackId === activeTrackId
+      )?.milestones;
+      const milestones =
+        offlineMilestones?.map((milestone) => {
+          if (!milestone.isLocked && milestone.url) {
+            return milestone;
+          }
+          const existing = activeTrackMilestones?.find(
+            (candidate) =>
+              milestone.id &&
+              (candidate.id ?? getMilestoneSlug(candidate.url)) === milestone.id &&
+              !candidate.isLocked &&
+              candidate.url
+          );
+          return existing ? { ...existing, id: milestone.id, number: milestone.number } : milestone;
+        }) ?? activeTrackMilestones;
+      const current = milestones?.find((m) => m.url === content.url);
+      if (current && milestones) {
+        return { currentMilestone: current.number, milestones: [...milestones] };
       }
     }
   }

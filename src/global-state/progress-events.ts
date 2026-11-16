@@ -25,7 +25,8 @@ export type ProgressReason = 'none' | 'objectives' | 'observed' | 'manual' | 'sk
 
 /**
  * Why a guide percentage was announced: `'change'` for a step or section write
- * the reader just made, `'load'` for a recompute of evidence already stored.
+ * the reader just made, `'load'` for a recompute of evidence already stored or
+ * objectives met on their first answered check with no completion requested.
  * Absent on resets and anything else; a consumer must treat absent as not a change.
  */
 export type ProgressOrigin = 'change' | 'load';
@@ -44,7 +45,7 @@ export type ProgressEventDetail =
       contentKey: string;
       sectionId: string;
       completed: boolean;
-      /** True when the section came back complete from storage rather than the reader completing it just now. */
+      /** True when the section came back complete from storage, or its objectives were met on their first answered check, or it has no gate, no objectives and no step saved as `'change'`, rather than the reader completing it just now. */
       hydrated: boolean;
       percentage?: number;
     }

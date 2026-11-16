@@ -35,11 +35,8 @@
  * absolute. And because the allowlist key omits the line number (see
  * violationKey), a second violation structurally identical to a grandfathered
  * one — same file, same method, same url expression — collapses onto that
- * existing key and stays silently grandfathered. With the allowlist empty,
- * that exposure is gone.
- *
- * The allowlist, ALLOWED_DIRECT_APP_PLATFORM_READS below, is empty: no direct
- * read is grandfathered, so any new violation fails this test.
+ * existing key and stays silently grandfathered. The own-user survey adapter
+ * below is the sole reviewed read exception; its exact call remains detected.
  */
 
 import * as fs from 'fs';
@@ -59,10 +56,21 @@ import {
 } from './import-graph';
 
 // ---------------------------------------------------------------------------
-// The allowlist — the ratchet baseline, now empty
+// The allowlist — reviewed, own-user storage compatibility read
 // ---------------------------------------------------------------------------
 
-const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [];
+const ALLOWED_DIRECT_APP_PLATFORM_READS: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'lib/onboarding-survey-intent.ts — GET onboardingSurveyIntentUrl(namespace, uid)',
+    reason:
+      'The saved-survey experiment reads only the signed-in caller’s existing user-storage record, ' +
+      'which Grafana authorizes by user UID rather than plugin ownership. No anonymous reads, ' +
+      'service token, foreign namespace input or local-storage fallback are permitted. A browser ' +
+      'session preserves that own-user authorization without broadening backend OBO permissions ' +
+      'or requiring a Setupguide release. Retire this exception with the experiment.',
+    tracking: '#2343',
+  },
+];
 
 const ADVICE =
   'A direct browser read of App Platform ("/apis/..." — spelled inline, or produced by a url ' +
@@ -737,6 +745,12 @@ describe('App Platform transport: proxy-first reads', () => {
       'ALLOWED_DIRECT_APP_PLATFORM_READS',
       ADVICE
     );
+  });
+
+  it('keeps the saved-survey compatibility read visible to the transport guard', () => {
+    expect(scan.violations.filter(({ file }) => file === 'lib/onboarding-survey-intent.ts').map(violationKey)).toEqual([
+      'lib/onboarding-survey-intent.ts — GET onboardingSurveyIntentUrl(namespace, uid)',
+    ]);
   });
 
   it('every allowlist entry is justified and accountable', () => {

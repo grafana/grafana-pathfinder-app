@@ -263,3 +263,18 @@ describe('projectRecommendCompletions', () => {
     expect(JSON.stringify(out)).not.toContain('user:1');
   });
 });
+
+it('keeps historical RSS completions separate from the migrated dashboard tutorial', () => {
+  const result = projectRecommendCompletions(
+    my([
+      completed({ guideSource: 'interactive-tutorials', guideId: 'first-dashboard' }),
+      completed({ guideSource: 'bundled', guideId: 'first-dashboard', maxCompletionPercent: 60 }),
+    ])
+  );
+  expect(result.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ guide_source: 'interactive-tutorials', guide_id: 'first-dashboard-rss', percent: 100 }),
+      expect.objectContaining({ guide_source: 'interactive-tutorials', guide_id: 'first-dashboard', percent: 60 }),
+    ])
+  );
+});

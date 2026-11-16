@@ -3,12 +3,14 @@ import { EmbeddedScene, SceneAppPage, SceneFlexItem, SceneFlexLayout } from '@gr
 import { prefixRoute } from '../utils/utils.routing';
 import { ROUTES } from '../constants';
 import { BrowsePanel } from '../components/PackageBrowser/BrowsePanel';
+import { homePage } from './homePage';
 
 export const browsePage = new SceneAppPage({
   title: 'Explore learning',
   url: prefixRoute(ROUTES.Browse),
   routePath: ROUTES.Browse,
   layout: PageLayoutType.Custom,
+  getParentPage: () => homePage,
   getScene: () =>
     new EmbeddedScene({
       body: new SceneFlexLayout({

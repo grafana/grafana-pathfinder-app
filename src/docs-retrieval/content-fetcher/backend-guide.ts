@@ -11,7 +11,6 @@ import { lastValueFrom } from 'rxjs';
 import { guideReadUrl } from '../../utils/interactive-guides-api';
 import { validateGuide } from '../../validation';
 import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
-import type { JsonBlock } from '../../types/json-guide.types';
 
 export interface BackendGuideResource {
   metadata?: {
@@ -81,14 +80,33 @@ export function buildBackendGuideContent(
     };
   }
 
+  const decoded = decodeAppPlatformGuideBlocks(guideResource.spec.blocks);
+  if (!decoded.ok) {
+    return {
+      content: null,
+      error: `Invalid custom guide: ${decoded.issues[0]?.message || 'Schema validation failed'}`,
+      diagnostic: {
+        source: 'app-platform',
+        stage: 'validate',
+        reason: 'schema-invalid',
+        validationCount: decoded.issues.length,
+      },
+      errorType: 'other',
+    };
+  }
+
   const guide = {
     id: guideResource.spec.id || guideResource.metadata?.name || resourceName,
     title: guideResource.spec.title,
     schemaVersion: guideResource.spec.schemaVersion || '1.0',
-    blocks: decodeAppPlatformGuideBlocks(guideResource.spec.blocks as JsonBlock[]),
+    blocks: decoded.blocks,
   };
 
-  const validationResult = validateGuide(guide, { allowDuplicateHeading: true, allowUnsupportedGuidedAction: true });
+  const validationResult = validateGuide(guide, {
+    allowDuplicateHeading: true,
+    allowUnsupportedGuidedAction: true,
+    allowGrotGraphErrors: true,
+  });
   if (!validationResult.isValid) {
     const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
     return {

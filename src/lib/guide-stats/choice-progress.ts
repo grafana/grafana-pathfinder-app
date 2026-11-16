@@ -169,15 +169,16 @@ export function choiceGuideProgress(
       input.choices?.map((choice) => choice.id)
     ).length > 0;
   const unanswered = active.some((item) => item.input?.required && !isAnswered(item.input));
-  const completed = active.filter((item) =>
+  const isCompleted = (item: ChoicePosition) =>
     item.input
       ? !item.input.required || isAnswered(item.input)
       : markedKeys.includes(item.key) ||
         item.containers.some((section) => acknowledged.has(section)) ||
-        item.position <= (furthestByScope.get(item.scope) ?? 0)
-  ).length;
+        item.position <= (furthestByScope.get(item.scope) ?? 0);
+  const completed = active.filter(isCompleted).length;
   const total = active.length;
-  const complete = !unanswered && total > 0 && completed === total;
+  const finalCompletable = [...active].reverse().find((item) => index.blocks[item.position - 1]?.completable);
+  const complete = !unanswered && total > 0 && (finalCompletable ? isCompleted(finalCompletable) : completed === total);
   const fraction = total === 0 ? 0 : completed / total;
   return {
     position: completed,

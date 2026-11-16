@@ -3,7 +3,7 @@
   "type": "guide",
   "repository": "bundled",
   "description": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
-  "category": "getting-started",
+  "category": "onboarding",
   "author": {
     "name": "Interactive Learning",
     "team": "Grafana Developer Advocacy"

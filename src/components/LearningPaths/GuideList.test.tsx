@@ -22,7 +22,7 @@ const guides: PathGuide[] = [
 
 describe('GuideList', () => {
   it('renders a row per guide: check when completed, play when current, circle when pending, lock when locked (cover-page treatment)', () => {
-    render(<GuideList guides={guides} enableCurrentRowLink />);
+    render(<GuideList guides={guides} enableRowLinks />);
 
     expect(screen.getByText('First module')).toBeInTheDocument();
     expect(screen.getByText('Second module')).toBeInTheDocument();
@@ -38,7 +38,7 @@ describe('GuideList', () => {
 
   // Regression test (Cursor Bugbot, "Cover chrome leaks into cards"):
   // the play icon, accent card background, and "Up next" label are cover-page
-  // treatment, gated by enableCurrentRowLink — same as the click affordance.
+  // treatment, gated by enableRowLinks — same as the click affordance.
   // LearningPathCard on My Learning renders GuideList without that flag, so
   // its current row must fall back to a plain circle with no extra chrome.
   it('shows a plain circle (not play) for the current row by default, with no "Up next" label', () => {
@@ -50,12 +50,12 @@ describe('GuideList', () => {
   });
 
   // Regression test (Cursor Bugbot, "Current row loses accent styling"):
-  // enableCurrentRowLink gates the play icon, card background, click
+  // enableRowLinks gates the play icon, card background, click
   // affordance, and "Up next" label — but the icon badge's own accent color
   // (guideIconBadgeCurrent) is not cover-only chrome and must stay on by
   // default, or the current module looks identical to a pending one on
   // My Learning cards.
-  it('keeps the current row icon badge accented by default (not gated by enableCurrentRowLink)', () => {
+  it('keeps the current row icon badge accented by default (not gated by enableRowLinks)', () => {
     render(<GuideList guides={guides} />);
 
     const currentBadge = screen.getByText('Second module').closest('div')!.querySelector('span');
@@ -63,24 +63,72 @@ describe('GuideList', () => {
     expect(currentBadge?.className).not.toContain('guideIconBadgeLocked');
   });
 
-  it('marks only the current row as a journey-start target, when it has a url and enableCurrentRowLink is set', () => {
+  it('marks every unlocked row with a url as a journey-start target when enableRowLinks is set, never a locked one', () => {
     const withUrl: PathGuide[] = [
-      { id: 'a', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:a/content.json' },
-      { id: 'b', title: 'Other module', completed: false, isCurrent: false, url: 'bundled:b/content.json' },
+      { id: 'a', title: 'Done module', completed: true, isCurrent: false, url: 'bundled:a/content.json' },
+      { id: 'b', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:b/content.json' },
+      { id: 'c', title: 'Later module', completed: false, isCurrent: false, url: 'bundled:c/content.json' },
+      {
+        id: 'd',
+        title: 'Locked module',
+        completed: false,
+        isCurrent: false,
+        locked: true,
+        url: 'bundled:d/content.json',
+      },
+      { id: 'e', title: 'No url module', completed: false, isCurrent: false },
     ];
-    render(<GuideList guides={withUrl} enableCurrentRowLink />);
+    render(<GuideList guides={withUrl} enableRowLinks />);
 
-    const currentRow = screen.getByText('Current module').closest('div[data-journey-start]');
-    expect(currentRow).toHaveAttribute('data-milestone-url', 'bundled:a/content.json');
-    expect(currentRow).toHaveAttribute('data-interaction-location', 'module_row_click');
-    expect(screen.getByText('Other module').closest('div')).not.toHaveAttribute('data-journey-start');
+    const targets = Array.from(document.querySelectorAll('[data-journey-start="true"]'));
+    expect(targets.map((el) => el.getAttribute('data-milestone-url'))).toEqual([
+      'bundled:a/content.json',
+      'bundled:b/content.json',
+      'bundled:c/content.json',
+    ]);
+    targets.forEach((el) => expect(el).toHaveAttribute('data-interaction-location', 'module_row_click'));
+    expect(document.querySelectorAll('[data-icon="angle-right"]')).toHaveLength(3);
+    expect(screen.getByText('Locked module').closest('div')).not.toHaveAttribute('data-journey-start');
+    expect(screen.getByText('No url module').closest('div')).not.toHaveAttribute('data-journey-start');
+  });
+
+  it('names each row link by its title, adding "completed" or "up next" where it applies', () => {
+    const withUrl: PathGuide[] = [
+      { id: 'a', title: 'Done module', completed: true, isCurrent: false, url: 'bundled:a/content.json' },
+      { id: 'b', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:b/content.json' },
+      { id: 'c', title: 'Later module', completed: false, isCurrent: false, url: 'bundled:c/content.json' },
+    ];
+    render(<GuideList guides={withUrl} enableRowLinks />);
+
+    expect(screen.getByRole('button', { name: 'Done module, completed' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Current module, up next' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Later module' })).toBeInTheDocument();
+  });
+
+  it("tags each row link with its state at render time, for link-handler.hook.ts's row_state", () => {
+    const withUrl: PathGuide[] = [
+      { id: 'a', title: 'Done module', completed: true, isCurrent: false, url: 'bundled:a/content.json' },
+      { id: 'b', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:b/content.json' },
+      { id: 'c', title: 'Later module', completed: false, isCurrent: false, url: 'bundled:c/content.json' },
+    ];
+    render(<GuideList guides={withUrl} enableRowLinks />);
+
+    expect(screen.getByRole('button', { name: 'Done module, completed' })).toHaveAttribute(
+      'data-row-state',
+      'completed'
+    );
+    expect(screen.getByRole('button', { name: 'Current module, up next' })).toHaveAttribute(
+      'data-row-state',
+      'up_next'
+    );
+    expect(screen.getByRole('button', { name: 'Later module' })).toHaveAttribute('data-row-state', 'ahead');
   });
 
   it('makes the journey-start row keyboard-operable: focusable, and Enter/Space dispatch a click', () => {
     const withUrl: PathGuide[] = [
       { id: 'a', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:a/content.json' },
     ];
-    render(<GuideList guides={withUrl} enableCurrentRowLink />);
+    render(<GuideList guides={withUrl} enableRowLinks />);
 
     const currentRow = screen.getByText('Current module').closest('div[data-journey-start]') as HTMLElement;
     expect(currentRow).toHaveAttribute('role', 'button');
@@ -99,18 +147,46 @@ describe('GuideList', () => {
     expect(clickSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('describes each row link by its description and meta, and forwards only a real guideId as data-milestone-id', () => {
+    const withUrl: PathGuide[] = [
+      {
+        id: '1',
+        guideId: 'real-id',
+        title: 'Described module',
+        description: 'What this module covers.',
+        estimatedMinutes: 12,
+        completed: false,
+        isCurrent: false,
+        url: 'bundled:a/content.json',
+      },
+      { id: '2', title: 'Plain module', completed: false, isCurrent: false, url: 'bundled:b/content.json' },
+    ];
+    render(<GuideList guides={withUrl} enableRowLinks />);
+
+    const described = screen.getByRole('button', { name: 'Described module' });
+    expect(described).toHaveAccessibleDescription('What this module covers. 12 min');
+    expect(described).toHaveAttribute('data-milestone-id', 'real-id');
+
+    const plain = screen.getByRole('button', { name: 'Plain module' });
+    expect(plain).not.toHaveAttribute('aria-describedby');
+    expect(plain).not.toHaveAttribute('data-milestone-id');
+  });
+
   // Regression test (Cursor Bugbot, "GuideList click affordance leaks"):
   // GuideList also renders inside LearningPathCard on My Learning, a
   // separate DOM tree with no listener for data-journey-start (only the
-  // cover page's contentRef subtree has one) — without enableCurrentRowLink,
-  // the current row used to look clickable there but do nothing on click.
-  it('does not mark the current row as a journey-start target by default (enableCurrentRowLink defaults to false)', () => {
+  // cover page's contentRef subtree has one), so rows there must not look
+  // clickable.
+  it('marks no row as a journey-start target by default (enableRowLinks defaults to false)', () => {
     const withUrl: PathGuide[] = [
       { id: 'a', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:a/content.json' },
+      { id: 'b', title: 'Later module', completed: false, isCurrent: false, url: 'bundled:b/content.json' },
     ];
     render(<GuideList guides={withUrl} />);
 
-    expect(screen.getByText('Current module').closest('div')).not.toHaveAttribute('data-journey-start');
+    expect(document.querySelector('[data-journey-start]')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-icon="angle-right"]')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('shows the estimated minutes tag when present and not locked', () => {
@@ -133,8 +209,8 @@ describe('GuideList', () => {
     expect(row).toHaveTextContent('Locked');
   });
 
-  it('shows an "Up next" label on the current row only, when enableCurrentRowLink is set', () => {
-    render(<GuideList guides={guides} enableCurrentRowLink />);
+  it('shows an "Up next" label on the current row only, when enableRowLinks is set', () => {
+    render(<GuideList guides={guides} enableRowLinks />);
 
     expect(screen.getByText('Up next')).toBeInTheDocument();
     expect(screen.getByText('Second module').closest('div')).toHaveTextContent('Up next');

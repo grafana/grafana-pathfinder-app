@@ -143,75 +143,43 @@ test('should complete first two steps of Welcome to Grafana journey', async ({ p
   const panelContainer = page.getByTestId(testIds.docsPanel.container);
   await expect(panelContainer).toBeVisible();
 
-  // Wait for recommendations to load
-  const recommendationsContainer = page.getByTestId(testIds.contextPanel.recommendationsContainer);
-  await expect(recommendationsContainer).toBeVisible({ timeout: 10000 });
+  const hub = page.getByTestId(testIds.sidebarHub.container);
+  await expect(hub).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId(testIds.sidebarHub.loading)).toHaveCount(0, { timeout: 30000 });
 
-  // Expand suggested guides section if collapsed
-  const suggestedGuidesToggle = page.getByTestId(testIds.contextPanel.suggestedGuidesToggle);
-  if ((await suggestedGuidesToggle.count()) > 0) {
-    const isExpanded = await suggestedGuidesToggle.getAttribute('aria-expanded');
-    if (isExpanded !== 'true') {
-      await suggestedGuidesToggle.click();
-      await page.waitForTimeout(300);
+  // The Welcome journey is either the featured recommendation, a "More recommended" row, or under "Other documentation"
+  const featured = page.getByTestId(testIds.sidebarHub.featured);
+  const rowCount = await page.getByTestId(testIds.sidebarHub.moreList).locator('> li').count();
+  let found = false;
+
+  if ((await featured.count()) > 0 && (await featured.textContent())?.includes('Welcome to Grafana')) {
+    await page.getByTestId(testIds.sidebarHub.featuredAction).click();
+    found = true;
+  }
+
+  for (let i = 0; i < rowCount && !found; i++) {
+    const row = page.getByTestId(testIds.sidebarHub.row(i));
+    if ((await row.textContent())?.includes('Welcome to Grafana')) {
+      await page.getByTestId(testIds.sidebarHub.rowPlay(testIds.sidebarHub.row(i))).click();
+      found = true;
     }
   }
 
-  // Find the recommendations grid
-  const recommendationsGrid = page.getByTestId(testIds.contextPanel.recommendationsGrid);
-  await expect(recommendationsGrid).toBeVisible();
-
-  // Find the "Welcome to Grafana" card by searching through recommendation cards
-  // We'll check cards by index (0-3 for primary recommendations) until we find the right one
-  let welcomeCardIndex = -1;
-  let foundInOtherDocs = false;
-
-  // Check each recommendation card (up to 4 primary recommendations)
-  for (let i = 0; i < 4; i++) {
-    const card = page.getByTestId(testIds.contextPanel.recommendationCard(i));
-    const cardCount = await card.count();
-
-    if (cardCount > 0) {
-      const cardTitle = card.getByTestId(testIds.contextPanel.recommendationTitle(i));
-      const titleText = await cardTitle.textContent();
-
-      if (titleText && titleText.includes('Welcome to Grafana')) {
-        welcomeCardIndex = i;
-        // Find and click the start button for this card
-        const startButton = card.getByTestId(testIds.contextPanel.recommendationStartButton(i));
-        await expect(startButton).toBeVisible({ timeout: 5000 });
-        await startButton.click();
-        break;
-      }
-    }
-  }
-
-  // If not found in primary recommendations, check "Other Documentation" section
-  if (welcomeCardIndex === -1) {
-    const otherDocsToggle = page.getByTestId(testIds.contextPanel.otherDocsToggle);
-    const toggleCount = await otherDocsToggle.count();
-
-    if (toggleCount > 0) {
-      // Expand other docs if not already expanded
-      const isExpanded = await otherDocsToggle.getAttribute('aria-expanded');
-      if (isExpanded !== 'true') {
+  if (!found) {
+    const otherDocsToggle = page.getByTestId(testIds.sidebarHub.otherDocsToggle);
+    if ((await otherDocsToggle.count()) > 0) {
+      if ((await otherDocsToggle.getAttribute('aria-expanded')) !== 'true') {
         await otherDocsToggle.click();
-        await page.waitForTimeout(500);
       }
-
-      // Check items in other docs list
-      const otherDocsList = page.getByTestId(testIds.contextPanel.otherDocsList);
-      const welcomeDocLink = otherDocsList.getByText('Welcome to Grafana');
-      const linkCount = await welcomeDocLink.count();
-
-      if (linkCount > 0) {
+      const welcomeDocLink = page.getByTestId(testIds.sidebarHub.otherDocsList).getByText('Welcome to Grafana');
+      if ((await welcomeDocLink.count()) > 0) {
         await welcomeDocLink.click();
-        foundInOtherDocs = true;
+        found = true;
       }
     }
   }
 
-  if (welcomeCardIndex === -1 && !foundInOtherDocs) {
+  if (!found) {
     throw new Error('Could not find "Welcome to Grafana" recommendation');
   }
 

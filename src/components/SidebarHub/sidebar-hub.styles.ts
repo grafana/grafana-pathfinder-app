@@ -34,6 +34,15 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
       '& p': { marginBottom: theme.spacing(0.75) },
     }),
     detailsSkeleton: css({ '&&': { padding: theme.spacing(0.5, 0), borderTop: 'none', gap: 0 } }),
+    detailsField: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      marginBottom: theme.spacing(1.5),
+      // Not `typography.sm`, despite the deprecation: Grafana 13.2's runtime theme lacks it and the panel crashes.
+      '& > label': { flexShrink: 0, fontSize: theme.typography.bodySmall.fontSize, color: theme.colors.text.secondary },
+      '& > div': { flex: 1, minWidth: 0 },
+    }),
     detailsHeading: css({
       '&&': {
         margin: theme.spacing(0, 0, 0.5),

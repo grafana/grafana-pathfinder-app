@@ -89,3 +89,35 @@ it('uses runtime visibility for environment requirements and heading-only sectio
   expect(choiceGuideProgress(envModel, envIndex, [], {}, new Set(['section-environment'])).totalBlockCount).toBe(0);
   expect(choiceGuideProgress(envModel, envIndex, [ack('environment')], {}, none).complete).toBe(true);
 });
+
+describe('a choice guide with interactive blocks', () => {
+  const step = (id: string): JsonBlock => ({ type: 'interactive', id, action: 'noop', content: id });
+  const interactiveBlocks: JsonBlock[] = [
+    blocks[0]!,
+    ...options.map((id): JsonBlock => ({
+      type: 'section',
+      id,
+      requirements: [`var-signals:includes:${id}`],
+      whenRequirementsUnmet: 'hide',
+      blocks: [step(`${id}-run`), { type: 'markdown', id: `${id}-outro`, content: 'Done' }],
+    })),
+  ];
+  const stepIndex = computeGuideBlockIndex(interactiveBlocks);
+  const stepModel = createChoiceProgressModel(interactiveBlocks, stepIndex)!;
+  const doIt = (blockId: string): CompletionEvidence => ({ kind: 'do-it', blockId });
+
+  it('completes at the final interactive block of the active path, not of the whole guide', () => {
+    const progress = choiceGuideProgress(stepModel, stepIndex, [doIt('logs-run')], { signals: 'logs' }, none);
+    expect(progress).toMatchObject({ percent: 100, complete: true });
+  });
+
+  it('does not complete until the final interactive block of the active path has evidence', () => {
+    const progress = choiceGuideProgress(stepModel, stepIndex, [doIt('logs-run')], { signals: 'logs,traces' }, none);
+    expect(progress.complete).toBe(false);
+    expect(progress.percent).toBeLessThan(100);
+  });
+
+  it('still requires an answer to the required choice', () => {
+    expect(choiceGuideProgress(stepModel, stepIndex, [doIt('logs-run')], {}, none).complete).toBe(false);
+  });
+});

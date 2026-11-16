@@ -1,4 +1,5 @@
 import { resolveActiveMilestoneToolbarContext } from './active-milestone-sequence';
+import { getNextMilestoneUrl } from './learning-journey-helpers';
 import type { RawContent, Milestone } from '../types/content.types';
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo/';
@@ -189,4 +190,30 @@ describe('resolveActiveMilestoneToolbarContext', () => {
       'https://grafana.com/docs/learning-paths/demo/'
     );
   });
+});
+
+it('fills unavailable offline track rows from the resolved snapshot without restoring removed members', () => {
+  const first = { ...baseMilestones[0]!, id: 'one' };
+  const second = { ...baseMilestones[1]!, id: 'two', number: 1 };
+  const removed = { ...second, id: 'removed', number: 2, url: `${baseUrl}removed/` };
+  const content = trackOnlyContent(first.url, {
+    metadata: {
+      title: 'Demo',
+      trackMemberBaseUrl,
+      offlinePathTracks: [
+        {
+          trackId: 'builder',
+          label: 'Builder',
+          milestones: [first, { ...second, number: 2, url: '', isLocked: true }],
+        },
+      ],
+    },
+  });
+  const snapshot = [second, removed, { ...first, number: 3 }];
+  expect(getNextMilestoneUrl(content, 'builder', snapshot)).toBe(second.url);
+  expect(resolveActiveMilestoneToolbarContext(content, 'builder', snapshot)?.milestones).toEqual([
+    first,
+    { ...second, number: 2 },
+  ]);
+  expect(content.metadata.offlinePathTracks?.[0]?.milestones[1]?.isLocked).toBe(true);
 });

@@ -82,6 +82,8 @@ export interface UseStepCheckerReturn {
 
   // Diagnostics
   completionReason: 'none' | 'objectives' | 'observed' | 'manual' | 'skipped';
+  /** Progress origin of an objectives completion: 'load' when met on the first answered check. */
+  objectivesOrigin: 'change' | 'load';
   explanation?: string;
   error?: string;
   canFixRequirement?: boolean; // Whether the requirement can be automatically fixed

@@ -18,14 +18,14 @@ them is the source of every bug this document exists to prevent:
   load restores.
 
 They diverge because automatic launches can select a surface without changing
-the user's durable preference. Existing My Learning path launches classify
-content (prose → full screen; interactive → beside Grafana). Catalog card
-launches use the sidebar policy below.
+the user's durable preference. Learn Home classifies content before opening it:
+reading-only guides open full screen, while guides that drive Grafana open beside
+it. Explore and the other catalogue surfaces use the sidebar policy below.
 
 ## Catalog card launches
 
-Start and Resume from Browse, recommendations, My Learning Discover and catalog
-Continue learning open in the sidebar through `openGuideInSidebar`, including
+Start and Resume from Explore, recommendations and legacy catalogue discovery
+open in the sidebar through `openGuideInSidebar`, including
 reading-only content. This gives discovery cards a consistent destination.
 Floating and full-screen views render the guide reader or editor; they do not
 provide recommendations or Browse navigation.
@@ -33,8 +33,8 @@ provide recommendations or Browse navigation.
 Launching from a discovery card while another reader is floating or full-screen
 returns to the sidebar. The launch uses `setModeTransient`, so it preserves the
 stored surface preference. Readers can still choose floating or full-screen
-after opening the guide. Existing My Learning path launches through
-`openPreparedGuide` retain their content-based surface selection.
+after opening the guide. Legacy path launches through `openPreparedGuide` retain
+their content-based surface selection, as do shipped Learn Home launches.
 
 ## The two axes and the three mutators
 
@@ -58,7 +58,7 @@ persists (so returning from a surface the user chose themselves sticks).
 
 ### Decision 2 — an automatic launch never overwrites the stored preference
 
-A guide auto-launched from My Learning uses `setModeTransient`, which never
+A guide auto-launched through legacy path classification uses `setModeTransient`, which never
 writes localStorage, and every automatic teardown/exit on the way back uses the
 conditional `setMode`, which is suppressed while the session is open. So the
 round-trip "launch → read → leave" leaves the stored preference exactly as it
@@ -84,7 +84,7 @@ state:
   buttons behave as symmetric toggles — the most predictable model for a user.
 - **Fullscreen back-arrow / "return to sidebar" notice → conditional `setMode`
   (unchanged).** These are **returns**, not adoptions. Leaving a _transient_
-  fullscreen (e.g. a prose guide auto-launched from My Learning) must restore
+  fullscreen (e.g. a prose guide auto-launched through legacy classification) must restore
   the user's real preference — persisting `sidebar` here would let an automatic
   launch overwrite the preference through the back door, violating decision 2.
   Leaving a fullscreen the user _chose_ themselves still persists, because no

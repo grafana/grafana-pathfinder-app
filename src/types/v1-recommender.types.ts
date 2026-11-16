@@ -1,3 +1,4 @@
+import type { RecommendationRelevance } from './context.types';
 /**
  * V1 Recommender API Response Types
  *
@@ -65,6 +66,7 @@ export interface V1PackageManifest {
  * is still surfaced for graceful client-side degradation.
  */
 export interface V1Recommendation {
+  relevance?: RecommendationRelevance;
   type: string;
   title: string;
   description?: string;

@@ -636,7 +636,7 @@ func TestAchievementStore_KindNotServedIsAnOutageNotAnAbsentRow(t *testing.T) {
 	}
 }
 
-func TestAchievementStore_ExistingAwardRowIsHeldNotReported(t *testing.T) {
+func TestAchievementStore_ExistingAwardRowIsHeldAndReported(t *testing.T) {
 	catalog := achievementTestCatalog(t)
 	store, api := newAchievementTestStore(t)
 	bronze := achievements.Award{AchievementID: "guides-finished", TierID: "bronze", Entity: "guides", EarnedAt: achievementTestNow}
@@ -654,8 +654,8 @@ func TestAchievementStore_ExistingAwardRowIsHeldNotReported(t *testing.T) {
 	if err != nil || len(decisions) != 1 {
 		t.Fatalf("Evaluate = %v, %v", decisions, err)
 	}
-	if d := decisions[0]; d.Reason.Transient() || len(d.Awarded) != 0 {
-		t.Fatalf("decision = %+v, want the 409 tier left out of awarded and the event settled", d)
+	if d := decisions[0]; d.Reason.Transient() || !slices.Equal(d.Awarded, []string{"bronze"}) {
+		t.Fatalf("decision = %+v, want the 409 tier reported in awarded and the event settled", d)
 	}
 	held := api.spec(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "guides-finished"))["tierIds"].([]any)
 	if len(held) != 1 || held[0] != "bronze" {

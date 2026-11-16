@@ -245,14 +245,14 @@ describe('generateJourneyContentWithExtras — locked-milestone handling', () =>
     expect(html).not.toContain('data-journey-start');
   });
 
-  // Static content generation can't decide real Next/Previous visibility —
+  // Static content generation can't decide real Next/Previous disabled state —
   // it runs at fetch time, before a tab's active Path Track (if any) is
   // known, and a track can make either button correct or incorrect
   // regardless of the raw Foundations milestone sequence (see
   // appendBottomNavigationToContent's own doc comment). Both buttons always
-  // render now; useLinkClickHandler's layout effect corrects real visibility
+  // render now; useLinkClickHandler's layout effect corrects real disabled state
   // against the live, track-aware canNavigateNext()/canNavigatePrevious().
-  it('always renders "Next →" and "← Previous" regardless of the raw milestone sequence — real visibility is decided live, not here', () => {
+  it('always renders "Next →" and "← Previous" regardless of the raw milestone sequence — real disabled state is decided live, not here', () => {
     const lockedHtml = generateJourneyContentWithExtras(
       '',
       ljMetadata(2, [milestone(1), milestone(2), milestone(3, { isLocked: true, url: '' })])

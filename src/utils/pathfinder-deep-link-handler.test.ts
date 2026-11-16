@@ -17,6 +17,7 @@ jest.mock('../plugin.json', () => ({
 
 const mockLocationServiceReplace = jest.fn();
 let mockRouterPathname = '/';
+let mockSynchronousLocationListener: (() => void) | undefined;
 
 jest.mock('@grafana/runtime', () => ({
   locationService: {
@@ -28,6 +29,7 @@ jest.mock('@grafana/runtime', () => ({
       url.search = path.search;
       url.hash = path.hash;
       window.history.replaceState(window.history.state, '', url);
+      mockSynchronousLocationListener?.();
     },
     getLocation: () => ({ pathname: mockRouterPathname }),
   },
@@ -104,6 +106,7 @@ describe('handlePathfinderDeepLink', () => {
     setSearch('');
     mockGetMode.mockReturnValue('sidebar');
     mockGetIsSidebarMounted.mockReturnValue(false);
+    mockSynchronousLocationListener = undefined;
     mockFindDocPage.mockReturnValue({
       url: 'https://grafana.com/docs/foo',
       title: 'Foo',
@@ -164,6 +167,21 @@ describe('handlePathfinderDeepLink', () => {
     expect(handlePathfinderDeepLink(deps)).toBe(true);
     expect(mockSetModePersisted).toHaveBeenCalledWith('floating');
     expect(window.location.search).toBe('?keep=this');
+  });
+
+  it('blocks a synchronous history listener during panel-mode cleanup', async () => {
+    setSearch('?doc=bundled%3Afoo&panelMode=sidebar');
+    const deps = mkDeps();
+    const synchronousCalls: Array<{ search: string; handled: boolean }> = [];
+    mockSynchronousLocationListener = () => {
+      synchronousCalls.push({ search: window.location.search, handled: handlePathfinderDeepLink(deps) });
+    };
+
+    expect(handlePathfinderDeepLink(deps)).toBe(true);
+    await flushPromises();
+
+    expect(synchronousCalls[0]).toEqual({ search: '?doc=bundled%3Afoo', handled: false });
+    expect(mockFindDocPage).toHaveBeenCalledTimes(1);
   });
 
   it('routes fullscreen panelMode to the in-app fullscreen page with doc + type forwarded', () => {

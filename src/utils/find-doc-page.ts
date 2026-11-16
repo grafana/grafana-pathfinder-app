@@ -1,5 +1,6 @@
-import { isGrafanaDocsUrl, isInteractiveLearningUrl } from '../security';
+import { isGrafanaDocsUrl } from '../security';
 import { logger } from '../lib/logging';
+import { formatSlug, getInteractiveLearningUrlTitle } from './doc-page-title';
 
 export interface DocPage {
   type: 'docs-page' | 'learning-journey' | 'interactive';
@@ -15,11 +16,6 @@ export interface DocPage {
  * Extracted from module.tsx so that the require() / require.context() calls
  * for bundled JSON data land in a lazy chunk instead of the entry point.
  */
-/** Convert a URL slug like "grafana-13-tour-play" to "Grafana 13 Tour Play" */
-function formatSlug(str: string): string {
-  return str.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export function findDocPage(param: string): DocPage | null {
   if (!param || param.trim() === '') {
     return null;
@@ -73,19 +69,11 @@ export function findDocPage(param: string): DocPage | null {
       url = 'https://' + url;
     }
 
-    // SECURITY: Use validated interactive learning URL check
-    if (!isInteractiveLearningUrl(url)) {
+    const title = getInteractiveLearningUrlTitle(url);
+    if (!title) {
       logger.warn('Security: Rejected non-interactive-learning URL', { url });
       return null;
     }
-
-    // Derive a readable title from the URL path.
-    // Strip trailing content.json / unstyled.html and use the last meaningful path segment.
-    // e.g. ".../guides/grafana-13-tour-play/content.json" → "Grafana 13 Tour Play"
-    const cleanedUrl = url.replace(/\/(content\.json|unstyled\.html)$/i, '');
-    const parts = cleanedUrl.split('/').filter(Boolean);
-    const slug = parts[parts.length - 1] || 'Interactive tutorial';
-    const title = formatSlug(slug);
 
     return {
       type: 'interactive',

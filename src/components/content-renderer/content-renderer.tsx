@@ -1,3 +1,4 @@
+import { isBundledTutorial } from '../../lib/bundled-tutorial-identity';
 import { CompletionObservationProvider } from './completion-observation-provider';
 import type { CompletionSource } from '../../completion-records/types';
 
@@ -37,7 +38,7 @@ import {
   recordGuideCompletionForSurface,
   type SurfaceCompletionInput,
 } from '../../docs-retrieval';
-import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus, prSnippetResolver } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
@@ -75,8 +76,10 @@ import {
   getGuideCompletionSource,
   peekGuidePercentage,
   isBlockEditorPreviewUrl,
+  markGuideEndViewed,
   refreshGuidePercentageOnLoad,
   refreshAndNotifyGuideProgress,
+  takeLoadCompletionCrossing,
 } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
@@ -106,6 +109,7 @@ import { t } from '@grafana/i18n';
 import { openLearningHome } from '../docs-panel/utils/open-catalog-browser';
 import { MyLearningErrorBoundary } from '../docs-panel/components/MyLearningErrorBoundary';
 import { resolveFullScreenFallbackLocation, resolveFullScreenManifestLocation } from './full-screen-fallback-location';
+import { GuideEndSentinel } from './GuideEndSentinel';
 
 const ReaderCompletionPanel = React.lazy(() => import('../completion-panel/ReaderCompletionPanel'));
 
@@ -161,11 +165,12 @@ export type ContentRendererCompletion =
 function recordCompletion(
   completion: ContentRendererCompletion,
   source: CompletionSource | undefined,
-  contentKey: string
+  contentKey: string,
+  durationMs: number | undefined
 ): void {
   switch (completion.kind) {
     case 'tracked':
-      recordGuideCompletionForSurface({ ...completion.input, source, contentKey });
+      recordGuideCompletionForSurface({ ...completion.input, source, contentKey, durationMs });
       completion.onComplete?.();
       return;
     case 'untracked':
@@ -222,6 +227,9 @@ export const ContentRenderer = React.memo(function ContentRenderer(props: Conten
 
 const stripTrailingSlashes = (key: string): string => key.replace(/\/+$/, '');
 
+/** How long old components get to unmount before a completion trigger is believed. */
+const COMPLETION_SETTLE_MS = 200;
+
 const ContentRendererInner = React.memo(function ContentRendererInner({
   content,
   onContentReady,
@@ -259,10 +267,12 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
   }, [completion]);
 
   const markCompleteRearmedRef = useRef(false);
+  const contentReadyAtRef = useRef<{ url: string; at: number } | undefined>(undefined);
 
   // The first terminal trigger owns the completion cause until a reset.
+  // `measured: false` is for a completion found already earned at load, which is no read.
   const triggerGuideComplete = useCallback(
-    (source?: CompletionSource) => {
+    (source?: CompletionSource, { measured = true }: { measured?: boolean } = {}) => {
       const key = resolveGuideContentKey(content.url);
       if (source !== 'manual' && getGuideIndex(key)?.choiceModel && peekGuidePercentage(key) !== 100) {
         return;
@@ -273,7 +283,9 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
       guideCompleteCalledRef.current = true;
       markCompleteRearmedRef.current = false;
       const contentKey = resolveGuideContentKey(content.url);
-      recordCompletion(completionRef.current, source ?? getGuideCompletionSource(contentKey), contentKey);
+      const readyAt = contentReadyAtRef.current;
+      const durationMs = measured && readyAt?.url === content.url ? Date.now() - readyAt.at : undefined;
+      recordCompletion(completionRef.current, source ?? getGuideCompletionSource(contentKey), contentKey, durationMs);
     },
     [content.url]
   );
@@ -297,7 +309,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
           guideCompleteCalledRef.current = false;
           completedSectionsRef.current.clear();
         } else if (peekGuidePercentage(key) === 100) {
-          triggerGuideComplete();
+          triggerGuideComplete(undefined, { measured: !takeLoadCompletionCrossing(key) });
         }
       }),
     [content.url, triggerGuideComplete]
@@ -348,7 +360,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     let isSettled = false;
     const settleTimer = setTimeout(() => {
       isSettled = true;
-    }, 200); // 200ms settling time for old components to unmount
+    }, COMPLETION_SETTLE_MS);
 
     // Count interactive sections from the DOM
     const countSections = (): number => {
@@ -571,6 +583,44 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     resolveFullScreenManifestLocation(content.metadata.packageManifest) ??
     resolveFullScreenManifestLocation(content.metadata.journeyManifest);
   const isCoverPage = isJourneyCoverPage(content);
+  const tracked = completion.kind === 'tracked' && !isBlockEditorPreviewUrl(content.url);
+
+  // A load-time recompute announces 100% inside the settle window, where every
+  // trigger above ignores it; a load that first crosses to 100% must still record.
+  useEffect(() => {
+    if (isCoverPage) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      const key = resolveGuideContentKey(content.url);
+      if (takeLoadCompletionCrossing(key) && peekGuidePercentage(key) === 100) {
+        triggerGuideComplete(undefined, { measured: false });
+      }
+    }, COMPLETION_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [content.url, isCoverPage, triggerGuideComplete]);
+
+  const onContentReadyRef = useRef(onContentReady);
+  useEffect(() => {
+    onContentReadyRef.current = onContentReady;
+  }, [onContentReady]);
+  const [readyFor, setReadyFor] = useState<{ url: string; contentKey: string } | null>(null);
+  const handleContentReady = useCallback(() => {
+    if (contentReadyAtRef.current?.url !== content.url) {
+      contentReadyAtRef.current = { url: content.url, at: Date.now() };
+    }
+    setReadyFor({ url: content.url, contentKey: resolveGuideContentKey(content.url) });
+    onContentReadyRef.current?.();
+  }, [content.url]);
+  const handleEndViewed = useCallback(() => {
+    const contentKey = resolveGuideContentKey(content.url);
+    if (readyFor?.contentKey !== contentKey || !markGuideEndViewed(contentKey, isJsonGuideContent(content.content))) {
+      return false;
+    }
+    triggerGuideComplete('objectives');
+    return true;
+  }, [content.url, content.content, readyFor, triggerGuideComplete]);
+
   const packageManifest = content.metadata.packageManifest;
   const prerequisites =
     !isCoverPage && journey && (packageManifest?.type === 'path' || packageManifest?.type === 'journey')
@@ -614,60 +664,70 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     [completionBaseUrl, completionCurrentUrl, content.url, content.metadata]
   );
   const afterContent = isCoverPage ? null : (
-    <MarkCompleteFooter
-      key={completionPanelEnabled ? `${scope}:${content.url}` : undefined}
-      context={
-        (completionPanelEnabled && completionSequence) || (content.type === 'learning-journey' && journey)
-          ? 'milestone'
-          : 'guide'
-      }
-      contentUrl={content.url}
-      completionIdentity={completionIdentity}
-      guideTitle={
-        completion.kind === 'tracked' ? (completion.input.guideTitle ?? content.metadata.title) : content.metadata.title
-      }
-      currentMilestone={
-        (completionPanelEnabled ? completionSequence?.currentMilestone : undefined) ?? journey?.currentMilestone
-      }
-      totalMilestones={
-        (completionPanelEnabled ? completionSequence?.milestones.length : undefined) ?? journey?.totalMilestones
-      }
-      onMarkComplete={triggerGuideCompleteFromMark}
-      onCompletionPanelVisibilityChange={onCompletionPanelVisibilityChange}
-      onContinue={onContinueToNextMilestone}
-      renderCompleted={
-        completionPanelEnabled && completion.kind === 'tracked' && !isBlockEditorPreviewUrl(content.url)
-          ? (celebrating) => (
-              <MyLearningErrorBoundary
-                fallbackMessage={t('completionPanel.unavailable', 'Completed. Next steps could not be loaded.')}
-                fallbackActions={
-                  <>
-                    <Button
-                      variant="secondary"
-                      onClick={() => openLearningHome({ source: 'content_completion_panel' })}
-                    >
-                      {t('completionPanel.myLearning', 'My learning')}
-                    </Button>
-                    <Button variant="secondary" onClick={() => window.location.reload()}>
-                      {t('completionPanel.reload', 'Reload page')}
-                    </Button>
-                  </>
-                }
-              >
-                <React.Suspense fallback={<LoadingPlaceholder text={t('completionPanel.loading', 'Completed')} />}>
-                  <ReaderCompletionPanel
-                    content={content}
-                    completionIdentity={completionIdentity}
-                    sequence={completionSequence ?? journey}
-                    onContinue={onContinueToNextMilestone}
-                    celebrating={celebrating}
-                  />
-                </React.Suspense>
-              </MyLearningErrorBoundary>
-            )
-          : undefined
-      }
-    />
+    <>
+      <GuideEndSentinel
+        armed={tracked && readyFor?.url === content.url}
+        contentRootRef={activeRef}
+        contentKey={readyFor?.contentKey ?? content.url}
+        onViewed={handleEndViewed}
+      />
+      <MarkCompleteFooter
+        key={completionPanelEnabled ? `${scope}:${content.url}` : undefined}
+        context={
+          (completionPanelEnabled && completionSequence) || (content.type === 'learning-journey' && journey)
+            ? 'milestone'
+            : 'guide'
+        }
+        contentUrl={content.url}
+        completionIdentity={completionIdentity}
+        guideTitle={
+          completion.kind === 'tracked'
+            ? (completion.input.guideTitle ?? content.metadata.title)
+            : content.metadata.title
+        }
+        currentMilestone={
+          (completionPanelEnabled ? completionSequence?.currentMilestone : undefined) ?? journey?.currentMilestone
+        }
+        totalMilestones={
+          (completionPanelEnabled ? completionSequence?.milestones.length : undefined) ?? journey?.totalMilestones
+        }
+        onMarkComplete={triggerGuideCompleteFromMark}
+        onCompletionPanelVisibilityChange={onCompletionPanelVisibilityChange}
+        onContinue={onContinueToNextMilestone}
+        renderCompleted={
+          completionPanelEnabled && completion.kind === 'tracked' && !isBlockEditorPreviewUrl(content.url)
+            ? (celebrating) => (
+                <MyLearningErrorBoundary
+                  fallbackMessage={t('completionPanel.unavailable', 'Completed. Next steps could not be loaded.')}
+                  fallbackActions={
+                    <>
+                      <Button
+                        variant="secondary"
+                        onClick={() => openLearningHome({ source: 'content_completion_panel' })}
+                      >
+                        {t('completionPanel.myLearning', 'My learning')}
+                      </Button>
+                      <Button variant="secondary" onClick={() => window.location.reload()}>
+                        {t('completionPanel.reload', 'Reload page')}
+                      </Button>
+                    </>
+                  }
+                >
+                  <React.Suspense fallback={<LoadingPlaceholder text={t('completionPanel.loading', 'Completed')} />}>
+                    <ReaderCompletionPanel
+                      content={content}
+                      completionIdentity={completionIdentity}
+                      sequence={completionSequence ?? journey}
+                      onContinue={onContinueToNextMilestone}
+                      celebrating={celebrating}
+                    />
+                  </React.Suspense>
+                </MyLearningErrorBoundary>
+              )
+            : undefined
+        }
+      />
+    </>
   );
 
   return (
@@ -683,7 +743,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
                 baseUrl={content.url}
                 title={content.metadata.title}
                 isNativeJson={content.isNativeJson ?? false}
-                onContentReady={onContentReady}
+                onContentReady={handleContentReady}
                 activeRef={activeRef}
                 className={className}
                 selectionState={selectionState}
@@ -933,24 +993,7 @@ function ContentProcessor({
     }
   }, [rawGuide, html, countingSource]);
 
-  // The frozen block index (docs/design/COMPLETION-MODEL.md, decision 1):
-  // one traversal over the PRE-inlining tree — `countingGuide`, not whichever
-  // render tree arrived — published once per content key and never
-  // recomputed for the life of that key. `publishGuideIndex` is itself
-  // idempotent, so a re-render or an unrelated prop change is a no-op here.
-  // It owns both the denominator and the numerator's positions so they can
-  // never come from two traversals and disagree.
-  //
-  // The eviction revision is a dependency because this is the only
-  // producer: a reset that evicts the index while this guide stays mounted
-  // would otherwise leave it with no index for the rest of the session, and
-  // no percentage with it.
-  //
-  // Passive effect, not `useMemo`/`useLayoutEffect`, for the same reason
-  // MarkCompleteFooter resolves its key in one: both producers of the
-  // content key publish it from a layout effect, so resolving during
-  // render (or in a child layout effect, which runs first) would publish
-  // the PREVIOUS milestone's key and leave this one with no index at all.
+  // Resets evict the index while mounted; this seam must publish the pre-inlining tree again.
   const guideIndexEvictionRevision = useSyncExternalStore(
     subscribeGuideIndexEvictions,
     getGuideIndexEvictionRevision,
@@ -999,6 +1042,9 @@ function ContentProcessor({
     const index = computeGuideBlockIndex(countingGuide.blocks, { resolveStepId: resolveCountedBlockStepId });
     publishGuideIndex({
       contentKey,
+      ...(contentKey.startsWith('bundled:') && isBundledTutorial(contentKey.slice('bundled:'.length))
+        ? { contentRevision: JSON.stringify(countingGuide.blocks) }
+        : {}),
       index,
       denominatorSource: 'live-pre-inlining',
       choiceModel: createChoiceProgressModel(countingGuide.blocks, index),
@@ -1023,7 +1069,7 @@ function ContentProcessor({
     const key = resolveGuideContentKey(baseUrl);
     if (!responsesLoading && getGuideIndex(key)?.choiceModel) {
       setGuideChoiceResponses(key, responses);
-      refreshAndNotifyGuideProgress(key);
+      refreshAndNotifyGuideProgress(key, getGuideIndex(key)?.contentRevision ? 'load' : undefined);
     }
   }, [responses, responsesLoading, baseUrl, rawGuide, guideIndexEvictionRevision]);
 
@@ -1042,7 +1088,7 @@ function ContentProcessor({
     }
     let cancelled = false;
     (async () => {
-      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs);
+      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs, prSnippetResolver(baseUrl));
       if (cancelled) {
         return;
       }

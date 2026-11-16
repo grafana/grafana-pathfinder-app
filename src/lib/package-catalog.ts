@@ -1,9 +1,10 @@
+import { z } from 'zod';
 import { isAllowedContentUrl } from '../security';
 import { packageIdSchema } from '../types/package.schema';
 import { RuntimeManifestJsonObjectSchema } from './runtime-manifest';
 import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
-import { getManifestMemberIds, type RepositoryJson } from '../types/package.types';
-import type { CatalogFilters, CatalogPackage } from '../types/package-catalog.types';
+import { getManifestMemberIds, getManifestTracks, type RepositoryJson } from '../types/package.types';
+import type { CatalogFilters, CatalogPackage, EligibleCatalogEntry } from '../types/package-catalog.types';
 import type { LearningPath, GuideMetadataEntry } from '../types/learning-paths.types';
 import type { CustomGuideRepositoryEntry } from './custom-guide-repository-client';
 import { buildPackageFileUrl, type PackageRecommendationsResponse } from './package-recommendations-client';
@@ -105,6 +106,86 @@ export function onlineCatalog(response: PackageRecommendationsResponse): Catalog
       },
     ];
   });
+}
+
+const eligibleCatalogEntrySchema = z.object({
+  id: packageIdSchema,
+  title: z.string().min(1),
+  contentUrl: z.string().refine(isAllowedContentUrl),
+  manifestUrl: z.string().refine(isAllowedContentUrl),
+  repository: z.string().min(1),
+  manifest: RuntimeManifestJsonObjectSchema.refine(
+    (manifest) =>
+      getManifestTracks(manifest).length === (manifest.tracks?.length ?? 0) &&
+      [...(manifest.milestones ?? []), ...(manifest.tracks ?? []).flatMap((track) => track.guides)].every(isPublicId)
+  ),
+}) satisfies z.ZodType<EligibleCatalogEntry>;
+
+export function eligibleCatalog(entries: unknown[]): CatalogPackage[] {
+  return entries.flatMap((candidate) => {
+    const parsed = eligibleCatalogEntrySchema.safeParse(candidate);
+    if (!parsed.success) {
+      return [];
+    }
+    const entry = parsed.data;
+    const manifest = entry.manifest;
+    if (EXCLUDED_BUNDLED_IDS.has(entry.id) || manifest.category === 'testing') {
+      return [];
+    }
+    return [
+      {
+        key: `${entry.repository}:${entry.id}`,
+        id: entry.id,
+        title: entry.title,
+        description: manifest.description,
+        format: manifest.type === 'guide' ? ('guide' as const) : ('path' as const),
+        source: 'grafana' as const,
+        category: manifest.category,
+        url: entry.contentUrl,
+        estimatedMinutes: positiveMinutes(manifest.estimatedMinutes),
+        activityCount: activityCount(manifest.stats),
+        memberIds: members(manifest),
+        packageInfo: {
+          packageId: entry.id,
+          packageManifest: { ...manifest, id: entry.id },
+          repository: entry.repository,
+        },
+      },
+    ];
+  });
+}
+
+export function eligibleDiscoveryCatalog(
+  bundled: CatalogPackage[],
+  online: CatalogPackage[],
+  curated: CatalogPackage[]
+): CatalogPackage[] {
+  const onlineIds = new Set(online.map((item) => item.id));
+  const byId = new Map<string, CatalogPackage>();
+  for (const item of [...online, ...curated]) {
+    if (!byId.has(item.id)) {
+      byId.set(item.id, item);
+    }
+  }
+  const isEligible = (id: string, ancestors: Set<string> = new Set()): boolean => {
+    const item = byId.get(id);
+    if (!item || ancestors.has(id) || (!onlineIds.has(id) && !item.memberIds?.length)) {
+      return false;
+    }
+    ancestors.add(id);
+    const eligible = hasEligibleMembers(item, ancestors);
+    ancestors.delete(id);
+    return eligible;
+  };
+  const hasEligibleMembers = (item: CatalogPackage, ancestors: Set<string> = new Set()) =>
+    [...(item.memberIds ?? []), ...getManifestMemberIds(item.packageInfo?.packageManifest)].every((id) =>
+      isEligible(id, ancestors)
+    );
+  return mergeCatalog(
+    bundled.filter((item) => isEligible(item.id) && hasEligibleMembers(item)),
+    online.filter((item) => isEligible(item.id)),
+    curated.filter((item) => isEligible(item.id) && hasEligibleMembers(item))
+  );
 }
 
 export function organizationCatalog(entries: CustomGuideRepositoryEntry[]): CatalogPackage[] {

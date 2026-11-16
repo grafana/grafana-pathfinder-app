@@ -6,6 +6,7 @@ import { testIds } from '../../constants/testIds';
 import type { HubResume, HubStats } from '../../learning-paths';
 import { FeaturedGuide } from './FeaturedGuide';
 import { CustomGuides } from './CustomGuides';
+import type { CustomHubGuide } from './custom-guides';
 import { GuideRow, type HubGuide } from './GuideRow';
 import { OtherDocs } from './OtherDocs';
 import { ResumeCard } from './ResumeCard';
@@ -23,8 +24,7 @@ interface SidebarHubProps {
   guides: HubGuide[];
   resume: HubResume | null;
   stats: HubStats;
-  /** Temporary: org custom guides, until the hub replaces the old Recommended tab. */
-  customGuides: HubGuide[];
+  customGuides: CustomHubGuide[];
   isLoadingCustomGuides: boolean;
   isLoadingGuides: boolean;
   isLoadingLearning: boolean;
@@ -137,7 +137,7 @@ export function SidebarHub({
           </ul>
         </>
       )}
-      <CustomGuides guides={customGuides} isLoading={isLoadingCustomGuides} onLaunch={(guide) => run(guide.onLaunch)} />
+      <CustomGuides guides={customGuides} isLoading={isLoadingCustomGuides} onLaunch={run} />
       <OtherDocs guides={other} onLaunch={(guide) => run(guide.onLaunch)} />
     </Stack>
   );

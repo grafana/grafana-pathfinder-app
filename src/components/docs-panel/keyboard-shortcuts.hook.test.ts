@@ -8,6 +8,8 @@ describe('useKeyboardShortcuts', () => {
     setActiveTab: jest.fn(),
     navigateToNextMilestone: jest.fn(),
     navigateToPreviousMilestone: jest.fn(),
+    canNavigateNext: jest.fn(),
+    canNavigatePrevious: jest.fn(),
   };
 
   const mockTabs = [
@@ -26,6 +28,8 @@ describe('useKeyboardShortcuts', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockModel.canNavigateNext.mockReturnValue(true);
+    mockModel.canNavigatePrevious.mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -184,6 +188,48 @@ describe('useKeyboardShortcuts', () => {
     // Previous milestone
     fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
     expect(mockModel.navigateToPreviousMilestone).toHaveBeenCalled();
+  });
+
+  it('should prevent default and not navigate next milestone with Alt+ArrowRight when canNavigateNext() returns false', () => {
+    mockModel.canNavigateNext.mockReturnValue(false);
+
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: mockTabs,
+        activeTabId: 'tab1',
+        activeTab: mockTabs[0]!,
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
+
+    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, cancelable: true });
+    const preventDefaultSpy = jest.spyOn(event, 'preventDefault');
+    document.dispatchEvent(event);
+
+    expect(preventDefaultSpy).toHaveBeenCalled();
+    expect(mockModel.navigateToNextMilestone).not.toHaveBeenCalled();
+  });
+
+  it('should prevent default and not navigate previous milestone with Alt+ArrowLeft when canNavigatePrevious() returns false', () => {
+    mockModel.canNavigatePrevious.mockReturnValue(false);
+
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: mockTabs,
+        activeTabId: 'tab1',
+        activeTab: mockTabs[0]!,
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
+
+    const event = new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, cancelable: true });
+    const preventDefaultSpy = jest.spyOn(event, 'preventDefault');
+    document.dispatchEvent(event);
+
+    expect(preventDefaultSpy).toHaveBeenCalled();
+    expect(mockModel.navigateToPreviousMilestone).not.toHaveBeenCalled();
   });
 
   it('should not navigate milestones when in recommendations tab', () => {

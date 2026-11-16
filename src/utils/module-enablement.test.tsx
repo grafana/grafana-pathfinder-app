@@ -569,7 +569,9 @@ it.each([
 ])('reports the sidebar open source %s as %s', async (source, expected) => {
   const { plugin, effects, reportAppInteraction } = await boot(true, true);
   effects.consumePendingOpenSource.mockReturnValue({ source, action: 'auto_open' });
-  const Sidebar = plugin.addComponent.mock.calls[0][0].component as React.ComponentType;
+  const Sidebar = plugin.addComponent.mock.calls.find(
+    ([entry]: [{ targets: string }]) => entry.targets === 'grafana/extension-sidebar/v0-alpha'
+  )![0].component as React.ComponentType;
   render(<Sidebar />);
   expect(reportAppInteraction).toHaveBeenCalledWith('docs_panel_interaction', {
     action: 'auto_open',

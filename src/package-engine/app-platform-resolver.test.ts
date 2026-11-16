@@ -4,6 +4,7 @@ import { resolveStartingLocation } from '../recovery/starting-location';
 import type { ManifestJson } from '../types/package.types';
 import { fetchPackageContent, setPackageResolver } from '../docs-retrieval/content-fetcher/package-content';
 import { getNextMilestoneUrl } from '../docs-retrieval/learning-journey-helpers';
+import { PERSISTED_DIVIDER_MARKDOWN } from '../types/app-platform-guide-compat';
 
 /** `PackageOpenInfo.packageManifest` is an untyped record; widen at the same seam the panel does. */
 const asPanelManifest = (manifest?: ManifestJson): Record<string, unknown> | undefined =>
@@ -466,6 +467,87 @@ describe('AppPlatformPackageResolver — full content', () => {
     expect(result.content?.title).toBe('Alerting module 1');
     expect(result.content?.blocks).toHaveLength(1);
     expect(result.manifest?.type).toBe('guide');
+  });
+
+  it('returns canonical top-level and nested dividers', async () => {
+    mockFetch.mockReturnValue(
+      of(
+        okResource({
+          blocks: [
+            { type: 'markdown', id: 'top', content: PERSISTED_DIVIDER_MARKDOWN },
+            {
+              type: 'conditional',
+              conditions: ['on-page:/'],
+              whenTrue: [{ type: 'markdown', id: 'nested', content: PERSISTED_DIVIDER_MARKDOWN }],
+              whenFalse: [],
+            },
+          ],
+        })
+      )
+    );
+
+    const result = await new AppPlatformPackageResolver().resolve('fe-alerting-01', { loadContent: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.content?.blocks).toEqual([
+      { type: 'divider', id: 'top' },
+      {
+        type: 'conditional',
+        conditions: ['on-page:/'],
+        whenTrue: [{ type: 'divider', id: 'nested' }],
+        whenFalse: [],
+      },
+    ]);
+  });
+
+  it('returns canonical fields for legacy aliases in multistep steps', async () => {
+    mockFetch.mockReturnValue(
+      of(
+        okResource({
+          blocks: [
+            {
+              type: 'multistep',
+              content: 'Configure it',
+              steps: [{ targetAction: 'button', refTarget: 'Save', targetState: true }],
+            },
+          ],
+        })
+      )
+    );
+
+    const result = await new AppPlatformPackageResolver().resolve('fe-alerting-01', { loadContent: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.content?.blocks[0]).toMatchObject({
+      type: 'multistep',
+      steps: [{ action: 'button', reftarget: 'Save', targetstate: 'true' }],
+    });
+  });
+
+  it('returns a structured validation failure for malformed external blocks', async () => {
+    mockFetch.mockReturnValue(of(okResource({ blocks: [{ content: PERSISTED_DIVIDER_MARKDOWN }] })));
+
+    const result = await new AppPlatformPackageResolver().resolve('fe-alerting-01', { loadContent: true });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error).toMatchObject({
+      code: 'validation-error',
+      diagnostic: {
+        source: 'app-platform',
+        stage: 'validate',
+        reason: 'schema-invalid',
+      },
+    });
+    expect(result.error.diagnostic?.validationCount).toBeGreaterThan(0);
   });
 
   it('SECURITY: encodes the package ID in the request URL (F3 path traversal)', async () => {

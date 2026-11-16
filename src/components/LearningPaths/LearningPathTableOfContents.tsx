@@ -141,9 +141,6 @@ export function LearningPathTableOfContents({
   // "Get started" targets the first unlocked milestone at 0% progress; once
   // underway, "Resume" targets the actual next incomplete one so returning to
   // the cover mid-path (e.g. via Previous) doesn't restart it from module 1.
-  // Every later milestone is sequentially locked — it isn't reachable yet
-  // regardless of its own publish-lock state, which stays authoritative for
-  // "unpublished" (locked even once its turn comes).
   const cursor = activeMilestones.findIndex((m) => !m.isLocked && !completedUrls.has(m.url));
 
   const guides: PathGuide[] = activeMilestones.map((milestone, index) => {
@@ -165,7 +162,7 @@ export function LearningPathTableOfContents({
       estimatedMinutes: milestone.estimatedMinutes,
       completed,
       isCurrent: cursor >= 0 && index === cursor,
-      locked: milestone.isLocked || (!completed && cursor >= 0 && index > cursor),
+      locked: milestone.isLocked,
       url: milestone.url,
     };
   });
@@ -280,7 +277,7 @@ export function LearningPathTableOfContents({
             )}
           </div>
         </div>
-        <GuideList guides={guides} enableCurrentRowLink />
+        <GuideList guides={guides} enableRowLinks />
       </div>
     </>
   );

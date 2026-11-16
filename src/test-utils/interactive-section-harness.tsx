@@ -52,8 +52,14 @@ let _executeInteractiveActionOutcome: 'ok' | 'error' = 'ok';
  *  section complete through its objectives; reset in `resetSectionHarness()`. */
 let _stepCheckerCompletionReason: 'none' | 'objectives' = 'none';
 
-export function setStepCheckerCompletionReason(reason: typeof _stepCheckerCompletionReason) {
+let _stepCheckerObjectivesOrigin: 'change' | 'load' = 'change';
+
+export function setStepCheckerCompletionReason(
+  reason: typeof _stepCheckerCompletionReason,
+  objectivesOrigin: typeof _stepCheckerObjectivesOrigin = 'change'
+) {
   _stepCheckerCompletionReason = reason;
+  _stepCheckerObjectivesOrigin = objectivesOrigin;
 }
 
 export function setExecuteInteractiveActionOutcome(outcome: 'ok' | 'error') {
@@ -210,6 +216,16 @@ export function createUserStorageMock() {
       clear: jest.fn(async (contentKey: string) => {
         memoryStore.delete(completionKey(contentKey));
       }),
+      peekAll: jest.fn(() => {
+        const prefix = completionKey('');
+        const record: Record<string, number> = {};
+        memoryStore.forEach((value, key) => {
+          if (key.startsWith(prefix) && typeof value === 'number') {
+            record[key.slice(prefix.length)] = value;
+          }
+        });
+        return record;
+      }),
     },
     /** The `mark-guide-complete` namespace the completion store consults
      *  synchronously when it derives a guide's percentage. */
@@ -338,6 +354,7 @@ export function createRequirementsManagerMock() {
       isCompleted: false,
       explanation: null,
       completionReason: _stepCheckerCompletionReason,
+      objectivesOrigin: _stepCheckerObjectivesOrigin,
       canSkip: false,
       markSkipped: jest.fn(),
       resetStep: jest.fn(),
@@ -475,6 +492,7 @@ export function resetSectionHarness() {
   _checkRequirementsResult = { pass: true, error: [] };
   _executeInteractiveActionOutcome = 'ok';
   _stepCheckerCompletionReason = 'none';
+  _stepCheckerObjectivesOrigin = 'change';
   executeInteractiveActionCalls.length = 0;
   _stableCheckRequirementsFromData?.mockClear();
   // The completion store keeps its own module-scope cache + hydration

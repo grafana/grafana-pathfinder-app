@@ -534,7 +534,7 @@ describe('step events: block progress properties', () => {
 
     expect(props).toMatchObject({
       block_position: 2,
-      block_progress_rule_version: 'block-position-v1',
+      block_progress_rule_version: 'block-position-v2',
       guide_stats_version: 2,
       total_block_count: 6,
       completable_block_count: 2,
@@ -624,7 +624,7 @@ describe('step events: block progress properties', () => {
     });
     const properties = getGuideBlockCountProperties(GUIDE_KEY);
     expect(properties).toMatchObject({
-      block_progress_rule_version: 'choice-path-v1',
+      block_progress_rule_version: 'choice-path-v2',
       total_block_count: 2,
       active_block_count: 1,
     });
@@ -638,7 +638,7 @@ describe('step events: block progress properties', () => {
     publish();
 
     expect(getGuideBlockCountProperties(GUIDE_KEY)).toEqual({
-      block_progress_rule_version: 'block-position-v1',
+      block_progress_rule_version: 'block-position-v2',
       guide_stats_version: 2,
       total_block_count: 6,
       completable_block_count: 2,
@@ -704,7 +704,7 @@ describe('reportStepSkipped', () => {
         total_block_count: 3,
         completable_block_count: 1,
         section_count: 0,
-        block_progress_rule_version: 'block-position-v1',
+        block_progress_rule_version: 'block-position-v2',
       })
     );
   });

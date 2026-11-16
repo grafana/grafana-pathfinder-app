@@ -82,7 +82,7 @@ describe('useStepChecker → completion-store bridge', () => {
       result.current.markCompleted();
     });
 
-    expect(mockMarkStepCompleted).toHaveBeenCalledWith('step-1', 'section-a', 'manual');
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith('step-1', 'section-a', 'manual', undefined, undefined);
   });
 
   it('writes skipped completion to the store on markSkipped() — closes the skip-divergence gap', async () => {
@@ -102,7 +102,7 @@ describe('useStepChecker → completion-store bridge', () => {
       result.current.markSkipped?.();
     });
 
-    expect(mockMarkStepCompleted).toHaveBeenCalledWith('step-skip', 'section-a', 'skipped');
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith('step-skip', 'section-a', 'skipped', undefined, undefined);
   });
 
   it('uses STANDALONE_SECTION_ID when sectionId is undefined — closes the standalone-objectives gap', async () => {
@@ -115,7 +115,7 @@ describe('useStepChecker → completion-store bridge', () => {
       result.current.markCompleted();
     });
 
-    expect(mockMarkStepCompleted).toHaveBeenCalledWith('lone-step', '__standalone__', 'manual');
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith('lone-step', '__standalone__', 'manual', undefined, undefined);
   });
 
   it('skips the store write entirely when sectionId is null (section-own objectives self-checker)', async () => {
@@ -166,7 +166,7 @@ describe('useStepChecker → completion-store bridge', () => {
       await Promise.resolve();
     });
 
-    expect(mockMarkStepCompleted).toHaveBeenCalledWith('step-obj', 'section-a', 'objectives');
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith('step-obj', 'section-a', 'objectives', undefined, 'load');
   });
 
   it('writes store reset on resetStep() — closes the reset-divergence gap', async () => {

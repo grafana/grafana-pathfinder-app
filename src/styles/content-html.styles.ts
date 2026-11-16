@@ -1182,6 +1182,21 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
   '& .journey-nav-prev, & .journey-nav-next': {
     flex: '0 0 auto',
     whiteSpace: 'nowrap',
+
+    '&:disabled': {
+      backgroundColor: theme.colors.action.disabledBackground,
+      color: theme.colors.action.disabledText,
+      cursor: 'not-allowed',
+      boxShadow: 'none',
+      transform: 'none',
+
+      '&:hover': {
+        backgroundColor: theme.colors.action.disabledBackground,
+        color: theme.colors.action.disabledText,
+        boxShadow: 'none',
+        transform: 'none',
+      },
+    },
   },
 
   // Secondary style for Previous button

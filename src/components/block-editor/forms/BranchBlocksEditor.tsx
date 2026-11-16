@@ -185,16 +185,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
     flexShrink: 0,
   }),
-  editButton: css({
-    color: theme.colors.primary.text,
-    backgroundColor: theme.colors.primary.transparent,
-    borderRadius: theme.shape.radius.default,
-    transition: 'all 0.15s ease',
-    '&:hover': {
-      backgroundColor: theme.colors.primary.shade,
-      color: theme.colors.primary.contrastText,
-    },
-  }),
   emptyState: css({
     textAlign: 'center',
     padding: theme.spacing(2),
@@ -927,7 +917,7 @@ export function BranchBlocksEditor({
                                     e.stopPropagation();
                                     handleStartEdit(index);
                                   }}
-                                  className={styles.editButton}
+                                  variant="secondary"
                                   tooltip="Edit block"
                                 />
                                 <IconButton

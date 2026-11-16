@@ -1,5 +1,102 @@
 # Changelog
 
+## 2.28.0
+
+### Added
+
+- **Flexible kiosk layouts and previews**: Build branded, responsive kiosk pages with sections, columns, images, Markdown, and theme controls. Preview catalogs and unpublished guides together from a captured PR commit, with progress kept separate from published learning content. Existing catalogs remain supported. (#2358)
+- **Refresh guides from Grafana Assistant**: Reload an open guide and its title when the Assistant sends a refresh event in the same browser tab. Existing content stays visible if the refresh fails. (#2339)
+- **App SDK foundation**: Add managed resource kinds and an app provider for Grafana App Platform registration. Existing plugin resource-proxy routes remain in place. (#2401)
+- **Achievement backend groundwork**: Add an evaluator, App Platform storage adapter, and routes for definitions, events, and personal progress. Achievements are not yet exposed in the learning interface; event and progress routes still require storage wiring. (#2269, #2280, #2281)
+
+### Fixed
+
+- **Keep Grafana Assistant open**: Opening a floating guide preserves a sidebar owned by another plugin, including the Assistant. (#2340)
+- **Readable completion messages**: Waiting reasons display quotes and slashes as text instead of HTML entities. (#2342)
+- **Correct milestone preview destinations**: Learning path previews use each milestone's declared starting page, falling back to the path's page only when the milestone has none. (#2415)
+- **Brazilian Portuguese translations**: Fill missing translations across guide pages, panel actions, and learning navigation, and improve existing wording. (#2372)
+- **Achievement retry reporting**: Report earned tiers after a partially failed save is retried, including awards already stored by the earlier attempt. (#2410)
+
+### Chore
+
+- **Bundled tutorial sync authentication**: Use the repository token to create signed tutorial sync PRs without a separate GitHub App installation. (#2409)
+- **Translation catalog checks**: Reject new missing keys, obsolete keys, and placeholder mismatches, and remove resolved Brazilian Portuguese exceptions from the baseline. (#2411, #2417)
+- **Achievement contract coverage**: Align storage tests with award reporting after a retry. (#2413)
+
+## 2.27.0
+
+### Added
+
+- **Refreshed learning home and Explore**: Find assignments first, browse courses with search and filters, and see clearer progress and badge details. (#2293)
+- **Shared fallback tutorials**: Prefer updated online versions of seven tutorials while retaining bundled copies for offline use. Progress and assignment credit are shared across both copies, with a gated workflow to keep bundled content in sync. (#2304)
+- **Decision-tree validation**: Warn authors about unreachable screens, self-loops, dead ends, duplicate screen IDs, and empty results in Grot guides. (#2331)
+- **Saved onboarding intent experiment**: Add an opt-in experiment that can open a configured guide for signed-in users whose saved onboarding answer indicates they are exploring. The experiment is excluded by default. (#2343)
+
+### Fixed
+
+- **Cloud token steps complete automatically**: Guided and multistep blocks that create a Cloud access-policy token now complete when the token form already shows success, so early creation or a guide reset no longer asks readers to repeat the form. Clicking Create token alone does not complete the step. (#2302)
+- **Lighter token workflow observation**: Observe token form changes only while a step needs them, and log one warning when the expected Cloud token form stays unavailable for over a minute. (#2367)
+- **Eligible public discovery**: Explore respects recommendation consent and shows only eligible public content, while organization guides remain independently available. Requires the recommender eligible-catalog endpoint before rollout. (#2325)
+- **Contextual recommendation ordering**: Rank suggested guides by the current task and prerequisites, demote completed peers, and discard stale context after navigation. (#2205)
+- **Consistent milestone boundaries**: Keep previous and next buttons visible but disabled at learning journey boundaries, and apply the same limits to keyboard shortcuts. (#2307)
+- **Reliable guide saves in large libraries**: Read the individual stored guide before saving, publishing, or unpublishing so truncated library lists cannot make existing guides appear missing. (#2317)
+- **Divider compatibility**: Preserve dividers across publishing and loading, including nested content, and keep stored guides compatible with older readers. (#2289)
+- **Remember collapsed custom guides**: Keep the custom guides section collapsed across sidebar reopening, navigation, and browser refreshes. (#2295)
+- **Consistent edit button styling**: Use Grafana's secondary edit buttons in nested blocks and guided steps for consistent hover and focus states. (#2345)
+
+### Security
+
+- **Dependency advisory fixes**: Update body-parser, fast-uri, and serialize-javascript to address advisories within their existing version ranges. (#2347)
+- **Container base image updates**: Refresh Node.js and CA trust base images with security updates. (#2346, #2355)
+
+### Chore
+
+- **Stable end-of-guide tests**: Remove an observer lookup race from content-renderer tests. (#2324)
+- **Learning launch cleanup**: Remove unreachable sidebar launch code from the learning home. (#2335)
+- **Review evidence requirements**: Strengthen light reviews with pinned evidence and explicit handling of blocking fixes, optional suggestions, and separate work. (#2323)
+- **Collaborator-aware community gate**: Treat collaborators with repository write access as internal while retaining the community checks when permission lookup fails. (#2344)
+
+## 2.26.1
+
+### Fixed
+
+- **Custom path milestones in the hub**: Expand custom learning paths to open any published milestone directly, switch tracks, and return to the next incomplete milestone. Track navigation survives a reload. (#2314)
+- **Open any published milestone**: Learning path cover pages let readers revisit completed milestones or jump ahead without completing earlier modules. Unavailable milestones remain locked. (#2313)
+- **Dashboard guide launches after fullscreen**: Guides launch correctly when navigating from a fullscreen guide to a dashboard after panel mode parameters are cleared. (#2315)
+- **Progress from reader actions**: Sections without their own objectives no longer start an attempt merely because their steps were already satisfied when the guide loaded. (#2297)
+
+### Chore
+
+- **Editor metadata regression coverage**: Add integration tests that verify guide metadata survives visual and JSON edits, publish changes, and restored drafts. (#2316)
+- **Review convergence**: Light reviews account for the review round when judging merge readiness while retaining serious-harm blockers. (#2226)
+
+## 2.26.0
+
+### Added
+
+- **Automatic guide completion**: Guides complete at their last completable block. Prose-only guides complete when the end of the guide is visible. (#2262)
+
+### Fixed
+
+- **Fresh, isolated PR previews**: PR previews fetch updated content after a push and keep preview progress separate from real guide completion records. (#2275)
+- **Completion after a reset**: A late objectives check from before a reset no longer completes a step twice or changes its completion origin. (#2292)
+- **Existing objectives on guide load**: With passive completion off, objectives already met when a guide opens no longer count as new learner progress. (#2256)
+- **Deep-link tab titles**: Learning paths opened from website links replace temporary tab titles with the fetched content title. (#2282)
+- **Sidebar hub spacing**: The Recommended tab uses the same page padding as Explore. (#2287)
+- **Guided steps across tabs**: Guided commands with a `noop` substep now reach the live tab instead of being rejected. (#2253)
+- **Reliable authoring selectors**: The element picker keeps the original selector if cleaning makes it stop uniquely matching the selected element. (#2268)
+- **Spanish translations**: Spanish navigation labels use sentence case. Interactive learning actions and settings now have Spanish text instead of empty or English strings. (#2303)
+
+### Security
+
+- **Go dependency security updates**: Update Go JOSE and related dependencies, including the follow-up RSA key validation fix. (#2187, #2277)
+- **Glob cancellation fix**: Update glob to address filesystem traversal that continues after cancellation. (#2272)
+- **Container base image updates**: Refresh Node.js and CA trust base images with security updates. (#2296, #2300, #2301)
+
+### Chore
+
+- **Sidebar hub enabled for everyone**: Remove the sidebar hub feature flag. The Recommended tab always uses the hub layout. (#2286)
+
 ## 2.25.0
 
 ### Added

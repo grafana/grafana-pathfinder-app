@@ -68,6 +68,7 @@ The hook returns a comprehensive state object including:
 - `isRetrying` - Currently in retry cycle
 - `retryCount` / `maxRetries` - Retry progress
 - `completionReason` - How step was completed ('objectives', 'manual', 'skipped')
+- `objectivesOrigin` - Progress origin of an objectives completion: 'load' when met on the first answered check, else 'change'
 - `explanation` - User-friendly message about requirement status
 - `error` - Error message from failed requirement check
 - `canFixRequirement` - Requirement can be automatically fixed
@@ -96,6 +97,8 @@ The hook returns a comprehensive state object including:
 - `validateInteractiveRequirements()` - Type-safe validation helper
 
 **Supported Requirement Types**:
+
+- `workflow-ready:cloud-access-policy-token` - Read-only, tab-local check for the shared Cloud token form success marker. Prefer it as an objective or verification condition; using it as a creation prerequisite blocks creation. See the [external component contract and inference rules](../interactive-examples/requirements-reference.md#automatic-token-workflow-detection).
 
 **Authentication & Authorization:**
 

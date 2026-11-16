@@ -19,23 +19,8 @@ test('should open and close docs panel', async ({ page }) => {
   const panelContainer = page.getByTestId(testIds.docsPanel.container);
   await expect(panelContainer).toBeVisible();
 
-  // Verify the user profile bar is visible (replaced the old "Recommended learning" heading)
-  const userProfileBar = page.getByTestId(testIds.contextPanel.userProfileBar);
-  await expect(userProfileBar).toBeVisible();
-
-  // Verify the recommendations container is visible
-  const recommendationsContainer = page.getByTestId(testIds.contextPanel.recommendationsContainer);
-  await expect(recommendationsContainer).toBeVisible();
-
-  // Expand suggested guides section if collapsed
-  const suggestedGuidesToggle = page.getByTestId(testIds.contextPanel.suggestedGuidesToggle);
-  if ((await suggestedGuidesToggle.count()) > 0) {
-    const isExpanded = await suggestedGuidesToggle.getAttribute('aria-expanded');
-    if (isExpanded !== 'true') {
-      await suggestedGuidesToggle.click();
-      await page.waitForTimeout(300);
-    }
-  }
+  const hub = page.getByTestId(testIds.sidebarHub.container);
+  await expect(hub).toBeVisible();
 
   // Click the Help button again to close the panel (toggle behavior)
   await helpButton.click();
