@@ -190,11 +190,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     overflowWrap: 'anywhere',
   }),
   tier: css({
-    fontSize: theme.typography.sm.fontSize,
+    fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
   description: css({
-    fontSize: theme.typography.sm.fontSize,
+    fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
     overflowWrap: 'anywhere',
   }),
@@ -215,13 +215,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
     background: theme.colors.primary.main,
   }),
   count: css({
-    fontSize: theme.typography.sm.fontSize,
+    fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
   note: css({
     margin: 0,
     marginTop: theme.spacing(1.5),
-    fontSize: theme.typography.sm.fontSize,
+    fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
 });
