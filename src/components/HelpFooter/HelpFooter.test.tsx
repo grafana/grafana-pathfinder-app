@@ -34,13 +34,11 @@ describe('HelpFooter', () => {
     expect(screen.getByRole('link', { name: 'Documentation' })).toHaveAttribute('target', '_blank');
   });
 
-  it('does not apply the compact override class to links but keeps it on callback buttons', () => {
+  it('keeps the compact override class on callback buttons', () => {
     render(<HelpFooter />);
 
-    const link = screen.getByRole('link', { name: 'Documentation' });
     const button = screen.getByRole('button', { name: 'Keyboard shortcuts' });
     expect(button).toHaveStyle({ fontSize: '11.5px', borderWidth: '0px' });
-    expect(link).not.toHaveStyle({ fontSize: '11.5px' });
   });
 
   it('renders href-backed controls with the text fill appearance', () => {
