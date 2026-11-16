@@ -55,6 +55,7 @@ export function KioskImage({
           width: '100%',
           height: ratio ? '100%' : 'auto',
           aspectRatio: ratio,
+          maxHeight: 'var(--kiosk-image-height, none)',
           objectFit: image.fit ?? 'contain',
           borderRadius: 'var(--kiosk-radius, 8px)',
         }}
