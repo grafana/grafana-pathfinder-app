@@ -31,7 +31,7 @@ describe('ElementPicker', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('renders a focusable native button so Enter and Space activate it as a click', () => {
+  it('renders a focusable native type=button control', () => {
     const onSelect = jest.fn();
     const onCancel = jest.fn();
     render(<ElementPicker onSelect={onSelect} onCancel={onCancel} />);
