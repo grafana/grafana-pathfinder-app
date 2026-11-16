@@ -1,4 +1,5 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import React from 'react';
+import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { config } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
 import { resetGuideLanguageStateForTests } from '../global-state/guide-language';
@@ -21,6 +22,18 @@ jest.mock('../lib/user-storage', () => ({
   useUserStorage: () => mockStorage,
   whenGrafanaStorageSynced: () => mockSynced,
 }));
+
+interface SurfaceProps {
+  onRender: (value: ReturnType<typeof useGuideLanguage>) => void;
+}
+function SidebarSurface({ onRender }: SurfaceProps): null {
+  onRender(useGuideLanguage({ guideKey: 'guide-a' }));
+  return null;
+}
+function FloatingSurface({ onRender }: SurfaceProps): null {
+  onRender(useGuideLanguage({ guideKey: 'guide-a' }));
+  return null;
+}
 
 function setGate(enabled: boolean): void {
   mockFlag.mockImplementation((_flag: string, fallback: boolean) => (enabled ? true : fallback));
@@ -194,27 +207,54 @@ describe('useGuideLanguage with the gate on', () => {
       expect(result.current.effective).toBe('en-US');
     });
 
-    it('does not survive closing and reopening the guide it is bound to', () => {
+    it('does not survive closing and reopening the guide it is bound to', async () => {
       setUiLocale('en-US');
       const { result, rerender } = renderHook(({ guideKey }) => useGuideLanguage({ guideKey }), {
         initialProps: { guideKey: 'guide-a' as string | undefined },
       });
       act(() => result.current.applyOneShotOverride('ja'));
       rerender({ guideKey: undefined });
+      await act(async () => {});
       rerender({ guideKey: 'guide-a' });
       expect(result.current.override).toBeNull();
       expect(result.current.effective).toBe('en-US');
     });
 
-    it('is dropped when its guide unmounts', () => {
+    it('is dropped when its guide unmounts', async () => {
       const guide = renderHook(() => useGuideLanguage({ guideKey: 'guide-a' }));
       act(() => guide.result.current.applyOneShotOverride('ja'));
       guide.unmount();
+      await act(async () => {});
       const reopened = renderHook(() => useGuideLanguage({ guideKey: 'guide-a' }));
       expect(reopened.result.current.override).toBeNull();
     });
 
-    it('applies to the first guide opened after it is set, and only to that open', () => {
+    it('stays while another instance still shows its guide', async () => {
+      const slot = renderHook(() => useGuideLanguage({ guideKey: 'guide-a' }));
+      const resolver = renderHook(() => useGuideLanguage({ guideKey: 'guide-a' }));
+      act(() => slot.result.current.applyOneShotOverride('ja'));
+      slot.unmount();
+      await act(async () => {});
+      expect(resolver.result.current.override).toBe('ja');
+      act(() => resolver.result.current.clearOverride());
+      act(() => resolver.result.current.applyOneShotOverride('ko'));
+      const nextGuide = renderHook(() => useGuideLanguage({ guideKey: 'guide-b' }));
+      expect(nextGuide.result.current.override).toBeNull();
+    });
+
+    it('survives the same guide remounting on another surface in one commit', async () => {
+      let latest: ReturnType<typeof useGuideLanguage> | undefined;
+      const onRender = (value: ReturnType<typeof useGuideLanguage>) => {
+        latest = value;
+      };
+      const view = render(React.createElement(SidebarSurface, { onRender }));
+      act(() => latest?.applyOneShotOverride('ja'));
+      view.rerender(React.createElement(FloatingSurface, { onRender }));
+      await act(async () => {});
+      expect(latest?.override).toBe('ja');
+    });
+
+    it('applies to the first guide opened after it is set, and only to that open', async () => {
       setUiLocale('en-US');
       const { result, rerender } = renderHook(({ guideKey }) => useGuideLanguage({ guideKey }), {
         initialProps: { guideKey: undefined as string | undefined },
@@ -225,6 +265,7 @@ describe('useGuideLanguage with the gate on', () => {
       rerender({ guideKey: 'guide-a' });
       expect(result.current.effective).toBe('ko');
       rerender({ guideKey: undefined });
+      await act(async () => {});
       rerender({ guideKey: 'guide-a' });
       expect(result.current.override).toBeNull();
       expect(result.current.effective).toBe('en-US');
