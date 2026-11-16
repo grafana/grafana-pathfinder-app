@@ -617,6 +617,7 @@ export async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage)
       StorageKeys.ACTIVE_TAB,
       StorageKeys.LEARNING_PROGRESS,
       StorageKeys.GUIDE_RESPONSES,
+      StorageKeys.GUIDE_LANGUAGE,
     ];
 
     for (const key of keysToSync) {

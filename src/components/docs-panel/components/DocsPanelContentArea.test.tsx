@@ -98,6 +98,15 @@ jest.mock('../../SelectorDebugPanel', () => ({
     </button>
   ),
 }));
+jest.mock('../../guide-language', () => ({
+  GuideLanguageSlot: ({ guideUrl }: { guideUrl?: string }) => (
+    <div data-testid="guide-language-slot" data-guide-url={guideUrl} />
+  ),
+  TranslationNoticeSlot: ({ guideUrl }: { guideUrl?: string }) => (
+    <div data-testid="translation-notice-slot" data-guide-url={guideUrl} />
+  ),
+}));
+
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
@@ -194,6 +203,25 @@ describe('sidebar sticky progress eligibility', () => {
       })
     );
     expect(await screen.findByRole('progressbar')).toBeInTheDocument();
+  });
+});
+
+describe('DocsPanelContentArea guide language slots', () => {
+  it('mounts both slots for the open guide on the sidebar surface', () => {
+    render(<DocsPanelContentArea {...makeProps()} />);
+
+    expect(screen.getByTestId('guide-language-slot')).toHaveAttribute('data-guide-url', 'https://example.com/guide');
+    expect(screen.getByTestId('translation-notice-slot')).toHaveAttribute(
+      'data-guide-url',
+      'https://example.com/guide'
+    );
+  });
+
+  it('does not mount them before content has loaded', () => {
+    render(<DocsPanelContentArea {...makeProps({ stableContent: null })} />);
+
+    expect(screen.queryByTestId('guide-language-slot')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('translation-notice-slot')).not.toBeInTheDocument();
   });
 });
 

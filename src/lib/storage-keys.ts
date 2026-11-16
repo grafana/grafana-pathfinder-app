@@ -72,6 +72,8 @@ export const StorageKeys = {
   RECOMMENDATIONS_SCROLL_POSITION: 'grafana-pathfinder-app-recommendations-scroll-position',
   // Floating panel mode preference (sidebar vs floating)
   PANEL_MODE: 'grafana-pathfinder-app-panel-mode',
+  // Per-user guide language: `follow-grafana` or a BCP 47 tag. Synced through Grafana user storage.
+  GUIDE_LANGUAGE: 'grafana-pathfinder-app-guide-language',
   // Floating panel position and size
   FLOATING_PANEL_GEOMETRY: 'grafana-pathfinder-app-floating-panel-geometry',
 

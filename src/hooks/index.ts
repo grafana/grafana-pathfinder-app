@@ -1,5 +1,6 @@
 export { useGuideProgressState } from './useGuideProgressState';
 export { useLearningInsights } from './useLearningInsights';
+export { useGuideLanguage, type GuideLanguage, type UseGuideLanguageOptions } from './useGuideLanguage';
 export {
   useAutoLaunchTutorial,
   type AutoLaunchTutorialDetail,
