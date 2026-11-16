@@ -43,3 +43,7 @@ The `withFrozenTime` helper in `pkg/plugin/package_recommendations_test.go` writ
 ## The two-tab pairing fail-open test flakes in CI
 
 `fails open to a stripped local check when the live tab never answers (§6.5)` in `src/components/interactive-tutorial/interactive-step.test.tsx` can time out on a slow CI runner with only a `heartbeat` posted (first seen July 2026). If it fails on a PR that does not touch interactive-tutorial or cross-tab code, rerun the failed jobs before debugging.
+
+## CLI e2e symlink tests fail on Windows with `EPERM`
+
+`src/cli/e2e/local-cloud-cli.test.ts` and `src/cli/e2e/e2e-local-cloud-source.test.ts` create symbolic links to test link confinement. Windows only allows that with Developer Mode turned on (or from an elevated shell), so without it every test that creates a symbolic link fails with `EPERM: operation not permitted, symlink`. If every failing test in these files shows that error, the failure is environmental: turn on Developer Mode or rely on CI, which runs on Linux.
