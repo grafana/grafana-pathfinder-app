@@ -3,7 +3,7 @@
  */
 
 import { css } from '@emotion/css';
-import { GrafanaTheme2 } from '@grafana/data';
+import { GrafanaTheme2, colorManipulator } from '@grafana/data';
 import { INTERACTIVE_Z_INDEX } from '../../constants/interactive-z-index';
 
 export const getDomPathTooltipStyles = (theme: GrafanaTheme2) => {
@@ -12,7 +12,7 @@ export const getDomPathTooltipStyles = (theme: GrafanaTheme2) => {
       position: 'fixed',
       zIndex: INTERACTIVE_Z_INDEX.DOM_PATH_TOOLTIP, // Same as highlight box to ensure visibility in modals
       padding: theme.spacing(1, 1.5),
-      backgroundColor: theme.isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+      backgroundColor: colorManipulator.alpha(theme.colors.background.primary, 0.95),
       color: theme.colors.text.primary,
       border: `1px solid ${theme.colors.border.medium}`,
       borderRadius: theme.shape.radius.default,
