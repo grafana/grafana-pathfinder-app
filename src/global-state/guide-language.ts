@@ -9,9 +9,15 @@ export interface GuideLanguageState {
   preferred: GuideLanguagePreference;
   preferredLoaded: boolean;
   override: OneShotOverride | null;
+  openGuideKey: string | null;
 }
 
-const INITIAL_STATE: GuideLanguageState = { preferred: FOLLOW_GRAFANA, preferredLoaded: false, override: null };
+const INITIAL_STATE: GuideLanguageState = {
+  preferred: FOLLOW_GRAFANA,
+  preferredLoaded: false,
+  override: null,
+  openGuideKey: null,
+};
 
 let state: GuideLanguageState = INITIAL_STATE;
 const listeners = new Set<() => void>();
@@ -36,8 +42,8 @@ export function setGuideLanguagePreferred(preferred: GuideLanguagePreference): v
   update({ ...state, preferred, preferredLoaded: true });
 }
 
-export function setGuideLanguageOverride(language: string, guideKey: string | null = null): void {
-  update({ ...state, override: { language, guideKey } });
+export function setGuideLanguageOverride(language: string, guideKey?: string): void {
+  update({ ...state, override: { language, guideKey: guideKey ?? state.openGuideKey } });
 }
 
 export function clearGuideLanguageOverride(): void {
@@ -47,15 +53,26 @@ export function clearGuideLanguageOverride(): void {
 }
 
 /**
- * The first guide opened after an override binds it; any other guide opened afterwards drops it,
- * so a one-open hint never carries over to the next guide.
+ * An override binds to the guide open when it is applied, or else to the next guide opened.
+ * Opening any other guide or closing the bound one drops it, so it covers exactly one guide open.
  */
 export function observeGuideOpen(guideKey: string): void {
   const { override } = state;
-  if (override === null || override.guideKey === guideKey) {
-    return;
-  }
-  update({ ...state, override: override.guideKey === null ? { ...override, guideKey } : null });
+  const nextOverride =
+    override === null || override.guideKey === guideKey
+      ? override
+      : override.guideKey === null
+        ? { ...override, guideKey }
+        : null;
+  update({ ...state, openGuideKey: guideKey, override: nextOverride });
+}
+
+export function observeGuideClose(guideKey: string): void {
+  update({
+    ...state,
+    openGuideKey: state.openGuideKey === guideKey ? null : state.openGuideKey,
+    override: state.override?.guideKey === guideKey ? null : state.override,
+  });
 }
 
 export function resetGuideLanguageStateForTests(): void {

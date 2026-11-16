@@ -16,7 +16,11 @@ const mockSetItem = jest.fn(async (key: string, value: unknown) => {
   store.set(key, value);
 });
 const mockStorage = { getItem: mockGetItem, setItem: mockSetItem, removeItem: jest.fn(), clear: jest.fn() };
-jest.mock('../lib/user-storage', () => ({ useUserStorage: () => mockStorage }));
+let mockSynced: Promise<void> = Promise.resolve();
+jest.mock('../lib/user-storage', () => ({
+  useUserStorage: () => mockStorage,
+  whenGrafanaStorageSynced: () => mockSynced,
+}));
 
 function setGate(enabled: boolean): void {
   mockFlag.mockImplementation((_flag: string, fallback: boolean) => (enabled ? true : fallback));
@@ -30,6 +34,7 @@ function setUiLocale(language: string | undefined): void {
 beforeEach(() => {
   jest.clearAllMocks();
   store.clear();
+  mockSynced = Promise.resolve();
   resetGuideLanguageStateForTests();
   setUiLocale('ja-JP');
 });
@@ -109,6 +114,20 @@ describe('useGuideLanguage with the gate on', () => {
     expect(second.result.current.preferred).toBe('ko');
   });
 
+  it('picks up a preference that the Grafana storage sync brings in after mount', async () => {
+    let finishSync: () => void = () => undefined;
+    mockSynced = new Promise((resolve) => (finishSync = resolve));
+    const { result } = renderHook(() => useGuideLanguage());
+    await act(async () => {});
+    expect(result.current.preferred).toBe('follow-grafana');
+    await act(async () => {
+      store.set(StorageKeys.GUIDE_LANGUAGE, 'fr');
+      finishSync();
+    });
+    expect(result.current.preferred).toBe('fr');
+    expect(result.current.effective).toBe('fr');
+  });
+
   it('does not let a late read overwrite a preference chosen meanwhile', async () => {
     let resolveRead: (value: unknown) => void = () => undefined;
     mockGetItem.mockImplementationOnce(() => new Promise((resolve) => (resolveRead = resolve)));
@@ -161,22 +180,42 @@ describe('useGuideLanguage with the gate on', () => {
       expect(result.current.effective).toBe('en-US');
     });
 
-    it('binds to the next guide opened when no guide is named, and is cleared after that', () => {
+    it('binds to the guide already open and does not carry over to the next guide', () => {
       setUiLocale('en-US');
       const { result, rerender } = renderHook(({ guideKey }) => useGuideLanguage({ guideKey }), {
         initialProps: { guideKey: 'guide-a' },
       });
       act(() => result.current.applyOneShotOverride('ja'));
-      rerender({ guideKey: 'guide-b' });
+      expect(result.current.effective).toBe('ja');
+      rerender({ guideKey: 'guide-a' });
       expect(result.current.effective).toBe('ja');
       rerender({ guideKey: 'guide-b' });
-      expect(result.current.effective).toBe('ja');
-      rerender({ guideKey: 'guide-c' });
       expect(result.current.override).toBeNull();
       expect(result.current.effective).toBe('en-US');
     });
 
-    it('applies to the first guide opened after it is set', () => {
+    it('does not survive closing and reopening the guide it is bound to', () => {
+      setUiLocale('en-US');
+      const { result, rerender } = renderHook(({ guideKey }) => useGuideLanguage({ guideKey }), {
+        initialProps: { guideKey: 'guide-a' as string | undefined },
+      });
+      act(() => result.current.applyOneShotOverride('ja'));
+      rerender({ guideKey: undefined });
+      rerender({ guideKey: 'guide-a' });
+      expect(result.current.override).toBeNull();
+      expect(result.current.effective).toBe('en-US');
+    });
+
+    it('is dropped when its guide unmounts', () => {
+      const guide = renderHook(() => useGuideLanguage({ guideKey: 'guide-a' }));
+      act(() => guide.result.current.applyOneShotOverride('ja'));
+      guide.unmount();
+      const reopened = renderHook(() => useGuideLanguage({ guideKey: 'guide-a' }));
+      expect(reopened.result.current.override).toBeNull();
+    });
+
+    it('applies to the first guide opened after it is set, and only to that open', () => {
+      setUiLocale('en-US');
       const { result, rerender } = renderHook(({ guideKey }) => useGuideLanguage({ guideKey }), {
         initialProps: { guideKey: undefined as string | undefined },
       });
@@ -185,6 +224,10 @@ describe('useGuideLanguage with the gate on', () => {
       expect(result.current.effective).toBe('ko');
       rerender({ guideKey: 'guide-a' });
       expect(result.current.effective).toBe('ko');
+      rerender({ guideKey: undefined });
+      rerender({ guideKey: 'guide-a' });
+      expect(result.current.override).toBeNull();
+      expect(result.current.effective).toBe('en-US');
     });
   });
 });
@@ -210,6 +253,16 @@ describe('useGuideLanguage with the gate off', () => {
     renderHook(() => useGuideLanguage());
     await act(async () => {});
     expect(mockGetItem).not.toHaveBeenCalled();
+  });
+
+  it('neither changes nor saves the preference when asked to set one', async () => {
+    const { result } = renderHook(() => useGuideLanguage());
+    await act(async () => {
+      await result.current.setPreferred('de-DE');
+    });
+    expect(mockSetItem).not.toHaveBeenCalled();
+    expect(result.current.preferred).toBe('follow-grafana');
+    expect(result.current.effective).toBe('en');
   });
 
   it('does nothing when asked to apply an override', () => {

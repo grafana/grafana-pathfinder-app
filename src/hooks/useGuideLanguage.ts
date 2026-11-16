@@ -9,11 +9,12 @@ import {
   type GuideLanguagePreference,
 } from '../lib/guide-language';
 import { StorageKeys } from '../lib/storage-keys';
-import { useUserStorage } from '../lib/user-storage';
+import { useUserStorage, whenGrafanaStorageSynced } from '../lib/user-storage';
 import { logger } from '../lib/logging';
 import {
   clearGuideLanguageOverride,
   getGuideLanguageState,
+  observeGuideClose,
   observeGuideOpen,
   setGuideLanguageOverride,
   setGuideLanguagePreferred,
@@ -51,7 +52,8 @@ export function useGuideLanguage({
       return;
     }
     let cancelled = false;
-    getItem<unknown>(StorageKeys.GUIDE_LANGUAGE)
+    whenGrafanaStorageSynced()
+      .then(() => getItem<unknown>(StorageKeys.GUIDE_LANGUAGE))
       .then((stored) => {
         if (!cancelled && !getGuideLanguageState().preferredLoaded) {
           setGuideLanguagePreferred(normalizeGuideLanguagePreference(stored));
@@ -66,15 +68,17 @@ export function useGuideLanguage({
   }, [enabled, preferredLoaded, getItem]);
 
   useEffect(() => {
-    if (enabled && guideKey !== undefined) {
-      observeGuideOpen(guideKey);
+    if (!enabled || guideKey === undefined) {
+      return;
     }
+    observeGuideOpen(guideKey);
+    return () => observeGuideClose(guideKey);
   }, [enabled, guideKey]);
 
   const setPreferred = useCallback(
     async (value: string) => {
       const next = value === FOLLOW_GRAFANA ? FOLLOW_GRAFANA : parseBcp47Tag(value);
-      if (next === null) {
+      if (!enabled || next === null) {
         return;
       }
       setGuideLanguagePreferred(next);
@@ -84,14 +88,14 @@ export function useGuideLanguage({
         logger.warn('Failed to save the guide language preference', { error });
       }
     },
-    [setItem]
+    [enabled, setItem]
   );
 
   const applyOneShotOverride = useCallback(
     (language: string, forGuideKey?: string) => {
       const tag = parseBcp47Tag(language);
       if (enabled && tag !== null) {
-        setGuideLanguageOverride(tag, forGuideKey ?? null);
+        setGuideLanguageOverride(tag, forGuideKey);
       }
     },
     [enabled]

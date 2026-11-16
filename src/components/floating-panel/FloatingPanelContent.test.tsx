@@ -175,8 +175,6 @@ beforeEach(() => {
   usePublishSurfaceContentKey.mockClear();
 });
 
-// FullScreenPanel renders this component for every guide (see guide-language-slot-mounts.contract.test.ts),
-// so the floating and full-screen surfaces share these mounts.
 describe('FloatingPanelContent guide language slots', () => {
   it('mounts both slots for the open guide', () => {
     render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
