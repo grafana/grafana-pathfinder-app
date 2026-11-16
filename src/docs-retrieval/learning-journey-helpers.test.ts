@@ -61,6 +61,10 @@ describe('getMilestoneSlug', () => {
     expect(getMilestoneSlug('https://grafana.com/docs/learning-paths/linux/select-platform/')).toBe('select-platform');
     expect(getMilestoneSlug('https://grafana.com/docs/.../select-platform/content.json')).toBe('select-platform');
   });
+
+  it('keys a localized content file on the same milestone slug', () => {
+    expect(getMilestoneSlug('https://interactive-learning.grafana.net/packages/m1/content.ja.json')).toBe('m1');
+  });
 });
 
 function ljMetadata(currentMilestone: number, milestones: Milestone[]): LearningJourneyMetadata {
