@@ -115,3 +115,11 @@ func TestAchievementLimiterIsolatesNamespacesAndPeople(t *testing.T) {
 		}
 	}
 }
+
+func TestAchievementWrongMethodPreservesResponse(t *testing.T) {
+	response := httptest.NewRecorder()
+	err := achievementHandler(nil, nil, "events")(context.Background(), response, &app.CustomRouteRequest{Method: http.MethodGet})
+	if err != nil || response.Code != 405 || response.Body.String() != "Method not allowed\n" {
+		t.Fatalf("status=%d body=%s err=%v", response.Code, response.Body.String(), err)
+	}
+}

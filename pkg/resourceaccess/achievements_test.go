@@ -161,6 +161,11 @@ func (a *fakeAchievementAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.store(key, obj)
+		if a.emptyNext[r.Method+" "+resource] {
+			delete(a.emptyNext, r.Method+" "+resource)
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
 		a.object(w, http.StatusCreated, obj)
 	case http.MethodPut:
 		obj := a.decode(w, r, schema)
@@ -753,5 +758,17 @@ func TestAchievementReaderPaginatesAndFiltersCaller(t *testing.T) {
 	rows, err := (AchievementReader{Clients: clients, Namespace: "stacks-1"}).ListMine(context.Background(), achievementTestPerson)
 	if err != nil || calls != 3 || len(rows.Awards) != 1 || len(rows.Progress) != 1 || rows.Awards[0].AchievementID != "guides-finished" || rows.Progress[0].AchievementID != "guides-finished" {
 		t.Fatalf("rows=%+v calls=%d err=%v", rows, calls, err)
+	}
+}
+
+func TestAchievementStore_EmptyAwardAckIsStillACreate(t *testing.T) {
+	store, api := newAchievementTestStore(t)
+	api.emptyNext["POST "+achievementAwardResource] = true
+	award := achievements.Award{AchievementID: "a", TierID: "bronze", Entity: "guides", EarnedAt: achievementTestNow}
+	if err := store.CreateAward(context.Background(), achievementTestPerson, award); err != nil {
+		t.Fatalf("durable award was rejected: %v", err)
+	}
+	if err := store.CreateAward(context.Background(), achievementTestPerson, award); !errors.Is(err, achievements.ErrExists) {
+		t.Fatalf("award did not persist: %v", err)
 	}
 }

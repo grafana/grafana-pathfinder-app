@@ -49,7 +49,8 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 			method = http.MethodPost
 		}
 		if req.Method != method {
-			return fail(405, "Method not allowed")
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return nil
 		}
 		caller, err := completionCaller(ctx, req.ResourceIdentifier.Namespace)
 		if err != nil {

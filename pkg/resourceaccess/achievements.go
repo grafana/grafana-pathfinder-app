@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/rest"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/grafana/grafana-app-sdk/resource"
@@ -184,7 +185,8 @@ type achievementAckTransport struct{ next http.RoundTripper }
 
 func (t achievementAckTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	response, err := t.next.RoundTrip(req)
-	if err != nil || response.StatusCode < 200 || response.StatusCode >= 300 || req.Method != http.MethodPut {
+	optionalAck := req.Method == http.MethodPut || (req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/achievementawards"))
+	if err != nil || response.StatusCode < 200 || response.StatusCode >= 300 || !optionalAck {
 		return response, err
 	}
 	body, err := io.ReadAll(response.Body)
@@ -192,7 +194,7 @@ func (t achievementAckTransport) RoundTrip(req *http.Request) (*http.Response, e
 	if err != nil {
 		return nil, err
 	}
-	// A successful PUT is durable even if the resource version acknowledgement is unreadable.
+	// These writes are durable on 2xx even when their acknowledgement is unreadable.
 	if !json.Valid(body) {
 		body = []byte(`{}`)
 	}
