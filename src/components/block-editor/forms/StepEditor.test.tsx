@@ -111,4 +111,17 @@ describe('StepEditor', () => {
 
     expect(onChange).toHaveBeenCalledWith([expect.not.objectContaining({ targetstate: expect.anything() })]);
   });
+
+  it('duplicates a step in place with one change callback', () => {
+    const onChange = jest.fn();
+    const first: JsonStep = { action: 'button', reftarget: 'Add' };
+    const second: JsonStep = { action: 'highlight', reftarget: '#drawer' };
+    renderEditor([first, second], onChange);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Duplicate step' })[0]!);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith([first, first, second]);
+    expect(onChange.mock.calls[0][0][1]).not.toBe(first);
+  });
 });

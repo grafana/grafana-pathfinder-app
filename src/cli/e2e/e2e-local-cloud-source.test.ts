@@ -290,9 +290,11 @@ describe('local cloud package source resolution', () => {
       { id: 'local-prerequisite', title: 'Local prerequisite', blocks: [] },
       { id: 'local-guide', title: 'Local guide', blocks: [] },
     ]);
-    expect(resolution.packageMetaById.get('local-guide')?.sourceUrl).toContain(`${root}/local-guide/content.json`);
+    expect(resolution.packageMetaById.get('local-guide')?.sourceUrl).toContain(
+      join(root, 'local-guide', 'content.json')
+    );
     expect(resolution.packageMetaById.get('local-prerequisite')?.sourceUrl).toContain(
-      `${root}/local-prerequisite/content.json`
+      join(root, 'local-prerequisite', 'content.json')
     );
   });
 
@@ -344,7 +346,7 @@ describe('local cloud package source resolution', () => {
 
     expect(resolution?.guides.map((guide) => JSON.parse(guide.content).id)).toEqual(['local-prerequisite']);
     expect(resolution?.packageMetaById.get('local-prerequisite')?.sourceUrl).toContain(
-      `${root}/local-prerequisite/content.json`
+      join(root, 'local-prerequisite', 'content.json')
     );
   });
 

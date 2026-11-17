@@ -231,6 +231,18 @@ describe('CompositePackageResolver', () => {
       expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
     });
 
+    it('caches separately per locale, and keeps the no-locale entry apart', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      await composite.resolve('test-guide', { loadContent: true, locale: 'ja' });
+      await composite.resolve('test-guide', { loadContent: true, locale: 'es' });
+      await composite.resolve('test-guide', { loadContent: true });
+      await composite.resolve('test-guide', { loadContent: true, locale: 'ja' });
+
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(3);
+    });
+
     it('should cache separately for different package IDs', async () => {
       (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
 

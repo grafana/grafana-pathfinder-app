@@ -1,4 +1,5 @@
 import { isInteractiveLearningUrl } from '../security/url-validator';
+import { stripContentFile } from '../lib/guide-content-file';
 
 export function formatSlug(slug: string): string {
   return slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -9,8 +10,8 @@ export function getInteractiveLearningUrlTitle(url: string): string | undefined 
     return undefined;
   }
 
-  const segments = new URL(url).pathname.split('/').filter(Boolean);
-  if (/^(content\.json|unstyled\.html)$/i.test(segments[segments.length - 1] ?? '')) {
+  const segments = stripContentFile(new URL(url).pathname).split('/').filter(Boolean);
+  if (/^unstyled\.html$/i.test(segments[segments.length - 1] ?? '')) {
     segments.pop();
   }
   return formatSlug(segments[segments.length - 1] || 'Interactive tutorial');

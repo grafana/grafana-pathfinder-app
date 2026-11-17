@@ -20,9 +20,14 @@ const getStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0,
     overflowWrap: 'anywhere',
   }),
-  section: css({ padding: theme.spacing(3), minWidth: 0, '& h2': { margin: 0 }, '& > p': { margin: 0 } }),
+  section: css({
+    padding: 'var(--kiosk-section-padding, 24px)',
+    minWidth: 0,
+    '& h2': { margin: 0 },
+    '& > p': { margin: 0 },
+  }),
   column: css({
-    '& > [data-kiosk-actions]:last-child': { marginTop: 'auto', paddingTop: theme.spacing(3) },
+    '& > [data-kiosk-actions]:last-child': { marginTop: 'auto', paddingTop: 'var(--kiosk-action-spacing, 24px)' },
   }),
   columns: css({
     display: 'grid',
@@ -31,15 +36,25 @@ const getStyles = (theme: GrafanaTheme2) => ({
     [theme.breakpoints.down('md')]: { gridTemplateColumns: '1fr !important' },
   }),
   hero: css({
-    padding: theme.spacing(4),
+    padding: 'var(--kiosk-hero-padding, 32px)',
     alignItems: 'center',
-    '& h1, & h2': { lineHeight: 1.15, fontWeight: 600, margin: theme.spacing(2, 0) },
+    '& h1, & h2': { lineHeight: 1.15, fontWeight: 600, margin: 'var(--kiosk-heading-margin, 16px 0)' },
     '& p': { margin: 0 },
     [theme.breakpoints.down('sm')]: { padding: theme.spacing(2) },
   }),
   eyebrow: css({ fontSize: 12, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }),
-  columnTitle: css({ fontSize: 'clamp(1.4rem, 2.4vw, 1.8rem)', lineHeight: 1.2, fontWeight: 600, margin: 0 }),
-  actions: css({ display: 'flex', flexWrap: 'wrap', gap: theme.spacing(2), marginTop: theme.spacing(3) }),
+  columnTitle: css({
+    fontSize: 'var(--kiosk-column-title, clamp(1.4rem, 2.4vw, 1.8rem))',
+    lineHeight: 1.2,
+    fontWeight: 600,
+    margin: 0,
+  }),
+  actions: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(2),
+    marginTop: 'var(--kiosk-action-spacing, 24px)',
+  }),
   cards: css({
     display: 'grid',
     gap: 'var(--kiosk-gap, 24px)',
@@ -167,9 +182,9 @@ export function KioskPageV2({
                 <Heading
                   style={{
                     fontSize: {
-                      medium: 'clamp(1.5rem, 3vw, 2rem)',
-                      large: 'clamp(2rem, 4vw, 3rem)',
-                      'extra-large': 'clamp(2.5rem, 5vw, 4rem)',
+                      medium: 'var(--kiosk-title-medium, clamp(1.5rem, 3vw, 2rem))',
+                      large: 'var(--kiosk-title-large, clamp(2rem, 4vw, 3rem))',
+                      'extra-large': 'var(--kiosk-title-extra-large, clamp(2.5rem, 5vw, 4rem))',
                     }[block.titleSize ?? 'large'],
                   }}
                 >

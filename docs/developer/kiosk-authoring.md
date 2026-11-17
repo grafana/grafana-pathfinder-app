@@ -19,6 +19,8 @@ Page options retain `width`, `spacing`, and `header`. An optional `brand` object
 | `density`          | `compact`, `normal`, `spacious`                                                                                                    |
 | `radius`           | `none`, `small`, `large`                                                                                                           |
 
+Compact density reduces headings, section padding, illustrations, and page spacing as well as block gaps. Illustrations scale with viewport height, up to 160px. Content remains scrollable on smaller screens and at increased browser zoom; compact density does not guarantee every catalog fits one screen.
+
 Text foregrounds are generated from backgrounds. Gradients must support a common black or white foreground with at least 4.5:1 contrast. Accent colors decorate borders and primary hero actions; their text color is generated for contrast. Controls retain Grafana's keyboard and focus behavior. Unspecified section appearance inherits the surrounding design.
 
 Version 2 adds:

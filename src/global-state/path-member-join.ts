@@ -1,4 +1,5 @@
 import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
+import { CANONICAL_CONTENT_FILE, canonicalContentFileUrl, stripContentFile } from '../lib/guide-content-file';
 /**
  * The content-key join for a path member.
  *
@@ -122,7 +123,7 @@ export interface PathMemberJoinResult {
 
 const BUNDLED_PREFIX = 'bundled:';
 const BACKEND_GUIDE_PREFIX = 'backend-guide:';
-const PACKAGE_CONTENT_SUFFIX = '/content.json';
+const PACKAGE_CONTENT_SUFFIX = `/${CANONICAL_CONTENT_FILE}`;
 const MIN_PERCENT = 0;
 const MAX_PERCENT = 100;
 
@@ -174,14 +175,13 @@ export function pathMemberIdSchemeKeys(memberId: string): readonly string[] {
   return idSchemeKeyGroups(memberId).flat();
 }
 
-/** A resolved `bundled:` URL and its sibling shape; anything else, unchanged. */
+/** A resolved, canonical `bundled:` URL and its sibling shape; anything else, unchanged. */
 function bundledLaunchShapes(url: string): readonly string[] {
   if (!url.startsWith(BUNDLED_PREFIX)) {
     return [url];
   }
-  return url.endsWith(PACKAGE_CONTENT_SUFFIX)
-    ? [url, url.slice(0, -PACKAGE_CONTENT_SUFFIX.length)]
-    : [url, `${url}${PACKAGE_CONTENT_SUFFIX}`];
+  const bare = stripContentFile(url);
+  return bare === url ? [url, `${url}${PACKAGE_CONTENT_SUFFIX}`] : [url, bare];
 }
 
 /**
@@ -198,7 +198,8 @@ function bundledLaunchShapes(url: string): readonly string[] {
  * then find nothing and score a real record as an unopened zero.
  */
 function pathMemberContentKeyGroups(member: PathMember, pathBaseUrl?: string): ReadonlyArray<readonly string[]> {
-  const url = member.url && !member.url.startsWith('bundled:') ? bundledTutorialContentKey(member.url) : member.url;
+  const memberUrl = member.url && canonicalContentFileUrl(member.url).url;
+  const url = memberUrl && !memberUrl.startsWith('bundled:') ? bundledTutorialContentKey(memberUrl) : memberUrl;
   const groups = url ? [bundledLaunchShapes(url)] : pathBaseUrl ? [] : idSchemeKeyGroups(member.id);
   if (!groups.every((group) => group.every(isNormalizedCandidate))) {
     return [];

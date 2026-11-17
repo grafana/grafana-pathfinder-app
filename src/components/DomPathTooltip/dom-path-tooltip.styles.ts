@@ -12,7 +12,7 @@ export const getDomPathTooltipStyles = (theme: GrafanaTheme2) => {
       position: 'fixed',
       zIndex: INTERACTIVE_Z_INDEX.DOM_PATH_TOOLTIP, // Same as highlight box to ensure visibility in modals
       padding: theme.spacing(1, 1.5),
-      backgroundColor: theme.isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+      backgroundColor: `color-mix(in srgb, ${theme.colors.background.primary} 95%, transparent)`,
       color: theme.colors.text.primary,
       border: `1px solid ${theme.colors.border.medium}`,
       borderRadius: theme.shape.radius.default,
@@ -26,7 +26,7 @@ export const getDomPathTooltipStyles = (theme: GrafanaTheme2) => {
       lineHeight: 1.4,
     }),
     testidHighlight: css({
-      color: '#ff8800', // Orange color for testid attributes
+      color: theme.colors.warning.text,
       fontWeight: theme.typography.fontWeightMedium,
     }),
     hidden: css({

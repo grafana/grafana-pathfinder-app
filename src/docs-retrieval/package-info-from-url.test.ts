@@ -32,6 +32,19 @@ describe('isPackageContentUrl', () => {
     expect(isPackageContentUrl('https://interactive-learning.grafana.net/packages/foo/content.json')).toBe(true);
   });
 
+  it('matches a localized content file in the same package', () => {
+    expect(isPackageContentUrl('https://interactive-learning.grafana.net/packages/foo/content.ja.json')).toBe(true);
+    expect(isPackageContentUrl('https://interactive-learning.grafana.net/packages/foo/content.ja-JP.json?x=1')).toBe(
+      true
+    );
+  });
+
+  it('rejects content-file look-alikes', () => {
+    expect(isPackageContentUrl('https://interactive-learning.grafana.net/packages/foo/content.json.bak')).toBe(false);
+    expect(isPackageContentUrl('https://interactive-learning.grafana.net/packages/foo/content..json')).toBe(false);
+    expect(isPackageContentUrl('https://interactive-learning.grafana.net/packages/content.json')).toBe(false);
+  });
+
   it('matches backend-guide: URLs with a non-empty id', () => {
     expect(isPackageContentUrl('backend-guide:grafana-foundations-lp')).toBe(true);
   });
@@ -179,6 +192,27 @@ it('keeps an optional manifest failure non-terminal so content can still render'
     expect(recordGuideRender).toHaveBeenCalledTimes(2);
   } finally {
     finishGuideLoad(context, 'cancelled');
+    global.fetch = originalFetch;
+  }
+});
+
+it('fetches the shared manifest.json for a localized content file', async () => {
+  const originalFetch = global.fetch;
+  const fetchMock = jest
+    .fn()
+    .mockResolvedValue({ ok: true, json: () => Promise.resolve({ id: 'test-path', type: 'path', milestones: [] }) });
+  global.fetch = fetchMock;
+  try {
+    const info = await fetchPackageInfoFromUrl(
+      'https://interactive-learning.grafana.net/packages/test-path/content.ja.json'
+    );
+
+    expect(info?.packageId).toBe('test-path');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/test-path/manifest.json',
+      expect.objectContaining({ method: 'GET' })
+    );
+  } finally {
     global.fetch = originalFetch;
   }
 });
