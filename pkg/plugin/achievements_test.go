@@ -610,7 +610,7 @@ func TestMyAchievements_AwardsFollowCatalogRankWithUnknownTiersLast(t *testing.T
 
 func TestMyAchievements_NextSkipsATierAwardedBeforeTheRowRecordedIt(t *testing.T) {
 	mem := newMemAchievements()
-	mem.put(achievements.Person{ID: achievementsTestUser}, achievements.Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{"u1", "u2"}, Points: 1, SchemaVersion: 1})
+	mem.put(achievements.Person{ID: achievementsTestUser}, achievements.Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{"u1", "u2"}, Points: 1, SchemaVersion: achievements.ProgressSchemaVersion})
 	for _, tier := range []string{"bronze", "silver"} {
 		mem.awards[achievementsTestUser+"/dash-builder/"+tier] = achievements.Award{AchievementID: "dash-builder", TierID: tier, Entity: "dashboards", EarnedAt: timeNow()}
 	}

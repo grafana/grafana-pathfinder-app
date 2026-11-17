@@ -27,8 +27,14 @@ type Event struct {
 	Context    map[string]any
 }
 
-// SchemaVersion versions the stored progress row's shape, not the grammar.
+// SchemaVersion versions a posted event and a stored award row, not the grammar.
 const SchemaVersion = 1
+
+// ProgressSchemaVersion versions the stored progress row's shape. Version 2
+// rows hold points and unit-named ledger keys, so builds that wrote version 1
+// leave them alone as record_newer. A version 1 row read here keeps its held
+// tiers, starts at 0 points, and its old ledger keys never match a new one.
+const ProgressSchemaVersion = 2
 
 // Progress is one person's stored state for one achievement.
 type Progress struct {

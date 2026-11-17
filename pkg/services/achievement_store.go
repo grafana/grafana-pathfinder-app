@@ -32,7 +32,7 @@ type achievementProgressSpec struct {
 	AchievementID  string   `json:"achievementId"`
 	TierIDs        []string `json:"tierIds"`
 	Units          []string `json:"units"`
-	Points         int64    `json:"points"`
+	Points         *int64   `json:"points"`
 	UpdatedAt      string   `json:"updatedAt"`
 	UserID         string   `json:"userId"`
 	OrgID          int64    `json:"orgId"`
@@ -66,7 +66,10 @@ type achievementObject[S any] struct {
 	Spec       S                     `json:"spec"`
 }
 
-var ErrAchievementRowMismatch = errors.New("achievement store: stored row belongs to another user or achievement")
+var (
+	ErrAchievementRowMismatch    = errors.New("achievement store: stored row belongs to another user or achievement")
+	ErrAchievementPointsUnserved = errors.New("achievement store: progress row carried no points; the AchievementProgress kind does not serve them")
+)
 
 // AchievementWriter is stamped from the verified request context, never an event body.
 type AchievementWriter struct {
@@ -198,6 +201,7 @@ func (s *AchievementStore) CreateAward(ctx context.Context, person achievements.
 }
 
 func (s *AchievementStore) progressObject(person achievements.Person, p achievements.Progress) achievementObject[achievementProgressSpec] {
+	points := int64(p.Points)
 	return achievementObject[achievementProgressSpec]{
 		APIVersion: achievementGroupVersion,
 		Kind:       achievementKindProgress,
@@ -206,7 +210,7 @@ func (s *AchievementStore) progressObject(person achievements.Person, p achievem
 			AchievementID:  p.AchievementID,
 			TierIDs:        sortedDistinct(p.TierIDs),
 			Units:          sortedDistinct(p.Units),
-			Points:         int64(p.Points),
+			Points:         &points,
 			UpdatedAt:      s.now().UTC().Format(time.RFC3339),
 			UserID:         person.ID,
 			OrgID:          s.writer.OrgID,
@@ -235,6 +239,11 @@ func decodeAchievementProgress(body []byte) (achievementObject[achievementProgre
 	if obj.Metadata.ResourceVersion == "" {
 		return obj, errors.New("achievement store: progress response carried no resourceVersion")
 	}
+	// A kind that does not declare points prunes it silently, and evaluating on
+	// would spend ledger units that never add up to a tier.
+	if obj.Spec.Points == nil && obj.Spec.SchemaVersion >= achievements.ProgressSchemaVersion {
+		return obj, ErrAchievementPointsUnserved
+	}
 	return obj, nil
 }
 
@@ -243,10 +252,18 @@ func progressOf(obj achievementObject[achievementProgressSpec]) achievements.Pro
 		AchievementID: obj.Spec.AchievementID,
 		TierIDs:       sortedDistinct(obj.Spec.TierIDs),
 		Units:         sortedDistinct(obj.Spec.Units),
-		Points:        int(obj.Spec.Points),
+		Points:        pointsOf(obj.Spec),
 		SchemaVersion: int(obj.Spec.SchemaVersion),
 		Version:       obj.Metadata.ResourceVersion,
 	}
+}
+
+// A version 1 row predates points and starts at 0.
+func pointsOf(spec achievementProgressSpec) int {
+	if spec.Points == nil {
+		return 0
+	}
+	return int(*spec.Points)
 }
 
 // The CRD cannot require order or uniqueness, so a row written directly under /apis may have neither.

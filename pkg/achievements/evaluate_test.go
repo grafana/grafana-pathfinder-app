@@ -125,7 +125,7 @@ func TestEvaluateGolden(t *testing.T) {
 		},
 		{
 			name: "newer schema record is untouched",
-			id:   "dash-builder", stored: Progress{TierIDs: []string{"bronze"}, Units: dash("a"), Points: 1, SchemaVersion: SchemaVersion + 1}, event: dashboardCreated("b", 1),
+			id:   "dash-builder", stored: Progress{TierIDs: []string{"bronze"}, Units: dash("a"), Points: 1, SchemaVersion: ProgressSchemaVersion + 1}, event: dashboardCreated("b", 1),
 			want: `{"achievementId":"dash-builder","decision":"ignored","reason":"record_newer","awarded":[],"final":false,"units":1,"next":4}`,
 		},
 		{
@@ -399,11 +399,14 @@ func TestEvaluateCountsTheRecordersLongestGuideID(t *testing.T) {
 	}
 }
 
-func TestEvaluateKeepsTheStoredSchemaVersion(t *testing.T) {
+func TestEvaluateStampsTheProgressSchemaVersion(t *testing.T) {
 	catalog := mustCatalog(t)
-	stored := Progress{AchievementID: "dash-builder", SchemaVersion: SchemaVersion}
-	got := evaluate(&catalog.Achievements[0], stored, dashboardCreated("a", 1))
-	if !got.changed || got.next.SchemaVersion != SchemaVersion {
-		t.Errorf("changed = %v schemaVersion = %d, want it kept at %d", got.changed, got.next.SchemaVersion, SchemaVersion)
+	d := &catalog.Achievements[0]
+	for _, version := range []int{1, ProgressSchemaVersion} {
+		stored := Progress{AchievementID: d.ID, TierIDs: []string{"bronze"}, Units: []string{"7:bundled1:a"}, SchemaVersion: version}
+		got := evaluate(d, stored, dashboardCreated("a", 1))
+		if !got.changed || got.next.SchemaVersion != ProgressSchemaVersion || got.next.Points != 1 || !equalStrings(got.next.TierIDs, []string{"bronze"}) {
+			t.Errorf("version %d row = %+v changed=%v, want held tiers kept and the row stamped %d", version, got.next, got.changed, ProgressSchemaVersion)
+		}
 	}
 }

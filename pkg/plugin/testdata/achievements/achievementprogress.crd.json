@@ -27,6 +27,7 @@
                                         "type": "integer"
                                     },
                                     "points": {
+                                        "default": 0,
                                         "description": "points is earned toward the lowest catalog tier tierIds does not hold.\nIt resets to 0 when that tier is earned, so it stays below the tier's\ngoal, which is at most 200.",
                                         "maximum": 199,
                                         "minimum": 0,

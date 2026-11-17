@@ -3,6 +3,7 @@ package achievements
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -69,8 +70,9 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		current = created
 	}
 
+	var written []string
 	for attempt := 1; ; attempt++ {
-		out := evaluate(d, current, ev)
+		out := d.keepWritten(current, evaluate(d, current, ev), written)
 		if !out.changed {
 			return out.decision
 		}
@@ -79,6 +81,9 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 			// A 409 is not a failure: the held set, not the create result, decides what is reported (RFC §6.3).
 			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
 				return d.unavailable(current)
+			}
+			if !slices.Contains(written, tierID) {
+				written = append(written, tierID)
 			}
 		}
 		_, err := e.store.SaveProgress(ctx, person, out.next)
@@ -99,7 +104,7 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 }
 
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {
-	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, SchemaVersion: SchemaVersion})
+	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, SchemaVersion: ProgressSchemaVersion})
 	switch {
 	case err == nil:
 		return created, true

@@ -129,7 +129,7 @@ func runCompat(args []string, _, stderr io.Writer) int {
 		problems = []string{err.Error()}
 	}
 	if report(stderr, problems) {
-		say(stderr, "Published ids, tiers, units, registry fields and art keys are permanent, and a new tier goes after the published ones. Restore them; to retire an achievement, end it and add a new one with a new id.")
+		say(stderr, "Published ids, tiers, units, registry fields and art keys are permanent, a new tier goes after the published ones, and a published goal never goes down. Restore them; to retire an achievement, end it and add a new one with a new id.")
 		return exitProblems
 	}
 	return exitOK

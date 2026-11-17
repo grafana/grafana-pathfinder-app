@@ -28,7 +28,8 @@ const (
 )
 
 // maxUnits is the most units a progress row's ledger holds, so the goals of an
-// achievement's tiers add up to at most this.
+// achievement's tiers add up to at most this; compat keeps published goals from
+// going down, which keeps that bound across catalog versions.
 const maxUnits = maxGoal
 
 var idPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)

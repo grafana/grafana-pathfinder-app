@@ -27,7 +27,7 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	}
 	current := d.lowestUnheld(held)
 	switch {
-	case stored.SchemaVersion > SchemaVersion:
+	case stored.SchemaVersion > ProgressSchemaVersion:
 		return ignored(ReasonRecordNewer)
 	case current < 0:
 		return ignored(ReasonComplete)
@@ -47,6 +47,7 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	}
 
 	next := stored
+	next.SchemaVersion = ProgressSchemaVersion
 	next.Units = slices.Insert(slices.Clone(stored.Units), i, unit)
 	next.Points = stored.Points + worth
 	after := held
@@ -63,6 +64,52 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 		next:     next,
 		changed:  true,
 	}
+}
+
+// keepWritten holds every tier in written, whose award rows this event already
+// created. A re-run after a conflict can find the event's unit counted by
+// another writer at a lower worth, and must not leave those awards unheld.
+func (d *Definition) keepWritten(stored Progress, out outcome, written []string) outcome {
+	base := stored
+	if out.changed {
+		base = out.next
+	}
+	held := heldSet(base.TierIDs)
+	var missing []string
+	for _, id := range written {
+		if !held[id] {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 || out.decision.Reason == ReasonRecordNewer {
+		return out
+	}
+	after := maps.Clone(held)
+	for _, id := range missing {
+		after[id] = true
+	}
+	next := base
+	next.SchemaVersion = ProgressSchemaVersion
+	next.TierIDs = d.mergeHeld(base.TierIDs, after)
+	if d.lowestUnheld(after) != d.lowestUnheld(held) {
+		next.Points = 0
+	}
+	awarded := d.inTierOrder(heldSet(append(slices.Clone(out.decision.Awarded), missing...)))
+	return outcome{
+		decision: d.decision(d.kind(awarded, heldSet(stored.TierIDs), after), "", awarded, after, next.Points),
+		next:     next,
+		changed:  true,
+	}
+}
+
+func (d *Definition) inTierOrder(ids map[string]bool) []string {
+	var ordered []string
+	for _, t := range d.Tiers {
+		if ids[t.ID] {
+			ordered = append(ordered, t.ID)
+		}
+	}
+	return ordered
 }
 
 // score is the unit ev counts toward t and the highest worth among the rules

@@ -19,6 +19,7 @@ func TestCatalogBreaks(t *testing.T) {
 		{"tier removed", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tier "gold" was removed or renamed`},
 		{"tiers reordered", `{"achievements":[{"id":"guides","tiers":[{"id":"gold"},{"id":"bronze"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tiers were reordered from [bronze gold] to [gold bronze]`},
 		{"a tier inserted between published ones", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze"},{"id":"silver"},{"id":"gold"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tier "silver" was added before published tier "gold"`},
+		{"a published goal lowered", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze","goal":1},{"id":"gold","goal":9}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tier "gold" goal was lowered from 10 to 9`},
 		{"a tier inserted before every published one", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze"},{"id":"gold"}]},{"id":"routes","tiers":[{"id":"starter"},{"id":"bronze"}]}]}`, `achievement "routes" tier "starter" was added before published tier "bronze"`},
 	}
 	for _, tc := range cases {

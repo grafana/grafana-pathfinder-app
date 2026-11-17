@@ -23,7 +23,7 @@ var (
 )
 
 func seedProgress(id string) achievements.Progress {
-	return achievements.Progress{AchievementID: id, SchemaVersion: achievements.SchemaVersion}
+	return achievements.Progress{AchievementID: id, SchemaVersion: achievements.ProgressSchemaVersion}
 }
 
 func award(id, tierID string) achievements.Award {
@@ -112,7 +112,7 @@ func createReturnsRow(t *testing.T, s achievements.Store) {
 	if row.Version == "" {
 		t.Fatal("created row has no version")
 	}
-	if row.AchievementID != "a" || len(row.TierIDs) != 0 || len(row.Units) != 0 || row.Points != 0 || row.SchemaVersion != achievements.SchemaVersion {
+	if row.AchievementID != "a" || len(row.TierIDs) != 0 || len(row.Units) != 0 || row.Points != 0 || row.SchemaVersion != achievements.ProgressSchemaVersion {
 		t.Fatalf("created row = %+v", row)
 	}
 	loaded := mustLoad(t, s, alice, "a")
