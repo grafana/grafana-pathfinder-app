@@ -120,7 +120,10 @@ describe('writePackageSidecar', () => {
   });
 
   it('rewrites the golden ja.json sidecar byte for byte after a read', () => {
-    const golden = path.join(__dirname, '../../lib/guide-translation/fixtures/packages/translation-golden/i18n/ja.json');
+    const golden = path.join(
+      __dirname,
+      '../../lib/guide-translation/fixtures/packages/translation-golden/i18n/ja.json'
+    );
     writeRaw('i18n/ja.json', fs.readFileSync(golden, 'utf-8'));
     const [result] = readPackageSidecars(packageDir);
     if (!result?.ok) {
