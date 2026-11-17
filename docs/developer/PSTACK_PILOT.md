@@ -101,7 +101,7 @@ Every verdict matched its expected value, so the script exited 0. A full run tak
 
 ### F1 (confirmed, low severity): a reset in one tab does not stop another tab's in-flight record from coming back
 
-The shortest counterexample in `task` mode, as pstack's `/statechart` report tells it (`results/statechart/two-tabs/report.md`):
+The shortest counterexample in `task` mode, as pstack's `/statechart` report tells it (`results/statechart/two-tabs/report.txt`; pstack writes `report.md`, stored as `.txt` so the repo's prettier hook keeps the numbered path intact):
 
 1. A guide is completed in Tab A; its record is queued.
 2. Tab A's drain takes the lease, renews it and sends the record.
