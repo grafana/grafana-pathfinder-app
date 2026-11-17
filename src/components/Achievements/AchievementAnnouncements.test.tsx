@@ -150,6 +150,16 @@ describe('AchievementAnnouncementHost', () => {
     expect(within(toasts[0]!).getByText('Achievement earned')).toBeInTheDocument();
   });
 
+  it('removes a showing progress toast when the achievement then tiers up into the overlay', async () => {
+    render(<AchievementAnnouncementHost />);
+    await announce(response('increment', [], false, { units: 4, next: 5 }));
+    expect(screen.getByTestId(testIds.achievements.toast('guides-finished'))).toBeInTheDocument();
+
+    await announce(response('tier_up', ['silver'], false, { units: 5, next: 15 }));
+    expect(screen.getByTestId(testIds.achievements.overlay)).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.achievements.toast('guides-finished'))).not.toBeInTheDocument();
+  });
+
   it('shows nothing when /definitions is unavailable', async () => {
     __setAchievementDisplayDepsForTests({ fetchDefinitions: async () => null });
     render(<AchievementAnnouncementHost />);

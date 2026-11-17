@@ -28,12 +28,12 @@ export function AchievementAnnouncementHost() {
           if (!card) {
             return;
           }
+          setToasts((current) => {
+            const kept = current.filter((c) => c.key !== card.key && !supersedes(card, c));
+            return card.surface === 'overlay' ? kept : [...kept, card].slice(-MAX_TOASTS);
+          });
           if (card.surface === 'overlay') {
             setOverlays((current) => [...current, card]);
-          } else {
-            setToasts((current) =>
-              [...current.filter((c) => c.key !== card.key && !supersedes(card, c)), card].slice(-MAX_TOASTS)
-            );
           }
         });
       }),
@@ -55,7 +55,7 @@ export function AchievementAnnouncementHost() {
   );
 }
 
-/** A newer card for an achievement replaces its showing progress toast, so a progress toast never sits beside an award. */
+/** Any newer card for an achievement, toast or overlay, removes its showing progress toast, so stale progress never sits beside an award or tier-up. */
 function supersedes(card: AnnouncementCard, showing: AnnouncementCard): boolean {
   return showing.kind === 'progress' && showing.achievementId === card.achievementId;
 }
