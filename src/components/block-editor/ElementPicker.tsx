@@ -178,14 +178,15 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
   useEffect(() => {
     document.addEventListener('click', handleClick, { capture: true });
     document.addEventListener('mousemove', handleMouseMove, { capture: true });
-    document.addEventListener('keydown', handleKeyDown);
+    // Capture: the modal's dismiss handler stops Escape from bubbling to document.
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
 
     document.body.style.overflow = 'hidden';
 
     return () => {
       document.removeEventListener('click', handleClick, { capture: true });
       document.removeEventListener('mousemove', handleMouseMove, { capture: true });
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
       document.body.style.overflow = '';
     };
   }, [handleClick, handleMouseMove, handleKeyDown]);
