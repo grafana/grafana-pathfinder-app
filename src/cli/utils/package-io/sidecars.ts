@@ -93,7 +93,8 @@ export function readPackageSidecars(packageDir: string): SidecarReadResult[] {
     const filePath = path.join(dir, fileName);
     const result = readJsonFile(filePath, TranslationSidecarSchema);
     if (result.ok) {
-      return { ok: true, tag, filePath, sidecar: result.data };
+      // Zod reorders loose keys after declared ones; the raw value keeps file order.
+      return { ok: true, tag, filePath, sidecar: result.parsed as TranslationSidecar };
     }
     // The file was listed a moment ago, so a vanished file is a read error.
     const code = result.code === 'not_found' ? 'read_error' : result.code;

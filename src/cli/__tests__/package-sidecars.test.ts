@@ -119,6 +119,17 @@ describe('writePackageSidecar', () => {
     ]);
   });
 
+  it('rewrites the golden ja.json sidecar byte for byte after a read', () => {
+    const golden = path.join(__dirname, '../../lib/guide-translation/fixtures/packages/translation-golden/i18n/ja.json');
+    writeRaw('i18n/ja.json', fs.readFileSync(golden, 'utf-8'));
+    const [result] = readPackageSidecars(packageDir);
+    if (!result?.ok) {
+      throw new Error('golden sidecar failed to read');
+    }
+    writePackageSidecar(packageDir, 'ja', result.sidecar);
+    expect(fs.readFileSync(path.join(packageDir, 'i18n', 'ja.json'), 'utf-8')).toBe(fs.readFileSync(golden, 'utf-8'));
+  });
+
   it.each(['../ja', 'ja/JP', 'ja.json', '', 'ja-'])('refuses the tag %p', (tag) => {
     expect(() => writePackageSidecar(packageDir, tag, SIDECAR)).toThrow(PackageIOError);
     expect(fs.existsSync(path.join(packageDir, 'i18n'))).toBe(false);
