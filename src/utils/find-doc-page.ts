@@ -1,6 +1,7 @@
 import { isGrafanaDocsUrl } from '../security';
 import { logger } from '../lib/logging';
 import { formatSlug, getInteractiveLearningUrlTitle } from './doc-page-title';
+import { canonicalContentFileUrl } from '../lib/guide-content-file';
 
 export interface DocPage {
   type: 'docs-page' | 'learning-journey' | 'interactive';
@@ -8,6 +9,8 @@ export interface DocPage {
   title: string;
   /** Optional target page path for deep link redirect (e.g., /explore) */
   targetPage?: string;
+  /** The locale a localized content-file link asked for; `url` is always the canonical one. */
+  locale?: string;
 }
 
 /**
@@ -16,11 +19,16 @@ export interface DocPage {
  * Extracted from module.tsx so that the require() / require.context() calls
  * for bundled JSON data land in a lazy chunk instead of the entry point.
  */
-export function findDocPage(param: string): DocPage | null {
-  if (!param || param.trim() === '') {
+export function findDocPage(rawParam: string): DocPage | null {
+  if (!rawParam || rawParam.trim() === '') {
     return null;
   }
+  const { url: param, locale } = canonicalContentFileUrl(rawParam);
+  const page = findCanonicalDocPage(param);
+  return page && locale ? { ...page, locale } : page;
+}
 
+function findCanonicalDocPage(param: string): DocPage | null {
   // Case: Custom guide stored in the Pathfinder backend (App Platform CRD).
   // The `api:` prefix is the canonical short form used in shareable URLs;
   // `backend-guide:` is the internal URL scheme stored on tabs and used by

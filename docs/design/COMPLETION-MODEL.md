@@ -12,7 +12,7 @@
 
 ## Completion evidence
 
-Opening a guide starts observing its active branch, including collapsed sections. For interactive, guided, and multistep blocks, every authored objective must return a satisfied verdict before completion, whether the reader acts independently or uses assistance. Existing outcomes count. With no objectives, ordered action evidence and authored verification determine completion. Section objectives retain their child-completion authority; quizzes, challenges, acknowledgement, and **Mark complete** keep their existing rules.
+Opening a guide starts observing its active branch, including collapsed sections. For interactive, guided, and multistep blocks, every authored objective must return a satisfied verdict before completion, whether the reader acts independently or uses assistance. Existing outcomes count. With no objectives, ordered action evidence and authored verification determine completion. A top-level `button` or `highlight` step with no objectives also completes when its control already holds its authored `targetstate`, saved as `objectives`. Section objectives retain their child-completion authority; quizzes, challenges, acknowledgement, and **Mark complete** keep their existing rules.
 
 This extends the completion evidence contract without changing the denominator or storage schema. The `observed` reason identifies manual action detection; `objectives` identifies verified outcomes, and `manual` identifies successful assistance. Tokens that are not condition types, such as legacy prose objectives, are dropped at parse time with an authoring warning and never gate completion; a recognised condition that is unsatisfied or unavailable keeps the block incomplete. A tenant opts out with `enableAutoDetection: false` (the **Automatic completion** setting), and the `pathfinder.passive-completion` flag is the fleet kill switch; either one turns passive observation off and returns sections to their previous rules, where steps and acknowledgement complete them and objectives only complete them early.
 
@@ -973,7 +973,7 @@ present.** Resetting one guide clears its mark
 (`learning-paths.hook.ts`); "Reset all learning progress" clears the whole
 namespace (`MyLearningTab.tsx`). A rollback removes those sweepers along with the
 writer, so marks written beforehand stay in localStorage unread — inert, but not
-reachable by any in-app control. `syncFromGrafanaStorage`'s `keysToSync` is a
+reachable by any in-app control. `syncFromGrafanaStorage`'s `LEGACY_RESTORE_KEYS` is a
 fixed list of exact keys and cannot express a prefix, so the Grafana-side copies
 are not reachable either.
 

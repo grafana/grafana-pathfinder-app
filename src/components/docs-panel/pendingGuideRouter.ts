@@ -22,6 +22,7 @@ import { panelModeManager, type PendingGuide } from '../../global-state/panel-mo
 import type { LaunchSource } from '../../recovery';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 import type { OpenDocsOptions, OpenLearningJourneyOptions } from './types';
+import { canonicalContentFileUrl } from '../../lib/guide-content-file';
 
 export interface PendingGuidePanel {
   state: {
@@ -68,13 +69,14 @@ export function openPendingGuide(panel: PendingGuidePanel, pending: PendingGuide
   if (!pending.url) {
     return;
   }
+  const { url } = canonicalContentFileUrl(pending.url);
   const preparedContent = pending.preparedContent;
   if (pending.packageInfo) {
-    panel.openDocsPage(pending.url, pending.title, { source, packageInfo: pending.packageInfo, preparedContent });
+    panel.openDocsPage(url, pending.title, { source, packageInfo: pending.packageInfo, preparedContent });
   } else if (pending.type === 'learning-journey') {
-    panel.openLearningJourney(pending.url, pending.title, { source, preparedContent });
+    panel.openLearningJourney(url, pending.title, { source, preparedContent });
   } else {
-    panel.openDocsPage(pending.url, pending.title, { source, preparedContent });
+    panel.openDocsPage(url, pending.title, { source, preparedContent });
   }
 }
 

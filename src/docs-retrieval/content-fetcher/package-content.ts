@@ -26,6 +26,7 @@ import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
 import { getPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
+import { canonicalContentFileUrl } from '../../lib/guide-content-file';
 import { readDeclaredStartingLocation } from '../../recovery/starting-location';
 import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
@@ -444,10 +445,12 @@ export async function fetchPackageContent(
     return result;
   }
 
+  // A localized content file is a fetch detail; every journey key below names the canonical file.
+  const identityUrl = canonicalContentFileUrl(contentUrl).url;
   const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
   const matchesLoadedMember = (milestone: Milestone) => {
     if (!explicitGuideId) {
-      return milestone.url === contentUrl;
+      return milestone.url === identityUrl;
     }
     if (milestone.id !== undefined) {
       return milestone.id === explicitGuideId;
@@ -480,13 +483,13 @@ export async function fetchPackageContent(
       // The clicked member ID is authoritative; resolved URLs can differ across delivery sources.
       const milestoneIndex = explicitGuideId
         ? milestoneIds.indexOf(explicitGuideId)
-        : milestones.findIndex((m) => m.url === contentUrl);
+        : milestones.findIndex((m) => m.url === identityUrl);
 
       let isConfirmedTrackMember =
         milestoneIndex < 0 &&
         (explicitGuideId
           ? getAllTrackGuideIds(manifestTracks).includes(explicitGuideId)
-          : tracks.some((track) => track.milestones.some((m) => !m.isLocked && m.url === contentUrl)));
+          : tracks.some((track) => track.milestones.some((m) => !m.isLocked && m.url === identityUrl)));
 
       if (!offlinePath && !preview && !explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
         const lockedTrackGuideIds = tracks
@@ -495,7 +498,7 @@ export async function fetchPackageContent(
           .filter((id): id is string => id != null);
         if (lockedTrackGuideIds.length > 0) {
           const retriedUrls = await Promise.all(lockedTrackGuideIds.map((id) => resolvePackageUrlBypassCache(id)));
-          isConfirmedTrackMember = retriedUrls.some((url) => url !== undefined && markForPrTest(url) === contentUrl);
+          isConfirmedTrackMember = retriedUrls.some((url) => url !== undefined && markForPrTest(url) === identityUrl);
         }
       }
 
@@ -505,11 +508,11 @@ export async function fetchPackageContent(
       if (milestoneIndex >= 0 || isCoverPageLoad) {
         const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
 
-        let baseUrl = contentUrl;
+        let baseUrl = identityUrl;
         if (milestoneIndex >= 0) {
           baseUrl = baseUrlResolution?.ok
             ? markForPrTest(baseUrlResolution.contentUrl)
-            : (knownBaseUrl ?? (offlinePath ? '' : contentUrl));
+            : (knownBaseUrl ?? (offlinePath ? '' : identityUrl));
         }
 
         learningJourney = {
@@ -544,7 +547,7 @@ export async function fetchPackageContent(
         if (retriedBaseUrl) {
           trackMemberBaseUrl = markForPrTest(retriedBaseUrl);
         } else {
-          trackMemberBaseUrl = contentUrl;
+          trackMemberBaseUrl = identityUrl;
           logger.warn(
             `[fetchPackageContent] Could not resolve path base URL for track-only guide; using its own contentUrl as a fallback completion identity: ${contentUrl}`,
             { manifestId }

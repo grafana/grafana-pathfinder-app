@@ -142,15 +142,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
   }),
-  actionButton: css({
-    opacity: 0.7,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      opacity: 1,
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
   emptyState: css({
     textAlign: 'center',
     padding: theme.spacing(3),
@@ -1038,7 +1029,7 @@ export function StepEditor({
                           size="md"
                           aria-label="Duplicate"
                           onClick={() => handleDuplicateStep(index)}
-                          className={styles.actionButton}
+                          variant="secondary"
                           tooltip="Duplicate step"
                         />
                         <IconButton

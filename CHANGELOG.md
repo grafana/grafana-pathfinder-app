@@ -1,5 +1,47 @@
 # Changelog
 
+## 2.29.0
+
+### Added
+
+- **Achievement storage integration**: Connect achievement event and personal-progress routes to App Platform storage so configured stacks can record and retrieve awards. Reads address only the caller's records; the learner-facing achievement interface is still pending. (#2329)
+
+### Fixed
+
+- **Compact kiosks on laptop screens**: Scale headings, padding, action spacing, and illustrations with compact density so kiosk layouts fit smaller screens while retaining scrolling and responsive stacking. Normal and spacious layouts keep their existing sizes. (#2438)
+- **Theme-aware selector indicators**: Use Grafana theme colors for selector quality and match counts in the block editor, including light and dark themes. (#2442)
+- **Theme-aware element tooltips**: Match the DOM path tooltip background to the active Grafana theme while preserving its translucency. (#2437)
+- **Consistent element picker controls**: Use Grafana's standard secondary button for the element picker's cancel action. (#2440)
+- **Consistent duplicate-step controls**: Match the duplicate-step button to the adjacent edit action with standard secondary styling. (#2441)
+- **Consistent help links**: Render footer help links with Grafana's text-fill link buttons while retaining the compact keyboard-shortcuts control. (#2439)
+
+### Chore
+
+- **Windows test compatibility**: Handle native file paths and file URLs correctly in path-sensitive Jest suites, including the check for unscoped requirement-checker consumers. (#2436)
+
+## 2.28.0
+
+### Added
+
+- **Flexible kiosk layouts and previews**: Build branded, responsive kiosk pages with sections, columns, images, Markdown, and theme controls. Preview catalogs and unpublished guides together from a captured PR commit, with progress kept separate from published learning content. Existing catalogs remain supported. (#2358)
+- **Refresh guides from Grafana Assistant**: Reload an open guide and its title when the Assistant sends a refresh event in the same browser tab. Existing content stays visible if the refresh fails. (#2339)
+- **App SDK foundation**: Add managed resource kinds and an app provider for Grafana App Platform registration. Existing plugin resource-proxy routes remain in place. (#2401)
+- **Achievement backend groundwork**: Add an evaluator, App Platform storage adapter, and routes for definitions, events, and personal progress. Achievements are not yet exposed in the learning interface; event and progress routes still require storage wiring. (#2269, #2280, #2281)
+
+### Fixed
+
+- **Keep Grafana Assistant open**: Opening a floating guide preserves a sidebar owned by another plugin, including the Assistant. (#2340)
+- **Readable completion messages**: Waiting reasons display quotes and slashes as text instead of HTML entities. (#2342)
+- **Correct milestone preview destinations**: Learning path previews use each milestone's declared starting page, falling back to the path's page only when the milestone has none. (#2415)
+- **Brazilian Portuguese translations**: Fill missing translations across guide pages, panel actions, and learning navigation, and improve existing wording. (#2372)
+- **Achievement retry reporting**: Report earned tiers after a partially failed save is retried, including awards already stored by the earlier attempt. (#2410)
+
+### Chore
+
+- **Bundled tutorial sync authentication**: Use the repository token to create signed tutorial sync PRs without a separate GitHub App installation. (#2409)
+- **Translation catalog checks**: Reject new missing keys, obsolete keys, and placeholder mismatches, and remove resolved Brazilian Portuguese exceptions from the baseline. (#2411, #2417)
+- **Achievement contract coverage**: Align storage tests with award reporting after a retry. (#2413)
+
 ## 2.27.0
 
 ### Added

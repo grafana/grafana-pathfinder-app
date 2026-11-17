@@ -185,6 +185,27 @@ describe('ContentRenderer cover-page table of contents', () => {
     }
   });
 
+  it('opens a localized interactive-learning content link under its canonical URL', () => {
+    const href = 'https://interactive-learning.grafana.net/packages/setup/content.ja.json';
+    const content = makeContent({ content: `<p><a href="${href}">Open guide</a></p>` });
+    const openDocs = jest.fn();
+    document.addEventListener('pathfinder-auto-open-docs', openDocs);
+
+    try {
+      render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+      fireEvent.click(screen.getByRole('link', { name: 'Open guide' }));
+
+      expect((openDocs.mock.calls[0][0] as CustomEvent).detail).toEqual(
+        expect.objectContaining({
+          url: 'https://interactive-learning.grafana.net/packages/setup/content.json',
+          title: 'Setup',
+        })
+      );
+    } finally {
+      document.removeEventListener('pathfinder-auto-open-docs', openDocs);
+    }
+  });
+
   it('suppresses owning journey prerequisites on a later milestone while preserving member prerequisites', () => {
     const content = makeContent({
       metadata: {

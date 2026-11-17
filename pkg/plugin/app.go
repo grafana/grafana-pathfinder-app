@@ -60,8 +60,7 @@ type App struct {
 
 	achievementEventsRateLimiter *userRateLimiter
 	definitions                  definitionsProvider
-	// Builds the persistence for a request. Nil until a store adapter is wired,
-	// and the achievements routes report themselves unavailable meanwhile.
+	// Nil leaves the achievements routes reporting themselves unavailable.
 	achievementsBackendFor achievementsBackendFor
 }
 
@@ -82,6 +81,7 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 
 		achievementEventsRateLimiter: newUserRateLimiter(achievementEventsRateBurst, achievementEventsRateRefillPerSec),
 	}
+	app.achievementsBackendFor = app.buildAchievementsBackend
 	if source, err := processDefinitions(); err != nil {
 		logger.Error("Achievement definitions source is misconfigured, achievements routes disabled", "error", err)
 	} else {

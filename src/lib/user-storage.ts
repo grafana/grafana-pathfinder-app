@@ -46,7 +46,9 @@ import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-path
 import { StorageEvents } from './event-names';
 import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
+import { isPrTestUrl } from './pr-test-marker';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
+import { LEGACY_RESTORE_KEYS } from './storage/legacy-mirror-policy';
 import { collectKeysByPrefix, isKeyUnderPrefix } from './storage/key-utils';
 import {
   listProgressEntries,
@@ -615,16 +617,7 @@ export function whenGrafanaStorageSynced(): Promise<void> {
 
 async function runGrafanaSync(grafanaStorage: GrafanaUserStorage): Promise<void> {
   try {
-    const keysToSync = [
-      StorageKeys.JOURNEY_COMPLETION,
-      StorageKeys.TABS,
-      StorageKeys.ACTIVE_TAB,
-      StorageKeys.LEARNING_PROGRESS,
-      StorageKeys.GUIDE_RESPONSES,
-      StorageKeys.GUIDE_LANGUAGE,
-    ];
-
-    for (const key of keysToSync) {
+    for (const key of LEGACY_RESTORE_KEYS) {
       try {
         // Read from Grafana storage (with automatic migration of old format)
         const grafana = await readGrafanaKeyWithMigration(grafanaStorage, key);
@@ -1781,6 +1774,30 @@ function createCompletionGuardStorage(prefix: string) {
 export const completionEmittedStorage = createCompletionGuardStorage(StorageKeys.COMPLETION_EMITTED_PREFIX);
 
 export const completionReportedStorage = createCompletionGuardStorage(StorageKeys.COMPLETION_REPORTED_PREFIX);
+
+// PR-tester preview keys carry the #pf-pr- marker; real guide keys never do.
+// Scans the per-content progress namespaces resetGuideProgress clears.
+export function listPrTestContentKeys(): string[] {
+  const prefixes = [...PROGRESS_SECTION_PREFIXES, StorageKeys.GUIDE_COMPLETION_MARK_PREFIX];
+  const contentKeys = new Set<string>();
+  for (const prefix of prefixes) {
+    for (const key of collectKeysByPrefix(localStorage, prefix)) {
+      if (key.endsWith(HYBRID_TIMESTAMP_SUFFIX)) {
+        continue;
+      }
+      const parsed = parseVersionedStorageKey(prefix, key);
+      if (parsed && isPrTestUrl(parsed.contentKey)) {
+        contentKeys.add(parsed.contentKey);
+      }
+    }
+  }
+  for (const [contentKey] of Object.entries(interactiveCompletionStorage.peekAll())) {
+    if (isPrTestUrl(contentKey)) {
+      contentKeys.add(contentKey);
+    }
+  }
+  return [...contentKeys];
+}
 
 // ============================================================================
 // LEARNING PROGRESS STORAGE

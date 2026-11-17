@@ -108,3 +108,15 @@ it('cancels an abandoned attempt without a later timeout or success', () => {
   expect(recordGuideRender).toHaveBeenCalledTimes(1);
   expect(recordGuideRender).toHaveBeenCalledWith(load, 'cancelled', 0, undefined);
 });
+
+it.each([
+  ['https://interactive-learning.grafana.net/packages/test/content.json', 'content-json'],
+  ['https://interactive-learning.grafana.net/packages/test/content.ja.json?x=1', 'content-json'],
+  ['https://interactive-learning.grafana.net/packages/test/unstyled.html', 'unstyled-html'],
+  ['https://interactive-learning.grafana.net/packages/test/', 'page'],
+])('classifies %s as a %s request', async (url, role) => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce({ status: 200, ok: true } as Response);
+  await fetchGuideResource(url);
+  expect(recordGuideRequest).toHaveBeenCalledWith(expect.objectContaining({ role }));
+  fetchMock.mockRestore();
+});
