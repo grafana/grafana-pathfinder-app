@@ -26,12 +26,13 @@ const (
 )
 
 // Field names track kinds/achievementprogress.cue and kinds/achievementaward.cue
-// in pathfinder-backend. The CRD requires tierIds and units, so they must encode
-// as [], not null.
+// in pathfinder-backend. The CRD requires tierIds, units and points, so the
+// lists must encode as [], not null.
 type achievementProgressSpec struct {
 	AchievementID  string   `json:"achievementId"`
 	TierIDs        []string `json:"tierIds"`
 	Units          []string `json:"units"`
+	Points         int64    `json:"points"`
 	UpdatedAt      string   `json:"updatedAt"`
 	UserID         string   `json:"userId"`
 	OrgID          int64    `json:"orgId"`
@@ -205,6 +206,7 @@ func (s *AchievementStore) progressObject(person achievements.Person, p achievem
 			AchievementID:  p.AchievementID,
 			TierIDs:        sortedDistinct(p.TierIDs),
 			Units:          sortedDistinct(p.Units),
+			Points:         int64(p.Points),
 			UpdatedAt:      s.now().UTC().Format(time.RFC3339),
 			UserID:         person.ID,
 			OrgID:          s.writer.OrgID,
@@ -241,6 +243,7 @@ func progressOf(obj achievementObject[achievementProgressSpec]) achievements.Pro
 		AchievementID: obj.Spec.AchievementID,
 		TierIDs:       sortedDistinct(obj.Spec.TierIDs),
 		Units:         sortedDistinct(obj.Spec.Units),
+		Points:        int(obj.Spec.Points),
 		SchemaVersion: int(obj.Spec.SchemaVersion),
 		Version:       obj.Metadata.ResourceVersion,
 	}

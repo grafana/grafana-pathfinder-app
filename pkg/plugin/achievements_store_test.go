@@ -37,7 +37,8 @@ var (
 // fakeAchievementAPI enforces the kinds' CRD schemas, 409 on a duplicate create
 // or a stale resourceVersion, and create-only verbs on AchievementAward.
 // testdata/achievements holds byte copies of the CRDs generated at
-// grafana-pathfinder-backend 84c582fdae1916910e5197a44bd0078018315135.
+// grafana-pathfinder-backend 84c582fdae1916910e5197a44bd0078018315135, plus
+// the required points field on AchievementProgress that the kind still lacks.
 type fakeAchievementAPI struct {
 	mu        sync.Mutex
 	rv        int
@@ -697,13 +698,13 @@ func TestAchievementStore_DrivesTheEvaluator(t *testing.T) {
 		return decisions[0]
 	}
 
-	if d := run(guide("one")); d.Decision != achievements.KindAward || !slices.Equal(d.Awarded, []string{"bronze"}) || d.Units != 1 {
+	if d := run(guide("one")); d.Decision != achievements.KindAward || !slices.Equal(d.Awarded, []string{"bronze"}) || d.Units != 0 {
 		t.Fatalf("first guide = %+v", d)
 	}
-	if d := run(guide("one")); d.Decision != achievements.KindIgnored || d.Reason != achievements.ReasonDuplicate || d.Units != 1 {
+	if d := run(guide("one")); d.Decision != achievements.KindIgnored || d.Reason != achievements.ReasonDuplicate || d.Units != 0 {
 		t.Fatalf("repeat of the same guide = %+v", d)
 	}
-	if d := run(guide("two")); d.Decision != achievements.KindIncrement || d.Units != 2 {
+	if d := run(guide("two")); d.Decision != achievements.KindIncrement || d.Units != 1 || d.Next == nil || *d.Next != 4 {
 		t.Fatalf("second guide = %+v", d)
 	}
 
@@ -711,7 +712,7 @@ func TestAchievementStore_DrivesTheEvaluator(t *testing.T) {
 		t.Fatal("bronze award row missing")
 	}
 	progress := api.spec(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "guides-finished"))
-	if held := progress["tierIds"].([]any); len(held) != 1 || held[0] != "bronze" || len(progress["units"].([]any)) != 2 {
+	if held := progress["tierIds"].([]any); len(held) != 1 || held[0] != "bronze" || len(progress["units"].([]any)) != 2 || progress["points"] != 1.0 {
 		t.Fatalf("progress row = %v", progress)
 	}
 }
@@ -732,8 +733,8 @@ func TestAchievementStore_EvaluatorRecoversFromAStaleVersion(t *testing.T) {
 	if !other.raced {
 		t.Fatal("the competing write never happened")
 	}
-	if d := decisions[0]; d.Reason == achievements.ReasonConflict || d.Units != 2 {
-		t.Fatalf("decision = %+v, want both units counted after one retry", d)
+	if d := decisions[0]; d.Reason == achievements.ReasonConflict || !slices.Equal(d.Awarded, []string{"bronze"}) {
+		t.Fatalf("decision = %+v, want our unit counted after one retry", d)
 	}
 	units := api.spec(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "guides-finished"))["units"].([]any)
 	if len(units) != 2 {
@@ -763,6 +764,7 @@ func (r *racingStore) SaveProgress(ctx context.Context, person achievements.Pers
 
 func unitKeyForTest(parts ...string) string {
 	var b strings.Builder
+	b.WriteString("guide:")
 	for _, p := range parts {
 		b.WriteString(strconv.Itoa(len(p)))
 		b.WriteByte(':')

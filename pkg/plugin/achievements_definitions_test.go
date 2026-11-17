@@ -156,8 +156,8 @@ func TestDefinitionsSource_KeepsLastGoodAndRevalidates(t *testing.T) {
 	}{
 		{"upstream error", http.StatusBadGateway, "oops"},
 		{"unparseable", http.StatusOK, "{"},
-		{"another grammar", http.StatusOK, `{"grammar":"2.0"}`},
-		{"over the size cap", http.StatusOK, `{"grammar":"1.0","pad":"` + strings.Repeat("x", achievements.MaxBundleBytes) + `"}`},
+		{"another grammar", http.StatusOK, `{"grammar":"1.0"}`},
+		{"over the size cap", http.StatusOK, `{"grammar":"2.0","pad":"` + strings.Repeat("x", achievements.MaxBundleBytes) + `"}`},
 		{"redirect", http.StatusFound, ""},
 	}
 	for _, tc := range bad {
@@ -186,7 +186,7 @@ func TestDefinitionsSource_KeepsLastGoodAndRevalidates(t *testing.T) {
 // which the test bundle evaluates, but in forms this build cannot read.
 func unreadableBundle(t *testing.T) string {
 	t.Helper()
-	b := strings.Replace(achievementsTestBundleJSON, `"counter":{"unit":"dashboard"`, `"streak":{"days":3},"counter":{"unit":"dashboard"`, 1)
+	b := strings.Replace(achievementsTestBundleJSON, `"description":"Create dashboards.",`, `"description":"Create dashboards.","streak":{"days":3},`, 1)
 	b = strings.Replace(b, `"performed":{"context":{}}`, `"performed":{"context":{"q":{"type":"nope"}}}`, 1)
 	if b == achievementsTestBundleJSON || !strings.Contains(b, `"streak"`) || !strings.Contains(b, `"nope"`) {
 		t.Fatal("unreadable bundle fixture no longer matches the test bundle")
@@ -211,7 +211,7 @@ func absentBundle(t *testing.T) string {
 // allUnreadableBundle carries both definitions in a form this build cannot read.
 func allUnreadableBundle(t *testing.T) string {
 	t.Helper()
-	b := strings.Replace(achievementsTestBundleJSON, `"counter":{"unit":"dashboard"`, `"streak":{"days":3},"counter":{"unit":"dashboard"`, 1)
+	b := strings.Replace(achievementsTestBundleJSON, `"description":"Create dashboards.",`, `"description":"Create dashboards.","streak":{"days":3},`, 1)
 	b = strings.Replace(b, `"tiers":[{"id":"intro"`, `"streak":{"days":3},"tiers":[{"id":"intro"`, 1)
 	if strings.Count(b, `"streak"`) != 2 {
 		t.Fatal("all-unreadable bundle fixture no longer matches the test bundle")
@@ -237,8 +237,7 @@ func grownBundle(t *testing.T) string {
 	b = strings.Replace(b, `
 ]}}`, `,
   {"id":"alert-starter","title":"Alert starter","description":"Create an alert rule.",
-   "counter":{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},
-   "tiers":[{"id":"bronze","at":1}]}
+   "tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}]}
 ]}}`, 1)
 	if !strings.Contains(b, `"alert-starter"`) || !strings.Contains(b, `"alert-rules"`) {
 		t.Fatal("grown bundle fixture no longer matches the test bundle")
@@ -689,7 +688,7 @@ func getAchievementDefinitions(t *testing.T, app *App, sub string, cfg map[strin
 }
 
 // guide-streak uses a construct this build cannot read: displayed, not earnable.
-const achievementsTestBundleWithSkipJSON = `{"grammar":"1.0","registry":{"entities":{
+const achievementsTestBundleWithSkipJSON = `{"grammar":"2.0","registry":{"entities":{
   "guides":{"actions":{"completed":{"context":{"guideId":{"type":"string"}},
     "resources":[{"unit":"guide","id":["guideId"]}]}}},
   "dashboards":{"actions":{"created":{"context":{"resourceId":{"type":"string"}},
@@ -699,8 +698,9 @@ const achievementsTestBundleWithSkipJSON = `{"grammar":"1.0","registry":{"entiti
       "context":{"resourceId":"uid"},"owner":"@grafana/dashboards-squad"}]}}}}},
  "catalog":{"achievements":[
   {"id":"guides-finished","title":"Guide finisher","description":"Finish guides.",
-   "counter":{"unit":"guide","evidence":[{"entity":"guides","action":"completed","countBy":"resource"}]},
-   "tiers":[{"id":"bronze","at":1,"art":"guides-finished-1"},{"id":"silver","at":5}]},
+   "tiers":[
+     {"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}],"art":"guides-finished-1"},
+     {"id":"silver","goal":4,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}]},
   {"id":"guide-streak","title":"Guide streak","description":"Finish a guide every day.",
    "streak":{"days":3},"tiers":[{"id":"bronze","art":"guide-streak-1"}]}
  ]},

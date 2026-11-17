@@ -88,7 +88,7 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		case !errors.Is(err, ErrConflict):
 			return d.unavailable(current)
 		case attempt == maxAttempts:
-			return d.decision(KindIgnored, ReasonConflict, nil, heldSet(current.TierIDs), len(current.Units))
+			return d.decision(KindIgnored, ReasonConflict, nil, heldSet(current.TierIDs), current.Points)
 		}
 		reloaded, ok := e.reload(ctx, person, d)
 		if !ok {
@@ -117,5 +117,5 @@ func (e *Evaluator) reload(ctx context.Context, person Person, d *Definition) (P
 }
 
 func (d *Definition) unavailable(p Progress) Decision {
-	return d.decision(KindIgnored, ReasonStoreUnavailable, nil, heldSet(p.TierIDs), len(p.Units))
+	return d.decision(KindIgnored, ReasonStoreUnavailable, nil, heldSet(p.TierIDs), p.Points)
 }

@@ -18,95 +18,107 @@ type outcome struct {
 }
 
 // evaluate is the pure step 4 of RFC §6.3: one event against one achievement's
-// stored progress.
+// stored progress. Only the lowest tier not held accrues, and an event earns at
+// most that tier; points past its goal do not carry over.
 func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	held := heldSet(stored.TierIDs)
 	ignored := func(reason Reason) outcome {
-		return outcome{decision: d.decision(KindIgnored, reason, nil, held, len(stored.Units))}
+		return outcome{decision: d.decision(KindIgnored, reason, nil, held, stored.Points)}
 	}
+	current := d.lowestUnheld(held)
 	switch {
 	case stored.SchemaVersion > SchemaVersion:
 		return ignored(ReasonRecordNewer)
-	case d.holdsAll(held) && len(stored.Units) >= d.ceiling():
+	case current < 0:
 		return ignored(ReasonComplete)
 	}
 
-	var units []string
-	sawInvalid := false
-	if d.Counter != nil {
-		for _, m := range d.Counter.Evidence {
-			if m.Entity != ev.Entity || m.Action != ev.Action || !conditionsHold(m.Where, ev.Context) {
-				continue
-			}
-			if unit, ok := m.unitID(ev); ok {
-				units = append(units, unit)
-			} else {
-				sawInvalid = true
-			}
-		}
+	tier := &d.Tiers[current]
+	unit, worth, reason := tier.score(ev)
+	if reason != "" {
+		return ignored(reason)
 	}
-	routed := d.routedIndex(ev)
-	if len(units) == 0 && routed < 0 {
-		if sawInvalid {
-			return ignored(ReasonInvalidContext)
-		}
-		return ignored(ReasonConditionNotMet)
+	i, found := slices.BinarySearch(stored.Units, unit)
+	switch {
+	case found:
+		return ignored(ReasonDuplicate)
+	case len(stored.Units) >= maxUnits:
+		return ignored(ReasonComplete)
 	}
 
-	ledger := slices.Clone(stored.Units)
-	added := false
-	for _, unit := range units {
-		i, found := slices.BinarySearch(ledger, unit)
-		if !found && len(ledger) < d.ceiling() {
-			ledger = slices.Insert(ledger, i, unit)
-			added = true
-		}
-	}
-	var awarded []string
-	after := maps.Clone(held)
-	for i, t := range d.Tiers {
-		if !held[t.ID] && (i <= routed || (t.At != nil && *t.At <= len(ledger))) {
-			awarded = append(awarded, t.ID)
-			after[t.ID] = true
-		}
-	}
-
-	kind, reason := d.kind(awarded, held, after, added)
 	next := stored
-	next.TierIDs, next.Units = d.mergeHeld(stored.TierIDs, after), ledger
+	next.Units = slices.Insert(slices.Clone(stored.Units), i, unit)
+	next.Points = stored.Points + worth
+	after := held
+	var awarded []string
+	if next.Points >= tier.Goal {
+		awarded = []string{tier.ID}
+		after = maps.Clone(held)
+		after[tier.ID] = true
+		next.TierIDs = d.mergeHeld(stored.TierIDs, after)
+		next.Points = 0
+	}
 	return outcome{
-		decision: d.decision(kind, reason, awarded, after, len(ledger)),
+		decision: d.decision(d.kind(awarded, held, after), "", awarded, after, next.Points),
 		next:     next,
-		changed:  added || len(awarded) > 0,
+		changed:  true,
 	}
 }
 
-func (d *Definition) kind(awarded []string, before, after map[string]bool, added bool) (Kind, Reason) {
+// score is the unit ev counts toward t and the highest worth among the rules
+// of t it matches. Validation makes every rule on one pair count one unit.
+func (t *Tier) score(ev Event) (unit string, worth int, reason Reason) {
+	sawInvalid := false
+	for i := range t.Rules {
+		r := &t.Rules[i]
+		if r.Entity != ev.Entity || r.Action != ev.Action || !conditionsHold(r.Where, ev.Context) {
+			continue
+		}
+		key, ok := r.unitID(ev)
+		if !ok {
+			sawInvalid = true
+			continue
+		}
+		unit, worth = key, max(worth, r.worth())
+	}
+	switch {
+	case worth > 0:
+		return unit, worth, ""
+	case sawInvalid:
+		return "", 0, ReasonInvalidContext
+	default:
+		return "", 0, ReasonConditionNotMet
+	}
+}
+
+func (d *Definition) kind(awarded []string, before, after map[string]bool) Kind {
 	switch {
 	case len(awarded) > 0 && (!d.holdsAny(before) || d.holdsAll(after)):
-		return KindAward, ""
+		return KindAward
 	case len(awarded) > 0:
-		return KindTierUp, ""
-	case added:
-		return KindIncrement, ""
+		return KindTierUp
 	default:
-		return KindIgnored, ReasonDuplicate
+		return KindIncrement
 	}
 }
 
-func (d *Definition) decision(kind Kind, reason Reason, awarded []string, held map[string]bool, units int) Decision {
+// decision reports points toward the lowest tier not in held, and its goal.
+func (d *Definition) decision(kind Kind, reason Reason, awarded []string, held map[string]bool, points int) Decision {
 	if awarded == nil {
 		awarded = []string{}
 	}
-	return Decision{
+	dec := Decision{
 		AchievementID: d.ID,
 		Decision:      kind,
 		Reason:        reason,
 		Awarded:       awarded,
-		Final:         d.holdsAll(held),
-		Units:         units,
-		Next:          d.nextThreshold(held),
+		Final:         true,
 	}
+	if i := d.lowestUnheld(held); i >= 0 {
+		goal := d.Tiers[i].Goal
+		dec.Final, dec.Units, dec.Next = false, points, &goal
+	}
+	return dec
 }
 
 func heldSet(ids []string) map[string]bool {
@@ -154,50 +166,37 @@ func (d *Definition) mergeHeld(stored []string, held map[string]bool) []string {
 	return ids
 }
 
-func (d *Definition) nextThreshold(held map[string]bool) *int {
-	for _, t := range d.Tiers {
-		if t.At != nil && !held[t.ID] {
-			return t.At
-		}
-	}
-	return nil
+func (d *Definition) lowestUnheld(held map[string]bool) int {
+	return slices.IndexFunc(d.Tiers, func(t Tier) bool { return !held[t.ID] })
 }
 
-// routedIndex is the position of the last tier whose route the event matches,
-// or -1. A route earns its tier and every tier before it.
-func (d *Definition) routedIndex(ev Event) int {
-	routed := -1
-	for i, t := range d.Tiers {
-		for _, r := range t.Or {
-			if r.Entity == ev.Entity && r.Action == ev.Action && conditionsHold(r.Where, ev.Context) {
-				routed = i
-			}
-		}
+// unitID is the ledger key of the unit ev brings: the rule's unit and ":",
+// then each id field (the event id for an occurrence) as byte length, ":" and
+// the field, as in "guide:7:bundled4:tour".
+func (r *Rule) unitID(ev Event) (string, bool) {
+	var key strings.Builder
+	add := func(part string) {
+		key.WriteString(strconv.Itoa(len(part)))
+		key.WriteByte(':')
+		key.WriteString(part)
 	}
-	return routed
-}
-
-func (m *Matcher) unitID(ev Event) (string, bool) {
-	var unit string
-	if m.CountBy.occurrence {
-		unit = ev.ID
-	} else {
-		var key strings.Builder
-		for _, name := range m.idFields {
-			part, ok := scalarString(ev.Context[name])
-			if !ok {
-				return "", false
-			}
-			key.WriteString(strconv.Itoa(len(part)))
-			key.WriteByte(':')
-			key.WriteString(part)
+	if r.unit == unitOccurrence {
+		if ev.ID == "" {
+			return "", false
 		}
-		unit = key.String()
+		add(ev.ID)
 	}
-	if unit == "" || len(unit) > maxUnitIDBytes {
+	for _, name := range r.idFields {
+		part, ok := scalarString(ev.Context[name])
+		if !ok {
+			return "", false
+		}
+		add(part)
+	}
+	if key.Len() > maxUnitIDBytes {
 		return "", false
 	}
-	return unit, true
+	return r.unit + ":" + key.String(), true
 }
 
 func scalarString(v any) (string, bool) {

@@ -13,10 +13,11 @@ const guidesAction = `"completed":{
   "context":{"guideSource":{"type":"string"},"guideId":{"type":"string"}},
   "resources":[{"unit":"guide","id":["guideSource","guideId"]}]}`
 
+const guidesRule = `{"entity":"guides","action":"completed","countBy":"resource"}`
+
 func guidesDefinition(id, extra string) string {
 	return `{"id":"` + id + `"` + extra + `,"title":"T","description":"D.",
-  "counter":{"unit":"guide","evidence":[{"entity":"guides","action":"completed","countBy":"resource"}]},
-  "tiers":[{"id":"bronze","at":1,"art":"` + id + `-1"},{"id":"silver","at":5}]}`
+  "tiers":[{"id":"bronze","goal":1,"rules":[` + guidesRule + `],"art":"` + id + `-1"},{"id":"silver","goal":4,"rules":[` + guidesRule + `]}]}`
 }
 
 func bundleOf(grammar, actions string, definitions ...string) []byte {
@@ -27,14 +28,14 @@ func bundleOf(grammar, actions string, definitions ...string) []byte {
 }
 
 func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
-	data := bundleOf("1.0",
+	data := bundleOf("2.0",
 		guidesAction+`,
   "started":{"context":{},"examples":[{"interaction":"x"}]},
   "viewed":{"context":{"at":{"type":"date"}}}`,
 		guidesDefinition("kept", ""),
 		guidesDefinition("versioned", `,"requires":"1.1","window":{"days":7}`),
 		guidesDefinition("unknown-field", `,"streak":3`),
-		`{"id":"on-skipped-action","title":"T","description":"D.","counter":{"unit":"occurrence","evidence":[{"entity":"guides","action":"viewed","countBy":"occurrence"}]},"tiers":[{"id":"bronze","at":1}]}`,
+		`{"id":"on-skipped-action","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"viewed","countBy":"occurrence"}]}]}`,
 		guidesDefinition("kept", ""),
 		`{"title":"no id"}`,
 	)
@@ -78,7 +79,7 @@ func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
 	if fmt.Sprint(earnable) != fmt.Sprint(wantDisplay) || len(s.Display) != len(wantDisplay) {
 		t.Errorf("display earnable = %v, want %v", earnable, wantDisplay)
 	}
-	if d := s.Display[1]; d.ID != "versioned" || d.Title != "T" || len(d.Tiers) != 2 || d.Tiers[0].Art != "versioned-1" || *d.Tiers[1].At != 5 {
+	if d := s.Display[1]; d.ID != "versioned" || d.Title != "T" || len(d.Tiers) != 2 || d.Tiers[0].Art != "versioned-1" || *d.Tiers[1].At != 4 {
 		t.Errorf("versioned display = %+v, want its title and tiers kept", d)
 	}
 }
@@ -89,13 +90,14 @@ func TestLoadBundleRefusesTheWholeBundleOnlyForTheEnvelope(t *testing.T) {
 		data []byte
 		want string
 	}{
-		{"another format version", bundleOf("2.0", guidesAction, guidesDefinition("a", "")), `grammar "2.0" is not 1.0`},
-		{"another grammar within the version", bundleOf("1.1", guidesAction, guidesDefinition("a", "")), `grammar "1.1" is not 1.0`},
+		{"the format version before", bundleOf("1.0", guidesAction, guidesDefinition("a", "")), `grammar "1.0" is not 2.0`},
+		{"another format version", bundleOf("3.0", guidesAction, guidesDefinition("a", "")), `grammar "3.0" is not 2.0`},
+		{"another grammar within the version", bundleOf("2.1", guidesAction, guidesDefinition("a", "")), `grammar "2.1" is not 2.0`},
 		{"no grammar", []byte(`{"catalog":{"achievements":[]}}`), `grammar ""`},
-		{"malformed grammar", bundleOf("1", guidesAction), `grammar "1" is not`},
+		{"malformed grammar", bundleOf("2", guidesAction), `grammar "2" is not`},
 		{"not JSON", []byte(`{"grammar":`), "bundle"},
-		{"catalog of the wrong shape", []byte(`{"grammar":"1.0","catalog":{"achievements":{}}}`), "bundle"},
-		{"too large", []byte(`{"grammar":"1.0","pad":"` + strings.Repeat("x", MaxBundleBytes) + `"}`), "at most"},
+		{"catalog of the wrong shape", []byte(`{"grammar":"2.0","catalog":{"achievements":{}}}`), "bundle"},
+		{"too large", []byte(`{"grammar":"2.0","pad":"` + strings.Repeat("x", MaxBundleBytes) + `"}`), "at most"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -111,7 +113,7 @@ func TestLoadBundleCapsDefinitions(t *testing.T) {
 	for i := range defs {
 		defs[i] = guidesDefinition(fmt.Sprintf("d%d", i), "")
 	}
-	s, err := LoadBundle(bundleOf("1.0", guidesAction, defs...))
+	s, err := LoadBundle(bundleOf("2.0", guidesAction, defs...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,9 +123,9 @@ func TestLoadBundleCapsDefinitions(t *testing.T) {
 }
 
 func TestLoadBundleVersionNamesTheBytes(t *testing.T) {
-	a, _ := LoadBundle(bundleOf("1.0", guidesAction, guidesDefinition("a", "")))
-	b, _ := LoadBundle(bundleOf("1.0", guidesAction, guidesDefinition("a", "")))
-	c, _ := LoadBundle(bundleOf("1.0", guidesAction, guidesDefinition("b", "")))
+	a, _ := LoadBundle(bundleOf("2.0", guidesAction, guidesDefinition("a", "")))
+	b, _ := LoadBundle(bundleOf("2.0", guidesAction, guidesDefinition("a", "")))
+	c, _ := LoadBundle(bundleOf("2.0", guidesAction, guidesDefinition("b", "")))
 	if a.Version == "" || a.Version != b.Version || a.Version == c.Version {
 		t.Errorf("versions %q %q %q", a.Version, b.Version, c.Version)
 	}
@@ -131,13 +133,13 @@ func TestLoadBundleVersionNamesTheBytes(t *testing.T) {
 
 func TestLoadBundleEvaluatesWhatItLoaded(t *testing.T) {
 	s := loadTestBundle(t)
-	if s.Grammar != "1.0" || len(s.Art) != 3 || len(s.Display) != 1 || !s.Display[0].Earnable {
+	if s.Grammar != "2.0" || len(s.Art) != 3 || len(s.Display) != 1 || !s.Display[0].Earnable {
 		t.Errorf("snapshot = %+v", s)
 	}
 }
 
 func TestLoadBundleSkipsEachBadEntryOnItsOwn(t *testing.T) {
-	data := []byte(`{"grammar":"1.0",
+	data := []byte(`{"grammar":"2.0",
   "registry":{"entities":{
     "guides":{"actions":{` + guidesAction + `,"started":null,
       "viewed":{"context":{"f":{"type":"string","format":"date"}}},
@@ -184,7 +186,7 @@ func TestLoadBundleCapCountsOnlyEvaluableDefinitions(t *testing.T) {
 		defs = append(defs, `{}`)
 	}
 	defs = append(defs, guidesDefinition("kept", ""))
-	s, err := LoadBundle(bundleOf("1.0", guidesAction, defs...))
+	s, err := LoadBundle(bundleOf("2.0", guidesAction, defs...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +226,7 @@ func TestLoadBundleKeepsAnActionThatGainedAnAdditiveKey(t *testing.T) {
 }
 
 func TestDefinitionsPathNamesTheFormatVersion(t *testing.T) {
-	if DefinitionsPath != "achievements/v1/definitions.json" || !strings.HasPrefix(Grammar, strings.TrimPrefix(FormatVersion, "v")+".") {
+	if DefinitionsPath != "achievements/v2/definitions.json" || !strings.HasPrefix(Grammar, strings.TrimPrefix(FormatVersion, "v")+".") {
 		t.Errorf("path %q, format %q, grammar %q", DefinitionsPath, FormatVersion, Grammar)
 	}
 }
@@ -233,7 +235,7 @@ func TestLoadBundleSkipsAndHidesADefinitionWithUnsafeText(t *testing.T) {
 	bad := func(id, text string) string {
 		return strings.Replace(guidesDefinition(id, ""), `"title":"T"`, `"title":"`+text+`"`, 1)
 	}
-	s, err := LoadBundle(bundleOf("1.0", guidesAction,
+	s, err := LoadBundle(bundleOf("2.0", guidesAction,
 		bad("bidi", `\u202eT`), bad("long", strings.Repeat("t", maxTitleRunes+1)), guidesDefinition("kept", "")))
 	if err != nil {
 		t.Fatal(err)
