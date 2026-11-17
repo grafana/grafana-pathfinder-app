@@ -200,6 +200,11 @@ func (s *AchievementStore) CreateAward(ctx context.Context, person achievements.
 	return err
 }
 
+func (s *AchievementStore) HasAward(ctx context.Context, person achievements.Person, achievementID, tierID string) (bool, error) {
+	_, ok, err := s.LoadAward(ctx, person, achievementID, tierID)
+	return ok, err
+}
+
 func (s *AchievementStore) progressObject(person achievements.Person, p achievements.Progress) achievementObject[achievementProgressSpec] {
 	points := int64(p.Points)
 	return achievementObject[achievementProgressSpec]{

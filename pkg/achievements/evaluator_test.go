@@ -333,6 +333,33 @@ func TestEvaluateRetryAfterAFailedAwardCreateReportsTheTier(t *testing.T) {
 	}
 }
 
+func TestEvaluateRetryHoldsATierWhoseAwardOutlivedAFailedSave(t *testing.T) {
+	store := newFakeStore()
+	store.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze", "silver"}, Points: 8, SchemaVersion: ProgressSchemaVersion})
+	ev := newTestEvaluator(t, store, &fakePolicy{})
+	starred := starredDashboard("x", 3)
+
+	store.saveErr = errors.New("down")
+	if d := decisionFor(t, mustEvaluate(t, ev, starred), "dash-builder"); d.Reason != ReasonStoreUnavailable {
+		t.Fatalf("first try = %+v, want store_unavailable", d)
+	}
+	store.saveErr = nil
+	if d := decisionFor(t, mustEvaluate(t, ev, dashboardCreated("x", 3)), "dash-builder"); d.Decision != KindIncrement || d.Units != 9 {
+		t.Fatalf("the same dashboard at worth 1 = %+v", d)
+	}
+
+	want := `{"achievementId":"dash-builder","decision":"award","awarded":["gold"],"final":true,"units":0,"next":null}`
+	if got := decisionJSON(t, decisionFor(t, mustEvaluate(t, ev, starred), "dash-builder")); got != want {
+		t.Errorf("retry\n got %s\nwant %s", got, want)
+	}
+	if row := store.progress["dash-builder"]; !equalStrings(row.TierIDs, []string{"bronze", "silver", "gold"}) || row.Points != 0 || !equalStrings(row.Units, dash("x")) {
+		t.Errorf("row = %+v, want gold held by its award row and the unit counted once", row)
+	}
+	if d := decisionFor(t, mustEvaluate(t, ev, starred), "dash-builder"); d.Reason != ReasonComplete {
+		t.Errorf("another replay = %+v, want complete", d)
+	}
+}
+
 func TestEvaluateConflict(t *testing.T) {
 	t.Run("a tier the reloaded row still lacks is reported after the re-run", func(t *testing.T) {
 		store := newFakeStore()

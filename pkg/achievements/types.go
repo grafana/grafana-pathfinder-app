@@ -73,6 +73,8 @@ type Store interface {
 	SaveProgress(ctx context.Context, person Person, p Progress) (Progress, error)
 	// CreateAward returns ErrExists when the tier was already awarded.
 	CreateAward(ctx context.Context, person Person, a Award) error
+	// HasAward reports whether the tier's award row exists.
+	HasAward(ctx context.Context, person Person, achievementID, tierID string) (bool, error)
 }
 
 // Policy is the admission port: people only, with a per-user rate limit. A

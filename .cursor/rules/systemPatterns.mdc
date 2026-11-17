@@ -218,8 +218,8 @@ down. The package does no I/O: storage and
 admission are interfaces for the plugin's App Platform store to implement, so it is tested on its own with
 golden tables and `testdata/bundle.json`.
 `pkg/plugin/achievements_store.go` is the App Platform `Store` adapter (compare-and-swap on progress; a
-409 on an award create returns `ErrExists`, meaning already held; a current progress row without `points`
-is an error, so a kind that drops the field fails before a unit is spent) and `pkg/achievements/storetest` holds the
+409 on an award create returns `ErrExists`, meaning already held; a schema version 2 progress row without
+`points` is an error, so a kind that drops the field fails at the first create, before a unit is spent) and `pkg/achievements/storetest` holds the
 contract every `Store` must pass, with an in-memory implementation.
 
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
