@@ -47,10 +47,6 @@ func (s *achievementStore) CreateAward(ctx context.Context, p achievements.Perso
 	return s.shared().CreateAward(ctx, p, row)
 }
 
-func (s *achievementStore) HasAward(ctx context.Context, p achievements.Person, achievementID, tierID string) (bool, error) {
-	return s.shared().HasAward(ctx, p, achievementID, tierID)
-}
-
 type legacyAchievementClient struct{ *appPlatformListClient }
 
 func (c legacyAchievementClient) Get(ctx context.Context, gv, ns, kind, name string, cap int64) ([]byte, error) {

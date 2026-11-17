@@ -75,7 +75,6 @@ func Run(t *testing.T, newStore Factory) {
 		{"award create twice is ErrExists", awardTwice},
 		{"awards are independent per tier id, achievement and person", awardIndependent},
 		{"racing award creates have exactly one winner", awardRace},
-		{"an award reads back only for its own tier id, achievement and person", awardReadBack},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { c.run(t, newStore(t)) })
@@ -361,24 +360,6 @@ func awardRace(t *testing.T, s achievements.Store) {
 	}
 }
 
-func awardReadBack(t *testing.T, s achievements.Store) {
-	if has, err := s.HasAward(context.Background(), alice, "a", "bronze"); err != nil || has {
-		t.Fatalf("before create = %v, %v, want false", has, err)
-	}
-	if err := s.CreateAward(context.Background(), alice, award("a", "bronze")); err != nil {
-		t.Fatalf("CreateAward: %v", err)
-	}
-	for _, c := range []struct {
-		person     achievements.Person
-		id, tierID string
-		want       bool
-	}{{alice, "a", "bronze", true}, {alice, "a", "silver", false}, {alice, "b", "bronze", false}, {bob, "a", "bronze", false}} {
-		if has, err := s.HasAward(context.Background(), c.person, c.id, c.tierID); err != nil || has != c.want {
-			t.Errorf("HasAward(%s, %s, %s) = %v, %v, want %v", c.person.ID, c.id, c.tierID, has, err, c.want)
-		}
-	}
-}
-
 // Memory is an in-memory Store with the semantics the contract requires.
 type Memory struct {
 	mu       sync.Mutex
@@ -449,11 +430,4 @@ func (m *Memory) CreateAward(_ context.Context, person achievements.Person, a ac
 	}
 	m.awards[k] = a
 	return nil
-}
-
-func (m *Memory) HasAward(_ context.Context, person achievements.Person, achievementID, tierID string) (bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_, ok := m.awards[key(person, achievementID, tierID)]
-	return ok, nil
 }

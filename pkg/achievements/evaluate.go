@@ -68,7 +68,9 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 
 // keepWritten holds every tier in written, whose award rows this event already
 // created. A re-run after a conflict can find the event's unit counted by
-// another writer at a lower worth, and must not leave those awards unheld.
+// another writer at a lower worth, and must not leave those awards unheld. An
+// award row from an earlier call whose save failed carries no unit to match, so
+// it stays unheld until the tier's goal is next reached.
 func (d *Definition) keepWritten(stored Progress, out outcome, written []string) outcome {
 	base := stored
 	if out.changed {

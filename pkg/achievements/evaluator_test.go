@@ -333,30 +333,24 @@ func TestEvaluateRetryAfterAFailedAwardCreateReportsTheTier(t *testing.T) {
 	}
 }
 
-func TestEvaluateRetryHoldsATierWhoseAwardOutlivedAFailedSave(t *testing.T) {
+func TestEvaluateADuplicateDuringAnotherEventsSaveHoldsNoTier(t *testing.T) {
 	store := newFakeStore()
-	store.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze", "silver"}, Points: 8, SchemaVersion: ProgressSchemaVersion})
-	ev := newTestEvaluator(t, store, &fakePolicy{})
-	starred := starredDashboard("x", 3)
-
-	store.saveErr = errors.New("down")
-	if d := decisionFor(t, mustEvaluate(t, ev, starred), "dash-builder"); d.Reason != ReasonStoreUnavailable {
-		t.Fatalf("first try = %+v, want store_unavailable", d)
+	store.seed(Progress{AchievementID: "well-rounded", Units: []string{unitKey("guide-category", "interactive")}, Points: 1, SchemaVersion: ProgressSchemaVersion})
+	replica := newTestEvaluator(t, store, &fakePolicy{})
+	store.beforeSave = func(s *fakeStore, attempt int) {
+		if attempt == 1 {
+			s.beforeSave = nil
+			if d := decisionFor(t, mustEvaluate(t, replica, guideCompleted("again", "interactive")), "well-rounded"); d.Reason != ReasonDuplicate || len(d.Awarded) != 0 {
+				t.Errorf("the duplicate = %+v, want it to earn nothing", d)
+			}
+		}
 	}
-	store.saveErr = nil
-	if d := decisionFor(t, mustEvaluate(t, ev, dashboardCreated("x", 3)), "dash-builder"); d.Decision != KindIncrement || d.Units != 9 {
-		t.Fatalf("the same dashboard at worth 1 = %+v", d)
+	decisions := mustEvaluate(t, newTestEvaluator(t, store, &fakePolicy{}), guideCompleted("docs", "documentation"))
+	if d := decisionFor(t, decisions, "well-rounded"); d.Decision != KindAward || !equalStrings(d.Awarded, []string{"bronze"}) {
+		t.Errorf("the new category = %+v, want bronze", d)
 	}
-
-	want := `{"achievementId":"dash-builder","decision":"award","awarded":["gold"],"final":true,"units":0,"next":null}`
-	if got := decisionJSON(t, decisionFor(t, mustEvaluate(t, ev, starred), "dash-builder")); got != want {
-		t.Errorf("retry\n got %s\nwant %s", got, want)
-	}
-	if row := store.progress["dash-builder"]; !equalStrings(row.TierIDs, []string{"bronze", "silver", "gold"}) || row.Points != 0 || !equalStrings(row.Units, dash("x")) {
-		t.Errorf("row = %+v, want gold held by its award row and the unit counted once", row)
-	}
-	if d := decisionFor(t, mustEvaluate(t, ev, starred), "dash-builder"); d.Reason != ReasonComplete {
-		t.Errorf("another replay = %+v, want complete", d)
+	if row := store.progress["well-rounded"]; !equalStrings(row.TierIDs, []string{"bronze"}) || len(row.Units) != 2 || len(store.awards) != 1 {
+		t.Errorf("row = %+v awards = %d, want bronze from two categories and one award", row, len(store.awards))
 	}
 }
 

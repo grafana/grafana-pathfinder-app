@@ -73,9 +73,6 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 	var written []string
 	for attempt := 1; ; attempt++ {
 		out := d.keepWritten(current, evaluate(d, current, ev), written)
-		if !out.changed && len(written) == 0 && out.decision.Reason == ReasonDuplicate {
-			out, written = e.heldByAward(ctx, person, d, current, out)
-		}
 		if !out.changed {
 			return out.decision
 		}
@@ -104,22 +101,6 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		}
 		current = reloaded
 	}
-}
-
-// heldByAward holds the lowest tier not held when its award row already exists.
-// An event that wrote it can fail to save, and a later event bringing the same
-// unit at a lower worth then makes the retry a duplicate that would never hold it.
-func (e *Evaluator) heldByAward(ctx context.Context, person Person, d *Definition, current Progress, out outcome) (outcome, []string) {
-	i := d.lowestUnheld(heldSet(current.TierIDs))
-	if i < 0 {
-		return out, nil
-	}
-	tierID := d.Tiers[i].ID
-	if has, err := e.store.HasAward(ctx, person, d.ID, tierID); err != nil || !has {
-		return out, nil
-	}
-	written := []string{tierID}
-	return d.keepWritten(current, out, written), written
 }
 
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {
