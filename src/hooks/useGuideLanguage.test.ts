@@ -88,6 +88,14 @@ describe('useGuideLanguage with the gate on', () => {
     expect(result.current.effective).toBe('ja-JP');
   });
 
+  it('saves a legacy language code as written rather than as its CLDR alias', async () => {
+    const { result } = renderHook(() => useGuideLanguage());
+    await act(async () => {
+      await result.current.setPreferred('iw');
+    });
+    expect(mockSetItem).toHaveBeenCalledWith(StorageKeys.GUIDE_LANGUAGE, 'iw');
+  });
+
   it('persists a chosen preference to user storage', async () => {
     const { result } = renderHook(() => useGuideLanguage());
     await act(async () => {
@@ -109,14 +117,17 @@ describe('useGuideLanguage with the gate on', () => {
     expect(result.current.effective).toBe('ja-JP');
   });
 
-  it('ignores an invalid preference instead of saving it', async () => {
-    const { result } = renderHook(() => useGuideLanguage());
-    await act(async () => {
-      await result.current.setPreferred('not a tag');
-    });
-    expect(mockSetItem).not.toHaveBeenCalled();
-    expect(result.current.preferred).toBe('follow-grafana');
-  });
+  it.each(['not a tag', 'ja-JP-u-ca-japanese'])(
+    'ignores the invalid preference %j instead of saving it',
+    async (value) => {
+      const { result } = renderHook(() => useGuideLanguage());
+      await act(async () => {
+        await result.current.setPreferred(value);
+      });
+      expect(mockSetItem).not.toHaveBeenCalled();
+      expect(result.current.preferred).toBe('follow-grafana');
+    }
+  );
 
   it('shares the preference between hook instances', async () => {
     const first = renderHook(() => useGuideLanguage());
@@ -174,9 +185,9 @@ describe('useGuideLanguage with the gate on', () => {
       expect(result.current.effective).toBe('ja-JP');
     });
 
-    it('ignores an invalid tag', () => {
+    it.each(['nonsense value', 'ja-JP-u-ca-japanese'])('ignores the invalid tag %j', (value) => {
       const { result } = renderHook(() => useGuideLanguage());
-      act(() => result.current.applyOneShotOverride('nonsense value'));
+      act(() => result.current.applyOneShotOverride(value));
       expect(result.current.override).toBeNull();
     });
 

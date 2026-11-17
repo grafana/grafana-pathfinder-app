@@ -31,8 +31,8 @@ describe('buildLocaleChain', () => {
     expect(buildLocaleChain('JA-jp', 'EN')).toEqual(['ja-JP', 'ja', 'en']);
   });
 
-  it('drops extension subtags rather than treating them as locale parts', () => {
-    expect(buildLocaleChain('ja-JP-u-ca-japanese', 'en')).toEqual(['ja-JP', 'ja', 'en']);
+  it('degrades to the canonical language for a tag with extension subtags', () => {
+    expect(buildLocaleChain('ja-JP-u-ca-japanese', 'en')).toEqual(['en']);
   });
 
   it('degrades to the canonical language for an unusable tag', () => {
@@ -56,6 +56,7 @@ describe('parseBcp47Tag', () => {
     ['ja-JP', 'ja-JP'],
     ['  pt-br ', 'pt-BR'],
     ['zh-Hans-CN', 'zh-Hans-CN'],
+    ['iw', 'iw'],
   ])('accepts %j as %j', (input, expected) => {
     expect(parseBcp47Tag(input)).toBe(expected);
   });
@@ -71,6 +72,7 @@ describe('parseBcp47Tag', () => {
     ['follow-grafana'],
     ['browser'],
     ['ja-'],
+    ['ja-JP-u-ca-japanese'],
   ])('rejects %j', (input) => {
     expect(parseBcp47Tag(input)).toBeNull();
   });
