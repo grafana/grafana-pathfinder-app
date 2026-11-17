@@ -26,7 +26,7 @@ export const getDomPathTooltipStyles = (theme: GrafanaTheme2) => {
       lineHeight: 1.4,
     }),
     testidHighlight: css({
-      color: '#ff8800', // Orange color for testid attributes
+      color: theme.colors.warning.text,
       fontWeight: theme.typography.fontWeightMedium,
     }),
     hidden: css({

@@ -24,3 +24,15 @@ describe('DOM path tooltip background', () => {
     expect(registeredStyles(tooltip)).not.toContain('rgba(30, 30, 30, 0.95)');
   });
 });
+
+describe('DOM path tooltip testid highlight', () => {
+  it.each([
+    ['dark', createTheme({ colors: { mode: 'dark' } })],
+    ['light', createTheme({ colors: { mode: 'light' } })],
+  ] as const)('uses warning.text in the %s theme', (_name, theme) => {
+    const { testidHighlight } = getDomPathTooltipStyles(theme);
+
+    expect(registeredStyles(testidHighlight)).toContain(`color:${theme.colors.warning.text}`);
+    expect(registeredStyles(testidHighlight)).not.toContain('#ff8800');
+  });
+});
