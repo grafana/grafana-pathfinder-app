@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.29.0
+
+### Added
+
+- **Achievement storage integration**: Connect achievement event and personal-progress routes to App Platform storage so configured stacks can record and retrieve awards. Reads address only the caller's records; the learner-facing achievement interface is still pending. (#2329)
+
+### Fixed
+
+- **Compact kiosks on laptop screens**: Scale headings, padding, action spacing, and illustrations with compact density so kiosk layouts fit smaller screens while retaining scrolling and responsive stacking. Normal and spacious layouts keep their existing sizes. (#2438)
+- **Theme-aware selector indicators**: Use Grafana theme colors for selector quality and match counts in the block editor, including light and dark themes. (#2442)
+- **Theme-aware element tooltips**: Match the DOM path tooltip background to the active Grafana theme while preserving its translucency. (#2437)
+- **Consistent element picker controls**: Use Grafana's standard secondary button for the element picker's cancel action. (#2440)
+- **Consistent duplicate-step controls**: Match the duplicate-step button to the adjacent edit action with standard secondary styling. (#2441)
+- **Consistent help links**: Render footer help links with Grafana's text-fill link buttons while retaining the compact keyboard-shortcuts control. (#2439)
+
+### Chore
+
+- **Windows test compatibility**: Handle native file paths and file URLs correctly in path-sensitive Jest suites, including the check for unscoped requirement-checker consumers. (#2436)
+
 ## 2.28.0
 
 ### Added
