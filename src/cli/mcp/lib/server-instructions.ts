@@ -40,7 +40,7 @@ export const SERVER_INSTRUCTIONS: string = [
   '',
   'To check whether a guide already exists for a topic or page ("is there a guide for this?"), call `pathfinder_find_guides`; it needs no authoring session.',
   '',
-  'For authoring, always call `pathfinder_authoring_start` first. It returns the schema version, workflow, composition rules, supported domains, and discovery hints you will need for every subsequent tool call.',
+  'For authoring, always call `pathfinder_authoring_start` first. It returns the schema version, workflow, guide-shape and interactive rules, supported domains, and discovery hints you will need for every subsequent tool call.',
   '',
   // Session-mode primer. Reaches the model before tool selection so agents
   // do not default to threading full artifacts back through every mutation.

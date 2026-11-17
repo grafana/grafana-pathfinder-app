@@ -107,11 +107,11 @@ describe('MCP server', () => {
     }
   });
 
-  it('surfaces distilled compositionRules in pathfinder_authoring_start (issue #8, OQ7 inline variant)', async () => {
+  it('surfaces distilled interactiveRules in pathfinder_authoring_start (issue #8, OQ7 inline variant)', async () => {
     const { client, close } = await spinUp();
     try {
       const ctx = await callTool(client, 'pathfinder_authoring_start');
-      const rules = ctx.compositionRules as string[];
+      const rules = ctx.interactiveRules as string[];
       expect(Array.isArray(rules)).toBe(true);
       // Budget guard — distilled from grafana/interactive-tutorials, hard
       // ceiling per the slice plan is 25 rules. If a future edit pushes the

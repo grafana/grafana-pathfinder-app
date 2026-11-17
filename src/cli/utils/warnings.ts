@@ -32,7 +32,7 @@ import type { OutcomeWarning } from './output';
  * the failure mode in hardening doc issue #8 ("agents default to multistep
  * and noop without warrant"): agents reach for `multistep` as the
  * least-effort container; this warning pairs with the
- * `compositionRules` surface in `pathfinder_authoring_start` to push them
+ * `interactiveRules` surface in `pathfinder_authoring_start` to push them
  * toward separate sibling blocks when the steps are loose.
  */
 export function multistepCompositionHint(): OutcomeWarning {
