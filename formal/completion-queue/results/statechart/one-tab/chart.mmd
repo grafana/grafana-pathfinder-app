@@ -1,0 +1,41 @@
+---
+title: "Completion queue: one record, reset all"
+---
+stateDiagram-v2
+  direction LR
+  state "At the same time" as all {
+    state "Tab A" as r0 {
+      s0: Idle
+      s1: Taking the lease
+      s2: Draining
+      s3: Giving the lease back
+      s4: Waiting for the server
+      [*] --> s0
+      s0 --> s1: the drain timer fires
+      s1 --> s2: the tab reads the lease back
+      s2 --> s3: the tab takes the next record
+      s3 --> s0: the tab removes its lease
+      s2 --> s4: the tab sends the record [when Browser storage is Record queued]
+      s4 --> s2: the request fails or times out
+      s4 --> s2: the server answers created [when Server is Recorded]
+      s3 --> s0: the tab reads the lease [when Browser storage is Withdrawn]
+    }
+    --
+    state "Browser storage" as r1 {
+      s5: Nothing queued
+      s6: Record queued
+      s7: Withdrawn
+      [*] --> s5
+      s5 --> s6: a guide is completed [when Tab A is Idle and Server is Not recorded]
+      s6 --> s7: the reader resets all progress in Tab A [when Tab A is one of Idle, Waiting for the server]
+      s6 --> s5: the server answers created [when Tab A is Waiting for the server and Server is Recorded]
+      s5 --> s7: the reader resets all progress in Tab A [when Tab A is Idle and Server is Recorded]
+    }
+    --
+    state "Server" as r2 {
+      s8: Not recorded
+      s9: Recorded
+      [*] --> s8
+      s8 --> s9: the server saves the record [when Browser storage is not Nothing queued]
+    }
+  }

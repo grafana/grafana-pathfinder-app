@@ -1,0 +1,9 @@
+# Allowlist: only the model, scripts, view and the committed results are tracked.
+*
+!.gitignore
+!CompletionQueue.tla
+!check.sh
+!statechart.sh
+!view.mjs
+!results/
+!results/**

@@ -1,0 +1,18 @@
+State 1: <Initial predicate>
+State 2: <Enqueue
+State 3: <StartDrain
+State 4: <StartDrain
+State 5: <AcqRead
+State 6: <AcqRead
+State 7: <AcqWrite
+State 8: <AcqCheck
+State 9: <NextItem
+State 10: <RenRead
+State 11: <AcqWrite
+State 12: <AcqCheck
+State 13: <NextItem
+State 14: <RenRead
+State 15: <RenWrite
+State 16: <SendPost
+State 17: <RenWrite
+State 18: <SendPost

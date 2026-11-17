@@ -1,0 +1,16 @@
+name	verdict	expected	as_expected	distinct_states	depth	seconds
+p1-cross-tab-op	VIOLATION	VIOLATION	yes	712	8	1
+p1-cross-tab-task	VIOLATION	VIOLATION	yes	965	12	1
+p1-one-tab	PASS	PASS	yes	3166	61	0
+p1-one-tab-mutant	VIOLATION	VIOLATION	yes	165	12	1
+p2-key-stable	PASS	PASS	yes	5250709	74	92
+p2-key-mutant	VIOLATION	VIOLATION	yes	95968	21	2
+p3-no-loss	PASS	PASS	yes	5250709	74	91
+p3-no-loss-mutant	VIOLATION	VIOLATION	yes	2656	11	1
+t1-send-race-no-expiry	VIOLATION	VIOLATION	yes	455	18	1
+t1-send-task-no-expiry	PASS	PASS	yes	223	34	1
+t1-send-task-expiry	VIOLATION	VIOLATION	yes	176	19	0
+fix-transient-only	VIOLATION	VIOLATION	yes	1709	14	1
+fix-both-task	PASS	PASS	yes	222924	69	4
+fix-both-task-no-loss	PASS	PASS	yes	222924	69	4
+fix-both-op	VIOLATION	VIOLATION	yes	1235	9	1

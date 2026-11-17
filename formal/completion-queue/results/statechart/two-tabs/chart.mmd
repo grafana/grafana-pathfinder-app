@@ -1,0 +1,57 @@
+---
+title: "Completion queue: one record, reset all"
+---
+stateDiagram-v2
+  direction LR
+  state "Legend" as legend {
+    lg0: Breaks ClearedStaysCleared
+    lg1: Path to the ClearedStaysCleared bug
+  }
+  class lg0 breaks
+  class lg1 bugPath
+  state "At the same time" as all {
+    state "Tab A" as r0 {
+      s0: Idle
+      s1: Taking the lease
+      s2: Draining
+      s3: Waiting for the server
+      [*] --> s0
+      s0 --> s1: the drain timer fires [when Browser storage is Record queued]
+      s1 --> s2: the tab reads the lease back
+      s2 --> s3: the tab sends the record [when Browser storage is Record queued]
+      s3 --> s2: the request fails or times out [when Browser storage is Withdrawn]
+    }
+    --
+    state "Tab B" as r1 {
+      s4: Idle
+      [*] --> s4
+    }
+    --
+    state "Browser storage" as r2 {
+      s5: Nothing queued
+      s6: Record queued
+      s7: Withdrawn
+      s8: Withdrawn record is back
+      [*] --> s5
+      s5 --> s6: a guide is completed
+      s6 --> s7: the reader resets all progress in Tab B [when Tab A is Waiting for the server]
+      s7 --> s8: the request fails or times out
+    }
+    --
+    state "Server" as r3 {
+      s9: Not recorded
+      [*] --> s9
+    }
+  }
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 bugPath
+  class s1 bugPath
+  class s2 bugPath
+  class s3 bugPath
+  class s4 bugPath
+  class s5 bugPath
+  class s6 bugPath
+  class s7 bugPath
+  class s8 breaks
+  class s8 bugPath
+  class s9 bugPath
