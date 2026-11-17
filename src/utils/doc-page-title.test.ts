@@ -20,3 +20,11 @@ describe('getInteractiveLearningUrlTitle', () => {
     expect(getInteractiveLearningUrlTitle(url)).toBeUndefined();
   });
 });
+
+it('derives the same placeholder from a localized content file', () => {
+  expect(
+    getInteractiveLearningUrlTitle(
+      'https://interactive-learning.grafana.net/packages/alerting-intro-lj/content.ja.json'
+    )
+  ).toBe('Alerting Intro Lj');
+});

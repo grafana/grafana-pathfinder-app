@@ -80,6 +80,23 @@ describe('findDocPage', () => {
     });
   });
 
+  describe('localized content-file links', () => {
+    it('opens the canonical content.json URL and reports the requested locale', () => {
+      expect(findDocPage('https://interactive-learning.grafana.net/packages/first-dashboard/content.ja.json')).toEqual({
+        type: 'interactive',
+        url: 'https://interactive-learning.grafana.net/packages/first-dashboard/content.json',
+        title: 'First Dashboard',
+        locale: 'ja',
+      });
+    });
+
+    it('reports no locale for the canonical URL', () => {
+      expect(
+        findDocPage('https://interactive-learning.grafana.net/packages/first-dashboard/content.json')
+      ).not.toHaveProperty('locale');
+    });
+  });
+
   describe('unrecognised input', () => {
     it('returns null for an unknown prefix', () => {
       expect(findDocPage('unknown:something')).toBeNull();
