@@ -19,6 +19,7 @@ import type {
   JsonBlock,
   JsonChallengeBlock,
   JsonChallengeHint,
+  JsonCollapsibleBlock,
   JsonConditionalBlock,
   JsonGuidedBlock,
   JsonMultistepBlock,
@@ -28,7 +29,7 @@ import type {
   JsonStep,
 } from '../../../types/json-guide.types';
 import type { ContentJson } from '../../../types/package.types';
-import { isContainerBlockType } from '../block-registry';
+import { isContainerBlockType, PRESENTATIONAL_BLOCK_TYPES } from '../block-registry';
 import { nextAutoBlockId } from './auto-id';
 import { PackageIOError } from './errors';
 import { CONTAINER_CHILD_KEYS, CONTAINER_NON_BLOCK_CHILD_KEYS, collectAllIds, findBlockById, walkBlocks } from './tree';
@@ -104,7 +105,7 @@ export function appendBlock(
   // expected — duplicating content silently. Containers and leaves with
   // explicit ids fall through to the id-based --if-absent path below.
   if (options.ifAbsent && !isContainer && !block.id) {
-    const target = resolveAppendTarget(content, options);
+    const target = resolveAppendTarget(content, options, block.type);
     const equivalent = findEquivalentLeaf(target.array, block);
     if (equivalent) {
       const equivalentPosition = positionOf(content, equivalent);
@@ -154,7 +155,7 @@ export function appendBlock(
   }
 
   // Resolve target array.
-  const target = resolveAppendTarget(content, options);
+  const target = resolveAppendTarget(content, options, block.type);
   const insertIndex = resolveInsertIndex(content, target, options);
   target.array.splice(insertIndex, 0, block);
 
@@ -405,7 +406,11 @@ export interface AppendTarget {
  * we'll splice into. Exported for use by `move.ts`'s `moveBlockInto`; not
  * part of the package-io public API.
  */
-export function resolveAppendTarget(content: ContentJson, options: AppendBlockOptions): AppendTarget {
+export function resolveAppendTarget(
+  content: ContentJson,
+  options: AppendBlockOptions,
+  childType: string
+): AppendTarget {
   if (!options.parentId) {
     return { array: content.blocks, path: 'blocks' };
   }
@@ -434,6 +439,17 @@ export function resolveAppendTarget(content: ContentJson, options: AppendBlockOp
   if (parent.type === 'section' || parent.type === 'assistant') {
     const container = parent as JsonSectionBlock | JsonAssistantBlock;
     return { array: container.blocks, path: pathToBlock(content, parent, 'blocks') };
+  }
+
+  if (parent.type === 'collapsible') {
+    if (!PRESENTATIONAL_BLOCK_TYPES.includes(childType)) {
+      throw new PackageIOError({
+        code: 'WRONG_PARENT_KIND',
+        message: `Parent "${options.parentId}" is a collapsible, which can only hold ${PRESENTATIONAL_BLOCK_TYPES.join(', ')} blocks, not ${childType}`,
+      });
+    }
+    const collapsible = parent as JsonCollapsibleBlock;
+    return { array: collapsible.blocks, path: pathToBlock(content, parent, 'blocks') };
   }
 
   // These are containers but NOT block-containers — they hold steps, choices,
