@@ -72,7 +72,7 @@ export interface WriteRouteRecorder {
 export async function stubCompletionWriteRoute(page: Page, status = 404): Promise<WriteRouteRecorder> {
   const recorder: WriteRouteRecorder = { requests: [] };
 
-  await page.route(matchesBackendRoute('completion-records'), async (route: Route) => {
+  await page.context().route(matchesBackendRoute('completion-records'), async (route: Route) => {
     if (route.request().method() !== 'POST') {
       await route.fallback();
       return;

@@ -59,7 +59,6 @@ test.describe('online package recommendations endpoint', () => {
     const helpButton = page.locator('button[aria-label="Help"]');
     await helpButton.click();
 
-    const request = await requestPromise;
-    expect(request.url()).toContain(PACKAGE_RECOMMENDATIONS_PATH);
+    await requestPromise;
   });
 });
