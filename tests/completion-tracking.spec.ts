@@ -19,6 +19,7 @@
 import { test, expect } from '@playwright/test';
 import { testIds } from '../src/constants/testIds';
 import { TIMEOUTS } from './constants';
+import { dismissWhatsNewOnInteraction } from './helpers/grafana.helpers';
 import {
   ALL_FIXTURES,
   APP_PLATFORM_GUIDE,
@@ -68,6 +69,10 @@ const DEFAULT_GUIDE_SOURCE = 'interactive-tutorials';
 // `TIMEOUTS.UI_READY` panel waits plus a `waitForWriteAttemptAfter` that
 // budgets past the drain lease's TTL, which alone sums close to two minutes.
 test.describe.configure({ timeout: 180_000 });
+
+test.beforeEach(async ({ page }) => {
+  await dismissWhatsNewOnInteraction(page);
+});
 
 test.describe('completion tracking', () => {
   /**
