@@ -27,7 +27,7 @@ Pass `--prior` only with `state.json` from an earlier trusted review-lite run. C
 
 `prepare` also writes two model-free nomination files: `sync-hits.json` and `delta-triggers.json`. They are leads to read, never findings.
 
-Before inspecting contributor content, launch the isolated reviewer using `scripts/isolated-review.py` as described in the security reference. The controller prepares concern packets and pinned test pages with the helper; the reviewer reads them and pinned source copies using Read only. Helper commands below belong to the trusted controller, not the isolated reviewer. If additional preparation is needed, stop and restart with the additional trusted material; do not enable shell tools.
+Before inspecting contributor content, launch the isolated reviewer using `.cursor/skills/review-lite/scripts/isolated-review.py` as described in the security reference. The controller prepares concern packets and pinned test pages with the helper; the reviewer reads them and pinned source copies using Read only. Helper commands below belong to the trusted controller, not the isolated reviewer. If additional preparation is needed, stop and restart with the additional trusted material; do not enable shell tools.
 
 ## 2. Inspect
 
