@@ -1,4 +1,5 @@
 import { isInteractiveLearningUrl } from '../../security';
+import { CANONICAL_CONTENT_FILE, contentFileSiblingUrl, isContentFileUrl } from '../../lib/guide-content-file';
 
 export { getLearningJourneyBaseUrl } from '../../lib/learning-journey-url';
 
@@ -12,12 +13,12 @@ export function generateUrlId(url: string): string {
 }
 
 /**
- * Check if a URL points to a JSON file (content.json)
+ * Check if a URL points to a JSON file (content.json or a localized content.<locale>.json)
  */
 export function isJsonContentUrl(url: string): boolean {
   // Check the URL path, ignoring query params and fragments
   const urlPath = url.split('?')[0]!.split('#')[0]!;
-  return urlPath.endsWith('.json') || urlPath.endsWith('/content.json');
+  return urlPath.endsWith('.json');
 }
 
 /**
@@ -38,13 +39,13 @@ export function generateInteractiveLearningVariations(url: string): string[] {
   // Clean the URL path (remove trailing slash)
   const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
 
-  // If URL already points to content.json or unstyled.html, return as-is
-  if (baseUrl.endsWith('/content.json') || baseUrl.endsWith('/unstyled.html')) {
+  // If URL already points to a content file or unstyled.html, return as-is
+  if (isContentFileUrl(baseUrl) || baseUrl.endsWith('/unstyled.html')) {
     return [url];
   }
 
   // Try content.json first (preferred), then unstyled.html as fallback
-  variations.push(`${baseUrl}/content.json`);
+  variations.push(`${baseUrl}/${CANONICAL_CONTENT_FILE}`);
   variations.push(`${baseUrl}/unstyled.html`);
 
   return variations;
@@ -58,15 +59,16 @@ export function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string 
   const baseUrl = url.split('?')[0]!.split('#')[0]!.replace(/\/$/, '');
 
   // If URL already points to a specific file, return it as-is for JSON detection
-  if (url.includes('/content.json')) {
-    return { jsonUrl: url, htmlUrl: baseUrl.replace('/content.json', '/unstyled.html') };
+  const htmlSibling = contentFileSiblingUrl(baseUrl, 'unstyled.html');
+  if (htmlSibling) {
+    return { jsonUrl: url, htmlUrl: htmlSibling };
   }
   if (url.includes('/unstyled.html')) {
-    return { jsonUrl: baseUrl.replace('/unstyled.html', '/content.json'), htmlUrl: url };
+    return { jsonUrl: baseUrl.replace('/unstyled.html', `/${CANONICAL_CONTENT_FILE}`), htmlUrl: url };
   }
 
   return {
-    jsonUrl: `${baseUrl}/content.json`,
+    jsonUrl: `${baseUrl}/${CANONICAL_CONTENT_FILE}`,
     htmlUrl: `${baseUrl}/unstyled.html`,
   };
 }

@@ -13,6 +13,7 @@ import {
   matchesPassiveAction,
   observePassiveActions,
 } from '../interactive-engine/auto-completion/passive-action';
+import { onContextChange } from '../lib/context-event-bus';
 
 function checkAsTheSidebarDoes(
   checkPostconditions: ReturnType<typeof useGuideRequirements>['checkPostconditions']
@@ -47,7 +48,9 @@ export function createCoordinatorWrapper(check?: ObservationCheck) {
           coordinator.observe((action, since) => matchesFormfillState(action, (field) => touched(field, since))),
         coordinator.executing
       );
+      const stopContext = onContextChange(coordinator.recheck);
       return () => {
+        stopContext();
         stopObserving();
         coordinator.stop();
       };

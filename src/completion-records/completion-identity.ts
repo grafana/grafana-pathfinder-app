@@ -1,4 +1,5 @@
 import { bundledTutorialCompletionSource } from '../lib/bundled-tutorial-identity';
+import { CANONICAL_CONTENT_FILE, stripContentFile } from '../lib/guide-content-file';
 /**
  * Resolve a `(guideSource, guideId)` completion key from the resolved package
  * manifest — never from a loader URL.
@@ -20,32 +21,15 @@ import type { CompletionFact, CompletionKey, PathAnalyticsIdentity } from './typ
 import { toAnalyticsValue } from '../lib/analytics-values';
 
 /**
- * The package launch shape appends this to a bundled guide's id (the package
- * resolver hands the context panel `bundled:<id>/content.json`). Named to mirror
- * `PACKAGE_CONTENT_SUFFIX` in `global-state/path-member-join.ts`, which groups the
- * same two shapes for local progress.
- *
- * THIS IS THE SINGLE PLACE that knows about the suffix for completion identity.
- * Every path that turns a bundled content key into a guide id — the journey
- * percentage writer and the reset path — goes through `normalizeGuideId`; do not
- * reintroduce a second inline `/content.json` strip elsewhere.
- */
-const PACKAGE_CONTENT_SUFFIX = '/content.json';
-
-/**
  * Normalize a guide id to its bare, canonical form by stripping a trailing
- * `/content.json`. Both `bundled:<id>` and `bundled:<id>/content.json` are valid
- * launch shapes for the same bundled guide and must record ONE identity.
+ * content file — `content.json` or a localized `content.<locale>.json`. Both
+ * `bundled:<id>` and `bundled:<id>/content.json` are valid launch shapes for
+ * the same bundled guide and must record ONE identity. Every path that turns a
+ * bundled content key into a guide id goes through here.
  * Edge cases: returns the input unchanged if empty or exactly `/content.json`.
  */
 export function normalizeGuideId(guideId: string): string {
-  if (!guideId || guideId === PACKAGE_CONTENT_SUFFIX) {
-    return guideId;
-  }
-  if (guideId.endsWith(PACKAGE_CONTENT_SUFFIX)) {
-    return guideId.slice(0, -PACKAGE_CONTENT_SUFFIX.length);
-  }
-  return guideId;
+  return stripContentFile(guideId);
 }
 
 /**
@@ -58,7 +42,7 @@ export function normalizeGuideId(guideId: string): string {
  */
 export function bundledGuideIdReadVariants(guideId: string): [canonical: string, legacySuffixed: string] {
   const normalized = normalizeGuideId(guideId);
-  return [normalized, `${normalized}${PACKAGE_CONTENT_SUFFIX}`];
+  return [normalized, `${normalized}/${CANONICAL_CONTENT_FILE}`];
 }
 
 /** Default repository when neither an explicit source nor a manifest resolves one. */

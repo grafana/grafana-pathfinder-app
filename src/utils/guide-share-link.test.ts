@@ -49,6 +49,15 @@ describe('buildSidebarGuideLink', () => {
     expect(findDocPage(params.doc!)?.url).toBe('backend-guide:my-guide-x7q2k1');
   });
 
+  it('links the canonical guide, with no locale, from a localized content file', () => {
+    const localized = 'https://interactive-learning.grafana.net/packages/foo/content.ja.json';
+    const { params } = parse(buildSidebarGuideLink(tab('interactive', localized)));
+    expect(params.doc).toBe('https://interactive-learning.grafana.net/packages/foo/content.json');
+
+    const bundled = parse(buildSidebarGuideLink(tab('interactive', `bundled:${BUNDLED_ID}/content.ja.json`)));
+    expect(bundled.params.doc).toBe(`bundled:${BUNDLED_ID}`);
+  });
+
   it('links a CDN-hosted guide unchanged', () => {
     const cdn = 'https://interactive-learning.grafana.net/guides/foo/content.json';
     const { params } = parse(buildSidebarGuideLink(tab('interactive', cdn)));

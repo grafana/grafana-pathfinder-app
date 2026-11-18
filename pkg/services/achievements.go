@@ -1,9 +1,11 @@
 package services
 
 import (
-	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
+	"slices"
 	"sort"
 	"time"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 )
 
 type AchievementEventsResponse struct {
@@ -59,7 +61,9 @@ func ShapeMyAchievements(rows achievements.Rows, defs *achievements.Snapshot) My
 	if !rows.AsOf.IsZero() {
 		resp.AsOf = rows.AsOf.UTC().Format(time.RFC3339)
 	}
+	awarded := map[string][]string{}
 	for _, aw := range rows.Awards {
+		awarded[aw.AchievementID] = append(awarded[aw.AchievementID], aw.TierID)
 		resp.Awards = append(resp.Awards, AchievementAward{
 			AchievementID: aw.AchievementID,
 			TierID:        aw.TierID,
@@ -75,7 +79,8 @@ func ShapeMyAchievements(rows achievements.Rows, defs *achievements.Snapshot) My
 		return awardBefore(catalog, x, y)
 	})
 	for _, p := range rows.Progress {
-		next, counted := catalog.NextAt(p.AchievementID, p.TierIDs)
+		// An award can exist before its progress row records the tier.
+		next, counted := catalog.NextAt(p.AchievementID, append(slices.Clone(p.TierIDs), awarded[p.AchievementID]...))
 		if !counted {
 			continue
 		}

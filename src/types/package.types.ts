@@ -451,6 +451,12 @@ export interface ResolveOptions {
    * directly rather than through the composite.
    */
   bypassCache?: boolean;
+  /**
+   * The BCP 47 guide language the caller wants. `CompositePackageResolver`
+   * keys its cache on it, so two locales never share an entry. Every resolver
+   * ignores it until compiled translations are selected (#2386).
+   */
+  locale?: string;
 }
 
 /**

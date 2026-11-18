@@ -133,6 +133,16 @@ describe('path-member-join launch round-trip', () => {
     ]);
   });
 
+  it('reads a localized member URL under the canonical keys', () => {
+    expect(pathMemberContentKeys({ id: 'first-dashboard', url: 'bundled:first-dashboard/content.ja.json' })).toEqual(
+      pathMemberContentKeys({ id: 'first-dashboard', url: 'bundled:first-dashboard/content.json' })
+    );
+    const online = 'https://interactive-learning.grafana.net/packages/loki-intro/content.json';
+    expect(pathMemberContentKeys({ id: 'loki-intro', url: online.replace('content.json', 'content.ja.json') })).toEqual(
+      [keyPersistedByLaunch(online)]
+    );
+  });
+
   it('forms no key for a member URL that normalization would rewrite', () => {
     // The sanitizer is lossy, so the rewritten value would name a different
     // guide's key — and resetPath deletes the keys built here.

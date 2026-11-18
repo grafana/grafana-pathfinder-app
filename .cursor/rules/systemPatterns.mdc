@@ -203,7 +203,7 @@ source catalog, and each plugin build reads the version it was compiled for (`Fo
 entry this build cannot read. `cmd/achievements-check` builds, validates and compares the file with the same
 loader. The package does no I/O: storage and admission are interfaces for the plugin's App Platform store to
 implement, so it is tested on its own with golden tables and `testdata/bundle.json`.
-`pkg/plugin/achievements_store.go` is the unwired App Platform `Store` adapter (compare-and-swap on progress; a
+`pkg/plugin/achievements_store.go` is the App Platform `Store` adapter (compare-and-swap on progress; a
 409 on an award create returns `ErrExists`, meaning already held) and `pkg/achievements/storetest` holds the
 contract every `Store` must pass, with an in-memory implementation.
 
@@ -233,7 +233,8 @@ must never be routed into them.
 | `plugin/assignments_client.go`      | Per-kind wrapper for the `Assignment` resource: LIST plus the `status` PUT. |
 | `plugin/assignment_paths.go`        | Path-guide sources for an assignment target: bundled, custom and online. |
 | `plugin/assignment_satisfaction.go` | Per-request satisfaction evaluation, plus background and on-read `status.satisfied` writes. |
-| `plugin/achievements.go`            | Achievements routes under `/api/v1/achievements/` (version in `achievementsAPIVersion`): `POST events` and `GET my`, with the people-only principal gate and a per-user limiter on events. Unavailable until a store adapter sets `App.achievementsBackendFor`. |
+| `plugin/achievements.go`            | Achievements routes under `/api/v1/achievements/` (version in `achievementsAPIVersion`): `POST events` and `GET my`, with the people-only principal gate and a per-user limiter on events. `App.achievementsBackendFor` builds the per-request backend. |
+| `plugin/achievements_backend.go`    | The per-request achievements backend: the App Platform store plus a reader that GETs the caller's rows by deterministic name and never LISTs, reading awards for the catalog's tiers and the progress row's `tierIds`. |
 | `plugin/achievements_definitions.go` | Process-wide source for the published definitions (`achievements.DefinitionsPath` on the interactive-learning CDN): host allowlist, no redirects, conditional GET, single fetch, last good copy in memory, backoff. A refresh that still carries a definition or registry action the copy evaluates but cannot read it, or that has no evaluable definition, is rejected like a failed fetch (warning `achievements definitions refresh rejected`); an entry the bundle leaves out is a deliberate removal and the bundle replaces the copy. No copy yet answers `503 definitions-unavailable`; also serves `GET definitions`, people only, the same answer for every person. |
 | `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
 | `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |

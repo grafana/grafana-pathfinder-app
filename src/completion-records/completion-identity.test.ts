@@ -14,6 +14,7 @@ import {
   manifestGuideId,
   manifestGuideSource,
   normalizeGuideId,
+  bundledGuideIdReadVariants,
 } from './completion-identity';
 
 describe('resolveCompletionIdentity', () => {
@@ -224,5 +225,21 @@ describe('migrated tutorial milestone identity', () => {
       guideSource: 'interactive-tutorials',
       guideId: id,
     });
+  });
+});
+
+describe('normalizeGuideId with a localized content file', () => {
+  it('strips content.ja.json to the same canonical id as content.json', () => {
+    expect(normalizeGuideId('bundled:first-dashboard/content.ja.json')).toBe('bundled:first-dashboard');
+    expect(normalizeGuideId('bundled:first-dashboard/content.ja.json')).toBe(
+      normalizeGuideId('bundled:first-dashboard/content.json')
+    );
+  });
+
+  it('reads the legacy canonical-suffixed variant, never a localized one', () => {
+    expect(bundledGuideIdReadVariants('bundled:first-dashboard/content.ja.json')).toEqual([
+      'bundled:first-dashboard',
+      'bundled:first-dashboard/content.json',
+    ]);
   });
 });

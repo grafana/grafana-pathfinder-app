@@ -37,9 +37,10 @@ type achievementsBackend struct {
 	reader achievements.Reader
 }
 
-// achievementsBackendFor builds the backend for one request. An empty reason
-// means available; otherwise the reason is the capability token.
-type achievementsBackendFor func(r *http.Request) (achievementsBackend, string)
+// achievementsBackendFor builds the backend for one request, as the person the
+// handler verified. An empty reason means available; otherwise the reason is the
+// capability token.
+type achievementsBackendFor func(r *http.Request, person achievements.Person, catalog *achievements.Catalog) (achievementsBackend, string)
 
 var errPrincipalNotSupported = errors.New("principal is not a person")
 
@@ -78,21 +79,19 @@ type achievementProgress = services.AchievementProgress
 type legacyBadge = services.LegacyBadge
 type myAchievementsResponse = services.MyAchievementsResponse
 
-// resolveAchievementsBackend applies the completion routes' structural gate,
-// then asks the configured backend builder. Until one is configured the routes
-// report themselves unavailable.
-func (a *App) resolveAchievementsBackend(r *http.Request) (achievementsBackend, string) {
+// achievementsUnavailableReason applies the completion routes' structural gate.
+// An empty reason means the routes may read the definitions and build a backend.
+func (a *App) achievementsUnavailableReason(r *http.Request) string {
 	if _, _, _, ok, reason := a.resolveCompletionConfig(r); !ok {
-		return achievementsBackend{}, reason
+		return reason
+	}
+	if a.oboExchanger == nil {
+		return reasonOBOUnavailable
 	}
 	if a.definitions == nil || a.achievementsBackendFor == nil {
-		return achievementsBackend{}, reasonBackendUnavailable
+		return reasonBackendUnavailable
 	}
-	backend, reason := a.achievementsBackendFor(r)
-	if reason != "" {
-		return achievementsBackend{}, reason
-	}
-	return backend, ""
+	return ""
 }
 
 // achievementPerson is the people-only gate of the events and definitions
@@ -133,13 +132,17 @@ func (a *App) handleAchievementEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backend, reason := a.resolveAchievementsBackend(r)
-	if reason != "" {
+	if reason := a.achievementsUnavailableReason(r); reason != "" {
 		a.writeAchievementsUnavailable(w, reason, "create")
 		return
 	}
 	defs, ok := a.achievementDefinitions(w, r)
 	if !ok {
+		return
+	}
+	backend, reason := a.achievementsBackendFor(r, person, defs.Catalog)
+	if reason != "" {
+		a.writeAchievementsUnavailable(w, reason, "create")
 		return
 	}
 
@@ -205,8 +208,7 @@ func (a *App) handleMyAchievements(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backend, reason := a.resolveAchievementsBackend(r)
-	if reason != "" {
+	if reason := a.achievementsUnavailableReason(r); reason != "" {
 		a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reason}})
 		return
 	}
@@ -214,16 +216,27 @@ func (a *App) handleMyAchievements(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	backend, reason := a.achievementsBackendFor(r, person, defs.Catalog)
+	if reason != "" {
+		a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reason}})
+		return
+	}
 
 	rows, err := backend.reader.ListMine(r.Context(), person)
 	if err != nil {
+		if errors.Is(err, errAchievementRowMismatch) {
+			// A retry reads the same row, so this stands until the row is removed.
+			a.ctxLogger(r.Context()).Warn("achievement row names another user or achievement", "error", err)
+			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
+			return
+		}
 		if isTerminalCompletionError(err) {
 			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
 			return
 		}
 		a.ctxLogger(r.Context()).Debug("achievements unavailable", "reason", classifyGuideProxyError(err).Reason)
 		w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
-		a.writeProxyError(w, errAchievementsUnavailable, http.StatusServiceUnavailable, appPlatformDiagnostic(err, "achievementawards", "list"))
+		a.writeProxyError(w, errAchievementsUnavailable, http.StatusServiceUnavailable, appPlatformDiagnostic(err, "achievementawards", "get"))
 		return
 	}
 
