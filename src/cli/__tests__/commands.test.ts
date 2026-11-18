@@ -18,6 +18,7 @@ import { runSetManifest, setManifestSpec } from '../commands/set-manifest';
 import { runValidate, runValidateCli } from '../commands/validate';
 import { collectCommanderInput, mountCommander, parseCommandInput } from '../contracts';
 import { readPackage } from '../utils/package-io';
+import { placeholderSelectorWarnings } from '../utils/warnings';
 import { validateGuide } from '../../validation/validate-guide';
 import type { ContentJson } from '../../types/package.types';
 
@@ -276,6 +277,14 @@ describe('runAddBlock', () => {
     if (result.status === 'error') {
       expect(result.code).toBe('CONTAINER_NOT_FOUND');
     }
+  });
+
+  describe('placeholder selector warnings', () => {
+    it('reads the camelCase refTarget alias at the same path as reftarget', () => {
+      const step = { action: 'highlight', refTarget: '[data-testid="TODO-x"]' };
+      const warnings = placeholderSelectorWarnings([{ type: 'multistep', steps: [step] }]);
+      expect(warnings.map((w) => w.path)).toEqual(['blocks[0].steps[0]/reftarget']);
+    });
   });
 
   describe('section step list warning', () => {

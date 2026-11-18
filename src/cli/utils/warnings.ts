@@ -31,6 +31,7 @@
  */
 
 import type { OutcomeWarning } from './output';
+import { readJsonGuideAliasedField } from '../../types/json-guide-aliases';
 import { CONTAINER_CHILD_KEYS, CONTAINER_NON_BLOCK_CHILD_KEYS } from './package-io/tree';
 
 const PLACEHOLDER_SELECTOR_PATTERN = /data-testid=["']?TODO-/;
@@ -45,8 +46,9 @@ export function placeholderSelectorWarnings(blocks: unknown, prefix = 'blocks'):
     }
     const record = node as Record<string, unknown>;
     const path = `${prefix}[${i}]`;
+    const reftarget = readJsonGuideAliasedField(record, 'reftarget');
     const own: OutcomeWarning[] =
-      typeof record.reftarget === 'string' && PLACEHOLDER_SELECTOR_PATTERN.test(record.reftarget)
+      typeof reftarget === 'string' && PLACEHOLDER_SELECTOR_PATTERN.test(reftarget)
         ? [
             {
               code: 'PLACEHOLDER_SELECTOR',
