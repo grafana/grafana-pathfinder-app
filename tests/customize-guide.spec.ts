@@ -1,3 +1,4 @@
+import { matchesBackendRoute, matchesGuideResource } from './helpers/backend-route';
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { StorageKeys } from '../src/lib/storage-keys';
@@ -58,17 +59,15 @@ for (const repair of [false, true]) {
         },
       });
     }, repair);
-    await page.route(
-      (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
-      (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
+    await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
+      route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
     );
     const writes: unknown[] = [];
-    await page.route('**/api/plugins/grafana-pathfinder-app/resources/custom-guides', (route) =>
+    await page.route(matchesBackendRoute('custom-guides'), (route) =>
       route.fulfill({ json: { items: writes.slice(-1) } })
     );
-    await page.route(
-      (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/custom-guide'),
-      (route) => {
+    await page.route(matchesGuideResource, async (route) => {
+      if (route.request().method() === 'GET' && matchesBackendRoute('custom-guide')(new URL(route.request().url()))) {
         const name = new URL(route.request().url()).searchParams.get('name');
         const stored = (writes as Array<{ metadata?: { name?: string } }>)
           .filter((w) => w.metadata?.name === name)
@@ -77,19 +76,14 @@ for (const repair of [false, true]) {
           ? route.fulfill({ json: stored })
           : route.fulfill({ status: 404, json: { message: 'not found' } });
       }
-    );
-    await page.route(
-      '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/*/interactiveguides**',
-      async (route) => {
-        if (route.request().method() === 'GET') {
-          await route.fulfill({ json: { items: writes.slice(-1) } });
-        } else {
-          const resource = route.request().postDataJSON();
-          writes.push(resource);
-          await route.fulfill({ json: resource });
-        }
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ json: { items: writes.slice(-1) } });
+      } else {
+        const resource = route.request().postDataJSON();
+        writes.push(resource);
+        await route.fulfill({ json: resource });
       }
-    );
+    });
     await page.goto('/a/grafana-pathfinder-app/fullscreen?doc=bundled%3Awelcome-to-grafana');
     const hasAssistant = await page.evaluate(() =>
       Boolean(window.grafanaBootData.settings.apps['grafana-assistant-app'])
