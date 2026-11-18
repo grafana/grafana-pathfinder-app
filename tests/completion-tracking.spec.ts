@@ -15,7 +15,8 @@
  * read — see `stubCompletionWriteRoute`.
  */
 
-import { test, expect } from './fixtures';
+// The plugin-e2e boot-data tab also drains shared storage. These cases exercise a single reader.
+import { test, expect } from '@playwright/test';
 import { testIds } from '../src/constants/testIds';
 import { TIMEOUTS } from './constants';
 import {
