@@ -3,6 +3,7 @@ import { useStyles2, useTheme2 } from '@grafana/ui';
 import { isJourneyCoverPage, resolveActiveMilestoneSequence } from '../../docs-retrieval';
 import { ContentRenderer } from '../content-renderer/content-renderer';
 import { GuideProgressBar } from '../guide-progress';
+import { GuideLanguageSlot, TranslationNoticeSlot } from '../guide-language';
 import { usePublishSurfaceContentKey } from '../../hooks';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -167,6 +168,8 @@ export function FloatingPanelContent({
           guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
           guideTitle={activeTab?.title}
         />
+        <GuideLanguageSlot guideUrl={activeTab?.baseUrl || activeTab?.currentUrl} guideTitle={activeTab?.title} />
+        <TranslationNoticeSlot guideUrl={activeTab?.baseUrl || activeTab?.currentUrl} guideTitle={activeTab?.title} />
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
             <AlignmentPrompt

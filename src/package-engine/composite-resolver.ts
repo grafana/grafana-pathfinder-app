@@ -57,7 +57,7 @@ export class CompositePackageResolver implements PackageResolver {
     // load for two semantically identical calls.
     const loadContent = options?.loadContent ?? false;
     const verifyPublished = loadContent ? false : (options?.verifyPublished ?? false);
-    const cacheKey = `${packageId}:${loadContent}:${verifyPublished}`;
+    const cacheKey = JSON.stringify([packageId, loadContent, verifyPublished, options?.locale ?? null]);
     const cached = options?.bypassCache ? undefined : this.cache.get(cacheKey);
     if (cached) {
       return cached;

@@ -18,6 +18,10 @@ describe('url-utils', () => {
       expect(isJsonContentUrl('https://grafana.com/docs/x/index.json')).toBe(true);
     });
 
+    it('detects a localized content file', () => {
+      expect(isJsonContentUrl('https://grafana.com/docs/x/content.ja.json')).toBe(true);
+    });
+
     it('rejects non-json paths', () => {
       expect(isJsonContentUrl('https://grafana.com/docs/x/unstyled.html')).toBe(false);
       expect(isJsonContentUrl('https://grafana.com/docs/x/')).toBe(false);
@@ -49,6 +53,10 @@ describe('url-utils', () => {
       expect(generateInteractiveLearningVariations(`${IL}/unstyled.html`)).toEqual([`${IL}/unstyled.html`]);
     });
 
+    it('fetches a localized content file as-is instead of appending content.json to it', () => {
+      expect(generateInteractiveLearningVariations(`${IL}/content.ja.json`)).toEqual([`${IL}/content.ja.json`]);
+    });
+
     it('returns no variations for non-interactive URLs', () => {
       expect(generateInteractiveLearningVariations('https://grafana.com/docs/grafana/latest/')).toEqual([]);
     });
@@ -65,6 +73,13 @@ describe('url-utils', () => {
     it('preserves an explicit content.json URL and derives its html sibling', () => {
       expect(getContentUrls('https://grafana.com/docs/x/content.json')).toEqual({
         jsonUrl: 'https://grafana.com/docs/x/content.json',
+        htmlUrl: 'https://grafana.com/docs/x/unstyled.html',
+      });
+    });
+
+    it('preserves an explicit localized content file and derives its html sibling', () => {
+      expect(getContentUrls('https://grafana.com/docs/x/content.ja.json?v=2')).toEqual({
+        jsonUrl: 'https://grafana.com/docs/x/content.ja.json?v=2',
         htmlUrl: 'https://grafana.com/docs/x/unstyled.html',
       });
     });

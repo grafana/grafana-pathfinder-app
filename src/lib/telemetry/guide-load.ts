@@ -8,6 +8,7 @@ import type {
 import { diagnoseGuideError, guideSource, opaqueGuideReference, newGuideLoadId } from '../guide-diagnostics';
 import { recordGuideRender, recordGuideRequest } from './facade';
 import { normalizeTelemetryUrl } from './url';
+import { isContentFileUrl } from '../guide-content-file';
 
 interface LoadState {
   stage: GuideStage;
@@ -130,7 +131,7 @@ export function fetchGuideResource(
   role?: GuideRequestRole
 ): Promise<Response> {
   const fileRole =
-    role ?? (url.includes('content.json') ? 'content-json' : url.includes('unstyled.html') ? 'unstyled-html' : 'page');
+    role ?? (isContentFileUrl(url) ? 'content-json' : url.includes('unstyled.html') ? 'unstyled-html' : 'page');
   return observeGuideRequest(url, fileRole, context, () => (init === undefined ? fetch(url) : fetch(url, init)));
 }
 

@@ -314,6 +314,78 @@ describe('buildDocsLoadSuccessPatch', () => {
     expect(bundled.title).toBeUndefined();
   });
 
+  describe('title on internal reload', () => {
+    const guideUrl = 'backend-guide:alerting-intro-lj';
+    const reload = (tabOverrides: Partial<LearningJourneyTab>, fetched: Partial<RawContent>, isReload = true) =>
+      buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: guideUrl, ...tabOverrides }),
+        requestedUrl: guideUrl,
+        fetchedContent: content({ url: guideUrl, metadata: { title: 'New title' }, ...fetched }),
+        isReload,
+      });
+
+    it('adopts the fetched title for a backend guide', () => {
+      expect(reload({}, {}).title).toBe('New title');
+    });
+
+    it('does not adopt without the reload flag', () => {
+      expect(reload({}, {}, false).title).toBeUndefined();
+    });
+
+    it('does not adopt when the fetched content is a different guide than the tab base', () => {
+      expect(reload({}, { url: 'backend-guide:alerting-intro-rules' }).title).toBeUndefined();
+    });
+
+    it('is a no-op for a blank or unchanged title', () => {
+      expect(reload({}, { metadata: { title: '  ' } }).title).toBeUndefined();
+      expect(reload({}, { metadata: { title: 'Old title' } }).title).toBeUndefined();
+    });
+
+    it('leaves CDN and bundled tabs untouched even with the flag', () => {
+      const cdn = 'https://interactive-learning.grafana.net/packages/x/content.json';
+      const cdnPatch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: cdn }),
+        requestedUrl: cdn,
+        fetchedContent: content({ url: cdn, metadata: { title: 'New title' } }),
+        isReload: true,
+      });
+      const bundledPatch = buildDocsLoadSuccessPatch({
+        tab: tab({ title: 'Old title', baseUrl: 'bundled:x' }),
+        requestedUrl: 'bundled:x',
+        fetchedContent: content({ url: 'bundled:x', metadata: { title: 'New title' } }),
+        isReload: true,
+      });
+
+      expect(cdnPatch.title).toBeUndefined();
+      expect(bundledPatch.title).toBeUndefined();
+    });
+  });
+
+  describe('pending alignment on reload', () => {
+    const pending = { startingLocation: '/explore' } as unknown as LearningJourneyTab['pendingAlignment'];
+    const patch = (isReload: boolean, pendingAlignment?: LearningJourneyTab['pendingAlignment']) =>
+      buildDocsLoadSuccessPatch({
+        tab: tab({ pendingAlignment: pending }),
+        requestedUrl: 'backend-guide:g',
+        fetchedContent: content({ url: 'backend-guide:g' }),
+        pendingAlignment,
+        isReload,
+      });
+
+    it('keeps an unanswered prompt when reloading with no new decision', () => {
+      expect(patch(true).pendingAlignment).toBe(pending);
+    });
+
+    it('clears the prompt on a normal load with no decision', () => {
+      expect(patch(false).pendingAlignment).toBeUndefined();
+    });
+
+    it('uses a new decision over the existing prompt on reload', () => {
+      const next = { startingLocation: '/other' } as unknown as LearningJourneyTab['pendingAlignment'];
+      expect(patch(true, next).pendingAlignment).toBe(next);
+    });
+  });
+
   it('uses interactive type without package info for interactive content', () => {
     expect(
       buildDocsLoadSuccessPatch({

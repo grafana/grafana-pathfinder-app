@@ -7,6 +7,7 @@ node_modules/
 package-lock.json
 
 # Generated files
+src/app-sdk-manifest.json
 *.min.js
 *.min.css
 
@@ -23,3 +24,6 @@ pkg/
 # Other generated or temporary files
 .cache/
 .temp/
+
+# Byte-for-byte copy of the guide i18n RFC; keep unformatted
+docs/design/I18N.md

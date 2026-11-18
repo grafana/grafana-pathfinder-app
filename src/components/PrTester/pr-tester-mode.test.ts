@@ -1,6 +1,27 @@
 import { resolveEffectiveTestMode } from './pr-tester-mode';
 
 describe('resolveEffectiveTestMode', () => {
+  it('selects kiosk for a kiosk-only or asset-only PR snapshot', () => {
+    expect(
+      resolveEffectiveTestMode('single', {
+        hasKiosks: true,
+        hasContent: false,
+        manifestsLoading: false,
+        hasAnyPathPackage: false,
+      })
+    ).toBe('kiosk');
+  });
+
+  it('drops a persisted kiosk selection when the next snapshot has no kiosks', () => {
+    expect(
+      resolveEffectiveTestMode('kiosk', {
+        hasKiosks: false,
+        hasContent: true,
+        manifestsLoading: false,
+        hasAnyPathPackage: false,
+      })
+    ).toBe('single');
+  });
   it('clamps a stale path mode to single when the PR has no path package', () => {
     expect(resolveEffectiveTestMode('path', { manifestsLoading: false, hasAnyPathPackage: false })).toBe('single');
   });

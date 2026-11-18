@@ -40,6 +40,7 @@ import {
   type RecommenderOutcome,
 } from '../lib/telemetry';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { stripContentFile } from '../lib/guide-content-file';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
   ContextData,
@@ -765,7 +766,7 @@ export class ContextService {
   static deduplicateRecommendations(candidates: Recommendation[], preferred: Recommendation[]): Recommendation[] {
     const identity = (rec: Recommendation): string | undefined => {
       if (rec.url?.startsWith('bundled:')) {
-        return rec.url.slice('bundled:'.length).replace(/\/content\.json$/, '');
+        return stripContentFile(rec.url.slice('bundled:'.length));
       }
       const manifest = rec.manifest as Record<string, unknown> | undefined;
       if (

@@ -4,6 +4,8 @@ A kiosk catalog contains `rules` (guide destinations) and an optional structured
 
 See the [complete DEM catalog](../examples/kiosk/dem.json) and [generated JSON Schema](../examples/kiosk/catalog.schema.json). Export the schema with the existing schema command (`node dist/cli/cli/index.js schema kiosk`). Reference the schema through your editor's JSON schema mapping; `$schema` is not a catalog field. Cross-field checks such as rule references and duplicate variable names run in the runtime validator in addition to JSON Schema.
 
+This reference describes version 1. For version 2 branding, illustrated layouts, and PR previews, see [Kiosk catalogs and PR previews](kiosk-authoring.md).
+
 ## Page options
 
 `page.version` is `1`. `blocks` is an ordered array of up to 50 blocks. Presentation uses Grafana theme tokens in both light and dark themes; custom CSS, HTML, scripts, and color overrides are not supported.

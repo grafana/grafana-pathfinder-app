@@ -50,6 +50,7 @@ export enum UserInteraction {
   HelpButtonClickedToolbar = 'help_button_clicked_toolbar',
   HelpButtonDismissedHint = 'help_button_dismissed_hint',
   AutoOpenGuideEligible = 'auto_open_guide_eligible',
+  OnboardingExploringEligible = 'onboarding_exploring_auto_open_eligible',
   PanelScroll = 'panel_scroll',
   CatalogInteraction = 'catalog_interaction',
 

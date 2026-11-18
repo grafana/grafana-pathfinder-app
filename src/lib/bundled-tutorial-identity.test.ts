@@ -66,3 +66,10 @@ it('keeps historical online identity in the shared catalog', () => {
   expect(legacyOnlineTutorialId('first-dashboard')).toBe('first-dashboard-rss');
   expect(legacyOnlineTutorialId('welcome-to-grafana')).toBeUndefined();
 });
+
+it('keys a localized content file on the same bundled identity as the canonical one', () => {
+  expect(bundledTutorialContentKey(`${local}/content.ja.json`)).toBe(local);
+  expect(bundledTutorialContentKey(online.replace('/content.json', '/content.ja.json'))).toBe(local);
+  expect(bundledTutorialContentKey(`https://interactive-learning.grafana.net/packages/${id}/`)).toBe(local);
+  expect(bundledTutorialContentKey(`${local}/content.json.bak`)).toBe(`${local}/content.json.bak`);
+});

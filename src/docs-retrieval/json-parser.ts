@@ -40,6 +40,7 @@ import {
   type JsonStep,
   type AssistantProps,
 } from '../types/json-guide.types';
+import { inferWorkflowObjectives } from '../lib/workflow-objectives';
 import { isValidRequirement } from '../types/requirements.types';
 
 /**
@@ -681,22 +682,16 @@ function convertInteractiveBlock(
   path: string,
   stepContext?: StepContext
 ): ConversionResult {
-  // Authors may write either the canonical lowercase form (`action`,
-  // `reftarget`, `targetvalue`, `targetcomment`) or the camelCase alias
-  // form. Prefer the lowercase slot when present (canonical wins) and
-  // fall back to the camelCase alias.
   const targetAction = block.action ?? block.targetAction;
+  // Canonical lowercase fields take precedence over legacy camelCase aliases.
   const refTargetValue = block.reftarget ?? block.refTarget;
   const targetValue = block.targetvalue ?? block.targetValue;
   const targetState = block.targetstate ?? block.targetState;
   const stepId = resolveStepId(block.id, stepContext, targetAction, refTargetValue);
 
-  // Parse content as markdown for children
   const children = parseMarkdownToElements(block.content);
 
-  // Add tooltip as interactive-comment if present
   if (block.tooltip) {
-    // Parse tooltip markdown and extract children (for inline rendering)
     const tooltipElements = parseMarkdownToElements(block.tooltip);
     const tooltipChildren = tooltipElements.flatMap((el) => (el.children ? el.children : [el]));
     const tooltipElement: ParsedElement = {
@@ -708,7 +703,11 @@ function convertInteractiveBlock(
   }
 
   const requirements = block.requirements?.length ? block.requirements : undefined;
-  const objectives = executableObjectives(block.objectives);
+  const objectives =
+    executableObjectives(block.objectives) ??
+    (block.objectives === undefined && !block.verify
+      ? inferWorkflowObjectives([{ targetAction, refTarget: refTargetValue, targetValue }], requirements)
+      : undefined);
 
   return {
     element: {
@@ -726,16 +725,12 @@ function convertInteractiveBlock(
         hints: block.hint,
         formHint: block.formHint,
         validateInput: block.validateInput,
-        // Button visibility - default to true if not specified
         showMe: block.showMe ?? true,
         doIt: block.doIt ?? true,
-        // Execution control
         completeEarly: block.completeEarly ?? false,
         postVerify: block.verify,
-        // Lazy render support for virtualized containers
         lazyRender: block.lazyRender ?? false,
         scrollContainer: block.scrollContainer,
-        // Navigate: guide opening
         openGuide: block.openGuide,
       },
       children,
@@ -745,8 +740,6 @@ function convertInteractiveBlock(
 }
 
 function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepContext?: StepContext): ConversionResult {
-  // Convert steps to internalActions format expected by renderer.
-  // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
     targetAction: step.action ?? step.targetAction,
     refTarget: step.reftarget ?? step.refTarget,
@@ -758,14 +751,13 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepCont
     targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
   }));
 
-  // Parse content as markdown for children
   const children = parseMarkdownToElements(block.content);
 
   const requirements = block.requirements?.length ? block.requirements : undefined;
-  const objectives = executableObjectives(block.objectives);
+  const objectives =
+    executableObjectives(block.objectives) ??
+    (block.objectives === undefined ? inferWorkflowObjectives(internalActions, requirements) : undefined);
 
-  // The multistep's overall identity uses the first internal action as
-  // the discriminator — that's the action shown when the block opens.
   const stepId = resolveStepId(
     block.id,
     stepContext,
@@ -791,8 +783,6 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepCont
 }
 
 function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: StepContext): ConversionResult {
-  // Convert steps to internalActions format expected by renderer.
-  // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
     targetAction: step.action ?? step.targetAction,
     refTarget: step.reftarget ?? step.refTarget,
@@ -801,22 +791,23 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
     lazyRender: step.lazyRender,
     scrollContainer: step.scrollContainer,
     requirements: step.requirements,
-    // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
+    // Guided descriptions take precedence over legacy tooltips.
     targetComment: step.description
       ? markdownToHtml(step.description)
       : step.tooltip
         ? markdownToHtml(step.tooltip)
         : undefined,
     isSkippable: step.skippable ?? false,
-    formHint: step.formHint, // Pass form hint for formfill validation feedback
-    validateInput: step.validateInput, // Pass validation toggle for formfill
+    formHint: step.formHint,
+    validateInput: step.validateInput,
   }));
 
-  // Parse content as markdown for children
   const children = parseMarkdownToElements(block.content);
 
   const requirements = block.requirements?.length ? block.requirements : undefined;
-  const objectives = executableObjectives(block.objectives);
+  const objectives =
+    executableObjectives(block.objectives) ??
+    (block.objectives === undefined ? inferWorkflowObjectives(internalActions, requirements) : undefined);
 
   const stepId = resolveStepId(
     block.id,

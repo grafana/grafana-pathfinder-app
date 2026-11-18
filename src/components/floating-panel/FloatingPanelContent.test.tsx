@@ -71,6 +71,15 @@ jest.mock('../docs-panel/components', () => ({
   LearningJourneyMilestoneToolbar: jest.fn(() => null),
 }));
 
+jest.mock('../guide-language', () => ({
+  GuideLanguageSlot: ({ guideUrl }: { guideUrl?: string }) => (
+    <div data-testid="guide-language-slot" data-guide-url={guideUrl} />
+  ),
+  TranslationNoticeSlot: ({ guideUrl }: { guideUrl?: string }) => (
+    <div data-testid="translation-notice-slot" data-guide-url={guideUrl} />
+  ),
+}));
+
 jest.mock('../InteractiveLearningBanner', () => ({
   InteractiveLearningBanner: () => null,
 }));
@@ -164,6 +173,40 @@ beforeEach(() => {
   publicationListener = undefined;
   publicationRevision = 0;
   usePublishSurfaceContentKey.mockClear();
+});
+
+describe('FloatingPanelContent guide language slots', () => {
+  it('mounts both slots for the open guide', () => {
+    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(screen.getByTestId('guide-language-slot')).toHaveAttribute(
+      'data-guide-url',
+      'https://example.com/remote-guide'
+    );
+    expect(screen.getByTestId('translation-notice-slot')).toHaveAttribute(
+      'data-guide-url',
+      'https://example.com/remote-guide'
+    );
+  });
+
+  it('renders nothing of its own in either slot', () => {
+    const { GuideLanguageSlot, TranslationNoticeSlot } = jest.requireActual('../guide-language');
+    const { container } = render(
+      <>
+        <GuideLanguageSlot />
+        <TranslationNoticeSlot />
+      </>
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('does not mount them when no guide is open', () => {
+    render(<FloatingPanelContent content={null} activeTab={activeTab()} model={panelModel()} />);
+
+    expect(screen.queryByTestId('guide-language-slot')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('translation-notice-slot')).not.toBeInTheDocument();
+  });
 });
 
 describe('FloatingPanelContent content key publication', () => {

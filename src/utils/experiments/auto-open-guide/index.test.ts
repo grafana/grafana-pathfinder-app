@@ -9,11 +9,20 @@ import {
   AUTO_OPEN_GUIDE_EXPERIMENT_FLAG,
   AUTO_OPEN_GUIDE_EXPERIMENT_GROUP,
   AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+  ONBOARDING_EXPLORING_EXPERIMENT_ID,
+  ONBOARDING_EXPLORING_EXPERIMENT_FLAG,
+  ONBOARDING_EXPLORING_EXPERIMENT_GROUP,
 } from '../../../constants/auto-open-guide-experiment';
+import {
+  getOnboardingIntentContextKey,
+  setOnboardingExploringIntent,
+} from '../../../global-state/onboarding-exploring-intent';
 import { sidebarState } from '../../../global-state/sidebar';
 import { logger } from '../../../lib/logging';
 import { attemptAutoOpen } from '../../sidebar-auto-open';
 import { installAutoLaunchOnMount } from './auto-launch';
+import { getActiveExperiments } from '../active-experiments';
+import { startSavedIntentBridge } from './saved-intent-bridge';
 import { getAutoOpenGuideEnrollment, setAutoOpenGuideEnrollment } from './state';
 import { startAutoOpenGuideExperiment } from './index';
 
@@ -35,7 +44,10 @@ jest.mock('../../../lib/telemetry/faro-adapter', () => ({ getPathfinderFaro: () 
 jest.mock('../../../lib/telemetry/surface', () => ({ isPathfinderOpen: () => mockPathfinderOpen }));
 jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
-  UserInteraction: { AutoOpenGuideEligible: 'auto_open_guide_eligible' },
+  UserInteraction: {
+    AutoOpenGuideEligible: 'auto_open_guide_eligible',
+    OnboardingExploringEligible: 'onboarding_exploring_auto_open_eligible',
+  },
 }));
 jest.mock('../../openfeature-tracking', () => ({ TrackingHook: jest.fn() }));
 jest.mock('../../../lib/logging', () => ({
@@ -50,10 +62,15 @@ jest.mock('../../find-doc-page', () => ({
     guide.startsWith('bundled:') ? { url: guide, title: guide, type: 'docs-page' } : null,
 }));
 jest.mock('../../sidebar-auto-open', () => ({
-  attemptAutoOpen: jest.fn(),
+  attemptAutoOpen: jest.fn((_delay: number, shouldOpen: () => boolean) => {
+    shouldOpen();
+    return jest.fn();
+  }),
   getCurrentPath: () => window.location.pathname,
 }));
-jest.mock('./auto-launch', () => ({ installAutoLaunchOnMount: jest.fn() }));
+jest.mock('./auto-launch', () => ({ installAutoLaunchOnMount: jest.fn(() => jest.fn()) }));
+const mockStopIntentBridge = jest.fn();
+jest.mock('./saved-intent-bridge', () => ({ startSavedIntentBridge: jest.fn(() => mockStopIntentBridge) }));
 jest.mock('../../../global-state/sidebar', () => ({
   sidebarState: { setPendingOpenSource: jest.fn(), getIsSidebarMounted: jest.fn(() => false) },
 }));
@@ -71,8 +88,8 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 const EXPERIENCES = [
-  { guide: 'bundled:explore-guide', pages: ['/explore*'] },
-  { guide: 'bundled:dashboards-guide', pages: ['/dashboards'] },
+  { guide: 'bundled:test-explore', pages: ['/explore*'] },
+  { guide: 'bundled:test-dashboards', pages: ['/dashboards'] },
 ];
 
 let stop: (() => void) | undefined;
@@ -80,15 +97,24 @@ let stop: (() => void) | undefined;
 async function settle() {
   for (let i = 0; i < 8; i++) {
     await Promise.resolve();
-    jest.advanceTimersByTime(20);
+    jest.advanceTimersByTime(50);
   }
 }
 
-async function flag(value: unknown) {
+async function flag(value: unknown, key: string = AUTO_OPEN_GUIDE_EXPERIMENT_FLAG, legacy?: unknown) {
   await OpenFeature.setProviderAndWait(
     'auto-open-guide-test',
     new TypedInMemoryProvider({
-      [AUTO_OPEN_GUIDE_EXPERIMENT_FLAG]: {
+      ...(legacy
+        ? {
+            [AUTO_OPEN_GUIDE_EXPERIMENT_FLAG]: {
+              defaultVariant: 'configured',
+              variants: { configured: legacy as never },
+              disabled: false,
+            },
+          }
+        : {}),
+      [key]: {
         defaultVariant: 'configured',
         variants: { configured: value as never },
         disabled: false,
@@ -112,6 +138,31 @@ async function navigate(path: string) {
 
 const exposures = () => mockPushEvent.mock.calls.filter(([name]) => name === 'experiment_viewed');
 
+it.each([AUTO_OPEN_GUIDE_EXPERIMENT_FLAG, ONBOARDING_EXPLORING_EXPERIMENT_FLAG])(
+  'replaces a pending launch without letting its callback cancel the next offer for %s',
+  async (experimentFlag) => {
+    setOnboardingExploringIntent({ status: 'ready', exploring: true, contextKey: getOnboardingIntentContextKey() });
+    window.history.replaceState(null, '', '/explore');
+    await flag({ variant: 'treatment', experiences: EXPERIENCES }, experimentFlag);
+    stop = await startAutoOpenGuideExperiment();
+    await settle();
+    const firstShouldOpen = (attemptAutoOpen as jest.Mock).mock.calls[0]![1] as () => boolean;
+    const firstCancelOpen = (attemptAutoOpen as jest.Mock).mock.results[0]!.value as jest.Mock;
+    const firstCancelLaunch = (installAutoLaunchOnMount as jest.Mock).mock.results[0]!.value as jest.Mock;
+
+    await navigate('/dashboards');
+
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(2);
+    expect(firstCancelOpen).toHaveBeenCalledTimes(1);
+    expect(firstCancelLaunch).toHaveBeenCalledTimes(1);
+    const secondCancelLaunch = (installAutoLaunchOnMount as jest.Mock).mock.results[1]!.value as jest.Mock;
+    expect(firstShouldOpen()).toBe(false);
+    expect(secondCancelLaunch).not.toHaveBeenCalled();
+    const secondShouldOpen = (attemptAutoOpen as jest.Mock).mock.calls[1]![1] as () => boolean;
+    expect(secondShouldOpen()).toBe(true);
+  }
+);
+
 beforeEach(() => {
   Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: randomUUID });
   globalThis.structuredClone = (value) => deserialize(serialize(value));
@@ -125,6 +176,7 @@ beforeEach(() => {
   config.analytics.enabled = true;
   config.bootData.user.isSignedIn = true;
   setAutoOpenGuideEnrollment(null);
+  setOnboardingExploringIntent(null);
 });
 
 afterEach(async () => {
@@ -145,7 +197,10 @@ it('opens the matched guide for treatment with one exposure and an attributed ou
     'treatment'
   );
   expect(sidebarState.setPendingOpenSource).toHaveBeenCalledWith('auto_open_guide_experiment', 'auto_open');
-  expect(installAutoLaunchOnMount).toHaveBeenCalledWith(expect.objectContaining({ url: 'bundled:explore-guide' }));
+  expect(installAutoLaunchOnMount).toHaveBeenCalledWith(
+    expect.objectContaining({ url: 'bundled:test-explore' }),
+    expect.any(Function)
+  );
   expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
   expect(getAutoOpenGuideEnrollment()?.variant).toBe('treatment');
   expect(reportAppInteraction).toHaveBeenCalledWith(
@@ -194,7 +249,10 @@ it('enrolls on a later navigation into a configured page', async () => {
   await navigate('/dashboards');
 
   expect(reportExperimentView).toHaveBeenCalledTimes(1);
-  expect(installAutoLaunchOnMount).toHaveBeenCalledWith(expect.objectContaining({ url: 'bundled:dashboards-guide' }));
+  expect(installAutoLaunchOnMount).toHaveBeenCalledWith(
+    expect.objectContaining({ url: 'bundled:test-dashboards' }),
+    expect.any(Function)
+  );
   expect(reportAppInteraction).toHaveBeenCalledWith(
     UserInteraction.AutoOpenGuideEligible,
     expect.objectContaining({ experience_index: 1, opened: true }),
@@ -334,11 +392,14 @@ it('opens the live guide, and stays bounded, when the session cached an older pa
   stop?.();
   jest.clearAllMocks();
 
-  const edited = [{ guide: 'bundled:new-explore-guide', pages: ['/explore*'] }, ...EXPERIENCES];
+  const edited = [{ guide: 'bundled:test-replacement', pages: ['/explore*'] }, ...EXPERIENCES];
   await start('/explore', { variant: 'treatment', experiences: edited });
   await settle();
 
-  expect(installAutoLaunchOnMount).toHaveBeenCalledWith(expect.objectContaining({ url: 'bundled:new-explore-guide' }));
+  expect(installAutoLaunchOnMount).toHaveBeenCalledWith(
+    expect.objectContaining({ url: 'bundled:test-replacement' }),
+    expect.any(Function)
+  );
   expect(offers()).toHaveLength(1);
   expect(mockGetFeatureFlagClient.mock.calls.length).toBeLessThan(5);
 });
@@ -351,7 +412,7 @@ it('makes one bounded attempt per visit and warns once when the SDK is unavailab
 
   expect(reportExperimentView).not.toHaveBeenCalled();
   expect(attemptAutoOpen).not.toHaveBeenCalled();
-  expect(localStorage.getItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:explore-guide')).toBeNull();
+  expect(localStorage.getItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:test-explore')).toBeNull();
   expect(mockGetFeatureFlagClient.mock.calls.length).toBeLessThan(5);
   expect(logger.warn).toHaveBeenCalledTimes(1);
   expect(logger.warn).toHaveBeenCalledWith('[Pathfinder] Auto-open guide experiment unavailable', {
@@ -446,5 +507,312 @@ describe('blocked eligibility', () => {
     config.bootData.user.isSignedIn = false;
     await start('/explore', { variant: 'treatment', experiences: EXPERIENCES });
     expect(reportExperimentView).not.toHaveBeenCalled();
+  });
+});
+
+describe('saved exploring cohort', () => {
+  const saved = (exploring = true, status: 'ready' | 'loading' | 'unavailable' = 'ready') =>
+    setOnboardingExploringIntent({ status, exploring, contextKey: getOnboardingIntentContextKey() });
+  async function startExploring(variant = 'treatment', legacy?: unknown, experiences = EXPERIENCES) {
+    window.history.replaceState(null, '', '/dashboards');
+    await flag({ variant, experiences }, ONBOARDING_EXPLORING_EXPERIMENT_FLAG, legacy);
+    stop = await startAutoOpenGuideExperiment();
+    await settle();
+  }
+
+  it('keeps treatment telemetry active when the open handler synchronously opens the panel', async () => {
+    (attemptAutoOpen as jest.Mock).mockImplementationOnce((_delay: number, shouldOpen: () => boolean) => {
+      if (shouldOpen()) {
+        mockPathfinderOpen = true;
+      }
+      return jest.fn();
+    });
+    saved();
+    await startExploring();
+    expect(mockPathfinderOpen).toBe(true);
+    expect(exposures()).toHaveLength(1);
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.OnboardingExploringEligible,
+      expect.objectContaining({ experiment_onboarding_exploring_auto_open: 'treatment', opened: true }),
+      { mirrorToFaro: false }
+    );
+    expect(getAutoOpenGuideEnrollment()?.variant).toBe('treatment');
+  });
+
+  it.each(['control', 'treatment'])('does not activate %s before the auto-open trigger delay', async (variant) => {
+    await startExploring(variant);
+    saved();
+    await Promise.resolve();
+    jest.advanceTimersByTime(199);
+    await Promise.resolve();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(exposures()).toHaveLength(0);
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    await settle();
+    expect(exposures()).toHaveLength(1);
+    expect(reportExperimentView).toHaveBeenCalledWith(
+      ONBOARDING_EXPLORING_EXPERIMENT_ID,
+      ONBOARDING_EXPLORING_EXPERIMENT_GROUP,
+      variant
+    );
+    if (variant === 'treatment') {
+      expect(attemptAutoOpen).toHaveBeenCalledWith(0, expect.any(Function));
+    } else {
+      expect(attemptAutoOpen).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(['control', 'treatment'])(
+    'does not expose %s when eligibility is lost during the trigger delay',
+    async (variant) => {
+      await startExploring(variant);
+      saved();
+      jest.advanceTimersByTime(199);
+      saved(false);
+      await settle();
+      expect(reportExperimentView).not.toHaveBeenCalled();
+      expect(exposures()).toHaveLength(0);
+      expect(attemptAutoOpen).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['control', 'treatment'])('waits for saved exploring intent before enrolling %s', async (variant) => {
+    await startExploring(variant);
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+    saved();
+    await settle();
+    expect(reportExperimentView).toHaveBeenCalledWith(
+      ONBOARDING_EXPLORING_EXPERIMENT_ID,
+      ONBOARDING_EXPLORING_EXPERIMENT_GROUP,
+      variant
+    );
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(variant === 'treatment' ? 1 : 0);
+    expect(getAutoOpenGuideEnrollment()?.flag).toBe(ONBOARDING_EXPLORING_EXPERIMENT_FLAG);
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.OnboardingExploringEligible,
+      expect.objectContaining({ experiment_onboarding_exploring_auto_open: variant, opened: variant === 'treatment' }),
+      { mirrorToFaro: false }
+    );
+  });
+
+  it.each(['/dashboards', '/dashboards?starred', '/profile', '/playlists'])(
+    'offers on the requested landing page %s when configured and eligible',
+    async (path) => {
+      window.history.replaceState(null, '', path);
+      await flag(
+        {
+          variant: 'treatment',
+          experiences: [{ guide: 'bundled:test-landing', pages: ['/dashboards', '/profile', '/playlists'] }],
+        },
+        ONBOARDING_EXPLORING_EXPERIMENT_FLAG
+      );
+      stop = await startAutoOpenGuideExperiment();
+      await settle();
+      expect(reportExperimentView).not.toHaveBeenCalled();
+      saved();
+      await settle();
+      expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+      expect(installAutoLaunchOnMount).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'bundled:test-landing' }),
+        expect.anything()
+      );
+    }
+  );
+
+  it.each(['loading', 'unavailable'] as const)('fails closed for %s even when exploring is true', async (status) => {
+    saved(true, status);
+    await startExploring();
+    await navigate('/explore');
+    expect(reportExperimentView).not.toHaveBeenCalled();
+  });
+
+  it.each(['control', 'treatment'])('preserves %s attribution after unavailable revalidation', async (variant) => {
+    saved();
+    await startExploring(variant);
+    expect(exposures()).toHaveLength(1);
+    saved(false, 'unavailable');
+    await settle();
+    expect(getAutoOpenGuideEnrollment()?.variant).toBe(variant);
+    expect(getActiveExperiments()).toContainEqual({ flag: ONBOARDING_EXPLORING_EXPERIMENT_FLAG, variant });
+    await navigate('/explore');
+    expect(exposures()).toHaveLength(1);
+    saved(false);
+    await settle();
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+    expect(getActiveExperiments()).not.toContainEqual({ flag: ONBOARDING_EXPLORING_EXPERIMENT_FLAG, variant });
+  });
+
+  it('still clears attribution when the identity changes after an unavailable read', async () => {
+    saved();
+    await startExploring();
+    saved(false, 'unavailable');
+    const originalId = config.bootData.user.id;
+    config.bootData.user.id = 999;
+    try {
+      await navigate('/explore');
+      expect(getAutoOpenGuideEnrollment()).toBeNull();
+    } finally {
+      config.bootData.user.id = originalId;
+    }
+  });
+
+  it('cancels an uncommitted launch on unavailable revalidation', async () => {
+    await startExploring();
+    saved();
+    saved(false, 'unavailable');
+    await settle();
+    expect(exposures()).toHaveLength(0);
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+  });
+
+  it('does not enroll other answers or a snapshot from another context', async () => {
+    saved(false);
+    await startExploring();
+    setOnboardingExploringIntent({ status: 'ready', exploring: true, contextKey: 'other-user' });
+    await settle();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+  });
+
+  it('does not replay a saved answer on an unrelated page', async () => {
+    await startExploring();
+    await navigate('/alerting');
+    saved();
+    await settle();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    await navigate('/dashboards');
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a late saved answer after stop', async () => {
+    await startExploring();
+    stop?.();
+    saved();
+    await settle();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+  });
+
+  it('cancels activation if saved eligibility disappears', async () => {
+    await startExploring();
+    saved();
+    saved(false);
+    await settle();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+    saved();
+    await settle();
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels activation on navigation away from the eligible page', async () => {
+    await startExploring();
+    saved();
+    await navigate('/alerting');
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+    await navigate('/dashboards');
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not enroll or reopen a legacy offered guide', async () => {
+    localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:test-dashboards', 'true');
+    saved();
+    await startExploring();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+  });
+
+  it('does not reopen after reload or a bridge remount, but restores its own cohort', async () => {
+    saved();
+    await startExploring();
+    saved(false, 'loading');
+    saved();
+    await settle();
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+    stop?.();
+    jest.clearAllMocks();
+    setAutoOpenGuideEnrollment(null);
+    await startExploring();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(getAutoOpenGuideEnrollment()?.flag).toBe(ONBOARDING_EXPLORING_EXPERIMENT_FLAG);
+  });
+
+  it('runs the saved-intent reader only for this experiment, and stops it on teardown', async () => {
+    await startExploring();
+    expect(startSavedIntentBridge).toHaveBeenCalledTimes(1);
+    const shouldRead = jest.mocked(startSavedIntentBridge).mock.calls[0]![0];
+    expect(shouldRead('/dashboards')).toBe(true);
+    expect(shouldRead('/profile')).toBe(false);
+    stop?.();
+    stop = undefined;
+    expect(mockStopIntentBridge).toHaveBeenCalledTimes(1);
+    jest.clearAllMocks();
+    await start('/dashboards', { variant: 'treatment', experiences: EXPERIENCES });
+    expect(startSavedIntentBridge).not.toHaveBeenCalled();
+  });
+
+  it('rejects simultaneous enrollment in old and new experiments', async () => {
+    saved();
+    await startExploring('treatment', { variant: 'control', experiences: EXPERIENCES });
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith('[Pathfinder] Auto-open experiments overlap; neither will enroll');
+  });
+  it('preserves the consumed visit while a reloaded bridge is loading', async () => {
+    const overlapping = [
+      { guide: 'bundled:first', pages: ['/dashboards'] },
+      { guide: 'bundled:second', pages: ['/dashboards'] },
+    ];
+    saved();
+    await startExploring('treatment', undefined, overlapping);
+    stop?.();
+    setOnboardingExploringIntent(null);
+    jest.clearAllMocks();
+    setAutoOpenGuideEnrollment(null);
+    await startExploring('treatment', undefined, overlapping);
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    saved();
+    await settle();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(getAutoOpenGuideEnrollment()?.flag).toBe(ONBOARDING_EXPLORING_EXPERIMENT_FLAG);
+  });
+
+  it('keeps a committed launch through same-page navigation but cancels it when intent is lost', async () => {
+    saved();
+    await startExploring();
+    const cancelOpen = (attemptAutoOpen as jest.Mock).mock.results[0]!.value as jest.Mock;
+    const cancelLaunch = (installAutoLaunchOnMount as jest.Mock).mock.results[0]!.value as jest.Mock;
+    await navigate('/dashboards?starred');
+    saved();
+    await settle();
+    expect(cancelLaunch).not.toHaveBeenCalled();
+    expect(cancelOpen).not.toHaveBeenCalled();
+    expect(getAutoOpenGuideEnrollment()?.variant).toBe('treatment');
+    saved(false);
+    await settle();
+    expect(cancelLaunch).toHaveBeenCalled();
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+  });
+
+  it('rechecks navigation, ownership and identity before the delayed panel open', async () => {
+    saved();
+    await startExploring();
+    const shouldOpen = (attemptAutoOpen as jest.Mock).mock.calls[0]![1] as () => boolean;
+    expect(shouldOpen()).toBe(true);
+    mockPathfinderOpen = true;
+    expect(shouldOpen()).toBe(false);
+    mockPathfinderOpen = false;
+    await navigate('/alerting');
+    expect(shouldOpen()).toBe(false);
+    await navigate('/dashboards');
+    config.bootData.user.id = 43;
+    expect(shouldOpen()).toBe(false);
+    config.bootData.user.id = 42;
+    stop?.();
+    expect(shouldOpen()).toBe(false);
   });
 });

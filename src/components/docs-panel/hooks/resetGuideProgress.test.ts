@@ -3,10 +3,11 @@ import {
   guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
+  listPrTestContentKeys,
   milestoneCompletionStorage,
 } from '../../../lib/user-storage';
 import { invalidateEmittedCompletion } from '../../../completion-records';
-import { resetGuideProgress } from './resetGuideProgress';
+import { resetGuideProgress, resetPrTestProgress } from './resetGuideProgress';
 
 jest.mock('../../../global-state/completion-store');
 jest.mock('../../../lib/user-storage');
@@ -33,6 +34,7 @@ const mockInteractiveCompletionStorage = interactiveCompletionStorage as jest.Mo
 >;
 const mockGuideCompletionMarkStorage = guideCompletionMarkStorage as jest.Mocked<typeof guideCompletionMarkStorage>;
 const mockMilestoneCompletionStorage = milestoneCompletionStorage as jest.Mocked<typeof milestoneCompletionStorage>;
+const mockListPrTestContentKeys = listPrTestContentKeys as jest.MockedFunction<typeof listPrTestContentKeys>;
 
 describe('resetGuideProgress', () => {
   beforeEach(() => {
@@ -152,5 +154,34 @@ describe('resetGuideProgress', () => {
       'track-only',
       ['bundled:track-only/content.json']
     );
+  });
+});
+
+describe('resetPrTestProgress', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockInteractiveStepStorage.clearAllForContent.mockResolvedValue(undefined);
+    mockInteractiveCompletionStorage.clear.mockResolvedValue(undefined);
+    mockGuideCompletionMarkStorage.clear.mockResolvedValue(undefined);
+  });
+
+  it('clears every PR-test preview content key and nothing else', async () => {
+    const previewOne = 'https://example.com/raw/guide.json#pf-pr-abc1';
+    const previewTwo = 'https://example.com/raw/guide.json#pf-pr-def2';
+    mockListPrTestContentKeys.mockReturnValue([previewOne, previewTwo]);
+
+    await resetPrTestProgress();
+
+    expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalledWith(previewOne);
+    expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalledWith(previewTwo);
+    expect(mockInteractiveStepStorage.clearAllForContent).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing when no preview records exist', async () => {
+    mockListPrTestContentKeys.mockReturnValue([]);
+
+    await resetPrTestProgress();
+
+    expect(mockInteractiveStepStorage.clearAllForContent).not.toHaveBeenCalled();
   });
 });

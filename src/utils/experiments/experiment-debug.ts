@@ -5,6 +5,7 @@
  * demos. See docs/developer/EXPERIMENT_TESTING.md.
  */
 
+import { getOnboardingIntentContextKey } from '../../global-state/onboarding-exploring-intent';
 import { collectKeysByPrefix } from '../../lib/storage/key-utils';
 import { StorageKeys } from '../../lib/storage-keys';
 import { pathfinderFeatureFlags } from '../openfeature';
@@ -48,7 +49,7 @@ export function createExperimentDebugger(): void {
     // Same rule as bannerVariant: reads the activation cache and markers, never the flag.
     autoOpenGuide: () => ({
       variant: getAutoOpenGuideEnrollment()?.variant ?? 'not-enrolled',
-      shown: listAutoOpenGuidesShown(hostname),
+      shown: listAutoOpenGuidesShown(hostname, getOnboardingIntentContextKey()),
     }),
     clearAutoOpenGuideMarkers: () => {
       const cleared = clearAutoOpenGuideMarkers(hostname);

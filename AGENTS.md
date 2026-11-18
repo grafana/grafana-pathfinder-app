@@ -18,7 +18,7 @@ Never paste a raw control byte, invisible Unicode formatting character, or bidir
 
 ### App Platform access
 
-Browser reads of App Platform resources (`/apis/<group>/...`) go through a plugin-backend proxy, never a direct `getBackendSrv()` read (403 for anonymous viewers, #1966). `src/validation/app-platform-transport.test.ts` enforces it; see `docs/design/BACKEND_PROXY_PATTERN.md`.
+Browser reads of App Platform resources (`/apis/<group>/...`) go through a plugin-backend proxy, never a direct `getBackendSrv()` read (403 for anonymous viewers, #1966). `src/validation/app-platform-transport.test.ts` enforces it. The signed-in own-user survey read is a narrow documented exception; see `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 ### Comments
 
@@ -70,7 +70,7 @@ Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-intera
 
 ### Backend (`pkg/`)
 
-The Go backend is an **App Platform proxy** and nothing else — no database, no streaming. Load `docs/design/BACKEND_PROXY_PATTERN.md` before touching `pkg/`; it is the canonical pattern and holds the identity trust boundary. `/package-recommendations` is an anonymous, process-wide cached CDN fetch: per-user data must never enter its cache. Sandbox VMs and terminals live in [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app); see `.cursor/rules/coda.mdc`.
+The Go backend is an **App Platform proxy** and nothing else — no database, no streaming. Load `docs/design/BACKEND_PROXY_PATTERN.md` before touching `pkg/`; it is the canonical pattern and holds the identity trust boundary. `/package-recommendations` and the achievements definitions source are anonymous, process-wide cached CDN fetches: per-user data must never enter their caches. Sandbox VMs and terminals live in [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app); see `.cursor/rules/coda.mdc`.
 
 ## On-demand context
 

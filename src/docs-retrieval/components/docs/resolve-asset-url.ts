@@ -1,14 +1,16 @@
-/**
- * Resolve a media/asset `src` against the base URL a guide was fetched from.
- *
- * Absolute URLs (`http(s)://`, protocol-relative `//`, `data:`) pass through
- * untouched. Relative values (`assets/demo.mp4`, `/media/demo.mp4`) resolve
- * against `baseUrl` so self-hosted assets can be co-located with the guide's
- * `content.json`. Synthetic bases used by the block editor and bundled
- * loaders (`block-editor://`, `bundled:`) are not real origins, so they fall
- * back to `https://grafana.com/` — matching image handling.
- */
+import { activePrPreview } from '../../../lib/pr-preview-fetch';
+import { mapPreviewContentUrl } from '../../../lib/pr-preview-core';
+import { stripPrTestMarker } from '../../../lib/pr-test-marker';
+
 export function resolveAssetUrl(src: string, baseUrl?: string): string {
+  const snapshot = baseUrl ? activePrPreview(baseUrl) : undefined;
+  if (snapshot) {
+    try {
+      return stripPrTestMarker(mapPreviewContentUrl(new URL(src, baseUrl).href, snapshot, snapshot.fetchId));
+    } catch {
+      return '';
+    }
+  }
   if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//') || src.startsWith('data:')) {
     return src;
   }

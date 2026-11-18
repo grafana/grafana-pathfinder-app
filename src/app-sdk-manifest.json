@@ -1,0 +1,1913 @@
+{
+    "apiVersion": "apps.grafana.app/v1alpha2",
+    "kind": "AppManifest",
+    "metadata": {
+        "name": "pathfinder-backend"
+    },
+    "spec": {
+        "appName": "pathfinder-backend",
+        "appDisplayName": "Pathfinder",
+        "group": "pathfinderbackend.ext.grafana.app",
+        "versions": [
+            {
+                "name": "v1alpha1",
+                "served": true,
+                "kinds": [
+                    {
+                        "kind": "InteractiveGuide",
+                        "plural": "InteractiveGuides",
+                        "resource": "interactiveguides",
+                        "scope": "Namespaced",
+                        "userReadable": false,
+                        "folderScoped": false,
+                        "schemas": {
+                            "Author": {
+                                "additionalProperties": false,
+                                "description": "#Author identifies the person or team who owns a guide/path/journey.",
+                                "properties": {
+                                    "name": {
+                                        "description": "name is the individual author's display name",
+                                        "type": "string"
+                                    },
+                                    "team": {
+                                        "description": "team is the owning team name",
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            },
+                            "Block": {
+                                "additionalProperties": false,
+                                "description": "#Block is the unified block schema using a \"fat struct\" pattern.\nThe `type` field acts as a discriminator to determine which fields are relevant.\nThis approach is compatible with Kubernetes CRD OpenAPI schema generation.",
+                                "properties": {
+                                    "action": {
+                                        "description": "=== Interactive block fields ===\naction is the type of interaction\nValid values: \"highlight\", \"button\", \"formfill\", \"navigate\", \"hover\", \"noop\", \"popout\"",
+                                        "type": "string"
+                                    },
+                                    "alt": {
+                                        "description": "alt is the alternative text for accessibility",
+                                        "type": "string"
+                                    },
+                                    "assistantEnabled": {
+                                        "description": "=== Assistant props (for markdown, interactive blocks) ===\nassistantEnabled indicates if AI assistant is enabled for this block",
+                                        "type": "boolean"
+                                    },
+                                    "assistantId": {
+                                        "description": "assistantId is the identifier for a specific assistant",
+                                        "type": "string"
+                                    },
+                                    "assistantType": {
+                                        "description": "assistantType specifies the type of assistant\nValid values: \"query\", \"config\", \"code\", \"text\"",
+                                        "type": "string"
+                                    },
+                                    "authorNote": {
+                                        "description": "authorNote is an editor-only annotation. Accepted on every block type so\nauthoring tools can round-trip it; the editor strips it on export.",
+                                        "type": "string"
+                                    },
+                                    "autoCollapse": {
+                                        "description": "autoCollapse collapses the section once the user completes its contents",
+                                        "type": "boolean"
+                                    },
+                                    "blocks": {
+                                        "description": "blocks contains nested blocks (for section/collapsible/assistant blocks)",
+                                        "items": {
+                                            "$ref": "#/components/schemas/NestedBlock"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "brief": {
+                                        "description": "brief is the markdown problem statement",
+                                        "type": "string"
+                                    },
+                                    "buttonText": {
+                                        "description": "=== Terminal-connect block fields ===\nbuttonText is the connect button label",
+                                        "type": "string"
+                                    },
+                                    "checkboxLabel": {
+                                        "description": "checkboxLabel is the label for boolean checkbox inputs",
+                                        "type": "string"
+                                    },
+                                    "choices": {
+                                        "description": "choices is the array of possible answers",
+                                        "items": {
+                                            "$ref": "#/components/schemas/QuizChoice"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "code": {
+                                        "description": "code is the code inserted into the target editor",
+                                        "type": "string"
+                                    },
+                                    "collapsed": {
+                                        "description": "=== Collapsible block fields ===\ncollapsed indicates the block starts collapsed",
+                                        "type": "boolean"
+                                    },
+                                    "command": {
+                                        "description": "=== Terminal block fields ===\ncommand is the command to execute in the terminal",
+                                        "type": "string"
+                                    },
+                                    "completeEarly": {
+                                        "description": "completeEarly allows completion before all steps are done",
+                                        "type": "boolean"
+                                    },
+                                    "completionMode": {
+                                        "description": "completionMode determines how completion is evaluated\nValid values: \"correct-only\", \"max-attempts\"",
+                                        "type": "string"
+                                    },
+                                    "conditions": {
+                                        "description": "=== Conditional block fields ===\nconditions are expressions to evaluate",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "content": {
+                                        "description": "=== Common fields ===\ncontent is used by markdown, html, interactive, multistep, guided,\nterminal, terminal-connect and code-block blocks",
+                                        "type": "string"
+                                    },
+                                    "credentials": {
+                                        "items": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "tool": {
+                                                    "pattern": "^gcx$",
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "tool"
+                                            ],
+                                            "type": "object"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "datasourceFilter": {
+                                        "description": "datasourceFilter narrows a datasource input to one type (e.g. \"loki\", \"prometheus\")",
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "description": "description provides context about the conditional",
+                                        "type": "string"
+                                    },
+                                    "display": {
+                                        "description": "display specifies how the conditional is rendered\nValid values: \"inline\", \"section\"",
+                                        "type": "string"
+                                    },
+                                    "doIt": {
+                                        "description": "doIt enables the \"do it for me\" feature",
+                                        "type": "boolean"
+                                    },
+                                    "end": {
+                                        "description": "end is the playback end offset in seconds",
+                                        "type": "number"
+                                    },
+                                    "failureMessage": {
+                                        "description": "failureMessage is shown when the success check fails",
+                                        "type": "string"
+                                    },
+                                    "formHint": {
+                                        "description": "formHint provides guidance for form fill actions",
+                                        "type": "string"
+                                    },
+                                    "height": {
+                                        "description": "height is the display height in pixels",
+                                        "type": "number"
+                                    },
+                                    "hint": {
+                                        "description": "hint provides guidance to the user",
+                                        "type": "string"
+                                    },
+                                    "hintLevels": {
+                                        "description": "hintLevels are progressive hints revealed on demand",
+                                        "items": {
+                                            "$ref": "#/components/schemas/ChallengeHint"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "id": {
+                                        "description": "=== Section block fields ===\nid is an optional identifier for the block",
+                                        "type": "string"
+                                    },
+                                    "inputType": {
+                                        "description": "inputType specifies the type of input control\nValid values: \"text\", \"boolean\", \"datasource\"",
+                                        "type": "string"
+                                    },
+                                    "language": {
+                                        "description": "=== Code-block fields ===\nlanguage is the source language hint (e.g. promql, logql, sql)",
+                                        "type": "string"
+                                    },
+                                    "lazyRender": {
+                                        "description": "lazyRender indicates if the target element is lazily rendered",
+                                        "type": "boolean"
+                                    },
+                                    "maxAttempts": {
+                                        "description": "maxAttempts limits the number of attempts",
+                                        "type": "number"
+                                    },
+                                    "mode": {
+                                        "description": "=== Challenge block fields ===\nmode is the challenge execution model\nValid values: \"coda\", \"standard\"",
+                                        "type": "string"
+                                    },
+                                    "multiSelect": {
+                                        "description": "multiSelect allows selecting multiple answers",
+                                        "type": "boolean"
+                                    },
+                                    "objectives": {
+                                        "description": "objectives are learning objectives completed by this block",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "openGuide": {
+                                        "description": "openGuide is the guide ID to open when this block completes",
+                                        "type": "string"
+                                    },
+                                    "pattern": {
+                                        "description": "pattern is a regex pattern for validation",
+                                        "type": "string"
+                                    },
+                                    "placeholder": {
+                                        "description": "placeholder is hint text shown in empty input",
+                                        "type": "string"
+                                    },
+                                    "prompt": {
+                                        "description": "=== Input block fields ===\nprompt is the question or instruction for the user",
+                                        "type": "string"
+                                    },
+                                    "provider": {
+                                        "description": "=== Video block fields ===\nprovider specifies the video provider\nValid values: \"youtube\", \"native\", \"vimeo\"",
+                                        "type": "string"
+                                    },
+                                    "question": {
+                                        "description": "=== Quiz block fields ===\nquestion is the quiz question text",
+                                        "type": "string"
+                                    },
+                                    "reftarget": {
+                                        "description": "reftarget is the CSS selector or element reference",
+                                        "type": "string"
+                                    },
+                                    "required": {
+                                        "description": "required indicates if input is mandatory",
+                                        "type": "boolean"
+                                    },
+                                    "requirements": {
+                                        "description": "requirements are conditions that must be met",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "screens": {
+                                        "description": "screens are the question and result screens of the decision tree",
+                                        "items": {
+                                            "$ref": "#/components/schemas/GrotGuideScreen"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "scrollContainer": {
+                                        "description": "scrollContainer is the selector for the scrollable container",
+                                        "type": "string"
+                                    },
+                                    "setupCommands": {
+                                        "description": "setupCommands are bash commands run server-side after the VM is ready\n(deprecated in the app in favour of setupScript)",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "setupScript": {
+                                        "description": "setupScript is a bash script run server-side after the VM is ready",
+                                        "type": "string"
+                                    },
+                                    "showMe": {
+                                        "description": "showMe enables the \"show me\" feature",
+                                        "type": "boolean"
+                                    },
+                                    "shuffle": {
+                                        "description": "shuffle randomizes choice display order (defaults to true in the app);\npinned choices keep their authored index",
+                                        "type": "boolean"
+                                    },
+                                    "skippable": {
+                                        "description": "skippable indicates if the user can skip this block",
+                                        "type": "boolean"
+                                    },
+                                    "snippetId": {
+                                        "description": "=== Snippet-ref block fields ===\nsnippetId is the upstream snippet resolved at parse time",
+                                        "type": "string"
+                                    },
+                                    "src": {
+                                        "description": "=== Image block fields ===\nsrc is the URL of the image or video (http/https only)",
+                                        "type": "string"
+                                    },
+                                    "start": {
+                                        "description": "start is the playback start offset in seconds",
+                                        "type": "number"
+                                    },
+                                    "stepTimeout": {
+                                        "description": "stepTimeout is the timeout in ms before auto-advancing (guided blocks)",
+                                        "type": "number"
+                                    },
+                                    "steps": {
+                                        "description": "=== Multistep/Guided block fields ===\nsteps is the array of steps to complete",
+                                        "items": {
+                                            "$ref": "#/components/schemas/Step"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "successCriteria": {
+                                        "description": "successCriteria is the requirement evaluated when the user checks their work",
+                                        "type": "string"
+                                    },
+                                    "targetstate": {
+                                        "description": "targetstate is the desired end state for a toggle target, so the step\ndrives the control to that state instead of clicking it blindly.\nValid values: \"true\", \"false\", or \"\u003cattribute\u003e:\u003cvalue\u003e\".\nString-only by contract: the app accepts a bare boolean when authoring and\ncoerces it before serializing, because a `bool | string` disjunction here\nwould render an unappliable CRD.",
+                                        "type": "string"
+                                    },
+                                    "targetvalue": {
+                                        "description": "targetvalue is the expected value for form inputs, or the popout target\n(\"sidebar\" or \"floating\") for popout actions",
+                                        "type": "string"
+                                    },
+                                    "title": {
+                                        "description": "title is the video/section/challenge title",
+                                        "type": "string"
+                                    },
+                                    "tooltip": {
+                                        "description": "tooltip is text shown in a tooltip",
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "description": "type is the block type discriminator (required)\nValid values: \"markdown\", \"html\", \"image\", \"video\", \"interactive\",\n\"multistep\", \"guided\", \"quiz\", \"input\", \"section\", \"collapsible\",\n\"assistant\", \"conditional\", \"terminal\", \"terminal-connect\",\n\"challenge\", \"code-block\", \"grot-guide\", \"snippet-ref\"",
+                                        "type": "string"
+                                    },
+                                    "validateInput": {
+                                        "description": "validateInput indicates if input should be validated",
+                                        "type": "boolean"
+                                    },
+                                    "validationMessage": {
+                                        "description": "validationMessage is shown when validation fails",
+                                        "type": "string"
+                                    },
+                                    "variableName": {
+                                        "description": "variableName is the identifier for storing the response",
+                                        "type": "string"
+                                    },
+                                    "verify": {
+                                        "description": "verify is a condition to verify completion",
+                                        "type": "string"
+                                    },
+                                    "vmApp": {
+                                        "description": "vmApp is the app to launch in the VM",
+                                        "type": "string"
+                                    },
+                                    "vmScenario": {
+                                        "description": "vmScenario is the scenario to run in the VM",
+                                        "type": "string"
+                                    },
+                                    "vmTemplate": {
+                                        "description": "vmTemplate is the VM template to provision",
+                                        "type": "string"
+                                    },
+                                    "welcome": {
+                                        "$ref": "#/components/schemas/GrotGuideWelcome",
+                                        "description": "=== Grot-guide block fields ===\nwelcome is the entry screen of the decision tree"
+                                    },
+                                    "whenFalse": {
+                                        "description": "whenFalse contains blocks shown when conditions are false",
+                                        "items": {
+                                            "$ref": "#/components/schemas/NestedBlock"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "whenFalseSectionConfig": {
+                                        "$ref": "#/components/schemas/ConditionalSectionConfig",
+                                        "description": "whenFalseSectionConfig configures the false branch as a section"
+                                    },
+                                    "whenTrue": {
+                                        "description": "whenTrue contains blocks shown when conditions are true",
+                                        "items": {
+                                            "$ref": "#/components/schemas/NestedBlock"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "whenTrueSectionConfig": {
+                                        "$ref": "#/components/schemas/ConditionalSectionConfig",
+                                        "description": "whenTrueSectionConfig configures the true branch as a section"
+                                    },
+                                    "width": {
+                                        "description": "width is the display width in pixels",
+                                        "type": "number"
+                                    }
+                                },
+                                "required": [
+                                    "type"
+                                ],
+                                "type": "object"
+                            },
+                            "ChallengeHint": {
+                                "additionalProperties": false,
+                                "description": "#ChallengeHint is a single progressive hint revealed on demand during a challenge",
+                                "properties": {
+                                    "text": {
+                                        "description": "text is the hint body shown to the user",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "text"
+                                ],
+                                "type": "object"
+                            },
+                            "ConditionalSectionConfig": {
+                                "additionalProperties": false,
+                                "description": "#ConditionalSectionConfig defines section configuration for conditional branches",
+                                "properties": {
+                                    "objectives": {
+                                        "description": "objectives are learning objectives for this branch",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "requirements": {
+                                        "description": "requirements are conditions for this branch",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "title": {
+                                        "description": "title is the section title for this branch",
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            },
+                            "DependencyClause": {
+                                "description": "#DependencyClause is a single dependency clause: an OR-group of one or more\nalternative package IDs, following Debian's dependency syntax. A bare\ndependency is a singleton array ([\"some-id\"]), not a bare string — the\noriginal `string | [...string]` disjunction rendered as\n`\"type\": [\"string\", \"array\"]` with `\"oneOf\": [{}, {}]` in the generated CRD\nschema, which is not valid Kubernetes JSONSchemaProps (type must be a single\nstring) and would fail to apply.",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            "GrotGuideCta": {
+                                "additionalProperties": false,
+                                "description": "#GrotGuideCta is a call-to-action button on the grot guide welcome screen",
+                                "properties": {
+                                    "screenId": {
+                                        "description": "screenId is the screen this CTA navigates to",
+                                        "type": "string"
+                                    },
+                                    "text": {
+                                        "description": "text is the button label",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "text",
+                                    "screenId"
+                                ],
+                                "type": "object"
+                            },
+                            "GrotGuideLink": {
+                                "additionalProperties": false,
+                                "description": "#GrotGuideLink is a related link rendered on a grot guide result screen",
+                                "properties": {
+                                    "href": {
+                                        "description": "href is the link target (http/https only)",
+                                        "type": "string"
+                                    },
+                                    "linkText": {
+                                        "description": "linkText is the visible anchor text",
+                                        "type": "string"
+                                    },
+                                    "title": {
+                                        "description": "title is the link heading",
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "description": "type is an optional link category hint",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "title",
+                                    "linkText",
+                                    "href"
+                                ],
+                                "type": "object"
+                            },
+                            "GrotGuideOption": {
+                                "additionalProperties": false,
+                                "description": "#GrotGuideOption is a single branch from a grot guide question screen",
+                                "properties": {
+                                    "screenId": {
+                                        "description": "screenId is the screen this option navigates to",
+                                        "type": "string"
+                                    },
+                                    "text": {
+                                        "description": "text is the option label",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "text",
+                                    "screenId"
+                                ],
+                                "type": "object"
+                            },
+                            "GrotGuideScreen": {
+                                "additionalProperties": false,
+                                "description": "#GrotGuideScreen is a single screen in a grot guide decision tree.\nLike #Block, it uses a \"fat struct\" pattern: `type` discriminates between\nquestion screens (which carry `options`) and result screens (which carry\n`body` and `links`).",
+                                "properties": {
+                                    "body": {
+                                        "description": "body is the result screen prose (result screens only)",
+                                        "type": "string"
+                                    },
+                                    "id": {
+                                        "description": "id is the screen identifier referenced by ctas and options",
+                                        "type": "string"
+                                    },
+                                    "links": {
+                                        "description": "links are related links shown on a result screen (result screens only)",
+                                        "items": {
+                                            "$ref": "#/components/schemas/GrotGuideLink"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "options": {
+                                        "description": "options are the branches offered by a question screen (question screens only)",
+                                        "items": {
+                                            "$ref": "#/components/schemas/GrotGuideOption"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "title": {
+                                        "description": "title is the screen heading",
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "description": "type is the screen type discriminator\nValid values: \"question\", \"result\"",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "type",
+                                    "id",
+                                    "title"
+                                ],
+                                "type": "object"
+                            },
+                            "GrotGuideWelcome": {
+                                "additionalProperties": false,
+                                "description": "#GrotGuideWelcome is the entry screen of a grot guide decision tree",
+                                "properties": {
+                                    "body": {
+                                        "description": "body is the welcome prose",
+                                        "type": "string"
+                                    },
+                                    "ctas": {
+                                        "description": "ctas are the entry points into the decision tree",
+                                        "items": {
+                                            "$ref": "#/components/schemas/GrotGuideCta"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "title": {
+                                        "description": "title is the welcome heading",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "title",
+                                    "body",
+                                    "ctas"
+                                ],
+                                "type": "object"
+                            },
+                            "GuideStats": {
+                                "additionalProperties": false,
+                                "description": "#GuideStats is the guide's computed block statistics, stamped onto the\nmanifest at build time. It is the denominator for completion percentages,\nand the reason it lives here rather than in additionalFields is so a\nconsumer holding a resolved manifest reads the same path whether the guide\ncame from bundled/CDN content or from this app platform.\n\nEvery member is REQUIRED and none carries a default. A defaulted count of 0\nis indistinguishable from a guide genuinely measured as having no blocks, so\na partial or malformed stamp would be silently accepted as real data and go\non to divide by it. Requiring all five means a partial stamp is rejected\n(422) instead. The whole object stays optional on #Manifest — see there.\n\nMirrors the app's emitted shape (grafana-pathfinder-app,\nsrc/types/guide-stats.schema.ts / src/lib/guide-stats/summary.ts).",
+                                "properties": {
+                                    "blockCount": {
+                                        "description": "blockCount is the completion denominator: counted blocks, containers excluded.",
+                                        "minimum": 0,
+                                        "type": "integer"
+                                    },
+                                    "completableBlockCount": {
+                                        "description": "completableBlockCount is the number of counted blocks carrying a completion\naffordance.",
+                                        "minimum": 0,
+                                        "type": "integer"
+                                    },
+                                    "finalCompletablePosition": {
+                                        "description": "finalCompletablePosition is the position of the last completable block, 0\nwhen there is none. Equal to blockCount when the final counted block is\ncompletable, which is the signal that the guide needs no \"Mark as complete\"\nbutton at its foot.",
+                                        "minimum": 0,
+                                        "type": "integer"
+                                    },
+                                    "sectionCount": {
+                                        "description": "sectionCount is the number of section containers. Authoring insight;\ndeliberately not in the denominator.",
+                                        "minimum": 0,
+                                        "type": "integer"
+                                    },
+                                    "version": {
+                                        "description": "version is the version of the stamped stats object. Bump it when the\nCOUNTING RULE changes, or when these fields change shape — the rule being\nthe load-bearing trigger, because a rule change leaves the shapes untouched\nwhile restating the denominator of every already-stamped manifest and every\npercentage already recorded against it.\n\nNOT a content version: it says nothing about whether the guide changed.\nNot resourceVersion either — it has nothing to do with the stored object.",
+                                        "minimum": 0,
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": [
+                                    "version",
+                                    "blockCount",
+                                    "sectionCount",
+                                    "completableBlockCount",
+                                    "finalCompletablePosition"
+                                ],
+                                "type": "object"
+                            },
+                            "InteractiveGuide": {
+                                "properties": {
+                                    "spec": {
+                                        "$ref": "#/components/schemas/spec"
+                                    },
+                                    "status": {
+                                        "$ref": "#/components/schemas/status"
+                                    }
+                                },
+                                "required": [
+                                    "spec"
+                                ]
+                            },
+                            "Manifest": {
+                                "additionalProperties": false,
+                                "description": "#Manifest carries package-repository metadata for grouping, sequencing, and\n(future) dependency-graph participation. Scoped intentionally: fields with no\ncurrent consumer (recommender targeting, E2E test-environment routing) are\nleft out until something in this app platform actually reads them.",
+                                "properties": {
+                                    "additionalFields": {
+                                        "additionalProperties": true,
+                                        "description": "additionalFields is an escape hatch for manifest data not yet promoted to a\ntyped field above. #Manifest itself can't be made open-world — CUE's\npattern-constraint mechanism ([string]: _) only preserves unknown fields\n(x-kubernetes-preserve-unknown-fields: true) when applied to a field's own\nobject type, not to the containing struct; applying it to #Manifest directly\nsilently widened other fields' types (e.g. `type` lost its enum) without\nachieving passthrough. This mirrors grafana-app-sdk's own\nSchemaWithOperatorState.status.additionalFields convention. Promoting a key\nout of here into a real field on #Manifest is always additive and safe.",
+                                        "type": "object"
+                                    },
+                                    "author": {
+                                        "$ref": "#/components/schemas/Author",
+                                        "description": "author identifies who owns this guide/path/journey."
+                                    },
+                                    "category": {
+                                        "description": "category is a free-form grouping label for browsing/filtering.",
+                                        "type": "string"
+                                    },
+                                    "depends": {
+                                        "description": "depends is a CNF (AND of ORs) list of package IDs this package depends on.",
+                                        "items": {
+                                            "$ref": "#/components/schemas/DependencyClause"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "description": {
+                                        "description": "description is a short human-readable summary shown in listings.",
+                                        "type": "string"
+                                    },
+                                    "milestones": {
+                                        "description": "milestones is the ordered list of member package IDs for \"path\"/\"journey\" types.",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "repository": {
+                                        "default": "app-platform",
+                                        "description": "repository identifies the provenance of this package.",
+                                        "type": "string"
+                                    },
+                                    "stats": {
+                                        "$ref": "#/components/schemas/GuideStats",
+                                        "description": "stats is the guide's computed block statistics, stamped at build time.\n\nOptional with NO default: guides written before this field existed must\nsurvive the addition and simply carry no stats until something saves them\nagain. Absent stats means \"not measured\"; it must never be forgeable into a\nzero-valued measurement. When present, all five members are required — see\n#GuideStats."
+                                    },
+                                    "tracks": {
+                                        "description": "tracks is a list of named, additional guide sequences alongside the\ndefault sequence in milestones. See #Track. Meaningful only for\ntype: \"path\" (RFC §6.1) but not restricted to it at this schema\nlayer — see AGENTS.md's \"#Track naming and scope\".",
+                                        "items": {
+                                            "$ref": "#/components/schemas/Track"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "type": {
+                                        "description": "type discriminates a standalone guide from an ordered group of guides.",
+                                        "enum": [
+                                            "guide",
+                                            "path",
+                                            "journey"
+                                        ],
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "type",
+                                    "repository"
+                                ],
+                                "type": "object"
+                            },
+                            "NestedBlock": {
+                                "additionalProperties": false,
+                                "description": "#NestedBlock is used for blocks within section/collapsible/assistant/conditional\nblocks to avoid infinite recursion in the schema. It carries the same fields as\n#Block; only its own child arrays are left untyped, which the CRD generator\nrenders as `x-kubernetes-preserve-unknown-fields` so deeper nesting is passed\nthrough rather than pruned.",
+                                "properties": {
+                                    "action": {
+                                        "description": "=== Interactive block fields ===\naction is the type of interaction\nValid values: \"highlight\", \"button\", \"formfill\", \"navigate\", \"hover\", \"noop\", \"popout\"",
+                                        "type": "string"
+                                    },
+                                    "alt": {
+                                        "description": "alt is the alternative text for accessibility",
+                                        "type": "string"
+                                    },
+                                    "assistantEnabled": {
+                                        "description": "=== Assistant props (for markdown, interactive blocks) ===\nassistantEnabled indicates if AI assistant is enabled for this block",
+                                        "type": "boolean"
+                                    },
+                                    "assistantId": {
+                                        "description": "assistantId is the identifier for a specific assistant",
+                                        "type": "string"
+                                    },
+                                    "assistantType": {
+                                        "description": "assistantType specifies the type of assistant\nValid values: \"query\", \"config\", \"code\", \"text\"",
+                                        "type": "string"
+                                    },
+                                    "authorNote": {
+                                        "description": "authorNote is an editor-only annotation. Accepted on every block type so\nauthoring tools can round-trip it; the editor strips it on export.",
+                                        "type": "string"
+                                    },
+                                    "autoCollapse": {
+                                        "description": "autoCollapse collapses the section once the user completes its contents",
+                                        "type": "boolean"
+                                    },
+                                    "blocks": {
+                                        "description": "blocks contains nested blocks (for section/collapsible/assistant blocks)\nNote: Uses recursive reference for nesting",
+                                        "items": {
+                                            "additionalProperties": {},
+                                            "type": "object"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "brief": {
+                                        "description": "brief is the markdown problem statement",
+                                        "type": "string"
+                                    },
+                                    "buttonText": {
+                                        "description": "=== Terminal-connect block fields ===\nbuttonText is the connect button label",
+                                        "type": "string"
+                                    },
+                                    "checkboxLabel": {
+                                        "description": "checkboxLabel is the label for boolean checkbox inputs",
+                                        "type": "string"
+                                    },
+                                    "choices": {
+                                        "description": "choices is the array of possible answers",
+                                        "items": {
+                                            "$ref": "#/components/schemas/QuizChoice"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "code": {
+                                        "description": "code is the code inserted into the target editor",
+                                        "type": "string"
+                                    },
+                                    "collapsed": {
+                                        "description": "=== Collapsible block fields ===\ncollapsed indicates the block starts collapsed",
+                                        "type": "boolean"
+                                    },
+                                    "command": {
+                                        "description": "=== Terminal block fields ===\ncommand is the command to execute in the terminal",
+                                        "type": "string"
+                                    },
+                                    "completeEarly": {
+                                        "description": "completeEarly allows completion before all steps are done",
+                                        "type": "boolean"
+                                    },
+                                    "completionMode": {
+                                        "description": "completionMode determines how completion is evaluated\nValid values: \"correct-only\", \"max-attempts\"",
+                                        "type": "string"
+                                    },
+                                    "conditions": {
+                                        "description": "=== Conditional block fields ===\nconditions are expressions to evaluate",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "content": {
+                                        "description": "=== Common fields ===\ncontent is used by markdown, html, interactive, multistep, guided,\nterminal, terminal-connect and code-block blocks",
+                                        "type": "string"
+                                    },
+                                    "credentials": {
+                                        "items": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "tool": {
+                                                    "pattern": "^gcx$",
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "tool"
+                                            ],
+                                            "type": "object"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "datasourceFilter": {
+                                        "description": "datasourceFilter narrows a datasource input to one type (e.g. \"loki\", \"prometheus\")",
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "description": "description provides context about the conditional",
+                                        "type": "string"
+                                    },
+                                    "display": {
+                                        "description": "display specifies how the conditional is rendered\nValid values: \"inline\", \"section\"",
+                                        "type": "string"
+                                    },
+                                    "doIt": {
+                                        "description": "doIt enables the \"do it for me\" feature",
+                                        "type": "boolean"
+                                    },
+                                    "end": {
+                                        "description": "end is the playback end offset in seconds",
+                                        "type": "number"
+                                    },
+                                    "failureMessage": {
+                                        "description": "failureMessage is shown when the success check fails",
+                                        "type": "string"
+                                    },
+                                    "formHint": {
+                                        "description": "formHint provides guidance for form fill actions",
+                                        "type": "string"
+                                    },
+                                    "height": {
+                                        "description": "height is the display height in pixels",
+                                        "type": "number"
+                                    },
+                                    "hint": {
+                                        "description": "hint provides guidance to the user",
+                                        "type": "string"
+                                    },
+                                    "hintLevels": {
+                                        "description": "hintLevels are progressive hints revealed on demand",
+                                        "items": {
+                                            "$ref": "#/components/schemas/ChallengeHint"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "id": {
+                                        "description": "=== Section block fields ===\nid is an optional identifier for the block",
+                                        "type": "string"
+                                    },
+                                    "inputType": {
+                                        "description": "inputType specifies the type of input control\nValid values: \"text\", \"boolean\", \"datasource\"",
+                                        "type": "string"
+                                    },
+                                    "language": {
+                                        "description": "=== Code-block fields ===\nlanguage is the source language hint (e.g. promql, logql, sql)",
+                                        "type": "string"
+                                    },
+                                    "lazyRender": {
+                                        "description": "lazyRender indicates if the target element is lazily rendered",
+                                        "type": "boolean"
+                                    },
+                                    "maxAttempts": {
+                                        "description": "maxAttempts limits the number of attempts",
+                                        "type": "number"
+                                    },
+                                    "mode": {
+                                        "description": "=== Challenge block fields ===\nmode is the challenge execution model\nValid values: \"coda\", \"standard\"",
+                                        "type": "string"
+                                    },
+                                    "multiSelect": {
+                                        "description": "multiSelect allows selecting multiple answers",
+                                        "type": "boolean"
+                                    },
+                                    "objectives": {
+                                        "description": "objectives are learning objectives completed by this block",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "openGuide": {
+                                        "description": "openGuide is the guide ID to open when this block completes",
+                                        "type": "string"
+                                    },
+                                    "pattern": {
+                                        "description": "pattern is a regex pattern for validation",
+                                        "type": "string"
+                                    },
+                                    "placeholder": {
+                                        "description": "placeholder is hint text shown in empty input",
+                                        "type": "string"
+                                    },
+                                    "prompt": {
+                                        "description": "=== Input block fields ===\nprompt is the question or instruction for the user",
+                                        "type": "string"
+                                    },
+                                    "provider": {
+                                        "description": "=== Video block fields ===\nprovider specifies the video provider\nValid values: \"youtube\", \"native\", \"vimeo\"",
+                                        "type": "string"
+                                    },
+                                    "question": {
+                                        "description": "=== Quiz block fields ===\nquestion is the quiz question text",
+                                        "type": "string"
+                                    },
+                                    "reftarget": {
+                                        "description": "reftarget is the CSS selector or element reference",
+                                        "type": "string"
+                                    },
+                                    "required": {
+                                        "description": "required indicates if input is mandatory",
+                                        "type": "boolean"
+                                    },
+                                    "requirements": {
+                                        "description": "requirements are conditions that must be met",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "screens": {
+                                        "description": "screens are the question and result screens of the decision tree",
+                                        "items": {
+                                            "$ref": "#/components/schemas/GrotGuideScreen"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "scrollContainer": {
+                                        "description": "scrollContainer is the selector for the scrollable container",
+                                        "type": "string"
+                                    },
+                                    "setupCommands": {
+                                        "description": "setupCommands are bash commands run server-side after the VM is ready\n(deprecated in the app in favour of setupScript)",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "setupScript": {
+                                        "description": "setupScript is a bash script run server-side after the VM is ready",
+                                        "type": "string"
+                                    },
+                                    "showMe": {
+                                        "description": "showMe enables the \"show me\" feature",
+                                        "type": "boolean"
+                                    },
+                                    "shuffle": {
+                                        "description": "shuffle randomizes choice display order (defaults to true in the app);\npinned choices keep their authored index",
+                                        "type": "boolean"
+                                    },
+                                    "skippable": {
+                                        "description": "skippable indicates if the user can skip this block",
+                                        "type": "boolean"
+                                    },
+                                    "snippetId": {
+                                        "description": "=== Snippet-ref block fields ===\nsnippetId is the upstream snippet resolved at parse time",
+                                        "type": "string"
+                                    },
+                                    "src": {
+                                        "description": "=== Image block fields ===\nsrc is the URL of the image or video (http/https only)",
+                                        "type": "string"
+                                    },
+                                    "start": {
+                                        "description": "start is the playback start offset in seconds",
+                                        "type": "number"
+                                    },
+                                    "stepTimeout": {
+                                        "description": "stepTimeout is the timeout in ms before auto-advancing (guided blocks)",
+                                        "type": "number"
+                                    },
+                                    "steps": {
+                                        "description": "=== Multistep/Guided block fields ===\nsteps is the array of steps to complete",
+                                        "items": {
+                                            "$ref": "#/components/schemas/Step"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "successCriteria": {
+                                        "description": "successCriteria is the requirement evaluated when the user checks their work",
+                                        "type": "string"
+                                    },
+                                    "targetstate": {
+                                        "description": "targetstate is the desired end state for a toggle target, so the step\ndrives the control to that state instead of clicking it blindly.\nValid values: \"true\", \"false\", or \"\u003cattribute\u003e:\u003cvalue\u003e\".\nString-only by contract: the app accepts a bare boolean when authoring and\ncoerces it before serializing, because a `bool | string` disjunction here\nwould render an unappliable CRD.",
+                                        "type": "string"
+                                    },
+                                    "targetvalue": {
+                                        "description": "targetvalue is the expected value for form inputs, or the popout target\n(\"sidebar\" or \"floating\") for popout actions",
+                                        "type": "string"
+                                    },
+                                    "title": {
+                                        "description": "title is the video/section/challenge title",
+                                        "type": "string"
+                                    },
+                                    "tooltip": {
+                                        "description": "tooltip is text shown in a tooltip",
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "description": "type is the block type discriminator (required)\nValid values: \"markdown\", \"html\", \"image\", \"video\", \"interactive\",\n\"multistep\", \"guided\", \"quiz\", \"input\", \"section\", \"collapsible\",\n\"assistant\", \"conditional\", \"terminal\", \"terminal-connect\",\n\"challenge\", \"code-block\", \"grot-guide\", \"snippet-ref\"",
+                                        "type": "string"
+                                    },
+                                    "validateInput": {
+                                        "description": "validateInput indicates if input should be validated",
+                                        "type": "boolean"
+                                    },
+                                    "validationMessage": {
+                                        "description": "validationMessage is shown when validation fails",
+                                        "type": "string"
+                                    },
+                                    "variableName": {
+                                        "description": "variableName is the identifier for storing the response",
+                                        "type": "string"
+                                    },
+                                    "verify": {
+                                        "description": "verify is a condition to verify completion",
+                                        "type": "string"
+                                    },
+                                    "vmApp": {
+                                        "description": "vmApp is the app to launch in the VM",
+                                        "type": "string"
+                                    },
+                                    "vmScenario": {
+                                        "description": "vmScenario is the scenario to run in the VM",
+                                        "type": "string"
+                                    },
+                                    "vmTemplate": {
+                                        "description": "vmTemplate is the VM template to provision",
+                                        "type": "string"
+                                    },
+                                    "welcome": {
+                                        "$ref": "#/components/schemas/GrotGuideWelcome",
+                                        "description": "=== Grot-guide block fields ===\nwelcome is the entry screen of the decision tree"
+                                    },
+                                    "whenFalse": {
+                                        "description": "whenFalse contains blocks shown when conditions are false",
+                                        "items": {
+                                            "additionalProperties": {},
+                                            "type": "object"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "whenFalseSectionConfig": {
+                                        "$ref": "#/components/schemas/ConditionalSectionConfig",
+                                        "description": "whenFalseSectionConfig configures the false branch as a section"
+                                    },
+                                    "whenTrue": {
+                                        "description": "whenTrue contains blocks shown when conditions are true",
+                                        "items": {
+                                            "additionalProperties": {},
+                                            "type": "object"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "whenTrueSectionConfig": {
+                                        "$ref": "#/components/schemas/ConditionalSectionConfig",
+                                        "description": "whenTrueSectionConfig configures the true branch as a section"
+                                    },
+                                    "width": {
+                                        "description": "width is the display width in pixels",
+                                        "type": "number"
+                                    }
+                                },
+                                "required": [
+                                    "type"
+                                ],
+                                "type": "object"
+                            },
+                            "OperatorState": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "descriptiveState": {
+                                        "description": "descriptiveState is an optional more descriptive state field which has no requirements on format",
+                                        "type": "string"
+                                    },
+                                    "details": {
+                                        "additionalProperties": true,
+                                        "description": "details contains any extra information that is operator-specific",
+                                        "type": "object"
+                                    },
+                                    "lastEvaluation": {
+                                        "description": "lastEvaluation is the ResourceVersion last evaluated",
+                                        "type": "string"
+                                    },
+                                    "state": {
+                                        "description": "state describes the state of the lastEvaluation.\nIt is limited to three possible states for machine evaluation.",
+                                        "enum": [
+                                            "success",
+                                            "in_progress",
+                                            "failed"
+                                        ],
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "lastEvaluation",
+                                    "state"
+                                ],
+                                "type": "object"
+                            },
+                            "QuizChoice": {
+                                "additionalProperties": false,
+                                "description": "#QuizChoice defines a single choice in a quiz",
+                                "properties": {
+                                    "correct": {
+                                        "description": "correct indicates if this is a correct answer",
+                                        "type": "boolean"
+                                    },
+                                    "hint": {
+                                        "description": "hint provides feedback when this choice is selected",
+                                        "type": "string"
+                                    },
+                                    "id": {
+                                        "description": "id is the unique identifier for the choice",
+                                        "type": "string"
+                                    },
+                                    "pinned": {
+                                        "description": "pinned keeps this choice at its authored index when the quiz is shuffled",
+                                        "type": "boolean"
+                                    },
+                                    "text": {
+                                        "description": "text is the display text for the choice",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "id",
+                                    "text"
+                                ],
+                                "type": "object"
+                            },
+                            "Step": {
+                                "additionalProperties": false,
+                                "description": "#Step defines an individual step within multistep/guided blocks",
+                                "properties": {
+                                    "action": {
+                                        "description": "action is the type of interaction for this step\nValid values: \"highlight\", \"button\", \"formfill\", \"navigate\", \"hover\", \"noop\", \"popout\"",
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "description": "description provides additional context for the step",
+                                        "type": "string"
+                                    },
+                                    "formHint": {
+                                        "description": "formHint provides guidance for form fill actions",
+                                        "type": "string"
+                                    },
+                                    "id": {
+                                        "description": "id is a stable identifier for this step, used for cross-step references",
+                                        "type": "string"
+                                    },
+                                    "lazyRender": {
+                                        "description": "lazyRender indicates if the target element is lazily rendered",
+                                        "type": "boolean"
+                                    },
+                                    "reftarget": {
+                                        "description": "reftarget is the CSS selector or element reference (required for non-noop actions)",
+                                        "type": "string"
+                                    },
+                                    "requirements": {
+                                        "description": "requirements are conditions that must be met before this step is available",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "scrollContainer": {
+                                        "description": "scrollContainer is the selector for the scrollable container",
+                                        "type": "string"
+                                    },
+                                    "skippable": {
+                                        "description": "skippable indicates if the user can skip this step",
+                                        "type": "boolean"
+                                    },
+                                    "targetstate": {
+                                        "description": "targetstate is the desired end state for a toggle target. See the field of\nthe same name on #Block for the accepted values and why it is string-only.",
+                                        "type": "string"
+                                    },
+                                    "targetvalue": {
+                                        "description": "targetvalue is the expected value for form inputs, or the popout target\n(\"sidebar\" or \"floating\") for popout actions",
+                                        "type": "string"
+                                    },
+                                    "tooltip": {
+                                        "description": "tooltip is text shown in a tooltip",
+                                        "type": "string"
+                                    },
+                                    "validateInput": {
+                                        "description": "validateInput indicates if input should be validated against targetvalue",
+                                        "type": "boolean"
+                                    }
+                                },
+                                "required": [
+                                    "action"
+                                ],
+                                "type": "object"
+                            },
+                            "Track": {
+                                "additionalProperties": false,
+                                "description": "#Track is a named, independently-ordered guide sequence for a learning\npath — never a subset of milestones. See AGENTS.md's \"#Track naming and scope\".",
+                                "properties": {
+                                    "description": {
+                                        "description": "description is a short human-readable summary shown in listings.",
+                                        "type": "string"
+                                    },
+                                    "guides": {
+                                        "description": "guides is this track's own ordered list of member package IDs, same\nshape as milestones. Non-empty per the RFC but unenforced here — see\nAGENTS.md.",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "label": {
+                                        "description": "label is the human-facing name for this track.",
+                                        "type": "string"
+                                    },
+                                    "trackId": {
+                                        "description": "trackId identifies this track within its manifest's tracks list.",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "trackId",
+                                    "label",
+                                    "guides"
+                                ],
+                                "type": "object"
+                            },
+                            "spec": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "blocks": {
+                                        "description": "blocks is the array of content blocks that make up the guide",
+                                        "items": {
+                                            "$ref": "#/components/schemas/Block"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "id": {
+                                        "description": "id is the unique identifier for the guide",
+                                        "type": "string"
+                                    },
+                                    "manifest": {
+                                        "$ref": "#/components/schemas/Manifest",
+                                        "description": "manifest carries package-repository metadata (grouping, sequencing,\ndependencies) so this guide can participate as a package alongside\nbundled and CDN content. Absent for legacy content-only guides."
+                                    },
+                                    "schemaVersion": {
+                                        "description": "schemaVersion is the version of the guide schema format",
+                                        "type": "string"
+                                    },
+                                    "status": {
+                                        "description": "status is the publication status of the guide\nValid values: \"draft\", \"published\"",
+                                        "type": "string"
+                                    },
+                                    "title": {
+                                        "description": "title is the human-readable title of the guide",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "id",
+                                    "title",
+                                    "blocks"
+                                ],
+                                "type": "object"
+                            },
+                            "status": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "additionalFields": {
+                                        "additionalProperties": true,
+                                        "description": "additionalFields is reserved for future use",
+                                        "type": "object"
+                                    },
+                                    "operatorStates": {
+                                        "additionalProperties": {
+                                            "$ref": "#/components/schemas/OperatorState"
+                                        },
+                                        "description": "operatorStates is a map of operator ID to operator state evaluations.\nAny operator which consumes this kind SHOULD add its state evaluation information to this field.",
+                                        "type": "object"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        },
+                        "conversion": false
+                    },
+                    {
+                        "kind": "CompletionRecord",
+                        "plural": "CompletionRecords",
+                        "resource": "completionrecords",
+                        "scope": "Namespaced",
+                        "userReadable": false,
+                        "folderScoped": false,
+                        "schemas": {
+                            "CompletionRecord": {
+                                "properties": {
+                                    "spec": {
+                                        "$ref": "#/components/schemas/spec"
+                                    },
+                                    "status": {
+                                        "$ref": "#/components/schemas/status"
+                                    }
+                                },
+                                "required": [
+                                    "spec"
+                                ]
+                            },
+                            "OperatorState": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "descriptiveState": {
+                                        "description": "descriptiveState is an optional more descriptive state field which has no requirements on format",
+                                        "type": "string"
+                                    },
+                                    "details": {
+                                        "additionalProperties": true,
+                                        "description": "details contains any extra information that is operator-specific",
+                                        "type": "object"
+                                    },
+                                    "lastEvaluation": {
+                                        "description": "lastEvaluation is the ResourceVersion last evaluated",
+                                        "type": "string"
+                                    },
+                                    "state": {
+                                        "description": "state describes the state of the lastEvaluation.\nIt is limited to three possible states for machine evaluation.",
+                                        "enum": [
+                                            "success",
+                                            "in_progress",
+                                            "failed"
+                                        ],
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "lastEvaluation",
+                                    "state"
+                                ],
+                                "type": "object"
+                            },
+                            "spec": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "completedAt": {
+                                        "description": "completedAt is the ISO 8601 timestamp of WHEN THE USER COMPLETED the guide\n(client-supplied; preserved unchanged across offline/queued retries).\nOPTIONAL: absent while the guide is in progress. Set exactly once, when\ncompletionPercent reaches 100, and never cleared afterwards.",
+                                        "type": "string"
+                                    },
+                                    "completionPercent": {
+                                        "description": "completionPercent is the highest completion percentage (0-100) reached in\nthis attempt; 100 means the guide is complete. NOTE: the generator emits\nthis as uint64 in Go and drops the \u003e=0 minimum from the CRD JSON; the \u003c=100\nupper bound is preserved. Accepted codegen quirk — do not fight the generator.",
+                                        "maximum": 100,
+                                        "type": "integer"
+                                    },
+                                    "durationSeconds": {
+                                        "description": "durationSeconds is the time from first view to completion.",
+                                        "type": "integer"
+                                    },
+                                    "guideCategory": {
+                                        "description": "guideCategory is the category of the guide.\nValid values: \"interactive\", \"documentation\", \"learning-journey\".",
+                                        "enum": [
+                                            "interactive",
+                                            "documentation",
+                                            "learning-journey"
+                                        ],
+                                        "type": "string"
+                                    },
+                                    "guideId": {
+                                        "description": "guideId is the guide identifier WITHIN its source (not globally unique on\nits own; the durable guide identity is the pair (guideSource, guideId)).",
+                                        "type": "string"
+                                    },
+                                    "guideSource": {
+                                        "description": "guideSource is the provenance of the guide (= the resolving repository).\nv1 values: \"bundled\" | \"app-platform\" | \"remote-repo:\u003cname\u003e\". The durable\nguide identity is the pair (guideSource, guideId). Kept as a free-form\nstring so new sources need no schema bump. Distinct from `source` below:\nguideSource is WHERE the guide came from, `source` is HOW it was completed.",
+                                        "type": "string"
+                                    },
+                                    "guideTitle": {
+                                        "description": "guideTitle is the denormalized guide title, snapshotted at write time so\ndashboards remain readable years later even if the guide is renamed or\nremoved (RFC §6.10).",
+                                        "type": "string"
+                                    },
+                                    "orgId": {
+                                        "description": "orgId is the Grafana organization identifier the write originated from,\nmaking the per-record org context explicit rather than implicit (RFC §7.1).",
+                                        "type": "integer"
+                                    },
+                                    "pathId": {
+                                        "description": "pathId is the learning path ID (empty string if none).",
+                                        "type": "string"
+                                    },
+                                    "platform": {
+                                        "description": "platform is the platform where the guide was completed.\nValid values: \"oss\", \"cloud\".",
+                                        "enum": [
+                                            "oss",
+                                            "cloud"
+                                        ],
+                                        "type": "string"
+                                    },
+                                    "recordedAt": {
+                                        "description": "recordedAt is the ISO 8601 timestamp of WHEN THE LAST WRITE LANDED\n(authoritative), re-stamped on every write. Distinct from completedAt: a\nqueued retry that lands hours later still reports the true completion time\nin completedAt while recordedAt reflects when the record was last written\n(RFC §7.1).",
+                                        "type": "string"
+                                    },
+                                    "schemaVersion": {
+                                        "description": "schemaVersion is the CompletionRecord spec schema version (\u003e= 1). Separate\nfrom the CRD apiVersion so we can correct schema mistakes without an\nAPI-version bump (RFC §7.1).",
+                                        "minimum": 1,
+                                        "type": "integer"
+                                    },
+                                    "source": {
+                                        "description": "source is HOW the completion happened: \"objectives\" (earned by completing all\nobjectives), \"manual\" (marked complete by the user), or \"skipped\" (user used\nthe \"skip remaining\" affordance). Distinct from guideSource above, which is\nWHERE the guide came from (RFC §7.1, §6.11).",
+                                        "enum": [
+                                            "objectives",
+                                            "manual",
+                                            "skipped"
+                                        ],
+                                        "type": "string"
+                                    },
+                                    "stackNamespace": {
+                                        "description": "stackNamespace is the App Platform namespace (per-stack scope) the record was\nwritten into. The CRD is namespaced per-stack, but §7.1 requires that linkage\nexplicit on the record for future cross-stack analysis/export.",
+                                        "type": "string"
+                                    },
+                                    "userDisplayName": {
+                                        "description": "userDisplayName is the denormalized display name, snapshotted at write time\nso dashboards remain readable years later even after the user is renamed or\ndeleted (RFC §6.10).",
+                                        "type": "string"
+                                    },
+                                    "userId": {
+                                        "description": "userId is the stable, rename-safe user identifier the trusted writer derives\nfrom the Grafana ID token. Logins are mutable, so this is the durable join\nkey for \"everything this user did\" (RFC §7.1).",
+                                        "type": "string"
+                                    },
+                                    "userLogin": {
+                                        "description": "userLogin is the Grafana user login at the time of the write.",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "guideId",
+                                    "guideSource",
+                                    "guideTitle",
+                                    "pathId",
+                                    "source",
+                                    "durationSeconds",
+                                    "completionPercent",
+                                    "guideCategory",
+                                    "platform",
+                                    "userId",
+                                    "userLogin",
+                                    "userDisplayName",
+                                    "recordedAt",
+                                    "orgId",
+                                    "stackNamespace",
+                                    "schemaVersion"
+                                ],
+                                "type": "object"
+                            },
+                            "status": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "additionalFields": {
+                                        "additionalProperties": true,
+                                        "description": "additionalFields is reserved for future use",
+                                        "type": "object"
+                                    },
+                                    "operatorStates": {
+                                        "additionalProperties": {
+                                            "$ref": "#/components/schemas/OperatorState"
+                                        },
+                                        "description": "operatorStates is a map of operator ID to operator state evaluations.\nAny operator which consumes this kind SHOULD add its state evaluation information to this field.",
+                                        "type": "object"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        },
+                        "conversion": false
+                    },
+                    {
+                        "kind": "PathfinderSettings",
+                        "plural": "PathfinderSettings",
+                        "resource": "pathfindersettings",
+                        "scope": "Namespaced",
+                        "userReadable": false,
+                        "folderScoped": false,
+                        "schemas": {
+                            "OperatorState": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "descriptiveState": {
+                                        "description": "descriptiveState is an optional more descriptive state field which has no requirements on format",
+                                        "type": "string"
+                                    },
+                                    "details": {
+                                        "additionalProperties": true,
+                                        "description": "details contains any extra information that is operator-specific",
+                                        "type": "object"
+                                    },
+                                    "lastEvaluation": {
+                                        "description": "lastEvaluation is the ResourceVersion last evaluated",
+                                        "type": "string"
+                                    },
+                                    "state": {
+                                        "description": "state describes the state of the lastEvaluation.\nIt is limited to three possible states for machine evaluation.",
+                                        "enum": [
+                                            "success",
+                                            "in_progress",
+                                            "failed"
+                                        ],
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "lastEvaluation",
+                                    "state"
+                                ],
+                                "type": "object"
+                            },
+                            "PathfinderSettings": {
+                                "properties": {
+                                    "spec": {
+                                        "$ref": "#/components/schemas/spec"
+                                    },
+                                    "status": {
+                                        "$ref": "#/components/schemas/status"
+                                    }
+                                },
+                                "required": [
+                                    "spec"
+                                ]
+                            },
+                            "spec": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "acceptedTermsAndConditions": {
+                                        "description": "acceptedTermsAndConditions records acceptance or refusal of the\nrecommender terms. Absence uses the platform-specific client default.",
+                                        "type": "boolean"
+                                    },
+                                    "devModeEnabled": {
+                                        "description": "devModeEnabled is the instance-level gate for developer surfaces. A user\nsees dev features only when this is true AND that user has opted in via\ntheir browser-local, user-scoped storage. Replaces the old jsonData pair\n(`devMode` + `devModeUserIds`); the per-user half moved out of this\ntenant-scoped resource entirely.",
+                                        "type": "boolean"
+                                    },
+                                    "disableAutoCollapse": {
+                                        "description": "disableAutoCollapse stops sections collapsing as they complete.",
+                                        "type": "boolean"
+                                    },
+                                    "enableAiAutoHeal": {
+                                        "description": "enableAiAutoHeal allows the AI write path to repair guides:\nthis writes on the user's behalf and requires explicit admin opt-in.",
+                                        "type": "boolean"
+                                    },
+                                    "enableAssistantDevMode": {
+                                        "description": "enableAssistantDevMode mocks Grafana Assistant availability so the\nintegration can be exercised on OSS. Only meaningful when devModeEnabled\nis true and the viewing user has opted in.",
+                                        "type": "boolean"
+                                    },
+                                    "enableAutoDetection": {
+                                        "description": "enableAutoDetection turns on automatic detection of interactive elements.",
+                                        "type": "boolean"
+                                    },
+                                    "enableCodaTerminal": {
+                                        "description": "enableCodaTerminal shows the Coda terminal UI. The VM backend and its\ncredentials live in the separate grafana-coda-app plugin, which owns its\nown settings.",
+                                        "type": "boolean"
+                                    },
+                                    "enableKioskMode": {
+                                        "description": "enableKioskMode enables the kiosk guide-catalogue presentation surface.",
+                                        "type": "boolean"
+                                    },
+                                    "enableLiveSessions": {
+                                        "description": "enableLiveSessions controls collaborative sessions.",
+                                        "type": "boolean"
+                                    },
+                                    "enableTwoTabController": {
+                                        "description": "enableTwoTabController enables the live-tab executor, which drives the\nuser's authenticated Grafana DOM and requires explicit admin opt-in.",
+                                        "type": "boolean"
+                                    },
+                                    "guidedStepTimeout": {
+                                        "description": "guidedStepTimeout is the per-step budget in milliseconds.",
+                                        "maximum": 600000,
+                                        "minimum": 1000,
+                                        "type": "integer"
+                                    },
+                                    "interceptGlobalDocsLinks": {
+                                        "description": "interceptGlobalDocsLinks routes Grafana docs links into the panel.\nExperimental opt-in.",
+                                        "type": "boolean"
+                                    },
+                                    "kioskRulesUrl": {
+                                        "description": "kioskRulesUrl is an optional rules document for kiosk mode. Empty string\nmeans \"none\".",
+                                        "type": "string"
+                                    },
+                                    "openPanelOnLaunch": {
+                                        "description": "openPanelOnLaunch opens the docs panel on page load. Experimental opt-in;\nmay be overridden by a feature toggle.",
+                                        "type": "boolean"
+                                    },
+                                    "pathfinderEnabled": {
+                                        "description": "pathfinderEnabled is the org opt-out; absence enables Pathfinder unless the remote kill switch is off.",
+                                        "type": "boolean"
+                                    },
+                                    "peerjsHost": {
+                                        "description": "peerjsHost is the PeerJS signalling host used by live sessions.",
+                                        "type": "string"
+                                    },
+                                    "peerjsKey": {
+                                        "description": "peerjsKey is the PeerJS application key. Not a secret: PeerJS keys scope a\nsignalling namespace, they do not authenticate. Anything genuinely secret\nbelongs in secureJsonData, which this kind deliberately does not hold.",
+                                        "type": "string"
+                                    },
+                                    "peerjsPort": {
+                                        "description": "peerjsPort is the PeerJS signalling port. The exclusive upper bound\npreserves the limit in generated OpenAPI; see AGENTS.md codegen notes.",
+                                        "exclusiveMaximum": true,
+                                        "maximum": 65536,
+                                        "minimum": 1,
+                                        "type": "integer"
+                                    },
+                                    "peerjsSecure": {
+                                        "description": "peerjsSecure selects wss/https for the signalling connection.",
+                                        "type": "boolean"
+                                    },
+                                    "recommenderServiceUrl": {
+                                        "description": "recommenderServiceUrl is the recommender API base URL. The client still\nvalidates this against ALLOWED_RECOMMENDER_DOMAINS before use — an\narbitrary string here must not become an arbitrary fetch target.",
+                                        "type": "string"
+                                    },
+                                    "requirementsCheckTimeout": {
+                                        "description": "requirementsCheckTimeout is the per-requirement check budget in\nmilliseconds. Bounded to keep a bad value from hanging a guide.",
+                                        "maximum": 60000,
+                                        "minimum": 100,
+                                        "type": "integer"
+                                    },
+                                    "schemaVersion": {
+                                        "default": 1,
+                                        "description": "schemaVersion labels the spec format, separate from the CRD apiVersion.\nDefault 1 accepts sparse third-party creates that omit the version;\nit does not prove the writer understood v1. No reader branches on it\ntoday. Clients preserve it on updates; future migrations must not\nuse this default as evidence of explicit client version support.",
+                                        "minimum": 1,
+                                        "type": "integer"
+                                    },
+                                    "termsVersion": {
+                                        "description": "termsVersion is the terms version that was accepted, so a new version can\nre-prompt.",
+                                        "type": "string"
+                                    },
+                                    "tutorialUrl": {
+                                        "description": "tutorialUrl is an optional override for the bundled tutorial index.\nEmpty string means \"use the built-in default\".",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "schemaVersion"
+                                ],
+                                "type": "object"
+                            },
+                            "status": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "additionalFields": {
+                                        "additionalProperties": true,
+                                        "description": "additionalFields is reserved for future use",
+                                        "type": "object"
+                                    },
+                                    "operatorStates": {
+                                        "additionalProperties": {
+                                            "$ref": "#/components/schemas/OperatorState"
+                                        },
+                                        "description": "operatorStates is a map of operator ID to operator state evaluations.\nAny operator which consumes this kind SHOULD add its state evaluation information to this field.",
+                                        "type": "object"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        },
+                        "conversion": false
+                    },
+                    {
+                        "kind": "Assignment",
+                        "plural": "Assignments",
+                        "resource": "assignments",
+                        "scope": "Namespaced",
+                        "userReadable": false,
+                        "folderScoped": false,
+                        "schemas": {
+                            "Assignment": {
+                                "properties": {
+                                    "spec": {
+                                        "$ref": "#/components/schemas/spec"
+                                    },
+                                    "status": {
+                                        "$ref": "#/components/schemas/status"
+                                    }
+                                },
+                                "required": [
+                                    "spec"
+                                ]
+                            },
+                            "OperatorState": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "descriptiveState": {
+                                        "description": "descriptiveState is an optional more descriptive state field which has no requirements on format",
+                                        "type": "string"
+                                    },
+                                    "details": {
+                                        "additionalProperties": true,
+                                        "description": "details contains any extra information that is operator-specific",
+                                        "type": "object"
+                                    },
+                                    "lastEvaluation": {
+                                        "description": "lastEvaluation is the ResourceVersion last evaluated",
+                                        "type": "string"
+                                    },
+                                    "state": {
+                                        "description": "state describes the state of the lastEvaluation.\nIt is limited to three possible states for machine evaluation.",
+                                        "enum": [
+                                            "success",
+                                            "in_progress",
+                                            "failed"
+                                        ],
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "lastEvaluation",
+                                    "state"
+                                ],
+                                "type": "object"
+                            },
+                            "spec": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "acceptCompletionsFrom": {
+                                        "description": "acceptCompletionsFrom is the earliest completion that counts\ntoward this obligation. Absent credits any prior completion.",
+                                        "type": "string"
+                                    },
+                                    "assignedAt": {
+                                        "description": "assignedAt is the ISO 8601 timestamp of when this obligation was\nincurred. Written once, never modified.",
+                                        "type": "string"
+                                    },
+                                    "assignedBy": {
+                                        "description": "assignedBy is the assigning authority — which Learning Admin, or\nthe group acting as one. Free-form; no identifier format is\nprescribed. Absent is allowed.",
+                                        "type": "string"
+                                    },
+                                    "dueAt": {
+                                        "description": "dueAt is when completions after this are late. Soft by definition:\nan overdue obligation is displayed as overdue and never locked\nout. Absent means no deadline.",
+                                        "type": "string"
+                                    },
+                                    "lifecycle": {
+                                        "description": "lifecycle is \"active\" or \"withdrawn\" — the only part of an\nobligation that ever changes. Records are never deleted.",
+                                        "enum": [
+                                            "active",
+                                            "withdrawn"
+                                        ],
+                                        "type": "string"
+                                    },
+                                    "ruleId": {
+                                        "description": "ruleId is the authored assignment rule's stable slug, stamped into\nevery record. It is the addressing key for withdrawal.",
+                                        "type": "string"
+                                    },
+                                    "ruleRevision": {
+                                        "description": "ruleRevision is the specific rule revision that produced this\nrecord, so an obligation is auditable back to a decision.\nFree-form (a git SHA, a generation, a tag). Absent if the\nwriter has none.",
+                                        "type": "string"
+                                    },
+                                    "schemaVersion": {
+                                        "description": "schemaVersion is the Assignment spec schema version (\u003e= 1).\nSeparate from the CRD apiVersion so a schema mistake can be\ncorrected without an API-version bump.",
+                                        "minimum": 1,
+                                        "type": "integer"
+                                    },
+                                    "targetId": {
+                                        "description": "targetId is the assigned thing within targetType's namespace.\nFor targetType \"path\" this is the learning path id.",
+                                        "type": "string"
+                                    },
+                                    "targetSource": {
+                                        "description": "targetSource is the provenance of targetId when that identity is\na pair, matching CompletionRecord's (guideSource, guideId).\nAbsent for paths, which have no source in that sense.",
+                                        "type": "string"
+                                    },
+                                    "targetType": {
+                                        "description": "targetType discriminates the namespace targetId lives in:\n\"github-visualize\" can be both a path and a guide. Adding a\nvalue later is an enum expansion, so existing rows stay valid.\nNever default it — absent-means-path would collide with a mixed\npopulation, and a single-value CUE constraint emits no enum.",
+                                        "enum": [
+                                            "path",
+                                            "guide"
+                                        ],
+                                        "type": "string"
+                                    },
+                                    "trackId": {
+                                        "description": "trackId qualifies a path target to a specific named track.\nAbsent means the whole path. Meaningless for a non-path\ntargetType; leave it absent.",
+                                        "type": "string"
+                                    },
+                                    "userId": {
+                                        "description": "userId is the assigned person, in the stack's canonical subject\nvocabulary: the typed ID-token subject (such as \"user:27\"), the\nsame one CompletionRecord uses so obligation and fulfilment join\nwithout an identity bridge. Logins are mutable; this is not.",
+                                        "type": "string"
+                                    },
+                                    "withdrawnAt": {
+                                        "description": "withdrawnAt is the ISO 8601 timestamp of the active → withdrawn\ntransition. Absent when lifecycle is active. A nested\n{state, at} object would prevent either field becoming a\nmetadata.label.",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "userId",
+                                    "targetType",
+                                    "targetId",
+                                    "ruleId",
+                                    "assignedAt",
+                                    "lifecycle",
+                                    "schemaVersion"
+                                ],
+                                "type": "object"
+                            },
+                            "status": {
+                                "additionalProperties": false,
+                                "properties": {
+                                    "additionalFields": {
+                                        "additionalProperties": true,
+                                        "description": "additionalFields is reserved for future use",
+                                        "type": "object"
+                                    },
+                                    "operatorStates": {
+                                        "additionalProperties": {
+                                            "$ref": "#/components/schemas/OperatorState"
+                                        },
+                                        "description": "operatorStates is a map of operator ID to operator state evaluations.\nAny operator which consumes this kind SHOULD add its state evaluation information to this field.",
+                                        "type": "object"
+                                    },
+                                    "satisfied": {
+                                        "description": "satisfied caches the evaluation of this obligation's criteria\nagainst the subject's completions, for consumers that cannot\njoin against CompletionRecord. Absent means not yet evaluated,\nwhich is distinct from false (evaluated and unmet).",
+                                        "type": "boolean"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        },
+                        "conversion": false
+                    }
+                ]
+            }
+        ],
+        "preferredVersion": "v1alpha1",
+        "roles": {
+            "pathfinder-backend:assignment-reader": {
+                "title": "Pathfinder Assignment Reader",
+                "description": "Read assignments",
+                "kinds": [
+                    {
+                        "kind": "Assignment",
+                        "permissionSet": "viewer"
+                    }
+                ]
+            },
+            "pathfinder-backend:assignment-writer": {
+                "title": "Pathfinder Assignment Writer",
+                "description": "Create and update assignments",
+                "kinds": [
+                    {
+                        "kind": "Assignment",
+                        "permissionSet": "editor"
+                    }
+                ]
+            },
+            "pathfinder-backend:completion-writer": {
+                "title": "Pathfinder Completion Writer",
+                "description": "Record guide completions",
+                "kinds": [
+                    {
+                        "kind": "CompletionRecord",
+                        "permissionSet": "editor"
+                    }
+                ]
+            },
+            "pathfinder-backend:guide-editor": {
+                "title": "Pathfinder Guide Editor",
+                "description": "Author interactive guides",
+                "kinds": [
+                    {
+                        "kind": "InteractiveGuide",
+                        "permissionSet": "editor"
+                    }
+                ]
+            },
+            "pathfinder-backend:reader": {
+                "title": "Pathfinder Reader",
+                "description": "Read interactive guides",
+                "kinds": [
+                    {
+                        "kind": "InteractiveGuide",
+                        "permissionSet": "viewer"
+                    }
+                ]
+            },
+            "pathfinder-backend:settings-editor": {
+                "title": "Pathfinder Settings Editor",
+                "description": "Change Interactive learning configuration",
+                "kinds": [
+                    {
+                        "kind": "PathfinderSettings",
+                        "permissionSet": "editor"
+                    }
+                ]
+            },
+            "pathfinder-backend:settings-reader": {
+                "title": "Pathfinder Settings Reader",
+                "description": "Read Interactive learning configuration",
+                "kinds": [
+                    {
+                        "kind": "PathfinderSettings",
+                        "permissionSet": "viewer"
+                    }
+                ]
+            }
+        },
+        "roleBindings": {
+            "viewer": [
+                "pathfinder-backend:reader",
+                "pathfinder-backend:completion-writer",
+                "pathfinder-backend:settings-reader",
+                "pathfinder-backend:assignment-writer"
+            ],
+            "editor": [
+                "pathfinder-backend:guide-editor"
+            ],
+            "admin": [
+                "pathfinder-backend:settings-editor"
+            ]
+        }
+    }
+}
