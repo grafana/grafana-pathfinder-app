@@ -19,6 +19,10 @@ on:
         description: Also roll out the SDK backend for this dev branch publish
         default: false
         type: boolean
+      sdk-only-version:
+        description: Dev SDK only. Enter an existing dev catalog version to skip the frontend publish.
+        type: string
+        required: false
       docs-only:
         description: Only publish docs, do not publish the plugin
         default: false
@@ -36,6 +40,7 @@ env:
 jobs:
   cd:
     name: CD
+    if: ${{ inputs.sdk-only-version == '' }}
     uses: grafana/plugin-ci-workflows/.github/workflows/cd.yml@ci-cd-workflows/v12.1.1
     permissions:
       contents: write
@@ -63,12 +68,34 @@ jobs:
   update-plugin-version:
     name: Update grafana-pathfinder-app in deployment_tools
     needs: cd
-    if: ${{ github.event.inputs.environment == 'dev' && (github.event.inputs.branch == 'main' || inputs.deploy-sdk-to-dev == true) && !fromJSON(github.event.inputs.docs-only) }}
+    if: >-
+      ${{ !cancelled() && (
+        (inputs.sdk-only-version != '' && needs.cd.result == 'skipped') ||
+        (needs.cd.result == 'success' && inputs.environment == 'dev' && !inputs.docs-only &&
+          (inputs.branch == 'main' || inputs.deploy-sdk-to-dev))
+      ) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
+      - name: Validate the SDK deployment
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          DOCS_ONLY: ${{ inputs.docs-only }}
+          PLUGIN_VERSION: ${{ inputs.sdk-only-version || fromJSON(needs.cd.outputs.plugin).version }}
+        run: |
+          if [[ "$ENVIRONMENT" != dev || "$DOCS_ONLY" == true ]]; then
+            echo "::error::SDK deployment requires environment=dev and docs-only=false."
+            exit 1
+          fi
+          version_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if ! [[ "$PLUGIN_VERSION" =~ $version_pattern ]]; then
+            echo "::error::Enter an exact plugin version such as 2.29.0 or 2.29.0+<commit>."
+            exit 1
+          fi
+
       - name: Trigger the deployment_tools workflow
         uses: grafana/shared-workflows/actions/trigger-argo-workflow@b513eb1dfd9becfa671a41e55063cdd5c0a08031 # trigger-argo-workflow/v1.2.2
         with:
@@ -76,5 +103,5 @@ jobs:
           namespace: appplugins-cd
           workflow_template: grafana-pathfinder-app
           parameters: |
-            dockertag=${{ fromJSON(needs.cd.outputs.plugin).version }}
+            dockertag=${{ inputs.sdk-only-version || fromJSON(needs.cd.outputs.plugin).version }}
             prCommentContext= Triggered by ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.
