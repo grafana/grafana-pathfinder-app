@@ -212,7 +212,7 @@ function locateBlockPath(content: { blocks: JsonBlock[] }, target: JsonBlock): s
       if (block === target) {
         return here;
       }
-      if (block.type === 'section' || block.type === 'assistant') {
+      if (block.type === 'section' || block.type === 'assistant' || block.type === 'collapsible') {
         const arr = (block as unknown as { blocks?: JsonBlock[] }).blocks;
         if (Array.isArray(arr)) {
           stack.push({ blocks: arr, prefix: `${here}.blocks` });
@@ -232,7 +232,7 @@ function locateBlockPath(content: { blocks: JsonBlock[] }, target: JsonBlock): s
 }
 
 function countChildren(block: JsonBlock): number {
-  if (block.type === 'section' || block.type === 'assistant') {
+  if (block.type === 'section' || block.type === 'assistant' || block.type === 'collapsible') {
     return ((block as unknown as { blocks?: unknown[] }).blocks ?? []).length;
   }
   if (block.type === 'conditional') {

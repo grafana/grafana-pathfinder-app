@@ -364,10 +364,15 @@ export function removeBlock(
       // Promote children into the parent array. Only "block-container" types
       // qualify — multistep/guided/quiz hold steps/choices, not blocks, so
       // promoting them into a JsonBlock[] would corrupt the schema.
-      if (block.type !== 'section' && block.type !== 'assistant' && block.type !== 'conditional') {
+      if (
+        block.type !== 'section' &&
+        block.type !== 'assistant' &&
+        block.type !== 'collapsible' &&
+        block.type !== 'conditional'
+      ) {
         throw new PackageIOError({
           code: 'INVALID_OPTIONS',
-          message: `--orphan-children only works on section, assistant, or conditional blocks (got "${block.type}"). Use --cascade to remove it and its children.`,
+          message: `--orphan-children only works on section, assistant, collapsible, or conditional blocks (got "${block.type}"). Use --cascade to remove it and its children.`,
         });
       }
       const children = collectChildBlocks(block);

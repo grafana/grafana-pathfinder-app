@@ -399,6 +399,28 @@ describe('runAddBlock', () => {
       expect(rejected).toMatchObject({ status: 'error', code: 'WRONG_PARENT_KIND' });
       expect(fs.readFileSync(contentPath, 'utf8')).toBe(before);
     });
+
+    it('inspect counts and locates the blocks inside a collapsible', async () => {
+      const dir = await withCollapsible();
+      await runAddBlock({ dir, type: 'markdown', id: 'note', parent: 'details', fields: { content: 'Hidden' } });
+      const summary = runInspect({ dir });
+      expect(summary).toMatchObject({
+        status: 'ok',
+        data: { containers: [{ id: 'details', type: 'collapsible', childCount: 1 }] },
+      });
+      expect(runInspect({ dir, block: 'note' })).toMatchObject({
+        status: 'ok',
+        data: { position: 'blocks[0].blocks[0]' },
+      });
+    });
+
+    it('unwraps a collapsible with remove-block --orphan-children', async () => {
+      const dir = await withCollapsible();
+      await runAddBlock({ dir, type: 'markdown', id: 'note', parent: 'details', fields: { content: 'Hidden' } });
+      const result = await runRemoveBlock({ dir, id: 'details', cascade: false, orphanChildren: true });
+      expect(result).toMatchObject({ status: 'ok', data: { childrenOrphaned: 1 } });
+      expect(readContent(dir).blocks).toMatchObject([{ type: 'markdown', id: 'note' }]);
+    });
   });
 
   describe('selector warnings (issue #3)', () => {
