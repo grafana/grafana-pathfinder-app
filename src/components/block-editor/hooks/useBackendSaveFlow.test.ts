@@ -537,6 +537,32 @@ describe('useBackendSaveFlow — after a failed restore read', () => {
     warnSpy.mockRestore();
   });
 
+  it("reads before a first guide's next save when its write held no resource and its re-read failed", async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const g = guide();
+    const current = makeGuideEntry('g1', 'Guide one');
+    current.metadata.resourceVersion = '5';
+    const backendGuides = makeBackendGuides([], { saveGuide: jest.fn().mockResolvedValue({}) });
+    (backendGuides.readGuide as jest.Mock)
+      .mockResolvedValueOnce(undefined) // name-collision check: nothing stored yet
+      .mockRejectedValueOnce(new Error('blip')) // the re-read after the first save
+      .mockResolvedValueOnce(current); // the read before the second save
+    const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => g }, backendGuides }));
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+    expect(result.current.currentGuideMetadata).not.toHaveProperty('resourceVersion');
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    // Version 5 can only come from the read before the second save.
+    const [, second] = (backendGuides.saveGuide as jest.Mock).mock.calls;
+    expect(second[2]).toMatchObject({ resourceVersion: '5' });
+    warnSpy.mockRestore();
+  });
+
   it('fails the save closed when that read fails too', async () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
     const errSpy = jest.spyOn(console, 'error').mockImplementation();

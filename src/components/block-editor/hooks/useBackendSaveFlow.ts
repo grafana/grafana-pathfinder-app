@@ -187,7 +187,8 @@ export function useBackendSaveFlow({
         return Promise.resolve();
       }
       // Until the re-read lands, and if it fails, the write's status stands and the old resourceVersion
-      // stays, so a save in between fails closed with a 409 rather than overwrite a concurrent write.
+      // stays, so a save in between fails closed with a 409. A first save has no old version, and an
+      // entry without one is read again before the next save (see orchestrateSave).
       setStoredGuide((prev) => {
         const kept =
           prev?.metadata.name === resourceName ? prev : { metadata: { name: resourceName }, spec: { title: '' } };
@@ -322,10 +323,11 @@ export function useBackendSaveFlow({
         }
 
         let tracked = currentGuideEntry;
-        if (isUpdate && !tracked) {
-          // The read that restored tracking failed or has not landed, so the status and version are unknown.
-          // Read now rather than write blind: a failed read fails the save, and a draft save must not
-          // unpublish a guide the editor did not know was published.
+        if (isUpdate && !tracked?.metadata.resourceVersion) {
+          // The version is unknown: the read that restored tracking failed or has not landed, or a first
+          // save's response held no resource and its re-read failed. Read now rather than write blind: a
+          // failed read fails the save, and a draft save must not unpublish a guide the editor did not
+          // know was published.
           tracked = await backendGuides.readGuide(resourceName);
           if (tracked) {
             adoptStored(resourceName, tracked);
