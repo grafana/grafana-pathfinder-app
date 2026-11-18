@@ -115,22 +115,23 @@ const AUTHORING_CONTEXT = {
   // (git-sync-guide, knowledge-graph-guide, alerting-101).
   guideShape: {
     decideFirst:
-      "Before writing blocks, decide what the guide is for — reference, teach, or walkthrough (`guideShape.kinds`). Infer it from the request and each kind's latches; a guide can mix kinds topic by topic. When latches conflict, ask: would the guide work unchanged for any reader on any Grafana stack? Then it is teach or reference; if it fits only one organization's tools or process, it is a walkthrough. General Grafana questions are almost always teach.",
+      "Before writing blocks, decide what the guide is for — reference, teach, or walkthrough (`guideShape.kinds`). Infer it from the request and each kind's latches; a guide can mix kinds topic by topic. When latches conflict, pick the strongest match.",
     skeleton: [
       'Title: a short title naming the purpose ("Price a Grafana Cloud deal", not "Guide to understanding pricing"). App Platform guides do not render it as a header, so blocks[0] — a top-level `markdown` block, outside any section — opens with a `#` heading: a very brief description of the guide ("Setting up Grafana", "Connecting Prometheus to Grafana", "Objection handling for Datadog"). Word it differently from the title: a heading that starts with the same words as the title fails validation.',
       'Preamble: the rest of that same blocks[0], under the heading — 1-4 sentences on what the guide covers, who it is for, and what the reader will know or have done by the end. Add a short "Before you begin" list only when there are real prerequisites.',
-      'Body, in the order the reader works through it: a `section` for each procedure, titled with what it gets done and opened with a brief, informative `markdown` lead-in, and informational content as top-level `markdown` under `##` headings (when to use a section: see `formatting`).',
+      'Body: the content of the guide. This is where you build the guide based off the kind chosen in `guideShape.decideFirst`. You will use blocks to describe, explain, and guide the reader through the topic, adhering to the formatting rules in `guideShape.formatting`.',
       'Close: a top-level `markdown` block at the end of the guide summarizing what the reader now knows or has done, with next steps, links, or sources where useful.',
     ],
     formatting: [
       'Style content with `markdown`, `section`, `callout`, and `divider` blocks and, inside `markdown`, break up long prose with `##`/`###` headings, lists, tables, block quotes, and **bold** lead-ins. Never write `html` blocks or HTML with CSS classes to style content.',
-      'Keep sentences punchy and direct — "Click **Save**" beats "The save button can be clicked." This is about phrasing, not length.',
+      'Keep sentences punchy and direct — "Click **Save**" beats "The save button can be clicked."',
       'Cover the topic as deeply as the request asks. A request for detail on a large concept gets a long guide: more `##` topics, each fully explained, not a summary. Length comes from more topics, never from longer paragraphs.',
       'Pick the format the content already has: three or more parallel items (years, tiers, options) → a table; a statement meant to be quoted → a block quote; something the reader must not miss → a `callout`; a change of topic → a `divider`; code the reader reads or copies → a fenced code block inside `markdown`, with a language tag; a recap → a bulleted list.',
       'Keep it restrained: no more than about three plain paragraphs in a row, at most one callout per `##` topic, and at most one italic summary line under a heading.',
       'Never put two visual blocks (callouts, dividers, images, videos) back to back. Where two would touch, write a short `markdown` paragraph between them that moves the guide forward: link the two, sum up what the first one showed, or add the point the reader needs before the next. If nothing worth saying fits, merge or drop one of them rather than writing filler.',
       'Use a `section` only for a set of actionable items the reader completes — it gets a "Mark section as complete" button and completion tracking, which is what it is for. A section needs at least two steps directly inside it besides its lead-in; a single action is a top-level block, not a section. Explanations, definitions, and comparisons are top-level `markdown` under `##` headings, never a section. Never number section titles ("Create the dashboard", not "1. Create the dashboard" or "Step 1: Create the dashboard").',
       'Sections cannot contain other sections, directly or through a `conditional` or `assistant` block inside a section. Keep sections as siblings; a `conditional` inside a section is fine.',
+      'Tables should show a single concept per column. Do not create multiple columns for the same concept.',
     ],
     kinds: {
       reference:
