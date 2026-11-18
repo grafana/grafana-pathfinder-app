@@ -563,7 +563,7 @@ describe('MyLearningTab launch flow', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
     const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
-    expect(card).toHaveTextContent('1 of 2 modules');
+    expect(card).toHaveTextContent('2 modules');
     // guide-1 is locally done but not credited; Continue must warn before resetting it.
     fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-new')));
     expect(prepareMock).not.toHaveBeenCalled();
@@ -686,7 +686,7 @@ describe('MyLearningTab launch flow', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
     const card = screen.getByTestId(testIds.learningPaths.card('path-track'));
-    expect(card).toHaveTextContent('1 of 2 modules');
+    expect(card).toHaveTextContent('2 modules');
     expect(card.querySelector('.expandable')).toHaveTextContent('Track Ops engineers');
 
     fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-track')));
@@ -731,7 +731,7 @@ describe('MyLearningTab launch flow', () => {
     expect(header).toHaveTextContent('Assigned');
     expect(header).toHaveTextContent(/\d+ days/);
     expect(header).not.toHaveTextContent('left');
-    expect(header).toHaveTextContent('0 of 1 module');
+    expect(header).toHaveTextContent('1 module');
     expect(header).not.toHaveTextContent('min');
     expect(header).not.toHaveTextContent('Assigned by');
     expect(details).toHaveTextContent('Assigned by');

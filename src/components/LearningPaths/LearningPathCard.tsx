@@ -132,15 +132,10 @@ export function LearningPathCard({
   const moduleIds = assignedTrack?.guides ?? (defaultModuleIds.length ? defaultModuleIds : (tracks[0]?.guides ?? []));
   const availableModuleIds = path.isPrivate ? moduleIds.filter((id) => path.guides.includes(id)) : moduleIds;
   const moduleCount = assignmentGuides?.length || (moduleIds.length ? availableModuleIds.length : guides.length);
-  const completedCount = assignmentGuides?.length
-    ? assignmentGuides.filter((guide) => guide.completed).length
-    : effectiveGuides.filter((guide) => guide.completed && (!moduleIds.length || availableModuleIds.includes(guide.id)))
-        .length;
-  const moduleProgress = t('learningCard.moduleProgress', '{{completed}} of {{modules}}', {
-    completed: completedCount,
-    modules: moduleCountText(moduleCount),
-  });
-  const loadingModules = t('learningCard.loadingModules', 'Loading modules…');
+  const moduleLabel =
+    isLoadingGuides && !moduleCount
+      ? t('learningCard.loadingModules', 'Loading modules…')
+      : moduleCountText(moduleCount);
   const imageDuration =
     tile &&
     typeof path.estimatedMinutes === 'number' &&
@@ -249,7 +244,7 @@ export function LearningPathCard({
           {!tile && (
             <div className={styles.meta}>
               {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
-              <span>{isLoadingGuides && !moduleCount ? loadingModules : moduleProgress}</span>
+              <span>{moduleLabel}</span>
             </div>
           )}
         </div>
@@ -275,11 +270,7 @@ export function LearningPathCard({
                     <span>{t('learningCard.path', 'Learning path')}</span>
                   )}
                   <span aria-hidden="true">·</span>
-                  {isLoadingGuides && !moduleCount
-                    ? loadingModules
-                    : presentation === 'resume' || presentation === 'compact'
-                      ? moduleCountText(moduleCount)
-                      : moduleProgress}
+                  {moduleLabel}
                 </span>
                 {presentation !== 'compact' &&
                   !imageDuration &&
