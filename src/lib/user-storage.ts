@@ -48,6 +48,7 @@ import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { isPrTestUrl } from './pr-test-marker';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
+import { LEGACY_RESTORE_KEYS } from './storage/legacy-mirror-policy';
 import { collectKeysByPrefix, isKeyUnderPrefix } from './storage/key-utils';
 import {
   listProgressEntries,
@@ -612,15 +613,7 @@ export async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage)
   hasSynced = true;
 
   try {
-    const keysToSync = [
-      StorageKeys.JOURNEY_COMPLETION,
-      StorageKeys.TABS,
-      StorageKeys.ACTIVE_TAB,
-      StorageKeys.LEARNING_PROGRESS,
-      StorageKeys.GUIDE_RESPONSES,
-    ];
-
-    for (const key of keysToSync) {
+    for (const key of LEGACY_RESTORE_KEYS) {
       try {
         // Read from Grafana storage (with automatic migration of old format)
         const grafana = await readGrafanaKeyWithMigration(grafanaStorage, key);

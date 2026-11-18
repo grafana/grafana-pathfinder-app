@@ -80,6 +80,12 @@ describe('url-validation', () => {
       ).toBe('https://grafana.com/docs/learning-paths/linux-server-integration/select-platform');
     });
 
+    it('removes a localized content.ja.json suffix', () => {
+      expect(cleanDocsUrl('https://grafana.com/docs/learning-paths/linux/select-platform/content.ja.json')).toBe(
+        'https://grafana.com/docs/learning-paths/linux/select-platform'
+      );
+    });
+
     it('does not remove /content.json when not at end', () => {
       expect(cleanDocsUrl('https://grafana.com/docs/content.json/page')).toBe(
         'https://grafana.com/docs/content.json/page'

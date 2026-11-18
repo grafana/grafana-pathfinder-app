@@ -1,3 +1,4 @@
+import { parseContentFileUrl, stripContentFile } from './guide-content-file';
 import tutorials from '../constants/bundled-tutorials.json';
 
 const ids = new Set(tutorials.map(({ id }) => id));
@@ -8,7 +9,7 @@ export function isBundledTutorial(id: string): boolean {
 
 export function bundledTutorialContentKey(value: string): string {
   if (value.startsWith('bundled:')) {
-    const id = value.slice('bundled:'.length).replace(/\/content\.json$/, '');
+    const id = stripContentFile(value.slice('bundled:'.length));
     return ids.has(id) ? `bundled:${id}` : value;
   }
   try {
@@ -16,7 +17,8 @@ export function bundledTutorialContentKey(value: string): string {
     if (url.origin !== 'https://interactive-learning.grafana.net' || url.search || url.hash) {
       return value;
     }
-    const match = /^\/packages\/([^/]+)\/(?:content\.json)?$/.exec(url.pathname);
+    const contentFile = parseContentFileUrl(url.pathname);
+    const match = /^\/packages\/([^/]+)\/$/.exec(contentFile ? `${contentFile.base}/` : url.pathname);
     return match && ids.has(match[1]!) ? `bundled:${match[1]}` : value;
   } catch {
     return value;

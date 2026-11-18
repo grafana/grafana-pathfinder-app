@@ -14,7 +14,8 @@ import { diagnoseGuideError, guideSource } from '../lib/guide-diagnostics';
  * openDocsPage because it handles packageInfo").
  *
  * Two URL shapes are recognized:
- * - `https://interactive-learning.grafana.{net,-dev.net}/packages/<id>/content.json`
+ * - `https://interactive-learning.grafana.{net,-dev.net}/packages/<id>/content.json`,
+ *   or a localized `content.<locale>.json` in the same package
  *   — the sibling `manifest.json` is fetched directly and parsed with the loose
  *   `ManifestJsonObjectSchema` (no cross-field refinement) so partially-spec
  *   manifests still yield enough metadata for routing.
@@ -28,13 +29,20 @@ import type { PackageOpenInfo } from '../types/content-panel.types';
 import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
 import { getPackageResolver } from './content-fetcher/package-resolver-registry';
+import { contentFileSiblingUrl, parseContentFileUrl } from '../lib/guide-content-file';
 
-const PACKAGE_CONTENT_URL_PATTERN = /\/packages\/([^/]+)\/content\.json(?:[?#].*)?$/;
+const PACKAGE_DIRECTORY_PATTERN = /\/packages\/[^/]+$/;
 const BACKEND_GUIDE_URL_PREFIX = 'backend-guide:';
+
+/** True for `.../packages/<id>/content.json` and its localized `content.<locale>.json`. */
+function isPackageContentFileUrl(url: string): boolean {
+  const ref = parseContentFileUrl(url);
+  return ref !== undefined && PACKAGE_DIRECTORY_PATTERN.test(ref.base);
+}
 
 /** True if the URL is shaped like an interactive-learning package content URL. */
 function isInteractiveLearningPackageUrl(url: string): boolean {
-  return isInteractiveLearningUrl(url) && PACKAGE_CONTENT_URL_PATTERN.test(url);
+  return isInteractiveLearningUrl(url) && isPackageContentFileUrl(url);
 }
 
 /** Extracts the bare package id from a `backend-guide:<id>` URL, or undefined if not that scheme. */
@@ -86,10 +94,7 @@ async function fetchAppPlatformPackageInfo(
 }
 
 function deriveManifestUrl(contentUrl: string): string | undefined {
-  if (!PACKAGE_CONTENT_URL_PATTERN.test(contentUrl)) {
-    return undefined;
-  }
-  return contentUrl.replace(/\/content\.json(?=([?#]|$))/, '/manifest.json');
+  return isPackageContentFileUrl(contentUrl) ? contentFileSiblingUrl(contentUrl, 'manifest.json') : undefined;
 }
 
 /**

@@ -108,6 +108,10 @@ describe('metadata-extract', () => {
       expect(findCurrentMilestoneFromUrl(`${JOURNEY_BASE}/second/unstyled.html`, milestones)).toBe(2);
     });
 
+    it('strips a localized content file to the same milestone', () => {
+      expect(findCurrentMilestoneFromUrl(`${JOURNEY_BASE}/second/content.ja.json`, milestones)).toBe(2);
+    });
+
     it('matches the legacy /milestone-N pattern when no milestone matches', () => {
       expect(findCurrentMilestoneFromUrl(`${JOURNEY_BASE}/milestone-7`, milestones)).toBe(7);
     });

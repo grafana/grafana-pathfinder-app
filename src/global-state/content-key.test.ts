@@ -20,6 +20,11 @@ describe('content-key', () => {
     expect(getContentKey()).toBe('https://example.com/guide-a');
   });
 
+  it('keys a localized content file on its canonical URL', () => {
+    setActiveTabUrl('https://interactive-learning.grafana.net/packages/guide-a/content.ja.json');
+    expect(getContentKey()).toBe('https://interactive-learning.grafana.net/packages/guide-a/content.json');
+  });
+
   it('falls back to the legacy window global when the typed setter has not been used', () => {
     (window as any).__DocsPluginActiveTabUrl = 'https://example.com/legacy';
     expect(getContentKey()).toBe('https://example.com/legacy');

@@ -153,6 +153,23 @@ describe('openPendingGuide', () => {
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
   });
 
+  it('hands off a localized content file under its canonical URL', () => {
+    const panel = makePanel();
+    const pending: PendingGuide = {
+      url: 'https://interactive-learning.grafana.net/packages/foo/content.ja.json',
+      title: 'Foo',
+      type: 'learning-journey',
+    };
+
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
+
+    expect(panel.openLearningJourney).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/foo/content.json',
+      'Foo',
+      { source: 'fullscreen_handoff' }
+    );
+  });
+
   it('forwards the caller-supplied source so analytics stays correct (handoff vs dock)', () => {
     const panel = makePanel();
     const pending: PendingGuide = { url: 'bundled:foo', title: 'Foo', type: 'docs' };
