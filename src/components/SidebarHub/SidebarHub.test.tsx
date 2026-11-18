@@ -404,18 +404,33 @@ describe('SidebarHub', () => {
       onOpenModule: jest.fn(),
     });
 
-    it('is a plain button labelled with the row action, without a tooltip', async () => {
+    it('is a plain button labelled with the row action', () => {
       renderHub({ guides: [guide('Featured guide'), guide('Second')] });
 
       const play = playIn(testIds.sidebarHub.row(0));
       expect(play.tagName).toBe('BUTTON');
       expect(play).toHaveAttribute('type', 'button');
       expect(play).toHaveAttribute('aria-label', 'Start: Second');
+    });
 
-      fireEvent.mouseEnter(play);
-      fireEvent.pointerEnter(play);
-      fireEvent.focus(play);
-      await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+    describe('with fake timers', () => {
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => jest.useRealTimers());
+
+      it('opens no tooltip once hover and focus have settled', () => {
+        renderHub({ guides: [guide('Featured guide'), guide('Second')] });
+
+        const play = playIn(testIds.sidebarHub.row(0));
+        act(() => {
+          fireEvent.pointerEnter(play);
+          fireEvent.mouseEnter(play);
+          fireEvent.mouseMove(play);
+          fireEvent.focus(play);
+          jest.advanceTimersByTime(1000);
+        });
+
+        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      });
     });
 
     it('keeps the 26 by 26 footprint without a trailing gap', () => {
@@ -452,7 +467,19 @@ describe('SidebarHub', () => {
       expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveAttribute('aria-expanded', String(expanded));
     });
 
-    it('leaves keyboard launch to the heading and never takes focus from the details toggle', async () => {
+    it('keeps the heading and details toggle as the only tab stops, in that order', () => {
+      renderHub({ guides: [guide('Featured guide'), guide('Second', { expansion: withDetails(false) })] });
+
+      const row = screen.getByTestId(testIds.sidebarHub.row(0));
+      expect(tabStops(row)).toEqual([
+        within(row).getByRole('button', { name: 'Start: Second' }),
+        screen.getByTestId(testIds.sidebarHub.rowToggle(0)),
+      ]);
+      expect(tabStops(row)).not.toContain(playIn(testIds.sidebarHub.row(0)));
+    });
+
+    // jsdom never turns Enter or Space into a click, so only native-activation preconditions are checkable here.
+    it.each(['Enter', ' '])('leaves %j on the heading and details toggle to native button activation', (key) => {
       const details = withDetails(false);
       const second = guide('Second', { expansion: details });
       renderHub({ guides: [guide('Featured guide'), second] });
@@ -461,31 +488,17 @@ describe('SidebarHub', () => {
       const heading = within(row).getByRole('button', { name: 'Start: Second' });
       const toggle = screen.getByTestId(testIds.sidebarHub.rowToggle(0));
       const play = playIn(testIds.sidebarHub.row(0));
-      expect(tabStops(row)).toEqual([heading, toggle]);
 
-      heading.focus();
-      expect(heading).toHaveFocus();
-      expect(heading.tagName).toBe('BUTTON');
-      await act(async () => {
-        fireEvent.keyDown(heading, { key: 'Enter' });
-        fireEvent.click(heading);
-      });
-      await act(async () => {
-        fireEvent.keyDown(heading, { key: ' ' });
-        fireEvent.click(heading);
-      });
-      expect(second.onLaunch).toHaveBeenCalledTimes(2);
-      expect(play).not.toHaveFocus();
-
-      toggle.focus();
-      expect(toggle).toHaveFocus();
-      fireEvent.keyDown(toggle, { key: 'Enter' });
-      fireEvent.click(toggle);
-      fireEvent.keyDown(toggle, { key: ' ' });
-      fireEvent.click(toggle);
-      expect(details.onToggle).toHaveBeenCalledTimes(2);
-      expect(second.onLaunch).toHaveBeenCalledTimes(2);
-      expect(play).not.toHaveFocus();
+      for (const control of [heading, toggle]) {
+        expect(control.tagName).toBe('BUTTON');
+        control.focus();
+        expect(control).toHaveFocus();
+        expect(fireEvent.keyDown(control, { key })).toBe(true);
+        expect(fireEvent.keyUp(control, { key })).toBe(true);
+        expect(play).not.toHaveFocus();
+      }
+      expect(second.onLaunch).not.toHaveBeenCalled();
+      expect(details.onToggle).not.toHaveBeenCalled();
     });
   });
 
