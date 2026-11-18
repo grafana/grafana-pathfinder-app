@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { testIds } from '../../constants/testIds';
 import type { HubResume, HubStats } from '../../learning-paths';
 import { SidebarHub } from './SidebarHub';
@@ -386,6 +386,107 @@ describe('SidebarHub', () => {
     expect(play).toHaveAttribute('aria-hidden', 'true');
     expect(play).toHaveAttribute('tabindex', '-1');
     expect(within(screen.getByTestId(testIds.sidebarHub.row(0))).getAllByRole('button')).toHaveLength(1);
+  });
+
+  describe('row play control', () => {
+    const playIn = (row: string) => screen.getByTestId(testIds.sidebarHub.rowPlay(row));
+    const tabStops = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll<HTMLElement>('button, a[href], [tabindex]')).filter(
+        (node) => node.tabIndex >= 0
+      );
+    const withDetails = (expanded: boolean): HubExpansion => ({
+      expanded,
+      hasDetails: true,
+      hasModules: false,
+      modules: [],
+      isResolving: false,
+      onToggle: jest.fn(),
+      onOpenModule: jest.fn(),
+    });
+
+    it('is a plain button labelled with the row action, without a tooltip', async () => {
+      renderHub({ guides: [guide('Featured guide'), guide('Second')] });
+
+      const play = playIn(testIds.sidebarHub.row(0));
+      expect(play.tagName).toBe('BUTTON');
+      expect(play).toHaveAttribute('type', 'button');
+      expect(play).toHaveAttribute('aria-label', 'Start: Second');
+
+      fireEvent.mouseEnter(play);
+      fireEvent.pointerEnter(play);
+      fireEvent.focus(play);
+      await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+    });
+
+    it('keeps the 26 by 26 footprint without a trailing gap', () => {
+      renderHub({ guides: [guide('Featured guide'), guide('Second')] });
+
+      expect(playIn(testIds.sidebarHub.row(0))).toHaveStyle({ width: '26px', height: '26px', marginRight: '0' });
+    });
+
+    it('launches on every settled click without reaching the row or anything above it', async () => {
+      const second = guide('Second');
+      const clickedAbove = jest.fn();
+      renderHub({ guides: [guide('Featured guide'), second] }, clickedAbove);
+
+      const play = playIn(testIds.sidebarHub.row(0));
+      await act(async () => fireEvent.click(play));
+      await act(async () => fireEvent.click(play));
+
+      expect(second.onLaunch).toHaveBeenCalledTimes(2);
+      expect(clickedAbove).toHaveBeenCalledTimes(0);
+    });
+
+    it.each([
+      ['collapsed', false],
+      ['expanded', true],
+    ])('launches a %s row once', async (_state, expanded) => {
+      const details = withDetails(expanded);
+      const second = guide('Second', { expansion: details });
+      renderHub({ guides: [guide('Featured guide'), second] });
+
+      await act(async () => fireEvent.click(playIn(testIds.sidebarHub.row(0))));
+
+      expect(second.onLaunch).toHaveBeenCalledTimes(1);
+      expect(details.onToggle).not.toHaveBeenCalled();
+      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveAttribute('aria-expanded', String(expanded));
+    });
+
+    it('leaves keyboard launch to the heading and never takes focus from the details toggle', async () => {
+      const details = withDetails(false);
+      const second = guide('Second', { expansion: details });
+      renderHub({ guides: [guide('Featured guide'), second] });
+
+      const row = screen.getByTestId(testIds.sidebarHub.row(0));
+      const heading = within(row).getByRole('button', { name: 'Start: Second' });
+      const toggle = screen.getByTestId(testIds.sidebarHub.rowToggle(0));
+      const play = playIn(testIds.sidebarHub.row(0));
+      expect(tabStops(row)).toEqual([heading, toggle]);
+
+      heading.focus();
+      expect(heading).toHaveFocus();
+      expect(heading.tagName).toBe('BUTTON');
+      await act(async () => {
+        fireEvent.keyDown(heading, { key: 'Enter' });
+        fireEvent.click(heading);
+      });
+      await act(async () => {
+        fireEvent.keyDown(heading, { key: ' ' });
+        fireEvent.click(heading);
+      });
+      expect(second.onLaunch).toHaveBeenCalledTimes(2);
+      expect(play).not.toHaveFocus();
+
+      toggle.focus();
+      expect(toggle).toHaveFocus();
+      fireEvent.keyDown(toggle, { key: 'Enter' });
+      fireEvent.click(toggle);
+      fireEvent.keyDown(toggle, { key: ' ' });
+      fireEvent.click(toggle);
+      expect(details.onToggle).toHaveBeenCalledTimes(2);
+      expect(second.onLaunch).toHaveBeenCalledTimes(2);
+      expect(play).not.toHaveFocus();
+    });
   });
 
   it('describes the resume card and resumes from its button', () => {
