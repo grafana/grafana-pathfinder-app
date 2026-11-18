@@ -14,7 +14,7 @@ import { ControlsLabel } from '@grafana/scenes';
 
 import { useLearningPageScroll, usePathfinderPluginConfig } from '../../hooks';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
-import { milestoneCountText } from '../LearningContentCard/learning-effort';
+import { catalogModuleCountText } from '../LearningContentCard/learning-effort';
 import {
   CATALOG_BATCH_SIZE,
   EMPTY_CATALOG_VIEW,
@@ -349,6 +349,9 @@ function PackageBrowserContent({
     }
   );
   const searchId = useId();
+  const loadedPathModuleCounts = new Map(
+    pathEntries.filter((entry) => entry.guides.length > 0).map((entry) => [entry.key, entry.guides.length])
+  );
 
   useLayoutEffect(() => {
     if (container.current) {
@@ -362,8 +365,8 @@ function PackageBrowserContent({
   }, [catalog.scope, view.focusKey]);
   const effort = (item: CatalogPackage) =>
     [
-      item.memberIds
-        ? milestoneCountText(item.memberIds.length)
+      item.format === 'path'
+        ? catalogModuleCountText(item, loadedPathModuleCounts.get(catalogIdentity(item)))
         : item.format === 'guide' && item.activityCount !== undefined
           ? t('packageBrowser.activities', '{{count}} activities', { count: item.activityCount })
           : null,
@@ -402,8 +405,8 @@ function PackageBrowserContent({
             : [...view.expandedKeys, item.key],
         })
       }
-      disclosureLabel={item.memberIds?.length ? t('learningCard.showModules', 'Show milestones') : undefined}
-      collapseLabel={item.memberIds?.length ? t('learningCard.hideModules', 'Hide milestones') : undefined}
+      disclosureLabel={item.memberIds?.length ? t('learningCard.showModules', 'Show modules') : undefined}
+      collapseLabel={item.memberIds?.length ? t('learningCard.hideModules', 'Hide modules') : undefined}
       details={
         item.memberIds?.length ? (
           <CatalogDetails

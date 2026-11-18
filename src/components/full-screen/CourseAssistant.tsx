@@ -42,13 +42,23 @@ export function CourseAssistant({ content, activeTab }: { content: RawContent; a
     return null;
   }
 
+  const isOverview = data.currentPage.isOverview;
   return (
     <OpenAssistantButton
       origin="grafana-pathfinder-app/course"
-      prompt=""
+      prompt={
+        isOverview
+          ? t('fullScreen.pathAssistantPrompt', 'What will I learn in this path?')
+          : t('fullScreen.moduleAssistantPrompt', 'What will I learn in this module?')
+      }
+      context={context}
       autoSend={false}
       size="sm"
-      title={t('fullScreen.askAssistant', 'Ask Assistant')}
+      title={
+        isOverview
+          ? t('fullScreen.askAboutPath', 'Ask about this path')
+          : t('fullScreen.askAboutModule', 'Ask about this module')
+      }
     />
   );
 }

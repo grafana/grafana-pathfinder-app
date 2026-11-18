@@ -1,7 +1,7 @@
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
 
-export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
+export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: boolean) => ({
   container: css({
     display: 'flex',
     flexDirection: 'column',
@@ -73,7 +73,8 @@ export const getFullScreenStyles = (theme: GrafanaTheme2) => ({
   // attribute is preserved at the inner wrapper, not the scroll container.
   contentWrap: css({
     width: '100%',
-    maxWidth: 1100,
+    maxWidth: isCourseOverview ? 1160 : 1100,
+    alignSelf: isCourseOverview ? 'flex-start' : undefined,
     padding: theme.spacing(3, 4),
   }),
   emptyState: css({

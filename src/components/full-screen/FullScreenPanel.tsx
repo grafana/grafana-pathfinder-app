@@ -562,6 +562,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     <FullScreenLayout
       title={title}
       showTitle={!isCoverPage && !courseOverviewUrl}
+      isCourseOverview={isCoverPage}
       stepProgress={stepProgress}
       guideUrl={guideUrl}
       guideType={guideType}

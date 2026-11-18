@@ -11,6 +11,7 @@ export interface FullScreenLayoutProps {
   /** Title of the active guide / editor */
   title: string;
   showTitle?: boolean;
+  isCourseOverview?: boolean;
   /** "n/m" step progress for guides; omitted otherwise */
   stepProgress?: string;
   /** Active guide URL — used for the workshop "copy link" button */
@@ -41,6 +42,7 @@ export interface FullScreenLayoutProps {
 export function FullScreenLayout({
   title,
   showTitle = true,
+  isCourseOverview = false,
   stepProgress,
   guideUrl,
   guideType,
@@ -52,7 +54,7 @@ export function FullScreenLayout({
   assistant,
   children,
 }: FullScreenLayoutProps) {
-  const styles = useStyles2(getFullScreenStyles);
+  const styles = useStyles2(getFullScreenStyles, isCourseOverview);
   const containerRef = useRef<HTMLDivElement>(null);
   const [availableHeight, setAvailableHeight] = useState<number>();
 

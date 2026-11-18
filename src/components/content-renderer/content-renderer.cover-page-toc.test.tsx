@@ -1,13 +1,30 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
+import type { LearningProgress } from '../../types/learning-paths.types';
 import { testIds } from '../../constants/testIds';
+import { StorageEvents } from '../../lib/event-names';
+import { learningProgressStorage } from '../../lib/user-storage';
 import { ContentRenderer } from './content-renderer';
 import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
 jest.mock('@grafana/i18n', () => ({
-  t: (_key: string, fallback: string) => fallback,
+  t: (_key: string, fallback: string, vars?: Record<string, unknown>) =>
+    vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key])) : fallback,
+}));
+
+jest.mock('@grafana/ui', () => ({
+  ...jest.requireActual('@grafana/ui'),
+  Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
+  TextLink: ({
+    children,
+    inline: _inline,
+    variant: _variant,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { inline?: boolean; variant?: string }) => (
+    <a {...props}>{children}</a>
+  ),
 }));
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo';
@@ -37,6 +54,107 @@ describe('ContentRenderer cover-page table of contents', () => {
     render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={makeContent()} />);
 
     expect(screen.getByTestId(testIds.learningPaths.tableOfContents)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'About this path' })).not.toBeInTheDocument();
+  });
+
+  it('introduces the authored body after the full-page module list', () => {
+    const content = makeContent({
+      content: '<div><h2 id="expect">What to expect</h2><p>Body</p><h3>More detail</h3></div>',
+    });
+    render(<ContentRenderer fullPageOverview completion={UNTRACKED_COMPLETION} content={content} />);
+
+    const toc = screen.getByTestId(testIds.learningPaths.tableOfContents);
+    expect(screen.getByRole('tab', { name: 'Modules' })).toHaveAttribute('aria-selected', 'true');
+    expect(toc).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'About this path' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const heading = screen.getByRole('heading', { level: 2, name: 'About this path' });
+    expect(toc).not.toBeVisible();
+    expect(heading.compareDocumentPosition(screen.getByText('Body')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: 'What to expect' })).toHaveAttribute('id', 'expect');
+    expect(screen.getByRole('heading', { level: 4, name: 'More detail' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Modules' }));
+    expect(toc).toBeVisible();
+  });
+
+  it('disables Details when a path has an empty cover body', () => {
+    const content = makeContent({
+      isNativeJson: true,
+      content: JSON.stringify({
+        id: 'demo',
+        title: 'Demo',
+        blocks: [{ type: 'html', content: '<div><p>&nbsp;</p></div>' }],
+      }),
+    });
+
+    render(<ContentRenderer fullPageOverview completion={UNTRACKED_COMPLETION} content={content} />);
+
+    const details = screen.getByRole('tab', { name: 'Details' });
+    expect(details).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(details);
+    expect(screen.getByRole('tab', { name: 'Modules' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'About this path' })).not.toBeInTheDocument();
+  });
+
+  it('lists badge icons after the authored body and updates their shared details', async () => {
+    const learningProgress: LearningProgress = {
+      completedGuides: [],
+      earnedBadges: [],
+      streakDays: 0,
+      lastActivityDate: '',
+      pendingCelebrations: [],
+    };
+    const getProgress = jest.spyOn(learningProgressStorage, 'get').mockResolvedValue(learningProgress);
+    try {
+      const content = makeContent({
+        content: '<p>Authored body</p>',
+        metadata: { ...makeContent().metadata, packageManifest: { id: 'drilldown-metrics', type: 'path' } },
+      });
+      render(<ContentRenderer fullPageOverview completion={UNTRACKED_COMPLETION} content={content} />);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+      const heading = screen.getByRole('heading', { level: 3, name: 'Badges you can earn' });
+      const body = screen.getByText('Authored body');
+      const badge = screen.getByRole('button', { name: 'Metric Miner' });
+      expect(body.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(heading.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(badge).not.toHaveTextContent('Metric Miner');
+      fireEvent.click(badge);
+      const details = screen.getByTestId(testIds.learningPaths.badgesModal);
+      expect(await within(details).findByText('🔒 Locked')).toBeInTheDocument();
+      expect(within(details).getByText('Requirement')).toBeInTheDocument();
+
+      getProgress.mockResolvedValue({
+        ...learningProgress,
+        earnedBadges: [{ id: 'metric-miner', earnedAt: Date.UTC(2026, 10, 11, 12) }],
+      });
+      act(() => window.dispatchEvent(new CustomEvent(StorageEvents.LearningProgressUpdated)));
+      expect(await within(details).findByText('✨ Unlocked')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId(testIds.learningPaths.badgesModalClose));
+      expect(screen.queryByTestId(testIds.learningPaths.badgesModal)).not.toBeInTheDocument();
+    } finally {
+      getProgress.mockRestore();
+    }
+  });
+
+  it('shows a badge section below the module list when there is no authored body', async () => {
+    const content = makeContent({
+      content: '<div></div>',
+      metadata: {
+        ...makeContent().metadata,
+        packageManifest: { id: 'drilldown-metrics', type: 'path', estimatedMinutes: 15 },
+      },
+    });
+    await act(async () => {
+      render(<ContentRenderer fullPageOverview completion={UNTRACKED_COMPLETION} content={content} />);
+    });
+
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-disabled', 'true');
+    const modules = screen.getByRole('tabpanel', { name: 'Modules' });
+    expect(within(modules).getByRole('heading', { level: 2, name: 'Badges you can earn' })).toBeVisible();
+    expect(within(screen.getByTestId(testIds.learningPaths.coverHero)).getByText('15 min')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'About this path' })).not.toBeInTheDocument();
   });
 
   it('renders path prerequisites before the cover actions', () => {

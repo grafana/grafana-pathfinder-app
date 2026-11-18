@@ -145,7 +145,7 @@ describe('toHubCustomGuides', () => {
         initialTrackId: 'ops',
       });
       expect(looseRow!.members).toBeUndefined();
-      expect(pathRow!.effort).toBe('2 milestones');
+      expect(pathRow!.effort).toBe('1 module');
     });
 
     it('ignores an assigned track the path does not declare', () => {

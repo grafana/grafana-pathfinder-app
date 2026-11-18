@@ -8,7 +8,7 @@ AI auto-heal is a separate feature that repairs failing interactive steps at run
 
 The full-screen course reader opens Grafana Assistant when it is available. `CourseAssistant` registers page context scoped to the full-screen route and updates it when the course, track, or lesson changes. Leaving the reader removes the registration.
 
-Context includes the course title and description, the selected track's module outline, and the current lesson JSON (up to 24,000 characters, with truncation identified). Other lesson bodies are not loaded. Opening Assistant does not submit a question. Sidebar and floating readers retain their existing presentation and do not automatically open Assistant.
+Context includes the path title and description, the selected altitude's module outline, and up to 24,000 characters of the current module JSON. The context indicates when the module body has been truncated. Clicking **Ask about this path** or **Ask about this module** passes that context to Assistant and fills in an editable question for the learner to send. The full-screen reader also opens Assistant on arrival with an empty composer.
 
 ## Table of contents
 

@@ -27,7 +27,7 @@ it('opens the tile overview, keeps radial progress, and has no competing start a
   );
   expect(screen.queryByText('In progress')).not.toBeInTheDocument();
   expect(screen.getByText('50%')).toBeInTheDocument();
-  expect(screen.getByText(/1\/2 guides/)).toBeInTheDocument();
+  expect(screen.getByText('1 of 2 modules')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Start|Continue|View path/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByText('A path description'));
   expect(view).toHaveBeenCalledTimes(1);
@@ -93,7 +93,7 @@ it('features the next guide without repeating the full outline and resumes throu
   expect(screen.queryByText('A course')).not.toBeInTheDocument();
   expect(screen.getByText('Learn what to do in the next lesson.')).toBeInTheDocument();
   expect(screen.queryByText('Completed lesson')).not.toBeInTheDocument();
-  expect(screen.getByText('2 guides')).toBeInTheDocument();
+  expect(screen.getByText('2 modules')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Resume' }).closest('[data-learning-card-footer]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
   expect(view).toHaveBeenCalledTimes(1);

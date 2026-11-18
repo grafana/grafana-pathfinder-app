@@ -197,7 +197,7 @@ it('expands path details in the card without preparing content or moving scroll 
   const container = screen.getByTestId('package-browser');
   container.scrollTop = 420;
   fireEvent.scroll(container);
-  const toggle = screen.getByRole('button', { name: 'Show milestones' });
+  const toggle = screen.getByRole('button', { name: 'Show modules' });
   toggle.focus();
   fireEvent.click(toggle);
   const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
@@ -209,7 +209,7 @@ it('expands path details in the card without preparing content or moving scroll 
   unmount();
   render(<PackageBrowser onOpenGuide={jest.fn()} />);
   expect(screen.getByLabelText('Search guides and learning paths')).toHaveValue('Dashboard path');
-  expect(screen.getByRole('button', { name: 'Hide milestones' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Hide modules' })).toHaveAttribute('aria-expanded', 'true');
 });
 
 it('omits path milestones from the list and search while keeping them in path details', async () => {
@@ -229,7 +229,7 @@ it('omits path milestones from the list and search while keeping them in path de
   });
   expect(screen.getByText('No guides match these filters')).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Search guides and learning paths'), { target: { value: 'Dashboard path' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Show milestones' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show modules' }));
   const details = await screen.findByRole('region', { name: 'Details for Dashboard path' });
   expect(within(details).getByText('Build a dashboard')).toBeInTheDocument();
 });

@@ -207,8 +207,8 @@ const getFullPageStyles = (theme: GrafanaTheme2) => ({
     '&:focus-visible': { outline: `2px solid ${theme.colors.text.primary}`, outlineOffset: -2 },
   }),
   guideDescription: css({
-    ...theme.typography.base,
+    ...theme.typography.sm,
     color: theme.colors.text.secondary,
-    marginTop: 0,
+    marginTop: theme.spacing(0.25),
   }),
 });

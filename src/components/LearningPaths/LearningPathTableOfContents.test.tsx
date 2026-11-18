@@ -1,14 +1,8 @@
 import React from 'react';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
-import {
-  interactiveCompletionStorage,
-  milestoneCompletionStorage,
-  learningProgressStorage,
-} from '../../lib/user-storage';
+import { interactiveCompletionStorage, milestoneCompletionStorage } from '../../lib/user-storage';
 import { resetMilestoneBackfillGuardForTests } from '../../docs-retrieval';
-import type { LearningProgress } from '../../types/learning-paths.types';
-import { StorageEvents } from '../../lib/event-names';
 import type { CoverPageTrack, Milestone } from '../../types/content.types';
 
 jest.mock('@grafana/ui', () => ({
@@ -26,6 +20,28 @@ jest.mock('@grafana/ui', () => ({
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
   Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
   Badge: ({ text }: { text: React.ReactNode }) => <span>{text}</span>,
+  InlineLabel: ({ children, htmlFor }: React.LabelHTMLAttributes<HTMLLabelElement>) => (
+    <label htmlFor={htmlFor}>{children}</label>
+  ),
+  Combobox: ({
+    id,
+    value,
+    options,
+    onChange,
+  }: {
+    id: string;
+    value: string;
+    options: Array<{ value: string; label: string }>;
+    onChange: (option: { value: string }) => void;
+  }) => (
+    <select id={id} value={value} onChange={(event) => onChange({ value: event.target.value })}>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
   Button: ({ children, icon: _icon, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: string }) => (
     <button {...props}>{children}</button>
   ),
@@ -67,7 +83,11 @@ jest.mock('@grafana/ui', () => ({
 // is stubbed — never the calculation itself, or this file would agree with a
 // reimplementation instead of the code that ships.
 jest.mock('@grafana/runtime', () => ({
-  config: { bootData: { user: { id: 1, orgId: 1 } }, namespace: 'stacks-123', featureToggles: {} },
+  config: {
+    bootData: { user: { id: 1, orgId: 1 }, settings: { cloudMigrationIsTarget: true } },
+    namespace: 'stacks-123',
+    featureToggles: {},
+  },
   getAppEvents: () => ({ publish: jest.fn() }),
   getBackendSrv: () => ({ fetch: jest.fn(), get: jest.fn(), post: jest.fn() }),
   locationService: { push: jest.fn(), getSearchObject: () => ({}) },
@@ -89,22 +109,13 @@ jest.mock('../../lib/user-storage', () => ({
   // Reached by the real calculation's module graph, never called from a
   // render path here.
   journeyCompletionStorage: { getAll: jest.fn(), set: jest.fn(), clear: jest.fn() },
-  learningProgressStorage: { get: jest.fn(), save: jest.fn() },
 }));
-
-const emptyLearningProgress: LearningProgress = {
-  completedGuides: [],
-  earnedBadges: [],
-  streakDays: 0,
-  lastActivityDate: '',
-  pendingCelebrations: [],
-};
 
 const getBadgeForPathMock = jest.fn();
 jest.mock('../../learning-paths', () => ({
   BADGES: jest.requireActual('../../learning-paths/badges').BADGES,
+  findPathByUrl: jest.requireActual('../../learning-paths/paths-data').findPathByUrl,
   getPathsData: jest.requireActual('../../learning-paths/paths-data').getPathsData,
-  getCourseCompletionBadges: jest.requireActual('../../learning-paths/course-badges').getCourseCompletionBadges,
   getBadgeForPath: (...args: unknown[]) => getBadgeForPathMock(...args),
 }));
 
@@ -271,7 +282,7 @@ describe('LearningPathTableOfContents', () => {
     expect(screen.getByTestId('learning-paths-cover-hero')).toBeInTheDocument();
     expect(screen.getByText('Connect your first data source')).toBeInTheDocument();
     expect(screen.getByText('Learn how Grafana connects to data.')).toBeInTheDocument();
-    expect(screen.getByText('2 milestones')).toBeInTheDocument();
+    expect(screen.getByText('2 modules')).toBeInTheDocument();
   });
 
   it('shows the hero card from title alone, with no description and no badge', () => {
@@ -634,10 +645,10 @@ describe('LearningPathTableOfContents', () => {
         />
       );
 
-      expect(screen.getByText('2 milestones')).toBeInTheDocument();
+      expect(screen.getByText('2 modules')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
-      expect(screen.getByText('1 milestone')).toBeInTheDocument();
+      expect(screen.getByText('1 module')).toBeInTheDocument();
     });
 
     // A track is a presentation ordering only, never a second completion
@@ -684,7 +695,11 @@ it('shows the topic above the title, groups progress with the action, and update
       category="visualization"
       milestones={milestones}
       baseUrl={baseUrl}
-      tracks={[{ trackId: 'builder', label: 'Builder', milestones: builderMilestones }]}
+      tracks={[
+        { trackId: 'builder', label: 'Builder', milestones: builderMilestones },
+        { trackId: 'engineer', label: 'Engineer', milestones },
+        { trackId: 'seller', label: 'Seller', milestones },
+      ]}
     />
   );
   const hero = screen.getByTestId('learning-paths-cover-hero');
@@ -693,13 +708,21 @@ it('shows the topic above the title, groups progress with the action, and update
   expect(eyebrow).toBeInTheDocument();
   expect(eyebrow.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(hero).not.toHaveTextContent('Learning path');
-  expect(screen.getByRole('heading', { name: '2 milestones in this path' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '2 modules in this path' })).toBeInTheDocument();
   const fundamentalsProgress = screen.getByRole('progressbar', { name: /through Fundamentals/ });
   expect(fundamentalsProgress).toHaveAttribute('aria-valuemax', '100');
   expect(screen.getByTestId('learning-paths-toc-cta').parentElement).toContainElement(fundamentalsProgress);
-  expect(hero).not.toHaveTextContent('2 milestones');
-  fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
-  expect(screen.getByRole('heading', { name: '3 milestones in this path' })).toBeInTheDocument();
+  expect(hero).not.toHaveTextContent('2 modules');
+  const track = screen.getByRole('combobox', { name: 'Altitude' });
+  expect(track).toHaveDisplayValue('Fundamentals (default)');
+  expect(
+    within(track)
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+  ).toEqual(['Fundamentals (default)', 'Builder', 'Seller', 'Engineer']);
+  fireEvent.change(track, { target: { value: 'builder' } });
+  expect(track).toHaveDisplayValue('Builder');
+  expect(screen.getByRole('heading', { name: '3 modules in this path' })).toBeInTheDocument();
   const builderProgress = screen.getByRole('progressbar', { name: /through Builder/ });
   expect(builderProgress).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Build' })).toHaveAttribute(
@@ -731,59 +754,19 @@ it('shows available course metadata and does not reuse the default estimate for 
   expect(screen.getByText('25 min')).toBeInTheDocument();
   expect(screen.queryByText('Earn this badge')).not.toBeInTheDocument();
   expect(screen.queryByText('Core Concepts')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
-  expect(screen.getByRole('tab', { name: 'Builder' })).toHaveAttribute('aria-selected', 'true');
+  fireEvent.change(screen.getByRole('combobox', { name: 'Altitude' }), { target: { value: 'builder' } });
   expect(screen.queryByText('25 min')).not.toBeInTheDocument();
 });
 
-it('shows icon-only learning path badges and refreshes their earned status in the shared dialog', async () => {
-  jest.mocked(learningProgressStorage.get).mockResolvedValue({ ...emptyLearningProgress, earnedBadges: [] });
+it('looks up artwork by the course URL when there is no manifest ID', () => {
   render(
     <LearningPathTableOfContents
       fullPage
       title="Explore metrics"
-      pathId="drilldown-metrics"
-      baseUrl={baseUrl}
+      baseUrl="https://grafana.com/docs/learning-paths/drilldown-metrics/"
       milestones={milestones}
     />
   );
-  expect(screen.getByText('Learning path badges')).toBeInTheDocument();
-  const badgeButton = screen.getByRole('button', { name: 'Metric Miner' });
-  expect(badgeButton).toBeInTheDocument();
-  expect(badgeButton).not.toHaveTextContent('Metric Miner');
-  expect(within(badgeButton).queryByRole('progressbar')).not.toBeInTheDocument();
-  expect(screen.queryByText('First steps')).not.toBeInTheDocument();
-  await waitFor(() => expect(learningProgressStorage.get).toHaveBeenCalled());
-  fireEvent.click(badgeButton);
-  expect(await screen.findByText('🔒 Locked')).toBeInTheDocument();
-  jest.mocked(learningProgressStorage.get).mockResolvedValue({
-    ...emptyLearningProgress,
-    earnedBadges: [{ id: 'metric-miner', earnedAt: Date.UTC(2026, 10, 11, 12) }],
-  });
-  act(() => window.dispatchEvent(new CustomEvent(StorageEvents.LearningProgressUpdated)));
-  expect(await screen.findByText('✨ Unlocked')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Metric Miner' })).not.toHaveTextContent('Metric Miner');
-});
-
-it('opens the shared badge details from a course reward and closes them with its close control', async () => {
-  jest
-    .mocked(learningProgressStorage.get)
-    .mockResolvedValue({ ...emptyLearningProgress, earnedBadges: [], completedGuides: ['set-up'] });
-  render(
-    <LearningPathTableOfContents
-      fullPage
-      title="Explore metrics"
-      pathId="drilldown-metrics"
-      baseUrl={baseUrl}
-      milestones={milestones}
-    />
-  );
-  fireEvent.click(await screen.findByRole('button', { name: /Metric Miner/ }));
-  const details = screen.getByTestId('learning-paths-badges-modal');
-  expect(within(details).getByRole('heading', { name: 'Metric Miner' })).toBeInTheDocument();
-  expect(within(details).getByText('🔒 Locked')).toBeInTheDocument();
-  expect(within(details).getByText('Requirement')).toBeInTheDocument();
-  fireEvent.click(screen.getByTestId('learning-paths-badges-modal-close'));
-  expect(screen.getByRole('button', { name: /Metric Miner/ })).toBeInTheDocument();
-  expect(screen.queryByTestId('learning-paths-badges-modal')).not.toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Altitude' })).not.toBeInTheDocument();
+  expect(screen.getByRole('img', { name: /Metrics Drilldown displaying/ })).toBeInTheDocument();
 });
