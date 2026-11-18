@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { usePluginUserStorage } from '@grafana/runtime';
 import {
   DEFAULT_CANONICAL_LANGUAGE,
   FOLLOW_GRAFANA,
@@ -9,8 +10,8 @@ import {
   type GuideLanguagePreference,
 } from '../lib/guide-language';
 import { StorageKeys } from '../lib/storage-keys';
-import { useUserStorage, whenGrafanaStorageSynced } from '../lib/user-storage';
 import { logger } from '../lib/logging';
+import type { GrafanaUserStorage } from '../types/storage.types';
 import {
   clearGuideLanguageOverride,
   getGuideLanguageState,
@@ -43,17 +44,18 @@ export function useGuideLanguage({
   guideKey,
 }: UseGuideLanguageOptions = {}): GuideLanguage {
   const enabled = isGuideTranslationsEnabled();
-  const { getItem, setItem } = useUserStorage();
+  // Account-scoped storage only: the shared-origin localStorage mirror would leak one reader's choice to the next.
+  const accountStorage: GrafanaUserStorage | undefined = usePluginUserStorage();
   const state = useSyncExternalStore(subscribeGuideLanguage, getGuideLanguageState);
   const { preferredLoaded } = state;
 
   useEffect(() => {
-    if (!enabled || preferredLoaded) {
+    if (!enabled || preferredLoaded || !accountStorage) {
       return;
     }
     let cancelled = false;
-    whenGrafanaStorageSynced()
-      .then(() => getItem<unknown>(StorageKeys.GUIDE_LANGUAGE))
+    accountStorage
+      .getItem(StorageKeys.GUIDE_LANGUAGE)
       .then((stored) => {
         if (!cancelled && !getGuideLanguageState().preferredLoaded) {
           setGuideLanguagePreferred(normalizeGuideLanguagePreference(stored));
@@ -65,7 +67,7 @@ export function useGuideLanguage({
     return () => {
       cancelled = true;
     };
-  }, [enabled, preferredLoaded, getItem]);
+  }, [enabled, preferredLoaded, accountStorage]);
 
   useEffect(() => {
     if (!enabled || guideKey === undefined) {
@@ -83,12 +85,12 @@ export function useGuideLanguage({
       }
       setGuideLanguagePreferred(next);
       try {
-        await setItem(StorageKeys.GUIDE_LANGUAGE, next);
+        await accountStorage?.setItem(StorageKeys.GUIDE_LANGUAGE, next);
       } catch (error) {
         logger.warn('Failed to save the guide language preference', { error });
       }
     },
-    [enabled, setItem]
+    [enabled, accountStorage]
   );
 
   const applyOneShotOverride = useCallback(
@@ -101,7 +103,7 @@ export function useGuideLanguage({
     [enabled]
   );
 
-  const override = enabled ? (state.override?.language ?? null) : null;
+  const override = enabled && state.override?.guideKey === (guideKey ?? null) ? state.override.language : null;
   const effective = enabled
     ? resolveEffectiveGuideLanguage({
         override,

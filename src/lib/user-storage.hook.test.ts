@@ -188,7 +188,7 @@ describe('useUserStorage — legacy mirror boundary', () => {
     jest.useRealTimers();
   });
 
-  it('mirrors live domain writes broadly, then restores only the six compatibility records', async () => {
+  it('mirrors live domain writes broadly, then restores only the five compatibility records', async () => {
     const grafana = makeFunctionalGrafanaStorage();
     usePluginUserStorageMock.mockReturnValue(grafana);
 
@@ -202,7 +202,6 @@ describe('useUserStorage — legacy mirror boundary', () => {
       await learningProgressStorage.update({ completedGuides: ['guide-1'] });
       await guideResponseStorage.setResponse('guide-1', 'region', 'us-east');
       await journeyCompletionStorage.set('journey-1', 40);
-      await firstMount.result.current.setItem(StorageKeys.GUIDE_LANGUAGE, 'ja');
       await interactiveCompletionStorage.set(CONTENT_KEY, 75);
       await interactiveStepStorage.setCompleted(CONTENT_KEY, SECTION_ID, new Set(['step-1']));
       await sectionAcknowledgementStorage.set(CONTENT_KEY, SECTION_ID, true);
@@ -243,7 +242,6 @@ describe('useUserStorage — legacy mirror boundary', () => {
       StorageKeys.LEARNING_PROGRESS,
       StorageKeys.GUIDE_RESPONSES,
       StorageKeys.JOURNEY_COMPLETION,
-      StorageKeys.GUIDE_LANGUAGE,
       ...currentOnlyMirroredKeys,
     ];
     expect(grafana.setItem.mock.calls.map(([key]) => key)).toEqual(currentMirroredKeys);
@@ -254,7 +252,7 @@ describe('useUserStorage — legacy mirror boundary', () => {
     firstMount.unmount();
     localStorage.clear();
     __resetSyncedForTests();
-    const result2 = renderHook(() => useUserStorage()).result;
+    renderHook(() => useUserStorage());
     await act(flushMicrotasks);
 
     expect(await tabStorage.getTabs()).toEqual([{ id: 'tab-1' }]);
@@ -262,7 +260,6 @@ describe('useUserStorage — legacy mirror boundary', () => {
     expect((await learningProgressStorage.get()).completedGuides).toEqual(['guide-1']);
     expect(await guideResponseStorage.getResponse('guide-1', 'region')).toBe('us-east');
     expect(await journeyCompletionStorage.get('journey-1')).toBe(40);
-    expect(await result2.current.getItem(StorageKeys.GUIDE_LANGUAGE)).toBe('ja');
     expect(await interactiveCompletionStorage.get(CONTENT_KEY)).toBe(0);
     expect(await interactiveStepStorage.getCompleted(CONTENT_KEY, SECTION_ID)).toEqual(new Set());
     expect(await sectionAcknowledgementStorage.get(CONTENT_KEY, SECTION_ID)).toBeNull();

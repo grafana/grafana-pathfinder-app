@@ -7,5 +7,4 @@ export const LEGACY_RESTORE_KEYS = [
   StorageKeys.ACTIVE_TAB,
   StorageKeys.LEARNING_PROGRESS,
   StorageKeys.GUIDE_RESPONSES,
-  StorageKeys.GUIDE_LANGUAGE,
 ] as const;

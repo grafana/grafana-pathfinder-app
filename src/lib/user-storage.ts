@@ -519,7 +519,7 @@ function sweepDiscardedProgressOnce(): void {
  * Multiple `useUserStorage()` mounts (React Strict Mode, component remounts) would
  * otherwise trigger 3-6 syncs per page load, each generating 10-20 API calls.
  */
-let grafanaSync: Promise<void> | null = null;
+let hasSynced = false;
 
 /**
  * Test-only reset of the module-level once-per-lifecycle flags (Grafana sync
@@ -527,7 +527,7 @@ let grafanaSync: Promise<void> | null = null;
  * deterministically.
  */
 export function __resetSyncedForTests(): void {
-  grafanaSync = null;
+  hasSynced = false;
   hasSweptDiscardedProgress = false;
 }
 
@@ -605,17 +605,13 @@ async function readGrafanaKeyWithMigration(
  * Exported for characterization tests of the once-per-lifecycle sync and
  * timestamp conflict resolution; production code calls this from `useUserStorage()`.
  */
-export function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage): Promise<void> {
-  grafanaSync ??= runGrafanaSync(grafanaStorage);
-  return grafanaSync;
-}
+export async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage): Promise<void> {
+  // Guard: only sync once per page lifecycle
+  if (hasSynced) {
+    return;
+  }
+  hasSynced = true;
 
-/** Settles once the page's Grafana-to-localStorage sync is done; resolves at once when none started. */
-export function whenGrafanaStorageSynced(): Promise<void> {
-  return grafanaSync ?? Promise.resolve();
-}
-
-async function runGrafanaSync(grafanaStorage: GrafanaUserStorage): Promise<void> {
   try {
     for (const key of LEGACY_RESTORE_KEYS) {
       try {

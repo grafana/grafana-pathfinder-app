@@ -228,7 +228,6 @@ describe('syncFromGrafanaStorage', () => {
       StorageKeys.ACTIVE_TAB,
       StorageKeys.LEARNING_PROGRESS,
       StorageKeys.GUIDE_RESPONSES,
-      StorageKeys.GUIDE_LANGUAGE,
     ]);
   });
 
@@ -321,21 +320,5 @@ describe('createLocalStorage', () => {
     expect(localStorage.getItem('unrelated-key')).toBe('keep-me');
     expect(localStorage.getItem(StorageKeys.CODA_TERMINAL_IS_OPEN)).toBe('1');
     expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_HEALTH_PANEL_OPEN)).toBe('true');
-  });
-});
-
-describe('syncFromGrafanaStorage guide language', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    __resetSyncedForTests();
-  });
-
-  it('brings the guide language saved on another device into localStorage', async () => {
-    const key = StorageKeys.GUIDE_LANGUAGE;
-    const grafana = makeGrafanaStorage({ [key]: wrapEnvelope('"ja"', 200) });
-
-    await syncFromGrafanaStorage(grafana);
-
-    expect(localStorage.getItem(key)).toBe('"ja"');
   });
 });
