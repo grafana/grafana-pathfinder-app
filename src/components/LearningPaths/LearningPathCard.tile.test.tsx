@@ -36,6 +36,35 @@ it('opens the tile overview, keeps radial progress, and has no competing start a
   expect(launch).not.toHaveBeenCalled();
 });
 
+it('counts only published modules in the displayed sequence of an organization path', () => {
+  render(
+    <LearningPathCard
+      tile
+      path={{
+        id: 'team-path',
+        title: 'Team path',
+        description: '',
+        guides: ['published', 'track-only'],
+        badgeId: '',
+        isPrivate: true,
+        manifest: {
+          type: 'path',
+          milestones: ['published', 'draft'],
+          tracks: [{ trackId: 'builder', label: 'Builder', guides: ['track-only'] }],
+        },
+      }}
+      guides={[
+        { id: 'published', title: 'Published module', completed: true, isCurrent: false },
+        { id: 'track-only', title: 'Builder module', completed: true, isCurrent: false },
+      ]}
+      progress={100}
+      isCompleted={false}
+      onContinue={jest.fn()}
+    />
+  );
+  expect(screen.getByText('1 of 1 module')).toBeInTheDocument();
+});
+
 it('opens the course from its inset preview with a duration badge and category eyebrow', () => {
   const view = jest.fn();
   const { container } = render(

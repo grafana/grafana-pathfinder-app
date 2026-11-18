@@ -1,15 +1,40 @@
+import { t } from '@grafana/i18n';
+import { findPathByUrl } from '../../learning-paths';
 import { getManifestTracks } from '../../types/package.types';
 import type { RawContent } from '../../types/content.types';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 const MAX_LESSON_CHARACTERS = 24000;
 
+type CourseTabTitle = Partial<Pick<LearningJourneyTab, 'title' | 'baseUrl'>>;
+
+export function getCourseTitle({ metadata }: RawContent, tab?: CourseTabTitle | null): string {
+  const { title, learningJourney, journeyManifest, packageManifest, trackMemberBaseUrl } = metadata;
+  const owner = journeyManifest ?? packageManifest;
+  const ownerTitle = typeof owner?.title === 'string' ? owner.title.trim() : '';
+  if (learningJourney?.currentMilestone === 0) {
+    return ownerTitle || title;
+  }
+  if (
+    ownerTitle &&
+    (journeyManifest || ((owner?.type === 'path' || owner?.type === 'journey') && ownerTitle !== title.trim()))
+  ) {
+    return ownerTitle;
+  }
+  const overviewUrl = learningJourney?.baseUrl || trackMemberBaseUrl;
+  if (overviewUrl) {
+    const knownTitle = findPathByUrl(overviewUrl)?.title ?? (tab?.baseUrl === overviewUrl ? tab.title : undefined);
+    if (knownTitle) {
+      return knownTitle;
+    }
+  }
+  return t('learningCard.path', 'Learning path');
+}
+
 export function buildCourseContext(
   content: RawContent,
   activeTab:
-    | (Pick<LearningJourneyTab, 'activeTrackId' | 'activeTrackPathId' | 'activeTrackMilestones'> &
-        Partial<Pick<LearningJourneyTab, 'title'>>)
-    | null
+    (Pick<LearningJourneyTab, 'activeTrackId' | 'activeTrackPathId' | 'activeTrackMilestones'> & CourseTabTitle) | null
 ) {
   const journey = content.metadata.learningJourney;
   const owner = content.metadata.journeyManifest ?? content.metadata.packageManifest;
@@ -29,8 +54,7 @@ export function buildCourseContext(
   const lesson = isOverview ? undefined : content.content.slice(0, MAX_LESSON_CHARACTERS);
 
   return {
-    courseTitle:
-      (!isOverview && activeTab?.title) || (typeof owner?.title === 'string' ? owner.title : content.metadata.title),
+    courseTitle: getCourseTitle(content, activeTab),
     courseDescription: typeof owner?.description === 'string' ? owner.description : journey?.summary,
     selectedTrack: { id: trackId, label: trackLabel },
     modules: milestones.map((milestone) => ({

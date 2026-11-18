@@ -32,9 +32,11 @@ import {
 } from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
+import { getCourseTitle } from '../../integrations/assistant-integration/course-context';
 import { FullScreenLayout } from './FullScreenLayout';
 import { CourseAssistant } from './CourseAssistant';
 import { isJourneyCoverPage } from '../../docs-retrieval';
+import { navigateToCourseOverview } from './full-screen-course-navigation';
 import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';
 import {
   resolveSafeTargetPath,
@@ -375,23 +377,28 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     void handleExitToSidebar('manual_exit');
   }, [handleExitToSidebar]);
 
-  const courseOverviewUrl = !isCoverPage
-    ? (content?.metadata.learningJourney?.baseUrl ?? content?.metadata.trackMemberBaseUrl)
+  const overviewCandidate = !isCoverPage
+    ? content?.metadata.learningJourney?.baseUrl || content?.metadata.trackMemberBaseUrl
     : undefined;
-  const backLabel = courseOverviewUrl ? 'Back to course' : isCoverPage ? 'Back to learning' : 'Back to sidebar';
+  const courseOverviewUrl =
+    overviewCandidate !== content?.url && overviewCandidate !== guideUrl ? overviewCandidate : undefined;
+  const isCourseModule =
+    !isCoverPage &&
+    Boolean(
+      content?.metadata.learningJourney || content?.metadata.journeyManifest || content?.metadata.trackMemberBaseUrl
+    );
+  const returnsToLearning = isCoverPage || isCourseModule;
+  const backLabel = courseOverviewUrl ? 'Back to course' : returnsToLearning ? 'Back to learning' : 'Back to sidebar';
   const handleBack = useCallback(() => {
-    if (courseOverviewUrl && activeTab) {
-      void panel.loadTab(activeTab.id, courseOverviewUrl);
-    } else if (isCoverPage) {
-      const returnPath = resolveCourseReturnPath(panelModeManager.consumePriorPath());
-      panelModeManager.setModeTransient('fullscreen');
-      locationService.push(returnPath);
+    if (returnsToLearning && activeTab) {
+      void navigateToCourseOverview(panel, activeTab.id, courseOverviewUrl);
     } else {
       handleManualExit();
     }
-  }, [courseOverviewUrl, activeTab, isCoverPage, panel, handleManualExit]);
+  }, [courseOverviewUrl, activeTab, returnsToLearning, panel, handleManualExit]);
 
   const courseReturnPath = resolveCourseReturnPath(panelModeManager.getPriorPath());
+  const tabBaseUrl = activeTab?.baseUrl;
   useEffect(() => {
     const page = sceneGraph.getAncestor(_props.model, SceneAppPage);
     const learnPage = new SceneAppPage({ title: 'Learn', url: PLUGIN_BASE_URL, routePath: '/', preserveUrlKeys: [] });
@@ -404,25 +411,25 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
           getParentPage: () => learnPage,
         })
       : learnPage;
-    const coursePage = courseOverviewUrl
-      ? new SceneAppPage({
-          title,
-          url: buildPathfinderShareUrl({
-            doc: courseOverviewUrl,
-            panelMode: 'fullscreen',
-            guideType: activeTab?.type === 'learning-journey' ? 'learning-journey' : 'docs',
-          }),
-          routePath: ROUTES.FullScreen,
-          preserveUrlKeys: [],
-          getParentPage: () => catalogPage,
-        })
-      : catalogPage;
+    const coursePage =
+      content && courseOverviewUrl
+        ? new SceneAppPage({
+            title: getCourseTitle(content, { title, baseUrl: tabBaseUrl }),
+            url: buildPathfinderShareUrl({
+              doc: courseOverviewUrl,
+              guideType: 'learning-journey',
+            }),
+            routePath: ROUTES.FullScreen,
+            preserveUrlKeys: [],
+            getParentPage: () => catalogPage,
+          })
+        : catalogPage;
     page.setState({
       title: isEditorTab ? title : content?.metadata.title || title,
       hideFromBreadcrumbs: false,
       getParentPage: () => coursePage,
     });
-  }, [_props.model, courseReturnPath, courseOverviewUrl, title, content?.metadata.title, activeTab?.type, isEditorTab]);
+  }, [_props.model, courseReturnPath, courseOverviewUrl, content, title, tabBaseUrl, isEditorTab]);
 
   useEffect(() => {
     if (!courseOverviewUrl || !activeTab) {
@@ -433,8 +440,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       if (location.pathname !== `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`) {
         return;
       }
-      if (parsePathfinderDeepLink(location.search).doc === courseOverviewUrl) {
-        void panel.loadTab(tabId, courseOverviewUrl);
+      const currentContent = panel.getActiveTab()?.content;
+      if (currentContent === activeTab.content && parsePathfinderDeepLink(location.search).doc === courseOverviewUrl) {
+        void navigateToCourseOverview(panel, tabId, courseOverviewUrl);
       }
     });
   }, [courseOverviewUrl, activeTab, panel]);

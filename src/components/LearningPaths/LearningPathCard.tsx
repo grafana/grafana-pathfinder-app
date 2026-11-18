@@ -130,10 +130,12 @@ export function LearningPathCard({
   const assignedTrack = tracks.find((track) => track.trackId === assignment?.trackId);
   const defaultModuleIds = getManifestMilestoneIds(path.manifest);
   const moduleIds = assignedTrack?.guides ?? (defaultModuleIds.length ? defaultModuleIds : (tracks[0]?.guides ?? []));
-  const moduleCount = assignmentGuides?.length || moduleIds.length || guides.length;
+  const availableModuleIds = path.isPrivate ? moduleIds.filter((id) => path.guides.includes(id)) : moduleIds;
+  const moduleCount = assignmentGuides?.length || (moduleIds.length ? availableModuleIds.length : guides.length);
   const completedCount = assignmentGuides?.length
     ? assignmentGuides.filter((guide) => guide.completed).length
-    : effectiveGuides.filter((guide) => guide.completed && (!moduleIds.length || moduleIds.includes(guide.id))).length;
+    : effectiveGuides.filter((guide) => guide.completed && (!moduleIds.length || availableModuleIds.includes(guide.id)))
+        .length;
   const moduleProgress = t('learningCard.moduleProgress', '{{completed}} of {{modules}}', {
     completed: completedCount,
     modules: moduleCountText(moduleCount),

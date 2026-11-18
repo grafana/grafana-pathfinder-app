@@ -56,6 +56,8 @@ it('keeps the owning course and selected outline when opening a track-only lesso
     },
   };
   const context = buildCourseContext(lesson, {
+    title: 'Build a dashboard',
+    baseUrl: lesson.url,
     activeTrackId: 'builder',
     activeTrackPathId: 'foundations',
     activeTrackMilestones: builder,
@@ -96,6 +98,7 @@ it('does not register ordinary standalone documentation as a course', () => {
 it('preserves the course title when a backend lesson manifest uses the lesson title', () => {
   const lesson: RawContent = {
     ...cover,
+    url: 'backend-guide:observability-foundations',
     metadata: {
       ...cover.metadata,
       title: 'Observability Foundations',
@@ -105,10 +108,28 @@ it('preserves the course title when a backend lesson manifest uses the lesson ti
   };
   const context = buildCourseContext(lesson, {
     title: 'Grafana foundations',
+    baseUrl: cover.url,
     activeTrackId: 'builder',
     activeTrackPathId: 'foundations',
     activeTrackMilestones: builder,
   });
   expect(context?.courseTitle).toBe('Grafana foundations');
   expect(context?.currentPage.title).toBe('Observability Foundations');
+});
+
+it('uses a generic path title when a directly opened module has no known owning title', () => {
+  const lesson: RawContent = {
+    ...cover,
+    url: 'backend-guide:build',
+    metadata: {
+      title: 'Build a dashboard',
+      trackMemberBaseUrl: cover.url,
+    },
+  };
+  const context = buildCourseContext(lesson, {
+    title: 'Build a dashboard',
+    baseUrl: lesson.url,
+  });
+  expect(context?.courseTitle).toBe('Learning path');
+  expect(context?.currentPage.title).toBe('Build a dashboard');
 });
