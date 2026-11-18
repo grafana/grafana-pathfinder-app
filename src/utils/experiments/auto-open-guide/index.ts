@@ -72,8 +72,8 @@ function readTargeting(
 
 // The guides matching a path: one visit lasts while this stays the same, so sub-paths
 // of one pattern never re-offer an overlapping experience.
-function visitKey(targeting: AutoOpenGuideConfig, path: string): string {
-  return targeting.experiences
+function visitKey(experiences: AutoOpenGuideConfig['experiences'], path: string): string {
+  return experiences
     .filter((experience) => matchesExperience(experience, path))
     .map((experience) => experience.guide)
     .join('\n');
@@ -355,8 +355,13 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     }
     if (
       requiresCohort &&
-      cohortTargeting?.experiences.some((experience) => matchesExperience(experience, getCurrentPath())) &&
-      document.visibilityState === 'visible'
+      document.visibilityState === 'visible' &&
+      cohortTargeting?.experiences.some(
+        (experience) =>
+          matchesExperience(experience, getCurrentPath()) &&
+          ((!restored && hasAutoOpenGuideShown(cohortScope, experience.guide)) ||
+            (canPopOut() && !alreadyShown(experience.guide)))
+      )
     ) {
       membership?.refresh();
     }
@@ -396,7 +401,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
       return;
     }
     const path = getCurrentPath();
-    const visit = visitKey(targeting, path);
+    const visit = visitKey(eligibleExperiences(targeting), path);
     if (consumedVisit !== undefined && visit !== consumedVisit) {
       consumeVisit(undefined);
     }

@@ -4,7 +4,7 @@ import { ALLOWED_RECOMMENDER_DOMAINS, getConfigWithDefaults } from '../../../con
 import { getOnboardingIntentContextKey } from '../../../global-state/onboarding-exploring-intent';
 import { hashString } from '../../../lib/hash.util';
 import pluginJson from '../../../plugin.json';
-import { isDevModeEnabled } from '../../dev-mode';
+import { resolveDevModeOptIn } from '../../dev-mode';
 import { resolveTenantSettings } from '../../resolve-tenant-settings';
 
 const LOOKUP_TIMEOUT_MS = 5000;
@@ -46,7 +46,7 @@ export function createCohortMembershipReader(onChange: () => void) {
         base.username ||
         base.password ||
         !['https:', 'http:'].includes(base.protocol) ||
-        (!isDevModeEnabled(tenant) &&
+        (!(tenant.devMode && resolveDevModeOptIn() === true) &&
           (base.protocol !== 'https:' || !ALLOWED_RECOMMENDER_DOMAINS.includes(base.hostname)))
       ) {
         return;

@@ -1,5 +1,6 @@
 import { config } from '@grafana/runtime';
 
+import { writeDevModeOptIn } from '../../../lib/dev-mode-opt-in';
 import { hashString } from '../../../lib/hash.util';
 import { resolveTenantSettings } from '../../resolve-tenant-settings';
 import { createCohortMembershipReader } from './cohort-membership';
@@ -13,7 +14,6 @@ jest.mock('@grafana/runtime', () => ({
 }));
 jest.mock('../../../lib/hash.util', () => ({ hashString: jest.fn() }));
 jest.mock('../../resolve-tenant-settings', () => ({ resolveTenantSettings: jest.fn() }));
-jest.mock('../../dev-mode', () => ({ isDevModeEnabled: () => false }));
 
 const mockFetch = jest.fn();
 const onChange = jest.fn();
@@ -239,4 +239,22 @@ it('invalidates cached membership immediately when identity changes', async () =
   expect(reader.has('billing')).toBe(true);
   config.bootData.user.orgId = 2;
   expect(reader.has('billing')).toBe(false);
+});
+
+it.each([false, true])('requires a browser opt-in for custom endpoints (opt-in: %s)', async (optedIn) => {
+  localStorage.clear();
+  if (optedIn) {
+    await writeDevModeOptIn(true);
+  }
+  jest.mocked(resolveTenantSettings).mockResolvedValue(
+    settings({
+      recommenderServiceUrl: 'http://localhost:8080',
+      devMode: true,
+      devModeOptIn: true,
+    }) as never
+  );
+  reader.refresh();
+  await settle();
+  expect(mockFetch).toHaveBeenCalledTimes(optedIn ? 1 : 0);
+  localStorage.clear();
 });

@@ -999,10 +999,34 @@ describe('remote cohort child experiment', () => {
     async (path) => {
       await startCohort('treatment', path);
       await settle();
+      expect(mockCohortFetch).not.toHaveBeenCalled();
       expect(reportExperimentView).not.toHaveBeenCalled();
       expect(attemptAutoOpen).not.toHaveBeenCalled();
     }
   );
+
+  it('keeps a consumed visit when only another cohort’s page match changes', async () => {
+    window.history.replaceState(null, '', '/explore');
+    await flag(
+      {
+        variant: 'treatment',
+        experiences: [{ ...experiences[0], pages: ['/explore/metrics'] }, experiences[1], experiences[2]],
+      },
+      COHORT_AUTO_OPEN_EXPERIMENT_FLAG
+    );
+    stop = await startAutoOpenGuideExperiment();
+    await flush();
+    await settle();
+    await navigate('/explore/metrics');
+    expect(cohortOffers()).toHaveLength(1);
+    expect(cohortOffers()[0][1].experience_index).toBe(1);
+  });
+
+  it('skips lookup when the panel is occupied', async () => {
+    mockPathfinderOpen = true;
+    await startCohort();
+    expect(mockCohortFetch).not.toHaveBeenCalled();
+  });
 
   it('retries a failed lookup on a later navigation after cooldown without consuming the offer', async () => {
     mockCohortFetch.mockResolvedValueOnce({ ok: false, status: 503 });
@@ -1047,10 +1071,12 @@ describe('remote cohort child experiment', () => {
   });
 
   it('respects earlier experiment suppression without restoring earlier attribution', async () => {
+    localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:alerts', 'true');
     localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:billing', 'true');
     localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:billing-second', 'true');
     await startCohort();
     await settle();
+    expect(mockCohortFetch).not.toHaveBeenCalled();
     expect(getAutoOpenGuideEnrollment()).toBeNull();
     expect(attemptAutoOpen).not.toHaveBeenCalled();
   });
