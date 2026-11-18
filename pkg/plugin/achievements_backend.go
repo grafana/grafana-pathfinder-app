@@ -2,8 +2,6 @@ package plugin
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -92,7 +90,7 @@ func (r *achievementNameReader) readAchievement(ctx context.Context, person achi
 		h.progress = &row
 	}
 	for _, tierID := range awardCandidates(d, row.TierIDs) {
-		award, ok, err := r.loadAward(ctx, person, d.ID, tierID)
+		award, ok, err := r.store.shared().LoadAward(ctx, person, d.ID, tierID)
 		if err != nil {
 			return heldAchievement{}, err
 		}
@@ -123,32 +121,4 @@ func tierIDsOf(d *achievements.Definition) []string {
 		ids[i] = t.ID
 	}
 	return ids
-}
-
-func (r *achievementNameReader) loadAward(ctx context.Context, person achievements.Person, achievementID, tierID string) (achievements.Award, bool, error) {
-	body, err := r.store.client.get(ctx, achievementGroupVersion, r.store.writer.Namespace, achievementAwardResource,
-		achievementAwardName(person.ID, achievementID, tierID), achievementStoreMaxBytes)
-	if isAchievementRowAbsent(err, achievementAwardResource) {
-		return achievements.Award{}, false, nil
-	}
-	if err != nil {
-		return achievements.Award{}, false, err
-	}
-	var obj achievementObject[achievementAwardSpec]
-	if err := json.Unmarshal(body, &obj); err != nil {
-		return achievements.Award{}, false, fmt.Errorf("achievement store: decode award: %w", err)
-	}
-	if obj.Spec.UserID != person.ID || obj.Spec.AchievementID != achievementID || obj.Spec.TierID != tierID {
-		return achievements.Award{}, false, errAchievementRowMismatch
-	}
-	earnedAt, err := time.Parse(time.RFC3339, obj.Spec.EarnedAt)
-	if err != nil {
-		return achievements.Award{}, false, fmt.Errorf("achievement store: decode award earnedAt: %w", err)
-	}
-	return achievements.Award{
-		AchievementID: obj.Spec.AchievementID,
-		TierID:        obj.Spec.TierID,
-		Entity:        obj.Spec.Entity,
-		EarnedAt:      earnedAt,
-	}, true, nil
 }

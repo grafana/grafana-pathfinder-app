@@ -263,3 +263,31 @@ type AchievementResourceClient interface {
 	IsConflict(error) bool
 	IsAbsent(error, string) bool
 }
+
+func (s *AchievementStore) LoadAward(ctx context.Context, person achievements.Person, achievementID, tierID string) (achievements.Award, bool, error) {
+	body, err := s.client.Get(ctx, achievementGroupVersion, s.writer.Namespace, achievementAwardResource,
+		AchievementAwardName(person.ID, achievementID, tierID), AchievementStoreMaxBytes)
+	if s.client.IsAbsent(err, achievementAwardResource) {
+		return achievements.Award{}, false, nil
+	}
+	if err != nil {
+		return achievements.Award{}, false, err
+	}
+	var obj achievementObject[achievementAwardSpec]
+	if err := json.Unmarshal(body, &obj); err != nil {
+		return achievements.Award{}, false, fmt.Errorf("achievement store: decode award: %w", err)
+	}
+	if obj.Spec.UserID != person.ID || obj.Spec.AchievementID != achievementID || obj.Spec.TierID != tierID {
+		return achievements.Award{}, false, ErrAchievementRowMismatch
+	}
+	earnedAt, err := time.Parse(time.RFC3339, obj.Spec.EarnedAt)
+	if err != nil {
+		return achievements.Award{}, false, fmt.Errorf("achievement store: decode award earnedAt: %w", err)
+	}
+	return achievements.Award{
+		AchievementID: obj.Spec.AchievementID,
+		TierID:        obj.Spec.TierID,
+		Entity:        obj.Spec.Entity,
+		EarnedAt:      earnedAt,
+	}, true, nil
+}
