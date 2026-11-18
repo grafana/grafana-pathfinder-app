@@ -1,6 +1,10 @@
 import { config, locationService, reportExperimentView } from '@grafana/runtime';
 
 import {
+  COHORT_AUTO_OPEN_EXPERIMENT_ID,
+  COHORT_AUTO_OPEN_EXPERIMENT_FLAG,
+  COHORT_AUTO_OPEN_EXPERIMENT_GROUP,
+  COHORT_AUTO_OPEN_ELIGIBLE_EVENT,
   AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
   AUTO_OPEN_GUIDE_EXPERIMENT_FLAG,
   AUTO_OPEN_GUIDE_EXPERIMENT_GROUP,
@@ -33,6 +37,8 @@ import { installAutoLaunchOnMount } from './auto-launch';
 import { isAutoOpenGuideConfig, matchesExperience, type AutoOpenGuideConfig } from './config';
 import { hasAutoOpenGuideShown, markAutoOpenGuideShown, readConsumedVisit, writeConsumedVisit } from './markers';
 import { setAutoOpenGuideEnrollment } from './state';
+import { isCohortAutoOpenConfig, type CohortAutoOpenExperience } from './cohort-config';
+import { createCohortMembershipReader } from './cohort-membership';
 
 type EnrolledVariant = 'control' | 'treatment';
 
@@ -46,11 +52,15 @@ const isEnrolledVariant = (variant: string): variant is EnrolledVariant =>
 
 // A plain evaluation: the flag has no trackingKey, so only activate() counts as an exposure.
 function readTargeting(
-  flag: typeof AUTO_OPEN_GUIDE_EXPERIMENT_FLAG | typeof ONBOARDING_EXPLORING_EXPERIMENT_FLAG
+  flag:
+    | typeof AUTO_OPEN_GUIDE_EXPERIMENT_FLAG
+    | typeof ONBOARDING_EXPLORING_EXPERIMENT_FLAG
+    | typeof COHORT_AUTO_OPEN_EXPERIMENT_FLAG
 ): AutoOpenGuideConfig | null {
   try {
     const value = getFeatureFlagClient().getObjectValue(flag, { variant: 'excluded' });
-    if (!isAutoOpenGuideConfig(value)) {
+    const validate = flag === COHORT_AUTO_OPEN_EXPERIMENT_FLAG ? isCohortAutoOpenConfig : isAutoOpenGuideConfig;
+    if (!validate(value)) {
       warnExperimentRejection('remote', flag, value);
       return null;
     }
@@ -72,10 +82,11 @@ function visitKey(targeting: AutoOpenGuideConfig, path: string): string {
 function findOffer(
   targeting: AutoOpenGuideConfig,
   alreadyShown: (guide: string) => boolean,
-  path: string
+  path: string,
+  eligible: (experience: AutoOpenGuideConfig['experiences'][number]) => boolean
 ): Offer | null {
   const index = targeting.experiences.findIndex(
-    (experience) => matchesExperience(experience, path) && !alreadyShown(experience.guide)
+    (experience) => eligible(experience) && matchesExperience(experience, path) && !alreadyShown(experience.guide)
   );
   return index === -1 ? null : { index, guide: targeting.experiences[index]!.guide };
 }
@@ -97,29 +108,60 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   if (!config.namespace || !config.bootData.user.isSignedIn || config.analytics?.enabled === false) {
     return () => {};
   }
+  const cohortTargeting = readTargeting(COHORT_AUTO_OPEN_EXPERIMENT_FLAG);
   const exploringTargeting = readTargeting(ONBOARDING_EXPLORING_EXPERIMENT_FLAG);
   const legacyTargeting = readTargeting(AUTO_OPEN_GUIDE_EXPERIMENT_FLAG);
-  if (exploringTargeting && legacyTargeting) {
-    logger.warn('[Pathfinder] Auto-open experiments overlap; neither will enroll');
+  if ([cohortTargeting, exploringTargeting, legacyTargeting].filter(Boolean).length > 1) {
+    logger.warn('[Pathfinder] Auto-open experiments overlap; none will enroll');
     return () => {};
   }
   const requiresExploring = exploringTargeting !== null;
-  const pageTargeting = exploringTargeting ?? legacyTargeting;
-  const experimentId = requiresExploring ? ONBOARDING_EXPLORING_EXPERIMENT_ID : AUTO_OPEN_GUIDE_EXPERIMENT_ID;
-  const experimentFlag = requiresExploring ? ONBOARDING_EXPLORING_EXPERIMENT_FLAG : AUTO_OPEN_GUIDE_EXPERIMENT_FLAG;
-  const experimentGroup = requiresExploring ? ONBOARDING_EXPLORING_EXPERIMENT_GROUP : AUTO_OPEN_GUIDE_EXPERIMENT_GROUP;
-  const eligibleEvent = requiresExploring ? ONBOARDING_EXPLORING_ELIGIBLE_EVENT : AUTO_OPEN_GUIDE_ELIGIBLE_EVENT;
+  const requiresCohort = cohortTargeting !== null;
+  const requiresEligibility = requiresExploring || requiresCohort;
+  const pageTargeting = cohortTargeting ?? exploringTargeting ?? legacyTargeting;
+  const experimentId = requiresCohort
+    ? COHORT_AUTO_OPEN_EXPERIMENT_ID
+    : requiresExploring
+      ? ONBOARDING_EXPLORING_EXPERIMENT_ID
+      : AUTO_OPEN_GUIDE_EXPERIMENT_ID;
+  const experimentFlag = requiresCohort
+    ? COHORT_AUTO_OPEN_EXPERIMENT_FLAG
+    : requiresExploring
+      ? ONBOARDING_EXPLORING_EXPERIMENT_FLAG
+      : AUTO_OPEN_GUIDE_EXPERIMENT_FLAG;
+  const experimentGroup = requiresCohort
+    ? COHORT_AUTO_OPEN_EXPERIMENT_GROUP
+    : requiresExploring
+      ? ONBOARDING_EXPLORING_EXPERIMENT_GROUP
+      : AUTO_OPEN_GUIDE_EXPERIMENT_GROUP;
+  const eligibleEvent = requiresCohort
+    ? COHORT_AUTO_OPEN_ELIGIBLE_EVENT
+    : requiresExploring
+      ? ONBOARDING_EXPLORING_ELIGIBLE_EVENT
+      : AUTO_OPEN_GUIDE_ELIGIBLE_EVENT;
   const contextKey = getOnboardingIntentContextKey();
   const hostname = window.location.hostname;
   const exploringScope = `${hostname}:${ONBOARDING_EXPLORING_EXPERIMENT_ID}:${contextKey}`;
-  const markerScope = requiresExploring ? exploringScope : hostname;
+  const cohortScope = `${hostname}:${COHORT_AUTO_OPEN_EXPERIMENT_ID}:${contextKey}`;
+  const markerScope = requiresCohort ? cohortScope : requiresExploring ? exploringScope : hostname;
+  let membership: ReturnType<typeof createCohortMembershipReader> | undefined;
+  const experienceEligible = (experience: AutoOpenGuideConfig['experiences'][number]) =>
+    !requiresCohort || membership?.has((experience as CohortAutoOpenExperience).cohort) === true;
+  const eligibleExperiences = (targeting: AutoOpenGuideConfig) => targeting.experiences.filter(experienceEligible);
   const alreadyShown = (guide: string) =>
-    hasAutoOpenGuideShown(hostname, guide) || hasAutoOpenGuideShown(exploringScope, guide);
-  const intentEligible = () => !requiresExploring || hasSavedExploringIntent();
+    hasAutoOpenGuideShown(hostname, guide) ||
+    hasAutoOpenGuideShown(exploringScope, guide) ||
+    hasAutoOpenGuideShown(cohortScope, guide);
+  const intentEligible = () =>
+    requiresCohort
+      ? !!cohortTargeting?.experiences.some(experienceEligible)
+      : !requiresExploring || hasSavedExploringIntent();
   let pendingOffer: { offer: Offer; targeting: AutoOpenGuideConfig } | undefined;
   const currentOfferEligible = () =>
     !pendingOffer ||
-    (matchesExperience(pendingOffer.targeting.experiences[pendingOffer.offer.index]!, getCurrentPath()) && canPopOut());
+    (experienceEligible(pendingOffer.targeting.experiences[pendingOffer.offer.index]!) &&
+      matchesExperience(pendingOffer.targeting.experiences[pendingOffer.offer.index]!, getCurrentPath()) &&
+      canPopOut());
   const sdk = createPathfinderExperiments({
     scope: 'grafana-pathfinder-app',
     client: getFeatureFlagClient(),
@@ -131,7 +173,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
       config.bootData.user.isSignedIn &&
       contextKey === getOnboardingIntentContextKey() &&
       intentEligible() &&
-      (!requiresExploring || currentOfferEligible()),
+      (!requiresEligibility || currentOfferEligible()),
     reportExposure: ({ experiment_id, experiment_group, variant }) =>
       reportExperimentView(experiment_id, experiment_group, variant),
     reportAnalytics: (name, properties) => {
@@ -140,10 +182,17 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
         return;
       }
       reportAppInteraction(
-        requiresExploring ? UserInteraction.OnboardingExploringEligible : UserInteraction.AutoOpenGuideEligible,
+        requiresCohort
+          ? UserInteraction.CohortAutoOpenEligible
+          : requiresExploring
+            ? UserInteraction.OnboardingExploringEligible
+            : UserInteraction.AutoOpenGuideEligible,
         {
-          [requiresExploring ? 'experiment_onboarding_exploring_auto_open' : 'experiment_auto_open_guide']:
-            assignment.variant,
+          [requiresCohort
+            ? 'experiment_cohort_auto_open'
+            : requiresExploring
+              ? 'experiment_onboarding_exploring_auto_open'
+              : 'experiment_auto_open_guide']: assignment.variant,
           exposure_id: assignment.exposure_id,
           event_id: String(properties.event_id),
           experience_index: Number(properties.experience_index),
@@ -169,7 +218,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     id: experimentId,
     flagKey: experimentFlag,
     group: experimentGroup,
-    flag: { type: 'object', validate: isAutoOpenGuideConfig },
+    flag: { type: 'object', validate: requiresCohort ? isCohortAutoOpenConfig : isAutoOpenGuideConfig },
   });
   await sdk.ready;
 
@@ -192,7 +241,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
 
   const apply = (offer: Offer, variant: EnrolledVariant, targeting: AutoOpenGuideConfig) => {
     if (
-      requiresExploring &&
+      requiresEligibility &&
       (!intentEligible() || !currentOfferEligible() || contextKey !== getOnboardingIntentContextKey())
     ) {
       consumeVisit(undefined);
@@ -202,9 +251,10 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     restored = true;
     setAutoOpenGuideEnrollment({
       variant,
-      experiences: targeting.experiences,
+      experiences: eligibleExperiences(targeting),
       offeredGuide: offer.guide,
       flag: experimentFlag,
+      ...(requiresCohort ? { isCurrent: membership!.isCurrent } : {}),
     });
     notifyEnrollment();
     markAutoOpenGuideShown(markerScope, offer.guide);
@@ -223,14 +273,16 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
           !stopped &&
           contextKey === getOnboardingIntentContextKey() &&
           intentEligible() &&
+          experienceEligible(targeting.experiences[offer.index]!) &&
           matchesExperience(targeting.experiences[offer.index]!, getCurrentPath())
       );
       cancelAutoLaunch = cancelLaunch;
-      cancelAutoOpen = attemptAutoOpen(requiresExploring ? 0 : 200, () => {
+      cancelAutoOpen = attemptAutoOpen(requiresEligibility ? 0 : 200, () => {
         openRequested =
           !stopped &&
           contextKey === getOnboardingIntentContextKey() &&
           intentEligible() &&
+          experienceEligible(targeting.experiences[offer.index]!) &&
           matchesExperience(targeting.experiences[offer.index]!, getCurrentPath()) &&
           canPopOut();
         if (openRequested) {
@@ -254,7 +306,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
       if (stopped || pending !== activation || activation.signal.aborted) {
         return;
       }
-      if (requiresExploring) {
+      if (requiresEligibility) {
         sdk.refreshSession();
       }
       void experiment
@@ -288,7 +340,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
           }
         });
     };
-    if (requiresExploring) {
+    if (requiresEligibility) {
       activationTimer = setTimeout(run, 200);
     } else {
       run();
@@ -302,7 +354,14 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
       return;
     }
     if (
-      requiresExploring &&
+      requiresCohort &&
+      cohortTargeting?.experiences.some((experience) => matchesExperience(experience, getCurrentPath())) &&
+      document.visibilityState === 'visible'
+    ) {
+      membership?.refresh();
+    }
+    if (
+      requiresEligibility &&
       (!intentEligible() || contextKey !== getOnboardingIntentContextKey() || !currentOfferEligible())
     ) {
       if (pending) {
@@ -314,7 +373,11 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
       pendingOffer = undefined;
       cancelAutoLaunch();
       cancelAutoOpen();
-      if (hasSavedNonExploringIntent() || contextKey !== getOnboardingIntentContextKey()) {
+      if (
+        (requiresExploring && hasSavedNonExploringIntent()) ||
+        (requiresCohort && !membership?.isCurrent()) ||
+        contextKey !== getOnboardingIntentContextKey()
+      ) {
         restored = false;
         setAutoOpenGuideEnrollment(null);
         notifyEnrollment();
@@ -340,7 +403,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     if (!visit || consumedVisit !== undefined || !canPopOut()) {
       return;
     }
-    const offer = findOffer(targeting, alreadyShown, path);
+    const offer = findOffer(targeting, alreadyShown, path, experienceEligible);
     if (offer) {
       consumeVisit(visit);
       activate(offer, targeting);
@@ -359,17 +422,27 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     if (
       bootTargeting &&
       isEnrolledVariant(bootTargeting.variant) &&
-      bootTargeting.experiences.some((experience) => hasAutoOpenGuideShown(markerScope, experience.guide))
+      bootTargeting.experiences.some(
+        (experience) => experienceEligible(experience) && hasAutoOpenGuideShown(markerScope, experience.guide)
+      )
     ) {
       restored = true;
       setAutoOpenGuideEnrollment({
         variant: bootTargeting.variant,
-        experiences: bootTargeting.experiences,
+        experiences: eligibleExperiences(bootTargeting),
         flag: experimentFlag,
+        ...(requiresCohort ? { isCurrent: membership!.isCurrent } : {}),
       });
       notifyEnrollment();
     }
   };
+  membership = requiresCohort
+    ? createCohortMembershipReader(() => {
+        check();
+        sdk.refreshSession();
+        check();
+      })
+    : undefined;
   check();
 
   let unlisten = () => {};
@@ -405,6 +478,11 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     cancelAutoLaunch();
     cancelAutoOpen();
     stopIntentBridge();
+    membership?.dispose();
+    if (requiresCohort) {
+      setAutoOpenGuideEnrollment(null);
+      notifyEnrollment();
+    }
     unsubscribeIntent();
     unlisten();
     document.removeEventListener('visibilitychange', onVisibilityChange);

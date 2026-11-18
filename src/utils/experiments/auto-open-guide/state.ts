@@ -6,6 +6,7 @@ export interface AutoOpenGuideEnrollment {
   experiences: readonly AutoOpenGuideExperience[];
   offeredGuide?: string;
   flag?: FeatureFlagName;
+  isCurrent?: () => boolean;
 }
 
 let enrollment: AutoOpenGuideEnrollment | null = null;
@@ -13,7 +14,7 @@ const listeners = new Set<() => void>();
 
 // Cache read only, so analytics enrichment and the Featured slot can never enroll anyone.
 export function getAutoOpenGuideEnrollment(): AutoOpenGuideEnrollment | null {
-  return enrollment;
+  return enrollment?.isCurrent && !enrollment.isCurrent() ? null : enrollment;
 }
 
 export function setAutoOpenGuideEnrollment(next: AutoOpenGuideEnrollment | null): void {

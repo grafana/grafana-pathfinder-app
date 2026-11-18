@@ -134,6 +134,11 @@ const pathfinderFeatureFlags = {
     defaultValue: false,
     trackingKey: 'auto_open_sidebar',
   },
+  'pathfinder.cohort-auto-open-experiment': {
+    valueType: 'object',
+    values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
+    defaultValue: { variant: 'excluded' },
+  },
   /** Saved-exploring cohort; a separate flag keeps older clients from bypassing its eligibility gate. */
   'pathfinder.onboarding-exploring-auto-open-experiment': {
     valueType: 'object',
