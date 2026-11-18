@@ -87,10 +87,13 @@ const [
   { resolvePathfinderAvailability, getPathfinderStartupDecision, isImageRendererSession },
 ] = await enablementModules;
 
-const pathfinderAvailability = await resolvePathfinderAvailability(
-  getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(config.bootData.user?.authenticatedBy),
-  readPathfinderStartupPreference
-);
+const remotelyEnabled =
+  getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(config.bootData.user?.authenticatedBy);
+if (remotelyEnabled && config.namespace?.startsWith('stacks-')) {
+  const { discoverCloudSdkBackend } = await import('./lib/backend-routes');
+  await discoverCloudSdkBackend();
+}
+const pathfinderAvailability = await resolvePathfinderAvailability(remotelyEnabled, readPathfinderStartupPreference);
 const pathfinderEnabled = pathfinderAvailability === 'enabled';
 const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
 

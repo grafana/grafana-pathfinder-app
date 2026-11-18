@@ -120,21 +120,31 @@ test('OSS settings save uses the SDK and survives reload', async ({ page, reques
   test.skip(process.env.PATHFINDER_SDK_E2E !== '1', 'Requires the locally registered SDK provider');
   page.setDefaultTimeout(10000);
   const url = '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/pathfinder-settings';
-  const original = await (await request.get(url)).json();
+  const before = await request.get(`${url}?absence=explicit`);
+  expect(before.ok()).toBe(true);
+  const original = await before.json();
+  const creating = original.state === 'not-configured';
   try {
     await page.goto('/plugins/grafana-pathfinder-app');
     const enabled = page.locator('#pathfinder-enabled');
     await expect(enabled).toBeVisible();
     const wasEnabled = await enabled.isChecked();
     await enabled.setChecked(!wasEnabled, { force: true });
-    const saved = page.waitForResponse((res) => res.url().endsWith(url) && res.request().method() === 'PUT');
+    const saved = page.waitForResponse(
+      (res) => res.url().endsWith(url) && res.request().method() === (creating ? 'POST' : 'PUT')
+    );
     await page.getByTestId(testIds.appConfig.submit).click();
     expect((await saved).ok()).toBe(true);
     await page.reload();
     await expect(enabled).toBeChecked({ checked: !wasEnabled });
   } finally {
-    const current = await (await request.get(url)).json();
-    const restored = await request.put(url, { data: { ...current, spec: original.spec } });
-    expect(restored.ok()).toBe(true);
+    if (creating) {
+      const removed = await request.delete(url.replace('/backend/pathfinder-settings', '/pathfindersettings/default'));
+      expect([200, 202, 404]).toContain(removed.status());
+    } else {
+      const current = await (await request.get(url)).json();
+      const restored = await request.put(url, { data: { ...current, spec: original.spec } });
+      expect(restored.ok(), await restored.text()).toBe(true);
+    }
   }
 });

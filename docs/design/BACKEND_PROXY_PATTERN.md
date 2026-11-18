@@ -946,6 +946,12 @@ A restricted user was rejected at ingress; this does not prove outbound delegati
 The resource-access integration test separately exercises token exchange with the
 caller's token and namespace through the bounded SDK transport.
 
+On Cloud, an enabled plugin in a stack namespace checks the namespaced SDK health
+route during startup when the local registration flags are absent. A healthy
+response selects the SDK transport for that namespace. If the router wave has
+yet to arrive or the check times out, the compatibility build uses its legacy
+adapter for the page. Reloading repeats the check.
+
 Cloud coexistence with the manifest-only registration and real restricted-caller
 outbound authorization remain unverified. Cloud testing is deferred until after local
 implementation and does not block local endpoint migration or frontend validation.

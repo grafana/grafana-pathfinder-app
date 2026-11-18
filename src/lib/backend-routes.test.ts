@@ -1,7 +1,11 @@
-import { config } from '@grafana/runtime';
-import { backendRoute, usesSdkBackend } from './backend-routes';
+import { of, throwError } from 'rxjs';
+import { config, getBackendSrv } from '@grafana/runtime';
+import { backendRoute, discoverCloudSdkBackend, usesSdkBackend } from './backend-routes';
 
-jest.mock('@grafana/runtime', () => ({ config: { namespace: 'default', featureToggles: {} } }));
+jest.mock('@grafana/runtime', () => ({
+  getBackendSrv: jest.fn(),
+  config: { namespace: 'default', featureToggles: {} },
+}));
 
 beforeEach(() => {
   config.namespace = 'default';
@@ -26,5 +30,25 @@ it('selects the namespace-bound SDK transport when both registration flags are e
     '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/org-2/backend/custom-guide'
   );
   config.namespace = '';
+  expect(usesSdkBackend()).toBe(false);
+});
+
+it('selects the Cloud SDK only when the namespaced health route is ready', async () => {
+  config.namespace = 'stacks-9239';
+  const fetch = jest
+    .fn()
+    .mockReturnValueOnce(throwError(() => new Error('404')))
+    .mockReturnValueOnce(of({ data: { status: 'ok' } }));
+  jest.mocked(getBackendSrv).mockReturnValue({ fetch } as unknown as ReturnType<typeof getBackendSrv>);
+  await discoverCloudSdkBackend();
+  expect(usesSdkBackend()).toBe(false);
+  await discoverCloudSdkBackend();
+  expect(fetch).toHaveBeenCalledWith(
+    expect.objectContaining({
+      url: '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-9239/backend/health',
+    })
+  );
+  expect(backendRoute('custom-guide')).toContain('/namespaces/stacks-9239/backend/custom-guide');
+  config.namespace = 'stacks-22';
   expect(usesSdkBackend()).toBe(false);
 });
