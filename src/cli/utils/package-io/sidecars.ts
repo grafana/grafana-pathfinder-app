@@ -5,6 +5,7 @@
  * writer, sharing `content.json`'s serializer.
  */
 
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -102,6 +103,39 @@ export function readPackageSidecars(packageDir: string): SidecarReadResult[] {
   });
 }
 
+function writeFailed(filePath: string, err: unknown): PackageIOError {
+  const detail = err instanceof Error ? err.message : String(err);
+  return new PackageIOError({
+    code: 'WRITE_FAILED',
+    message: `Failed to write sidecar to ${filePath}: ${detail}`,
+  });
+}
+
+function ensureSidecarDir(packageDir: string): string {
+  const dir = path.join(packageDir, TRANSLATION_SIDECAR_DIR);
+  try {
+    fs.mkdirSync(packageDir, { recursive: true });
+    fs.mkdirSync(dir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+      throw writeFailed(dir, err);
+    }
+  }
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(dir);
+  } catch (err) {
+    throw writeFailed(dir, err);
+  }
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new PackageIOError({
+      code: 'WRITE_FAILED',
+      message: `Refusing to write sidecars: ${dir} is not a directory inside the package`,
+    });
+  }
+  return dir;
+}
+
 /**
  * Write one sidecar with the serializer `writePackage` uses for
  * `content.json`. The value is schema-checked but written as given, so key
@@ -125,15 +159,25 @@ export function writePackageSidecar(packageDir: string, tag: string, sidecar: Tr
       }))
     );
   }
+  const dir = ensureSidecarDir(packageDir);
   const filePath = sidecarPath(packageDir, tag);
+  // Rename replaces a link at the destination instead of writing through it.
+  const tempPath = path.join(dir, `.${tag}.${randomUUID()}.tmp`);
+  let fd: number;
   try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, serializeJson(sidecar));
+    fd = fs.openSync(tempPath, 'wx');
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new PackageIOError({
-      code: 'WRITE_FAILED',
-      message: `Failed to write sidecar to ${filePath}: ${detail}`,
-    });
+    throw writeFailed(filePath, err);
+  }
+  try {
+    try {
+      fs.writeFileSync(fd, serializeJson(sidecar));
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tempPath, filePath);
+  } catch (err) {
+    fs.rmSync(tempPath, { force: true });
+    throw writeFailed(filePath, err);
   }
 }

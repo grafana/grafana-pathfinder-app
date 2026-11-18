@@ -138,6 +138,47 @@ describe('writePackageSidecar', () => {
     expect(fs.existsSync(path.join(packageDir, 'i18n'))).toBe(false);
   });
 
+  describe('with links in the package', () => {
+    const EXTERNAL_TEXT = 'outside the package\n';
+    let outsideDir: string;
+
+    beforeEach(() => {
+      outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidecars-outside-'));
+      fs.writeFileSync(path.join(outsideDir, 'ja.json'), EXTERNAL_TEXT);
+    });
+
+    afterEach(() => {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    });
+
+    it('refuses a linked i18n directory and leaves the external file unchanged', () => {
+      fs.symlinkSync(outsideDir, path.join(packageDir, 'i18n'), 'dir');
+
+      expect(() => writePackageSidecar(packageDir, 'ja', SIDECAR)).toThrow(PackageIOError);
+      expect(fs.readFileSync(path.join(outsideDir, 'ja.json'), 'utf-8')).toBe(EXTERNAL_TEXT);
+      expect(fs.readdirSync(outsideDir)).toEqual(['ja.json']);
+    });
+
+    it('replaces a linked destination file without writing through the link', () => {
+      fs.mkdirSync(path.join(packageDir, 'i18n'));
+      const destination = path.join(packageDir, 'i18n', 'ja.json');
+      fs.symlinkSync(path.join(outsideDir, 'ja.json'), destination);
+
+      writePackageSidecar(packageDir, 'ja', SIDECAR);
+
+      expect(fs.readFileSync(path.join(outsideDir, 'ja.json'), 'utf-8')).toBe(EXTERNAL_TEXT);
+      expect(fs.lstatSync(destination).isSymbolicLink()).toBe(false);
+      expect(fs.readFileSync(destination, 'utf-8')).toBe(`${JSON.stringify(SIDECAR, null, 2)}\n`);
+      expect(fs.readdirSync(path.join(packageDir, 'i18n'))).toEqual(['ja.json']);
+    });
+  });
+
+  it('refuses an i18n path that is a file', () => {
+    writeRaw('i18n', 'not a directory');
+    expect(() => writePackageSidecar(packageDir, 'ja', SIDECAR)).toThrow(PackageIOError);
+    expect(fs.readFileSync(path.join(packageDir, 'i18n'), 'utf-8')).toBe('not a directory');
+  });
+
   it('refuses a sidecar that does not match the schema', () => {
     const invalid = { ...SIDECAR, title: 'stray root key' } as TranslationSidecar;
     expect(() => writePackageSidecar(packageDir, 'ja', invalid)).toThrow(PackageIOError);
