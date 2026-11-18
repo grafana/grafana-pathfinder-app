@@ -10,7 +10,7 @@ import type { GuideDiagnostic, GuideLoadContext } from './guide-diagnostics.type
  */
 
 import type { GuideStatsSummary } from './guide-stats.schema';
-import type { JsonBlock } from './json-guide.types';
+import type { GuideTranslationAnnotation, JsonBlock } from './json-guide.types';
 
 // ============ CONTENT (content.json) ============
 
@@ -24,6 +24,8 @@ export interface ContentJson {
   id: string;
   title: string;
   blocks: JsonBlock[];
+  /** Present only on a guide compiled for a locale. */
+  translation?: GuideTranslationAnnotation;
 }
 
 // ============ DEPENDENCY TYPES ============
@@ -286,6 +288,8 @@ export interface ManifestJson {
   /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
   estimatedMinutes?: number;
   language?: string;
+  /** Advisory list of sidecar locales; `build-repository` is authoritative. */
+  translations?: string[];
   category?: string;
   author?: Author;
   startingLocation?: string;
@@ -321,6 +325,7 @@ export interface ManifestJson {
  * A single entry in repository.json.
  * Denormalized manifest metadata for dependency graph building
  * without re-reading every manifest.json.
+ * @coupling Zod schema: RepositoryEntrySchema in package.schema.ts
  */
 export interface RepositoryEntry extends PackageMetadataFields {
   [key: string]: unknown;
@@ -330,6 +335,8 @@ export interface RepositoryEntry extends PackageMetadataFields {
   testEnvironment?: TestEnvironment;
   /** Runtime Grafana floor, carried from the package's manifest. */
   minGrafanaVersion?: string;
+  /** Locales the guide is available in. */
+  translations?: string[];
   /** Generated block-count stamp, carried from the package's manifest. */
   stats?: GuideStatsSummary;
 }

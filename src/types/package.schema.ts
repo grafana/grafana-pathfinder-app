@@ -10,7 +10,7 @@
 import { z } from 'zod';
 
 import { GuideStatsSummarySchema } from './guide-stats.schema';
-import { JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
+import { GuideTranslationAnnotationSchema, JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
 import {
   FOUNDATIONS_TRACK_ID,
   type Author,
@@ -67,6 +67,7 @@ export const ContentJsonSchema = z.object({
   id: packageIdSchema,
   title: z.string().min(1, 'Content title is required'),
   blocks: z.array(JsonBlockSchema),
+  translation: GuideTranslationAnnotationSchema.optional(),
 });
 
 // ============ DEPENDENCY SCHEMAS ============
@@ -198,6 +199,8 @@ export const ManifestJsonObjectSchema = z.looseObject({
   /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
   estimatedMinutes: z.number().positive().optional().catch(undefined),
   language: z.string().default('en'),
+  /** Advisory list of sidecar locales; `build-repository` is authoritative (I18N.md §7.4). */
+  translations: z.array(z.string()).optional(),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
   // No `.default('/')`: a schema-applied default would be indistinguishable
@@ -401,6 +404,8 @@ export const RepositoryEntrySchema = z.looseObject({
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.optional(),
   minGrafanaVersion: z.string().optional(),
+  /** Locales the guide is available in (I18N.md §6.7). */
+  translations: z.array(z.string()).optional(),
 
   /**
    * Carried from the manifest by `build-repository`, not forwarded as an
