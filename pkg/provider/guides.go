@@ -13,6 +13,10 @@ import (
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 )
 
+type guideListResponse struct {
+	Items []json.RawMessage `json:"items"`
+}
+
 func guideReadHandler(store *resourceaccess.GuideStore) simple.AppCustomRouteHandler {
 	read := resourceReadHandler("interactiveguides", "get", func(ctx context.Context, namespace string, request *app.CustomRouteRequest) (json.RawMessage, error) {
 		ctx, cancel := context.WithTimeout(ctx, services.SettingsReadTimeout)
@@ -39,8 +43,6 @@ func guidesReadHandler(store *resourceaccess.GuideStore) simple.AppCustomRouteHa
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(struct {
-			Items []json.RawMessage `json:"items"`
-		}{items})
+		return json.Marshal(guideListResponse{Items: items})
 	})
 }

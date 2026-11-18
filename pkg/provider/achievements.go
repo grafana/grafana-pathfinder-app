@@ -34,6 +34,12 @@ func (p achievementPolicy) Allow(_ context.Context, person achievements.Person) 
 	return nil
 }
 
+type achievementDefinitionsResponse struct {
+	Version      string                 `json:"version"`
+	ArtBase      string                 `json:"artBase"`
+	Achievements []achievements.Display `json:"achievements"`
+}
+
 func achievementHandler(clients *resourceaccess.AchievementClients, definitions AchievementDefinitions, operation string) simple.AppCustomRouteHandler {
 	limiter := services.NewUserRateLimiter(30, 0.5, time.Now)
 	return func(ctx context.Context, w app.CustomRouteResponseWriter, req *app.CustomRouteRequest) error {
@@ -80,11 +86,7 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 		person := achievements.Person{ID: caller.Subject}
 		switch operation {
 		case "definitions":
-			return write(200, struct {
-				Version      string                 `json:"version"`
-				ArtBase      string                 `json:"artBase"`
-				Achievements []achievements.Display `json:"achievements"`
-			}{defs.Version, "https://interactive-learning.grafana.net/achievements/art/", append([]achievements.Display{}, defs.Display...)})
+			return write(200, achievementDefinitionsResponse{defs.Version, "https://interactive-learning.grafana.net/achievements/art/", append([]achievements.Display{}, defs.Display...)})
 		case "my":
 			rows, err := (resourceaccess.AchievementReader{Clients: clients, Namespace: caller.Namespace}).ListMine(ctx, person)
 			if err != nil {

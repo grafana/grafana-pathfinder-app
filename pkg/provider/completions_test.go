@@ -95,3 +95,8 @@ func TestCompletionSDKCacheFiltersUsersAndInvalidates(t *testing.T) {
 		t.Fatalf("denied caller reused another caller's cache: %s", recorder.Body.String())
 	}
 }
+
+func (completionIdentity) GetIDToken() string     { return "" }
+func (completionIdentity) GetAccessToken() string { return "" }
+
+func (completionIdentity) GetUsername() string { return "" }

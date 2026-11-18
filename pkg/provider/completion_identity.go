@@ -28,5 +28,6 @@ func completionCaller(ctx context.Context, routeNamespace string) (completionWri
 	if err != nil || info.OrgID < 1 {
 		return completionWriterIdentity{}, errors.New("organization-unavailable")
 	}
-	return completionWriterIdentity{Subject: identity.GetSubject(), Login: identity.GetUsername(), DisplayName: identity.GetName(), Namespace: namespace, OrgID: info.OrgID}, nil
+	claims, _ := callerClaims(ctx, namespace)
+	return completionWriterIdentity{Subject: identity.GetSubject(), Login: identity.GetUsername(), DisplayName: claims.Name, Namespace: namespace, OrgID: info.OrgID}, nil
 }
