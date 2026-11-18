@@ -946,8 +946,8 @@ A restricted user was rejected at ingress; this does not prove outbound delegati
 The resource-access integration test separately exercises token exchange with the
 caller's token and namespace through the bounded SDK transport.
 
-On Cloud, an enabled plugin in a stack namespace checks the namespaced SDK health
-route during startup when the local registration flags are absent. A healthy
+An enabled plugin checks the namespaced SDK health route at startup on Cloud
+and on local instances with both registration flags enabled. A healthy
 response selects the SDK transport for that namespace. If the router wave has
 yet to arrive or the check times out, the compatibility build uses its legacy
 adapter for the page. Reloading repeats the check.

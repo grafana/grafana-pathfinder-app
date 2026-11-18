@@ -89,9 +89,9 @@ const [
 
 const remotelyEnabled =
   getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(config.bootData.user?.authenticatedBy);
-if (remotelyEnabled && config.namespace?.startsWith('stacks-')) {
-  const { discoverCloudSdkBackend } = await import('./lib/backend-routes');
-  await discoverCloudSdkBackend();
+if (remotelyEnabled) {
+  const { discoverSdkBackend } = await import('./lib/backend-routes');
+  await discoverSdkBackend();
 }
 const pathfinderAvailability = await resolvePathfinderAvailability(remotelyEnabled, readPathfinderStartupPreference);
 const pathfinderEnabled = pathfinderAvailability === 'enabled';

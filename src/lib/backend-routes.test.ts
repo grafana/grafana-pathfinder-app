@@ -1,6 +1,6 @@
 import { of, throwError } from 'rxjs';
 import { config, getBackendSrv } from '@grafana/runtime';
-import { backendRoute, discoverCloudSdkBackend, usesSdkBackend } from './backend-routes';
+import { backendRoute, discoverSdkBackend, usesSdkBackend } from './backend-routes';
 
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
@@ -23,32 +23,31 @@ it('rejects unapproved paths even when supplied outside TypeScript', () => {
   }
 });
 
-it('selects the namespace-bound SDK transport when both registration flags are enabled', () => {
-  Object.assign(config.featureToggles, { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true });
-  config.namespace = 'org-2';
-  expect(backendRoute('custom-guide')).toBe(
-    '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/org-2/backend/custom-guide'
-  );
-  config.namespace = '';
-  expect(usesSdkBackend()).toBe(false);
-});
-
-it('selects the Cloud SDK only when the namespaced health route is ready', async () => {
-  config.namespace = 'stacks-9239';
+it.each<[string, boolean]>([
+  ['default', true],
+  ['stacks-9239', true],
+  ['stacks-22', false],
+])('checks SDK health in %s with registration flags %s', async (namespace, flagsEnabled) => {
+  config.namespace = namespace;
+  Object.assign(config.featureToggles, {
+    'appplugins.loadAppManifest': flagsEnabled,
+    'appplugins.registerAPIServer': flagsEnabled,
+  });
   const fetch = jest
     .fn()
     .mockReturnValueOnce(throwError(() => new Error('404')))
     .mockReturnValueOnce(of({ data: { status: 'ok' } }));
   jest.mocked(getBackendSrv).mockReturnValue({ fetch } as unknown as ReturnType<typeof getBackendSrv>);
-  await discoverCloudSdkBackend();
-  expect(usesSdkBackend()).toBe(false);
-  await discoverCloudSdkBackend();
+  await discoverSdkBackend();
+  expect(backendRoute('custom-guide')).toBe('/api/plugins/grafana-pathfinder-app/resources/custom-guide');
+  expect(backendRoute('pathfinder-settings')).toBe('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings');
+  await discoverSdkBackend();
   expect(fetch).toHaveBeenCalledWith(
     expect.objectContaining({
-      url: '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-9239/backend/health',
+      url: `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${namespace}/backend/health`,
     })
   );
-  expect(backendRoute('custom-guide')).toContain('/namespaces/stacks-9239/backend/custom-guide');
-  config.namespace = 'stacks-22';
+  expect(backendRoute('custom-guide')).toContain(`/namespaces/${namespace}/backend/custom-guide`);
+  config.namespace = 'stacks-999';
   expect(usesSdkBackend()).toBe(false);
 });

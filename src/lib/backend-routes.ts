@@ -2,16 +2,10 @@ import { firstValueFrom, timeout } from 'rxjs';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { PLUGIN_BACKEND_URL } from '../constants';
 
-let registeredCloudNamespace: string | undefined;
+let healthyNamespace: string | undefined;
 
 export function usesSdkBackend(): boolean {
-  const toggles = config?.featureToggles as Record<string, boolean> | undefined;
-  return (
-    Boolean(config?.namespace) &&
-    config.namespace !== '*' &&
-    (config.namespace === registeredCloudNamespace ||
-      (toggles?.['appplugins.loadAppManifest'] === true && toggles?.['appplugins.registerAPIServer'] === true))
-  );
+  return healthyNamespace !== undefined && config.namespace === healthyNamespace;
 }
 
 const backendPaths = [
@@ -41,9 +35,12 @@ export function backendRoute(path: (typeof backendPaths)[number], sdk = usesSdkB
   return `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${encodeURIComponent(config.namespace)}/backend/${path}`;
 }
 
-export async function discoverCloudSdkBackend(): Promise<void> {
+export async function discoverSdkBackend(): Promise<void> {
   const namespace = config.namespace;
-  if (!/^stacks-[0-9]+$/.test(namespace ?? '') || usesSdkBackend()) {
+  const toggles = config.featureToggles as Record<string, boolean> | undefined;
+  const registrationEnabled =
+    toggles?.['appplugins.loadAppManifest'] === true && toggles?.['appplugins.registerAPIServer'] === true;
+  if (!namespace || namespace === '*' || (!/^stacks-[0-9]+$/.test(namespace) && !registrationEnabled)) {
     return;
   }
   try {
@@ -52,10 +49,10 @@ export async function discoverCloudSdkBackend(): Promise<void> {
         .fetch<{ status: string }>({ url: backendRoute('health', true), showErrorAlert: false })
         .pipe(timeout(2000))
     );
-    if (response.data?.status === 'ok') {
-      registeredCloudNamespace = namespace;
+    if (response.data?.status === 'ok' && config.namespace === namespace) {
+      healthyNamespace = namespace;
     }
   } catch {
-    // The compatibility build can arrive before its router wave.
+    // Registration flags can be enabled before the namespaced route is served.
   }
 }
