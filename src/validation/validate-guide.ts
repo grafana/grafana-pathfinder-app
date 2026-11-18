@@ -153,7 +153,7 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
   if (firstBlock?.type === 'markdown') {
     const leadingHeading = extractLeadingH1(firstBlock.content);
     if (leadingHeading && headingDuplicatesTitle(leadingHeading, result.data.title)) {
-      const message = `blocks[0] starts with a heading ("${leadingHeading}") that duplicates the guide title — the title is already rendered separately; remove this heading.`;
+      const message = `blocks[0] starts with a heading ("${leadingHeading}") that duplicates the guide title; remove it or word it differently from the title.`;
       if (options.allowDuplicateHeading) {
         advisories.push({ message, path: ['blocks', 0], type: 'suggestion' });
       } else {
