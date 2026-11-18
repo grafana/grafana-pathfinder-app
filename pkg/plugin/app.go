@@ -57,6 +57,11 @@ type App struct {
 
 	// Per-user rate limiter for GET /assignments/my.
 	assignmentsReadRateLimiter *userRateLimiter
+
+	achievementEventsRateLimiter *userRateLimiter
+	definitions                  definitionsProvider
+	// Nil leaves the achievements routes reporting themselves unavailable.
+	achievementsBackendFor achievementsBackendFor
 }
 
 // NewApp creates a new App instance.
@@ -73,6 +78,14 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 		logger:                     logger,
 		completionWriteRateLimiter: newCompletionWriteRateLimiter(),
 		assignmentsReadRateLimiter: newUserRateLimiter(assignmentsReadRateBurst, assignmentsReadRateRefillPerSec),
+
+		achievementEventsRateLimiter: newUserRateLimiter(achievementEventsRateBurst, achievementEventsRateRefillPerSec),
+	}
+	app.achievementsBackendFor = app.buildAchievementsBackend
+	if source, err := processDefinitions(); err != nil {
+		logger.Error("Achievement definitions source is misconfigured, achievements routes disabled", "error", err)
+	} else {
+		app.definitions = source
 	}
 
 	// A stack without provisioned on-behalf-of credentials still loads: the App

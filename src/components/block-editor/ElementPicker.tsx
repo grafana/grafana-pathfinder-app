@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useStyles2 } from '@grafana/ui';
+import { Button, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { generateSelectorFromEvent, generateSelectorForElement } from '../../utils/devtools';
@@ -47,21 +47,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   bannerIcon: css({
     fontSize: '14px',
-  }),
-  stopButton: css({
-    padding: `${theme.spacing(0.25)} ${theme.spacing(1.5)}`,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    border: '1px solid rgba(255, 255, 255, 0.4)',
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.primary.contrastText,
-    cursor: 'pointer',
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    },
   }),
   highlight: css({
     position: 'fixed',
@@ -237,9 +222,9 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
       <div className={styles.banner} data-element-picker="banner">
         <span className={styles.bannerIcon}>🎯</span>
         <span className={styles.bannerText}>Click any element to capture its selector</span>
-        <button className={styles.stopButton} onClick={onCancel} type="button">
+        <Button variant="secondary" size="sm" type="button" onClick={onCancel}>
           Cancel (Esc)
-        </button>
+        </Button>
       </div>
 
       {cursorPosition && (

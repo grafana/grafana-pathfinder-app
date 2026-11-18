@@ -24,6 +24,7 @@ on:
       - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
       - 'src/lib/choice-response.ts'
+      - 'src/lib/workflow-objectives.ts'
   pull_request:
     branches:
       - main
@@ -47,6 +48,7 @@ on:
       - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
       - 'src/lib/choice-response.ts'
+      - 'src/lib/workflow-objectives.ts'
 
 permissions: read-all
 

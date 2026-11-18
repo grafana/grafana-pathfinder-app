@@ -435,6 +435,19 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  * permanent.
  */
 const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  ...[
+    'lib/guide-translation/projection-table.ts',
+    'lib/guide-translation/review.ts',
+    'lib/guide-translation/source-hash.ts',
+    'types/translation-sidecar.schema.ts',
+  ].map((violation) => ({
+    violation,
+    reason:
+      'Guide translation contract (docs/design/I18N.md). Sidecars are compiled at build time, so only ' +
+      'src/cli/** and tests read it; the app loads compiled content.<locale>.json files and needs none of it ' +
+      'until the block editor previews a translation (I18N.md §6.1).',
+    tracking: '#2373',
+  })),
   {
     violation: 'types/v1-recommender.types.ts',
     reason:

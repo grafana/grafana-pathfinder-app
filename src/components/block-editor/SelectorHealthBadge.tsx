@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { Icon, Tooltip, useStyles2 } from '@grafana/ui';
+import { Icon, Tooltip, useStyles2, useTheme2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
@@ -23,12 +23,6 @@ interface SelectorHealthBadgeProps {
   targetstate?: string;
 }
 
-const QUALITY_COLORS: Record<string, string> = {
-  good: '#73BF69',
-  medium: '#FF9830',
-  poor: '#F2495C',
-};
-
 interface BadgeInfo {
   method: string;
   stabilityScore: number;
@@ -39,6 +33,7 @@ interface BadgeInfo {
 
 export function SelectorHealthBadge({ reftarget, checkTargetState, targetstate }: SelectorHealthBadgeProps) {
   const styles = useStyles2(getStyles);
+  const theme = useTheme2();
 
   // Debounce the reftarget so DOM queries don't fire on every keystroke
   const debouncedTarget = useDebouncedValue(reftarget, 500);
@@ -96,8 +91,18 @@ export function SelectorHealthBadge({ reftarget, checkTargetState, targetstate }
     return null;
   }
 
-  const dotColor = QUALITY_COLORS[info.quality] ?? QUALITY_COLORS.medium;
-  const matchColor = info.matchCount === 1 ? '#73BF69' : info.matchCount === 0 ? '#F2495C' : '#FF9830';
+  const qualityColors: Record<string, string> = {
+    good: theme.colors.success.text,
+    medium: theme.colors.warning.text,
+    poor: theme.colors.error.text,
+  };
+  const dotColor = qualityColors[info.quality] ?? qualityColors.medium;
+  const matchColor =
+    info.matchCount === 1
+      ? theme.colors.success.text
+      : info.matchCount === 0
+        ? theme.colors.error.text
+        : theme.colors.warning.text;
 
   return (
     <div className={styles.container}>

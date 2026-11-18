@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "translation-golden",
+  "type": "guide",
+  "repository": "interactive-tutorials",
+  "description": "Create a dashboard, add a panel and save it.",
+  "language": "en",
+  "translations": ["ja", "ja-JP"],
+  "category": "dashboards",
+  "startingLocation": "/dashboards",
+  "targeting": {
+    "match": {
+      "urlPrefix": "/dashboards"
+    }
+  }
+}

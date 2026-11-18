@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "translation-golden",
+  "title": "Build your first dashboard",
+  "blocks": [
+    {
+      "type": "markdown",
+      "id": "intro",
+      "content": "# Welcome\n\nIn this guide you build a dashboard and add a panel to it."
+    },
+    {
+      "type": "image",
+      "id": "example-dashboard",
+      "src": "https://grafana.com/static/img/docs/dashboards/example-dashboard.png",
+      "alt": "A dashboard with three panels"
+    },
+    {
+      "type": "video",
+      "id": "overview-video",
+      "src": "https://www.youtube.com/embed/vTiIkdDwT-0",
+      "provider": "youtube",
+      "title": "Dashboards in five minutes"
+    },
+    {
+      "type": "section",
+      "id": "create-dashboard",
+      "title": "Create a dashboard",
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "open-dashboards",
+          "action": "navigate",
+          "reftarget": "/dashboards",
+          "content": "Open the **Dashboards** page.",
+          "tooltip": "Every dashboard you can open is listed here."
+        },
+        {
+          "type": "interactive",
+          "id": "name-dashboard",
+          "action": "formfill",
+          "reftarget": "input[data-testid='data-testid Dashboard settings Title input']",
+          "targetvalue": "My first dashboard",
+          "content": "Give the dashboard a name.",
+          "hint": "You can change the name later.",
+          "formHint": "Type the dashboard name"
+        },
+        {
+          "type": "multistep",
+          "id": "add-panel",
+          "content": "Add a panel to the dashboard.",
+          "steps": [
+            {
+              "id": "open-add-menu",
+              "action": "button",
+              "reftarget": "[data-testid='data-testid Add button']",
+              "description": "Open the **Add** menu.",
+              "tooltip": "The menu lists what you can add."
+            },
+            {
+              "id": "choose-visualization",
+              "action": "button",
+              "reftarget": "[data-testid='data-testid Add new visualization menu item']",
+              "description": "Choose **Visualization**."
+            }
+          ]
+        },
+        {
+          "type": "conditional",
+          "id": "has-prometheus",
+          "conditions": ["has-datasource:prometheus"],
+          "display": "section",
+          "description": "What you do next depends on whether you have a Prometheus data source.",
+          "whenTrueSectionConfig": {
+            "title": "Query your Prometheus data"
+          },
+          "whenFalseSectionConfig": {
+            "title": "Connect Prometheus first"
+          },
+          "whenTrue": [
+            {
+              "type": "markdown",
+              "id": "query-tip",
+              "content": "Pick a metric in the query editor, for example `up`."
+            }
+          ],
+          "whenFalse": [
+            {
+              "type": "markdown",
+              "id": "connect-tip",
+              "content": "Add a Prometheus data source, then come back to this guide."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "guided",
+      "id": "save-dashboard",
+      "content": "Save the dashboard.",
+      "steps": [
+        {
+          "id": "open-save",
+          "action": "highlight",
+          "reftarget": "[data-testid='data-testid Save dashboard button']",
+          "description": "Click **Save dashboard**."
+        },
+        {
+          "id": "confirm-save",
+          "action": "highlight",
+          "reftarget": "[data-testid='data-testid Save dashboard drawer button']",
+          "description": "Confirm the save.",
+          "tooltip": "Saving keeps your changes."
+        }
+      ]
+    },
+    {
+      "type": "callout",
+      "id": "next-steps",
+      "title": "Next steps",
+      "content": "Callouts are outside the projection table, so this text stays in English."
+    }
+  ]
+}

@@ -61,6 +61,7 @@ describe('StorageKeys — stable string contract', () => {
       // UI / panel state
       SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
       PANEL_MODE: 'grafana-pathfinder-app-panel-mode',
+      GUIDE_LANGUAGE: 'grafana-pathfinder-app-guide-language',
       FLOATING_PANEL_GEOMETRY: 'grafana-pathfinder-app-floating-panel-geometry',
       RECOMMENDATIONS_SCROLL_POSITION: 'grafana-pathfinder-app-recommendations-scroll-position',
 

@@ -102,7 +102,7 @@ func logAppPlatformResult(logger log.Logger, namespace, resource, operation stri
 	if d == nil || errors.Is(err, context.Canceled) || d.Reason == "cancelled" {
 		return
 	}
-	if d.UpstreamStatus == 405 || d.UpstreamStatus == 501 || (d.UpstreamStatus == 404 && (resource == "pathfindersettings" || operation != "get")) || (d.UpstreamStatus == 409 && resource == "completionrecords" && operation == "create") {
+	if expectedAppPlatformOutcome(resource, operation, d.UpstreamStatus, err) {
 		return
 	}
 	event, retry := "pathfinder_proxy_failure", []interface{}{}
@@ -117,6 +117,22 @@ func logAppPlatformResult(logger log.Logger, namespace, resource, operation stri
 		fields = append(fields, "error_type", fmt.Sprintf("%T", err))
 	}
 	logger.Warn("Pathfinder proxy operation failed", fields...)
+}
+
+// An achievement 409 is an already-held award or a compare-and-swap conflict,
+// and an absent row is one not yet created; the store answers both.
+func expectedAppPlatformOutcome(resource, operation string, status int, err error) bool {
+	switch {
+	case resource == achievementProgressResource || resource == achievementAwardResource:
+		return status == 409 || isAchievementRowAbsent(err, resource)
+	case status == 405 || status == 501:
+		return true
+	case status == 404 && (resource == "pathfindersettings" || operation != "get"):
+		return true
+	case status == 409 && resource == "completionrecords" && operation == "create":
+		return true
+	}
+	return false
 }
 
 func (a *App) writeProxyError(w http.ResponseWriter, message string, status int, d *guideProxyDiagnostic) {

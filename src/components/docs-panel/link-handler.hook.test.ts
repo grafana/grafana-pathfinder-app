@@ -2,6 +2,12 @@ import { config } from '@grafana/runtime';
 import { renderHook, fireEvent, waitFor } from '@testing-library/react';
 import { useLinkClickHandler } from './link-handler.hook';
 import { UserInteraction } from '../../lib/analytics';
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+
+jest.mock('../../utils/dev-mode', () => ({
+  ...jest.requireActual('../../utils/dev-mode'),
+  isDevModeEnabledGlobal: jest.fn(() => false),
+}));
 
 // Mock analytics reporting
 jest.mock('../../lib/analytics', () => ({
@@ -88,6 +94,26 @@ describe('useLinkClickHandler', () => {
       isLoading: false,
       error: null,
     });
+  });
+
+  it('keeps guide links in the active PR snapshot and test session', () => {
+    const enabled = jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
+    try {
+      const root = `https://raw.githubusercontent.com/fork/repo/${'a'.repeat(40)}`;
+      const activeTab = mockModel.getActiveTab();
+      activeTab.content.url = `${root}/first/content.json#pf-pr-kiosk123`;
+      renderHook(() => useLinkClickHandler({ contentRef, activeTab, theme: mockTheme, model: mockModel }));
+      const anchor = document.createElement('a');
+      anchor.href = 'https://interactive-learning.grafana.net/packages/second/content.json';
+      anchor.textContent = 'Next guide';
+      contentDiv.appendChild(anchor);
+      fireEvent.click(anchor);
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith(`${root}/second/content.json#pf-pr-kiosk123`, 'Next guide', {
+        source: 'content_link',
+      });
+    } finally {
+      enabled.mockReturnValue(false);
+    }
   });
 
   describe('Journey Start Button', () => {

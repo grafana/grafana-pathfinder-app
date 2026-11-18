@@ -1,4 +1,5 @@
 import { stripPrTestMarker } from './pr-test-marker';
+import { stripContentFile } from './guide-content-file';
 
 const JOURNEY_BASE_URL_PATTERNS = [
   /^(https?:\/\/[^/]+\/docs\/learning-journeys\/[^/]+)/,
@@ -27,6 +28,6 @@ export function getMilestoneSlug(rawUrl: string): string {
   if (url.startsWith('backend-guide:')) {
     return url.slice('backend-guide:'.length);
   }
-  const withoutContentFile = url.replace(/\/(content\.json|unstyled\.html)$/, '');
+  const withoutContentFile = stripContentFile(url).replace(/\/unstyled\.html$/, '');
   return withoutContentFile.replace(/\/+$/, '').split('/').pop() || '';
 }

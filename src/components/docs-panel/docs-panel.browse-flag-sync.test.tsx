@@ -146,6 +146,7 @@ jest.mock('./hooks', () => {
     useScrollTracking: noop,
     useGlobalActiveTabExposure: jest.requireActual('./hooks/useGlobalActiveTabExposure').useGlobalActiveTabExposure,
     useAutoOpenListener: noop,
+    useAssistantPathfinderListener: noop,
     useCatalogBrowserListener: noop,
     usePopOutHandoff: noop,
     useFullScreenHandoff: noop,

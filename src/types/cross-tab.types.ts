@@ -211,6 +211,7 @@ export interface StepProgressMessage extends CrossTabEnvelope {
 
 export interface ObservationSubscriptionMessage extends CrossTabEnvelope, Partial<ControllerAuthFields> {
   kind: 'observation-subscribe';
+  observeWorkflows?: boolean;
   generation: number;
   subscriptionId: string;
   guideKey: string;
@@ -559,6 +560,7 @@ const OBSERVABLE_TARGET_ACTIONS: ReadonlySet<string> = new Set([...KNOWN_TARGET_
 
 function isValidObservationSubscription(message: Record<string, unknown>): boolean {
   return (
+    (message.observeWorkflows === undefined || typeof message.observeWorkflows === 'boolean') &&
     isBoundedString(message.subscriptionId, 128) &&
     isBoundedString(message.guideKey, 4096) &&
     Number.isSafeInteger(message.generation) &&

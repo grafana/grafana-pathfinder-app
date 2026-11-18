@@ -19,6 +19,7 @@
  *   3. auto-id           — block-id minting (`<type>-<n>`)
  *   4. state-validation  — validatePackageState + classifiers
  *   5. disk              — readPackage / writePackage
+ *      sidecars          — readPackageSidecars / writePackageSidecar
  *   6. mutators          — appendBlock / appendStep / appendChoice / appendHint / editBlock / removeBlock
  *   7. move              — moveBlock
  *   8. compose           — mutateAndValidate
@@ -43,6 +44,9 @@ export type { ValidationOutcome, ValidatePackageStateOptions } from './state-val
 
 export { readPackage, writePackage } from './disk';
 export type { PackageState } from './disk';
+
+export { readPackageSidecars, sidecarPath, writePackageSidecar } from './sidecars';
+export type { SidecarReadErrorCode, SidecarReadFailure, SidecarReadResult, SidecarReadSuccess } from './sidecars';
 
 export {
   appendBlock,

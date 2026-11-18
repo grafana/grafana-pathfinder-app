@@ -37,6 +37,7 @@ on:
       - '.dockerignore'
       - '.github/workflows/cli-publish.yml'
       - 'src/lib/choice-response.ts'
+      - 'src/lib/workflow-objectives.ts'
   pull_request:
     branches:
       - main
@@ -57,6 +58,7 @@ on:
       - '.dockerignore'
       - '.github/workflows/cli-publish.yml'
       - 'src/lib/choice-response.ts'
+      - 'src/lib/workflow-objectives.ts'
 
 permissions: read-all
 
