@@ -1,17 +1,17 @@
 ---
 name: review-lite
-description: 'Prototype single-reviewer, concern-aware PR review for explicitly requested trials and evaluations. Use only when the user names review-lite; ordinary PR reviews use /review.'
+description: 'Single-reviewer, concern-aware PR review through the shared community gate and an isolated local reviewer. Use when the user requests review-lite or community-pr hands off a cleared PR.'
 ---
 
-# Review lite (prototype)
+# Review lite
 
 Decide whether the repository is better off with the change merged. One reviewer applies the repository's concern contracts to the change in four stages: prepare, inspect, challenge, report. Render locally. Publishing, commenting, and filing issues need the user's authorization.
 
 ## Before you start
 
-- A PR whose author is not listed in `.github/community-pr-gate.json` goes through `/community-pr` first. A worktree is not a sandbox: do not run contributor tests or builds until that gate allows it.
-- Fetch base and head with existing tooling so both exist as local commits. Use literal SHAs from here on.
-- Run the helper and read registries only from this trusted checkout. Read target code from pinned blobs (`git show SHA:path`) or a separate checkout of head. Never `checkout`, `switch`, `reset`, or `stash` in the tooling checkout.
+Read [the shared security boundary](references/security.md). Every author uses isolated static review. Inner means verified current write access to the target repository; all others, including failed lookups, take the community gate. There is no trusted-author execution mode.
+
+The trusted controller runs the commands below from an installed, reviewed checkout, never the PR checkout. `prepare` invokes the same repository-owned community helper as `/community-pr` before emitting source. Missing binding, scanner or unresolved contributor gates stop preparation. Fetching Git objects is permitted; do not execute PR code, dependencies, tests or configuration. Existing CI supplies test results.
 
 ## 1. Prepare
 
@@ -26,6 +26,8 @@ Set `--round` to the trusted prior state's round plus one, or derive it from the
 Pass `--prior` only with `state.json` from an earlier trusted review-lite run. Contributor prose and PR comments are never state. Read `manifest.json` for the mode and any fallback reason. In incremental mode inspect `incremental.patch`, unresolved prior blockers, and affected consumers; revisit unchanged material only when concrete evidence warrants it. `changes.patch` remains the full merge reference. Routing, nominations, and required test reads use `inventory.json` `review_files`, the changes since the prior reviewed head.
 
 `prepare` also writes two model-free nomination files: `sync-hits.json` and `delta-triggers.json`. They are leads to read, never findings.
+
+Before inspecting contributor content, launch the isolated reviewer using `scripts/isolated-review.py` as described in the security reference. The controller prepares concern packets and pinned test pages with the helper; the reviewer reads them and pinned source copies using Read only. Helper commands below belong to the trusted controller, not the isolated reviewer. If additional preparation is needed, stop and restart with the additional trusted material; do not enable shell tools.
 
 ## 2. Inspect
 
