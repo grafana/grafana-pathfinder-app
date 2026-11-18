@@ -289,13 +289,20 @@ describe('runAddBlock', () => {
     it('warns when a markdown block with a list is added under a section', async () => {
       const dir = await mkSection();
       const result = await runAddBlock({ dir, type: 'markdown', parent: 'sec', fields: { content: list } });
-      expect(result.status === 'ok' && result.warnings?.some((w) => w.code === 'SECTION_STEP_LIST')).toBe(true);
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings?.some((w) => w.code === 'SECTION_STEP_LIST')).toBe(true);
     });
 
     it('does not warn for the same content at top level', async () => {
       const dir = await bootstrap();
       const result = await runAddBlock({ dir, type: 'markdown', fields: { content: list } });
       expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
       expect(result.warnings?.some((w) => w.code === 'SECTION_STEP_LIST')).toBeFalsy();
     });
 
@@ -303,7 +310,11 @@ describe('runAddBlock', () => {
       const dir = await mkSection();
       await runAddBlock({ dir, type: 'markdown', parent: 'sec', fields: { id: 'step', content: 'Open the menu' } });
       const result = await runEditBlock({ dir, id: 'step', content: list });
-      expect(result.status === 'ok' && result.warnings?.some((w) => w.code === 'SECTION_STEP_LIST')).toBe(true);
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings?.some((w) => w.code === 'SECTION_STEP_LIST')).toBe(true);
     });
   });
 
