@@ -141,10 +141,10 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         },
         "clientGuidance": {
           "grafanaAppPlatform": {
-            "appliesWhen": "You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-app.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.",
+            "appliesWhen": "You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-app.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST, switch to grafanaOss.",
             "confirmationPrompt": "Publish guide "Snapshot Fixture" to <namespace> as <status>?",
             "errorHandling": [
-              "Preferred tools (pathfinder_manage_guide_drafts, pathfinder_publish_guide): for conflicts, refusals, missing drafts and any other 4xx except 403, follow the result's own text; it is authoritative for that write. Do not fall back to localExport for those.",
+              "Preferred tools (pathfinder_manage_guide_drafts, pathfinder_publish_guide): for conflicts, refusals, missing drafts and any other 4xx except 403, follow the result's own text; it is authoritative for that write. If that leaves the guide unsaved, tell the user and offer localExport; this response's \`artifact\` still holds the full guide.",
               "Either preferred tool returning 403 or a "requires Editor or Admin role" error: the user lacks the role on this Grafana instance. Tell the user, then offer localExport. Do not retry.",
               "Generic-write 404 on collection POST: the InteractiveGuide CRD or the aggregator is not installed in this instance. Switch to the grafanaOss branch (localExport). Do not retry.",
               "Generic-write 403: the user lacks interactiveguides.create permission. Tell the user, then offer localExport. Do not retry.",
@@ -178,7 +178,7 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
               "Save the guide as a draft right after this response, without asking; the user needs the draft to see the guide. Publish only if the user asks to. A draft is private authoring state; a published guide is visible to every user on this Grafana instance.",
               "Preferred path — save the draft. If pathfinder_manage_guide_drafts is available, call it with op=apply, namespace=<resolved namespace>, guide=<resource object from this response>. On success you have a saved draft regardless of what status field you sent.",
               "Preferred path — publish if requested. If the user then asks to publish AND pathfinder_publish_guide is available, call it as its description directs after the draft save succeeds.",
-              "Generic-write fallback — only if the preferred tools above are not registered in your environment. POST resource to appPlatform.collectionPathTemplate (substitute {namespace}) using appPlatform.createMethod (POST). To overwrite an existing resource, GET appPlatform.itemPathTemplate first, copy metadata.resourceVersion into resource.metadata.resourceVersion, merge the response metadata.annotations into resource.metadata.annotations so existing annotations survive the whole-object PUT, then PUT to appPlatform.itemPathTemplate using appPlatform.updateMethod (PUT). Set resource.spec.status to "draft", or to "published" only if the user asked to publish. Show the user the confirmationPrompt copy before writing and proceed only on explicit yes.",
+              "Generic-write fallback — only if the preferred tools above are not registered in your environment. POST resource to appPlatform.collectionPathTemplate (substitute {namespace}) using appPlatform.createMethod (POST). To overwrite an existing resource, GET appPlatform.itemPathTemplate first, copy metadata.resourceVersion into resource.metadata.resourceVersion, merge the response metadata.annotations into resource.metadata.annotations so existing annotations survive the whole-object PUT, then PUT to appPlatform.itemPathTemplate using appPlatform.updateMethod (PUT). Create the new draft without asking; set resource.spec.status to "draft", or to "published" only if the user asked to publish. Show the user the confirmationPrompt copy only before publishing or before overwriting an existing guide, and proceed only on explicit yes.",
               "On success (either path), resolve viewer.floatingPath against the user's Grafana instance origin to produce an absolute URL (e.g., https://example.grafana.net + /a/grafana-pathfinder-app?...) and surface that URL to the user. Do NOT surface a relative path.",
             ],
           },
@@ -208,7 +208,8 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
           "  - clientGuidance.grafanaAppPlatform: you are running inside Grafana with App Platform available. Prefer the named tools in clientGuidance.grafanaAppPlatform.preferredTools (pathfinder_manage_guide_drafts, pathfinder_publish_guide) when they are registered; otherwise follow the generic-write fallback step.",
           "  - clientGuidance.grafanaOss: you are running inside Grafana without App Platform (OSS, or aggregator off).",
           "  - clientGuidance.nonGrafanaClient: you have no Grafana session (Cursor, Claude Desktop, CI).",
-          "If unsure, try grafanaAppPlatform first; on a 404 from either the preferred tools or the collection POST, fall through to grafanaOss. The localExport block at the end of this response is the fallback used by both grafanaOss and nonGrafanaClient.",
+          "If validation.warnings lists PLACEHOLDER_SELECTOR entries, still save the draft, then list each of those steps for the user and say they need verified selectors before the guide will run.",
+          "If unsure, try grafanaAppPlatform first; on a 404 from the collection POST, fall through to grafanaOss. The localExport block at the end of this response is the fallback used by both grafanaOss and nonGrafanaClient.",
         ],
         "localExport": {
           "files": [
@@ -274,6 +275,35 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         },
       }
     `);
+  });
+
+  it('warns about a placeholder selector nested in a multistep step without blocking finalize', async () => {
+    const payload = await callFinalize({
+      blocks: [
+        {
+          type: 'multistep',
+          id: 'ms',
+          content: 'Do it',
+          authorNote: 'private note',
+          steps: [{ action: 'highlight', reftarget: '[data-testid="TODO-save-button"]' }],
+        },
+      ],
+    });
+    expect(payload.status).toBe('ready');
+    expect(JSON.stringify(payload.artifact)).not.toContain('authorNote');
+    expect(JSON.stringify(payload.resource)).not.toContain('authorNote');
+    expect((payload.validation as { warnings: Array<{ code: string; path: string }> }).warnings).toEqual([
+      expect.objectContaining({ code: 'PLACEHOLDER_SELECTOR', path: 'blocks[0].steps[0]/reftarget' }),
+    ]);
+  });
+
+  it('also warns about an unquoted placeholder selector', async () => {
+    const payload = await callFinalize({
+      blocks: [{ type: 'interactive', action: 'highlight', reftarget: '[data-testid=TODO-x]', content: 'Click' }],
+    });
+    expect((payload.validation as { warnings: Array<{ code: string }> }).warnings).toEqual([
+      expect.objectContaining({ code: 'PLACEHOLDER_SELECTOR' }),
+    ]);
   });
 
   it('encodes dividers in the App Platform resource without changing the export artifact', async () => {

@@ -139,7 +139,7 @@ const AUTHORING_CONTEXT = {
       teach:
         'Latches: "teach me about", "learn", "how do I" about general Grafana ("build a dashboard"). Reusable material the reader should retain. Shape it like reference, adding hands-on interactive steps per `interactiveRules` where doing teaches better than reading, then end each `##` topic (or the guide, with a closing "Check your knowledge" topic) with a `quiz` that tests only facts the guide itself states.',
       walkthrough:
-        'Latches: "how to" for one specific task that cannot be applied in generic fashion, "our", a named tool or resource ("integrate with IdP X"). An ordered procedure done start to finish. Steps in the Grafana UI are interactive blocks per `interactiveRules`; steps in other tools are numbered markdown. When a target cannot be addressed with a verified selector, use the placeholder in the `reftarget` rule rather than dropping the step, and when you hand off the guide, list every placeholder step and tell the user they must add selectors before it will run.',
+        'Latches: "how to" for one specific task that cannot be applied in generic fashion, "our", a named tool or resource ("integrate with IdP X"). An ordered procedure done start to finish. Steps in the Grafana UI are interactive blocks per `interactiveRules`; steps in other tools are numbered markdown. When a target cannot be addressed with a verified selector, use the placeholder in the `reftarget` rule rather than dropping the step, and when you hand off the guide, list every placeholder step (finalize lists them in validation.warnings) and tell the user they must add selectors before it will run.',
     },
   },
   // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
@@ -149,7 +149,7 @@ const AUTHORING_CONTEXT = {
   interactiveRules: [
     'Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must run in order AND are tightly coupled.',
     'Never write a step with `action: noop` as filler. If there is nothing concrete for the user to do, write a `markdown` block describing what they would do instead.',
-    'If you do not have a verified Grafana DOM selector for a `reftarget` field, never invent or guess one. Use `action: button` with the visible button text, or ask the user. If neither resolves the target, keep the step with a placeholder `reftarget` of `[data-testid="TODO-<what-to-target>"]` and an `authorNote` of "Placeholder selector — replace with a verified selector (Pick in the block editor)."',
+    'If you do not have a verified Grafana DOM selector for a `reftarget` field, never invent or guess one. Use `action: button` with the visible button text, or ask the user. If neither resolves the target, keep the step with a placeholder `reftarget` of `[data-testid="TODO-<what-to-target>"]`, and you may note it in `authorNote` on the block that holds it (steps have no `authorNote`) for your own tracking; finalize strips notes, so the hand-off to the user is what flags it.',
     'If a `multistep` would end up with only one step, replace it with an `interactive` block. Single-step multisteps add overhead with no benefit.',
     "Anchor the user on the first interactive step: add `on-page:/path` to its `requirements`, or use a `navigate` action — the guide can't assume it starts on the right page.",
     'Add contextual `requirements` to every interactive step that touches the DOM. At minimum `on-page:/path`; also `navmenu-open` for nav clicks and `is-admin` (or a role) for admin-only features.',

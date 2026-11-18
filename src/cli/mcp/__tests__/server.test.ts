@@ -9,7 +9,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { CURRENT_SCHEMA_VERSION, JsonInteractiveBlockSchema, JsonStepSchema } from '../../../types/json-guide.schema';
 import { CONTAINER_BLOCK_TYPES } from '../../utils/block-registry';
 import { SERVER_INSTRUCTIONS } from '../lib/server-instructions';
 import { buildServer } from '../server';
@@ -142,6 +142,12 @@ describe('MCP server', () => {
       expect(Object.keys(shape.kinds).sort()).toEqual(['reference', 'teach', 'walkthrough']);
       expect(shape.kinds.teach).toMatch(/quiz/);
       expect(shape.kinds.walkthrough).toMatch(/placeholder/i);
+      const placeholder = '[data-testid="TODO-<what-to-target>"]';
+      const rules = (ctx.interactiveRules as string[]).join('\n');
+      expect(rules).toContain(placeholder);
+      expect(rules).toMatch(/authorNote.*finalize strips/);
+      expect(JsonStepSchema.shape.reftarget.description).toContain(placeholder);
+      expect(JsonInteractiveBlockSchema.shape.reftarget.description).toContain(placeholder);
     } finally {
       await close();
     }

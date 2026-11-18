@@ -16,6 +16,8 @@
  *   `runEditBlock` whenever a non-empty `reftarget` is written. The CLI
  *   cannot verify selectors against the live Grafana DOM, so this is a
  *   floor-raising signal, not a validation pass (hardening doc issue #3).
+ * - `PLACEHOLDER_SELECTOR` — emitted by `pathfinder_finalize_for_app_platform`
+ *   for every `reftarget` still holding a `TODO-` placeholder selector.
  * - `INPUT_NORMALIZED` — emitted by `runAddBlock` / `runEditBlock` (and
  *   future siblings) whenever the CLI rewrites a user-supplied input into
  *   its canonical form (M3 — see `src/cli/utils/input-normalizers.ts`).
@@ -26,6 +28,36 @@
  */
 
 import type { OutcomeWarning } from './output';
+import { CONTAINER_CHILD_KEYS, CONTAINER_NON_BLOCK_CHILD_KEYS } from './package-io/tree';
+
+const PLACEHOLDER_SELECTOR_PATTERN = /data-testid=["']?TODO-/;
+
+export function placeholderSelectorWarnings(blocks: unknown, prefix = 'blocks'): OutcomeWarning[] {
+  if (!Array.isArray(blocks)) {
+    return [];
+  }
+  return blocks.flatMap((node: unknown, i): OutcomeWarning[] => {
+    if (typeof node !== 'object' || node === null) {
+      return [];
+    }
+    const record = node as Record<string, unknown>;
+    const path = `${prefix}[${i}]`;
+    const own: OutcomeWarning[] =
+      typeof record.reftarget === 'string' && PLACEHOLDER_SELECTOR_PATTERN.test(record.reftarget)
+        ? [
+            {
+              code: 'PLACEHOLDER_SELECTOR',
+              message:
+                'Placeholder selector. This step will not run until it gets a verified selector (Pick in the block editor). Tell the user.',
+              path: `${path}/reftarget`,
+            },
+          ]
+        : [];
+    const type = String(record.type);
+    const childKeys = [...(CONTAINER_CHILD_KEYS[type] ?? []), ...(CONTAINER_NON_BLOCK_CHILD_KEYS[type] ?? [])];
+    return [...own, ...childKeys.flatMap((key) => placeholderSelectorWarnings(record[key], `${path}.${key}`))];
+  });
+}
 
 /**
  * Composition nudge fired when an agent adds a `multistep` block. Targets

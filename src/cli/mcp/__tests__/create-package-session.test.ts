@@ -110,6 +110,18 @@ describe('pathfinder_create_package — session mint', () => {
     });
   });
 
+  it('accepts authorNote on a multistep block, where the placeholder-selector guidance puts it', async () => {
+    await withHarness(async (call) => {
+      const created = await call('pathfinder_create_package', { opts: { title: 'Notes' } });
+      const added = await call('pathfinder_manage_block', {
+        operation: 'add-block',
+        sessionToken: created.sessionToken,
+        opts: { type: 'multistep', id: 'ms', content: 'Do it', authorNote: 'Placeholder selector — replace it.' },
+      });
+      expect(added.status).toBe('ok');
+    });
+  });
+
   it('returns INVALID_TITLE when the title has no alphanumeric chars (regression — sessionToken branch must not mask this)', async () => {
     await withHarness(async (call) => {
       const r = await call('pathfinder_create_package', { opts: { title: '!!!' } });
