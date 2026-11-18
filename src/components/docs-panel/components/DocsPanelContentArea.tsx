@@ -29,6 +29,7 @@ import {
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { GuideProgressBar } from '../../guide-progress';
+import { GuideLanguageSlot, TranslationNoticeSlot } from '../../guide-language';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -452,6 +453,14 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
                     <GuideVersionNotice
                       manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
+                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+                      guideTitle={activeTab?.title}
+                    />
+                    <GuideLanguageSlot
+                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+                      guideTitle={activeTab?.title}
+                    />
+                    <TranslationNoticeSlot
                       guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
                       guideTitle={activeTab?.title}
                     />
