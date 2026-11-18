@@ -14,8 +14,10 @@ One supported configuration initially: macOS, Claude Code 2.1.327, SRT 0.0.83. I
 python3 .cursor/skills/review-lite/scripts/isolated-review.py \
   --repo /abs/trusted-repo --run /abs/prepared-run \
   --srt /abs/runtime/node_modules/.bin/srt \
-  --node /abs/node --claude /abs/claude
+  --node /abs/node-prefix/bin/node --claude /abs/claude
 ```
+
+`--node` must be `bin/node` inside a Node install prefix that has `include/node`; `--srt` must resolve inside `node_modules/@anthropic-ai/sandbox-runtime`. The wrapper refuses a read root that is `/`, the home directory or an ancestor of it, rather than widening reads.
 
 The wrapper verifies the head again and provides regular-file copies of pinned base/head blobs, prepared packets and installed policy. Symlinks/submodules are omitted and must be disclosed when material; no PR settings or instructions are auto-loaded. Claude starts with Read as its only tool, no MCP, skills or shell, and a disposable home. SRT restricts the whole process tree: input is read-only, only scratch is writable, filesystem reads are denied by default except explicit inputs, scratch, tooling and system runtime paths, and only `api.anthropic.com` is allowed. Host GitHub credentials and configuration are not provided. Authentication uses only `ANTHROPIC_API_KEY`; this model credential is an explicit remaining capability, not a claim of zero credentials or zero network. System runtime files remain readable.
 

@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 
 HERE = Path(__file__).resolve().parent
 GATE = HERE.parents[1] / 'community-pr/scripts/community_pr_gate.py'
@@ -23,6 +24,7 @@ def export_source(repo, revision, destination):
     tree = command(['git', '-C', str(repo), 'ls-tree', '-rz', '--full-tree', revision]).stdout
     entries = []
     omitted = []
+    spellings = {}
     for record in tree.split(b'\0'):
         if not record:
             continue
@@ -31,6 +33,11 @@ def export_source(repo, revision, destination):
         path = PurePosixPath(raw_path.decode('utf-8', errors='strict'))
         if path.is_absolute() or '..' in path.parts or '.git' in path.parts:
             raise ValueError('unsafe source path')
+        for depth in range(1, len(path.parts) + 1):
+            spelling = '/'.join(path.parts[:depth])
+            folded = unicodedata.normalize('NFC', spelling).casefold()
+            if spellings.setdefault(folded, spelling) != spelling:
+                raise ValueError(f'source paths collide on case-insensitive filesystems: {spelling}')
         if kind != 'blob' or mode not in ('100644', '100755'):
             omitted.append(str(path))
             continue
@@ -53,14 +60,35 @@ def export_source(repo, revision, destination):
     return omitted
 
 
+def node_prefix(node):
+    prefix = node.parent.parent
+    if node.parent.name != 'bin' or not (prefix / 'include' / 'node').is_dir():
+        raise ValueError('--node must be bin/node inside a dedicated Node install prefix.')
+    return prefix
+
+
+def runtime_root(runtime):
+    if runtime.name != 'sandbox-runtime' or runtime.parent.name != '@anthropic-ai' or runtime.parent.parent.name != 'node_modules':
+        raise ValueError('--srt must come from a dedicated node_modules/@anthropic-ai/sandbox-runtime install.')
+    return runtime.parent.parent
+
+
+def read_root(path):
+    home = Path.home().resolve()
+    if path == Path(path.anchor) or path == home or path in home.parents:
+        raise ValueError(f'Refusing to expose {path}; it contains host credentials.')
+    return str(path)
+
+
 def profile(source, scratch, runtime, node, claude):
+    roots = (source, scratch, runtime_root(runtime), node_prefix(node), claude)
     return {
         'network': {'allowedDomains': ['api.anthropic.com'], 'deniedDomains': [],
                     'allowUnixSockets': [], 'allowLocalBinding': False},
         'filesystem': {
             'denyRead': ['/'],
             'allowRead': ['/System', '/usr/lib', '/usr/share', '/usr/bin', '/bin', '/dev'] +
-                         [str(p) for p in (source, scratch, runtime, node.parent.parent, claude)],
+                         [read_root(p) for p in roots],
             'allowWrite': [str(scratch)], 'denyWrite': [str(source)],
         },
     }
@@ -128,7 +156,7 @@ def main():
         policy += 'Read omitted.json and disclose any omitted material needed for a conclusion.'
         (source / 'policy.txt').write_text(policy)
         settings = root / 'settings.json'
-        settings.write_text(json.dumps(profile(source, scratch, runtime.parent.parent, node, claude)))
+        settings.write_text(json.dumps(profile(source, scratch, runtime, node, claude)))
         env = {'PATH': str(node.parent) + ':/usr/bin:/bin', 'HOME': str(scratch),
                'TMPDIR': str(scratch), 'CLAUDE_CODE_TMPDIR': str(scratch),
                'CLAUDE_CONFIG_DIR': str(scratch / 'config'), 'ANTHROPIC_API_KEY': key,
