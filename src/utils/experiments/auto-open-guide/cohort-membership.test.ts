@@ -9,8 +9,15 @@ jest.mock('@grafana/runtime', () => ({
   config: {
     namespace: 'stacks-123',
     analytics: { enabled: true },
-    bootData: { user: { id: 42, orgId: 1, isSignedIn: true, email: 'Case@Example.com' } },
+    bootData: {
+      settings: { buildInfo: { versionString: 'Grafana Cloud' } },
+      user: { id: 42, orgId: 1, isSignedIn: true, email: 'Case@Example.com' },
+    },
   },
+}));
+let mockTelemetryAvailable = true;
+jest.mock('../../../lib/telemetry/faro-adapter', () => ({
+  getPathfinderFaro: () => (mockTelemetryAvailable ? {} : null),
 }));
 jest.mock('../../../lib/hash.util', () => ({ hashString: jest.fn() }));
 jest.mock('../../resolve-tenant-settings', () => ({ resolveTenantSettings: jest.fn() }));
@@ -31,6 +38,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   global.fetch = mockFetch;
+  mockTelemetryAvailable = true;
+  config.bootData.settings.buildInfo.versionString = 'Grafana Cloud';
   config.namespace = 'stacks-123';
   config.analytics.enabled = true;
   config.bootData.user.id = 42;
@@ -148,25 +157,48 @@ it.each([
   expect(hashString).not.toHaveBeenCalled();
 });
 
-it.each(['email', 'signed-out', 'analytics', 'namespace'])('skips lookup without %s eligibility', async (condition) => {
-  if (condition === 'email') {
-    config.bootData.user.email = '';
+it.each(['email', 'signed-out', 'analytics', 'namespace', 'cloud', 'telemetry'])(
+  'skips lookup without %s eligibility',
+  async (condition) => {
+    if (condition === 'cloud') {
+      config.bootData.settings.buildInfo.versionString = 'Grafana';
+    }
+    if (condition === 'telemetry') {
+      mockTelemetryAvailable = false;
+    }
+    if (condition === 'email') {
+      config.bootData.user.email = '';
+    }
+    if (condition === 'signed-out') {
+      config.bootData.user.isSignedIn = false;
+    }
+    if (condition === 'analytics') {
+      config.analytics.enabled = false;
+    }
+    if (condition === 'namespace') {
+      config.namespace = '';
+    }
+    reader.dispose();
+    reader = createCohortMembershipReader(onChange);
+    reader.refresh();
+    await settle();
+    expect(resolveTenantSettings).not.toHaveBeenCalled();
+    expect(hashString).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   }
-  if (condition === 'signed-out') {
-    config.bootData.user.isSignedIn = false;
-  }
-  if (condition === 'analytics') {
-    config.analytics.enabled = false;
-  }
-  if (condition === 'namespace') {
-    config.namespace = '';
-  }
-  reader.dispose();
-  reader = createCohortMembershipReader(onChange);
+);
+
+it('drops the pending lookup if telemetry becomes unavailable while hashing', async () => {
+  let finishHash!: (hash: string) => void;
+  jest.mocked(hashString).mockReturnValueOnce(new Promise((resolve) => (finishHash = resolve)));
   reader.refresh();
   await settle();
-  expect(resolveTenantSettings).not.toHaveBeenCalled();
+  expect(hashString).toHaveBeenCalledTimes(1);
+  mockTelemetryAvailable = false;
+  finishHash('a'.repeat(64));
+  await settle();
   expect(mockFetch).not.toHaveBeenCalled();
+  expect(reader.has('billing')).toBe(false);
 });
 
 it('aborts a hung request after five seconds and ignores its late response', async () => {

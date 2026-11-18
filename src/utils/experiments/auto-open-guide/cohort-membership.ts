@@ -3,6 +3,8 @@ import { config } from '@grafana/runtime';
 import { ALLOWED_RECOMMENDER_DOMAINS, getConfigWithDefaults } from '../../../constants';
 import { getOnboardingIntentContextKey } from '../../../global-state/onboarding-exploring-intent';
 import { hashString } from '../../../lib/hash.util';
+import { getPathfinderFaro } from '../../../lib/telemetry/faro-adapter';
+import { isGrafanaCloud } from '../../../lib/telemetry/filtering';
 import pluginJson from '../../../plugin.json';
 import { resolveDevModeOptIn } from '../../dev-mode';
 import { resolveTenantSettings } from '../../resolve-tenant-settings';
@@ -20,6 +22,8 @@ export function createCohortMembershipReader(onChange: () => void) {
 
   const isCurrent = () =>
     !disposed &&
+    isGrafanaCloud() &&
+    !!getPathfinderFaro() &&
     !!config.namespace &&
     config.bootData.user.isSignedIn &&
     config.analytics?.enabled !== false &&

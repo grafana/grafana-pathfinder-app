@@ -85,7 +85,11 @@ jest.mock('../../../global-state/sidebar', () => ({
   sidebarState: { setPendingOpenSource: jest.fn(), getIsSidebarMounted: jest.fn(() => false) },
 }));
 jest.mock('@grafana/runtime', () => ({
-  config: { namespace: 'stacks-123', bootData: { user: { id: 42, isSignedIn: true } }, analytics: { enabled: true } },
+  config: {
+    namespace: 'stacks-123',
+    bootData: { settings: { buildInfo: { versionString: 'Grafana Cloud' } }, user: { id: 42, isSignedIn: true } },
+    analytics: { enabled: true },
+  },
   reportExperimentView: jest.fn(),
   locationService: {
     getHistory: () => ({
