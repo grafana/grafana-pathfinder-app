@@ -131,7 +131,7 @@ Repeat with delayed storage, navigation away during the 200ms trigger delay or S
 
 ## `pathfinder.cohort-auto-open-experiment`
 
-Live QA is deferred until the cohort endpoint and client release are ready. Mocked coverage lives beside the shared auto-open engine. The disabled deployment draft targets cohort `billing`, the `billing-usage-lj` learning path and `/a/grafana-cmab-app*`; it enrolls nobody in any wave.
+Live QA is deferred until the cohort endpoint and client release are ready. Mocked coverage lives beside the shared auto-open engine. The disabled draft offers the same usage-alert guide on either billing app for `billing` members and on the homepage for `billing-spend-jump` members.
 
 For later Cloud QA, exclude the legacy and onboarding auto-open flags, disable config-driven auto-open and the Help button nudge, and enable Pathfinder telemetry. Choose a test account with a real email and confirmed membership. In Grafana's feature-control UI, select the following payload and reload:
 
@@ -141,8 +141,13 @@ For later Cloud QA, exclude the legacy and onboarding auto-open flags, disable c
   "experiences": [
     {
       "cohort": "billing",
-      "guide": "https://interactive-learning.grafana.net/packages/billing-usage-lj/content.json",
-      "pages": ["/a/grafana-cmab-app*"]
+      "guide": "https://interactive-learning.grafana.net/packages/cmab-understand-bill-set-spend-alert/content.json",
+      "pages": ["/a/grafana-cmab-app*", "/a/grafana-costmanagementui-app*"]
+    },
+    {
+      "cohort": "billing-spend-jump",
+      "guide": "https://interactive-learning.grafana.net/packages/cmab-understand-bill-set-spend-alert/content.json",
+      "pages": ["/"]
     }
   ]
 }
@@ -152,7 +157,7 @@ Repeat with `variant: control`, then `{ "variant": "excluded" }`. Matching treat
 
 Inspect `experiment_viewed` for ID `pathfinder-cohort-auto-open-v1` and group `cohort-matched-page-closed-panel`, plus `pathfinder_cohort_auto_open_eligible` with the matching arm and original experience index. Check actual panel mounts separately from `opened`. No membership list or email hash should appear in analytics. Reading `__pathfinderExperiment.autoOpenGuide()` or active-experiment enrichment must not trigger requests or enrollment.
 
-Exercise navigation, hiding the tab, opening another panel and account/organization changes while lookup or activation is pending. Verify reload rechecks membership without repeating a shown guide or offering a second overlapping guide. Failed lookup retries require a matching navigation or visibility event after 30 seconds; no request should happen merely because the cooldown elapsed. Check the five-second timeout, no background polling, consent refusal, and cleanup on teardown. Confirm the actual billing guide loads and its learning-path navigation works before activation.
+Exercise navigation, hiding the tab, opening another panel and account/organization changes while lookup or activation is pending. Verify reload rechecks membership without repeating a shown guide or offering a second overlapping guide. Failed lookup retries require a matching navigation or visibility event after 30 seconds; no request should happen merely because the cooldown elapsed. Check the five-second timeout, no background polling, consent refusal, and cleanup on teardown. Verify both billing routes and the homepage with fresh offer markers. Check that a billing-only account stays excluded on the homepage. With percentage allocation on QA stacks, verify that two stacks in the same Cloud organization receive the same arm. Confirm the usage-alert guide renders.
 
 Use `__pathfinderExperiment.clearAutoOpenGuideMarkers()` and the SDK reset recipe below between QA arms, then reload. This clears the existing hostname-scoped shown/visit prefixes, including the new child; no separate membership storage key exists. Do not clear production markers to grow the sample. See [the flag contract](./FEATURE_FLAGS.md#pathfindercohort-auto-open-experiment) for rollout and retirement.
 

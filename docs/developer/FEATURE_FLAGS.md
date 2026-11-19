@@ -380,7 +380,7 @@ The legacy treatment also rechecks the matching page and panel availability at l
 
 ### `pathfinder.cohort-auto-open-experiment`
 
-**Draft; excluded in every deployment wave.** This child of the auto-open guide engine requires membership returned by the recommender's `POST /api/v1/cohorts`. It does not require an onboarding survey answer. Each experience names one exact, case-sensitive cohort; users can belong to several cohorts. Allocation remains per stack, while eligibility is checked per signed-in user. The default is `{ "variant": "excluded" }`.
+**Draft; excluded in every deployment wave.** This child of the auto-open guide engine requires membership returned by the recommender's `POST /api/v1/cohorts`. It does not require an onboarding survey answer. Each experience names one exact, case-sensitive cohort; users can belong to several cohorts. The flag buckets by Grafana Cloud organization (`gcomOrgID`), while eligibility is checked per signed-in user. The default is `{ "variant": "excluded" }`.
 
 ```json
 {
@@ -388,8 +388,13 @@ The legacy treatment also rechecks the matching page and panel availability at l
   "experiences": [
     {
       "cohort": "billing",
-      "guide": "https://interactive-learning.grafana.net/packages/billing-usage-lj/content.json",
-      "pages": ["/a/grafana-cmab-app*"]
+      "guide": "https://interactive-learning.grafana.net/packages/cmab-understand-bill-set-spend-alert/content.json",
+      "pages": ["/a/grafana-cmab-app*", "/a/grafana-costmanagementui-app*"]
+    },
+    {
+      "cohort": "billing-spend-jump",
+      "guide": "https://interactive-learning.grafana.net/packages/cmab-understand-bill-set-spend-alert/content.json",
+      "pages": ["/"]
     }
   ]
 }
@@ -403,9 +408,9 @@ Lookup starts on a configured page in a visible tab when the panel can offer an 
 
 **Activation and suppression.** Both arms use the onboarding child's 200ms delay and recheck membership, current identity, page, visibility, free panel and URL/kiosk exclusions before SDK exposure. Treatment requests the existing auto-open/guide launch; control records the same eligible opportunity without opening. Closing the guide does not re-arm it. Both arms write shown and consumed-visit markers under `{hostname}:pathfinder-cohort-auto-open-v1:{contextKey}` using the existing prefixes. Existing legacy and saved-intent markers also suppress guides, but only this child's own markers can restore its attribution, after fresh membership confirmation. Reloading within an overlapping visit must not offer the next guide. Debug/reset helpers include the new scope and omit other users' marker contents.
 
-**Measurement.** ID `pathfinder-cohort-auto-open-v1`, group `cohort-matched-page-closed-panel`. The SDK owns `experiment_viewed` exposure and eligible-event mirroring; the flag deliberately has no legacy `trackingKey`. The eligible event is `pathfinder_cohort_auto_open_eligible`, with `experiment_cohort_auto_open`, `exposure_id`, `event_id`, `experience_index` and `opened`. `opened` records the open request, not successful rendering. These events pass the closed-panel telemetry gate so control remains measurable. Active-experiment enrichment reads the cached assignment only, carrying the new flag on downstream guide events without evaluating or requesting membership. Analyze assignment at stack level; use eligible events for individual offers and existing guide-start/completion events for outcomes.
+**Measurement.** ID `pathfinder-cohort-auto-open-v1`, group `cohort-matched-page-closed-panel`. The SDK owns `experiment_viewed` exposure and eligible-event mirroring; the flag deliberately has no legacy `trackingKey`. The eligible event is `pathfinder_cohort_auto_open_eligible`, with `experiment_cohort_auto_open`, `exposure_id`, `event_id`, `experience_index` and `opened`. `opened` records the open request, not successful rendering. These events pass the closed-panel telemetry gate so control remains measurable. Active-experiment enrichment reads the cached assignment only, carrying the new flag on downstream guide events without evaluating or requesting membership. Analyze assignment and outcomes by Grafana Cloud organization; use eligible events for individual offers and existing guide-start/completion events for outcomes.
 
-**Rollout.** The deployment definition is public but has empty targeting and an excluded default in dev, staging, canary and prod. Before activation, release this client, verify cohort endpoint readiness and browser CORS, confirm a known billing member receives the exact `billing` membership, confirm billing content publication, and complete live tests of both arms and failure paths. Do not overlap the legacy, saved-intent and cohort auto-open flags: multiple valid non-excluded configurations enroll nobody. Keep Help button nudges and config-driven auto-open off on targeted stacks. Roll back by excluding this flag; do not re-enable an older auto-open experiment to bypass its suppression scope. No live verification or deployment is claimed by the draft.
+**Rollout.** The deployment definition is public but has empty targeting and an excluded default in dev, staging, canary and prod. Before activation, release this client, verify cohort endpoint readiness and browser CORS, confirm known members receive the expected `billing` and `billing-spend-jump` memberships, confirm billing content publication, and complete live tests of both arms and failure paths. Do not overlap the legacy, saved-intent and cohort auto-open flags: multiple valid non-excluded configurations enroll nobody. Keep Help button nudges and config-driven auto-open off on targeted stacks. Roll back by excluding this flag; do not re-enable an older auto-open experiment to bypass its suppression scope. No live verification or deployment is claimed by the draft.
 
 **Retirement.** Remove the cohort flag in deployment_tools and the frontend registry, cohort constants, membership reader and config validator, child-specific engine branches, event and closed-surface allowlist entries, associated tests and documentation. Keep the shared engine, launch source, enrollment cache and marker utilities while another auto-open child uses them. Preserve existing suppression markers until repeat-offer policy is explicitly changed.
 
