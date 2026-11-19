@@ -8,6 +8,7 @@ Open Grafana with `?featureControl=true` (for example, append it to the current 
 
 | Flag                                                | Variants                                        | What treatment does                                                                                                        |
 | --------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `pathfinder.cohort-auto-open-experiment`            | `excluded` / `control` / `treatment`            | Opens a configured guide only for users in its configured cohort.                                                          |
 | `pathfinder.auto-open-guide-experiment`             | `excluded` / `control` / `treatment`            | `treatment` opens Pathfinder with a configured guide on matched pages (up to three guides). `control` is unchanged.        |
 | `pathfinder.interactive-learning-banner-experiment` | `excluded` / `control` / `treatment`            | `treatment` shows a dismissible explanatory banner on the context page and above opened guides. `control` renders nothing. |
 | `pathfinder.help-button-nudge-experiment`           | `excluded` / `control` / `learn` / `learn_hint` | A sparkling Learn button beside Help, alone or with a dismissible learning hint; control is unchanged.                     |
@@ -127,6 +128,38 @@ Submit the real setup-guide survey with “I'm just exploring”, then visit the
 Repeat with delayed storage, navigation away during the 200ms trigger delay or SDK activation, an already-open panel, a hidden tab, an organization change, and teardown before the answer arrives. Reload while the reader is loading with two experiences on the same page: neither a repeated first guide nor the second overlapping guide may open. A legacy shown marker suppresses the guide without assigning the user to this new cohort. Assert zero SDK exposure before the trigger delay finishes and when eligibility disappears during that delay. At the eligible trigger, treatment requests the panel immediately; control records the same eligible opportunity without opening. Check actual panel mounts separately from SDK exposure.
 
 `__pathfinderExperiment.clearAutoOpenGuideMarkers()` clears the browser's old and scoped shown/visit markers for this hostname. Also reset the SDK session assignment using the existing reset recipe below, then reload. Do not clear production markers to grow the sample. The saved survey answer remains in setup-guide user storage; change it through the real survey for manual QA.
+
+## `pathfinder.cohort-auto-open-experiment`
+
+Live QA is deferred until the cohort endpoint and client release are ready. Mocked coverage lives beside the shared auto-open engine. The disabled draft offers the same usage-alert guide on either billing app for `billing` members and on the homepage for `billing-spend-jump` members.
+
+For later Cloud QA, exclude the legacy and onboarding auto-open flags, disable config-driven auto-open and the Help button nudge, and enable Pathfinder telemetry. Choose a test account with a real email and confirmed membership. In Grafana's feature-control UI, select the following payload and reload:
+
+```json
+{
+  "variant": "treatment",
+  "experiences": [
+    {
+      "cohort": "billing",
+      "guide": "https://interactive-learning.grafana.net/packages/cmab-understand-bill-set-spend-alert/content.json",
+      "pages": ["/a/grafana-cmab-app*", "/a/grafana-costmanagementui-app*"]
+    },
+    {
+      "cohort": "billing-spend-jump",
+      "guide": "https://interactive-learning.grafana.net/packages/cmab-understand-bill-set-spend-alert/content.json",
+      "pages": ["/"]
+    }
+  ]
+}
+```
+
+Repeat with `variant: control`, then `{ "variant": "excluded" }`. Matching treatment should open only after membership succeeds and the normal trigger delay; matching control should expose without opening; excluded should neither request membership nor expose. Neither arm should expose for an unmatched cohort, missing email, disabled endpoint, malformed response or timeout. Membership responses may contain several cohorts; verify that configuration order determines the first eligible guide and that unmatched guides never enter Featured.
+
+Inspect `experiment_viewed` for ID `pathfinder-cohort-auto-open-v1` and group `cohort-matched-page-closed-panel`, plus `pathfinder_cohort_auto_open_eligible` with the matching arm and original experience index. Check actual panel mounts separately from `opened`. No membership list or email hash should appear in analytics. Reading `__pathfinderExperiment.autoOpenGuide()` or active-experiment enrichment must not trigger requests or enrollment.
+
+Exercise navigation, hiding the tab, opening another panel and account/organization changes while lookup or activation is pending. Verify reload rechecks membership without repeating a shown guide or offering a second overlapping guide. Failed lookup retries require a matching navigation or visibility event after 30 seconds; no request should happen merely because the cooldown elapsed. Check the five-second timeout, no background polling, consent refusal, and cleanup on teardown. Verify both billing routes and the homepage with fresh offer markers. Check that a billing-only account stays excluded on the homepage. With percentage allocation on QA stacks, verify that two stacks in the same Cloud organization receive the same arm. Confirm the usage-alert guide renders.
+
+Use `__pathfinderExperiment.clearAutoOpenGuideMarkers()` and the SDK reset recipe below between QA arms, then reload. This clears the existing hostname-scoped shown/visit prefixes, including the new child; no separate membership storage key exists. Do not clear production markers to grow the sample. See [the flag contract](./FEATURE_FLAGS.md#pathfindercohort-auto-open-experiment) for rollout and retirement.
 
 ## `pathfinder.auto-open-guide-experiment`
 

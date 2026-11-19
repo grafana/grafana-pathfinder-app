@@ -376,7 +376,43 @@ It is checked at boot, on every SPA navigation, and when a hidden tab becomes vi
 
 The legacy treatment also rechecks the matching page and panel availability at launch time; navigation away or an already-open panel cancels the pending open.
 
-**Retirement:** the `auto-open-guide/` engine, bootstrap call, constants file, marker storage, launch source, Featured-slot injection and debug helpers are shared with `pathfinder.onboarding-exploring-auto-open-experiment`; retain them while that flag is active. Retiring both flags removes the registry entries, `auto-open-guide/` and its bootstrap call in `module.tsx`, the constants file, the `AUTO_OPEN_GUIDE_SHOWN_PREFIX` storage key, the `auto_open_guide_experiment` launch source, `UserInteraction.AutoOpenGuideEligible`, the Featured-slot injection in `context.service.ts`, the `active-experiments.ts` entry, the debug getters, the Faro gate entries, the tripwire block, these docs, and the remote flag.
+**Retirement:** the `auto-open-guide/` engine, bootstrap call, constants file, marker storage, launch source, Featured-slot injection and debug helpers are shared with `pathfinder.onboarding-exploring-auto-open-experiment` and `pathfinder.cohort-auto-open-experiment`; retain them while either child remains. Retiring all auto-open flags removes the registry entries, `auto-open-guide/` and its bootstrap call in `module.tsx`, the constants file, the `AUTO_OPEN_GUIDE_SHOWN_PREFIX` storage key, the `auto_open_guide_experiment` launch source, `UserInteraction.AutoOpenGuideEligible`, the Featured-slot injection in `context.service.ts`, the `active-experiments.ts` entry, the debug getters, the Faro gate entries, the tripwire block, these docs, and the remote flag.
+
+### `pathfinder.cohort-auto-open-experiment`
+
+**Draft; excluded in every deployment wave.** This child of the auto-open guide engine requires membership returned by the recommender's `POST /api/v1/cohorts`. It does not require an onboarding survey answer. Each experience names one exact, case-sensitive cohort; users can belong to several cohorts. The flag buckets by Grafana Cloud organization (`gcomOrgID`), while eligibility is checked per signed-in user. The default is `{ "variant": "excluded" }`.
+
+```json
+{
+  "variant": "treatment",
+  "experiences": [
+    {
+      "cohort": "billing",
+      "guide": "https://interactive-learning.grafana.net/packages/cmab-understand-bill-set-spend-alert/content.json",
+      "pages": ["/a/grafana-cmab-app*", "/a/grafana-costmanagementui-app*"]
+    },
+    {
+      "cohort": "billing-spend-jump",
+      "guide": "https://interactive-learning.grafana.net/packages/cmab-understand-bill-set-spend-alert/content.json",
+      "pages": ["/"]
+    }
+  ]
+}
+```
+
+The payload extends the existing auto-open experience with a required nonempty `cohort` string. Existing guide validation, page patterns and the limit of three experiences still apply. Any invalid experience rejects the whole payload. Control uses the same experiences with `variant: control`; excluded needs no experiences. The first unshown experience matching both page and membership wins. Analytics retains its original configuration index, even when earlier experiences target other cohorts. Treatment's Featured slot includes only membership-eligible experiences; control leaves it unchanged.
+
+**Membership transport.** Resolve authoritative tenant settings and use the configured recommender URL, including dev/prod selection. Lookup requires Pathfinder enabled, accepted terms, a signed-in Cloud user with an email, analytics enabled and Pathfinder telemetry available. Production URLs must use HTTPS and an existing allowed recommender hostname; developer URLs require the existing two dev-mode gates. Requests omit credentials, prohibit redirects and browser caching, and send only `{ "email_hash": "<sha256>" }`. Hash the exact email without lowercasing or trimming. Responses must contain a `cohorts` array of strings. Email, its hash and returned memberships are never added to logs, experiment analytics or persistent storage.
+
+Lookup starts on a configured page in a visible tab when the panel can offer an unshown guide or this child has a matching marker to restore. Concurrent requests are deduplicated; successful results, including an empty membership set, are cached only in memory for this experiment instance and identity. A five-second deadline bounds settings resolution, hashing and the request. Disabled endpoints, missing email, malformed responses, timeouts and failures do not enroll or consume an offer. A failed lookup may retry on a subsequent matching navigation or visibility event after 30 seconds; there is no polling. Reload/remount rechecks membership. Identity changes invalidate cached eligibility and late results.
+
+**Activation and suppression.** Both arms use the onboarding child's 200ms delay and recheck membership, current identity, page, visibility, free panel and URL/kiosk exclusions before SDK exposure. Treatment requests the existing auto-open/guide launch; control records the same eligible opportunity without opening. Closing the guide does not re-arm it. Both arms write shown and consumed-visit markers under `{hostname}:pathfinder-cohort-auto-open-v1:{contextKey}` using the existing prefixes. Existing legacy and saved-intent markers also suppress guides, but only this child's own markers can restore its attribution, after fresh membership confirmation. Reloading within an overlapping visit must not offer the next guide. Debug/reset helpers include the new scope and omit other users' marker contents.
+
+**Measurement.** ID `pathfinder-cohort-auto-open-v1`, group `cohort-matched-page-closed-panel`. The SDK owns `experiment_viewed` exposure and eligible-event mirroring; the flag deliberately has no legacy `trackingKey`. The eligible event is `pathfinder_cohort_auto_open_eligible`, with `experiment_cohort_auto_open`, `exposure_id`, `event_id`, `experience_index` and `opened`. `opened` records the open request, not successful rendering. These events pass the closed-panel telemetry gate so control remains measurable. Active-experiment enrichment reads the cached assignment only, carrying the new flag on downstream guide events without evaluating or requesting membership. Analyze assignment and outcomes by Grafana Cloud organization; use eligible events for individual offers and existing guide-start/completion events for outcomes.
+
+**Rollout.** The deployment definition is public but has empty targeting and an excluded default in dev, staging, canary and prod. Before activation, release this client, verify cohort endpoint readiness and browser CORS, confirm known members receive the expected `billing` and `billing-spend-jump` memberships, confirm billing content publication, and complete live tests of both arms and failure paths. Do not overlap the legacy, saved-intent and cohort auto-open flags: multiple valid non-excluded configurations enroll nobody. Keep Help button nudges and config-driven auto-open off on targeted stacks. Roll back by excluding this flag; do not re-enable an older auto-open experiment to bypass its suppression scope. No live verification or deployment is claimed by the draft.
+
+**Retirement.** Remove the cohort flag in deployment_tools and the frontend registry, cohort constants, membership reader and config validator, child-specific engine branches, event and closed-surface allowlist entries, associated tests and documentation. Keep the shared engine, launch source, enrollment cache and marker utilities while another auto-open child uses them. Preserve existing suppression markers until repeat-offer policy is explicitly changed.
 
 ### `pathfinder.onboarding-exploring-auto-open-experiment`
 
@@ -396,7 +432,7 @@ Setupguide navigates before its asynchronous save finishes. Bounded retries and 
 
 SDK activation measures an eligible opportunity to show the treatment, not proof that the browser finished rendering the panel. Counting only successfully mounted treatment users while control never opens would bias the comparison. Actual panel mount and guide completion remain outcomes. A final open request can still fail, and eligibility is checked again before guide delivery.
 
-Legacy per-browser guide markers still suppress offers, but do not establish membership in this new experiment. New shown and consumed-visit markers use the existing prefixes with scope `{hostname}:pathfinder-onboarding-exploring-auto-open-v1:{contextKey}`. Only those new markers restore this cohort's attribution after reload. Both arms write them, and consumed visits survive loading/remount, so a second overlapping guide is not offered on refresh. The current client also respects these markers when running the legacy experiment. Older clients cannot see this new scope, so do not re-enable the old flag as a rollback; exclude both flags instead.
+Legacy per-browser guide markers still suppress offers, but do not establish membership in this new experiment. New shown and consumed-visit markers use the existing prefixes with scope `{hostname}:pathfinder-onboarding-exploring-auto-open-v1:{contextKey}`. Only those new markers restore this cohort's attribution after reload. Both arms write them, and consumed visits survive loading/remount, so a second overlapping guide is not offered on refresh. The current client also respects shown-guide markers from both the saved-exploring and cohort scopes when running the legacy experiment. Older clients cannot see this new scope, so do not re-enable the old flag as a rollback; exclude both flags instead.
 
 **Measurement.** The new event is `pathfinder_onboarding_exploring_auto_open_eligible`, with the same offer fields as the existing event and `experiment_onboarding_exploring_auto_open` for the arm. `opened` means the treatment reached its auto-open request at activation; the actual sidebar mount remains observable through `docs_panel_interaction`. It is not a successful-render assertion. The new flag, rather than the legacy flag, appears in active-experiment enrichment. The SDK owns exposures and Faro event mirroring; the flag deliberately has no legacy tracking key. No survey answer or context key is added to the eligibility event.
 
@@ -406,7 +442,7 @@ Legacy per-browser guide markers still suppress offers, but do not establish mem
 
 **Rollout prerequisites.** Validate the own-user API on the target stacks, and test both arms, delayed/missing/failed reads, reload, navigation, dismissal, and account/organization switching. A read-only test on `pathfinder.grafana-dev.net` (Grafana `13.4.0-42669893023`) returned the existing own-user record with a valid exploring answer without changing Setupguide. That proves the source works on that dev stack, not complete auto-open behavior or every supported version/role. No remote flag has been enabled.
 
-**Retirement.** Remove this flag and its remote configuration, the new constants and event, saved-intent reader, bridge and state, transport exception, enrichment support, closed-surface allowlist entries, tests and this documentation. Keep the shared auto-open engine if the original experiment still uses it. Preserve suppression markers until repeat-offer policy is explicitly decided.
+**Retirement.** Remove this flag and its remote configuration, the new constants and event, saved-intent reader, bridge and state, transport exception, enrichment support, closed-surface allowlist entries, tests and this documentation. Keep the shared auto-open engine if the original or cohort experiment still uses it. The cohort experiment also uses the identity context helper in the saved-intent state module; retain that helper while it is referenced. Preserve suppression markers until repeat-offer policy is explicitly decided.
 
 ### `pathfinder.interactive-learning-banner-experiment`
 
