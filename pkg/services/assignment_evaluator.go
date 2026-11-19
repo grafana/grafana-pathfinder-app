@@ -68,7 +68,14 @@ func (e *ObligationEvaluator) resolveGuides(asg Assignment) ([]AssignmentGuideId
 		if asg.TargetID == "" || asg.TargetSource == "" || asg.TrackID != "" {
 			return nil, nil
 		}
-		return []AssignmentGuideIdentity{{GuideID: asg.TargetID, GuideSource: asg.TargetSource}}, nil
+		guide := AssignmentGuideIdentity{GuideID: asg.TargetID, GuideSource: asg.TargetSource}
+		switch asg.TargetSource {
+		case "online-cdn":
+			guide.AlternateSource = "interactive-tutorials"
+		case "interactive-tutorials":
+			guide.AlternateSource = "online-cdn"
+		}
+		return []AssignmentGuideIdentity{guide}, nil
 	}
 	if asg.TargetType != "path" || asg.TargetID == "" {
 		return nil, nil
@@ -79,6 +86,9 @@ func (e *ObligationEvaluator) resolveGuides(asg Assignment) ([]AssignmentGuideId
 		if err != nil {
 			failed = true
 			e.Logger.Info("assignment guide source failed", "targetId", asg.TargetID, "trackId", asg.TrackID, "error", err)
+			if found {
+				return nil, ErrAssignmentUncheckable
+			}
 			continue
 		}
 		if found {

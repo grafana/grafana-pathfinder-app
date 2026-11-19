@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
-type assignmentCapability = services.AssignmentCapability
 type assignmentResponse = services.AssignmentResponse
 type assignmentRouteDependencies struct {
 	Assignments     services.AssignmentReader

@@ -17,8 +17,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-type completionCapability = services.CompletionCapability
-
 type completionResponse = services.CompletionResponse
 
 func sdkErrorStatus(err error) int {
