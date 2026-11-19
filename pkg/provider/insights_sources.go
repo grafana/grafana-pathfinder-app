@@ -29,13 +29,11 @@ func insightsEvaluator(guides *resourceaccess.GuideStore, online func() services
 					}
 					entries := []services.CatalogueEntry{}
 					for _, raw := range page.Items {
-						var object struct {
-							Spec json.RawMessage `json:"spec"`
-						}
+						var object services.CatalogueObject
 						if err := json.Unmarshal(raw, &object); err != nil {
 							return nil, "", err
 						}
-						if entry, ok := services.DecodeCatalogueEntry(object.Spec, logger.Warn); ok {
+						if entry, ok := object.Entry(logger.Warn); ok {
 							entries = append(entries, entry)
 						}
 					}

@@ -366,9 +366,8 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   `signing-keys-unreachable` (no signing-keys endpoint answered at all — §3). The `reason*`
   constants in `pkg/plugin/` are the definition, and the front-end gates on `available` and
   ignores the string.
-  A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
-  not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`)
-  and silently renders empty with no retry, so a
+  A bare 503 conflates "never works here" with "blip": a front-end reader that treats 503 as
+  not rolled out renders empty with no retry, so a
   transient 503 darkens the feature for that load exactly as if it were structurally absent. This
   is also why missing identity on a GET read is soft-200, not 401: these routes gate whether a
   feature renders at all.
@@ -777,14 +776,25 @@ package resolver's published-status probe both use this route. The proxy
 preserves draft content for existing share links; the resolver retains its
 published-status gate. Catalogue listing continues to use `/custom-guide-repository`.
 
-`GET /custom-guides` supplies the editor with complete InteractiveGuide resources,
-including all metadata and spec fields, through the same identity gate and caller-scoped
-OBO client. It drains pages of 100 resources with an 8 MiB page cap, a 32 MiB aggregate
-resource byte budget, a 50,000-item cap, and a 30-second aggregate deadline. Budget
-truncation is logged. Responses are `Cache-Control: no-store` and never cached
-across callers. Upstream 401 maps to 502; other upstream errors retain the single-item
-reader's mapping. The browser's existing optional-endpoint status handling remains
-unchanged. Editor writes continue to use App Platform directly.
+The block editor's library lists from `/custom-guide-repository` too. Each entry carries
+`name` and `creationTimestamp` from the resource's metadata, because the editor loads and
+saves by resource name, which can differ from `spec.id`. A guide's full resource, including
+the `resourceVersion` an update must echo back, comes only from `/custom-guide?name=`.
+There is no full-resource LIST route: `/custom-guides` was removed because its 32 MiB
+budget cut the list off without telling the client. Editor writes continue to use App
+Platform directly.
+
+The catalogue's limits are an aggregate budget of 50,000 entries, past which the list is
+truncated with a logged warning, and 8 MiB per LIST page. Pages carry full specs, so the
+page size starts at 500 and halves, re-reading the same continue token, whenever a page
+would exceed 8 MiB. The smaller size holds for the rest of the drain, and each shrink
+logs at info rather than as a `pathfinder_proxy_failure`, since the drain recovers. Large guides
+therefore cost round trips rather than the catalogue, within the drain's 60-second aggregate
+deadline (`customGuideAggregateDeadline`): a guide near 8 MiB can shrink the rest of the drain
+to very small pages, and a drain past the deadline is served as a retryable 503. Only a single
+guide over 8 MiB fails outright,
+and since `/custom-guide?name=` shares that cap and cannot read it either, it is served as
+the terminal soft-200 `available:false` with reason `guide-too-large`, not a retryable 503.
 
 ## Operational diagnostics
 

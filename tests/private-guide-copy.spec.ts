@@ -28,7 +28,6 @@ test('copies a public guide, protects the draft and publishes a separate private
   await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
     route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
   );
-  await page.route(matchesBackendRoute('custom-guides'), (route) => route.fulfill({ json: { items: resources } }));
   await page.route(matchesGuideResource, async (route) => {
     if (route.request().method() === 'GET' && matchesBackendRoute('custom-guide')(new URL(route.request().url()))) {
       const name = new URL(route.request().url()).searchParams.get('name');

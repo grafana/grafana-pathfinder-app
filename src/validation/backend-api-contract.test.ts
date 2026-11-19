@@ -1,7 +1,7 @@
 /**
  * Go <-> TypeScript contract ratchet for the App Platform response
  * envelopes: `/package-recommendations`, `/custom-guide-repository`,
- * `/custom-guides`, `/completion-records/my`, `/completion-records/capability`, `/assignments/my`,
+ * `/completion-records/my`, `/completion-records/capability`, `/assignments/my`,
  * `/api/v1/achievements/events`, `/api/v1/achievements/my`, `/api/v1/achievements/definitions`.
  *
  * The boundary is a process boundary, so no compiler can couple the two

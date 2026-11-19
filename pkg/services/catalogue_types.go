@@ -182,16 +182,31 @@ func (s *CatalogueStats) UnmarshalJSON(data []byte) error {
 // unit the cache stores; the heavy spec.blocks never survives shaping, so
 // steady-state memory is bounded by guide count, not guide size.
 type CatalogueEntry struct {
-	ID       string             `json:"id"`
-	Title    string             `json:"title,omitempty"`
-	Status   string             `json:"status,omitempty"`
-	Manifest *CatalogueManifest `json:"manifest,omitempty"`
+	ID                string             `json:"id"`
+	Name              string             `json:"name"`
+	CreationTimestamp string             `json:"creationTimestamp,omitempty"`
+	Title             string             `json:"title,omitempty"`
+	Status            string             `json:"status,omitempty"`
+	Manifest          *CatalogueManifest `json:"manifest,omitempty"`
 }
 
-func DecodeCatalogueEntry(spec json.RawMessage, warn func(string, ...any)) (CatalogueEntry, bool) {
+type CatalogueObject struct {
+	Metadata struct {
+		Name              string `json:"name"`
+		CreationTimestamp string `json:"creationTimestamp"`
+	} `json:"metadata"`
+	Spec json.RawMessage `json:"spec"`
+}
+
+func (o CatalogueObject) Entry(warn func(string, ...any)) (CatalogueEntry, bool) {
+	return DecodeCatalogueEntry(o.Spec, o.Metadata.Name, o.Metadata.CreationTimestamp, warn)
+}
+
+func DecodeCatalogueEntry(spec json.RawMessage, name, creationTimestamp string, warn func(string, ...any)) (CatalogueEntry, bool) {
 
 	var entry CatalogueEntry
 	err := json.Unmarshal(spec, &entry)
+	entry.Name, entry.CreationTimestamp = name, creationTimestamp
 	if m := entry.Manifest; m != nil {
 		if m.Stats != nil && !m.Stats.Complete {
 			m.Stats = nil

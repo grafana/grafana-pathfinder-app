@@ -225,6 +225,20 @@
       "omitempty": false
     },
     {
+      "field": "Name",
+      "json": "name",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "CreationTimestamp",
+      "json": "creationTimestamp",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
       "field": "Title",
       "json": "title",
       "type": "string",
@@ -1114,15 +1128,6 @@
       "type": "string",
       "wire": "string",
       "omitempty": true
-    }
-  ],
-  "customGuidesResponse": [
-    {
-      "field": "Items",
-      "json": "items",
-      "type": "[]json.RawMessage",
-      "wire": "array<json>",
-      "omitempty": false
     }
   ],
   "guideProxyDiagnostic": [

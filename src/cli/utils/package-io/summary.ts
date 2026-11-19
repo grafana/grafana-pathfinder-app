@@ -64,7 +64,7 @@ export function buildTree(blocks: JsonBlock[], pathPrefix: string): TreeNode[] {
 }
 
 export function buildChildrenTree(block: JsonBlock, path: string): TreeNode[] | undefined {
-  if (block.type === 'section' || block.type === 'assistant') {
+  if (block.type === 'section' || block.type === 'assistant' || block.type === 'collapsible') {
     const arr = (block as unknown as { blocks?: JsonBlock[] }).blocks;
     return Array.isArray(arr) ? buildTree(arr, `${path}.blocks`) : undefined;
   }
@@ -87,7 +87,10 @@ function blockHint(block: JsonBlock): string | undefined {
   if (block.type === 'interactive' && typeof record.action === 'string') {
     return record.action;
   }
-  if ((block.type === 'section' || block.type === 'assistant') && typeof record.title === 'string') {
+  if (
+    (block.type === 'section' || block.type === 'assistant' || block.type === 'collapsible') &&
+    typeof record.title === 'string'
+  ) {
     return record.title;
   }
   return undefined;

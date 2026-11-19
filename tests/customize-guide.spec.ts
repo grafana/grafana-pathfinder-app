@@ -63,9 +63,6 @@ for (const repair of [false, true]) {
       route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
     );
     const writes: unknown[] = [];
-    await page.route(matchesBackendRoute('custom-guides'), (route) =>
-      route.fulfill({ json: { items: writes.slice(-1) } })
-    );
     await page.route(matchesGuideResource, async (route) => {
       if (route.request().method() === 'GET' && matchesBackendRoute('custom-guide')(new URL(route.request().url()))) {
         const name = new URL(route.request().url()).searchParams.get('name');

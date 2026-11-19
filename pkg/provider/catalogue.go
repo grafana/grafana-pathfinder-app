@@ -54,13 +54,11 @@ func catalogueReadHandler(store *resourceaccess.GuideStore) simple.AppCustomRout
 			}
 			page := services.CataloguePage[services.CatalogueEntry]{Continue: raw.Continue}
 			for _, item := range raw.Items {
-				var object struct {
-					Spec json.RawMessage `json:"spec"`
-				}
+				var object services.CatalogueObject
 				if err := json.Unmarshal(item, &object); err != nil {
 					return page, err
 				}
-				if entry, ok := services.DecodeCatalogueEntry(object.Spec, warn); ok {
+				if entry, ok := object.Entry(warn); ok {
 					page.Entries = append(page.Entries, entry)
 				}
 			}
