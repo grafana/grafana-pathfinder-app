@@ -3,9 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { OrgRole } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import { getFeatureFlagValue } from '../utils/openfeature';
+import { fetchCoreUser } from '../lib/grafana-core-client';
+import { resetCurrentUserForTests } from '../utils/current-user-role';
 import { LearningInsightsRenderer } from './learningInsightsPage';
 
 jest.mock('@grafana/runtime', () => ({ config: { bootData: { user: { orgRole: 'Admin' } } } }));
+jest.mock('../lib/grafana-core-client', () => ({ fetchCoreUser: jest.fn() }));
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class {},
   SceneAppPage: jest.fn(),
@@ -41,4 +44,19 @@ test.each([OrgRole.Viewer, OrgRole.Editor])('still blocks a %s on an opted-in st
   render(<LearningInsightsRenderer />);
   expect(screen.getByText('Learning insights is for administrators of the current organization')).toBeInTheDocument();
   expect(screen.queryByText('Reporting view loaded')).not.toBeInTheDocument();
+});
+
+test('admits a Cloud org admin after the live role resolves despite a Viewer boot role', async () => {
+  const namespace = config.namespace;
+  try {
+    config.namespace = 'stacks-9239';
+    config.bootData.user.orgRole = OrgRole.Viewer;
+    jest.mocked(fetchCoreUser).mockResolvedValue({ role: 'Admin' });
+    jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+    render(<LearningInsightsRenderer />);
+    expect(await screen.findByText('Reporting view loaded')).toBeInTheDocument();
+  } finally {
+    config.namespace = namespace;
+    resetCurrentUserForTests();
+  }
 });

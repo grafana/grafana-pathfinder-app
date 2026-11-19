@@ -1,7 +1,7 @@
 import React, { lazy, Suspense } from 'react';
 import { EmbeddedScene, SceneAppPage, SceneFlexItem, SceneFlexLayout, SceneObjectBase } from '@grafana/scenes';
 import { Alert, LoadingPlaceholder } from '@grafana/ui';
-import { config } from '@grafana/runtime';
+import { useCurrentUserIsOrgAdmin } from '../utils/current-user-role';
 import { prefixRoute } from '../utils/utils.routing';
 import { getFeatureFlagValue } from '../utils/openfeature';
 
@@ -12,7 +12,7 @@ class LearningInsightsPanel extends SceneObjectBase {
 }
 
 export function LearningInsightsRenderer() {
-  if (config.bootData?.user?.orgRole !== 'Admin') {
+  if (!useCurrentUserIsOrgAdmin()) {
     return <Alert severity="warning" title="Learning insights is for administrators of the current organization" />;
   }
   if (!getFeatureFlagValue('pathfinder.learning-insights', false)) {

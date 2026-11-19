@@ -1,7 +1,7 @@
 import React from 'react';
 import { SceneObjectBase, type SceneObjectState } from '@grafana/scenes';
 import { LinkButton, useStyles2 } from '@grafana/ui';
-import { config } from '@grafana/runtime';
+import { useCurrentUserIsOrgAdmin } from '../../utils/current-user-role';
 import { prefixRoute } from '../../utils/utils.routing';
 import { MyLearningTab } from '../LearningPaths';
 import { MyLearningErrorBoundary } from '../docs-panel/components';
@@ -17,10 +17,11 @@ export class HomePanel extends SceneObjectBase<HomePanelState> {
 }
 
 export function HomePanelRenderer() {
+  const isOrgAdmin = useCurrentUserIsOrgAdmin();
   const styles = useStyles2(getHomePageStyles);
   return (
     <div className={styles.container} data-testid={testIds.homePage.container}>
-      {config.bootData?.user?.orgRole === 'Admin' && getFeatureFlagValue('pathfinder.learning-insights', false) && (
+      {isOrgAdmin && getFeatureFlagValue('pathfinder.learning-insights', false) && (
         <nav aria-label="Learning administration">
           <LinkButton href={prefixRoute('learning-insights')} variant="secondary" icon="chart-line">
             Learning insights
