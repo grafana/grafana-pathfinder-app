@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.30.0
+
+### Added
+
+- **Faster guide library**: The block editor lists up to 50,000 catalogue entries and downloads a full guide only when an author opens it. This replaces the bulk guide endpoint, whose response limit could hide guides on large instances. (#2328)
+- **Cohort-based guide experiments**: A configured experiment can open a guide when a learner in the treatment group visits a matching page. Visits from eligible control users count toward the experiment without opening the guide. (#2464)
+- **Guide drafts from MCP**: Agent-authored drafts retain steps that still need a selector. Finalizing the draft flags those placeholders for the editor and removes private author notes. (#2308)
+- **Collapsible sections in the CLI**: Authors can create a titled collapsible container with `add-block collapsible` and add text, images, video, and other supported blocks with `--parent`. (#2470)
+- **Shared progress across guide languages**: Localized guide URLs resolve to the same package and progress records as the source guide. (#2427)
+- **Guide translation files**: A translation file can identify the guide text it translates and record the source hash so tooling can detect stale translations. (#2416)
+- **Guide language preferences**: A feature flag gates the preference and fallback logic for choosing a guide language. (#2428)
+
+### Fixed
+
+- **Readable test IDs in the element picker**: The DOM path tooltip uses the theme's warning text color to highlight test IDs in light and dark themes. (#2451)
+
+### Chore
+
+- **Dev version updates**: A successful dev release from main triggers a deployment tools PR to pin the plugin version and record its App SDK manifest. (#2450)
+- **Guide play controls**: Sidebar guide rows use Grafana's standard play button styling and keyboard focus treatment. (#2467)
+- **Storage restoration**: An explicit policy defines which five legacy records the plugin restores on startup. (#2341)
+- **Tooltip theme support**: The DOM path tooltip uses native CSS color mixing so its background can use theme variables. (#2453)
+- **CLI type checks**: The CLI build now checks indexed access with the same settings as the frontend. (#2469)
+
 ## 2.29.0
 
 ### Added
