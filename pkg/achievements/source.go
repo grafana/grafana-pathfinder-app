@@ -258,6 +258,10 @@ func (r *Registry) mapSource(name string, props map[string]any) (entity, action 
 	return ref.entity, ref.action, fields, nil
 }
 
+func (r *Registry) SourceNames() []string {
+	return sortedKeys(r.sources)
+}
+
 func (r *Registry) Subscriptions(stack Stack) []SourceSubscription {
 	out := []SourceSubscription{}
 	for _, name := range sortedKeys(r.sources) {

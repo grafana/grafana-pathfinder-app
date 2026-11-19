@@ -1,10 +1,12 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -136,5 +138,56 @@ func TestAchievementDefinitions_EarnabilityFollowsTheStackVersion(t *testing.T) 
 		if earnable["dash-builder"] != want || !earnable["guide-routes"] {
 			t.Errorf("Grafana %s: earnable = %v, want dash-builder %v and guide-routes true", version, earnable, want)
 		}
+	}
+}
+
+const liveSourceBlock = `,
+    "sources":[{"interaction":"grafana_dashboard_created","emitter":"grafana","versions":">=13.2.0",
+      "when":[{"property":"result","op":"eq","value":"success"}],
+      "context":{"resourceId":"uid","numPanels":"numPanels"},"owner":"@grafana/dashboards-squad"}]`
+
+func TestDefinitionsSource_RejectsARefreshThatBreaksALiveSource(t *testing.T) {
+	if !strings.Contains(achievementsTestBundleJSON, liveSourceBlock) {
+		t.Fatal("the test bundle no longer carries the live source this test edits")
+	}
+	cdn := newDefinitionsCDN(t)
+	source, clock := newTestDefinitionsSource(t, cdn)
+	logger := &diagnosticLogger{capturingLogger: newCapturingLogger()}
+	source.logger = logger
+	first, _ := source.Snapshot(context.Background())
+
+	broken := strings.Replace(achievementsTestBundleJSON, `"owner":"@grafana/dashboards-squad"`, `"owner":"nobody"`, 1)
+	cdn.answer(http.StatusOK, broken, `W/"broken-source"`)
+	clock.advance(definitionsRevalidateAfter)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	if source.current.Load() != first || !logger.warnedWith(msgDefinitionsRefreshRejected) {
+		t.Fatal("a refresh that cannot read a live source replaced the last good copy")
+	}
+	if got := warnFields(logger)["unreadableSources"]; !slices.Equal(got.([]string), []string{"grafana_dashboard_created"}) {
+		t.Fatalf("unreadableSources = %v", got)
+	}
+
+	removed := strings.Replace(achievementsTestBundleJSON, liveSourceBlock, "", 1)
+	cdn.answer(http.StatusOK, removed, `W/"removed-source"`)
+	clock.advance(definitionsBackoffMax + definitionsRevalidateAfter)
+	source.Snapshot(context.Background())
+	settle(t, source)
+	if next := source.current.Load(); next == first || len(next.Registry.SourceNames()) != 0 {
+		t.Fatal("a refresh that deliberately removes a source was not swapped in")
+	}
+}
+
+func TestUnreadableSources_CountsAnUnnamedSkipAgainstEveryMissingSource(t *testing.T) {
+	good := loadAchievementsTestBundle(t, achievementsTestBundleJSON)
+	unnamed, err := achievements.LoadBundle([]byte(strings.Replace(achievementsTestBundleJSON, `"interaction":"grafana_dashboard_created"`, `"interaction":7`, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := unreadableSources(good, unnamed); !slices.Equal(got, []string{"grafana_dashboard_created"}) {
+		t.Fatalf("unreadableSources = %v", got)
+	}
+	if got := unreadableSources(good, good); len(got) != 0 {
+		t.Fatalf("an unchanged bundle reported %v", got)
 	}
 }

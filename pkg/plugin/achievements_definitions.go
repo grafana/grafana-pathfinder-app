@@ -43,9 +43,9 @@ type definitionsProvider interface {
 
 // definitionsSource never replaces its last good copy with a failed or
 // unreadable fetch. Once a copy is loaded it also rejects, as a failed refresh
-// that backs off, a bundle that still carries a definition or registry action
-// the copy evaluates but cannot read, or one with no evaluable definition. An
-// entry the bundle leaves out is a deliberate removal and swaps in.
+// that backs off, a bundle that still carries a definition, registry action or
+// Echo source the copy evaluates but cannot read, or one with no evaluable
+// definition. An entry the bundle leaves out is a deliberate removal and swaps in.
 type definitionsSource struct {
 	url           string
 	client        *http.Client
@@ -144,11 +144,12 @@ func (s *definitionsSource) refresh(done chan struct{}, etag string) {
 	}
 	if current := s.current.Load(); current != nil && snap != nil {
 		achievementIDs, actions := unreadableEvaluable(current, snap)
+		sources := unreadableSources(current, snap)
 		reason := ""
 		switch {
 		case len(snap.Catalog.Achievements) == 0:
 			reason = "no-evaluable-definitions"
-		case len(achievementIDs)+len(actions) > 0:
+		case len(achievementIDs)+len(actions)+len(sources) > 0:
 			reason = "unreadable-entries"
 		}
 		if reason != "" {
@@ -156,7 +157,7 @@ func (s *definitionsSource) refresh(done chan struct{}, etag string) {
 			s.retryAt = now.Add(definitionsBackoff(s.failures))
 			s.logger.Warn(msgDefinitionsRefreshRejected, "reason", reason,
 				"definitionsVersion", current.Version, "rejectedDefinitionsVersion", snap.Version,
-				"unreadableAchievements", achievementIDs, "unreadableActions", actions, "failures", s.failures)
+				"unreadableAchievements", achievementIDs, "unreadableActions", actions, "unreadableSources", sources, "failures", s.failures)
 			return
 		}
 	}
@@ -216,6 +217,33 @@ func unreadableEvaluable(current, next *achievements.Snapshot) (achievementIDs, 
 	}
 	slices.Sort(actions)
 	return achievementIDs, actions
+}
+
+// unreadableSources lists the Echo sources current maps that next skipped as
+// unreadable. A skipped source drops alone while its action stays readable, so
+// without this a broken refresh would silently stop counting a live interaction.
+func unreadableSources(current, next *achievements.Snapshot) []string {
+	skipped, unnamed := map[string]bool{}, false
+	for _, sk := range next.Skipped {
+		switch sk.What {
+		case "source":
+			skipped[sk.ID] = true
+			unnamed = unnamed || strings.Contains(sk.ID, "#")
+		case "bundle":
+			unnamed = true
+		}
+	}
+	kept := map[string]bool{}
+	for _, name := range next.Registry.SourceNames() {
+		kept[name] = true
+	}
+	var names []string
+	for _, name := range current.Registry.SourceNames() {
+		if !kept[name] && (skipped[name] || unnamed) {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // fetch returns a nil snapshot and no error on 304.
