@@ -197,6 +197,31 @@ This recursively discovers all package directories (any directory containing `ma
 npm run validate:packages
 ```
 
+### Translation sidecar checks
+
+A package that ships `i18n/*.json` translation sidecars ([`docs/design/I18N.md`](../design/I18N.md) §7.1, §9) gets its sidecars checked as part of package validation. A package with no sidecar gets no sidecar check, and its output does not change.
+
+`validatePackage` reads the sidecars with `readPackageSidecars()` and passes them, with the parsed `content.json` and `manifest.json`, to `validateSidecars()` (`src/validation/sidecar/index.ts`). The checks are listed in `src/validation/sidecar/registry.ts`, and every code they emit is declared in `src/validation/sidecar/codes.ts`. A sidecar that cannot be read is an error (`sidecar_unreadable`, with the file path); the other sidecars are still checked.
+
+Findings are routed by severity:
+
+- **Error** findings go to `errors` and fail validation.
+- **Warning** findings go to `messages` with `severity: 'warn'` and a `remediation` line, never to `warnings`. `--strict` promotes `warnings` to errors, and stale or orphaned translations must never fail a build.
+
+| Check                     | Codes                                                                                                                                                             | Severity          | Status                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------- |
+| `language-tag`            | `sidecar_filename_invalid`, `sidecar_language_invalid`, `sidecar_language_filename_mismatch`, `sidecar_language_is_canonical`, `sidecar_unicode_format_character` | error and warning | pending, [#2392](https://github.com/grafana/grafana-pathfinder-app/issues/2392) |
+| `manifest-block-fields`   | `sidecar_manifest_block_field`                                                                                                                                    | error             | shipped                                                                         |
+| `projection-conformance`  | `sidecar_structural_field`, `sidecar_field_not_translatable`, `sidecar_block_type_not_translatable`, `sidecar_steps_not_allowed`, `sidecar_reserved_field`        | error             | pending, [#2389](https://github.com/grafana/grafana-pathfinder-app/issues/2389) |
+| `orphan-key`              | `sidecar_orphan_key`, `sidecar_orphan_step`                                                                                                                       | warning           | pending, [#2387](https://github.com/grafana/grafana-pathfinder-app/issues/2387) |
+| `source-hash`             | `sidecar_missing_source_hash`, `sidecar_stale_translation`                                                                                                        | error and warning | pending, [#2388](https://github.com/grafana/grafana-pathfinder-app/issues/2388) |
+| `translatable-ids`        | `translatable_block_missing_id`, `translatable_step_missing_id`, `duplicate_block_id`, `duplicate_step_id`                                                        | error             | pending, [#2391](https://github.com/grafana/grafana-pathfinder-app/issues/2391) |
+| `text-dependent-selector` | `text_dependent_selector`                                                                                                                                         | error             | pending, [#2390](https://github.com/grafana/grafana-pathfinder-app/issues/2390) |
+
+A pending check is registered and returns no findings until its issue lands. Its codes are already in the union, so filling it means editing its file under `src/validation/sidecar/checks/` and its test, and nothing else.
+
+`manifest-block-fields` rejects any key in a sidecar's `manifest` block other than `description`, `category`, `reviewed`, `_sourceHash` and the tooling fields declared on `TranslationManifestEntrySchema`. Structural manifest fields such as `milestones`, `targeting` or `author` are named as such in the message.
+
 ## GitHub Actions integration
 
 You can use the CLI in a GitHub Actions workflow to automatically validate guides on every push or pull request. Since this CLI is internal to the repo, the workflow builds it from source.

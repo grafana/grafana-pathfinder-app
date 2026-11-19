@@ -448,6 +448,26 @@ const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
       'until the block editor previews a translation (I18N.md §6.1).',
     tracking: '#2373',
   })),
+  ...[
+    'validation/sidecar/codes.ts',
+    'validation/sidecar/hash.ts',
+    'validation/sidecar/index.ts',
+    'validation/sidecar/registry.ts',
+    'validation/sidecar/types.ts',
+    'validation/sidecar/checks/language-tag.ts',
+    'validation/sidecar/checks/manifest-block-fields.ts',
+    'validation/sidecar/checks/orphan-key.ts',
+    'validation/sidecar/checks/projection-conformance.ts',
+    'validation/sidecar/checks/source-hash.ts',
+    'validation/sidecar/checks/text-dependent-selector.ts',
+    'validation/sidecar/checks/translatable-ids.ts',
+  ].map((violation) => ({
+    violation,
+    reason:
+      'Sidecar validation seam (docs/design/I18N.md §7.1, §9), reached only through validation/validate-package.ts, ' +
+      'itself off-graph-reachable: the CLI and tests run it, the app never does.',
+    tracking: '#2373',
+  })),
   {
     violation: 'types/v1-recommender.types.ts',
     reason:
