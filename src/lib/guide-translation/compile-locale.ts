@@ -264,12 +264,17 @@ function sidecarChain(sidecars: SidecarSet, locale: string): TranslationSidecar[
   return localeChain(locale).flatMap((tag) => (hasSidecar(sidecars, tag) ? [sidecars[tag] as TranslationSidecar] : []));
 }
 
+function asContent(content: unknown): ContentJson {
+  return isRecord(content) ? (content as unknown as ContentJson) : ({} as ContentJson);
+}
+
 function resolveLocale(
-  content: ContentJson,
+  guideContent: ContentJson,
   manifest: CompileManifest,
   sidecars: SidecarSet,
   locale: string
 ): LocaleResolution {
+  const content = asContent(guideContent);
   const chain = sidecarChain(sidecars, locale);
   const records: BlockRecord[] = [];
   const blocks = Array.isArray(content.blocks) ? projectBlocks(content.blocks, { chain, records }) : content.blocks;
@@ -294,6 +299,7 @@ function canonicalLanguageOf(manifest: CompileManifest): string {
   return (isRecord(manifest) ? nonBlankString(manifest.language) : undefined) ?? DEFAULT_CANONICAL_LANGUAGE;
 }
 
+// Blocks only: stale guide title and manifest entries are not reported yet (#2475).
 async function staleIdsOf(records: readonly BlockRecord[]): Promise<string[]> {
   const verdicts = await Promise.all(
     records.map(async (record) => {
@@ -335,11 +341,12 @@ export function availableLocales(content: ContentJson, manifest: CompileManifest
  * lists blocks that still render canonical text.
  */
 export async function compileLocale(
-  content: ContentJson,
+  guideContent: ContentJson,
   manifest: CompileManifest,
   sidecars: SidecarSet,
   locale: string
 ): Promise<CompiledLocale> {
+  const content = asContent(guideContent);
   const resolution = resolveLocale(content, manifest, sidecars, locale);
   const translation: GuideTranslationAnnotation = {
     language: locale,

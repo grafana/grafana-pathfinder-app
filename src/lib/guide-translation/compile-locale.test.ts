@@ -9,8 +9,9 @@ import { JsonGuideSchemaStrict } from '../../types/json-guide.schema';
 import type { JsonBlock } from '../../types/json-guide.types';
 import { ContentJsonSchema, ManifestJsonSchema } from '../../types/package.schema';
 import type { ContentJson } from '../../types/package.types';
-import { TranslationSidecarSchema, type TranslationSidecar } from '../../types/translation-sidecar.schema';
+import { TranslationSidecarSchema } from '../../types/translation-sidecar.schema';
 import { availableLocales, compileLocale, type SidecarSet } from './compile-locale';
+import { localeChain } from './locale-chain';
 import { hashBlockSource } from './source-hash';
 
 const FIXTURES = path.join(__dirname, 'fixtures');
@@ -221,6 +222,14 @@ describe('projection', () => {
 });
 
 describe('availability', () => {
+  it('derives availability from complete reviewed translations without the latch', () => {
+    const unlatched = withSidecars((copy) => {
+      delete copy.ja['_available'];
+      delete copy['ja-JP']['_available'];
+    });
+    expect(availableLocales(content, manifest, unlatched)).toEqual(['ja', 'ja-JP']);
+  });
+
   it('withholds a locale whose translation is incomplete', () => {
     const edited = withSidecars((copy) => {
       delete copy.ja['_available'];
@@ -359,19 +368,44 @@ describe('monotonic degradation (I18N.md §8, property 3)', () => {
     return [];
   }
 
+  function leaves(value: unknown, at = ''): Array<[string, string]> {
+    if (typeof value === 'string') {
+      return [[at, value]];
+    }
+    if (typeof value === 'object' && value !== null) {
+      return Object.entries(value).flatMap(([key, child]) => leaves(child, `${at}/${key}`));
+    }
+    return [];
+  }
+
+  const baselines = new Map<string, Promise<ContentJson>>();
+  function baselineFor(locale: string): Promise<ContentJson> {
+    if (!baselines.has(locale)) {
+      baselines.set(
+        locale,
+        compileLocale(content, manifest, sidecars, locale).then((compiled) => compiled.content)
+      );
+    }
+    return baselines.get(locale)!;
+  }
+
   async function expectGraceful(edited: SidecarSet, locale: string) {
     const compiled = await compileLocale(content, manifest, edited, locale);
     expect(ContentJsonSchema.safeParse(compiled.content).success).toBe(true);
     expect(stringsOf(compiled.content).every((text) => text.trim() !== '')).toBe(true);
-    const canonicalStrings = new Set(stringsOf(content));
-    const translatedStrings = new Set([...stringsOf(ja), ...stringsOf(jaJP)]);
-    for (const text of stringsOf(compiled.content.blocks)) {
-      expect(canonicalStrings.has(text) || translatedStrings.has(text)).toBe(true);
-    }
     expect(compiled.content.blocks.length).toBe(content.blocks.length);
-    expect(availableLocales(content, manifest, edited)).toEqual(
-      expect.arrayContaining(compiled.available ? [locale] : [])
-    );
+
+    const layers = await Promise.all(localeChain(locale).map(baselineFor));
+    const own = layers[layers.length - 1] ?? content;
+    const baseline = leaves({ title: own.title, blocks: own.blocks });
+    const allowed = [...layers, content].map((layer) => new Map(leaves({ title: layer.title, blocks: layer.blocks })));
+    const rendered = leaves({ title: compiled.content.title, blocks: compiled.content.blocks });
+    expect(rendered.map(([at]) => at)).toEqual(baseline.map(([at]) => at));
+    for (const [at, text] of rendered) {
+      expect(allowed.map((layer) => layer.get(at))).toContain(text);
+    }
+
+    expect(availableLocales(content, manifest, edited).includes(locale)).toBe(compiled.available);
   }
 
   const locales = ['ja', 'ja-JP'] as const;
@@ -470,6 +504,15 @@ describe('malformed input', () => {
     expect(availableLocales(content, manifest, malformed)).toEqual([]);
   });
 
+  it('never throws when the guide content is not an object', async () => {
+    for (const bad of [null, undefined, 'nope', 4, []]) {
+      const compiled = await compileLocale(bad as never, manifest, sidecars, 'ja');
+      expect(compiled.locale).toBe('ja');
+      expect(() => availableLocales(bad as never, manifest, sidecars)).not.toThrow();
+      expect(availableLocales(bad as never, manifest, { ja: {} } as never)).toEqual([]);
+    }
+  });
+
   it('tolerates a guide with odd blocks and missing arrays', async () => {
     const odd = {
       id: 'odd',
@@ -485,12 +528,5 @@ describe('malformed input', () => {
     const noBlocks = { id: 'x', title: 'X' } as unknown as ContentJson;
     await expect(compileLocale(noBlocks, undefined as never, sidecars, 'ja')).resolves.toBeDefined();
     expect(availableLocales(odd, null as never, undefined as never)).toEqual([]);
-  });
-});
-
-describe('sidecar type', () => {
-  it('accepts the parsed sidecars it is given', () => {
-    const typed: TranslationSidecar[] = [ja, jaJP];
-    expect(typed).toHaveLength(2);
   });
 });
