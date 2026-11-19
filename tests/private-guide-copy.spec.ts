@@ -28,9 +28,6 @@ test('copies a public guide, protects the draft and publishes a separate private
     (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
     (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
   );
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/custom-guides', (route) =>
-    route.fulfill({ json: { items: resources } })
-  );
   await page.route(
     (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/custom-guide'),
     (route) => {

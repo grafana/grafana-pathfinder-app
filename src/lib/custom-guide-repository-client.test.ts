@@ -3,7 +3,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 let mockAvailable = true;
-jest.mock('../utils/fetchBackendGuides', () => ({
+jest.mock('../utils/interactive-guides-api', () => ({
   isBackendApiAvailable: () => mockAvailable,
 }));
 
@@ -40,6 +40,22 @@ it('preserves availability and refreshes a cached unavailable response without a
     available: true,
     entries: [{ id: 'team' }],
   });
+  expect(mockGet).toHaveBeenCalledTimes(2);
+});
+
+it('does not let a refresh join a request that started before it', async () => {
+  let answerStale!: (value: unknown) => void;
+  mockGet.mockReturnValueOnce(new Promise((resolve) => (answerStale = resolve)));
+  const stale = fetchCustomGuideCatalogue('stacks-123');
+  mockGet.mockResolvedValueOnce({ capability: { available: true }, guides: [{ id: 'fresh', name: 'fresh' }] });
+
+  const refreshed = await fetchCustomGuideCatalogue('stacks-123', { refresh: true });
+  answerStale({ capability: { available: true }, guides: [{ id: 'stale', name: 'stale' }] });
+  await stale;
+
+  expect(refreshed.entries.map((entry) => entry.id)).toEqual(['fresh']);
+  // The superseded answer must not overwrite the refreshed cache entry either.
+  expect((await fetchCustomGuideCatalogue('stacks-123')).entries.map((entry) => entry.id)).toEqual(['fresh']);
   expect(mockGet).toHaveBeenCalledTimes(2);
 });
 

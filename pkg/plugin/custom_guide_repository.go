@@ -17,8 +17,9 @@ import (
 // Machine tokens; the frontend gates on capability.available and ignores the
 // specific string.
 //
-// Only reasonFeatureToggleDisabled and reasonOBOUnavailable actually reach a
-// client on this route. The identity gate runs before resolveCustomGuideBackend
+// Of the structural reasons, only reasonFeatureToggleDisabled and
+// reasonOBOUnavailable actually reach a client on this route; a drain can add
+// reasonGuideTooLarge. The identity gate runs before resolveCustomGuideBackend
 // and needs both a namespace and an app URL itself, so a stack missing either
 // reports identity-unverifiable first; the reasonGrafanaConfigUnavailable guard
 // is dead for its own reason (config.GrafanaConfigFromContext never returns
@@ -32,6 +33,10 @@ const (
 	// reasonOBOUnavailable means the stack has no provisioned on-behalf-of
 	// credentials, so the proxy cannot authenticate as the caller at all.
 	reasonOBOUnavailable = "obo-unavailable"
+
+	// reasonGuideTooLarge means a single stored guide exceeds the LIST page byte
+	// cap even on a one-guide page, which no retry fixes.
+	reasonGuideTooLarge = "guide-too-large"
 )
 
 // Custom guide repository catalogue proxy (docs/design/BACKEND_PROXY_PATTERN.md).
@@ -88,7 +93,8 @@ var customGuideListMaxTotalEntries = 50_000
 // interactiveguides API on this stack. Reasons are reasonIdentityUnavailable,
 // reasonIdentityUnverifiable and reasonSigningKeysUnreachable (all via
 // identityStatus.capabilityReason()), reasonFeatureToggleDisabled,
-// reasonOBOUnavailable, and `upstream-<status>` for a terminal upstream.
+// reasonOBOUnavailable, reasonGuideTooLarge, and `upstream-<status>` for a
+// terminal upstream.
 // reasonBackendUnavailable is unreachable here: its only assignment is
 // overwritten by `upstream-<status>`.
 type customGuideCapability struct {
@@ -156,7 +162,7 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	cancel()
 
 	if err != nil {
-		if isTerminalUpstreamError(err) {
+		if isTerminalUpstreamError(err) || isResponseTooLarge(err) {
 			// Structurally can't serve for this caller ("never works here") —
 			// includes identity-scoped 401/403 for this caller's token. Surface
 			// the upstream HTTP status in the reason (e.g. "upstream-403") so the
@@ -166,6 +172,9 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 			var upErr *appPlatformUpstreamError
 			if errors.As(err, &upErr) {
 				reason = fmt.Sprintf("upstream-%d", upErr.status)
+			} else if isResponseTooLarge(err) {
+				// Only one guide over the page byte cap reaches here (ListPage shrinks pages first).
+				reason = reasonGuideTooLarge
 			}
 			logger.Info("custom guide catalogue unavailable (terminal)", "namespace", namespace, "reason", classifyGuideProxyError(err).Reason)
 			a.writeJSON(w, customGuideRepositoryResponse{
