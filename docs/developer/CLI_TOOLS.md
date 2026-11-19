@@ -205,7 +205,7 @@ A package that ships `i18n/*.json` translation sidecars ([`docs/design/I18N.md`]
 
 Findings are routed by severity:
 
-- **Error** findings go to `errors` and fail validation.
+- **Error** findings go to `errors`, with their `remediation` line when the check sets one, and fail validation.
 - **Warning** findings go to `messages` with `severity: 'warn'` and a `remediation` line, never to `warnings`. `--strict` promotes `warnings` to errors, and stale or orphaned translations must never fail a build.
 
 | Check                     | Codes                                                                                                                                                             | Severity          | Status                                                                          |
