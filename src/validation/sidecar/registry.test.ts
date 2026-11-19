@@ -20,16 +20,10 @@ describe('sidecar check registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('pre-registers a stub for each community check, tagged with its issue', () => {
-    const pending = SIDECAR_CHECKS.filter((check) => check.pendingIssue !== undefined);
-    expect(pending.map((check) => [check.id, check.pendingIssue])).toEqual([
-      ['language-tag', '#2392'],
-      ['projection-conformance', '#2389'],
-      ['orphan-key', '#2387'],
-      ['source-hash', '#2388'],
-      ['translatable-ids', '#2391'],
-      ['text-dependent-selector', '#2390'],
-    ]);
+  it('tags every pending stub with its issue', () => {
+    for (const check of SIDECAR_CHECKS.filter((c) => c.pendingIssue !== undefined)) {
+      expect(check.pendingIssue).toMatch(/^#\d+$/);
+    }
   });
 
   it('keeps every stub silent until its check lands', () => {

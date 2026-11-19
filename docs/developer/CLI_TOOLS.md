@@ -218,7 +218,7 @@ Findings are routed by severity:
 | `translatable-ids`        | `translatable_block_missing_id`, `translatable_step_missing_id`, `duplicate_block_id`, `duplicate_step_id`                                                        | error             | pending, [#2391](https://github.com/grafana/grafana-pathfinder-app/issues/2391) |
 | `text-dependent-selector` | `text_dependent_selector`                                                                                                                                         | error             | pending, [#2390](https://github.com/grafana/grafana-pathfinder-app/issues/2390) |
 
-A pending check is registered and returns no findings until its issue lands. Its codes are already in the union, so filling it means editing its file under `src/validation/sidecar/checks/` and its test, and nothing else.
+A pending check is registered and returns no findings until its issue lands. Its codes are already in the union, so filling it means editing its file under `src/validation/sidecar/checks/` and its test, and flipping its status row in this table.
 
 `manifest-block-fields` rejects any key in a sidecar's `manifest` block other than `description`, `category`, `reviewed`, `_sourceHash` and the tooling fields declared on `TranslationManifestEntrySchema`. Structural manifest fields such as `milestones`, `targeting` or `author` are named as such in the message.
 

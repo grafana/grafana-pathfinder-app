@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { readPackageSidecars } from '../cli/utils/package-io';
+import { readPackageSidecars } from '../cli/utils/package-io/sidecars';
 import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
 import { ContentJsonSchema, ManifestJsonSchema } from '../types/package.schema';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
