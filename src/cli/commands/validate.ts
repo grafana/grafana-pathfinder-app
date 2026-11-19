@@ -140,6 +140,9 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
 
   for (const err of result.errors) {
     console.log(`  ❌ ERROR: ${err.message}`);
+    if (err.remediation) {
+      console.log(`      Fix: ${err.remediation}`);
+    }
   }
 
   if (!strict) {
