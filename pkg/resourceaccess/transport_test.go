@@ -56,3 +56,26 @@ func TestSettingsTransportRefusesRedirect(t *testing.T) {
 		t.Fatalf("redirect reached=%v error=%v", reached, err)
 	}
 }
+
+func TestBoundedTransportKeepsOversizedErrorStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(422)
+		_, _ = io.WriteString(w, strings.Repeat("x", 4096))
+	}))
+	defer server.Close()
+	config := BoundedConfig(rest.Config{Host: server.URL}, 128)
+	tr, err := rest.TransportFor(&config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := (&http.Client{Transport: tr}).Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil || len(body) != 0 || resp.StatusCode != 422 {
+		t.Fatalf("status=%d body=%d err=%v", resp.StatusCode, len(body), err)
+	}
+}

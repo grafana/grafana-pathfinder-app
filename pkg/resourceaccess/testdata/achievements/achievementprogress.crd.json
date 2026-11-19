@@ -49,7 +49,7 @@
                                     "units": {
                                         "description": "units is the grow-only set of distinct units counted (a dashboard uid,\na guide, an event id). The writer keeps it sorted and distinct; the CRD\ncannot express either, so neither is enforced here. The cap is the\n1,040-byte unit-key limit, but maxLength counts characters, so it\nadmits every unit within that byte limit and some longer in bytes.",
                                         "items": {
-                                            "maxLength": 1040,
+                                            "maxLength": 520,
                                             "type": "string"
                                         },
                                         "maxItems": 200,

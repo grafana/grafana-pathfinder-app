@@ -84,11 +84,12 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 			return fail(503, "definitions-unavailable")
 		}
 		person := achievements.Person{ID: caller.Subject}
+		store := services.NewAchievementStore(clients, services.AchievementWriter{Namespace: caller.Namespace, OrgID: caller.OrgID, UserLogin: caller.Login, UserDisplayName: caller.DisplayName}, time.Now)
 		switch operation {
 		case "definitions":
 			return write(200, achievementDefinitionsResponse{defs.Version, "https://interactive-learning.grafana.net/achievements/art/", append([]achievements.Display{}, defs.Display...)})
 		case "my":
-			rows, err := (resourceaccess.AchievementReader{Clients: clients, Namespace: caller.Namespace}).ListMine(ctx, person)
+			rows, err := (&services.AchievementReader{Store: store, Catalog: defs.Catalog, Now: time.Now}).ListMine(ctx, person)
 			if err != nil {
 				status := sdkErrorStatus(err)
 				if status >= 400 && status < 500 && status != 429 {
@@ -98,7 +99,7 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 				return write(503, struct {
 					Error       string                    `json:"error"`
 					Diagnostics *services.ProxyDiagnostic `json:"diagnostics,omitempty"`
-				}{"achievements-unavailable", upstreamDiagnostic(err, "achievementawards", "list")})
+				}{"achievements-unavailable", upstreamDiagnostic(err, "achievementawards", "get")})
 			}
 			result := services.ShapeMyAchievements(rows, defs)
 			result.Legacy = []services.LegacyBadge{}
@@ -116,7 +117,6 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 			if err != nil {
 				return fail(400, "invalid-event")
 			}
-			store := services.NewAchievementStore(clients, services.AchievementWriter{Namespace: caller.Namespace, OrgID: caller.OrgID, UserLogin: caller.Login, UserDisplayName: caller.DisplayName}, time.Now)
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			decisions, err := achievements.NewEvaluator(defs.Catalog, store, achievementPolicy{limiter: limiter, namespace: caller.Namespace}, time.Now).Evaluate(ctx, person, event)

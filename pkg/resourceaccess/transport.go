@@ -12,14 +12,16 @@ import (
 )
 
 func SettingsConfig(config rest.Config) rest.Config {
-	config = BoundedConfig(config, services.SettingsMaxBytes)
-	config.Wrap(func(next http.RoundTripper) http.RoundTripper { return settingsErrorTransport{next: next} })
-	return config
+	return BoundedConfig(config, services.SettingsMaxBytes)
 }
 
 func BoundedConfig(config rest.Config, maxBytes int64) rest.Config {
+	// Grafana enforces server-side limits per caller. A plugin-wide client bucket couples unrelated tenants.
+	if config.QPS == 0 && config.RateLimiter == nil {
+		config.QPS = -1
+	}
 	config.Wrap(func(next http.RoundTripper) http.RoundTripper {
-		return settingsTransport{next: next, maxBytes: maxBytes}
+		return settingsErrorTransport{next: settingsTransport{next: next, maxBytes: maxBytes}}
 	})
 	return config
 }

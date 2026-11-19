@@ -56,7 +56,7 @@ achievementprogressv1alpha1: achievementProgressKind & {
 			// cannot express either, so neither is enforced here. The cap is the
 			// 1,040-byte unit-key limit, but maxLength counts characters, so it
 			// admits every unit within that byte limit and some longer in bytes.
-			units: list.MaxItems(200) & [...string & strings.MaxRunes(1040)]
+			units: list.MaxItems(200) & [...string & strings.MaxRunes(520)]
 
 			// ---------------------------------------------------------------
 			// Writer-stamped fields (required).

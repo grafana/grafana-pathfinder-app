@@ -19,11 +19,14 @@ manifest: {
 	// single-purpose; Basic-role inheritance (admin ⊃ editor ⊃ viewer) means each
 	// binding below only declares its delta. title/description are user-visible.
 	roles: {
-"pathfinder-backend:achievement-writer": {
- title: "Pathfinder Achievement Writer"
- description: "Record and read achievements"
- kinds: [{kind: "AchievementAward", verbs: ["get", "list", "watch", "create"]}, {kind: "AchievementProgress", permissionSet: "editor"}]
-}
+		"pathfinder-backend:achievement-writer": {
+			title: "Pathfinder Achievement Writer"
+			description: "Record and read achievements"
+			kinds: [
+				{kind: "AchievementAward", verbs: ["get", "create"]},
+				{kind: "AchievementProgress", verbs: ["get", "create", "update"]},
+			]
+		}
 
 		"pathfinder-backend:reader": {
 			title:       "Pathfinder Reader"
@@ -64,16 +67,6 @@ manifest: {
 			kinds: [{kind: "Assignment", permissionSet: "editor"}]
 		}
 	}
-	// roleBindings binds the roles above to Basic groups. Effective grants:
-	// viewer → read InteractiveGuide + read/write CompletionRecord
-	// + read PathfinderSettings + read/write Assignment;
-	// editor → inherits viewer + write InteractiveGuide;
-	// admin → inherits editor + write PathfinderSettings.
-	//
-	// Settings are admin-only to write: unlike guides, they change behaviour for
-	// every user on the stack, so `settings-editor` binds to admin rather than
-	// editor. Read binds at viewer because every surface in the plugin must
-	// resolve configuration before it can render.
 	roleBindings: {
 		viewer: ["pathfinder-backend:achievement-writer", "pathfinder-backend:reader", "pathfinder-backend:completion-writer", "pathfinder-backend:settings-reader", "pathfinder-backend:assignment-writer"]
 		editor: ["pathfinder-backend:guide-editor"]

@@ -42,13 +42,14 @@ var (
 // testdata/achievements holds byte copies of the CRDs generated at
 // grafana-pathfinder-backend 84c582fdae1916910e5197a44bd0078018315135.
 type fakeAchievementAPI struct {
-	mu        sync.Mutex
-	rv        int
-	objects   map[string]map[string]any
-	schemas   map[string]map[string]any
-	requests  []string
-	failNext  map[string]int
-	emptyNext map[string]bool
+	mu           sync.Mutex
+	rv           int
+	objects      map[string]map[string]any
+	schemas      map[string]map[string]any
+	requestPaths []string
+	requests     []string
+	failNext     map[string]int
+	emptyNext    map[string]bool
 }
 
 func newFakeAchievementAPI(t *testing.T) *fakeAchievementAPI {
@@ -119,6 +120,7 @@ func (a *fakeAchievementAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resource, name, _ := strings.Cut(rest, "/")
+	a.requestPaths = append(a.requestPaths, r.Method+" "+rest)
 	a.requests = append(a.requests, r.Method+" "+resource)
 
 	if code, ok := a.failNext[r.Method+" "+resource]; ok {
@@ -732,32 +734,17 @@ func unitKeyForTest(parts ...string) string {
 	return b.String()
 }
 
-func TestAchievementReaderPaginatesAndFiltersCaller(t *testing.T) {
-	calls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Query().Get("limit") != "100" {
-			t.Errorf("missing page limit: %s", r.URL)
-		}
-		if strings.HasSuffix(r.URL.Path, "achievementprogresses") {
-			_, _ = w.Write([]byte(`{"apiVersion":"pathfinderbackend.ext.grafana.app/v1alpha1","kind":"AchievementProgressList","items":[{"metadata":{"name":"mine","resourceVersion":"1"},"spec":{"userId":"user:27","achievementId":"guides-finished","tierIds":["bronze"],"units":["one"],"schemaVersion":1}},{"metadata":{"name":"other"},"spec":{"userId":"user:99","achievementId":"secret","tierIds":[],"units":[],"schemaVersion":1}}]}`))
-			return
-		}
-		if r.URL.Query().Get("continue") == "" {
-			_, _ = w.Write([]byte(`{"apiVersion":"pathfinderbackend.ext.grafana.app/v1alpha1","kind":"AchievementAwardList","metadata":{"continue":"next"},"items":[{"metadata":{"name":"other"},"spec":{"userId":"user:99","achievementId":"secret"}}]}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"apiVersion":"pathfinderbackend.ext.grafana.app/v1alpha1","kind":"AchievementAwardList","items":[{"metadata":{"name":"mine"},"spec":{"userId":"user:27","achievementId":"guides-finished","tierId":"bronze","entity":"guides","earnedAt":"2026-11-01T00:00:00Z"}}]}`))
-	}))
-	defer server.Close()
-	clients, err := NewAchievementClients(sdkplugin.BuildClientGenerator(AchievementConfig(rest.Config{Host: server.URL, APIPath: "/apis"})))
-	if err != nil {
-		t.Fatal(err)
+func TestAchievementReaderGetsOnlyNamedCallerRows(t *testing.T) {
+	store, api := newAchievementTestStore(t)
+	catalog := &achievements.Catalog{Achievements: []achievements.Definition{{ID: "guide", Tiers: []achievements.Tier{{ID: "bronze"}}}}}
+	reader := services.AchievementReader{Store: store, Catalog: catalog, Now: time.Now}
+	rows, err := reader.ListMine(context.Background(), achievementTestPerson)
+	if err != nil || len(rows.Progress)+len(rows.Awards) != 0 {
+		t.Fatalf("rows=%+v error=%v", rows, err)
 	}
-	rows, err := (AchievementReader{Clients: clients, Namespace: "stacks-1"}).ListMine(context.Background(), achievementTestPerson)
-	if err != nil || calls != 3 || len(rows.Awards) != 1 || len(rows.Progress) != 1 || rows.Awards[0].AchievementID != "guides-finished" || rows.Progress[0].AchievementID != "guides-finished" {
-		t.Fatalf("rows=%+v calls=%d err=%v", rows, calls, err)
+	want := []string{"GET " + achievementProgressResource + "/" + achievementProgressName(achievementTestPerson.ID, "guide"), "GET " + achievementAwardResource + "/" + achievementAwardName(achievementTestPerson.ID, "guide", "bronze")}
+	if !slices.Equal(api.requestPaths, want) {
+		t.Fatalf("requests=%v want=%v", api.requestPaths, want)
 	}
 }
 

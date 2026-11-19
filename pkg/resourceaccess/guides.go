@@ -35,13 +35,19 @@ func (s *GuideStore) Read(ctx context.Context, namespace, name string) (json.Raw
 func (s *GuideStore) ListPage(ctx context.Context, namespace, token string) (services.GuidePage, error) {
 	ctx, cancel := context.WithTimeout(ctx, services.SettingsReadTimeout)
 	defer cancel()
-	page := &rawGuideList{}
-	err := s.client.ListInto(ctx, namespace, resource.ListOptions{Limit: 100, Continue: token}, page)
-	var syntax *json.SyntaxError
-	if errors.As(err, &syntax) {
-		err = &ResponseValidationError{Reason: "invalid-json", Status: 200}
+	for limit := 100; ; limit = max(1, limit/2) {
+		page := &rawGuideList{}
+		err := s.client.ListInto(ctx, namespace, resource.ListOptions{Limit: limit, Continue: token}, page)
+		var invalid *ResponseValidationError
+		if limit > 1 && errors.As(err, &invalid) && invalid.Reason == "response-too-large" {
+			continue
+		}
+		var syntax *json.SyntaxError
+		if errors.As(err, &syntax) {
+			err = &ResponseValidationError{Reason: "invalid-json", Status: 200}
+		}
+		return services.GuidePage{Items: page.items, Continue: page.GetContinue()}, err
 	}
-	return services.GuidePage{Items: page.items, Continue: page.GetContinue()}, err
 }
 
 type rawGuide struct {

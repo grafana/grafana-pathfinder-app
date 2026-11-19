@@ -9,12 +9,10 @@ import (
 	"io"
 	"k8s.io/client-go/rest"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/grafana/grafana-app-sdk/resource"
-	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 	awards "github.com/grafana/grafana-pathfinder-app/pkg/generated/achievementaward/v1alpha1"
 	progress "github.com/grafana/grafana-pathfinder-app/pkg/generated/achievementprogress/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -107,76 +105,10 @@ func (c *AchievementClients) IsAbsent(err error, kind string) bool {
 	return s.Code == 404 && s.Reason == "NotFound" && s.Details != nil && s.Details.Group == "pathfinderbackend.ext.grafana.app" && s.Details.Kind == kind && s.Details.Name != ""
 }
 
-type AchievementReader struct {
-	Clients   *AchievementClients
-	Namespace string
-}
-
-func (r AchievementReader) ListMine(ctx context.Context, person achievements.Person) (achievements.Rows, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	result := achievements.Rows{AsOf: time.Now()}
-	count := 0
-	for _, kind := range []string{"achievementawards", "achievementprogresses"} {
-		token := ""
-		seen := map[string]bool{}
-		for {
-			var list resource.ListObject
-			if kind == "achievementawards" {
-				list = &awards.AchievementAwardList{}
-			} else {
-				list = &progress.AchievementProgressList{}
-			}
-			client, err := r.Clients.client(kind)
-			if err != nil {
-				return achievements.Rows{}, err
-			}
-			pageCtx, stop := context.WithTimeout(ctx, 15*time.Second)
-			err = client.ListInto(pageCtx, r.Namespace, resource.ListOptions{Limit: 100, Continue: token}, list)
-			stop()
-			if err != nil {
-				return achievements.Rows{}, err
-			}
-			for _, item := range list.GetItems() {
-				count++
-				if count > 50000 {
-					result.Truncated = true
-					return result, nil
-				}
-				switch row := item.(type) {
-				case *awards.AchievementAward:
-					if row.Spec.UserId != person.ID {
-						continue
-					}
-					result.Awards = append(result.Awards, achievements.Award{AchievementID: row.Spec.AchievementId, TierID: row.Spec.TierId, Entity: row.Spec.Entity, EarnedAt: row.Spec.EarnedAt})
-				case *progress.AchievementProgress:
-					if row.Spec.UserId != person.ID {
-						continue
-					}
-					units := slices.Clone(row.Spec.Units)
-					slices.Sort(units)
-					result.Progress = append(result.Progress, achievements.Progress{AchievementID: row.Spec.AchievementId, TierIDs: row.Spec.TierIds, Units: slices.Compact(units), SchemaVersion: int(row.Spec.SchemaVersion), Version: row.ResourceVersion})
-				default:
-					return achievements.Rows{}, errors.New("unexpected achievement resource")
-				}
-			}
-			token = list.GetContinue()
-			if token == "" {
-				break
-			}
-			if seen[token] {
-				return achievements.Rows{}, errors.New("repeated achievement continuation token")
-			}
-			seen[token] = true
-		}
-	}
-	return result, nil
-}
-
 func AchievementConfig(config rest.Config) rest.Config {
 	config = BoundedConfig(config, services.AchievementStoreMaxBytes)
 	config.Wrap(func(next http.RoundTripper) http.RoundTripper {
-		return achievementAckTransport{next: settingsErrorTransport{next: next}}
+		return achievementAckTransport{next: next}
 	})
 	return config
 }

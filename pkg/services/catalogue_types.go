@@ -5,10 +5,6 @@ import (
 	"errors"
 )
 
-// CatalogueManifest mirrors #Manifest in pathfinder-backend's
-// kinds/interactiveguide.cue. Decoded loosely (a plain struct, not the
-// generated client type) since this repo doesn't vendor pathfinder-backend's
-// generated Go types.
 type CatalogueManifest struct {
 	Type        string   `json:"type"`
 	Repository  string   `json:"repository,omitempty"`
@@ -25,9 +21,7 @@ type CatalogueManifest struct {
 	Depends []json.RawMessage `json:"depends,omitempty"`
 	Stats   *CatalogueStats   `json:"stats,omitempty"`
 
-	// decodeDrift collects the per-field decode failures. It is unexported, so
-	// it never reaches the wire; ListPage turns it into one warning naming the
-	// guide id.
+	// Report malformed optional fields without exposing diagnostics on the wire.
 	DecodeDrift error `json:"-"`
 }
 

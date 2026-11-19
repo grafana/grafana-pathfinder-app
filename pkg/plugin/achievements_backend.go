@@ -5,13 +5,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 )
-
-const achievementReaderConcurrency = 8
 
 // buildAchievementsBackend serves one request as the person the handler already
 // verified, so the ID token is not verified again here.
@@ -47,78 +45,7 @@ type achievementNameReader struct {
 
 var _ achievements.Reader = (*achievementNameReader)(nil)
 
-type heldAchievement struct {
-	progress *achievements.Progress
-	awards   []achievements.Award
-}
-
 func (r *achievementNameReader) ListMine(ctx context.Context, person achievements.Person) (achievements.Rows, error) {
-	asOf := r.now()
-	defs := r.catalog.Achievements
-	held := make([]heldAchievement, len(defs))
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(achievementReaderConcurrency)
-	for i := range defs {
-		g.Go(func() error {
-			h, err := r.readAchievement(gctx, person, &defs[i])
-			held[i] = h
-			return err
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return achievements.Rows{}, err
-	}
-
-	rows := achievements.Rows{AsOf: asOf, Awards: []achievements.Award{}, Progress: []achievements.Progress{}}
-	for _, h := range held {
-		if h.progress != nil {
-			rows.Progress = append(rows.Progress, *h.progress)
-		}
-		rows.Awards = append(rows.Awards, h.awards...)
-	}
-	return rows, nil
-}
-
-func (r *achievementNameReader) readAchievement(ctx context.Context, person achievements.Person, d *achievements.Definition) (heldAchievement, error) {
-	loaded, err := r.store.LoadProgress(ctx, person, []string{d.ID})
-	if err != nil {
-		return heldAchievement{}, err
-	}
-	var h heldAchievement
-	row, found := loaded[d.ID]
-	if found {
-		h.progress = &row
-	}
-	for _, tierID := range awardCandidates(d, row.TierIDs) {
-		award, ok, err := r.store.shared().LoadAward(ctx, person, d.ID, tierID)
-		if err != nil {
-			return heldAchievement{}, err
-		}
-		if ok {
-			h.awards = append(h.awards, award)
-		}
-	}
-	return h, nil
-}
-
-// awardCandidates is the catalog's tiers plus the row's: the evaluator creates
-// an award before saving the progress row that records it, so the row can lag.
-func awardCandidates(d *achievements.Definition, rowTierIDs []string) []string {
-	seen := make(map[string]bool, len(d.Tiers)+len(rowTierIDs))
-	ids := make([]string, 0, len(d.Tiers)+len(rowTierIDs))
-	for _, id := range append(tierIDsOf(d), rowTierIDs...) {
-		if !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
-		}
-	}
-	return ids
-}
-
-func tierIDsOf(d *achievements.Definition) []string {
-	ids := make([]string, len(d.Tiers))
-	for i, t := range d.Tiers {
-		ids[i] = t.ID
-	}
-	return ids
+	reader := services.AchievementReader{Store: r.store.shared(), Catalog: r.catalog, Now: r.now}
+	return reader.ListMine(ctx, person)
 }

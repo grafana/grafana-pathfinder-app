@@ -35,12 +35,17 @@ export function backendRoute(path: (typeof backendPaths)[number], sdk = usesSdkB
   return `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${encodeURIComponent(config.namespace)}/backend/${path}`;
 }
 
-export async function discoverSdkBackend(): Promise<void> {
+export function expectsSdkBackend(): boolean {
   const namespace = config.namespace;
   const toggles = config.featureToggles as Record<string, boolean> | undefined;
   const registrationEnabled =
     toggles?.['appplugins.loadAppManifest'] === true && toggles?.['appplugins.registerAPIServer'] === true;
-  if (!namespace || namespace === '*' || (!/^stacks-[0-9]+$/.test(namespace) && !registrationEnabled)) {
+  return Boolean(namespace && namespace !== '*' && (/^stacks-[0-9]+$/.test(namespace) || registrationEnabled));
+}
+
+export async function discoverSdkBackend(): Promise<void> {
+  const namespace = config.namespace;
+  if (!expectsSdkBackend()) {
     return;
   }
   try {

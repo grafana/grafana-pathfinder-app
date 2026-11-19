@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 
 	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
@@ -39,5 +41,31 @@ func TestGuideStoreDrainsSDKPagesWithoutDroppingFields(t *testing.T) {
 	}
 	if string(items[0]) != `{"metadata":{"name":"one"},"spec":{"future":true}}` {
 		t.Fatalf("changed guide: %s", items[0])
+	}
+}
+
+func TestGuidePageRetriesOverflowAtSameCursor(t *testing.T) {
+	var limits []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		limits = append(limits, q.Get("limit"))
+		if q.Get("continue") != "cursor" {
+			t.Errorf("lost cursor: %s", r.URL)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if q.Get("limit") == "100" {
+			_, _ = w.Write([]byte(strings.Repeat(" ", 256)))
+			return
+		}
+		_, _ = w.Write([]byte(`{"metadata":{"continue":"next"},"items":[]}`))
+	}))
+	defer server.Close()
+	store, err := NewGuideStore(sdkplugin.BuildClientGenerator(BoundedConfig(rest.Config{Host: server.URL, APIPath: "/apis"}, 128)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListPage(context.Background(), "default", "cursor")
+	if err != nil || page.Continue != "next" || !slices.Equal(limits, []string{"100", "50"}) {
+		t.Fatalf("limits=%v next=%q err=%v", limits, page.Continue, err)
 	}
 }
