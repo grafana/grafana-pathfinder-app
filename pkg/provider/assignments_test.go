@@ -119,3 +119,26 @@ func TestAssignmentFailureAndAdmissionAvoidDependentReads(t *testing.T) {
 		}
 	}
 }
+
+func TestAssignmentBurstIsLimitedBeforeReadingAssignments(t *testing.T) {
+	deps := assignmentDependencies(nil, nil, nil, nil)
+	reads := 0
+	deps.Assignments = assignmentReaderFunc(func(context.Context, string, string) (*services.AssignmentPage, error) {
+		reads++
+		return &services.AssignmentPage{}, nil
+	})
+	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity{namespace: "default"}, "user:mine"})
+	handler := assignmentsReadHandler(deps)
+	for i := range 21 {
+		w := httptest.NewRecorder()
+		err := handler(ctx, w, &app.CustomRouteRequest{Method: "GET", ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}})
+		require.NoError(t, err)
+		if i == 20 {
+			require.Equal(t, 429, w.Code)
+			require.NotEmpty(t, w.Header().Get("Retry-After"))
+		} else {
+			require.Equal(t, 200, w.Code)
+		}
+	}
+	require.Equal(t, 20, reads)
+}

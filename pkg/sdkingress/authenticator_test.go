@@ -80,3 +80,16 @@ func TestRemovedRemoteKeyAndOffOriginRedirect(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, reached.Load())
 }
+
+func TestStalledSigningKeyEndpointTimesOut(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+		<-req.Context().Done()
+	}))
+	defer server.Close()
+	keys := rotatingKeys{source: server.URL, now: time.Now}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	_, err := keys.Get(ctx, "current")
+	require.Error(t, err)
+	require.NoError(t, ctx.Err(), "the signing key request must enforce its own timeout")
+}
