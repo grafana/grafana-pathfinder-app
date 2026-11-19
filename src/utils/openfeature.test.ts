@@ -147,6 +147,10 @@ describe('openfeature', () => {
         expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].trackingKey).toBe('progress_analytics');
         expect(pathfinderFeatureFlags['pathfinder.progress-records'].trackingKey).toBe('progress_records');
         expect(pathfinderFeatureFlags['pathfinder.recommend-completions'].trackingKey).toBe('recommend_completions');
+        expect(pathfinderFeatureFlags['pathfinder.achievements']).toMatchObject({
+          trackingKey: 'achievements',
+          defaultValue: false,
+        });
       });
     });
 

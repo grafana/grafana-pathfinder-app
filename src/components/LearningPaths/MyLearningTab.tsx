@@ -53,7 +53,11 @@ import {
   guideCompletionMarkStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
-import { discardQueuedCompletionWrites, invalidateAllEmittedCompletions } from '../../completion-records';
+import {
+  discardQueuedAchievementEvents,
+  discardQueuedCompletionWrites,
+  invalidateAllEmittedCompletions,
+} from '../../completion-records';
 import type { EarnedBadge } from '../../types';
 import { getBadgeProgress, type BadgeProgressInfo } from './badge-utils';
 
@@ -63,6 +67,8 @@ import { HeroStats } from './sections/HeroStats';
 import { MyCoursesSection } from './sections/MyCoursesSection';
 import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
+import { AchievementsSection, HomeAchievementsShelf } from '../Achievements/AchievementsSection';
+import { useLegacyBadgesHidden } from '../Achievements/useLegacyBadgesHidden';
 import { HomeBadgesSummary } from './sections/HomeBadgesSummary';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
 import { useCatalogLaunch } from './useCatalogLaunch';
@@ -486,12 +492,9 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
 
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
-      // Durable completion writes that are queued but not yet sent are dropped
-      // first, before any await below yields: a drain scheduled before the reset
-      // would otherwise fire inside that window and mint records for exactly the
-      // guides the user just asked us to forget — and the dialog gives them no
-      // second lever to stop it.
+      // Before any await, so a drain scheduled earlier cannot send these for the guides being reset.
       discardQueuedCompletionWrites();
+      discardQueuedAchievementEvents();
 
       reportAppInteraction(UserInteraction.ResetProgressClick, {
         reset_scope: 'all' satisfies ResetScope,
@@ -546,6 +549,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
   }, [homepage, progress.completedGuides, catalog.items, catalogProgress]);
   const totalPathsCompleted = allHomePathEntries.filter((entry) => entry.percent >= 100).length;
   const totalBadgesEarned = progress.earnedBadges.length;
+  const legacyBadgesHidden = useLegacyBadgesHidden();
 
   const pathsForProgress = useMemo(() => paths.map((p) => ({ id: p.id, guides: p.guides })), [paths]);
 
@@ -629,7 +633,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
       narrative={homepage}
       guidesCompleted={totalGuidesCompleted}
       pathsCompleted={totalPathsCompleted}
-      badgesEarned={totalBadgesEarned}
+      badgesEarned={legacyBadgesHidden ? null : totalBadgesEarned}
       streakDays={streakInfo.days}
       styles={styles}
     />
@@ -640,7 +644,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
       <div className={styles.intro}>
         {Header ? <Header>{summary}</Header> : summary}
 
-        {homepage && homeBadges}
+        {homepage && (legacyBadgesHidden ? <HomeAchievementsShelf styles={styles} /> : homeBadges)}
       </div>
 
       {homepage && (
@@ -799,17 +803,20 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
             </section>
           )}
 
-          {!homepage && (
-            <BadgesSection
-              badges={sortedBadges}
-              selectedBadgeId={selectedBadge?.id}
-              completedGuides={progress.completedGuides}
-              streakDays={progress.streakDays}
-              paths={pathsForProgress}
-              onSelect={setSelectedBadge}
-              styles={styles}
-            />
-          )}
+          {!homepage &&
+            (legacyBadgesHidden ? (
+              <AchievementsSection styles={styles} />
+            ) : (
+              <BadgesSection
+                badges={sortedBadges}
+                selectedBadgeId={selectedBadge?.id}
+                completedGuides={progress.completedGuides}
+                streakDays={progress.streakDays}
+                paths={pathsForProgress}
+                onSelect={setSelectedBadge}
+                styles={styles}
+              />
+            ))}
         </div>
       </div>
 
@@ -878,7 +885,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
           }}
         />
       )}
-      {selectedBadge && (
+      {selectedBadge && !legacyBadgesHidden && (
         <BadgeDetailCard
           badge={selectedBadge}
           progress={selectedBadgeProgress}

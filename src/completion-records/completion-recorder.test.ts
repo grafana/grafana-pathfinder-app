@@ -22,6 +22,7 @@ import {
   recordGuideCompletion,
   recordJourneyCompletion,
   onCompletionRecorded,
+  onCompletionObserved,
   invalidateEmittedCompletion,
   invalidateAllEmittedCompletions,
   hasEmittedGuideCompletion,
@@ -111,6 +112,47 @@ beforeEach(() => {
   persistedReported.clear();
   reportAnalytics.mockClear();
   jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+});
+
+describe('completion recorder — observers', () => {
+  it('see each emitted fact without counting as durable acceptance', () => {
+    const observed: CompletionFact[] = [];
+    onCompletionObserved((fact) => observed.push(fact));
+    const durable = jest.fn(() => false);
+    onCompletionRecorded(durable);
+
+    recordGuideCompletion(guideFact());
+    recordGuideCompletion(guideFact());
+
+    expect(durable).toHaveBeenCalledTimes(2);
+    expect(observed).toHaveLength(2);
+  });
+
+  it('do not end the startup buffer, and see the replay once a durable listener arms', () => {
+    const observed: CompletionFact[] = [];
+    onCompletionObserved((fact) => observed.push(fact));
+    recordGuideCompletion(guideFact());
+    expect(observed).toEqual([]);
+
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    expect(seen).toHaveLength(1);
+    expect(observed).toHaveLength(1);
+  });
+
+  it('never break the completion path when they throw', () => {
+    onCompletionObserved(() => {
+      throw new Error('boom');
+    });
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded(acceptInto(seen));
+
+    recordGuideCompletion(guideFact());
+
+    expect(seen).toHaveLength(1);
+    expect(hasEmittedGuideCompletion('bundled', 'intro')).toBe(true);
+  });
 });
 
 describe('completion recorder — emitter seam', () => {

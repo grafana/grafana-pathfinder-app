@@ -248,6 +248,13 @@ const pathfinderFeatureFlags = {
     defaultValue: true,
     trackingKey: 'passive_completion',
   },
+  /** Gates posting achievement events and every achievements display surface. */
+  'pathfinder.achievements': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'achievements',
+  },
   /** Gate for attaching the user's completion history to recommender requests; off until consent is settled. */
   'pathfinder.recommend-completions': {
     valueType: 'boolean',
