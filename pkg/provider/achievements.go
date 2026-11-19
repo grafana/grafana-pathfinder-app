@@ -34,11 +34,7 @@ func (p achievementPolicy) Allow(_ context.Context, person achievements.Person) 
 	return nil
 }
 
-type achievementDefinitionsResponse struct {
-	Version      string                 `json:"version"`
-	ArtBase      string                 `json:"artBase"`
-	Achievements []achievements.Display `json:"achievements"`
-}
+type achievementDefinitionsResponse = services.AchievementDefinitionsResponse
 
 func achievementHandler(clients *resourceaccess.AchievementClients, definitions AchievementDefinitions, operation string) simple.AppCustomRouteHandler {
 	limiter := services.NewUserRateLimiter(30, 0.5, time.Now)
@@ -87,7 +83,7 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 		store := services.NewAchievementStore(clients, services.AchievementWriter{Namespace: caller.Namespace, OrgID: caller.OrgID, UserLogin: caller.Login, UserDisplayName: caller.DisplayName}, time.Now)
 		switch operation {
 		case "definitions":
-			return write(200, achievementDefinitionsResponse{defs.Version, "https://interactive-learning.grafana.net/achievements/art/", append([]achievements.Display{}, defs.Display...)})
+			return write(200, achievementDefinitionsResponse{Version: defs.Version, ArtBase: "https://interactive-learning.grafana.net/achievements/art/", Achievements: append([]achievements.Display{}, defs.Display...)})
 		case "my":
 			rows, err := (&services.AchievementReader{Store: store, Catalog: defs.Catalog, Now: time.Now}).ListMine(ctx, person)
 			if err != nil {

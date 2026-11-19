@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -56,5 +57,27 @@ func TestCompletionCacheLogsNamespaceWithoutCallerAndStableFields(t *testing.T) 
 	}
 	if _, ok := logger.entries[2]["misses"]; !ok {
 		t.Fatalf("missing legacy misses field: %v", logger.entries[2])
+	}
+}
+
+func TestCallerInvalidationPreservesSiblingAndEvictsIdleKeys(t *testing.T) {
+	ResetCompletionCache()
+	t.Cleanup(ResetCompletionCache)
+	InitCompletionCache()
+	first := CallerCompletionCacheKey("tenant", "one")
+	second := CallerCompletionCacheKey("tenant", "two")
+	CompletionStatsFor(first)
+	CompletionStatsFor(second)
+	InvalidateCallerCompletionIndex("tenant", "one")
+	if CompletionGenerations[first] != 1 || CompletionGenerations[second] != 0 || CompletionGenerations["tenant"] != 1 {
+		t.Fatal("incorrect invalidation scope")
+	}
+	for i := len(completionStats); i < maxCompletionCacheKeys; i++ {
+		CompletionStatsFor(CallerCompletionCacheKey("tenant", strconv.Itoa(i))).lastRead = time.Now()
+	}
+	completionFlights[second] = &completionRefreshFlight{}
+	evictIdleCompletionKey()
+	if completionStats[first] != nil || completionStats[second] == nil || CompletionGenerations[first] != 0 {
+		t.Fatal("idle caller retained or active flight evicted")
 	}
 }

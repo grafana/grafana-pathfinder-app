@@ -17,21 +17,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-type completionCapability struct {
-	Diagnostics     *services.ProxyDiagnostic `json:"diagnostics,omitempty"`
-	Available       bool                      `json:"available"`
-	Reason          string                    `json:"reason,omitempty"`
-	ProgressRecords bool                      `json:"progressRecords,omitempty"`
-}
+type completionCapability = services.CompletionCapability
 
-type completionResponse struct {
-	Diagnostics *services.ProxyDiagnostic       `json:"diagnostics,omitempty"`
-	Capability  completionCapability            `json:"capability"`
-	UserID      string                          `json:"userId,omitempty"`
-	Completions []services.CollatedCompletion   `json:"completions"`
-	InProgress  []services.InProgressCompletion `json:"inProgress"`
-	AsOf        string                          `json:"asOf,omitempty"`
-}
+type completionResponse = services.CompletionResponse
 
 func sdkErrorStatus(err error) int {
 	var status apierrors.APIStatus

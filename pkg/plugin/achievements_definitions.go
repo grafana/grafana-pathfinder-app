@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"io"
 	"net/http"
 	"net/url"
@@ -279,11 +280,7 @@ func (a *App) achievementDefinitions(w http.ResponseWriter, r *http.Request) (*a
 	return nil, false
 }
 
-type achievementDefinitionsResponse struct {
-	Version      string                 `json:"version"`
-	ArtBase      string                 `json:"artBase"`
-	Achievements []achievements.Display `json:"achievements"`
-}
+type achievementDefinitionsResponse = services.AchievementDefinitionsResponse
 
 // handleAchievementDefinitions serves GET /api/v1/achievements/definitions.
 // The answer is the same for every person, but only people may read it.

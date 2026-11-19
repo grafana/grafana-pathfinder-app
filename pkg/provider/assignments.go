@@ -16,16 +16,8 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
-type assignmentCapability struct {
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
-}
-type assignmentResponse struct {
-	Capability  assignmentCapability       `json:"capability"`
-	UserID      string                     `json:"userId,omitempty"`
-	Assignments []services.AssignmentEntry `json:"assignments"`
-	AsOf        string                     `json:"asOf,omitempty"`
-}
+type assignmentCapability = services.AssignmentCapability
+type assignmentResponse = services.AssignmentResponse
 type assignmentRouteDependencies struct {
 	Assignments     services.AssignmentReader
 	ReadCompletions func(context.Context, string, string) ([]services.CompletionRecord, error)

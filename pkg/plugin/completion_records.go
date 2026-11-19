@@ -87,15 +87,7 @@ func (a *App) deriveCompletionUserID(r *http.Request) (string, identityStatus) {
 // plus read-path reachability of the completionrecords API on this stack; it
 // does not verify write permission (the write hook must not treat it as a
 // write guarantee).
-type completionCapability struct {
-	Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
-	Available   bool                  `json:"available"`
-	Reason      string                `json:"reason,omitempty"`
-	// ProgressRecords advertises that this plugin build accepts attempt
-	// upserts (a write body with attemptId). Set whenever Available is. It says
-	// what the build supports, not what the caller may write.
-	ProgressRecords bool `json:"progressRecords,omitempty"`
-}
+type completionCapability = services.CompletionCapability
 
 // inProgressCompletion is a guide the user has started but whose most recent
 // activity is an unfinished attempt.
@@ -105,16 +97,7 @@ type inProgressCompletion = services.InProgressCompletion
 type collatedCompletion = services.CollatedCompletion
 
 // myCompletionsResponse is the GET /completion-records/my envelope.
-type myCompletionsResponse struct {
-	Diagnostics *guideProxyDiagnostic `json:"diagnostics,omitempty"`
-	Capability  completionCapability  `json:"capability"`
-	UserID      string                `json:"userId,omitempty"`
-	Completions []collatedCompletion  `json:"completions"`
-	// InProgress is always present ([] when empty); writeMyCompletions
-	// normalizes a nil slice.
-	InProgress []inProgressCompletion `json:"inProgress"`
-	AsOf       string                 `json:"asOf,omitempty"`
-}
+type myCompletionsResponse = services.CompletionResponse
 
 // completionIndex is the collated, per-user view of a namespace's records.
 // Raw records are dropped after collation, so the footprint is bounded by

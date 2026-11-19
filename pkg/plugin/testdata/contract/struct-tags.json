@@ -45,6 +45,29 @@
       "omitempty": true
     }
   ],
+  "AchievementDefinitionsResponse": [
+    {
+      "field": "Version",
+      "json": "version",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "ArtBase",
+      "json": "artBase",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Achievements",
+      "json": "achievements",
+      "type": "[]achievements.Display",
+      "wire": "array<object>",
+      "omitempty": false
+    }
+  ],
   "AchievementEventsResponse": [
     {
       "field": "EventID",
@@ -216,6 +239,52 @@
       "omitempty": false
     }
   ],
+  "AssignmentResponse": [
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "services.AssignmentCapability",
+      "wire": "object",
+      "omitempty": false
+    },
+    {
+      "field": "UserID",
+      "json": "userId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Assignments",
+      "json": "assignments",
+      "type": "[]services.AssignmentEntry",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "AsOf",
+      "json": "asOf",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
+  "CatalogueCapability": [
+    {
+      "field": "Available",
+      "json": "available",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
   "CatalogueEntry": [
     {
       "field": "ID",
@@ -364,6 +433,36 @@
       "omitempty": false
     }
   ],
+  "CatalogueResponse": [
+    {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*services.ProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "services.CatalogueCapability",
+      "wire": "object",
+      "omitempty": false
+    },
+    {
+      "field": "Guides",
+      "json": "guides",
+      "type": "[]services.CatalogueEntry",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "AsOf",
+      "json": "asOf",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
   "CatalogueStats": [
     {
       "field": "Version",
@@ -482,6 +581,80 @@
     {
       "field": "LatestAttemptStartedAt",
       "json": "latestAttemptStartedAt",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    }
+  ],
+  "CompletionCapability": [
+    {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*services.ProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
+    {
+      "field": "Available",
+      "json": "available",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "ProgressRecords",
+      "json": "progressRecords",
+      "type": "bool",
+      "wire": "boolean",
+      "omitempty": true
+    }
+  ],
+  "CompletionResponse": [
+    {
+      "field": "Diagnostics",
+      "json": "diagnostics",
+      "type": "*services.ProxyDiagnostic",
+      "wire": "object",
+      "omitempty": true
+    },
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "services.CompletionCapability",
+      "wire": "object",
+      "omitempty": false
+    },
+    {
+      "field": "UserID",
+      "json": "userId",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Completions",
+      "json": "completions",
+      "type": "[]services.CollatedCompletion",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "InProgress",
+      "json": "inProgress",
+      "type": "[]services.InProgressCompletion",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "AsOf",
+      "json": "asOf",
       "type": "string",
       "wire": "string",
       "omitempty": true
@@ -1003,7 +1176,7 @@
     {
       "field": "Diagnostics",
       "json": "diagnostics",
-      "type": "*plugin.guideProxyDiagnostic",
+      "type": "*services.ProxyDiagnostic",
       "wire": "object",
       "omitempty": true
     },
@@ -1031,106 +1204,7 @@
       "omitempty": false
     }
   ],
-  "achievementDefinitionsResponse": [
-    {
-      "field": "Version",
-      "json": "version",
-      "type": "string",
-      "wire": "string",
-      "omitempty": false
-    },
-    {
-      "field": "ArtBase",
-      "json": "artBase",
-      "type": "string",
-      "wire": "string",
-      "omitempty": false
-    },
-    {
-      "field": "Achievements",
-      "json": "achievements",
-      "type": "[]achievements.Display",
-      "wire": "array<object>",
-      "omitempty": false
-    }
-  ],
-  "completionCapability": [
-    {
-      "field": "Diagnostics",
-      "json": "diagnostics",
-      "type": "*plugin.guideProxyDiagnostic",
-      "wire": "object",
-      "omitempty": true
-    },
-    {
-      "field": "Available",
-      "json": "available",
-      "type": "bool",
-      "wire": "boolean",
-      "omitempty": false
-    },
-    {
-      "field": "Reason",
-      "json": "reason",
-      "type": "string",
-      "wire": "string",
-      "omitempty": true
-    },
-    {
-      "field": "ProgressRecords",
-      "json": "progressRecords",
-      "type": "bool",
-      "wire": "boolean",
-      "omitempty": true
-    }
-  ],
-  "customGuideCapability": [
-    {
-      "field": "Available",
-      "json": "available",
-      "type": "bool",
-      "wire": "boolean",
-      "omitempty": false
-    },
-    {
-      "field": "Reason",
-      "json": "reason",
-      "type": "string",
-      "wire": "string",
-      "omitempty": true
-    }
-  ],
-  "customGuideRepositoryResponse": [
-    {
-      "field": "Diagnostics",
-      "json": "diagnostics",
-      "type": "*plugin.guideProxyDiagnostic",
-      "wire": "object",
-      "omitempty": true
-    },
-    {
-      "field": "Capability",
-      "json": "capability",
-      "type": "plugin.customGuideCapability",
-      "wire": "object",
-      "omitempty": false
-    },
-    {
-      "field": "Guides",
-      "json": "guides",
-      "type": "[]services.CatalogueEntry",
-      "wire": "array<object>",
-      "omitempty": false
-    },
-    {
-      "field": "AsOf",
-      "json": "asOf",
-      "type": "string",
-      "wire": "string",
-      "omitempty": true
-    }
-  ],
-  "guideProxyDiagnostic": [
+  "ProxyDiagnostic": [
     {
       "field": "Stage",
       "json": "stage",
@@ -1199,80 +1273,6 @@
       "json": "budgetExhausted",
       "type": "bool",
       "wire": "boolean",
-      "omitempty": true
-    }
-  ],
-  "myAssignmentsResponse": [
-    {
-      "field": "Capability",
-      "json": "capability",
-      "type": "services.AssignmentCapability",
-      "wire": "object",
-      "omitempty": false
-    },
-    {
-      "field": "UserID",
-      "json": "userId",
-      "type": "string",
-      "wire": "string",
-      "omitempty": true
-    },
-    {
-      "field": "Assignments",
-      "json": "assignments",
-      "type": "[]services.AssignmentEntry",
-      "wire": "array<object>",
-      "omitempty": false
-    },
-    {
-      "field": "AsOf",
-      "json": "asOf",
-      "type": "string",
-      "wire": "string",
-      "omitempty": true
-    }
-  ],
-  "myCompletionsResponse": [
-    {
-      "field": "Diagnostics",
-      "json": "diagnostics",
-      "type": "*plugin.guideProxyDiagnostic",
-      "wire": "object",
-      "omitempty": true
-    },
-    {
-      "field": "Capability",
-      "json": "capability",
-      "type": "plugin.completionCapability",
-      "wire": "object",
-      "omitempty": false
-    },
-    {
-      "field": "UserID",
-      "json": "userId",
-      "type": "string",
-      "wire": "string",
-      "omitempty": true
-    },
-    {
-      "field": "Completions",
-      "json": "completions",
-      "type": "[]services.CollatedCompletion",
-      "wire": "array<object>",
-      "omitempty": false
-    },
-    {
-      "field": "InProgress",
-      "json": "inProgress",
-      "type": "[]services.InProgressCompletion",
-      "wire": "array<object>",
-      "omitempty": false
-    },
-    {
-      "field": "AsOf",
-      "json": "asOf",
-      "type": "string",
-      "wire": "string",
       "omitempty": true
     }
   ]

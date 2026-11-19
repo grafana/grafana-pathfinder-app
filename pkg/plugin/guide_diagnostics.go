@@ -11,7 +11,7 @@ import (
 	"net/http"
 )
 
-type guideProxyDiagnostic services.ProxyDiagnostic
+type guideProxyDiagnostic = services.ProxyDiagnostic
 
 type guideProxyError struct {
 	diagnostic guideProxyDiagnostic

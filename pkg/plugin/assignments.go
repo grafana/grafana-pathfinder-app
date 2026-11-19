@@ -53,12 +53,7 @@ type assignmentEntry = services.AssignmentEntry
 
 // myAssignmentsResponse is the GET /assignments/my envelope; assignments is
 // never nil.
-type myAssignmentsResponse struct {
-	Capability  assignmentCapability `json:"capability"`
-	UserID      string               `json:"userId,omitempty"`
-	Assignments []assignmentEntry    `json:"assignments"`
-	AsOf        string               `json:"asOf,omitempty"`
-}
+type myAssignmentsResponse = services.AssignmentResponse
 
 // handleMyAssignments serves GET /assignments/my.
 func (a *App) handleMyAssignments(w http.ResponseWriter, r *http.Request) {

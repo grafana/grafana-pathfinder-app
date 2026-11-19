@@ -38,6 +38,7 @@ type completionRefreshFlight struct {
 }
 
 type completionCacheStats struct {
+	lastRead        time.Time
 	hits            int
 	Misses          int
 	staleServes     int
@@ -108,6 +109,43 @@ func InvalidateCompletionIndex(namespace string) {
 	}
 }
 
+// Legacy readers share a namespace entry, while SDK readers cache one caller each.
+func InvalidateCallerCompletionIndex(namespace, subject string) {
+	CompletionCacheMu.Lock()
+	defer CompletionCacheMu.Unlock()
+	InitCompletionCache()
+	invalidateCompletionKey(namespace)
+	key := CallerCompletionCacheKey(namespace, subject)
+	if completionStats[key] != nil {
+		invalidateCompletionKey(key)
+	}
+}
+
+const maxCompletionCacheKeys = 1024
+
+func evictIdleCompletionKey() {
+	if len(completionStats) < maxCompletionCacheKeys {
+		return
+	}
+	var victim string
+	var oldest time.Time
+	for key, stats := range completionStats {
+		if completionFlights[key] != nil || !strings.Contains(key, "\x00") {
+			continue
+		}
+		if victim == "" || stats.lastRead.Before(oldest) {
+			victim, oldest = key, stats.lastRead
+		}
+	}
+	if victim != "" {
+		delete(completionStats, victim)
+		delete(completionCacheEntries, victim)
+		delete(completionLastForced, victim)
+		delete(completionLastFailure, victim)
+		delete(CompletionGenerations, victim)
+	}
+}
+
 func invalidateCompletionKey(key string) {
 	CompletionGenerations[key]++
 	if entry := completionCacheEntries[key]; entry != nil {
@@ -125,8 +163,12 @@ func LoadCompletionIndex(ctx context.Context, namespace string, forced bool, log
 	CompletionCacheMu.Lock()
 	InitCompletionCache()
 
+	if completionStats[namespace] == nil {
+		evictIdleCompletionKey()
+	}
 	entry := completionCacheEntries[namespace]
 	stats := CompletionStatsFor(namespace)
+	stats.lastRead = now()
 
 	effectiveForced := false
 	if forced {
@@ -179,8 +221,7 @@ func LoadCompletionIndex(ctx context.Context, namespace string, forced bool, log
 	cancel()
 
 	CompletionCacheMu.Lock()
-	stats = CompletionStatsFor(namespace)
-	if CompletionGenerations[namespace] != fl.generation {
+	if completionFlights[namespace] != fl || CompletionGenerations[namespace] != fl.generation {
 		if err == nil {
 			stats.Refreshes++
 			fl.index = idx

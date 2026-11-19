@@ -91,7 +91,7 @@ func completionWriteHandler(store services.CompletionRecordUpdater, syncAssignme
 			return writeCompletionSDKError(w, err)
 		}
 		if invalidate {
-			services.InvalidateCompletionIndex(caller.Namespace)
+			services.InvalidateCallerCompletionIndex(caller.Namespace, caller.Subject)
 		}
 		if persisted.CompletedAt != "" {
 			syncAssignments(context.WithoutCancel(ctx), caller.Namespace, services.CompletionRecord{UserID: persisted.UserID, GuideID: persisted.GuideID, GuideSource: persisted.GuideSource, GuideTitle: persisted.GuideTitle, GuideCategory: persisted.GuideCategory, PathID: persisted.PathID, Source: persisted.Source, CompletedAt: persisted.CompletedAt, CompletionPercent: persisted.CompletionPercent})

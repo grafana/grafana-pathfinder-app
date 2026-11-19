@@ -14,15 +14,7 @@ import (
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 )
 
-type catalogueResponse struct {
-	Diagnostics *services.ProxyDiagnostic `json:"diagnostics,omitempty"`
-	Capability  struct {
-		Available bool   `json:"available"`
-		Reason    string `json:"reason,omitempty"`
-	} `json:"capability"`
-	Guides []services.CatalogueEntry `json:"guides"`
-	AsOf   string                    `json:"asOf,omitempty"`
-}
+type catalogueResponse = services.CatalogueResponse
 
 func catalogueReadHandler(store *resourceaccess.GuideStore) simple.AppCustomRouteHandler {
 	return func(ctx context.Context, w app.CustomRouteResponseWriter, req *app.CustomRouteRequest) error {

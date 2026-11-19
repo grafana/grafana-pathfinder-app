@@ -98,20 +98,12 @@ var customGuideListMaxTotalEntries = 50_000
 // terminal upstream.
 // reasonBackendUnavailable is unreachable here: its only assignment is
 // overwritten by `upstream-<status>`.
-type customGuideCapability struct {
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
-}
+type customGuideCapability = services.CatalogueCapability
 
 // customGuideRepositoryResponse is the GET /custom-guide-repository envelope
 // (BACKEND_PROXY_PATTERN.md §6): a capability object, the always-non-null data
 // array, and asOf — when this request's underlying LIST completed.
-type customGuideRepositoryResponse struct {
-	Diagnostics *guideProxyDiagnostic        `json:"diagnostics,omitempty"`
-	Capability  customGuideCapability        `json:"capability"`
-	Guides      []customGuideRepositoryEntry `json:"guides"`
-	AsOf        string                       `json:"asOf,omitempty"`
-}
+type customGuideRepositoryResponse = services.CatalogueResponse
 
 // customGuideListerOverride injects a fake lister in tests. nil selects the
 // real per-request HTTP client. Config resolution (feature toggle, app URL,

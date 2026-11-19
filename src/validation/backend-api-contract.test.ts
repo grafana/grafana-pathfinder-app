@@ -297,21 +297,21 @@ describe('backend API contract: struct tags match the schemas', () => {
   });
 
   it('rejects pointer and numeric widenings that preserve fixture values', () => {
-    const responseFields = STRUCT_TAGS.myCompletionsResponse;
+    const responseFields = STRUCT_TAGS.CompletionResponse;
     const completionFields = STRUCT_TAGS.CollatedCompletion;
     if (!responseFields || !completionFields) {
       throw new Error('struct-tags.json does not inventory the completion response structs.');
     }
 
     const pointerFields = responseFields.map((field) =>
-      field.json === 'capability' ? { ...field, type: '*completionCapability', wire: 'nullable<object>' } : field
+      field.json === 'capability' ? { ...field, type: '*CompletionCapability', wire: 'nullable<object>' } : field
     );
     const numberFields = completionFields.map((field) =>
       field.json === 'count' ? { ...field, type: 'float64', wire: 'number' } : field
     );
 
-    expect(() => assertStructTagsMatchSchema('myCompletionsResponse', pointerFields)).toThrow(
-      'myCompletionsResponse.capability is nullable<object> on the Go wire (*completionCapability), ' +
+    expect(() => assertStructTagsMatchSchema('CompletionResponse', pointerFields)).toThrow(
+      'CompletionResponse.capability is nullable<object> on the Go wire (*CompletionCapability), ' +
         'but its Zod schema accepts object.'
     );
     expect(() => assertStructTagsMatchSchema('CollatedCompletion', numberFields)).toThrow(
