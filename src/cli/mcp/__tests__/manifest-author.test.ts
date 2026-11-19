@@ -68,6 +68,12 @@ describe('pathfinder_create_package author', () => {
       });
       expect(created.artifact?.manifest?.author).toEqual({ name: 'Ada', team: 'Docs' });
 
+      await call('pathfinder_manage_block', {
+        operation: 'add-block',
+        sessionToken: created.sessionToken,
+        opts: { type: 'markdown', id: 'md-1', content: 'Hello world' },
+      });
+
       const finalized = await call('pathfinder_finalize_for_app_platform', { sessionToken: created.sessionToken });
       expect(finalized.status).toBe('ready');
       expect(finalized.artifact?.manifest?.author).toEqual({ name: 'Ada', team: 'Docs' });
