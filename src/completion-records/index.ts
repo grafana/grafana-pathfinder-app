@@ -34,6 +34,7 @@ export type {
 } from './completion-identity';
 export type { PathAnalyticsIdentity } from './types';
 export { armCompletionWriteHook, discardQueuedCompletionWrites } from './completion-write-hook';
+export { discardQueuedAchievementEvents } from './achievements/achievement-events-hook';
 export type {
   CompletionKey,
   CompletionKind,
