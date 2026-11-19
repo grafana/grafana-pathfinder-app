@@ -1,7 +1,7 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
 
-import { PLUGIN_BACKEND_URL } from '../../constants';
+import { backendRoute } from '../../lib/backend-routes';
 import { extractFetchErrorStatus } from '../../lib/fetch-error';
 import {
   AchievementDefinitionsResponseWireSchema,
@@ -14,7 +14,6 @@ import {
 import type { CompletionCategory } from '../types';
 import { WRITE_REQUEST_TIMEOUT_MS } from '../completion-write-timing';
 
-const ACHIEVEMENTS_URL = `${PLUGIN_BACKEND_URL}/api/v1/achievements`;
 const READ_TIMEOUT_MS = 10_000;
 
 export const ACHIEVEMENT_EVENT_SCHEMA_VERSION = 1;
@@ -49,7 +48,7 @@ export async function postAchievementEvent(body: AchievementEventBody): Promise<
     const response = await lastValueFrom(
       getBackendSrv()
         .fetch<unknown>({
-          url: `${ACHIEVEMENTS_URL}/events`,
+          url: backendRoute('api/v1/achievements/events'),
           method: 'POST',
           data: body,
           showErrorAlert: false,
@@ -89,7 +88,7 @@ export async function fetchMyAchievements(): Promise<MyAchievementsResult> {
   try {
     const response = await lastValueFrom(
       getBackendSrv()
-        .fetch<unknown>({ url: `${ACHIEVEMENTS_URL}/my`, method: 'GET', showErrorAlert: false })
+        .fetch<unknown>({ url: backendRoute('api/v1/achievements/my'), method: 'GET', showErrorAlert: false })
         .pipe(timeout(READ_TIMEOUT_MS))
     );
     const parsed = MyAchievementsResponseWireSchema.safeParse(response.data);
@@ -105,7 +104,7 @@ export async function fetchAchievementDefinitions(): Promise<AchievementDefiniti
   try {
     const response = await lastValueFrom(
       getBackendSrv()
-        .fetch<unknown>({ url: `${ACHIEVEMENTS_URL}/definitions`, method: 'GET', showErrorAlert: false })
+        .fetch<unknown>({ url: backendRoute('api/v1/achievements/definitions'), method: 'GET', showErrorAlert: false })
         .pipe(timeout(READ_TIMEOUT_MS))
     );
     const parsed = AchievementDefinitionsResponseWireSchema.safeParse(response.data);
