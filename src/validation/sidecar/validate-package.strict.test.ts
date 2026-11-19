@@ -69,6 +69,32 @@ describe('validatePackage — sidecar warnings', () => {
     expect(validatePackage(dir, { strict: true }).isValid).toBe(false);
   });
 
+  it("keeps an error finding's remediation in the package errors", () => {
+    mockRun.mockReturnValue([
+      {
+        severity: 'error',
+        code: 'sidecar_missing_source_hash',
+        message: 'i18n/ja.json: block "intro" has no source hash',
+        path: ['i18n/ja.json', 'blocks', 'intro'],
+        remediation: 'pathfinder-cli sync-translations <dir>',
+      },
+    ]);
+    const dir = writePackage(tmpDir, 'error-fix', { ja: sidecarJson('ja') });
+
+    const result = validatePackage(dir, { strict: true });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toEqual([
+      {
+        message: 'i18n/ja.json: block "intro" has no source hash',
+        path: ['i18n/ja.json', 'blocks', 'intro'],
+        code: 'sidecar_missing_source_hash',
+        remediation: 'pathfinder-cli sync-translations <dir>',
+      },
+    ]);
+    expect(result.messages.filter((m) => m.code === 'sidecar_missing_source_hash')).toEqual([]);
+  });
+
   it('runs no check for a package with no sidecars', () => {
     mockRun.mockReturnValue([STALE]);
     const result = validatePackage(writePackage(tmpDir, 'plain'), { strict: true });

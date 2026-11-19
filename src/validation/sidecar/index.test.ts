@@ -58,6 +58,22 @@ describe('validateSidecars', () => {
       expect(result.messages).toEqual([]);
     });
 
+    it('routes an error with a remediation to errors, keeping the remediation', () => {
+      const withFix: SidecarFinding = { ...error, remediation: 'pathfinder-cli sync-translations <dir>' };
+      const result = validateSidecars({ content, manifest: undefined, sidecars: [sidecarOf('ja')] }, [
+        checkReturning([withFix]),
+      ]);
+      expect(result.errors).toEqual([
+        {
+          message: error.message,
+          path: error.path,
+          code: error.code,
+          remediation: 'pathfinder-cli sync-translations <dir>',
+        },
+      ]);
+      expect(result.messages).toEqual([]);
+    });
+
     it('routes a warning to messages as severity warn, with its remediation', () => {
       const result = validateSidecars({ content, manifest: undefined, sidecars: [sidecarOf('ja')] }, [
         checkReturning([warning]),

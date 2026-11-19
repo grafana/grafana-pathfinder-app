@@ -55,7 +55,8 @@ function unreadableSidecarErrors(failure: SidecarReadFailure): ValidationError[]
 
 function routeFinding(finding: SidecarFinding, output: SidecarValidationOutput): void {
   if (finding.severity === 'error') {
-    output.errors.push({ message: finding.message, path: finding.path, code: finding.code });
+    const { message, path, code, remediation } = finding;
+    output.errors.push(remediation === undefined ? { message, path, code } : { message, path, code, remediation });
     return;
   }
   output.messages.push({
