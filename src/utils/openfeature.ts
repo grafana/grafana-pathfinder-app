@@ -200,6 +200,17 @@ const pathfinderFeatureFlags = {
     trackingKey: 'section_recovery',
   },
   /**
+   * Release gate for translated guides. While false, the guide language stays
+   * the guide's canonical language and no translation surface acts. OSS and
+   * self-managed Grafana have no flag provider, so it stays off there.
+   */
+  'pathfinder.guide-translations': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'guide_translations',
+  },
+  /**
    * Kill switch for the `guide_progress` and `guide_completed` analytics
    * events. Only stops the events: guide attempts are still tracked locally,
    * and completion records are unaffected.

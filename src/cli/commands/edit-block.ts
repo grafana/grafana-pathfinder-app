@@ -29,6 +29,7 @@ import {
   PackageIOError,
   readPackage,
   UNEDITABLE_BLOCK_FIELDS,
+  walkBlocks,
 } from '../utils/package-io';
 import {
   issueToOutcome,
@@ -40,7 +41,12 @@ import {
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { normalizeBlockInput } from '../utils/input-normalizers';
-import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
+import {
+  isNonEmptySelector,
+  sectionStepListWarning,
+  startsWithListMarker,
+  unverifiedSelectorWarning,
+} from '../utils/warnings';
 import { defineCommand, patchShape, pickSupplied, shapeKeys, withPolicy, type CommandShape } from '../contracts';
 
 /**
@@ -111,6 +117,7 @@ export async function runEditBlock(args: EditBlockInput): Promise<CommandOutcome
   // project through. This is the price of a single command targeting any
   // block type — we pay one read up front.
   let blockType: BlockType;
+  let inSection = false;
   try {
     const state = readPackage(args.dir);
     const block = findBlockById(state.content, args.id);
@@ -122,6 +129,9 @@ export async function runEditBlock(args: EditBlockInput): Promise<CommandOutcome
       };
     }
     blockType = block.type as BlockType;
+    inSection = [...walkBlocks(state.content)].some(
+      (entry) => entry.block.type === 'section' && (entry.block as { blocks: unknown[] }).blocks.includes(block)
+    );
   } catch (err) {
     if (err instanceof PackageIOError) {
       return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
@@ -205,6 +215,10 @@ export async function runEditBlock(args: EditBlockInput): Promise<CommandOutcome
   const warnings: OutcomeWarning[] = [...normalizationWarnings];
   if (changed.includes('reftarget') && isNonEmptySelector(patch.reftarget)) {
     warnings.push(unverifiedSelectorWarning(`<id:${args.id}>/reftarget`));
+  }
+
+  if (changed.includes('content') && blockType === 'markdown' && inSection && startsWithListMarker(patch.content)) {
+    warnings.push(sectionStepListWarning(`<id:${args.id}>/content`));
   }
 
   return {

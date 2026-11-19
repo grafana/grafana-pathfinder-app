@@ -3,7 +3,7 @@ import { prepareGuideLaunch } from './prepare-guide-launch';
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
 import { pushFaroLog } from '../../../lib/telemetry/bridge';
-import { inlineSnippetRefsInGuideWithStatus } from '../../../snippet-engine';
+import { inlineSnippetRefsInGuideWithStatus, prSnippetResolver } from '../../../snippet-engine';
 // The real inliner, reached past the barrel mock: it walks nested `blocks`, so
 // structurally malformed guides fail here exactly as they do in production.
 import { inlineSnippetRefsInGuideWithStatus as realInlineSnippetRefs } from '../../../snippet-engine/inline-refs';
@@ -22,6 +22,7 @@ jest.mock('../../../docs-retrieval', () => ({
 
 jest.mock('../../../snippet-engine', () => ({
   inlineSnippetRefsInGuideWithStatus: jest.fn(),
+  prSnippetResolver: jest.fn(),
 }));
 
 jest.mock('../../../lib/telemetry/bridge', () => ({
@@ -162,6 +163,29 @@ describe('prepareGuideLaunch', () => {
     if (result.ok) {
       expect(result.launch.requiresGrafanaUi).toBe(true);
     }
+  });
+
+  it('reports missing snapshot snippets without preparing a degraded launch', async () => {
+    const guide: JsonGuide = { id: 'g', title: 'g', blocks: [{ type: 'markdown', content: 'Text' }] };
+    fetchResolves(guide);
+    jest.mocked(prSnippetResolver).mockReturnValueOnce(neverResolvingResolver);
+    mockInline.mockResolvedValue({ guide, unresolvedSnippetIds: ['missing-snippet'] });
+    const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'url_param' });
+    expect(result).toEqual({
+      ok: false,
+      error: 'PR snapshot snippets could not be loaded: missing-snippet. Check shared/snippets in this commit.',
+      errorCode: 'schema-invalid',
+    });
+  });
+
+  it('preserves actionable snapshot fetch errors', async () => {
+    mockIsPackage.mockReturnValue(true);
+    mockFetchPackageInfo.mockRejectedValueOnce(
+      new Error('PR snapshot file path/manifest.json could not be loaded (HTTP 404).')
+    );
+    const url = `https://raw.githubusercontent.com/fork/repo/${'a'.repeat(40)}/path/content.json#pf-pr-kiosk123`;
+    const result = await prepareGuideLaunch(url, { title: 'Path', source: 'url_param' });
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('path/manifest.json') });
   });
 
   it('rejects unresolved snippets when preparing an input handoff', async () => {

@@ -517,6 +517,29 @@ Faro filter exception and getter, the closed-surface experiment note in `TELEMET
 sections, and the remote flag/experiment. If no other experiment uses it, also remove `@grafana-experiments/sdk`
 and `src/lib/telemetry/experiments.ts`.
 
+### `pathfinder.guide-translations`
+
+**Type**: Boolean
+
+**Purpose**: Release gate for translated guides (see `docs/design/I18N.md`). Every part of the guide-language work that can change what a reader sees checks it, either through `useGuideLanguage()` (`enabled`) or `isGuideTranslationsEnabled()` in `src/utils/guide-translations-enablement.ts`.
+
+**Default**: `false`. OSS and self-managed Grafana have no flag provider, so the gate stays off there. The pilot is Cloud only.
+
+**Behavior**:
+
+- **`true`**: the guide language is the reader's saved preference, otherwise Grafana's UI locale, and `applyOneShotOverride` applies a one-open language.
+- **`false`**: `useGuideLanguage()` reports `enabled: false`, `effective` is always the guide's canonical language, `override` is `null`, `applyOneShotOverride` does nothing, and the saved preference is never read from user storage. The slots in the panel chrome render nothing either way until a later change fills them.
+
+The flag is read once per page load, so a flip takes effect on the next reload.
+
+**Rollout**: registering it in MTFF needs both `flags/` and `flag-definitions.libsonnet` in `grafana/deployment_tools`, marked `Public()`, with the remote default `false`. That registration is a separate change and must land before any gated translation change is turned on for a test stack. Enable it for one stack's namespace only, the way `pathfinder.learning-insights` is rolled out.
+
+**Local testing**: Local OSS development cannot reach MTFF and sees the default. Grafana's runtime puts a local-storage provider ahead of MTFF where `createOpenFeatureLocalStorageProvider` exists. From its source (`@grafana/runtime` 13.3.0), it reads the key `grafana.openfeature.pathfinder.guide-translations` and JSON-parses the value, so `localStorage.setItem('grafana.openfeature.pathfinder.guide-translations', 'true')` followed by a reload should turn the gate on in that browser. This was read from the source and has not been exercised in a browser.
+
+**Tracking key**: `guide_translations`
+
+---
+
 ## Backend aggregation toggles (not MTFF)
 
 Separate from the OpenFeature flags above, Grafana **App Platform APIService aggregation toggles** gate whether the plugin's aggregated backend APIs are served on a stack. They live in core Grafana config (`config.featureToggles`), not MTFF, and are read server-side in the Go backend — not through `openfeature.ts`.

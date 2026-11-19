@@ -18,6 +18,7 @@ interface Options {
   sectionId?: string;
   objectives?: ConditionInput;
   verify?: ConditionInput;
+  readTargetState?: ObservationStep['readTargetState'];
   actions: ObservedAction[];
   eligible: boolean;
   executing: boolean;

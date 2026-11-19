@@ -101,6 +101,107 @@ export const MyCompletionsResponseWireSchema = z.strictObject({
   asOf: z.string().optional(),
 });
 
+// ============ /api/v1/achievements ============
+
+/**
+ * `reason` is a free string: a new decision reason is an additive change within v1.
+ * `awarded` is the tier ids this event newly awarded, `[]` when none.
+ * @coupling Go struct: Decision (pkg/achievements/types.go)
+ */
+export const AchievementDecisionWireSchema = z.strictObject({
+  achievementId: z.string(),
+  decision: z.enum(['award', 'tier_up', 'increment', 'ignored']),
+  reason: z.string().optional(),
+  awarded: z.array(z.string()),
+  final: z.boolean(),
+  units: z.number().int(),
+  next: z.number().int().nullable(),
+});
+
+/**
+ * `decisions` is always an array, `[]` when no achievement matched the event.
+ * @coupling Go struct: achievementEventsResponse
+ */
+export const AchievementEventsResponseWireSchema = z.strictObject({
+  eventId: z.string(),
+  retry: z.boolean(),
+  decisions: z.array(AchievementDecisionWireSchema),
+});
+
+/** @coupling Go struct: achievementCapability */
+export const AchievementCapabilityWireSchema = z.strictObject({
+  available: z.boolean(),
+  reason: z.string().optional(),
+});
+
+/** @coupling Go struct: achievementAward */
+export const AchievementAwardWireSchema = z.strictObject({
+  achievementId: z.string(),
+  tierId: z.string(),
+  entity: z.string(),
+  earnedAt: z.string(),
+});
+
+/** @coupling Go struct: achievementProgress */
+export const AchievementProgressWireSchema = z.strictObject({
+  achievementId: z.string(),
+  units: z.number().int(),
+  next: z.number().int().nullable(),
+});
+
+/** @coupling Go struct: legacyBadge */
+export const LegacyBadgeWireSchema = z.strictObject({
+  source: z.string(),
+  name: z.string(),
+  acquiredAt: z.string().optional(),
+});
+
+/**
+ * All three arrays are required, never nullable: the handler builds non-nil
+ * slices unconditionally, including in the unavailable answer.
+ *
+ * @coupling Go struct: myAchievementsResponse
+ */
+export const MyAchievementsResponseWireSchema = z.strictObject({
+  asOf: z.string().optional(),
+  definitionsVersion: z.string().optional(),
+  capability: AchievementCapabilityWireSchema,
+  truncated: z.boolean(),
+  awards: z.array(AchievementAwardWireSchema),
+  progress: z.array(AchievementProgressWireSchema),
+  legacy: z.array(LegacyBadgeWireSchema),
+});
+
+/** @coupling Go struct: DisplayTier (pkg/achievements/bundle.go) */
+export const AchievementDisplayTierWireSchema = z.strictObject({
+  id: z.string(),
+  at: z.number().int().optional(),
+  art: z.string().optional(),
+});
+
+/**
+ * `earnable` is false for a published definition this build cannot evaluate;
+ * it is still listed so awards already earned keep their names.
+ * @coupling Go struct: Display (pkg/achievements/bundle.go)
+ */
+export const AchievementDisplayWireSchema = z.strictObject({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  tiers: z.array(AchievementDisplayTierWireSchema),
+  earnable: z.boolean(),
+});
+
+/**
+ * A tier's image is `artBase + art + '.svg'`.
+ * @coupling Go struct: achievementDefinitionsResponse
+ */
+export const AchievementDefinitionsResponseWireSchema = z.strictObject({
+  version: z.string(),
+  artBase: z.string(),
+  achievements: z.array(AchievementDisplayWireSchema),
+});
+
 // ============ /assignments/my ============
 
 /**
@@ -358,6 +459,16 @@ export const GO_STRUCT_SCHEMAS = {
   learningInsightsPerson: LearningInsightsPersonWireSchema,
   learningInsightsCompletion: LearningInsightsCompletionWireSchema,
   learningInsightsAssignment: LearningInsightsAssignmentWireSchema,
+  achievementEventsResponse: AchievementEventsResponseWireSchema,
+  Decision: AchievementDecisionWireSchema,
+  myAchievementsResponse: MyAchievementsResponseWireSchema,
+  achievementCapability: AchievementCapabilityWireSchema,
+  achievementAward: AchievementAwardWireSchema,
+  achievementProgress: AchievementProgressWireSchema,
+  legacyBadge: LegacyBadgeWireSchema,
+  achievementDefinitionsResponse: AchievementDefinitionsResponseWireSchema,
+  Display: AchievementDisplayWireSchema,
+  DisplayTier: AchievementDisplayTierWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
@@ -376,6 +487,9 @@ export const BACKEND_RESPONSE_ENVELOPES = {
   'completion-records-capability': 'completionCapability',
   'assignments-my': 'myAssignmentsResponse',
   'learning-insights': 'learningInsightsResponse',
+  'achievements-events': 'achievementEventsResponse',
+  'achievements-my': 'myAchievementsResponse',
+  'achievements-definitions': 'achievementDefinitionsResponse',
 } as const satisfies Record<string, GoStructName>;
 
 export type BackendResponseEnvelopeKey = keyof typeof BACKEND_RESPONSE_ENVELOPES;
@@ -385,4 +499,7 @@ export type MyAssignmentsResponseWire = z.infer<typeof MyAssignmentsResponseWire
 export type AssignmentEntryWire = z.infer<typeof AssignmentEntryWireSchema>;
 export type CustomGuideRepositoryResponseWire = z.infer<typeof CustomGuideRepositoryResponseWireSchema>;
 export type PackageRecommendationsResponseWire = z.infer<typeof PackageRecommendationsResponseWireSchema>;
+export type AchievementEventsResponseWire = z.infer<typeof AchievementEventsResponseWireSchema>;
+export type MyAchievementsResponseWire = z.infer<typeof MyAchievementsResponseWireSchema>;
+export type AchievementDefinitionsResponseWire = z.infer<typeof AchievementDefinitionsResponseWireSchema>;
 export type CompletionCapabilityWire = z.infer<typeof CompletionCapabilityWireSchema>;

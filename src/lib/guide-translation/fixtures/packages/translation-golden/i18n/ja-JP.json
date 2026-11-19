@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0.0",
+  "language": "ja-JP",
+  "blocks": {
+    "open-dashboards": {
+      "tooltip": "表示できるダッシュボードは、すべてここに一覧表示されます。",
+      "reviewed": true,
+      "_sourceHash": "sha256:4bab439b7e75e561c6bab83ef76bb89fb85d52399759f42858a998b5f9aa04b6"
+    },
+    "add-panel": {
+      "steps": {
+        "open-add-menu": {
+          "description": "**Add**（追加）メニューを開いてください。"
+        }
+      },
+      "reviewed": true,
+      "_sourceHash": "sha256:6e5a64986225df95f70fa3c0ab3bca41e80dcdbcc410fd28fe640d2108e382d4"
+    }
+  },
+  "_available": true
+}

@@ -10,6 +10,7 @@ import {
 } from '../../types/content.types';
 import { getLearningJourneyBaseUrl, urlsMatch } from './url-utils';
 import { logger } from '../../lib/logging';
+import { stripContentFile } from '../../lib/guide-content-file';
 
 /**
  * Extract metadata from HTML without DOM processing
@@ -198,11 +199,11 @@ export async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Pro
 
 /**
  * Find current milestone number from URL - improved version
- * Handles /unstyled.html and /content.json suffixes added during content fetching
+ * Handles /unstyled.html and content-file suffixes added during content fetching
  */
 export function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
-  // Strip /unstyled.html or /content.json suffixes for comparison (added during content fetching)
-  const cleanUrl = url.replace(/\/(unstyled\.html|content\.json)$/, '');
+  // Strip /unstyled.html or content-file suffixes for comparison (added during content fetching)
+  const cleanUrl = stripContentFile(url).replace(/\/unstyled\.html$/, '');
 
   // Try exact URL match first (with and without trailing slash)
   for (const milestone of milestones) {

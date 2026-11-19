@@ -19,6 +19,9 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/pathfinder-settings", a.handlePathfinderSettings)
 	mux.HandleFunc("/assignments/my", a.handleMyAssignments)
 	mux.HandleFunc("/learning-insights", a.handleLearningInsights)
+	mux.HandleFunc(achievementsRoutePrefix+"/events", a.handleAchievementEvent)
+	mux.HandleFunc(achievementsRoutePrefix+"/my", a.handleMyAchievements)
+	mux.HandleFunc(achievementsRoutePrefix+"/definitions", a.handleAchievementDefinitions)
 	mux.HandleFunc("/health", a.handleHealth)
 }
 

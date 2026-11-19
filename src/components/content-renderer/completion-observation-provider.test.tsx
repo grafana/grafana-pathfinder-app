@@ -1,3 +1,4 @@
+import { logger } from '../../lib/logging';
 import React from 'react';
 import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -913,3 +914,193 @@ it('keeps automatic objective evaluation opted out of command execution', async 
   await waitFor(() => expect(mockCheck).toHaveBeenCalled());
   expect(mockCheck).toHaveBeenCalledWith(expect.objectContaining({ allowCodaExecution: false }));
 });
+
+it('completes token objectives promptly after asynchronous success without adding checks to ordinary steps', async () => {
+  jest.useFakeTimers();
+  const done = jest.fn();
+  const objective = 'workflow-ready:cloud-access-policy-token';
+  mockCheck.mockImplementation(async () => ({
+    verdict: document.querySelector('[data-testid="generate-token-success-message"]') ? 'satisfied' : 'unsatisfied',
+  }));
+  const view = render(
+    <CompletionObservationProvider contentKey="guide">
+      <Step objectives={[objective]} onComplete={done} />
+    </CompletionObservationProvider>
+  );
+  try {
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(300);
+    });
+    expect(done).not.toHaveBeenCalled();
+    const success = document.createElement('div');
+    success.dataset.testid = 'generate-token-success-message';
+    await act(async () => {
+      document.body.append(success);
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(50);
+    });
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(mockCheck.mock.calls.every(([options]) => options.requirements[0] === objective)).toBe(true);
+    view.unmount();
+    success.remove();
+  } finally {
+    view.unmount();
+    jest.useRealTimers();
+  }
+});
+
+it('completes an ordinary step from its actions without checking token state', async () => {
+  jest.useFakeTimers();
+  const done = jest.fn();
+  const view = render(
+    <CompletionObservationProvider contentKey="guide">
+      <Step onComplete={done} />
+    </CompletionObservationProvider>
+  );
+  const success = document.createElement('div');
+  success.dataset.testid = 'generate-token-success-message';
+  try {
+    await act(async () => {
+      document.body.append(success);
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(100);
+    });
+    expect(mockCheck).not.toHaveBeenCalled();
+    expect(done).not.toHaveBeenCalled();
+    const first = document.createElement('button');
+    first.id = 'first';
+    const last = document.createElement('button');
+    last.id = 'last';
+    document.body.append(first, last);
+    try {
+      await act(async () => {
+        fireEvent.click(first);
+        fireEvent.click(last);
+        await jest.advanceTimersByTimeAsync(300);
+      });
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(mockCheck).not.toHaveBeenCalled();
+    } finally {
+      first.remove();
+      last.remove();
+    }
+  } finally {
+    view.unmount();
+    success.remove();
+    jest.useRealTimers();
+  }
+});
+
+it('attaches workflow observation on registration and detaches on completion, removal and unmount', async () => {
+  const observe = jest.spyOn(MutationObserver.prototype, 'observe');
+  const disconnect = jest.spyOn(MutationObserver.prototype, 'disconnect');
+  const done = jest.fn();
+  const tree = (objectives?: string[], resetTrigger = 0) => (
+    <CompletionObservationProvider contentKey="guide">
+      <Step objectives={objectives} resetTrigger={resetTrigger} onComplete={done} />
+    </CompletionObservationProvider>
+  );
+  const view = render(tree());
+  try {
+    await act(async () => {});
+    expect(observe).not.toHaveBeenCalled();
+    view.rerender(tree(['workflow-ready:cloud-access-policy-token']));
+    await act(async () => {});
+    expect(observe).toHaveBeenCalledTimes(1);
+    mockCheck.mockResolvedValue({ verdict: 'satisfied' });
+    await act(async () => {
+      fireEvent.focus(window);
+    });
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    mockCheck.mockResolvedValue({ verdict: 'unsatisfied' });
+    view.rerender(tree(['workflow-ready:cloud-access-policy-token'], 1));
+    await act(async () => {});
+    expect(observe).toHaveBeenCalledTimes(2);
+    view.rerender(tree());
+    expect(disconnect).toHaveBeenCalledTimes(2);
+    view.rerender(tree(['workflow-ready:cloud-access-policy-token']));
+    view.unmount();
+    expect(disconnect).toHaveBeenCalledTimes(3);
+  } finally {
+    view.unmount();
+    observe.mockRestore();
+    disconnect.mockRestore();
+  }
+});
+
+it.each(['interactive', 'controller'] as const)(
+  'reports prolonged unavailable token forms once on the matching page in %s mode',
+  async (mode) => {
+    jest.useFakeTimers();
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    let pageMatches = true;
+    let tokenVerdict = 'unavailable';
+    const evaluate = async ({ requirements }: { requirements: string[] }) => ({
+      verdict: requirements[0]?.startsWith('on-page:') ? (pageMatches ? 'satisfied' : 'unsatisfied') : tokenVerdict,
+    });
+    mockCheck.mockImplementation(evaluate);
+    if (mode === 'controller') {
+      mockControllerChannel = {
+        post: jest.fn(),
+        onObservation: jest.fn(() => () => {}),
+        requestRequirementCheck: jest.fn((_id, requirements) => evaluate({ requirements })),
+      };
+    }
+    const view = render(
+      <InteractiveModeContext.Provider value={mode}>
+        <CompletionObservationProvider contentKey="guide">
+          <Step objectives={['on-page:/a/token', 'workflow-ready:cloud-access-policy-token']} onComplete={jest.fn()} />
+        </CompletionObservationProvider>
+      </InteractiveModeContext.Provider>
+    );
+    const advance = async (ms: number) => {
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    };
+    const focus = async () => {
+      await act(async () => {
+        fireEvent.focus(window);
+      });
+    };
+    try {
+      await advance(35_000);
+      expect(warn).not.toHaveBeenCalled();
+      pageMatches = false;
+      await focus();
+      await advance(70_000);
+      expect(warn).not.toHaveBeenCalled();
+      pageMatches = true;
+      await focus();
+      await advance(35_000);
+      tokenVerdict = 'unsatisfied';
+      await focus();
+      tokenVerdict = 'unavailable';
+      await focus();
+      await advance(35_000);
+      expect(warn).not.toHaveBeenCalled();
+      await advance(40_000);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith('[pathfinder] Cloud token workflow remains unavailable on its expected page', {
+        workflow: 'cloud_access_policy_token',
+        reason: 'form_contract_unavailable',
+      });
+      await advance(120_000);
+      expect(warn).toHaveBeenCalledTimes(1);
+      if (mode === 'controller') {
+        expect(mockControllerChannel?.post).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kind: 'observation-subscribe',
+            steps: [],
+            observeWorkflows: true,
+          })
+        );
+      }
+    } finally {
+      view.unmount();
+      warn.mockRestore();
+      jest.useRealTimers();
+    }
+  }
+);

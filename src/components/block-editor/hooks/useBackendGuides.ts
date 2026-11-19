@@ -8,7 +8,7 @@ import { lastValueFrom } from 'rxjs';
 import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
 import { APP_PLATFORM_API_VERSION, collectionUrl, guideReadUrl, itemUrl } from '../../../utils/interactive-guides-api';
-import { stripAuthorNotes } from '../utils/block-export';
+import { stripAuthorNotes } from '../../../types/author-notes';
 import {
   APP_PLATFORM_REPOSITORY,
   applyAuthor,

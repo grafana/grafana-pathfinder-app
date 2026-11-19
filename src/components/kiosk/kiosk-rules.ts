@@ -14,6 +14,7 @@ import { parseKioskWebUrl, validateKioskOverride } from '../../security/kiosk-ur
 import { isAllowedContentUrl, validateInternalNavigationPath } from '../../security/url-validator';
 
 export interface KioskRule {
+  preview?: boolean;
   id?: string;
   title: string;
   url: string;
@@ -32,6 +33,7 @@ export interface KioskRulesResponse {
 }
 
 export interface KioskData {
+  catalogUrl?: string;
   banner: string;
   exitButtonLabel?: string;
   page?: KioskPage;
@@ -123,7 +125,15 @@ export async function fetchKioskData(
     throw new CatalogError('http');
   }
 
-  const data: KioskRulesResponse = await response.json();
+  const result = parseKioskData(await response.json(), tier);
+  return { ...result, data: { ...result.data, catalogUrl: parsed.href } };
+}
+
+export function parseKioskData(
+  value: unknown,
+  tier: KioskCatalogTier = 'configured'
+): { data: KioskData; rejectedRules: number } {
+  const data = value as KioskRulesResponse;
   const exitButtonLabel = KioskExitButtonLabelSchema.optional().safeParse(data?.exitButtonLabel);
   if (!exitButtonLabel.success) {
     throw new CatalogError('invalid_rules');
@@ -141,7 +151,10 @@ export async function fetchKioskData(
       }
       return !field;
     })
-    .map((rule) => ({ ...rule, type: rule.type || 'guide' }));
+    .map((rule) => {
+      const { preview, ...fields } = rule;
+      return { ...fields, type: rule.type || 'guide' };
+    });
   const rejectedRules = rules.length - valid.length;
   if (rejectedRules > 0) {
     logger.warn('Kiosk catalog rules rejected', {

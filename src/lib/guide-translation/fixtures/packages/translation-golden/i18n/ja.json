@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "1.0.0",
+  "language": "ja",
+  "guide": {
+    "title": "最初のダッシュボードを作成する",
+    "reviewed": true,
+    "_sourceHash": "sha256:9ab44a44998d79765d5580c5885053f42d63e8b12bc802b762668060aaede326"
+  },
+  "manifest": {
+    "description": "ダッシュボードを作成し、パネルを追加して保存します。",
+    "category": "ダッシュボード",
+    "reviewed": true,
+    "_sourceHash": "sha256:d6e4e5e8b2bc3a52b4c60122ff570505a2cf8349ddb48bcfe304001af8764615"
+  },
+  "blocks": {
+    "intro": {
+      "content": "# ようこそ\n\nこのガイドでは、ダッシュボードを作成してパネルを追加します。",
+      "reviewed": true,
+      "_sourceHash": "sha256:3dd1b829b8ed878018d2e080b323b68f38a1e1a197f6fa9717cad9cc0656de34"
+    },
+    "example-dashboard": {
+      "alt": "3 つのパネルがあるダッシュボード",
+      "reviewed": true,
+      "_sourceHash": "sha256:4baf699a5061104a462ff20dd6e10a0bdf14b26baa731e215bf1350c10deb903"
+    },
+    "overview-video": {
+      "title": "5 分でわかるダッシュボード",
+      "reviewed": true,
+      "_sourceHash": "sha256:827c97df579f185ea3b97535aa7b94a05dd260e4967e694050c3ec1d4615ea81"
+    },
+    "create-dashboard": {
+      "title": "ダッシュボードを作成する",
+      "reviewed": true,
+      "_sourceHash": "sha256:5d8c97ea8d76d7448ee6c69619eb1a8b792245cc225012e0e575f7aab5cadf3b"
+    },
+    "open-dashboards": {
+      "content": "**Dashboards**（ダッシュボード）ページを開きます。",
+      "tooltip": "開けるダッシュボードはすべてここに表示されます。",
+      "reviewed": true,
+      "_sourceHash": "sha256:4bab439b7e75e561c6bab83ef76bb89fb85d52399759f42858a998b5f9aa04b6"
+    },
+    "name-dashboard": {
+      "content": "ダッシュボードに名前を付けます。",
+      "hint": "名前は後で変更できます。",
+      "formHint": "ダッシュボード名を入力してください",
+      "reviewed": true,
+      "_sourceHash": "sha256:c5e665121bdf15be429b5eb8a8a0b45434ab0e17c2fcb041830f29586535c8c3"
+    },
+    "add-panel": {
+      "content": "ダッシュボードにパネルを追加します。",
+      "steps": {
+        "open-add-menu": {
+          "description": "**Add**（追加）メニューを開きます。",
+          "tooltip": "このメニューには追加できるものが表示されます。"
+        },
+        "choose-visualization": {
+          "description": "**Visualization**（可視化）を選択します。"
+        }
+      },
+      "reviewed": true,
+      "_sourceHash": "sha256:6e5a64986225df95f70fa3c0ab3bca41e80dcdbcc410fd28fe640d2108e382d4"
+    },
+    "has-prometheus": {
+      "description": "次の手順は、Prometheus データソースがあるかどうかで変わります。",
+      "whenTrueSectionConfig.title": "Prometheus のデータをクエリする",
+      "whenFalseSectionConfig.title": "先に Prometheus を接続する",
+      "reviewed": true,
+      "_sourceHash": "sha256:d5caba66438c0d10ba4c1a7427e5f2c9f2af173f01dcec63c1bdea603ea01be5"
+    },
+    "query-tip": {
+      "content": "クエリエディターでメトリクスを選びます。例: `up`。",
+      "reviewed": true,
+      "_sourceHash": "sha256:eaab03740d9f50040889908e4375239075a221e776a1bf34563ee31964340904"
+    },
+    "connect-tip": {
+      "content": "Prometheus データソースを追加してから、このガイドに戻ってください。",
+      "reviewed": true,
+      "_sourceHash": "sha256:3f01ea0b8a93b0fcdd87bbf90547ddec11b873c782e871b5cbb172a8fb5048a5"
+    },
+    "save-dashboard": {
+      "content": "ダッシュボードを保存します。",
+      "steps": {
+        "open-save": {
+          "description": "**Save dashboard**（ダッシュボードを保存）をクリックします。"
+        },
+        "confirm-save": {
+          "description": "保存を確定します。",
+          "tooltip": "保存すると変更が保持されます。"
+        }
+      },
+      "reviewed": true,
+      "_sourceHash": "sha256:737b4e93368b972ceb372529c78f4fcdc2026a3668a4ca7412e6eb8c755a7b97"
+    }
+  },
+  "_available": true
+}

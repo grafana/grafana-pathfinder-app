@@ -12,6 +12,7 @@ import type { Milestone } from '../../types/content.types';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { buildPackageFileUrl, type OnlinePackageEntry } from '../../lib/package-recommendations-client';
 import { withPrTestMarker } from '../../lib/pr-test-marker';
+import { readDeclaredStartingLocation } from '../../recovery/starting-location';
 import type { PrJsonFile } from './github-api';
 
 /** Where a single milestone's content comes from. */
@@ -36,6 +37,8 @@ export interface PathPackageBuildInputs {
   packageManifest?: Record<string, unknown>;
   /** PR content.json files keyed by their own package ID. */
   prContentById: ReadonlyMap<string, PrContentEntry>;
+  /** Milestone manifests changed in the PR, keyed by manifest `id`; they win over the catalog's copy. */
+  prManifestById?: ReadonlyMap<string, Record<string, unknown>>;
   /** Published catalog entries keyed by package ID. */
   catalogById: ReadonlyMap<string, OnlinePackageEntry>;
   /** Catalog `baseUrl` for building CDN file URLs. */
@@ -162,12 +165,16 @@ export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackag
       missingMilestones.push(id);
       return;
     }
+    const memberManifest = inputs.prManifestById?.get(id) ?? catalogById.get(id)?.manifest;
+    const startingLocation = readDeclaredStartingLocation(memberManifest);
     milestones.push({
       id,
       number: index + 1,
       title: resolved.title,
       url: mark(resolved.url),
       isActive: false,
+      ...(memberManifest !== undefined && { packageManifest: memberManifest }),
+      ...(startingLocation != null && { startingLocation }),
     });
     preview.push({ id, title: resolved.title, source: resolved.source });
   });

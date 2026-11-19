@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { testIds } from '../../constants/testIds';
 import type { HubResume, HubStats } from '../../learning-paths';
 import { SidebarHub } from './SidebarHub';
@@ -386,6 +386,120 @@ describe('SidebarHub', () => {
     expect(play).toHaveAttribute('aria-hidden', 'true');
     expect(play).toHaveAttribute('tabindex', '-1');
     expect(within(screen.getByTestId(testIds.sidebarHub.row(0))).getAllByRole('button')).toHaveLength(1);
+  });
+
+  describe('row play control', () => {
+    const playIn = (row: string) => screen.getByTestId(testIds.sidebarHub.rowPlay(row));
+    const tabStops = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll<HTMLElement>('button, a[href], [tabindex]')).filter(
+        (node) => node.tabIndex >= 0
+      );
+    const withDetails = (expanded: boolean): HubExpansion => ({
+      expanded,
+      hasDetails: true,
+      hasModules: false,
+      modules: [],
+      isResolving: false,
+      onToggle: jest.fn(),
+      onOpenModule: jest.fn(),
+    });
+
+    it('is a plain button labelled with the row action', () => {
+      renderHub({ guides: [guide('Featured guide'), guide('Second')] });
+
+      const play = playIn(testIds.sidebarHub.row(0));
+      expect(play.tagName).toBe('BUTTON');
+      expect(play).toHaveAttribute('type', 'button');
+      expect(play).toHaveAttribute('aria-label', 'Start: Second');
+    });
+
+    describe('with fake timers', () => {
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => jest.useRealTimers());
+
+      it('opens no tooltip once hover and focus have settled', () => {
+        renderHub({ guides: [guide('Featured guide'), guide('Second')] });
+
+        const play = playIn(testIds.sidebarHub.row(0));
+        act(() => {
+          fireEvent.pointerEnter(play);
+          fireEvent.mouseEnter(play);
+          fireEvent.mouseMove(play);
+          fireEvent.focus(play);
+          jest.advanceTimersByTime(1000);
+        });
+
+        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps the 26 by 26 footprint without a trailing gap', () => {
+      renderHub({ guides: [guide('Featured guide'), guide('Second')] });
+
+      expect(playIn(testIds.sidebarHub.row(0))).toHaveStyle({ width: '26px', height: '26px', marginRight: '0' });
+    });
+
+    it('launches on every settled click without reaching the row or anything above it', async () => {
+      const second = guide('Second');
+      const clickedAbove = jest.fn();
+      renderHub({ guides: [guide('Featured guide'), second] }, clickedAbove);
+
+      const play = playIn(testIds.sidebarHub.row(0));
+      await act(async () => fireEvent.click(play));
+      await act(async () => fireEvent.click(play));
+
+      expect(second.onLaunch).toHaveBeenCalledTimes(2);
+      expect(clickedAbove).toHaveBeenCalledTimes(0);
+    });
+
+    it.each([
+      ['collapsed', false],
+      ['expanded', true],
+    ])('launches a %s row once', async (_state, expanded) => {
+      const details = withDetails(expanded);
+      const second = guide('Second', { expansion: details });
+      renderHub({ guides: [guide('Featured guide'), second] });
+
+      await act(async () => fireEvent.click(playIn(testIds.sidebarHub.row(0))));
+
+      expect(second.onLaunch).toHaveBeenCalledTimes(1);
+      expect(details.onToggle).not.toHaveBeenCalled();
+      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveAttribute('aria-expanded', String(expanded));
+    });
+
+    it('keeps the heading and details toggle as the only tab stops, in that order', () => {
+      renderHub({ guides: [guide('Featured guide'), guide('Second', { expansion: withDetails(false) })] });
+
+      const row = screen.getByTestId(testIds.sidebarHub.row(0));
+      expect(tabStops(row)).toEqual([
+        within(row).getByRole('button', { name: 'Start: Second' }),
+        screen.getByTestId(testIds.sidebarHub.rowToggle(0)),
+      ]);
+      expect(tabStops(row)).not.toContain(playIn(testIds.sidebarHub.row(0)));
+    });
+
+    // jsdom never turns Enter or Space into a click, so only native-activation preconditions are checkable here.
+    it.each(['Enter', ' '])('leaves %j on the heading and details toggle to native button activation', (key) => {
+      const details = withDetails(false);
+      const second = guide('Second', { expansion: details });
+      renderHub({ guides: [guide('Featured guide'), second] });
+
+      const row = screen.getByTestId(testIds.sidebarHub.row(0));
+      const heading = within(row).getByRole('button', { name: 'Start: Second' });
+      const toggle = screen.getByTestId(testIds.sidebarHub.rowToggle(0));
+      const play = playIn(testIds.sidebarHub.row(0));
+
+      for (const control of [heading, toggle]) {
+        expect(control.tagName).toBe('BUTTON');
+        control.focus();
+        expect(control).toHaveFocus();
+        expect(fireEvent.keyDown(control, { key })).toBe(true);
+        expect(fireEvent.keyUp(control, { key })).toBe(true);
+        expect(play).not.toHaveFocus();
+      }
+      expect(second.onLaunch).not.toHaveBeenCalled();
+      expect(details.onToggle).not.toHaveBeenCalled();
+    });
   });
 
   it('describes the resume card and resumes from its button', () => {

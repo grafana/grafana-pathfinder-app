@@ -17,7 +17,7 @@ function createTmpDir(): string {
 
 describe('bundledRepositoryPath', () => {
   it('points at the bundled repository.json', () => {
-    expect(bundledRepositoryPath().endsWith('src/bundled-interactives/repository.json')).toBe(true);
+    expect(bundledRepositoryPath().endsWith(path.join('src', 'bundled-interactives', 'repository.json'))).toBe(true);
   });
 });
 
