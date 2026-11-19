@@ -436,6 +436,9 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  */
 const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
   ...[
+    'lib/guide-translation/availability.ts',
+    'lib/guide-translation/compile-locale.ts',
+    'lib/guide-translation/locale-chain.ts',
     'lib/guide-translation/projection-table.ts',
     'lib/guide-translation/review.ts',
     'lib/guide-translation/source-hash.ts',
