@@ -2,9 +2,15 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
+	"github.com/grafana/grafana-pathfinder-app/pkg/generated/manifestdata"
 	"github.com/stretchr/testify/require"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -59,4 +65,47 @@ func TestUnprovisionedAndSharedCredentialsCannotAccessTenantStores(t *testing.T)
 		}
 	}
 	require.Zero(t, requests.Load())
+}
+
+func TestViewerMutationUsesCallerExchangeAndPreservesUpstreamDenial(t *testing.T) {
+	var exchanges, writes atomic.Int32
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			SubjectToken string `json:"subjectToken"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.SubjectToken != "viewer-context-token" {
+			t.Errorf("exchange did not carry the caller")
+			http.Error(w, "missing caller", 401)
+			return
+		}
+		exchanges.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"token":"caller-bound-test-token"}}`))
+	}))
+	defer exchange.Close()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer caller-bound-test-token" || r.Method != "POST" {
+			t.Errorf("unexpected upstream credentials or method")
+		}
+		writes.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(403)
+		_, _ = w.Write([]byte(`{"kind":"Status","reason":"Forbidden","status":"Failure","code":403}`))
+	}))
+	defer upstream.Close()
+	t.Setenv(sdkplugin.EnvVarAPIAccessRouterURL, upstream.URL)
+	t.Setenv(sdkplugin.EnvVarAPIAccessCAPToken, "test-cap")
+	t.Setenv(sdkplugin.EnvVarAPIAccessTokenExchangeURL, exchange.URL)
+	cfg, err := sdkplugin.BuildKubeConfig(*manifestdata.LocalManifest().ManifestData)
+	require.NoError(t, err)
+	application, err := newApp(app.Config{KubeConfig: *cfg}, nil, nil, nil)
+	require.NoError(t, err)
+	ctx := authlib.WithAuthInfo(context.Background(), adminIdentity{completionIdentity: completionIdentity{testIdentity{namespace: "default"}, "user:viewer"}, accessToken: "viewer-context-token"})
+	w := httptest.NewRecorder()
+	body := `{"apiVersion":"pathfinderbackend.ext.grafana.app/v1alpha1","kind":"InteractiveGuide","metadata":{"name":"sample"},"spec":{"id":"sample","title":"Sample","status":"draft","schemaVersion":"1.0","blocks":[]}}`
+	err = application.CallCustomRoute(ctx, w, &app.CustomRouteRequest{Path: "backend/custom-guide", Method: "POST", URL: &url.URL{}, Body: io.NopCloser(strings.NewReader(body)), ResourceIdentifier: resource.FullIdentifier{Namespace: "default", Version: "v1alpha1"}})
+	require.NoError(t, err)
+	require.Equal(t, 403, w.Code, w.Body.String())
+	require.EqualValues(t, 1, exchanges.Load())
+	require.EqualValues(t, 1, writes.Load())
 }
