@@ -1,6 +1,11 @@
 package provider
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
+
 	"github.com/grafana/grafana-app-sdk/app"
 	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
 	"github.com/grafana/grafana-app-sdk/simple"
@@ -53,7 +58,7 @@ func newApp(cfg app.Config, online services.PathGuideSource, insightsOnline func
 		achievementDefinitions = definitions[0]
 	}
 	assignmentDeps := assignmentDependencies(assignments, completions, guides, online)
-	return simple.NewApp(simple.AppConfig{
+	config := simple.AppConfig{
 		Name:       "pathfinder-backend",
 		KubeConfig: cfg.KubeConfig,
 		VersionedCustomRoutes: map[string]simple.AppVersionRouteHandlers{
@@ -87,5 +92,32 @@ func newApp(cfg app.Config, online services.PathGuideSource, insightsOnline func
 			{Kind: pathfindersettingsv1alpha1.Kind()},
 			{Kind: assignmentv1alpha1.Kind()},
 		},
-	})
+	}
+	// The SDK supplies either its caller-exchange transport, a deprecated shared bearer, or an empty configuration.
+	if cfg.KubeConfig.Host == "" || cfg.KubeConfig.BearerToken != "" || cfg.KubeConfig.WrapTransport == nil {
+		for route := range config.VersionedCustomRoutes["v1alpha1"] {
+			switch route.Path {
+			case "/backend/package-recommendations", "/backend/api/v1/achievements/definitions":
+			default:
+				config.VersionedCustomRoutes["v1alpha1"][route] = unavailableTenantRoute
+			}
+		}
+	}
+	return simple.NewApp(config)
+}
+
+func unavailableTenantRoute(_ context.Context, w app.CustomRouteResponseWriter, req *app.CustomRouteRequest) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	switch strings.TrimPrefix(req.Path, "/") {
+	case "backend/completion-records":
+		w.WriteHeader(http.StatusNotFound)
+	case "backend/completion-records/my":
+		return json.NewEncoder(w).Encode(services.CompletionResponse{Capability: services.CompletionCapability{Reason: "obo-unavailable"}, Completions: []services.CollatedCompletion{}, InProgress: []services.InProgressCompletion{}})
+	case "backend/completion-records/capability":
+		return json.NewEncoder(w).Encode(services.CompletionCapability{Reason: "obo-unavailable"})
+	default:
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	return json.NewEncoder(w).Encode(map[string]string{"error": "obo-unavailable"})
 }

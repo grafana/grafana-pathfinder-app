@@ -2,8 +2,10 @@ package provider
 
 import (
 	"context"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	authlib "github.com/grafana/authlib/types"
@@ -22,7 +24,7 @@ func TestProviderDispatchesSettingsRoute(t *testing.T) {
 		_, _ = w.Write([]byte(body))
 	}))
 	defer upstream.Close()
-	application, err := newApp(app.Config{KubeConfig: rest.Config{Host: upstream.URL, APIPath: "/apis"}}, nil, nil, nil)
+	application, err := newApp(app.Config{KubeConfig: rest.Config{Host: upstream.URL, APIPath: "/apis", WrapTransport: func(rt http.RoundTripper) http.RoundTripper { return rt }}}, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,4 +37,26 @@ func TestProviderDispatchesSettingsRoute(t *testing.T) {
 	if err != nil || recorder.Code != http.StatusOK || recorder.Body.String() != body+"\n" {
 		t.Fatalf("status=%d body=%s error=%v", recorder.Code, recorder.Body.String(), err)
 	}
+}
+
+func TestUnprovisionedAndSharedCredentialsCannotAccessTenantStores(t *testing.T) {
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
+	defer upstream.Close()
+	for _, cfg := range []rest.Config{{}, {Host: upstream.URL, BearerToken: "shared"}} {
+		application, err := newApp(app.Config{KubeConfig: cfg}, nil, nil, nil)
+		require.NoError(t, err)
+		ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity{namespace: "stacks-1"}, "user:viewer"})
+		for _, tc := range []struct {
+			method, path string
+			status       int
+		}{{"GET", "completion-records/my", 200}, {"GET", "completion-records/capability", 200}, {"POST", "completion-records", 404}, {"POST", "custom-guide", 503}, {"PUT", "pathfinder-settings", 503}, {"POST", "api/v1/achievements/events", 503}, {"GET", "assignments/my", 503}} {
+			w := httptest.NewRecorder()
+			err = application.CallCustomRoute(ctx, w, &app.CustomRouteRequest{Method: tc.method, Path: "backend/" + tc.path, ResourceIdentifier: resource.FullIdentifier{Version: "v1alpha1", Namespace: "stacks-1"}})
+			require.NoError(t, err)
+			require.Equal(t, tc.status, w.Code)
+			require.Contains(t, w.Body.String(), "obo-unavailable")
+		}
+	}
+	require.Zero(t, requests.Load())
 }

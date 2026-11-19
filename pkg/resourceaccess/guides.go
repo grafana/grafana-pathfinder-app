@@ -33,11 +33,11 @@ func (s *GuideStore) Read(ctx context.Context, namespace, name string) (json.Raw
 }
 
 func (s *GuideStore) ListPage(ctx context.Context, namespace, token string) (services.GuidePage, error) {
-	ctx, cancel := context.WithTimeout(ctx, services.SettingsReadTimeout)
-	defer cancel()
 	for limit := 100; ; limit = max(1, limit/2) {
 		page := &rawGuideList{}
-		err := s.client.ListInto(ctx, namespace, resource.ListOptions{Limit: limit, Continue: token}, page)
+		attempt, cancel := context.WithTimeout(ctx, services.SettingsReadTimeout)
+		err := s.client.ListInto(attempt, namespace, resource.ListOptions{Limit: limit, Continue: token}, page)
+		cancel()
 		var invalid *ResponseValidationError
 		if limit > 1 && errors.As(err, &invalid) && invalid.Reason == "response-too-large" {
 			continue

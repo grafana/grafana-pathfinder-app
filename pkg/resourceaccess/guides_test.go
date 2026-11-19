@@ -2,11 +2,15 @@ package resourceaccess
 
 import (
 	"context"
+	"errors"
+	"github.com/grafana/grafana-app-sdk/resource"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
@@ -68,4 +72,39 @@ func TestGuidePageRetriesOverflowAtSameCursor(t *testing.T) {
 	if err != nil || page.Continue != "next" || !slices.Equal(limits, []string{"100", "50"}) {
 		t.Fatalf("limits=%v next=%q err=%v", limits, page.Continue, err)
 	}
+}
+
+type slowOverflowClient struct{ resource.Client }
+
+func (slowOverflowClient) ListInto(ctx context.Context, _ string, options resource.ListOptions, _ resource.ListObject) error {
+	delay := time.Second
+	if options.Limit == 100 {
+		delay = 14500 * time.Millisecond
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+	}
+	if options.Limit == 100 {
+		return &ResponseValidationError{Reason: "response-too-large", Status: 200}
+	}
+	return nil
+}
+
+func TestSlowGuideOverflowGetsFreshAttemptWithinDrainDeadline(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		store := GuideStore{client: slowOverflowClient{}}
+		for _, budget := range []time.Duration{60 * time.Second, 15 * time.Second} {
+			ctx, cancel := context.WithTimeout(context.Background(), budget)
+			_, err := store.ListPage(ctx, "default", "same-cursor")
+			cancel()
+			if budget == 60*time.Second && err != nil {
+				t.Fatalf("smaller retry failed: %v", err)
+			}
+			if budget == 15*time.Second && !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("aggregate deadline lost: %v", err)
+			}
+		}
+	})
 }

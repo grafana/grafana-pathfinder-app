@@ -3,8 +3,11 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	authlib "github.com/grafana/authlib/types"
@@ -100,3 +103,32 @@ func (completionIdentity) GetIDToken() string     { return "" }
 func (completionIdentity) GetAccessToken() string { return "" }
 
 func (completionIdentity) GetUsername() string { return "" }
+
+func TestCompletionAggregateBudgetCountsOtherCallers(t *testing.T) {
+	services.ResetCompletionCache()
+	t.Cleanup(services.ResetCompletionCache)
+	item := `{"spec":{"userId":"user:other","guideId":"noise","guideSource":"bundled"}}`
+	items := strings.Repeat(item+",", 499) + item
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls > 100 {
+			http.Error(w, "budget exceeded", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"metadata":{"continue":"%d"},"items":[%s]}`, calls, items)
+	}))
+	defer upstream.Close()
+	store, err := resourceaccess.NewCompletionStore(sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(rest.Config{Host: upstream.URL, APIPath: "/apis"}, 8<<20)))
+	require.NoError(t, err)
+	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity{namespace: "default"}, "user:mine"})
+	w := httptest.NewRecorder()
+	err = completionReadHandler(store, false)(ctx, w, &app.CustomRouteRequest{Method: http.MethodGet, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}})
+	require.NoError(t, err)
+	var response completionResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.True(t, response.Capability.Available)
+	require.Empty(t, response.Completions)
+	require.Equal(t, 100, calls)
+}
