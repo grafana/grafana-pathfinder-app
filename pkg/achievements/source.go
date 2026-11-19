@@ -235,23 +235,27 @@ func (r *Registry) mapSource(name string, props map[string]any) (entity, action 
 	if len(props) > maxSourceProperties {
 		return fail("%d properties, at most %d", len(props), maxSourceProperties)
 	}
-	allowed := ref.source.properties()
-	for _, p := range sortedKeys(props) {
-		if !slices.Contains(allowed, p) {
-			return fail("property %q is not one source %q reads", p, name)
+	// A property the source no longer reads is ignored, so an event captured
+	// under an older cached source list still counts.
+	read := map[string]any{}
+	for _, p := range ref.source.properties() {
+		v, ok := props[p]
+		if !ok {
+			continue
 		}
-		if !isScalar(props[p]) {
+		if !isScalar(v) {
 			return fail("property %q is not a string, number, or boolean", p)
 		}
+		read[p] = v
 	}
 	for _, c := range ref.source.When {
-		if !c.holds(props) {
+		if !c.holds(read) {
 			return "", "", nil, ErrNotCounted
 		}
 	}
 	fields = make(map[string]any, len(ref.source.Context))
 	for field, p := range ref.source.Context {
-		if v, ok := props[p]; ok {
+		if v, ok := read[p]; ok {
 			fields[field] = v
 		}
 	}

@@ -191,3 +191,21 @@ func TestUnreadableSources_CountsAnUnnamedSkipAgainstEveryMissingSource(t *testi
 		t.Fatalf("an unchanged bundle reported %v", got)
 	}
 }
+
+func TestAchievementEvent_CountsAnEventCapturedUnderAnOlderSourceList(t *testing.T) {
+	shrunk := strings.Replace(achievementsTestBundleJSON, `"context":{"resourceId":"uid","numPanels":"numPanels"}`, `"context":{"resourceId":"uid"}`, 1)
+	if shrunk == achievementsTestBundleJSON {
+		t.Fatal("the test bundle no longer maps numPanels")
+	}
+	mem := newMemAchievements()
+	app := newAchievementsTestApp(t, mem)
+	app.definitions = staticDefinitions{snap: loadAchievementsTestBundle(t, shrunk)}
+
+	rr := postAchievementEvent(t, app, achievementsTestUser, dashboardSourceBody("echo-stale", "uid-1", "success"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d body %s, want the event counted with numPanels ignored", rr.Code, rr.Body.String())
+	}
+	if d := decodeEventsResponse(t, rr.Body.Bytes()).Decisions; len(d) != 1 || d[0].Decision != achievements.KindAward {
+		t.Fatalf("decisions = %+v", d)
+	}
+}

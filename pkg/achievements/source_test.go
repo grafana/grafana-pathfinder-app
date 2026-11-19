@@ -183,6 +183,11 @@ func TestNewEventMapsASourceToItsPair(t *testing.T) {
 	if err != nil || len(ev.Context) != 0 {
 		t.Fatalf("a property the event lacks is left out of the context: %+v %v", ev, err)
 	}
+
+	ev, err = r.NewEvent(sourceEvent("e3", "grafana_dashboard_created", map[string]any{"uid": "abc", "result": "success", "title": "Prod", "panels": []any{1}}), fixedNow)
+	if err != nil || !reflect.DeepEqual(ev.Context, map[string]any{"resourceId": "abc"}) {
+		t.Fatalf("a property the source does not read must be ignored, never copied: %+v %v", ev, err)
+	}
 }
 
 func TestNewEventRejectsSourceEvents(t *testing.T) {
@@ -195,7 +200,6 @@ func TestNewEventRejectsSourceEvents(t *testing.T) {
 	}{
 		{"unknown source", sourceEvent("e", "grafana_dashboard_deleted", ok), `source "grafana_dashboard_deleted" is not declared`},
 		{"no source name", sourceEvent("e", "", ok), `source "" is not declared`},
-		{"unlisted property", sourceEvent("e", "grafana_dashboard_created", map[string]any{"uid": "abc", "result": "success", "title": "Prod"}), `property "title" is not one source`},
 		{"object property", sourceEvent("e", "grafana_dashboard_created", map[string]any{"uid": map[string]any{"v": 1}, "result": "success"}), `property "uid" is not a string`},
 		{"null property", sourceEvent("e", "grafana_dashboard_created", map[string]any{"uid": nil, "result": "success"}), `property "uid" is not a string`},
 		{"mapped type mismatch", sourceEvent("e", "grafana_dashboard_created", map[string]any{"uid": "abc", "numPanels": "3", "result": "success"}), `context field "numPanels" is not a number`},
