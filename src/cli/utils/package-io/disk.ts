@@ -168,7 +168,7 @@ export function writePackage(packageDir: string, state: PackageState): void {
   }
 }
 
-function serializeJson(value: unknown): string {
+export function serializeJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 

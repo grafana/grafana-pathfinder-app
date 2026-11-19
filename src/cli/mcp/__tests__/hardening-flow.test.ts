@@ -16,7 +16,7 @@
  *   server-level instructions string covering routing vocabulary + selector
  *   discipline + composition rules.
  * - **Layer 2** (`pathfinder_authoring_start` payload): `triggers`, `notFor`,
- *   `compositionRules` ride on the first session-time tool call.
+ *   `interactiveRules` ride on the first session-time tool call.
  * - **Layer 1** (tool descriptions): leaders are use-case-led ("Use this tool
  *   when the user wants to ...") — verified at scale in `server.test.ts`.
  * - **Outcome-time** (`warnings[]`): `MULTISTEP_COMPOSITION_HINT` on
@@ -70,12 +70,12 @@ describe('MCP hardening — end-to-end composition', () => {
       const ctx = await callTool(client, 'pathfinder_authoring_start');
       expect(ctx.triggers).toEqual(expect.arrayContaining(['create a pathfinder']));
       expect(ctx.notFor).toBeDefined();
-      const compositionRules = ctx.compositionRules as string[];
-      expect(compositionRules.length).toBeGreaterThanOrEqual(3);
-      const compositionJoined = compositionRules.join('\n');
-      expect(compositionJoined).toMatch(/multistep/i);
-      expect(compositionJoined).toMatch(/noop/i);
-      expect(compositionJoined).toMatch(/reftarget/i);
+      const interactiveRules = ctx.interactiveRules as string[];
+      expect(interactiveRules.length).toBeGreaterThanOrEqual(3);
+      const interactiveJoined = interactiveRules.join('\n');
+      expect(interactiveJoined).toMatch(/multistep/i);
+      expect(interactiveJoined).toMatch(/noop/i);
+      expect(interactiveJoined).toMatch(/reftarget/i);
 
       // -------- Setup: fresh artifact for the authoring flow.
       const created = await callTool(client, 'pathfinder_create_package', {
@@ -97,7 +97,7 @@ describe('MCP hardening — end-to-end composition', () => {
 
       // -------- Issue #8: adding a multistep block fires the composition hint
       // at outcome-time so the agent gets a reinforcing nudge even if it
-      // ignored the same rule in `_start.compositionRules`.
+      // ignored the same rule in `_start.interactiveRules`.
       const multistepAdd = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,

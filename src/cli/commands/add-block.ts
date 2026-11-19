@@ -20,7 +20,13 @@ import {
 } from '../contracts';
 import { BLOCK_SCHEMA_MAP, isContainerBlockType, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
-import { appendBlock, mutateAndValidate, PackageIOError, type AppendBlockOptions } from '../utils/package-io';
+import {
+  appendBlock,
+  findBlockById,
+  mutateAndValidate,
+  PackageIOError,
+  type AppendBlockOptions,
+} from '../utils/package-io';
 import {
   issueToOutcome,
   manyIssuesOutcome,
@@ -29,7 +35,13 @@ import {
   type OutcomeWarning,
 } from '../utils/output';
 import { normalizeBlockInput } from '../utils/input-normalizers';
-import { isNonEmptySelector, multistepCompositionHint, unverifiedSelectorWarning } from '../utils/warnings';
+import {
+  isNonEmptySelector,
+  multistepCompositionHint,
+  sectionStepListWarning,
+  startsWithListMarker,
+  unverifiedSelectorWarning,
+} from '../utils/warnings';
 import {
   EMPTY_CHOICES_MESSAGE,
   EMPTY_CONDITIONS_MESSAGE,
@@ -283,6 +295,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   let position = '';
   let appended = true;
   let assignedId = block.id as string | undefined;
+  let parentType: string | undefined;
   let legacyIdsMinted = 0;
 
   try {
@@ -292,6 +305,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       position = out.position;
       appended = out.appended;
       assignedId = out.id;
+      parentType = args.parent ? findBlockById(content, args.parent)?.type : undefined;
     });
     if (!result.validation.ok) {
       const issues = result.validation.issues;
@@ -328,6 +342,9 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
     // better as siblings.
     if (args.type === 'multistep') {
       warnings.push(multistepCompositionHint());
+    }
+    if (args.type === 'markdown' && parentType === 'section' && startsWithListMarker(projected.content)) {
+      warnings.push(sectionStepListWarning(`${position}/content`));
     }
     // Issue #3: the CLI cannot verify a selector against the live Grafana
     // DOM, but it CAN tell that a reftarget was written. Surface the soft

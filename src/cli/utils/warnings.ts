@@ -16,6 +16,11 @@
  *   `runEditBlock` whenever a non-empty `reftarget` is written. The CLI
  *   cannot verify selectors against the live Grafana DOM, so this is a
  *   floor-raising signal, not a validation pass (hardening doc issue #3).
+ * - `PLACEHOLDER_SELECTOR` — emitted by `pathfinder_finalize_for_app_platform`
+ *   for every `reftarget` still holding a `TODO-` placeholder selector.
+ * - `SECTION_STEP_LIST` — emitted by `runAddBlock` / `runEditBlock` when a
+ *   `markdown` block directly inside a `section` starts with a list marker;
+ *   the section numbers its children, so the list renders double-numbered.
  * - `INPUT_NORMALIZED` — emitted by `runAddBlock` / `runEditBlock` (and
  *   future siblings) whenever the CLI rewrites a user-supplied input into
  *   its canonical form (M3 — see `src/cli/utils/input-normalizers.ts`).
@@ -26,13 +31,45 @@
  */
 
 import type { OutcomeWarning } from './output';
+import { readJsonGuideAliasedField } from '../../types/json-guide-aliases';
+import { CONTAINER_CHILD_KEYS, CONTAINER_NON_BLOCK_CHILD_KEYS } from './package-io/tree';
+
+const PLACEHOLDER_SELECTOR_PATTERN = /data-testid=["']?TODO-/;
+
+export function placeholderSelectorWarnings(blocks: unknown, prefix = 'blocks'): OutcomeWarning[] {
+  if (!Array.isArray(blocks)) {
+    return [];
+  }
+  return blocks.flatMap((node: unknown, i): OutcomeWarning[] => {
+    if (typeof node !== 'object' || node === null) {
+      return [];
+    }
+    const record = node as Record<string, unknown>;
+    const path = `${prefix}[${i}]`;
+    const reftarget = readJsonGuideAliasedField(record, 'reftarget');
+    const own: OutcomeWarning[] =
+      typeof reftarget === 'string' && PLACEHOLDER_SELECTOR_PATTERN.test(reftarget)
+        ? [
+            {
+              code: 'PLACEHOLDER_SELECTOR',
+              message:
+                'Placeholder selector. This step will not run until it gets a verified selector (Pick in the block editor). Tell the user.',
+              path: `${path}/reftarget`,
+            },
+          ]
+        : [];
+    const type = String(record.type);
+    const childKeys = [...(CONTAINER_CHILD_KEYS[type] ?? []), ...(CONTAINER_NON_BLOCK_CHILD_KEYS[type] ?? [])];
+    return [...own, ...childKeys.flatMap((key) => placeholderSelectorWarnings(record[key], `${path}.${key}`))];
+  });
+}
 
 /**
  * Composition nudge fired when an agent adds a `multistep` block. Targets
  * the failure mode in hardening doc issue #8 ("agents default to multistep
  * and noop without warrant"): agents reach for `multistep` as the
  * least-effort container; this warning pairs with the
- * `compositionRules` surface in `pathfinder_authoring_start` to push them
+ * `interactiveRules` surface in `pathfinder_authoring_start` to push them
  * toward separate sibling blocks when the steps are loose.
  */
 export function multistepCompositionHint(): OutcomeWarning {
@@ -63,6 +100,25 @@ export function unverifiedSelectorWarning(path: string): OutcomeWarning {
     code: 'UNVERIFIED_SELECTOR',
     message:
       'reftarget set without verification. The CLI cannot confirm a selector matches the live Grafana DOM — confirm against a running Grafana instance before publishing. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.',
+    path,
+  };
+}
+
+const LIST_MARKER_PATTERN = /^\s*(\d+[.)]|[-*+])\s/;
+
+export function startsWithListMarker(content: unknown): boolean {
+  if (typeof content !== 'string') {
+    return false;
+  }
+  const firstLine = content.split('\n').find((line) => line.trim().length > 0);
+  return firstLine !== undefined && LIST_MARKER_PATTERN.test(firstLine);
+}
+
+export function sectionStepListWarning(path: string): OutcomeWarning {
+  return {
+    code: 'SECTION_STEP_LIST',
+    message:
+      'Sections number their children. Write this step as plain sentences with no list, one step per `markdown` block; a list here renders double-numbered.',
     path,
   };
 }

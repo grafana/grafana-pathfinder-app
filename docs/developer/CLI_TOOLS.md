@@ -152,7 +152,7 @@ The validator performs these checks in order:
 2. **Schema compliance** - Types, nesting depth, field names
 3. **Unknown fields** - Warns on unrecognized fields (forward compatibility)
 4. **Condition syntax** - Validates requirements/objectives mini-grammar
-5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (the title is rendered separately). This is an error, so the command fails; remove the heading from the block.
+5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (bundled guides render the title above the content; App Platform guides do not, so their opening heading must be worded differently). This is an error, so the command fails; remove or reword the heading.
 6. **Guided step actions** - A `guided` block's steps must not use `navigate` or `popout`; the block waits for the reader to act and neither verb produces an interaction to wait on. This is an error, so the command fails. See [actions a guided step accepts](./interactive-examples/json-guide-format.md#actions-a-guided-step-accepts)
 7. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
 

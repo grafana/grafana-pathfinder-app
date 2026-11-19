@@ -1,6 +1,6 @@
 import React, { useId } from 'react';
 import { cx } from '@emotion/css';
-import { Card, Icon, useStyles2 } from '@grafana/ui';
+import { Card, IconButton, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { testIds } from '../../constants/testIds';
 import type { Milestone } from '../../types/content.types';
@@ -25,11 +25,14 @@ export interface HubGuide {
   onLaunch: () => void | Promise<void>;
 }
 
-function PlayButton({ testId, onLaunch }: { testId: string; onLaunch: () => void }) {
+function PlayButton({ testId, label, onLaunch }: { testId: string; label: string; onLaunch: () => void }) {
   const styles = useStyles2(getSidebarHubStyles);
   return (
-    <button
+    <IconButton
       type="button"
+      name="play"
+      size="sm"
+      aria-label={label}
       className={styles.play}
       tabIndex={-1}
       aria-hidden="true"
@@ -38,9 +41,7 @@ function PlayButton({ testId, onLaunch }: { testId: string; onLaunch: () => void
         event.stopPropagation();
         onLaunch();
       }}
-    >
-      <Icon name="play" size="sm" />
-    </button>
+    />
   );
 }
 
@@ -93,7 +94,11 @@ export function GuideRow({ guide, testId, expansionTestIds, onLaunch, onOpenModu
           </Card.Actions>
         )}
         <Card.SecondaryActions className={styles.denseAction}>
-          <PlayButton testId={testIds.sidebarHub.rowPlay(testId)} onLaunch={onLaunch} />
+          <PlayButton
+            testId={testIds.sidebarHub.rowPlay(testId)}
+            label={getHubActionLabel(guide.kind, guide.progress, guide.title)}
+            onLaunch={onLaunch}
+          />
         </Card.SecondaryActions>
         {expansion && expanded && (
           <Card.Description className={styles.denseDetails}>
