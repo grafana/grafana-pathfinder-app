@@ -139,7 +139,7 @@ func TestBuildAcceptsACommonSVGPrologue(t *testing.T) {
 func TestBuildAcceptsASource(t *testing.T) {
 	entity := strings.Replace(guidesEntity, `"resources"`, `"sources":[{"interaction":"grafana_guide_done","emitter":"grafana","versions":">=13.2.0",
   "context":{"guideSource":"source","guideId":"id"},"owner":"@grafana/pathfinder","silent":true}],"resources"`, 1)
-	src := sourceTree(t, map[string]string{"events/guides.json": entity, "catalog/guides-finished.json": guidesFinished, "art/guides-finished-1.svg": ""})
+	src := sourceTree(t, map[string]string{"events/guides.json": entity, "catalog/guides-finished.json": guidesFinished, "art/guides-finished-1.svg": testSVG})
 	out := filepath.Join(t.TempDir(), "definitions.json")
 	if code, _, stderr := runCmd("build", "-src", src, "-o", out); code != exitOK {
 		t.Fatalf("build = %d: %s", code, stderr)
