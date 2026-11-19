@@ -13,7 +13,6 @@ import (
 	"time"
 
 	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
-	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"k8s.io/client-go/rest"
 )
 
@@ -39,12 +38,16 @@ func TestGuideStoreDrainsSDKPagesWithoutDroppingFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	items, err := services.ReadGuideResources(context.Background(), "default", 32*1024*1024, 50000, store.ListPage, func(int, int64) { t.Fatal("unexpected truncation") })
-	if err != nil || len(items) != 2 || calls != 2 {
-		t.Fatalf("items=%s calls=%d error=%v", items, calls, err)
+	first, err := store.ListPage(context.Background(), "default", "")
+	if err != nil || len(first.Items) != 1 || first.Continue != "next" {
+		t.Fatalf("first page=%v error=%v", first, err)
 	}
-	if string(items[0]) != `{"metadata":{"name":"one"},"spec":{"future":true}}` {
-		t.Fatalf("changed guide: %s", items[0])
+	if string(first.Items[0]) != `{"metadata":{"name":"one"},"spec":{"future":true}}` {
+		t.Fatalf("changed guide: %s", first.Items[0])
+	}
+	last, err := store.ListPage(context.Background(), "default", first.Continue)
+	if err != nil || len(last.Items) != 1 || last.Continue != "" || calls != 2 {
+		t.Fatalf("last page=%v calls=%d error=%v", last, calls, err)
 	}
 }
 

@@ -116,7 +116,6 @@ v1alpha1: {
  "/backend/completion-records/capability": "GET": {name: "getBackendCompletionCapability", responseMetadata: typeMeta: false, response: {...}}
  "/backend/custom-guide-repository": "GET": {name: "getBackendCatalogue", responseMetadata: typeMeta: false, response: {...}}
  "/backend/custom-guide": "GET": {name: "getBackendGuide", responseMetadata: typeMeta: false, response: {...}}
- "/backend/custom-guides": "GET": {name: "getBackendGuides", responseMetadata: typeMeta: false, response: {items: [...{...}]}}
  }
  routes: namespaced: "/backend/pathfinder-settings": "GET": {
  name: "getBackendSettings"

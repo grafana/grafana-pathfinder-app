@@ -168,7 +168,6 @@ func TestGuideRoutePreservesInvalidResponseDiagnostics(t *testing.T) {
 		status  int
 	}{
 		{"guide", guideReadHandler(store), 502},
-		{"guides", guidesReadHandler(store), 502},
 		{"catalogue", catalogueReadHandler(store), 503},
 	} {
 		t.Run(route.name, func(t *testing.T) {

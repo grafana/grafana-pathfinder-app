@@ -797,7 +797,7 @@ describe('App Platform transport ratchet: detector', () => {
     const result = evaluateModuleSource(
       'utils/detector-fixture.ts',
       `import { backendRoute as route } from '../lib/backend-routes';
-       getBackendSrv().get(route('custom-guides'));`
+       getBackendSrv().get(route('custom-guide-repository'));`
     );
     expect(result.violation).toBeNull();
   });

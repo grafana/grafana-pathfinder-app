@@ -80,7 +80,6 @@ func newApp(cfg app.Config, online services.PathGuideSource, insightsOnline func
 				simple.AppVersionRoute{Namespaced: true, Path: "/backend/completion-records/capability", Method: simple.AppCustomRouteMethodGet}:   completionReadHandler(completions, true),
 				simple.AppVersionRoute{Namespaced: true, Path: "/backend/custom-guide-repository", Method: simple.AppCustomRouteMethodGet}:         catalogueReadHandler(guides),
 				simple.AppVersionRoute{Namespaced: true, Path: "/backend/custom-guide", Method: simple.AppCustomRouteMethodGet}:                    guideReadHandler(guides),
-				simple.AppVersionRoute{Namespaced: true, Path: "/backend/custom-guides", Method: simple.AppCustomRouteMethodGet}:                   guidesReadHandler(guides),
 				simple.AppVersionRoute{Namespaced: true, Path: "/backend/pathfinder-settings", Method: simple.AppCustomRouteMethodGet}:             settingsReadHandler(store.Read),
 			},
 		},

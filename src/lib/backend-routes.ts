@@ -11,7 +11,6 @@ export function usesSdkBackend(): boolean {
 const backendPaths = [
   'pathfinder-settings',
   'custom-guide',
-  'custom-guides',
   'custom-guide-repository',
   'completion-records',
   'completion-records/my',

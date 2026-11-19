@@ -197,27 +197,6 @@ func (c *CustomRouteClient) GetBackendCatalogue(ctx context.Context, namespace s
 	return &cast, nil
 }
 
-type GetBackendGuidesRequest struct {
-	Headers http.Header
-}
-
-func (c *CustomRouteClient) GetBackendGuides(ctx context.Context, namespace string, request GetBackendGuidesRequest) (*GetBackendGuidesResponse, error) {
-	resp, err := c.NamespacedRequest(ctx, namespace, resource.CustomRouteRequestOptions{
-		Path:    "/backend/custom-guides",
-		Verb:    "GET",
-		Headers: request.Headers,
-	})
-	if err != nil {
-		return nil, err
-	}
-	cast := GetBackendGuidesResponse{}
-	err = json.Unmarshal(resp, &cast)
-	if err != nil {
-		return nil, fmt.Errorf("unable to unmarshal response bytes into GetBackendGuidesResponse: %w", err)
-	}
-	return &cast, nil
-}
-
 type DeleteBackendGuideRequest struct {
 	Headers http.Header
 }
