@@ -75,7 +75,7 @@ func TestViewerMutationUsesCallerExchangeAndPreservesUpstreamDenial(t *testing.T
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.SubjectToken != "viewer-context-token" {
 			t.Errorf("exchange did not carry the caller")
-			http.Error(w, "missing caller", 401)
+			http.Error(w, "missing caller", http.StatusUnauthorized)
 			return
 		}
 		exchanges.Add(1)
@@ -89,7 +89,7 @@ func TestViewerMutationUsesCallerExchangeAndPreservesUpstreamDenial(t *testing.T
 		}
 		writes.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(403)
+		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"kind":"Status","reason":"Forbidden","status":"Failure","code":403}`))
 	}))
 	defer upstream.Close()
