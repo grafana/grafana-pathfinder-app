@@ -212,11 +212,8 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Identity-scoped deterministic name: userID is verified above, and the key is
-	// validated non-blank in buildCompletionSpec. Every create carries this name,
-	// which is the invariant that makes an upstream 409 provably our own record.
-	name, err := services.CreateCompletion(r.Context(), creator, namespace, spec, req.IdempotencyKey, isAlreadyExistsUpstream)
-	if err != nil {
+	name, err := services.CreateCompletion(r.Context(), creator, namespace, spec, req.IdempotencyKey)
+	if err != nil && !isAlreadyExistsUpstream(err) {
 		a.writeCompletionUpstreamError(w, r, err)
 		return
 	}

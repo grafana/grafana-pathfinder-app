@@ -69,13 +69,7 @@ func completionWriteHandler(store services.CompletionRecordUpdater, syncAssignme
 				}
 				return 0, ""
 			})
-			switch {
-			case errors.Is(err, services.ErrAttemptIdentityMismatch):
-				return fail(http.StatusConflict, "attempt-conflict")
-			case errors.Is(err, services.ErrAttemptContended):
-				w.Header().Set("Retry-After", "30")
-				return fail(http.StatusServiceUnavailable, "completion-write-contended")
-			case err != nil && incoming.CompletionPercent < 100 && completionSchemaNotReady(err):
+			if err != nil && incoming.CompletionPercent < 100 && completionSchemaNotReady(err) {
 				w.Header().Set("Retry-After", "30")
 				return fail(http.StatusServiceUnavailable, "schema-not-ready")
 			}
@@ -84,7 +78,14 @@ func completionWriteHandler(store services.CompletionRecordUpdater, syncAssignme
 			}
 			invalidate = outcome != services.AttemptUnchanged || persisted.CompletedAt != ""
 		} else {
-			name, err = services.CreateCompletion(ctx, store, caller.Namespace, spec, fact.IdempotencyKey, func(err error) bool { return sdkErrorStatus(err) == http.StatusConflict })
+			name, persisted, err = services.CreateOrConfirmCompletion(ctx, store, caller.Namespace, spec, fact.IdempotencyKey, func(err error) bool { return sdkErrorStatus(err) == http.StatusConflict })
+		}
+		if errors.Is(err, services.ErrAttemptIdentityMismatch) {
+			return fail(http.StatusConflict, "attempt-conflict")
+		}
+		if errors.Is(err, services.ErrAttemptContended) {
+			w.Header().Set("Retry-After", "30")
+			return fail(http.StatusServiceUnavailable, "completion-write-contended")
 		}
 		if err != nil {
 			return writeCompletionSDKError(w, err)
