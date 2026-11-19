@@ -57,7 +57,7 @@ func TestAchievementRoutesRejectUntrustedPeopleBeforeResourceAccess(t *testing.T
 		name, subject, namespace string
 		status                   int
 	}{
-		{"missing", "", "default", 401}, {"sibling", "user:1", "org-2", 401}, {"service", "service-account:1", "default", 403},
+		{"missing", "", "default", 401}, {"sibling", "user:1", "org-2", 403}, {"service", "service-account:1", "default", 403},
 	} {
 		for _, op := range []string{"events", "definitions", "my"} {
 			t.Run(tc.name+op, func(t *testing.T) {

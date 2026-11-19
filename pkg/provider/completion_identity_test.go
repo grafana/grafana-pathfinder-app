@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/authlib/authn"
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
+	"net/http"
 	"testing"
 )
 
@@ -68,6 +69,20 @@ func TestCompletionDisplayNameDoesNotUseProfileFallback(t *testing.T) {
 		got, err := completionCaller(authlib.WithAuthInfo(context.Background(), identity), "default")
 		if err != nil || got.DisplayName != tc.want {
 			t.Fatalf("caller=%+v err=%v want name %q", got, err, tc.want)
+		}
+	}
+}
+
+func TestCompletionCallerFailureStatus(t *testing.T) {
+	ctx := authlib.WithAuthInfo(context.Background(), writerIdentity{completionIdentity{testIdentity: testIdentity{namespace: "default"}, subject: "user:7"}})
+	for _, tc := range []struct {
+		ctx    context.Context
+		status int
+	}{{context.Background(), http.StatusUnauthorized}, {ctx, http.StatusForbidden}} {
+		_, err := completionCaller(tc.ctx, "org-2")
+		code, _ := completionCallerFailure(err)
+		if err == nil || code != tc.status {
+			t.Fatalf("got error %v and status %d, want %d", err, code, tc.status)
 		}
 	}
 }

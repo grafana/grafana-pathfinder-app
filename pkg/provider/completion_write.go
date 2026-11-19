@@ -32,7 +32,7 @@ func completionWriteHandler(store services.CompletionRecordUpdater, syncAssignme
 		}
 		caller, err := completionCaller(ctx, req.ResourceIdentifier.Namespace)
 		if err != nil {
-			return fail(http.StatusUnauthorized, "unauthenticated")
+			return fail(completionCallerFailure(err))
 		}
 		if allowed, retry := limiter.Allow(caller.Namespace + "\x00" + caller.Subject); !allowed {
 			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(retry.Seconds())))))

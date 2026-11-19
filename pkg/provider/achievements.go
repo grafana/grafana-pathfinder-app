@@ -63,7 +63,7 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 			if operation == "my" {
 				return unavailable("identity-unavailable")
 			}
-			return fail(401, "unauthenticated")
+			return fail(completionCallerFailure(err))
 		}
 		principal, _, err := authlib.ParseTypeID(caller.Subject)
 		if err != nil || principal != authlib.TypeUser {

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	authlib "github.com/grafana/authlib/types"
 )
@@ -15,13 +16,25 @@ type completionWriterIdentity struct {
 	OrgID       int64
 }
 
+var errMissingAuthentication = errors.New("unauthenticated")
+
+func completionCallerFailure(err error) (int, string) {
+	if errors.Is(err, errMissingAuthentication) {
+		return http.StatusUnauthorized, "unauthenticated"
+	}
+	return http.StatusForbidden, "identity-unavailable"
+}
+
 func completionCaller(ctx context.Context, routeNamespace string) (completionWriterIdentity, error) {
+	identity, ok := authlib.AuthInfoFrom(ctx)
+	if !ok || identity == nil {
+		return completionWriterIdentity{}, errMissingAuthentication
+	}
 	namespace, err := callerNamespace(ctx, routeNamespace)
 	if err != nil {
 		return completionWriterIdentity{}, err
 	}
-	identity, ok := authlib.AuthInfoFrom(ctx)
-	if !ok || identity.GetSubject() == "" {
+	if identity.GetSubject() == "" {
 		return completionWriterIdentity{}, errUnboundCaller
 	}
 	info, err := authlib.ParseNamespace(namespace)
