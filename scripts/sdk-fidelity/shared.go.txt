@@ -37,8 +37,8 @@ func TestFrozenFidelityWrites(t *testing.T) {
 			store := newFakeAttemptStore()
 			assignment := &fidelityAssignmentState{ResourceVersion: "7"}
 			rows := []any{}
+			start := time.Now().Truncate(time.Second)
 			for _, step := range scenario.Steps {
-				start := time.Now().Add(-time.Second)
 				bodyInput := map[string]any{"guideSource": "bundled", "guideId": "first-dashboard", "guideTitle": "First dashboard", "guideCategory": "interactive", "pathId": "", "completionPercent": step.Percent, "source": "objectives", "completedAt": "2026-11-01T00:00:00Z", "attemptStartedAt": "2026-11-01T00:00:00Z", "platform": "cloud", "idempotencyKey": "evt-default", "attemptId": "frozen-attempt"}
 				response := fidelityWrite(t, store, step, bodyInput, assignment)
 				if assignment.Writes > 2 || (assignment.Writes < 2 && assignment.Satisfied) || (assignment.Writes == 2 && !assignment.Satisfied) {

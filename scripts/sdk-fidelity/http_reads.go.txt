@@ -256,7 +256,7 @@ func fidelityCollectionResponse(w http.ResponseWriter, r *http.Request, status i
 	case 200:
 		body := `{"metadata":{"continue":"next"},"items":[{"metadata":{"name":"draft","resourceVersion":"7"},"spec":{"id":"draft","title":"Draft","status":"draft","blocks":[{"type":"markdown","content":"private draft"}],"futureField":true}},{"metadata":{"name":"published","resourceVersion":"8"},"spec":{"id":"published","title":"Published","status":"published","blocks":[{"type":"markdown","content":"published content"}],"manifest":{"type":"guide","description":"Metadata"}}}]}`
 		if r.URL.Query().Get("continue") == "next" {
-			body = `{"metadata":{},"items":[{"metadata":{"name":"last","resourceVersion":"9"},"spec":{"id":"last","title":"Last page","status":"published","manifest":{"type":"guide"}}}]}`
+			body = `{"metadata":{},"items":[{"metadata":{"name":"last-resource","resourceVersion":"9"},"spec":{"id":"last","title":"Last page","status":"published","manifest":{"type":"guide"}}}]}`
 		}
 		_, _ = w.Write([]byte(body))
 	default:
