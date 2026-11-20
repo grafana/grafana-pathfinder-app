@@ -70,14 +70,9 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		current = created
 	}
 
-	if current.SchemaVersion > 0 && current.SchemaVersion < ProgressSchemaVersion {
-		migrated := current
-		migrated.SchemaVersion, migrated.Units, migrated.Points = ProgressSchemaVersion, nil, 0
-		saved, err := e.store.SaveProgress(ctx, person, migrated)
-		if err != nil {
-			return d.unavailable(current)
-		}
-		current = saved
+	current, ok := e.repair(ctx, person, d, current)
+	if !ok {
+		return d.unavailable(current)
 	}
 
 	var written []string
@@ -111,6 +106,33 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		}
 		current = reloaded
 	}
+}
+
+// repair saves Normalize(row) when the row is repairable, adding no unit,
+// points or award, and returns the row the store acknowledged. An
+// acknowledgement that cannot be read proves nothing, so the row is re-read.
+func (e *Evaluator) repair(ctx context.Context, person Person, d *Definition, row Progress) (Progress, bool) {
+	for attempt := 1; Classify(row) == ShapeRepairable; attempt++ {
+		if attempt > maxAttempts {
+			return row, false
+		}
+		saved, err := e.store.SaveProgress(ctx, person, Normalize(row))
+		var ok bool
+		switch {
+		case errors.Is(err, ErrConflict):
+			row, ok = e.reload(ctx, person, d)
+		case err != nil:
+			return row, false
+		case saved.Version == "":
+			row, ok = e.reload(ctx, person, d)
+		default:
+			row, ok = saved, true
+		}
+		if !ok {
+			return row, false
+		}
+	}
+	return row, true
 }
 
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {

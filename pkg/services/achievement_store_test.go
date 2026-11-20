@@ -33,15 +33,20 @@ func (c pointsFreeClient) Replace(context.Context, string, string, string, strin
 func (pointsFreeClient) IsConflict(error) bool       { return false }
 func (pointsFreeClient) IsAbsent(error, string) bool { return false }
 
-func TestAchievementStoreWarnsWhenTheKindServesNoPoints(t *testing.T) {
+func TestAchievementStoreWarnsWhenTheKindDropsPointsFromAWrite(t *testing.T) {
 	body := `{"metadata":{"resourceVersion":"7"},"spec":{"achievementId":"a","tierIds":[],"units":[],"userId":"user:1","schemaVersion":2}}`
 	logger := &warnRecorder{}
 	store := NewAchievementStore(pointsFreeClient{body}, AchievementWriter{Namespace: "ns"}, time.Now, logger)
-	_, err := store.LoadProgress(context.Background(), achievements.Person{ID: "user:1"}, []string{"a"})
+	person := achievements.Person{ID: "user:1"}
+	loaded, err := store.LoadProgress(context.Background(), person, []string{"a"})
+	if err != nil || achievements.Classify(loaded["a"]) != achievements.ShapeRepairable {
+		t.Fatalf("LoadProgress = %+v, %v, want a repairable row and no error", loaded, err)
+	}
+	_, err = store.SaveProgress(context.Background(), person, achievements.Progress{AchievementID: "a", SchemaVersion: achievements.ProgressSchemaVersion, Version: "7"})
 	if !errors.Is(err, ErrAchievementPointsUnserved) {
 		t.Fatalf("err = %v, want ErrAchievementPointsUnserved", err)
 	}
-	if len(logger.messages) != 1 || !strings.Contains(logger.messages[0], "points") {
-		t.Errorf("warnings = %q, want one naming the points field", logger.messages)
+	if len(logger.messages) != 1 || !strings.Contains(logger.messages[0], "required field") {
+		t.Errorf("warnings = %q, want one naming the missing field", logger.messages)
 	}
 }

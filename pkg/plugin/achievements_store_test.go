@@ -495,14 +495,116 @@ func TestAchievementStore_RowWrittenDirectlyIsNormalised(t *testing.T) {
 	}
 }
 
-func TestAchievementStore_CurrentRowWithoutPointsIsAnError(t *testing.T) {
+func prunePointsFromKind(api *fakeAchievementAPI) {
+	schema := api.schemas[achievementProgressResource]
+	delete(schema["properties"].(map[string]any), "points")
+	required := []any{}
+	for _, f := range schema["required"].([]any) {
+		if f != "points" {
+			required = append(required, f)
+		}
+	}
+	schema["required"] = required
+}
+
+func restorePointsToKind(api *fakeAchievementAPI) {
+	schema := api.schemas[achievementProgressResource]
+	schema["properties"].(map[string]any)["points"] = map[string]any{"type": "integer", "default": 0}
+	schema["required"] = append(schema["required"].([]any), "points")
+}
+
+func progressEvent(id string) achievements.Event {
+	return achievements.Event{
+		ID: id, Entity: "guides", Action: "completed",
+		Context: map[string]any{"guideSource": "bundled", "guideId": id, "guideCategory": "interactive"},
+	}
+}
+
+func TestAchievementStore_ClassifiesRowShape(t *testing.T) {
+	cases := []struct {
+		name    string
+		spec    map[string]any
+		want    achievements.Shape
+		missing []string
+	}{
+		{"current", map[string]any{"schemaVersion": achievements.ProgressSchemaVersion, "points": 3}, achievements.ShapeCurrent, nil},
+		{"version 1", map[string]any{"schemaVersion": 1}, achievements.ShapeRepairable, nil},
+		{"current without points", map[string]any{"schemaVersion": achievements.ProgressSchemaVersion}, achievements.ShapeRepairable, []string{"points"}},
+		{"version 1 without points", map[string]any{"schemaVersion": 1}, achievements.ShapeRepairable, nil},
+		{"newer", map[string]any{"schemaVersion": achievements.ProgressSchemaVersion + 1}, achievements.ShapeNewer, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store, api := newAchievementTestStore(t)
+			spec := map[string]any{
+				"achievementId": "a", "tierIds": []any{"bronze"}, "units": []any{}, "updatedAt": "2026-01-01T00:00:00Z",
+				"userId": achievementTestPerson.ID, "orgId": 1, "stackNamespace": achievementTestNamespace,
+			}
+			for k, v := range tc.spec {
+				spec[k] = v
+			}
+			api.seed(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "a"), spec)
+			rows, err := store.LoadProgress(context.Background(), achievementTestPerson, []string{"a"})
+			if err != nil {
+				t.Fatalf("LoadProgress = %v, want shape never to be an error", err)
+			}
+			got := rows["a"]
+			if achievements.Classify(got) != tc.want || !slices.Equal(got.MissingFields, tc.missing) {
+				t.Errorf("shape = %v missing = %v, want %v and %v", achievements.Classify(got), got.MissingFields, tc.want, tc.missing)
+			}
+		})
+	}
+}
+
+func TestAchievementStore_RepairsRowsBeforeCounting(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		spec map[string]any
+	}{
+		{"version 1", map[string]any{"schemaVersion": 1, "units": []any{"legacy"}}},
+		{"current without points", map[string]any{"schemaVersion": achievements.ProgressSchemaVersion}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, api := newAchievementTestStore(t)
+			spec := map[string]any{
+				"achievementId": "guides-finished", "tierIds": []any{}, "units": []any{}, "updatedAt": "2026-01-01T00:00:00Z",
+				"userId": achievementTestPerson.ID, "orgId": 1, "stackNamespace": achievementTestNamespace,
+			}
+			for k, v := range tc.spec {
+				spec[k] = v
+			}
+			name := achievementProgressName(achievementTestPerson.ID, "guides-finished")
+			api.seed(achievementProgressResource, name, spec)
+			evaluator := achievements.NewEvaluator(achievementTestCatalog(t), store, allowAllPolicy{}, func() time.Time { return achievementTestNow })
+			decisions, err := evaluator.Evaluate(context.Background(), achievementTestPerson, progressEvent("one"))
+			if err != nil || len(decisions) != 1 || decisions[0].Reason != "" {
+				t.Fatalf("Evaluate = %+v, %v", decisions, err)
+			}
+			rows, err := store.LoadProgress(context.Background(), achievementTestPerson, []string{"guides-finished"})
+			row := rows["guides-finished"]
+			if err != nil || achievements.Classify(row) != achievements.ShapeCurrent || len(row.Units) != 1 {
+				t.Fatalf("row = %+v err = %v, want a healed row counting the event", row, err)
+			}
+		})
+	}
+}
+
+func TestAchievementStore_RowCreatedOnAKindWithoutPointsHealsOnceItServesThem(t *testing.T) {
 	store, api := newAchievementTestStore(t)
-	api.seed(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "a"), map[string]any{
-		"achievementId": "a", "tierIds": []any{"bronze"}, "units": []any{"guide:1:a"}, "updatedAt": "2026-01-01T00:00:00Z",
-		"userId": achievementTestPerson.ID, "orgId": 1, "stackNamespace": achievementTestNamespace, "schemaVersion": achievements.ProgressSchemaVersion,
-	})
-	if _, err := store.LoadProgress(context.Background(), achievementTestPerson, []string{"a"}); !errors.Is(err, errAchievementPointsUnserved) {
-		t.Fatalf("err = %v, want errAchievementPointsUnserved", err)
+	prunePointsFromKind(api)
+	evaluator := achievements.NewEvaluator(achievementTestCatalog(t), store, allowAllPolicy{}, func() time.Time { return achievementTestNow })
+	decisions, err := evaluator.Evaluate(context.Background(), achievementTestPerson, progressEvent("one"))
+	if err != nil || len(decisions) != 1 || decisions[0].Reason != achievements.ReasonStoreUnavailable {
+		t.Fatalf("Evaluate = %+v, %v, want store_unavailable", decisions, err)
+	}
+	restorePointsToKind(api)
+	decisions, err = evaluator.Evaluate(context.Background(), achievementTestPerson, progressEvent("one"))
+	if err != nil || len(decisions) != 1 || decisions[0].Reason != "" {
+		t.Fatalf("Evaluate after the kind serves points = %+v, %v, want the event counted", decisions, err)
+	}
+	rows, err := store.LoadProgress(context.Background(), achievementTestPerson, []string{"guides-finished"})
+	if err != nil || len(rows["guides-finished"].Units) != 1 {
+		t.Fatalf("rows = %+v err = %v, want one counted unit", rows, err)
 	}
 }
 

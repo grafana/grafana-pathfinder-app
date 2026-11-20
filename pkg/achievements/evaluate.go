@@ -26,8 +26,8 @@ type outcome struct {
 // stored progress. Only the lowest tier not held accrues, and an event earns at
 // most that tier; points past its goal do not carry over.
 func evaluate(d *Definition, stored Progress, ev Event) outcome {
-	if stored.SchemaVersion > 0 && stored.SchemaVersion < ProgressSchemaVersion {
-		stored.Units = nil
+	if Classify(stored) == ShapeRepairable {
+		stored = Normalize(stored)
 	}
 	held := heldSet(stored.TierIDs)
 	ignored := func(reason Reason) outcome {

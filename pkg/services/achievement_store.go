@@ -70,7 +70,7 @@ type achievementObject[S any] struct {
 
 var (
 	ErrAchievementRowMismatch    = errors.New("achievement store: stored row belongs to another user or achievement")
-	ErrAchievementPointsUnserved = errors.New("achievement store: progress row carried no points; the AchievementProgress kind does not serve them")
+	ErrAchievementPointsUnserved = achievements.ErrFieldUnserved
 )
 
 // AchievementWriter is stamped from the verified request context, never an event body.
@@ -166,15 +166,12 @@ func (s *AchievementStore) SaveProgress(ctx context.Context, person achievements
 		return achievements.Progress{}, err
 	}
 	stored, err := s.decodeProgress(body)
-	if errors.Is(err, ErrAchievementPointsUnserved) {
-		return achievements.Progress{}, err
-	}
 	if err != nil {
 		// The 2xx means the save is durable. Without its Version, a later save gets ErrConflict and reloads.
 		obj.Metadata.ResourceVersion = ""
 		return progressOf(obj), nil
 	}
-	return progressOf(stored), nil
+	return s.acknowledged(stored)
 }
 
 func (s *AchievementStore) CreateAward(ctx context.Context, person achievements.Person, a achievements.Award) error {
@@ -234,7 +231,18 @@ func (s *AchievementStore) writtenProgress(body []byte, err error) (achievements
 	if err != nil {
 		return achievements.Progress{}, err
 	}
-	return progressOf(obj), nil
+	return s.acknowledged(obj)
+}
+
+// acknowledged checks a row this store just wrote in full: one that comes back
+// without a required field proves the deployed kind does not serve it.
+func (s *AchievementStore) acknowledged(obj achievementObject[achievementProgressSpec]) (achievements.Progress, error) {
+	row := progressOf(obj)
+	if len(row.MissingFields) > 0 {
+		s.logger.Warn("achievement progress rows come back without a required field; the AchievementProgress kind on this backend does not serve it", "achievementId", row.AchievementID, "fields", row.MissingFields)
+		return achievements.Progress{}, fmt.Errorf("%w: %v", ErrAchievementPointsUnserved, row.MissingFields)
+	}
+	return row, nil
 }
 
 func (s *AchievementStore) decodeProgress(body []byte) (achievementObject[achievementProgressSpec], error) {
@@ -245,17 +253,11 @@ func (s *AchievementStore) decodeProgress(body []byte) (achievementObject[achiev
 	if obj.Metadata.ResourceVersion == "" {
 		return obj, errors.New("achievement store: progress response carried no resourceVersion")
 	}
-	// A kind that does not declare points prunes it silently, and evaluating on
-	// would spend ledger units that never add up to a tier.
-	if obj.Spec.Points == nil && obj.Spec.SchemaVersion >= achievements.ProgressSchemaVersion {
-		s.logger.Warn("achievement progress rows carry no points field; the AchievementProgress kind on this backend does not serve it", "achievementId", obj.Spec.AchievementID)
-		return obj, ErrAchievementPointsUnserved
-	}
 	return obj, nil
 }
 
 func progressOf(obj achievementObject[achievementProgressSpec]) achievements.Progress {
-	return achievements.Progress{
+	p := achievements.Progress{
 		AchievementID: obj.Spec.AchievementID,
 		TierIDs:       sortedDistinct(obj.Spec.TierIDs),
 		Units:         sortedDistinct(obj.Spec.Units),
@@ -263,6 +265,10 @@ func progressOf(obj achievementObject[achievementProgressSpec]) achievements.Pro
 		SchemaVersion: int(obj.Spec.SchemaVersion),
 		Version:       obj.Metadata.ResourceVersion,
 	}
+	if obj.Spec.Points == nil && p.SchemaVersion == achievements.ProgressSchemaVersion {
+		p.MissingFields = []string{achievements.FieldPoints}
+	}
+	return p
 }
 
 // A version 1 row predates points and starts at 0.

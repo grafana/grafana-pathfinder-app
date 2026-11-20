@@ -115,6 +115,9 @@ func createReturnsRow(t *testing.T, s achievements.Store) {
 	if row.AchievementID != "a" || len(row.TierIDs) != 0 || len(row.Units) != 0 || row.Points != 0 || row.SchemaVersion != achievements.ProgressSchemaVersion {
 		t.Fatalf("created row = %+v", row)
 	}
+	if achievements.Classify(row) != achievements.ShapeCurrent {
+		t.Fatalf("created row = %+v, want a current shape", row)
+	}
 	loaded := mustLoad(t, s, alice, "a")
 	if loaded.Version != row.Version {
 		t.Fatalf("loaded version %q, created version %q", loaded.Version, row.Version)

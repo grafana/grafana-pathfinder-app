@@ -218,9 +218,20 @@ down. The package does no I/O: storage and
 admission are interfaces for the plugin's App Platform store to implement, so it is tested on its own with
 golden tables and `testdata/bundle.json`.
 `pkg/services/achievement_store.go` is the App Platform `Store` adapter (`pkg/plugin/achievements_store.go` wraps it) (compare-and-swap on progress; a
-409 on an award create returns `ErrExists`, meaning already held; a schema version 2 progress row without
-`points` is an error, so a kind that drops the field fails at the first create, or at a version 1 row's upgrade save, before a unit is spent) and `pkg/achievements/storetest` holds the
+409 on an award create returns `ErrExists`, meaning already held) and `pkg/achievements/storetest` holds the
 contract every `Store` must pass, with an in-memory implementation.
+A progress row's version always comes from its explicit `schemaVersion`, never from its shape. Migrations are
+keyed off that version (`pkg/achievements/shape.go`); a field-presence check only detects a required field the
+deployed kind pruned within the current version. The store reports it in `Progress.MissingFields`, never as an
+error, and `Classify` sorts every row as current, repairable (older version, or a required field missing) or
+newer (left alone as `record_newer`). `Normalize` is the one pure repair: it applies the migrations, fills
+required-field defaults, keeps held tiers and stamps the current version. The evaluator has one repair path:
+a repairable row is saved as `Normalize(row)` before scoring, adding no unit, points or award; a conflict
+reloads and reclassifies, and an acknowledgement that cannot be read is re-read. The store checks every create
+and save acknowledgement of a row it wrote in full: one that comes back without a required field proves the
+kind does not serve it, so the store logs a Warn naming the field and returns `ErrFieldUnserved`, the event is
+`store_unavailable`, and nothing is spent. A stranded row heals on the first event after the kind serves the
+field. `/my` is read-only: it shows `Normalize(row)` for a repairable row and never writes a repair.
 
 The sibling frontend rule (browser reads proxied, admin writes direct) is documented once in
 AGENTS.md ("App Platform access") and `docs/design/BACKEND_PROXY_PATTERN.md`; not restated here.

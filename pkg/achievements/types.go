@@ -51,6 +51,9 @@ type Progress struct {
 	// to 0 when that tier is earned.
 	Points        int
 	SchemaVersion int
+	// MissingFields names required fields of the current version that the
+	// stored row lacked; Classify reports such a row as repairable.
+	MissingFields []string
 	// Version is the store's opaque compare-and-swap token.
 	Version string
 }

@@ -234,10 +234,6 @@ func (a *App) handleMyAchievements(w http.ResponseWriter, r *http.Request) {
 			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
 			return
 		}
-		if errors.Is(err, errAchievementPointsUnserved) {
-			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
-			return
-		}
 		if isTerminalCompletionError(err) {
 			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
 			return
