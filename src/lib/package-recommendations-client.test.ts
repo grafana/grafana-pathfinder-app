@@ -1,6 +1,7 @@
 import { recordPackageIndex } from './telemetry/facade';
 jest.mock('./telemetry/facade', () => ({ recordPackageIndex: jest.fn() }));
 jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'default' },
   getBackendSrv: jest.fn(),
 }));
 
@@ -26,6 +27,21 @@ const samplePayload = {
     },
   ],
 };
+
+it.each([401, 403, 404])('serves public content when the SDK route returns %i', async (status) => {
+  mockGet.mockRejectedValueOnce({ status }).mockResolvedValueOnce(samplePayload);
+  expect((await fetchOnlinePackageRecommendations()).packages).toEqual(samplePayload.packages);
+  expect(mockGet.mock.calls.map(([url]) => url)).toEqual([
+    expect.stringContaining('/apis/'),
+    '/api/plugins/grafana-pathfinder-app/resources/package-recommendations',
+  ]);
+});
+
+it('reports a failing SDK feed without issuing a second request', async () => {
+  mockGet.mockRejectedValueOnce({ status: 500 });
+  expect((await fetchOnlinePackageRecommendations()).available).toBe(false);
+  expect(mockGet).toHaveBeenCalledTimes(1);
+});
 
 it('explicit retry recovers from a sticky failure through the existing endpoint', async () => {
   mockGet.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(samplePayload);
@@ -78,7 +94,7 @@ describe('fetchOnlinePackageRecommendations', () => {
     const result = await fetchOnlinePackageRecommendations();
 
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/plugins/grafana-pathfinder-app/resources/package-recommendations',
+      '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/package-recommendations',
       undefined,
       undefined,
       expect.objectContaining({ showErrorAlert: false })

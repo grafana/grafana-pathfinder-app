@@ -5,7 +5,6 @@ export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
 // Backend API URL for plugin resource endpoints
 // Grafana routes backend resource calls through /api/plugins/{pluginId}/resources/
-export const PLUGIN_BACKEND_URL = `/api/plugins/${pluginJson.id}/resources`;
 
 // Default configuration values
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
