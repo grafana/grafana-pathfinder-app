@@ -1,6 +1,8 @@
 package achievements
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"maps"
 	"slices"
 	"strconv"
@@ -9,6 +11,9 @@ import (
 
 // The AchievementProgress CRD caps a unit at 520 characters, unit prefix included.
 const maxUnitIDBytes = 520
+
+// digestMarker starts the key of a unit too long to store whole; a length-prefixed key starts with a digit.
+const digestMarker = "#"
 
 type outcome struct {
 	decision Decision
@@ -21,6 +26,9 @@ type outcome struct {
 // stored progress. Only the lowest tier not held accrues, and an event earns at
 // most that tier; points past its goal do not carry over.
 func evaluate(d *Definition, stored Progress, ev Event) outcome {
+	if stored.SchemaVersion > 0 && stored.SchemaVersion < ProgressSchemaVersion {
+		stored.Units = nil
+	}
 	held := heldSet(stored.TierIDs)
 	ignored := func(reason Reason) outcome {
 		return outcome{decision: d.decision(KindIgnored, reason, nil, held, stored.Points)}
@@ -244,7 +252,8 @@ func (r *Rule) unitID(ev Event) (string, bool) {
 	}
 	id := r.unit + ":" + key.String()
 	if len(id) > maxUnitIDBytes {
-		return "", false
+		sum := sha256.Sum256([]byte(key.String()))
+		id = r.unit + ":" + digestMarker + hex.EncodeToString(sum[:])
 	}
 	return id, true
 }

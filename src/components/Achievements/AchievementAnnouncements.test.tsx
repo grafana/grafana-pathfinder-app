@@ -137,9 +137,22 @@ describe('AchievementAnnouncementHost', () => {
     expect(within(toast).getByText('4 of 5 toward the next tier')).toBeInTheDocument();
     expect(within(toast).getByTestId('achievement-badge-image')).toHaveAttribute(
       'src',
-      'https://interactive-learning.grafana.net/achievements/art/guides-finished-2.svg'
+      'https://interactive-learning.grafana.net/achievements/art/guides-finished-1.svg'
     );
     expect(screen.queryByTestId(testIds.achievements.overlay)).not.toBeInTheDocument();
+  });
+
+  it("shows the next tier's art when two tiers report the same progress", async () => {
+    render(<AchievementAnnouncementHost />);
+    const art = () =>
+      within(screen.getAllByTestId(testIds.achievements.toast('guides-finished')).at(-1)!)
+        .getByTestId('achievement-badge-image')
+        .getAttribute('src');
+    await announce(response('increment', [], false, { units: 4, next: 5 }));
+    expect(art()).toBe('https://interactive-learning.grafana.net/achievements/art/guides-finished-1.svg');
+    await announce(response('award', ['bronze']));
+    await announce(response('increment', [], false, { units: 4, next: 5 }));
+    expect(art()).toBe('https://interactive-learning.grafana.net/achievements/art/guides-finished-2.svg');
   });
 
   it('replaces a showing progress toast when the achievement is then awarded', async () => {

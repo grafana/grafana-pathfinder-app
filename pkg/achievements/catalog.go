@@ -356,7 +356,7 @@ func (c Condition) validateValue(where string, field Field) []error {
 	return nil
 }
 
-// Dormant lists the achievements whose every rule is on a pair that nothing emits.
+// Dormant lists the achievements whose first tier has no rule on a pair something emits.
 func (c *Catalog) Dormant(emitted []Pair) []string {
 	live := map[Pair]bool{}
 	for _, p := range emitted {
@@ -365,7 +365,7 @@ func (c *Catalog) Dormant(emitted []Pair) []string {
 	var ids []string
 	for i := range c.Achievements {
 		d := &c.Achievements[i]
-		if !d.anyPair(func(p Pair) bool { return live[p] }) {
+		if !d.firstTierHasPair(func(p Pair) bool { return live[p] }) {
 			ids = append(ids, d.ID)
 		}
 	}
@@ -374,10 +374,21 @@ func (c *Catalog) Dormant(emitted []Pair) []string {
 
 func (d *Definition) anyPair(f func(Pair) bool) bool {
 	for _, t := range d.Tiers {
-		for _, r := range t.Rules {
-			if f(Pair{r.Entity, r.Action}) {
-				return true
-			}
+		if t.anyPair(f) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *Definition) firstTierHasPair(f func(Pair) bool) bool {
+	return len(d.Tiers) > 0 && d.Tiers[0].anyPair(f)
+}
+
+func (t *Tier) anyPair(f func(Pair) bool) bool {
+	for _, r := range t.Rules {
+		if f(Pair{r.Entity, r.Action}) {
+			return true
 		}
 	}
 	return false

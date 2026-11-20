@@ -169,6 +169,11 @@ func (a *App) handleAchievementEvent(w http.ResponseWriter, r *http.Request) {
 		a.writeRateLimited(w, limited.retryAfter)
 		return
 	}
+	if errors.Is(err, errAchievementPointsUnserved) {
+		a.ctxLogger(r.Context()).Warn("achievement progress rows carry no points field; the AchievementProgress kind on this backend does not serve it", "error", err)
+		a.writeError(w, "busy", http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil {
 		a.ctxLogger(r.Context()).Warn("achievement evaluation failed", "error", err)
 		a.writeError(w, "busy", http.StatusServiceUnavailable)
@@ -231,6 +236,11 @@ func (a *App) handleMyAchievements(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, errAchievementRowMismatch) {
 			// A retry reads the same row, so this stands until the row is removed.
 			a.ctxLogger(r.Context()).Warn("achievement row names another user or achievement", "error", err)
+			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
+			return
+		}
+		if errors.Is(err, errAchievementPointsUnserved) {
+			a.ctxLogger(r.Context()).Warn("achievement progress rows carry no points field; the AchievementProgress kind on this backend does not serve it", "error", err)
 			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
 			return
 		}

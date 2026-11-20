@@ -210,10 +210,11 @@ func TestDormant(t *testing.T) {
 	}{
 		{"nothing emitted: all dormant", nil, "dash-builder,well-rounded,alert-starter,journey,guide-routes"},
 		{"only dashboards emitted", []Pair{{"dashboards", "created"}}, "well-rounded,alert-starter,journey,guide-routes"},
-		{"a journey is live on any tier's pair", []Pair{{"contact-points", "created"}}, "dash-builder,well-rounded,alert-starter,guide-routes"},
-		{"guides emitted: one tier's rule keeps an achievement live", []Pair{{"guides", "completed"}}, "alert-starter"},
+		{"a later tier's pair alone leaves a journey dormant", []Pair{{"contact-points", "created"}}, "dash-builder,well-rounded,alert-starter,journey,guide-routes"},
+		{"the first tier's pair makes a journey live", []Pair{{"folders", "created"}}, "dash-builder,well-rounded,alert-starter,guide-routes"},
+		{"guides emitted: a first-tier rule keeps an achievement live", []Pair{{"guides", "completed"}}, "alert-starter,journey"},
 		{"a pair no definition uses changes nothing", []Pair{{"widgets", "created"}}, "dash-builder,well-rounded,alert-starter,journey,guide-routes"},
-		{"everything emitted", []Pair{{"dashboards", "created"}, {"guides", "completed"}, {"alert-rules", "created"}}, ""},
+		{"everything emitted", []Pair{{"dashboards", "created"}, {"guides", "completed"}, {"alert-rules", "created"}, {"folders", "created"}}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

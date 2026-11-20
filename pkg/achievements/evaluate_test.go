@@ -163,9 +163,10 @@ func TestEvaluateGolden(t *testing.T) {
 			want:  `{"achievementId":"well-rounded","decision":"ignored","reason":"invalid_context","awarded":[],"final":false,"units":0,"next":2}`,
 		},
 		{
-			name: "unit id over the cap is invalid_context",
+			name: "unit id over the cap counts under a digest key",
 			id:   "dash-builder", stored: Progress{}, event: dashboardCreated(capCount+"x", 2),
-			want: `{"achievementId":"dash-builder","decision":"ignored","reason":"invalid_context","awarded":[],"final":false,"units":0,"next":1}`,
+			want:        `{"achievementId":"dash-builder","decision":"award","awarded":["bronze"],"final":false,"units":0,"next":4}`,
+			wantChanged: true,
 		},
 		{
 			name: "unit id of exactly the cap counts",
@@ -392,10 +393,42 @@ func TestEvaluateCountsTheRecordersLongestGuideID(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := &catalog.Achievements[0]
-	source, id := string(repeatByte('s', 253)), string(repeatByte('i', 253))
+	source, id := string(repeatByte('s', 256)), string(repeatByte('i', 256))
 	got := evaluate(d, Progress{AchievementID: d.ID}, guideFinished(source, id))
-	if got.decision.Decision != KindAward || !equalStrings(got.next.Units, []string{unitKey("guide", source, id)}) {
-		t.Errorf("the longest source and id the unit cap admits = %+v, want one counted guide", got.decision)
+	if got.decision.Decision != KindAward || len(got.next.Units) != 1 || len(got.next.Units[0]) > maxUnitIDBytes {
+		t.Errorf("the recorder's longest source and id = %+v units %q, want one counted guide within the cap", got.decision, got.next.Units)
+	}
+}
+
+func TestEvaluateKeepsDistinctOverLongKeysDistinct(t *testing.T) {
+	catalog, err := loadCatalog([]byte(guideUnitCatalogJSON), mustRegistry(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &catalog.Achievements[0]
+	long := func(c byte, tail string) string { return string(repeatByte(c, 255)) + tail }
+	first := evaluate(d, Progress{AchievementID: d.ID}, guideFinished(long('s', "a"), long('i', "a")))
+	second := evaluate(d, first.next, guideFinished(long('s', "a"), long('i', "b")))
+	if !second.changed || len(second.next.Units) != 2 || second.next.Units[0] == second.next.Units[1] {
+		t.Errorf("two over-long guides = %+v units %q, want two distinct counted units", second.decision, second.next.Units)
+	}
+	again := evaluate(d, second.next, guideFinished(long('s', "a"), long('i', "b")))
+	if again.decision.Reason != ReasonDuplicate && again.decision.Reason != ReasonComplete {
+		t.Errorf("the same over-long guide again = %+v, want it ignored", again.decision)
+	}
+}
+
+func TestEvaluateDropsVersionOneLedgerKeys(t *testing.T) {
+	catalog := mustCatalog(t)
+	d := &catalog.Achievements[0]
+	legacy := make([]string, maxUnits)
+	for i := range legacy {
+		legacy[i] = fmt.Sprintf("legacy-%03d", i)
+	}
+	stored := Progress{AchievementID: d.ID, TierIDs: []string{"bronze"}, Units: legacy, SchemaVersion: 1}
+	got := evaluate(d, stored, dashboardCreated("a", 1))
+	if !got.changed || got.next.Points != 1 || !equalStrings(got.next.Units, dash("a")) {
+		t.Errorf("version 1 row with a full ledger = %+v units %q points %d, want the new item counted over a cleared ledger", got.decision, got.next.Units, got.next.Points)
 	}
 }
 

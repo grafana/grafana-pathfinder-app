@@ -19,6 +19,8 @@ export interface TierAnnouncement {
 
 export interface ProgressAnnouncement {
   achievementId: string;
+  /** The lowest catalog tier not held: the one the points are toward. */
+  tierId: string;
   kind: 'progress';
   units: number;
   next: number;
@@ -74,10 +76,15 @@ export function selectAnnouncements(
     if (awardedIds.has(decision.achievementId) || !findAchievement(definitions, decision.achievementId)?.earnable) {
       continue;
     }
+    const tierId = tierWorkedToward(definitions, decision.achievementId, held, decisions);
+    if (tierId === undefined) {
+      continue;
+    }
     const current = progress.get(decision.achievementId);
     if (!current || decision.units > current.units) {
       progress.set(decision.achievementId, {
         achievementId: decision.achievementId,
+        tierId,
         kind: 'progress',
         units: decision.units,
         next: decision.next,
@@ -85,6 +92,19 @@ export function selectAnnouncements(
     }
   }
   return [...tiers, ...progress.values()];
+}
+
+function tierWorkedToward(
+  definitions: AchievementDefinitions,
+  achievementId: string,
+  held: readonly HeldTier[],
+  decisions: readonly AchievementDecision[]
+): string | undefined {
+  const taken = new Set<string>([
+    ...held.filter((h) => h.achievementId === achievementId).map((h) => h.tierId),
+    ...decisions.filter((d) => d.achievementId === achievementId).flatMap((d) => d.awarded),
+  ]);
+  return findAchievement(definitions, achievementId)?.tiers.find((tier) => !taken.has(tier.id))?.id;
 }
 
 function selectTierAnnouncements(

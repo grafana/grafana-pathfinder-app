@@ -309,6 +309,8 @@ func TestSubscriptionsAndEarnabilityFollowTheStackVersion(t *testing.T) {
   {"id":"alert-starter","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}]},
   {"id":"guide-finisher","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}]},
   {"id":"mixed","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"},{"entity":"guides","action":"completed","countBy":"resource"}]}]},
+  {"id":"first-live","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]},{"id":"silver","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]}]},
+  {"id":"later-live","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]},{"id":"silver","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}]},
   {"id":"broken","title":"T","description":"D.","streak":1,"tiers":[{"id":"bronze","at":1}]}]}}`)
 	s, err := LoadBundle(data)
 	if err != nil {
@@ -326,10 +328,10 @@ func TestSubscriptionsAndEarnabilityFollowTheStackVersion(t *testing.T) {
 		return strings.Join(names, ",") + " | " + strings.Join(earnable, ",")
 	}
 	for stack, want := range map[string]string{
-		"13.1.0":       "grafana_alerting_rule_created | dash-builder=false,alert-starter=true,guide-finisher=true,mixed=true,broken=false",
-		"13.2.0-90577": "grafana_alerting_rule_created,grafana_dashboard_created | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,broken=false",
-		"14.1.0":       "grafana_alerting_rule_created,grafana_dashboard_created,grafana_dashboard_saved | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,broken=false",
-		"":             "grafana_alerting_rule_created,grafana_dashboard_created,grafana_dashboard_saved | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,broken=false",
+		"13.1.0":       "grafana_alerting_rule_created | dash-builder=false,alert-starter=true,guide-finisher=true,mixed=true,first-live=true,later-live=false,broken=false",
+		"13.2.0-90577": "grafana_alerting_rule_created,grafana_dashboard_created | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,first-live=true,later-live=true,broken=false",
+		"14.1.0":       "grafana_alerting_rule_created,grafana_dashboard_created,grafana_dashboard_saved | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,first-live=true,later-live=true,broken=false",
+		"":             "grafana_alerting_rule_created,grafana_dashboard_created,grafana_dashboard_saved | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,first-live=true,later-live=true,broken=false",
 	} {
 		if got := summary(Stack{GrafanaVersion: stack}); got != want {
 			t.Errorf("stack %q:\n got %s\nwant %s", stack, got, want)

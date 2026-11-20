@@ -646,6 +646,14 @@ func TestMyAchievements_ReadFailures(t *testing.T) {
 			t.Fatalf("status %d retry-after %q capability %+v, want the standing backend-unavailable answer", rr.Code, rr.Header().Get("Retry-After"), body.Capability)
 		}
 	})
+	t.Run("backend serves no points", func(t *testing.T) {
+		mem := newMemAchievements()
+		mem.listErr = fmt.Errorf("read progress: %w", errAchievementPointsUnserved)
+		rr, body := getMyAchievements(t, newAchievementsTestApp(t, mem), achievementsTestUser)
+		if rr.Code != http.StatusOK || rr.Header().Get("Retry-After") != "" || body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
+			t.Fatalf("status %d retry-after %q capability %+v, want the standing backend-unavailable answer", rr.Code, rr.Header().Get("Retry-After"), body.Capability)
+		}
+	})
 	t.Run("transient", func(t *testing.T) {
 		mem := newMemAchievements()
 		mem.listErr = fmt.Errorf("timeout")

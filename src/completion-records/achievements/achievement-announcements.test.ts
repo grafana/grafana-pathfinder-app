@@ -123,8 +123,21 @@ describe('selectAnnouncements', () => {
   it('announces an increment toward a next tier as progress', () => {
     const decisions = [decision({ decision: 'increment', units: 2, next: 3 })];
     expect(selectAnnouncements(decisions, definitions, [])).toEqual([
-      { achievementId: 'dash-builder', kind: 'progress', units: 2, next: 3 },
+      { achievementId: 'dash-builder', tierId: 'bronze', kind: 'progress', units: 2, next: 3 },
     ]);
+  });
+
+  it('announces progress toward the lowest tier not held, so a repeated count is a new announcement', () => {
+    const decisions = [decision({ decision: 'increment', units: 2, next: 3 })];
+    expect(selectAnnouncements(decisions, definitions, [{ achievementId: 'dash-builder', tierId: 'bronze' }])).toEqual([
+      { achievementId: 'dash-builder', tierId: 'silver', kind: 'progress', units: 2, next: 3 },
+    ]);
+  });
+
+  it('announces no progress once every tier is held', () => {
+    const decisions = [decision({ decision: 'increment', units: 2, next: 3 })];
+    const held = ['bronze', 'silver', 'gold'].map((tierId) => ({ achievementId: 'dash-builder', tierId }));
+    expect(selectAnnouncements(decisions, definitions, held)).toEqual([]);
   });
 
   it('skips ignored decisions', () => {
@@ -147,7 +160,7 @@ describe('selectAnnouncements', () => {
       decision({ decision: 'increment', units: 1, next: 3 }),
     ];
     expect(selectAnnouncements(decisions, definitions, [])).toEqual([
-      { achievementId: 'dash-builder', kind: 'progress', units: 2, next: 3 },
+      { achievementId: 'dash-builder', tierId: 'bronze', kind: 'progress', units: 2, next: 3 },
     ]);
   });
 

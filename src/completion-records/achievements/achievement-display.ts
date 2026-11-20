@@ -231,7 +231,7 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
 
 function keyOf(announcement: AchievementAnnouncement): string {
   return announcement.kind === 'progress'
-    ? `${announcement.achievementId}:progress:${announcement.units}`
+    ? `${announcement.achievementId}:progress:${announcement.tierId}:${announcement.units}`
     : `${announcement.achievementId}:${announcement.tierId}`;
 }
 
@@ -274,7 +274,13 @@ function receiveRelayed(message: unknown): void {
   }
   const announcement: AchievementAnnouncement =
     message.kind === 'progress'
-      ? { achievementId: message.achievementId, kind: 'progress', units: message.units, next: message.next }
+      ? {
+          achievementId: message.achievementId,
+          tierId: message.tierId,
+          kind: 'progress',
+          units: message.units,
+          next: message.next,
+        }
       : { achievementId: message.achievementId, tierId: message.tierId, kind: message.kind, final: message.final };
   if (!markAnnounced(announcement)) {
     return;
@@ -299,7 +305,7 @@ function isRelayedAnnouncement(value: unknown): value is RelayedAnnouncement {
     return false;
   }
   if (a.kind === 'progress') {
-    return Number.isInteger(a.units) && Number.isInteger(a.next);
+    return typeof a.tierId === 'string' && Number.isInteger(a.units) && Number.isInteger(a.next);
   }
   return (a.kind === 'award' || a.kind === 'tier_up') && typeof a.tierId === 'string' && typeof a.final === 'boolean';
 }
