@@ -185,6 +185,7 @@ def main():
         subprocess.run(['go', 'test', './pkg/provider', '-run', '^TestFrozenFidelityCache$', '-count=1'], cwd=target, env=env, check=True)
         if not compare(transcripts[1]['cache'], json.loads(Path(str(output) + '.cache').read_text())):
             raise RuntimeError('production cache TTL mutation was not detected')
+        cache.write_text(cache_source)
         completion_client = target / 'pkg/resourceaccess/completions.go'
         client_source = completion_client.read_text()
         pagination_needle = 'Continue: page.Continue'
