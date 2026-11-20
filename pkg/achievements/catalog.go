@@ -287,6 +287,9 @@ func (m *Matcher) validate(where, counterUnit string, registry *Registry) []erro
 	switch {
 	case m.CountBy.occurrence:
 		unit = unitOccurrence
+		if len(action.Sources) > 1 {
+			errs = append(errs, fmt.Errorf("%s: %s.%s has %d sources, so count it by resource; by occurrence a renamed event counts twice", where, m.Entity, m.Action, len(action.Sources)))
+		}
 	case m.CountBy.resource == "":
 		if len(action.Resources) == 0 {
 			return append(errs, fmt.Errorf(`%s: countBy "resource" on %s.%s, which declares no resources`, where, m.Entity, m.Action))

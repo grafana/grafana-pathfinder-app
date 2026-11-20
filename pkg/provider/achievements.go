@@ -83,7 +83,11 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 		store := services.NewAchievementStore(clients, services.AchievementWriter{Namespace: caller.Namespace, OrgID: caller.OrgID, UserLogin: caller.Login, UserDisplayName: caller.DisplayName}, time.Now)
 		switch operation {
 		case "definitions":
-			return write(200, achievementDefinitionsResponse{Version: defs.Version, ArtBase: "https://interactive-learning.grafana.net/achievements/art/", Achievements: append([]achievements.Display{}, defs.Display...)})
+			stack := achievements.Stack{}
+			if req.URL != nil {
+				stack.GrafanaVersion = req.URL.Query().Get("grafanaVersion")
+			}
+			return write(200, achievementDefinitionsResponse{Version: defs.Version, ArtBase: "https://interactive-learning.grafana.net/achievements/art/", Achievements: append([]achievements.Display{}, defs.DisplayFor(stack)...), Sources: defs.Registry.Subscriptions(stack)})
 		case "my":
 			rows, err := (&services.AchievementReader{Store: store, Catalog: defs.Catalog, Now: time.Now}).ListMine(ctx, person)
 			if err != nil {
@@ -110,6 +114,9 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 				return fail(400, "invalid-event")
 			}
 			event, err := defs.Registry.NewEvent(request, time.Now())
+			if errors.Is(err, achievements.ErrNotCounted) {
+				return write(http.StatusOK, services.AchievementEventsResponse{EventID: request.EventID, Decisions: []achievements.Decision{}})
+			}
 			if err != nil {
 				return fail(400, "invalid-event")
 			}

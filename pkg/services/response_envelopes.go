@@ -33,9 +33,10 @@ type CatalogueResponse struct {
 }
 
 type AchievementDefinitionsResponse struct {
-	Version      string                 `json:"version"`
-	ArtBase      string                 `json:"artBase"`
-	Achievements []achievements.Display `json:"achievements"`
+	Version      string                            `json:"version"`
+	ArtBase      string                            `json:"artBase"`
+	Achievements []achievements.Display            `json:"achievements"`
+	Sources      []achievements.SourceSubscription `json:"sources"`
 }
 
 type CatalogueCapability struct {

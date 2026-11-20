@@ -9,13 +9,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { readPackageSidecars } from '../cli/utils/package-io/sidecars';
 import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
 import { ContentJsonSchema, ManifestJsonSchema } from '../types/package.schema';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
-import type { DependencyList, ManifestJson } from '../types/package.types';
+import type { ContentJson, DependencyList, ManifestJson } from '../types/package.types';
 import { SEMVER_PATTERN } from './condition-validator';
 import type { ValidationError, ValidationWarning } from './errors';
 import { readJsonFile } from './package-io';
+import type { SidecarFindingCode } from './sidecar/codes';
+import { validateSidecars } from './sidecar';
 import { validateGuide, type ValidationResult } from './validate-guide';
 
 export type MessageSeverity = 'error' | 'warn' | 'info';
@@ -49,7 +52,9 @@ export type PackageValidationMessageCode =
   /** A dependency-list field (depends/recommends/etc) on the manifest is unset and defaulted to []. */
   | 'manifest_dep_field_defaulted'
   /** The manifest carries a `stats` stamp that does not match the stamp shape. */
-  | 'manifest_stats_malformed';
+  | 'manifest_stats_malformed'
+  /** A translation sidecar finding; the codes are declared in `sidecar/codes.ts`. */
+  | SidecarFindingCode;
 
 export interface PackageValidationResult {
   isValid: boolean;
@@ -128,6 +133,8 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
   // --- Validate manifest.json (optional) ---
 
+  let validManifest: ManifestJson | undefined;
+
   if (fs.existsSync(manifestPath)) {
     const manifestRead = readJsonFile(manifestPath, ManifestJsonSchema);
     if (!manifestRead.ok) {
@@ -153,6 +160,7 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
       }
     } else {
       const manifest = manifestRead.data;
+      validManifest = manifest;
 
       if (manifest.id !== content.id) {
         errors.push({
@@ -176,6 +184,17 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
       message: 'No manifest.json found — package has content only (standalone guide)',
     });
   }
+
+  // --- Translation sidecars (i18n/*.json) ---
+
+  const sidecarResult = validateSidecars({
+    // ContentJsonSchema parsed the blocks, but its inferred type widens them to unknown.
+    content: content as ContentJson,
+    manifest: validManifest,
+    sidecars: readPackageSidecars(packageDir),
+  });
+  errors.push(...sidecarResult.errors);
+  messages.push(...sidecarResult.messages);
 
   // --- Asset reference validation ---
 

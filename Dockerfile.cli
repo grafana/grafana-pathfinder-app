@@ -46,6 +46,10 @@ COPY src/lib/runtime-manifest.ts ./src/lib/runtime-manifest.ts
 # e2e preflight shares with the docs panel.
 COPY src/lib/guide-stats ./src/lib/guide-stats
 COPY src/lib/guide-version.ts ./src/lib/guide-version.ts
+# The sidecar validation seam shares the source hash definition with the
+# compile step; hash.util.ts is the digest that definition calls.
+COPY src/lib/guide-translation ./src/lib/guide-translation
+COPY src/lib/hash.util.ts ./src/lib/hash.util.ts
 
 RUN npm ci --no-audit --no-fund
 
