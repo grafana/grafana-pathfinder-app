@@ -47,3 +47,7 @@ On the pre-SDK main branch, the `withFrozenTime` helper in `pkg/plugin/package_r
 ## CLI e2e symlink tests fail on Windows with `EPERM`
 
 `src/cli/e2e/local-cloud-cli.test.ts` and `src/cli/e2e/e2e-local-cloud-source.test.ts` create symbolic links to test link confinement. Windows only allows that with Developer Mode turned on (or from an elevated shell), so without it every test that creates a symbolic link fails with `EPERM: operation not permitted, symlink`. If every failing test in these files shows that error, the failure is environmental: turn on Developer Mode or rely on CI, which runs on Linux.
+
+## SDK fidelity reports a changed mutation target
+
+The negative controls in `scripts/sdk-fidelity/run.py` deliberately alter one production expression in a temporary checkout. After a refactor, find the control named by the failure, point it at the equivalent production expression, and rerun `python3 scripts/sdk-fidelity/run.py`. The unmodified build must match the legacy baseline and the isolated mutation must still be detected. Keep the frozen baseline until the compatibility window closes and the team has retained equivalent coverage for supported behavior.
