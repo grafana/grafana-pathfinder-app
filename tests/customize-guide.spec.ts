@@ -1,4 +1,4 @@
-import { matchesBackendRoute, matchesGuideResource } from './helpers/backend-route';
+import { matchesBackendRoute } from './helpers/backend-route';
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { StorageKeys } from '../src/lib/storage-keys';
@@ -54,17 +54,20 @@ for (const repair of [false, true]) {
         configurable: true,
         get: () => bootData,
         set: (value: typeof window.grafanaBootData) => {
-          value.settings.featureToggles['aggregation.pathfinderbackend-ext-grafana-app.enabled'] = true;
+          value.settings.featureToggles['appplugins.loadAppManifest'] = true;
+          value.settings.featureToggles['appplugins.registerAPIServer'] = true;
+          value.settings.namespace = 'default';
           bootData = value;
         },
       });
     }, repair);
+    await page.route(matchesBackendRoute('health'), (route) => route.fulfill({ json: { status: 'ok' } }));
     await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
       route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
     );
     const writes: unknown[] = [];
-    await page.route(matchesGuideResource, async (route) => {
-      if (route.request().method() === 'GET' && matchesBackendRoute('custom-guide')(new URL(route.request().url()))) {
+    await page.route(matchesBackendRoute('custom-guide'), async (route) => {
+      if (route.request().method() === 'GET') {
         const name = new URL(route.request().url()).searchParams.get('name');
         const stored = (writes as Array<{ metadata?: { name?: string } }>)
           .filter((w) => w.metadata?.name === name)
@@ -73,13 +76,9 @@ for (const repair of [false, true]) {
           ? route.fulfill({ json: stored })
           : route.fulfill({ status: 404, json: { message: 'not found' } });
       }
-      if (route.request().method() === 'GET') {
-        await route.fulfill({ json: { items: writes.slice(-1) } });
-      } else {
-        const resource = route.request().postDataJSON();
-        writes.push(resource);
-        await route.fulfill({ json: resource });
-      }
+      const resource = route.request().postDataJSON();
+      writes.push(resource);
+      await route.fulfill({ json: resource });
     });
     await page.goto('/a/grafana-pathfinder-app/fullscreen?doc=bundled%3Awelcome-to-grafana');
     const hasAssistant = await page.evaluate(() =>

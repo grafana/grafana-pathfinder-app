@@ -1,3 +1,4 @@
+import { discoverSdkBackend } from '../lib/backend-routes';
 import { of, throwError } from 'rxjs';
 import { AppPlatformPackageResolver } from './app-platform-resolver';
 import { resolveStartingLocation } from '../recovery/starting-location';
@@ -11,7 +12,10 @@ const asPanelManifest = (manifest?: ManifestJson): Record<string, unknown> | und
   manifest as Record<string, unknown> | undefined;
 
 let mockNamespace: string | undefined = 'stacks-123';
-let mockFeatureToggles: Record<string, boolean> = { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true };
+let mockFeatureToggles: Record<string, boolean> = {
+  'appplugins.loadAppManifest': true,
+  'appplugins.registerAPIServer': true,
+};
 const mockFetch = jest.fn();
 
 jest.mock('@grafana/runtime', () => ({
@@ -40,10 +44,16 @@ const okResource = (overrides: Record<string, unknown> = {}) => ({
   },
 });
 
+beforeAll(async () => {
+  mockFetch.mockReturnValueOnce(of({ data: { status: 'ok' } }));
+  await discoverSdkBackend();
+  mockFetch.mockClear();
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockNamespace = 'stacks-123';
-  mockFeatureToggles = { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true };
+  mockFeatureToggles = { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true };
 });
 
 it.each(['metadata-only', true] as const)(
@@ -90,8 +100,9 @@ describe('AppPlatformPackageResolver — no loadContent', () => {
     expect(result.repository).toBeUndefined();
   });
 
-  it('declines (not-found) when the GAP aggregation toggle is off', async () => {
-    mockFeatureToggles = {};
+  it('declines (not-found) for a namespace without successful SDK discovery', async () => {
+    mockNamespace = 'stacks-456';
+    mockFetch.mockReturnValueOnce(throwError(() => ({ status: 503 })));
     const resolver = new AppPlatformPackageResolver();
     const result = await resolver.resolve('fe-alerting-01', { loadContent: true });
 
@@ -100,7 +111,8 @@ describe('AppPlatformPackageResolver — no loadContent', () => {
       return;
     }
     expect(result.error.code).toBe('not-found');
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(expect.objectContaining({ url: expect.stringMatching(/\/health$/) }));
     expect(result.repository).toBeUndefined();
   });
 });
@@ -698,4 +710,20 @@ describe('AppPlatformPackageResolver — full content', () => {
     }
     expect(result.repository).toBe('app-platform');
   });
+});
+
+it('recovers a custom guide after an earlier SDK health failure', async () => {
+  mockNamespace = 'stacks-789';
+  const clock = jest.spyOn(Date, 'now');
+  try {
+    mockFetch.mockReturnValueOnce(throwError(() => ({ status: 503 })));
+    await discoverSdkBackend();
+    clock.mockReturnValue(Date.now() + 6000);
+    mockFetch.mockReturnValueOnce(of({ data: { status: 'ok' } })).mockReturnValueOnce(of(okResource()));
+    const result = await new AppPlatformPackageResolver().resolve('fe-alerting-01', { loadContent: true });
+    expect(result.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  } finally {
+    clock.mockRestore();
+  }
 });

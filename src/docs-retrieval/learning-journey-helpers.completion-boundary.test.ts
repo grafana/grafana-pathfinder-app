@@ -100,6 +100,7 @@ jest.mock('../global-state/completion-store', () => ({
   evictContentCache: jest.fn(),
 }));
 
+import { discoverSdkBackend } from '../lib/backend-routes';
 import { publishGuideIndex, evictAllGuideIndexes } from '../global-state/active-guide-index';
 import { computeGuideBlockIndex } from '../lib/guide-stats';
 import { of } from 'rxjs';
@@ -1190,22 +1191,26 @@ describe('surface emitter carries the resolved repository end-to-end (repository
 // lands on fallbackSource 'bundled', and the CLI's stamped default lands on
 // 'interactive-tutorials'.
 describe('catalogue-launched path (App Platform provenance)', () => {
-  const GAP_TOGGLE = 'aggregation.pathfinderbackend-ext-grafana-app.enabled';
   const featureToggles = config.featureToggles as Record<string, boolean>;
 
   async function launchManifestFromCatalogue(manifest: Record<string, unknown>): Promise<Record<string, unknown>> {
-    featureToggles[GAP_TOGGLE] = true;
+    featureToggles['appplugins.loadAppManifest'] = true;
+    featureToggles['appplugins.registerAPIServer'] = true;
+    config.namespace = 'stacks-123';
     invalidateCustomGuideRepositoryCache();
     setBackendSrv({
+      fetch: () => of({ data: { status: 'ok' } }),
       get: async () => ({ capability: { available: true }, guides: [{ id: 'fe-alerting-path', manifest }] }),
     } as unknown as BackendSrv);
 
+    await discoverSdkBackend();
     const [entry] = await fetchCustomGuideRepository('stacks-123');
     return { ...entry!.manifest, id: entry!.id };
   }
 
   afterEach(() => {
-    delete featureToggles[GAP_TOGGLE];
+    delete featureToggles['appplugins.loadAppManifest'];
+    delete featureToggles['appplugins.registerAPIServer'];
     invalidateCustomGuideRepositoryCache();
   });
 

@@ -12,7 +12,7 @@ import { fetchGuideResource, finishGuideLoad } from '../lib/telemetry/guide-load
  * knows about the 7 guides shipped with the plugin).
  *
  * @coupling Types: PackageResolver, PackageResolution in package.types.ts
- * @coupling API: GET /package-recommendations served by pkg/plugin/package_recommendations.go
+ * @coupling API: GET /package-recommendations served by pkg/publiccontent/recommendations.go
  */
 
 import {

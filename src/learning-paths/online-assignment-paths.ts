@@ -3,7 +3,7 @@
  * against the public online package index. `resolveNavLinks` is injected because
  * Tier 2 engines may not import each other.
  *
- * @coupling Backend: resolveOnlinePackageGuides in pkg/plugin/package_recommendations.go
+ * @coupling Backend: resolveOnlinePackageGuides in pkg/publiccontent/recommendations.go
  */
 import { buildPackageFileUrl, fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 import { getMilestoneSlug } from '../lib/learning-journey-url';

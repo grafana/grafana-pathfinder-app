@@ -1,16 +1,16 @@
 package main
 
 import (
+	"github.com/grafana/grafana-pathfinder-app/pkg/generated/manifestdata"
+	"github.com/grafana/grafana-pathfinder-app/pkg/sdkingress"
 	"os"
 
 	"github.com/grafana/grafana-app-sdk/logging"
 	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 
-	"github.com/grafana/grafana-pathfinder-app/pkg/generated/manifestdata"
-	"github.com/grafana/grafana-pathfinder-app/pkg/plugin"
 	"github.com/grafana/grafana-pathfinder-app/pkg/provider"
-	"github.com/grafana/grafana-pathfinder-app/pkg/sdkingress"
+	"github.com/grafana/grafana-pathfinder-app/pkg/publiccontent"
 )
 
 func main() {
@@ -24,10 +24,10 @@ func main() {
 		os.Exit(1)
 	}
 	if err := sdkplugin.Run(
-		provider.New(plugin.OnlineAssignmentSource(), plugin.InsightsOnlineAssignmentSource, plugin.ReadRecommendations, plugin.AchievementDefinitions()),
+		provider.New(publiccontent.OnlineAssignmentSource(), publiccontent.InsightsOnlineAssignmentSource, publiccontent.ReadRecommendations, publiccontent.AchievementDefinitions()),
 		sdkplugin.WithPluginID(pluginID),
 		sdkplugin.WithAuthenticator(auth),
-		sdkplugin.WithAppFunc(plugin.NewApp),
+		sdkplugin.WithAppFunc(publiccontent.NewPublicFeedInstance),
 	); err != nil {
 		log.DefaultLogger.Error(err.Error())
 		os.Exit(1)
