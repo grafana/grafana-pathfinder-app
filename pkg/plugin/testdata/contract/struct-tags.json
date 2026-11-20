@@ -193,6 +193,52 @@
       "omitempty": false
     }
   ],
+  "SourceCondition": [
+    {
+      "field": "Property",
+      "json": "property",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Op",
+      "json": "op",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Value",
+      "json": "value",
+      "type": "interface {}",
+      "wire": "json",
+      "omitempty": false
+    }
+  ],
+  "SourceSubscription": [
+    {
+      "field": "Interaction",
+      "json": "interaction",
+      "type": "string",
+      "wire": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Properties",
+      "json": "properties",
+      "type": "[]string",
+      "wire": "array<string>",
+      "omitempty": false
+    },
+    {
+      "field": "When",
+      "json": "when",
+      "type": "[]achievements.SourceCondition",
+      "wire": "array<object>",
+      "omitempty": true
+    }
+  ],
   "achievementAward": [
     {
       "field": "AchievementID",
@@ -258,6 +304,13 @@
       "field": "Achievements",
       "json": "achievements",
       "type": "[]achievements.Display",
+      "wire": "array<object>",
+      "omitempty": false
+    },
+    {
+      "field": "Sources",
+      "json": "sources",
+      "type": "[]achievements.SourceSubscription",
       "wire": "array<object>",
       "omitempty": false
     }
