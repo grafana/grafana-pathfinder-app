@@ -40,7 +40,7 @@ function response(
   decision: 'award' | 'tier_up' | 'increment',
   awarded: string[],
   final = false,
-  progress: { units: number; next: number | null } = { units: 1, next: null }
+  progress: { units: number; next: number | null; nextTier?: string } = { units: 1, next: null }
 ): AchievementEventsResponseWire {
   return {
     eventId: 'e',
@@ -60,10 +60,6 @@ beforeEach(() => {
   __resetAchievementDisplayForTests();
   __setAchievementDisplayDepsForTests({
     fetchDefinitions: async () => definitions,
-    fetchMy: async () => ({
-      kind: 'ok',
-      data: { capability: { available: true }, truncated: false, awards: [], progress: [], legacy: [] },
-    }),
   });
 });
 
@@ -136,7 +132,7 @@ describe('AchievementAnnouncementHost', () => {
 
   it('shows a progress toast, worded like the hub, for an increment', async () => {
     render(<AchievementAnnouncementHost />);
-    await announce(response('increment', [], false, { units: 4, next: 5 }));
+    await announce(response('increment', [], false, { units: 4, next: 5, nextTier: 'bronze' }));
     const toast = screen.getByTestId(testIds.achievements.toast('guides-finished'));
     expect(within(toast).getByText('Achievement progress')).toBeInTheDocument();
     expect(within(toast).getByText('Guide finisher')).toBeInTheDocument();
@@ -154,16 +150,16 @@ describe('AchievementAnnouncementHost', () => {
       within(screen.getAllByTestId(testIds.achievements.toast('guides-finished')).at(-1)!)
         .getByTestId('achievement-badge-image')
         .getAttribute('src');
-    await announce(response('increment', [], false, { units: 4, next: 5 }));
+    await announce(response('increment', [], false, { units: 4, next: 5, nextTier: 'bronze' }));
     expect(art()).toBe('https://interactive-learning.grafana.net/achievements/art/guides-finished-1.svg');
     await announce(response('award', ['bronze']));
-    await announce(response('increment', [], false, { units: 4, next: 5 }));
+    await announce(response('increment', [], false, { units: 4, next: 5, nextTier: 'silver' }));
     expect(art()).toBe('https://interactive-learning.grafana.net/achievements/art/guides-finished-2.svg');
   });
 
   it('replaces a showing progress toast when the achievement is then awarded', async () => {
     render(<AchievementAnnouncementHost />);
-    await announce(response('increment', [], false, { units: 2, next: 5 }));
+    await announce(response('increment', [], false, { units: 2, next: 5, nextTier: 'bronze' }));
     await announce(response('award', ['bronze']));
     const toasts = screen.getAllByTestId(testIds.achievements.toast('guides-finished'));
     expect(toasts).toHaveLength(1);
@@ -172,7 +168,7 @@ describe('AchievementAnnouncementHost', () => {
 
   it('removes a showing progress toast when the achievement then tiers up into the overlay', async () => {
     render(<AchievementAnnouncementHost />);
-    await announce(response('increment', [], false, { units: 4, next: 5 }));
+    await announce(response('increment', [], false, { units: 4, next: 5, nextTier: 'bronze' }));
     expect(screen.getByTestId(testIds.achievements.toast('guides-finished'))).toBeInTheDocument();
 
     await announce(response('tier_up', ['silver'], false, { units: 5, next: 15 }));

@@ -69,11 +69,19 @@ describe('announceEvaluated', () => {
   it('announces progress for an increment, and again at the next count', async () => {
     const seen = jest.fn();
     onAchievementAnnounced(seen);
-    const increment = (units: number) => ({
+    const increment = (units: number, nextTier = 'bronze') => ({
       eventId: 'e',
       retry: false,
       decisions: [
-        { achievementId: 'guides-finished', decision: 'increment' as const, awarded: [], final: false, units, next: 5 },
+        {
+          achievementId: 'guides-finished',
+          decision: 'increment' as const,
+          awarded: [],
+          final: false,
+          units,
+          next: 5,
+          nextTier,
+        },
       ],
     });
     await announceEvaluated(increment(2));
@@ -88,16 +96,24 @@ describe('announceEvaluated', () => {
   it('announces the same progress count again for the next tier', async () => {
     const seen = jest.fn();
     onAchievementAnnounced(seen);
-    const increment = (units: number) => ({
+    const increment = (units: number, nextTier = 'bronze') => ({
       eventId: 'e',
       retry: false,
       decisions: [
-        { achievementId: 'guides-finished', decision: 'increment' as const, awarded: [], final: false, units, next: 5 },
+        {
+          achievementId: 'guides-finished',
+          decision: 'increment' as const,
+          awarded: [],
+          final: false,
+          units,
+          next: 5,
+          nextTier,
+        },
       ],
     });
     await announceEvaluated(increment(2));
     await announceEvaluated(tierUp('bronze'));
-    await announceEvaluated(increment(2));
+    await announceEvaluated(increment(2, 'silver'));
     expect(seen.mock.calls.map(([a]) => [a.kind, a.tierId, a.units])).toEqual([
       ['progress', 'bronze', 2],
       ['tier_up', 'bronze', undefined],
@@ -267,7 +283,15 @@ describe('announcements across tabs', () => {
       eventId: 'e',
       retry: false,
       decisions: [
-        { achievementId: 'guides-finished', decision: 'increment', awarded: [], final: false, units: 2, next: 5 },
+        {
+          achievementId: 'guides-finished',
+          decision: 'increment',
+          awarded: [],
+          final: false,
+          units: 2,
+          next: 5,
+          nextTier: 'bronze',
+        },
       ],
     });
     expect(drainer.posted).toEqual([

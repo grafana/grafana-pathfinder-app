@@ -239,7 +239,7 @@ func TestEvaluateReportsAnExistingAwardRowTheHeldSetLacks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"achievementId":"dash-builder","decision":"award","awarded":["bronze"],"final":false,"units":0,"next":4}`
+	want := `{"achievementId":"dash-builder","decision":"award","awarded":["bronze"],"final":false,"units":0,"next":4,"nextTier":"silver"}`
 	if got := decisionJSON(t, decisionFor(t, decisions, "dash-builder")); got != want {
 		t.Errorf("decision\n got %s\nwant %s", got, want)
 	}
@@ -539,5 +539,42 @@ func TestReasonTransient(t *testing.T) {
 	}
 	if Retry([]Decision{{Reason: ReasonDuplicate}}) {
 		t.Error("a non-transient reason must not retry")
+	}
+}
+
+func TestEvaluateUpgradesAVersionOneRowBeforeCounting(t *testing.T) {
+	store := newFakeStore()
+	store.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{"legacy-1", "legacy-2"}, Points: 0, SchemaVersion: 1})
+	ev := newTestEvaluator(t, store, &fakePolicy{})
+	decisions, err := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := decisionFor(t, decisions, "dash-builder"); d.Decision != KindIncrement || d.Units != 1 {
+		t.Errorf("decision = %+v, want one point toward silver", d)
+	}
+	row := store.progress["dash-builder"]
+	if row.SchemaVersion != ProgressSchemaVersion || row.Points != 1 || !equalStrings(row.Units, dash("a")) || !equalStrings(row.TierIDs, []string{"bronze"}) {
+		t.Errorf("row = %+v, want the legacy ledger dropped, the held tier kept and one counted unit", row)
+	}
+	if store.saves != 2 {
+		t.Errorf("saves = %d, want the upgrade save and the counting save", store.saves)
+	}
+}
+
+func TestEvaluateStopsBeforeCountingWhenTheUpgradeSaveFails(t *testing.T) {
+	store := newFakeStore()
+	store.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, SchemaVersion: 1})
+	store.saveErr = errors.New("kind drops points")
+	ev := newTestEvaluator(t, store, &fakePolicy{})
+	decisions, err := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := decisionFor(t, decisions, "dash-builder"); d.Reason != ReasonStoreUnavailable {
+		t.Errorf("decision = %+v, want store_unavailable", d)
+	}
+	if store.saves != 1 || store.awardCalls != 0 || len(store.progress["dash-builder"].Units) != 0 {
+		t.Errorf("saves = %d awards = %d units = %v, want nothing spent", store.saves, store.awardCalls, store.progress["dash-builder"].Units)
 	}
 }

@@ -59,6 +59,7 @@ function decision(overrides: Partial<AchievementDecision>): AchievementDecision 
     final: false,
     units: 0,
     next: null,
+    nextTier: 'bronze',
     ...overrides,
   };
 }
@@ -127,17 +128,21 @@ describe('selectAnnouncements', () => {
     ]);
   });
 
-  it('announces progress toward the lowest tier not held, so a repeated count is a new announcement', () => {
-    const decisions = [decision({ decision: 'increment', units: 2, next: 3 })];
-    expect(selectAnnouncements(decisions, definitions, [{ achievementId: 'dash-builder', tierId: 'bronze' }])).toEqual([
+  it('announces the same count again for the next tier', () => {
+    const decisions = [decision({ decision: 'increment', units: 2, next: 3, nextTier: 'silver' })];
+    expect(selectAnnouncements(decisions, definitions, [])).toEqual([
       { achievementId: 'dash-builder', tierId: 'silver', kind: 'progress', units: 2, next: 3 },
     ]);
   });
 
-  it('announces no progress once every tier is held', () => {
-    const decisions = [decision({ decision: 'increment', units: 2, next: 3 })];
-    const held = ['bronze', 'silver', 'gold'].map((tierId) => ({ achievementId: 'dash-builder', tierId }));
-    expect(selectAnnouncements(decisions, definitions, held)).toEqual([]);
+  it('announces no progress when the backend names no tier', () => {
+    expect(
+      selectAnnouncements(
+        [decision({ decision: 'increment', units: 2, next: 3, nextTier: undefined })],
+        definitions,
+        []
+      )
+    ).toEqual([]);
   });
 
   it('skips ignored decisions', () => {

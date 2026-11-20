@@ -173,7 +173,7 @@ func (d *Definition) decision(kind Kind, reason Reason, awarded []string, held m
 	}
 	if i := d.lowestUnheld(held); i >= 0 {
 		goal := d.Tiers[i].Goal
-		dec.Final, dec.Units, dec.Next = false, points, &goal
+		dec.Final, dec.Units, dec.Next, dec.NextTier = false, points, &goal, d.Tiers[i].ID
 	}
 	return dec
 }

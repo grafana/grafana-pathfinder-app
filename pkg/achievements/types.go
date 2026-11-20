@@ -126,6 +126,8 @@ type Decision struct {
 	Units int `json:"units"`
 	// Next is that tier's goal, nil when Final.
 	Next *int `json:"next"`
+	// NextTier is the id of that tier, empty when Final.
+	NextTier string `json:"nextTier,omitempty"`
 }
 
 // Retry reports whether any decision has a transient reason, so the event stays queued.

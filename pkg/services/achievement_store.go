@@ -85,12 +85,13 @@ type AchievementStore struct {
 	client AchievementResourceClient
 	writer AchievementWriter
 	now    func() time.Time
+	logger log.Logger
 }
 
 var _ achievements.Store = (*AchievementStore)(nil)
 
-func NewAchievementStore(client AchievementResourceClient, writer AchievementWriter, now func() time.Time) *AchievementStore {
-	return &AchievementStore{client: client, writer: writer, now: now}
+func NewAchievementStore(client AchievementResourceClient, writer AchievementWriter, now func() time.Time, logger log.Logger) *AchievementStore {
+	return &AchievementStore{client: client, writer: writer, now: now, logger: logger}
 }
 
 func achievementName(parts ...string) string {
@@ -122,7 +123,7 @@ func (s *AchievementStore) LoadProgress(ctx context.Context, person achievements
 		if err != nil {
 			return nil, err
 		}
-		obj, err := decodeAchievementProgress(body)
+		obj, err := s.decodeProgress(body)
 		if err != nil {
 			return nil, err
 		}
@@ -144,7 +145,7 @@ func (s *AchievementStore) CreateProgress(ctx context.Context, person achievemen
 	if s.client.IsConflict(err) {
 		return achievements.Progress{}, achievements.ErrExists
 	}
-	return writtenProgress(body, err)
+	return s.writtenProgress(body, err)
 }
 
 func (s *AchievementStore) SaveProgress(ctx context.Context, person achievements.Person, p achievements.Progress) (achievements.Progress, error) {
@@ -164,7 +165,7 @@ func (s *AchievementStore) SaveProgress(ctx context.Context, person achievements
 	if err != nil {
 		return achievements.Progress{}, err
 	}
-	stored, err := decodeAchievementProgress(body)
+	stored, err := s.decodeProgress(body)
 	if errors.Is(err, ErrAchievementPointsUnserved) {
 		return achievements.Progress{}, err
 	}
@@ -225,18 +226,18 @@ func (s *AchievementStore) progressObject(person achievements.Person, p achievem
 	}
 }
 
-func writtenProgress(body []byte, err error) (achievements.Progress, error) {
+func (s *AchievementStore) writtenProgress(body []byte, err error) (achievements.Progress, error) {
 	if err != nil {
 		return achievements.Progress{}, err
 	}
-	obj, err := decodeAchievementProgress(body)
+	obj, err := s.decodeProgress(body)
 	if err != nil {
 		return achievements.Progress{}, err
 	}
 	return progressOf(obj), nil
 }
 
-func decodeAchievementProgress(body []byte) (achievementObject[achievementProgressSpec], error) {
+func (s *AchievementStore) decodeProgress(body []byte) (achievementObject[achievementProgressSpec], error) {
 	var obj achievementObject[achievementProgressSpec]
 	if err := json.Unmarshal(body, &obj); err != nil {
 		return obj, fmt.Errorf("achievement store: decode progress: %w", err)
@@ -247,7 +248,7 @@ func decodeAchievementProgress(body []byte) (achievementObject[achievementProgre
 	// A kind that does not declare points prunes it silently, and evaluating on
 	// would spend ledger units that never add up to a tier.
 	if obj.Spec.Points == nil && obj.Spec.SchemaVersion >= achievements.ProgressSchemaVersion {
-		log.DefaultLogger.Warn("achievement progress rows carry no points field; the AchievementProgress kind on this backend does not serve it", "achievementId", obj.Spec.AchievementID)
+		s.logger.Warn("achievement progress rows carry no points field; the AchievementProgress kind on this backend does not serve it", "achievementId", obj.Spec.AchievementID)
 		return obj, ErrAchievementPointsUnserved
 	}
 	return obj, nil

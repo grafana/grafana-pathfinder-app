@@ -90,7 +90,6 @@ const pending = new Map<string, AchievementAnnouncement>();
 let definitions: AchievementDefinitions | null = null;
 let definitionsInflight: Promise<AchievementDefinitions | null> | null = null;
 let held: HeldTier[] = [];
-let heldLoaded = false;
 const announced = new Set<string>();
 const announcementListeners = new Set<(announcement: AchievementAnnouncement) => void>();
 const changeListeners = new Set<() => void>();
@@ -129,7 +128,6 @@ export async function loadMyAchievements(): Promise<MyAchievementsResult> {
   const result = await deps.fetchMy();
   if (result.kind === 'ok') {
     held = result.data.awards;
-    heldLoaded = true;
   }
   // Available is kept for the page once seen, so a later transient failure does not bring the legacy badges back.
   const next = result.kind === 'ok' ? 'available' : 'unavailable';
@@ -209,13 +207,7 @@ export async function announceEvaluated(response: AchievementEventsResponseWire)
   if (gained) {
     const loaded = await loadAchievementDefinitions();
     if (loaded) {
-      if (!heldLoaded) {
-        await loadMyAchievements().catch(() => undefined);
-      }
       for (const announcement of selectAnnouncements(response.decisions, loaded, held)) {
-        if (announcement.kind === 'progress' && !heldLoaded) {
-          continue;
-        }
         if (!markAnnounced(announcement)) {
           continue;
         }
@@ -350,7 +342,6 @@ export function __resetAchievementDisplayForTests(): void {
   definitions = null;
   definitionsInflight = null;
   held = [];
-  heldLoaded = false;
   announced.clear();
   announcementListeners.clear();
   changeListeners.clear();

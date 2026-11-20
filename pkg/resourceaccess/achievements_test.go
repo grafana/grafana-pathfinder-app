@@ -18,10 +18,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
 	sdkplugin "github.com/grafana/grafana-app-sdk/plugin"
-	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/rest"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements/storetest"
@@ -335,7 +338,7 @@ func newAchievementTestStore(t *testing.T) (*services.AchievementStore, *fakeAch
 	if err != nil {
 		t.Fatal(err)
 	}
-	return services.NewAchievementStore(clients, services.AchievementWriter{Namespace: achievementTestNamespace, OrgID: 1, UserLogin: "ada", UserDisplayName: "Ada L"}, func() time.Time { return achievementTestNow }), api
+	return services.NewAchievementStore(clients, services.AchievementWriter{Namespace: achievementTestNamespace, OrgID: 1, UserLogin: "ada", UserDisplayName: "Ada L"}, func() time.Time { return achievementTestNow }, log.DefaultLogger), api
 }
 func upstreamStatusOf(err error) (int, bool) {
 	var status apierrors.APIStatus

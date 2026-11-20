@@ -116,6 +116,7 @@ export const AchievementDecisionWireSchema = z.strictObject({
   final: z.boolean(),
   units: z.number().int(),
   next: z.number().int().nullable(),
+  nextTier: z.string().optional(),
 });
 
 /**
