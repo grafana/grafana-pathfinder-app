@@ -5,7 +5,7 @@
  * isn't enabled.
  */
 import { config } from '@grafana/runtime';
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute, usesSdkBackend } from '../lib/backend-routes';
 
 export const APP_PLATFORM_GROUP = 'pathfinderbackend.ext.grafana.app';
 export const APP_PLATFORM_API_VERSION = `${APP_PLATFORM_GROUP}/v1alpha1`;
@@ -20,18 +20,24 @@ const AGGREGATION_TOGGLE = `aggregation.${APP_PLATFORM_GROUP.replace(/\./g, '-')
  */
 export function isBackendApiAvailable(): boolean {
   const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
-  return featureToggles?.[AGGREGATION_TOGGLE] === true;
+  return usesSdkBackend() || featureToggles?.[AGGREGATION_TOGGLE] === true;
 }
 
 export function collectionUrl(namespace: string): string {
+  if (usesSdkBackend()) {
+    return backendRoute('custom-guide');
+  }
   return `/apis/${APP_PLATFORM_API_VERSION}/namespaces/${encodeURIComponent(namespace)}/${RESOURCE}`;
 }
 
 export function itemUrl(namespace: string, name: string): string {
+  if (usesSdkBackend()) {
+    return `${backendRoute('custom-guide')}?${new URLSearchParams({ name })}`;
+  }
   return `${collectionUrl(namespace)}/${encodeURIComponent(name)}`;
 }
 
 export function guideReadUrl(name: string): string {
   const params = new URLSearchParams({ name });
-  return `${PLUGIN_BACKEND_URL}/custom-guide?${params.toString()}`;
+  return `${backendRoute('custom-guide')}?${params.toString()}`;
 }

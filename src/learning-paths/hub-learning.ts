@@ -1,13 +1,13 @@
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
-import { getDueStatus } from './assignments-core';
+import { getDueStatus, getPathAssignment } from './assignments-core';
 import { getPathsData } from './paths-data';
 
 export interface HubLearningDeps {
   paths: readonly LearningPath[];
   assignmentByTargetId: ReadonlyMap<string, ResolvedAssignment>;
-  getPathProgress: (pathId: string) => number;
-  isPathCompleted: (pathId: string) => boolean;
-  getPathGuides: (pathId: string) => PathGuide[];
+  getPathProgress: (pathId: string, selectedPath?: LearningPath) => number;
+  isPathCompleted: (pathId: string, selectedPath?: LearningPath) => boolean;
+  getPathGuides: (pathId: string, selectedPath?: LearningPath) => PathGuide[];
 }
 
 export interface HubResume {
@@ -48,13 +48,13 @@ function resolveCurrentGuideUrl(path: Pick<LearningPath, 'url'>, guide: Pick<Pat
 function startedPaths(deps: HubLearningDeps): HubResume[] {
   const { paths, assignmentByTargetId, getPathProgress, isPathCompleted, getPathGuides } = deps;
   const resumes = paths.flatMap((path): HubResume[] => {
-    const assignment = assignmentByTargetId.get(path.id);
-    const percent = assignment?.progress ?? getPathProgress(path.id);
-    const done = assignment ? assignment.satisfied : isPathCompleted(path.id);
+    const assignment = getPathAssignment(assignmentByTargetId, path);
+    const percent = assignment?.progress ?? getPathProgress(path.id, path);
+    const done = assignment ? assignment.satisfied : isPathCompleted(path.id, path);
     if (done || !(percent > 0)) {
       return [];
     }
-    const guides = getPathGuides(path.id);
+    const guides = getPathGuides(path.id, path);
     const current = guides.find((guide) => guide.isCurrent);
     if (!current) {
       return [];

@@ -47,11 +47,17 @@ export function HomeAssignmentsTable({
               data-assignment-key={entry.key}
               aria-current={selectedCardKey === entry.key ? 'true' : undefined}
               onClick={() => onView(entry)}
-              disabled={launchDisabled}
+              disabled={
+                launchDisabled || entry.assignmentUnavailable || (entry.isGuideAssignment && !entry.assignedGuide)
+              }
               aria-busy={launchingKey === entry.key || undefined}
             >
               {entry.path.title}
             </button>
+            {entry.assignmentUnavailable && <span>{t('myLearning.assignedPathUnavailable', 'Path unavailable')}</span>}
+            {entry.isGuideAssignment && !entry.assignedGuide && (
+              <span>{t('myLearning.assignedGuideUnavailable', 'Guide unavailable')}</span>
+            )}
             {launchingKey === entry.key && <span role="status">{t('learningCard.opening', 'Opening…')}</span>}
             {launchError?.key === entry.key && <span role="alert">{launchError.message}</span>}
             {entry.assignment?.trackLabel && (
@@ -65,9 +71,12 @@ export function HomeAssignmentsTable({
       {
         id: 'progress',
         header: t('myLearning.assignmentProgress', 'Progress'),
-        cell: ({ row: { original: entry } }) => (
-          <ProgressRing progress={entry.percent} size={32} strokeWidth={2} showPercentage />
-        ),
+        cell: ({ row: { original: entry } }) =>
+          entry.assignment?.progressUnavailable ? (
+            <span>{t('myLearning.assignmentProgressUnavailable', 'Cannot check')}</span>
+          ) : (
+            <ProgressRing progress={entry.percent} size={32} strokeWidth={2} showPercentage />
+          ),
       },
       {
         id: 'assignedAt',
@@ -134,7 +143,7 @@ export function HomeAssignmentsTable({
           .closest('tbody tr')
           ?.querySelector<HTMLButtonElement>('button[data-assignment-key]');
         const entry = entries.find((candidate) => candidate.key === button?.dataset.assignmentKey);
-        if (entry) {
+        if (entry && !entry.assignmentUnavailable && !(entry.isGuideAssignment && !entry.assignedGuide)) {
           onView(entry);
         }
       }}
@@ -225,7 +234,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
       '& th:nth-child(4)': { width: '21%' },
       '& th:nth-child(5)': { width: '20%' },
       '& th:nth-child(2), & td:nth-child(2)': { textAlign: 'center' },
-      '& td:nth-child(2)': { lineHeight: 0 },
+      '& td:nth-child(2)': { lineHeight: 'normal' },
     },
   }),
   course: css({

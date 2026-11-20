@@ -247,7 +247,7 @@ function PackageBrowserContent({
             catalogItems: catalog.items,
             catalogProgress,
             getPathProgress: pageLearning.learning.getPathProgress,
-            getPathGuides: pageLearning.assignments.getPathGuides,
+            getPathGuides: (id, path) => pageLearning.assignments.getPathGuides(id, false, path),
             includeCompleted: true,
           })
         : [],

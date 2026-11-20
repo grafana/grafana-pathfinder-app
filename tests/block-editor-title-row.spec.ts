@@ -10,10 +10,7 @@ import { testIds } from '../src/constants/testIds';
  *  - Preview: the status cluster relocates to the toolbar and must STAY visible
  *    at 320px — regression guard for the old `display:none` that hid it.
  *
- * The publish badge only renders with a live backend (unavailable in e2e), so its
- * narrow-width icon-collapse is covered structurally by the unit tests. Here we
- * assert the no-backend local-save indicator — the state e2e actually renders —
- * so the coverage is of real code, not an injected element.
+ * This fixture disables both backend transports to exercise the local-save indicator.
  */
 
 const NARROW_WIDTH = 320;
@@ -23,6 +20,19 @@ test.describe('Block editor header — responsive at 320px', () => {
   // (provisioning/plugins/app.yaml), so POSTing settings would only race the
   // parallel block-editor spec.
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      let bootData: typeof window.grafanaBootData;
+      Object.defineProperty(window, 'grafanaBootData', {
+        configurable: true,
+        get: () => bootData,
+        set: (value: typeof window.grafanaBootData) => {
+          const toggles = value.settings.featureToggles as Record<string, boolean>;
+          toggles['aggregation.pathfinderbackend-ext-grafana-app.enabled'] = false;
+          toggles['appplugins.registerAPIServer'] = false;
+          bootData = value;
+        },
+      });
+    });
     await page.goto('/');
     await clearBlockEditorState(page);
   });

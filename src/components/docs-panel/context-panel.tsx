@@ -39,6 +39,7 @@ import {
   useLearningPaths,
   useMyAssignments,
   selectHubResume,
+  type HubLearningDeps,
   selectHubStats,
   type HubResume,
   type ResolvedAssignment,
@@ -423,12 +424,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const { recommendations, recommendationsError } = contextData;
 
   const hubLearning = useMemo(() => {
-    const deps = {
+    const deps: HubLearningDeps = {
       paths: [...paths, ...onlinePaths],
       assignmentByTargetId,
       getPathProgress,
       isPathCompleted,
-      getPathGuides: getAssignedPathGuides,
+      getPathGuides: (id, path) => getAssignedPathGuides(id, false, path),
     };
     return {
       resume: selectHubResume(deps),

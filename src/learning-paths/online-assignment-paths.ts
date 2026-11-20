@@ -24,18 +24,16 @@ export interface OnlineAssignmentCard {
 /** Resolves bare package ids into nav-link metadata via the composite package resolver. */
 export type PackageNavLinkResolver = (packageIds: string[]) => Promise<ResolvedNavLink[]>;
 
-/**
- * Resolves one assignment target against the online catalogue. Returns
- * undefined when it isn't a path-typed package there, or its manifest can't
- * be resolved — resolveAssignments' unresolvedTargetIds stays the signal for
- * "genuinely nowhere to be found" in that case.
- */
 export async function resolveOnlineAssignmentCard(
   assignment: AssignmentEntry,
   resolveNavLinks: PackageNavLinkResolver,
   now: number = Date.now(),
   timeZone?: string
 ): Promise<OnlineAssignmentCard | undefined> {
+  if (assignment.targetSource && !['online-cdn', 'interactive-tutorials'].includes(assignment.targetSource)) {
+    return undefined;
+  }
+
   const { baseUrl, packages } = await fetchOnlinePackageRecommendations();
   const entry = packages.find((candidate) => candidate.id === assignment.targetId);
   if (!entry || entry.type !== 'path') {
@@ -83,7 +81,13 @@ export async function resolveOnlineAssignmentCard(
   };
 
   const progress = assignmentProgress(assignment.guides, 0);
-  const resolved = buildResolvedAssignment(assignment, path, progress, now, timeZone);
+  const resolved = buildResolvedAssignment(
+    { ...assignment, targetSource: assignment.targetSource || 'online-cdn' },
+    path,
+    progress,
+    now,
+    timeZone
+  );
 
   const track = findAssignedTrack(path, resolved.trackId);
   const trackGuideIds = track?.guides.flatMap((id) => {

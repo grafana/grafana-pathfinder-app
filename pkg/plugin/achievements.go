@@ -6,14 +6,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"slices"
-	"sort"
 	"strconv"
 	"time"
 
 	"github.com/grafana/authlib/types"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 )
 
 // Achievements routes (RFC §6.5). The path version is set only here; the
@@ -73,46 +72,12 @@ func personFromSubject(sub string) (achievements.Person, error) {
 	return achievements.Person{ID: sub}, nil
 }
 
-type achievementEventsResponse struct {
-	EventID   string                  `json:"eventId"`
-	Retry     bool                    `json:"retry"`
-	Decisions []achievements.Decision `json:"decisions"`
-}
-
-type achievementCapability struct {
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
-}
-
-type achievementAward struct {
-	AchievementID string `json:"achievementId"`
-	TierID        string `json:"tierId"`
-	Entity        string `json:"entity"`
-	EarnedAt      string `json:"earnedAt"`
-}
-
-type achievementProgress struct {
-	AchievementID string `json:"achievementId"`
-	Units         int    `json:"units"`
-	Next          *int   `json:"next"`
-}
-
-type legacyBadge struct {
-	Source     string `json:"source"`
-	Name       string `json:"name"`
-	AcquiredAt string `json:"acquiredAt,omitempty"`
-}
-
-type myAchievementsResponse struct {
-	AsOf string `json:"asOf,omitempty"`
-	// A change tells the client to refetch /definitions.
-	DefinitionsVersion string                `json:"definitionsVersion,omitempty"`
-	Capability         achievementCapability `json:"capability"`
-	Truncated          bool                  `json:"truncated"`
-	Awards             []achievementAward    `json:"awards"`
-	Progress           []achievementProgress `json:"progress"`
-	Legacy             []legacyBadge         `json:"legacy"`
-}
+type achievementEventsResponse = services.AchievementEventsResponse
+type achievementCapability = services.AchievementCapability
+type achievementAward = services.AchievementAward
+type achievementProgress = services.AchievementProgress
+type legacyBadge = services.LegacyBadge
+type myAchievementsResponse = services.MyAchievementsResponse
 
 // achievementsUnavailableReason applies the completion routes' structural gate.
 // An empty reason means the routes may read the definitions and build a backend.
@@ -283,64 +248,7 @@ func (a *App) handleMyAchievements(w http.ResponseWriter, r *http.Request) {
 }
 
 func shapeMyAchievements(rows achievements.Rows, defs *achievements.Snapshot) myAchievementsResponse {
-	catalog := defs.Catalog
-	resp := myAchievementsResponse{
-		DefinitionsVersion: defs.Version,
-		Capability:         achievementCapability{Available: true},
-		Truncated:          rows.Truncated,
-		Awards:             make([]achievementAward, 0, len(rows.Awards)),
-		Progress:           make([]achievementProgress, 0, len(rows.Progress)),
-	}
-	if !rows.AsOf.IsZero() {
-		resp.AsOf = rows.AsOf.UTC().Format(time.RFC3339)
-	}
-	for _, aw := range rows.Awards {
-		resp.Awards = append(resp.Awards, achievementAward{
-			AchievementID: aw.AchievementID,
-			TierID:        aw.TierID,
-			Entity:        aw.Entity,
-			EarnedAt:      aw.EarnedAt.UTC().Format(time.RFC3339),
-		})
-	}
-	sort.Slice(resp.Awards, func(i, j int) bool {
-		x, y := resp.Awards[i], resp.Awards[j]
-		if x.AchievementID != y.AchievementID {
-			return x.AchievementID < y.AchievementID
-		}
-		return awardBefore(catalog, x, y)
-	})
-	awarded := map[string][]string{}
-	for _, aw := range rows.Awards {
-		awarded[aw.AchievementID] = append(awarded[aw.AchievementID], aw.TierID)
-	}
-	for _, p := range rows.Progress {
-		// An award can exist before its progress row records the tier.
-		next, counted := catalog.NextAt(p.AchievementID, append(slices.Clone(p.TierIDs), awarded[p.AchievementID]...))
-		if !counted {
-			continue
-		}
-		resp.Progress = append(resp.Progress, achievementProgress{
-			AchievementID: p.AchievementID,
-			Units:         len(p.Units),
-			Next:          next,
-		})
-	}
-	sort.Slice(resp.Progress, func(i, j int) bool { return resp.Progress[i].AchievementID < resp.Progress[j].AchievementID })
-	return resp
-}
-
-// awardBefore orders by catalog rank; a tier id the catalog lacks sorts last.
-func awardBefore(catalog *achievements.Catalog, x, y achievementAward) bool {
-	xr, xok := catalog.TierRank(x.AchievementID, x.TierID)
-	yr, yok := catalog.TierRank(y.AchievementID, y.TierID)
-	switch {
-	case xok && yok:
-		return xr < yr
-	case xok != yok:
-		return xok
-	default:
-		return x.TierID < y.TierID
-	}
+	return services.ShapeMyAchievements(rows, defs)
 }
 
 func (a *App) writeMyAchievements(w http.ResponseWriter, resp myAchievementsResponse) {

@@ -19,6 +19,15 @@ manifest: {
 	// single-purpose; Basic-role inheritance (admin ⊃ editor ⊃ viewer) means each
 	// binding below only declares its delta. title/description are user-visible.
 	roles: {
+		"pathfinder-backend:achievement-writer": {
+			title: "Pathfinder Achievement Writer"
+			description: "Record and read achievements"
+			kinds: [
+				{kind: "AchievementAward", verbs: ["get", "create"]},
+				{kind: "AchievementProgress", verbs: ["get", "create", "update"]},
+			]
+		}
+
 		"pathfinder-backend:reader": {
 			title:       "Pathfinder Reader"
 			description: "Read interactive guides"
@@ -58,18 +67,8 @@ manifest: {
 			kinds: [{kind: "Assignment", permissionSet: "editor"}]
 		}
 	}
-	// roleBindings binds the roles above to Basic groups. Effective grants:
-	// viewer → read InteractiveGuide + read/write CompletionRecord
-	// + read PathfinderSettings + read/write Assignment;
-	// editor → inherits viewer + write InteractiveGuide;
-	// admin → inherits editor + write PathfinderSettings.
-	//
-	// Settings are admin-only to write: unlike guides, they change behaviour for
-	// every user on the stack, so `settings-editor` binds to admin rather than
-	// editor. Read binds at viewer because every surface in the plugin must
-	// resolve configuration before it can render.
 	roleBindings: {
-		viewer: ["pathfinder-backend:reader", "pathfinder-backend:completion-writer", "pathfinder-backend:settings-reader", "pathfinder-backend:assignment-writer"]
+		viewer: ["pathfinder-backend:achievement-writer", "pathfinder-backend:reader", "pathfinder-backend:completion-writer", "pathfinder-backend:settings-reader", "pathfinder-backend:assignment-writer"]
 		editor: ["pathfinder-backend:guide-editor"]
 		admin: ["pathfinder-backend:settings-editor"]
 	}
@@ -98,8 +97,33 @@ manifest: {
 // v1alpha1 is the v1alpha1 version of the app's API.
 // It includes kinds which the v1alpha1 API serves, and (future) custom routes served globally from the v1alpha1 version.
 v1alpha1: {
+ routes: namespaced: {
+"/backend/api/v1/achievements/events": "POST": {name: "createBackendAchievementEvent", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+"/backend/api/v1/achievements/my": "GET": {name: "getBackendAchievements", responseMetadata: typeMeta: false, response: {...}}
+"/backend/api/v1/achievements/definitions": "GET": {name: "getBackendAchievementDefinitions", responseMetadata: typeMeta: false, response: {...}}
+
+"/backend/package-recommendations": "GET": {name: "getBackendRecommendations", responseMetadata: typeMeta: false, response: {...}}
+"/backend/health": "GET": {name: "getBackendHealth", responseMetadata: typeMeta: false, response: {...}}
+"/backend/custom-guide": "POST": {name: "createBackendGuide", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+"/backend/custom-guide": "PUT": {name: "replaceBackendGuide", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+"/backend/custom-guide": "DELETE": {name: "deleteBackendGuide", responseMetadata: typeMeta: false, response: {...}}
+"/backend/pathfinder-settings": "POST": {name: "createBackendSettings", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+"/backend/pathfinder-settings": "PUT": {name: "replaceBackendSettings", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+ "/backend/completion-records": "POST": {name: "createBackendCompletion", request: {...}, responseMetadata: typeMeta: false, response: {...}}
+ "/backend/learning-insights": "GET": {name: "getBackendLearningInsights", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/assignments/my": "GET": {name: "getBackendAssignments", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/completion-records/my": "GET": {name: "getBackendCompletions", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/completion-records/capability": "GET": {name: "getBackendCompletionCapability", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/custom-guide-repository": "GET": {name: "getBackendCatalogue", responseMetadata: typeMeta: false, response: {...}}
+ "/backend/custom-guide": "GET": {name: "getBackendGuide", responseMetadata: typeMeta: false, response: {...}}
+ }
+ routes: namespaced: "/backend/pathfinder-settings": "GET": {
+ name: "getBackendSettings"
+ responseMetadata: typeMeta: false
+ response: {...}
+ }
     // kinds is the list of kinds served by this version
-    kinds: [interactiveguidev1alpha1, completionrecordv1alpha1, pathfindersettingsv1alpha1, assignmentv1alpha1]
+    kinds: [interactiveguidev1alpha1, completionrecordv1alpha1, pathfindersettingsv1alpha1, assignmentv1alpha1, achievementawardv1alpha1, achievementprogressv1alpha1]
     // [OPTIONAL]
     // served indicates whether this particular version is served by the API server.
     // served should be set to false before a version is removed from the manifest entirely.

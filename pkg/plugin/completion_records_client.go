@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -48,42 +49,7 @@ var completionRecordsAggregationToggle = aggregationToggle(appPlatformGroup)
 //
 // CompletedAt is empty on an in-progress attempt record (the CRD makes it
 // optional): only a record at 100% is a completion.
-type completionRecordSpec struct {
-	UserID            string `json:"userId"`
-	UserLogin         string `json:"userLogin"`
-	UserDisplayName   string `json:"userDisplayName"`
-	GuideID           string `json:"guideId"`
-	GuideSource       string `json:"guideSource"`
-	GuideTitle        string `json:"guideTitle"`
-	GuideCategory     string `json:"guideCategory"`
-	PathID            string `json:"pathId"`
-	Source            string `json:"source"`
-	CompletedAt       string `json:"completedAt"`
-	RecordedAt        string `json:"recordedAt"`
-	CompletionPercent int64  `json:"completionPercent"`
-	DurationSeconds   int64  `json:"durationSeconds"`
-
-	// LastUpdatedAt is when the record last changed: the server-stamped
-	// grafana.app/updatedTimestamp annotation when present and parseable, else
-	// spec.recordedAt. Filled from object metadata by ListPage, never from spec.
-	LastUpdatedAt    string `json:"-"`
-	AttemptStartedAt string `json:"-"`
-}
-
-// completionUpdatedTimestampAnnotation is the annotation the App Platform
-// apistore stamps on every update (absent after create). Verified on dev in the
-// incremental-progress spike; grafana.com/updateTimestamp is not used.
-const completionUpdatedTimestampAnnotation = "grafana.app/updatedTimestamp"
-
-// recordLastUpdatedAt picks the annotation when it parses, else recordedAt.
-func recordLastUpdatedAt(annotations map[string]string, recordedAt string) string {
-	if ts := annotations[completionUpdatedTimestampAnnotation]; ts != "" {
-		if _, ok := parseCompletionTime(ts); ok {
-			return ts
-		}
-	}
-	return recordedAt
-}
+type completionRecordSpec = services.CompletionRecord
 
 // completionRecordPage is one page of a namespace LIST: the decoded record
 // specs plus the Kubernetes continue token (empty when the listing is drained).
@@ -112,49 +78,20 @@ const completionWriteMaxBytes = 256 * 1024
 // pkg/generated/completionrecord, not this repo's pkg/). The first
 // block is client-supplied (WHAT was completed); the second is stamped by this
 // trusted writer from its verified request context (never from the body).
-type completionRecordWriteSpec struct {
-	AttemptStartedAt string `json:"-"`
-	GuideID          string `json:"guideId"`
-	GuideSource      string `json:"guideSource"`
-	GuideTitle       string `json:"guideTitle"`
-	PathID           string `json:"pathId"`
-	Source           string `json:"source"`
-	// CompletedAt is omitted on an in-progress attempt record: it is set once,
-	// when the attempt reaches 100%. Legacy (non-attempt) writes always set it.
-	CompletedAt       string `json:"completedAt,omitempty"`
-	DurationSeconds   int64  `json:"durationSeconds"`
-	CompletionPercent int64  `json:"completionPercent"`
-	GuideCategory     string `json:"guideCategory"`
-	Platform          string `json:"platform"`
-
-	UserID          string `json:"userId"`
-	UserLogin       string `json:"userLogin"`
-	UserDisplayName string `json:"userDisplayName"`
-	RecordedAt      string `json:"recordedAt"`
-	OrgID           int64  `json:"orgId"`
-	StackNamespace  string `json:"stackNamespace"`
-	SchemaVersion   int64  `json:"schemaVersion"`
-}
+type completionRecordWriteSpec = services.CompletionRecordWriteSpec
 
 // completionRecordObjectMeta is the subset of Kubernetes object metadata the
 // writer sets. The name is server-derived deterministically from the trusted
 // userID and the required idempotency key (completionRecordName), never supplied
 // by the client, so a retried create targets the same object and an upstream 409
 // is an idempotent success.
-type completionRecordObjectMeta struct {
-	Name        string            `json:"name"`
-	Namespace   string            `json:"namespace"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-}
+type completionRecordObjectMeta = services.CompletionRecordObjectMeta
 
 // storedCompletionRecord is a record read back by name for an attempt upsert.
 // Raw is the full object as returned (minus metadata.managedFields), so a PUT
 // carries every field the server holds, including ones this plugin does not
 // model. Spec is the decoded view the upsert reasons about.
-type storedCompletionRecord struct {
-	Raw  map[string]any
-	Spec completionRecordWriteSpec
-}
+type storedCompletionRecord = services.StoredCompletionRecord
 
 // completionRecordUpdater is the attempt-upsert surface: read one record by
 // name and replace it. Get returns (nil, nil) when the record does not exist
@@ -168,12 +105,7 @@ type completionRecordUpdater interface {
 }
 
 // completionRecordObject is the full aggregated-API object POSTed on create.
-type completionRecordObject struct {
-	APIVersion string                     `json:"apiVersion"`
-	Kind       string                     `json:"kind"`
-	Metadata   completionRecordObjectMeta `json:"metadata"`
-	Spec       completionRecordWriteSpec  `json:"spec"`
-}
+type completionRecordObject = services.CompletionRecordObject
 
 // completionRecordCreator abstracts a single upstream create so the write
 // handler can be unit-tested with a fake that captures the object without an
@@ -209,12 +141,10 @@ func (c *completionHTTPClient) ListPage(ctx context.Context, namespace, continue
 
 	records := make([]completionRecordSpec, 0, len(page.Items))
 	for _, item := range page.Items {
-		var spec completionRecordSpec
-		if err := json.Unmarshal(item.Spec, &spec); err != nil {
+		spec, err := services.DecodeCompletionRecord(item.Spec, item.Metadata.Annotations)
+		if err != nil {
 			return nil, fmt.Errorf("completion records: decode spec: %w", err)
 		}
-		spec.LastUpdatedAt = recordLastUpdatedAt(item.Metadata.Annotations, spec.RecordedAt)
-		spec.AttemptStartedAt = item.Metadata.Annotations[completionAttemptStartedAnnotation]
 		records = append(records, spec)
 	}
 	return &completionRecordPage{Records: records, Continue: page.Metadata.Continue}, nil

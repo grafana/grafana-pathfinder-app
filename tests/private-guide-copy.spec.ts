@@ -1,3 +1,4 @@
+import { matchesBackendRoute, matchesGuideResource } from './helpers/backend-route';
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { StorageKeys } from '../src/lib/storage-keys';
@@ -24,37 +25,30 @@ test('copies a public guide, protects the draft and publishes a separate private
       },
     });
   });
-  await page.route(
-    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
-    (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
+  await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
+    route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
   );
-  await page.route(
-    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/custom-guide'),
-    (route) => {
+  await page.route(matchesGuideResource, async (route) => {
+    if (route.request().method() === 'GET' && matchesBackendRoute('custom-guide')(new URL(route.request().url()))) {
       const name = new URL(route.request().url()).searchParams.get('name');
       const stored = resources.find((entry) => entry.metadata.name === name);
       return stored ? route.fulfill({ json: stored }) : route.fulfill({ status: 404, json: { message: 'not found' } });
     }
-  );
-  await page.route(
-    '**/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/*/interactiveguides**',
-    async (route) => {
-      const request = route.request();
-      if (request.method() === 'GET') {
-        await route.fulfill({ json: { items: resources } });
-        return;
-      }
-      const resource = request.postDataJSON();
-      writes.push(request.method());
-      const existing = resources.findIndex((entry) => entry.metadata.name === resource.metadata.name);
-      if (existing < 0) {
-        resources.push(resource);
-      } else {
-        resources[existing] = resource;
-      }
-      await route.fulfill({ json: resource });
+    const request = route.request();
+    if (request.method() === 'GET') {
+      await route.fulfill({ json: { items: resources } });
+      return;
     }
-  );
+    const resource = request.postDataJSON();
+    writes.push(request.method());
+    const existing = resources.findIndex((entry) => entry.metadata.name === resource.metadata.name);
+    if (existing < 0) {
+      resources.push(resource);
+    } else {
+      resources[existing] = resource;
+    }
+    await route.fulfill({ json: resource });
+  });
 
   await page.goto('/a/grafana-pathfinder-app/fullscreen?doc=bundled%3Awelcome-to-grafana');
   await expect(page.getByRole('heading', { name: 'Tour of Grafana', exact: true })).toBeVisible();

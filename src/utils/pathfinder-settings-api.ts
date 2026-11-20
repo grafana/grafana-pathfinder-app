@@ -1,9 +1,9 @@
+import { backendRoute, usesSdkBackend } from '../lib/backend-routes';
 import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import { config, getBackendSrv } from '@grafana/runtime';
 import { defer, lastValueFrom, retry, throwError, timer } from 'rxjs';
 
 import {
-  PLUGIN_BACKEND_URL,
   PathfinderPluginConfig,
   TENANT_SETTING_BOUNDS,
   TENANT_SETTING_KEYS,
@@ -60,10 +60,16 @@ function statusOf(err: unknown): number | undefined {
 }
 
 export function collectionUrl(namespace: string): string {
+  if (usesSdkBackend()) {
+    return backendRoute('pathfinder-settings');
+  }
   return `/apis/${APP_PLATFORM_API_VERSION}/namespaces/${encodeURIComponent(namespace)}/${RESOURCE}`;
 }
 
 export function itemUrl(namespace: string, name: string = SETTINGS_RESOURCE_NAME): string {
+  if (usesSdkBackend()) {
+    return backendRoute('pathfinder-settings');
+  }
   return `${collectionUrl(namespace)}/${encodeURIComponent(name)}`;
 }
 
@@ -136,7 +142,7 @@ export async function fetchPathfinderSettingsSnapshot({
       defer(() => {
         readAttempt += 1;
         return getBackendSrv().fetch<PathfinderSettingsResource>({
-          url: `${PLUGIN_BACKEND_URL}/pathfinder-settings`,
+          url: backendRoute('pathfinder-settings'),
           method: 'GET',
           params: { absence: 'explicit', ...(readAttempt > 1 ? { attempt: readAttempt } : {}) },
           showErrorAlert: false,

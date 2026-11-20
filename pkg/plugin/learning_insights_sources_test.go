@@ -20,7 +20,7 @@ func TestLearningInsightsOnlineSourceHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(r.Context())
 	cancel()
 	ev := newTestApp(t).insightsObligationEvaluator(r.WithContext(ctx))
-	_, _, err := ev.sources[2](ctx, "not-in-catalogue", "", "")
+	_, _, err := ev.Sources[2](ctx, "not-in-catalogue", "", "")
 	if err == nil {
 		t.Fatal("canceled resolution succeeded")
 	}
@@ -45,7 +45,7 @@ func TestLearningInsightsSourceMemberIdentityWithoutManifestFetch(t *testing.T) 
 	})
 	r := insightsRequest(t, "Admin", "user:1").WithContext(ctx)
 	ev := newTestApp(t).insightsObligationEvaluator(r)
-	guides, found, err := ev.sources[2](ctx, "path", "", "interactive-tutorials")
+	guides, found, err := ev.Sources[2](ctx, "path", "", "interactive-tutorials")
 	if err != nil || !found || len(guides) != 1 || guides[0] != onlineAssignmentGuide("member") {
 		t.Fatalf("guides = %+v, found = %v, error = %v", guides, found, err)
 	}
@@ -57,7 +57,7 @@ func TestLearningInsightsCustomSourceCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(r.Context())
 	cancel()
 	ev := newTestApp(t).insightsObligationEvaluator(r.WithContext(ctx))
-	guides, found, err := ev.sources[1](ctx, "path", "", "app-platform")
+	guides, found, err := ev.Sources[1](ctx, "path", "", "app-platform")
 	if guides != nil || found || err == nil {
 		t.Fatalf("canceled custom lookup resolved: %+v, %v, %v", guides, found, err)
 	}
@@ -71,11 +71,11 @@ func TestLearningInsightsCustomSourceQualifiedProgress(t *testing.T) {
 	withGuideLister(t, singlePageGuideLister(path, member))
 	r := insightsRequest(t, "Admin", "user:1")
 	ev := newTestApp(t).insightsObligationEvaluator(r)
-	guides, found, err := ev.sources[1](r.Context(), "path", "", "app-platform")
+	guides, found, err := ev.Sources[1](r.Context(), "path", "", "app-platform")
 	if err != nil || !found || len(guides) != 1 || guides[0].GuideSource != "app-platform" {
 		t.Fatalf("guides = %+v, found = %v, error = %v", guides, found, err)
 	}
-	guides, found, err = ev.sources[1](r.Context(), "path", "", "bundled")
+	guides, found, err = ev.Sources[1](r.Context(), "path", "", "bundled")
 	if err != nil || found || guides != nil {
 		t.Fatalf("wrong target source resolved: %+v, %v, %v", guides, found, err)
 	}

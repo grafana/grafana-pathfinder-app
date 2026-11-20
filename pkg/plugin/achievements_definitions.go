@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"io"
 	"net/http"
 	"net/url"
@@ -308,13 +309,7 @@ func (a *App) achievementDefinitions(w http.ResponseWriter, r *http.Request) (*a
 	return nil, false
 }
 
-type achievementDefinitionsResponse struct {
-	Version      string                 `json:"version"`
-	ArtBase      string                 `json:"artBase"`
-	Achievements []achievements.Display `json:"achievements"`
-	// Sources are the Echo interactions the browser subscribes to on this stack.
-	Sources []achievements.SourceSubscription `json:"sources"`
-}
+type achievementDefinitionsResponse = services.AchievementDefinitionsResponse
 
 // stackFromRequest reads the Grafana version from the user agent Grafana sends
 // with every plugin request. It describes the stack, never the caller.
@@ -355,4 +350,12 @@ func (a *App) handleAchievementDefinitions(w http.ResponseWriter, r *http.Reques
 		Achievements: snap.DisplayFor(stack),
 		Sources:      snap.Registry.Subscriptions(stack),
 	}, http.StatusOK)
+}
+
+func AchievementDefinitions() definitionsProvider {
+	source, err := processDefinitions()
+	if err != nil {
+		return nil
+	}
+	return source
 }

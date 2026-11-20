@@ -5,11 +5,13 @@ import { onCompletionPublished } from '../completion-records/completion-write-ho
 import { fetchMyAssignments, type AssignmentEntry } from '../lib/assignments-client';
 import { recordAssignmentTargetsUnresolved } from '../lib/telemetry/facade';
 import { logger } from '../lib/logging';
+import { getUserScope } from '../lib/user-scope';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
 import {
   compareResolvedAssignments,
+  assignmentPathKey,
+  getPathAssignment,
   findAssignedTrack,
-  PATH_ASSIGNMENT_TARGET,
   resolveAssignments,
 } from './assignments-core';
 import { markCurrentGuide } from './mark-current-guide';
@@ -23,21 +25,23 @@ interface UseMyAssignmentsOptions {
   /** The caller's learning-paths catalogue — resolution drops targets not found here. */
   paths: readonly LearningPath[];
   getPathProgress: (pathId: string) => number;
-  getPathGuides: (pathId: string) => PathGuide[];
+  getPathGuides: (pathId: string, selectedPath?: LearningPath) => PathGuide[];
   completedGuides: readonly string[];
   resolveNavLinks: PackageNavLinkResolver;
 }
 
 interface UseMyAssignmentsResult {
+  guideAssignments: AssignmentEntry[];
+  pathAssignments: AssignmentEntry[];
   /** Every resolved assignment, satisfied or not — sorted most-urgent-first. */
   items: ResolvedAssignment[];
   notDone: ResolvedAssignment[];
-  /** First-wins over `items`, so the most urgent duplicate governs. */
+  /** Most urgent assignment per source-qualified path key. */
   assignmentByTargetId: Map<string, ResolvedAssignment>;
   /** Paths for online-catalogue targets, absent from `paths`. */
   onlinePaths: LearningPath[];
   /** Online targets get local completion overlaid; everything else defers to the passed-in getter. */
-  getPathGuides: (pathId: string) => PathGuide[];
+  getPathGuides: (pathId: string, includeAllTracks?: boolean, selectedPath?: LearningPath) => PathGuide[];
   /** True once the first fetch has settled, whether or not it succeeded. */
   hasLoaded: boolean;
   isLoading: boolean;
@@ -45,61 +49,63 @@ interface UseMyAssignmentsResult {
   retry: () => Promise<void>;
 }
 
+const EMPTY_ASSIGNMENTS: AssignmentEntry[] = [];
+const EMPTY_ONLINE_CARDS: OnlineAssignmentCard[] = [];
+
 export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignmentsResult {
   const { paths, getPathProgress, getPathGuides, completedGuides, resolveNavLinks } = options;
-  const [rawAssignments, setRawAssignments] = useState<AssignmentEntry[]>([]);
   const namespace = config.namespace;
-  const [hasLoaded, setHasLoaded] = useState(!namespace);
-  const [isFetching, setIsFetching] = useState(Boolean(namespace));
-  const [hasError, setHasError] = useState(false);
+  const scope = getUserScope();
+  const [snapshot, setSnapshot] = useState<{ scope: string; assignments: AssignmentEntry[] }>();
+  const rawAssignments = snapshot?.scope === scope ? snapshot.assignments : EMPTY_ASSIGNMENTS;
+  const [loadedScope, setLoadedScope] = useState<string>();
+  const [fetchingScope, setFetchingScope] = useState<string>();
+  const [errorScope, setErrorScope] = useState<string>();
+  const hasLoaded = !namespace || loadedScope === scope;
+  const isFetching = fetchingScope === scope;
+  const hasError = errorScope === scope;
   const isMountedRef = useRef(true);
-  const inFlightRef = useRef(false);
-  const pendingRef = useRef(false);
+  const inFlightRef = useRef<{ scope: string; pending: boolean } | undefined>(undefined);
   const emittedUnresolvedKeyRef = useRef('');
 
-  // Refreshes never overlap: a request made while one is in flight runs once, after it settles.
   const refresh = useCallback(async () => {
-    if (!namespace) {
-      if (isMountedRef.current) {
-        setRawAssignments([]);
-      }
+    if (!namespace || scope !== getUserScope()) {
       return;
     }
-    if (inFlightRef.current) {
-      pendingRef.current = true;
+    if (inFlightRef.current?.scope === scope) {
+      inFlightRef.current.pending = true;
       return;
     }
-    inFlightRef.current = true;
-    setIsFetching(true);
+    const request = { scope, pending: false };
+    inFlightRef.current = request;
+    setFetchingScope(scope);
     do {
-      pendingRef.current = false;
+      request.pending = false;
       const fetched = await fetchMyAssignments(namespace);
-      if (isMountedRef.current) {
-        if (fetched.ok) {
-          setRawAssignments(fetched.assignments);
-        }
-        setHasError(!fetched.ok && fetched.reason !== 'capability-unavailable');
-        setHasLoaded(true);
+      if (!isMountedRef.current || scope !== getUserScope() || inFlightRef.current !== request) {
+        return;
       }
-    } while (pendingRef.current && isMountedRef.current);
-    inFlightRef.current = false;
-    if (isMountedRef.current) {
-      setIsFetching(false);
-    }
-  }, [namespace]);
+      if (fetched.ok) {
+        setSnapshot({ scope, assignments: fetched.assignments });
+      }
+      setErrorScope(!fetched.ok && fetched.reason !== 'capability-unavailable' ? scope : undefined);
+      setLoadedScope(scope);
+    } while (request.pending);
+    inFlightRef.current = undefined;
+    setFetchingScope(undefined);
+  }, [namespace, scope]);
 
-  const hasInitiallyLoaded = useRef(false);
+  const initiallyLoadedScope = useRef<string | undefined>(undefined);
   useEffect(() => {
     isMountedRef.current = true;
-    if (!hasInitiallyLoaded.current) {
-      hasInitiallyLoaded.current = true;
+    if (initiallyLoadedScope.current !== scope) {
+      initiallyLoadedScope.current = scope;
       void refresh();
     }
     return () => {
       isMountedRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch once on mount; namespace is session-stable and putting refresh in the array would refetch whenever the callback identity changes
-  }, []);
+  }, [refresh, scope]);
 
   useEffect(() => {
     return onCompletionPublished(() => {
@@ -111,35 +117,38 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     () => resolveAssignments(rawAssignments, paths, getPathProgress),
     [rawAssignments, paths, getPathProgress]
   );
-  const unresolvedKey = resolved.unresolvedTargetIds.join('\n');
+  const unresolvedKey = resolved.unresolvedAssignments
+    .map((assignment) => rawAssignments.indexOf(assignment))
+    .join(',');
 
   // Targets missing from `paths` are retried against the online catalogue; only
   // those still unresolved warn, and targetIds stay off the warn (they bridge to Faro).
-  const [onlineCards, setOnlineCards] = useState<OnlineAssignmentCard[]>([]);
+  const [onlineSnapshot, setOnlineSnapshot] = useState<{ scope: string; cards: OnlineAssignmentCard[] }>();
+  const onlineCards = onlineSnapshot?.scope === scope ? onlineSnapshot.cards : EMPTY_ONLINE_CARDS;
   const [onlineResolution, setOnlineResolution] = useState<{
     assignments: AssignmentEntry[];
     unresolvedKey: string;
+    failed: boolean;
   } | null>(null);
   useEffect(() => {
-    const unresolvedIds = unresolvedKey ? unresolvedKey.split('\n') : [];
-    const unresolvedIdSet = new Set(unresolvedIds);
-    const candidates = rawAssignments.filter(
-      (a) => a.targetType === PATH_ASSIGNMENT_TARGET && unresolvedIdSet.has(a.targetId)
-    );
+    const indices = unresolvedKey ? unresolvedKey.split(',').map(Number) : [];
+    const candidates = indices.flatMap((index) => rawAssignments[index] ?? []);
+    const unresolvedIds = candidates.map((assignment) => assignment.targetId);
     let cancelled = false;
     void (async () => {
-      const settled = await Promise.all(candidates.map((a) => resolveOnlineAssignmentCard(a, resolveNavLinks)));
-      if (cancelled) {
+      const settled = await Promise.allSettled(candidates.map((a) => resolveOnlineAssignmentCard(a, resolveNavLinks)));
+      if (cancelled || scope !== getUserScope()) {
         return;
       }
-      const cards = settled.filter((card): card is OnlineAssignmentCard => card !== undefined);
-      setOnlineCards(cards);
+      const cards = settled.flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []));
+      setOnlineSnapshot({ scope, cards });
 
       const resolvedOnlineIds = new Set(cards.map((card) => card.resolved.targetId));
       const stillUnresolved = unresolvedIds.filter((id) => !resolvedOnlineIds.has(id));
       setOnlineResolution({
         assignments: rawAssignments,
         unresolvedKey,
+        failed: settled.some((result) => result.status === 'rejected'),
       });
       const emitKey = [...stillUnresolved].sort().join('\n');
       if (stillUnresolved.length === 0) {
@@ -157,7 +166,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     return () => {
       cancelled = true;
     };
-  }, [unresolvedKey, rawAssignments, resolveNavLinks]);
+  }, [unresolvedKey, rawAssignments, resolveNavLinks, scope]);
 
   const onlinePaths = useMemo(() => {
     const byId = new Map<string, OnlineAssignmentCard['path']>();
@@ -189,8 +198,9 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   const assignmentByTargetId = useMemo(() => {
     const map = new Map<string, ResolvedAssignment>();
     for (const assignment of items) {
-      if (!map.has(assignment.targetId)) {
-        map.set(assignment.targetId, assignment);
+      const key = assignmentPathKey(assignment.targetId, assignment.targetSource);
+      if (!map.has(key)) {
+        map.set(key, assignment);
       }
     }
     return map;
@@ -201,13 +211,22 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
   // Wire completion can drift from local storage; overlaying local completion keeps the
   // card's mismatch detection meaningful.
   const getPathGuidesWithOnline = useCallback(
-    (pathId: string): PathGuide[] => {
-      const onlineCard = onlineCardsById.get(pathId);
+    (pathId: string, includeAllTracks = false, selectedPath?: LearningPath): PathGuide[] => {
+      const candidate = onlineCardsById.get(pathId);
+      const onlineCard =
+        !selectedPath ||
+        selectedPath === candidate?.path ||
+        (selectedPath.manifest && selectedPath.manifest === candidate?.path.manifest)
+          ? candidate
+          : undefined;
       const baseGuides = onlineCard
         ? onlineCard.guides.map((guide) => ({ ...guide, completed: completedGuides.includes(guide.id) }))
-        : getPathGuides(pathId);
-      const trackId = assignmentByTargetId.get(pathId)?.trackId;
-      const path = pathsById.get(pathId);
+        : getPathGuides(pathId, selectedPath);
+      if (includeAllTracks) {
+        return onlineCard ? markCurrentGuide(baseGuides) : baseGuides;
+      }
+      const path = selectedPath ?? onlineCard?.path ?? pathsById.get(pathId);
+      const trackId = path && getPathAssignment(assignmentByTargetId, path)?.trackId;
       const trackGuideIds = onlineCard?.trackGuideIds ?? (path && findAssignedTrack(path, trackId))?.guides;
       if (!trackGuideIds) {
         return onlineCard ? markCurrentGuide(baseGuides) : baseGuides;
@@ -222,6 +241,8 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     onlineResolution?.assignments === rawAssignments && onlineResolution.unresolvedKey === unresolvedKey;
 
   return {
+    pathAssignments: rawAssignments.filter((assignment) => assignment.targetType === 'path'),
+    guideAssignments: rawAssignments.filter((assignment) => assignment.targetType === 'guide'),
     items,
     notDone,
     assignmentByTargetId,
@@ -229,7 +250,7 @@ export function useMyAssignments(options: UseMyAssignmentsOptions): UseMyAssignm
     getPathGuides: getPathGuidesWithOnline,
     hasLoaded,
     isLoading: !hasLoaded || isFetching || (unresolvedKey.length > 0 && !hasResolvedOnlineTargets),
-    hasError,
+    hasError: hasError || (hasResolvedOnlineTargets && onlineResolution.failed),
     retry: refresh,
   };
 }

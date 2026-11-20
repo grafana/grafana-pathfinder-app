@@ -13,7 +13,7 @@ import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from '.
  */
 import { config, getBackendSrv } from '@grafana/runtime';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from './backend-routes';
 import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
 import { logger } from './logging';
@@ -83,7 +83,6 @@ interface CustomGuideRepositoryResponse {
   asOf?: string;
 }
 
-const CUSTOM_GUIDE_REPOSITORY_URL = `${PLUGIN_BACKEND_URL}/custom-guide-repository`;
 const APP_PLATFORM_REPOSITORY = 'app-platform';
 
 // Short TTL + in-flight de-duplication. Several callers fetch the catalogue on
@@ -151,7 +150,7 @@ function shapeEntry(entry: WireEntry): CustomGuideRepositoryEntry {
 
 async function requestCatalogue(): Promise<CatalogueResult> {
   const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
-    CUSTOM_GUIDE_REPOSITORY_URL,
+    backendRoute('custom-guide-repository'),
     undefined,
     undefined,
     { showErrorAlert: false, showSuccessAlert: false }

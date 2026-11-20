@@ -22,6 +22,7 @@
  */
 
 import { DEFAULT_ENABLE_AI_AUTO_HEAL, getConfigWithDefaults, PathfinderPluginConfig } from '../../constants';
+import { expectsSdkBackend } from '../../lib/backend-routes';
 import { fetchPathfinderSettingsSnapshot, savePathfinderSettings } from '../../utils/pathfinder-settings-api';
 import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plugin';
 import { saveTenantSettings } from './save-settings';
@@ -31,6 +32,8 @@ jest.mock('../../utils/pathfinder-settings-api', () => ({
   fetchPathfinderSettingsSnapshot: jest.fn(),
   savePathfinderSettings: jest.fn(),
 }));
+
+jest.mock('../../lib/backend-routes', () => ({ expectsSdkBackend: jest.fn() }));
 
 jest.mock('../../utils/utils.plugin', () => ({
   fetchPluginSettings: jest.fn(),
@@ -336,4 +339,12 @@ it('reports a failed verification read rather than declaring the save successful
   await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: { pathfinderEnabled: false } })).rejects.toThrow(
     'read failed'
   );
+});
+
+it('rejects the save when a registered settings backend is unavailable', async () => {
+  jest.mocked(expectsSdkBackend).mockReturnValueOnce(true);
+  await expect(saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'updated' } })).rejects.toThrow(
+    'unavailable'
+  );
+  expect(mockUpdatePlugin).not.toHaveBeenCalled();
 });

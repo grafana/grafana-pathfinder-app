@@ -53,6 +53,7 @@ async function boot(
     addLink: jest.fn().mockReturnThis(),
   };
   const effects = {
+    discoverSdkBackend: jest.fn().mockResolvedValue(undefined),
     initializeConfiguredSurfaces: jest.fn().mockResolvedValue(undefined),
     handlePathfinderDeepLink: jest.fn(),
     installDeepLinkNavListener: jest.fn(),
@@ -98,6 +99,7 @@ async function boot(
         return load();
       },
     },
+    './lib/backend-routes': { discoverSdkBackend: effects.discoverSdkBackend },
     './lib/analytics': {
       reportAppInteraction,
       UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction' },
@@ -194,6 +196,7 @@ it.each([
 ])('suppresses every entry point with remote=%s, tenant=%s, read failure=%s', async (remote, tenant, readFailed) => {
   const { plugin, effects, root, requireModule } = await boot(remote, tenant, readFailed);
   plugin.init();
+  expect(effects.discoverSdkBackend).toHaveBeenCalledTimes(remote ? 1 : 0);
   expect(plugin.addComponent).not.toHaveBeenCalled();
   expect(plugin.addLink).not.toHaveBeenCalled();
   expect(plugin.addConfigPage).toHaveBeenCalledTimes(3);
@@ -213,6 +216,7 @@ it.each([
 
 it.each([true, undefined])('registers learning surfaces when remote enabled and tenant=%s', async (tenant) => {
   const { plugin, effects } = await boot(true, tenant);
+  expect(effects.discoverSdkBackend).toHaveBeenCalledTimes(1);
   expect(plugin.addComponent).toHaveBeenCalledTimes(1);
   expect(plugin.addLink).toHaveBeenCalledTimes(4);
   plugin.init();
