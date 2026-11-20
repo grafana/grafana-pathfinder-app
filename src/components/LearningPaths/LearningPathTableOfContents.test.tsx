@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
 import { interactiveCompletionStorage, milestoneCompletionStorage } from '../../lib/user-storage';
 import { resetMilestoneBackfillGuardForTests } from '../../docs-retrieval';
@@ -7,7 +7,44 @@ import type { CoverPageTrack, Milestone } from '../../types/content.types';
 
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_t, p) => String(p) }),
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TextLink: ({
+    children,
+    inline: _inline,
+    variant: _variant,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { inline?: boolean; variant?: string }) => (
+    <a {...props}>{children}</a>
+  ),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
+  Badge: ({ text }: { text: React.ReactNode }) => <span>{text}</span>,
+  InlineLabel: ({ children, htmlFor }: React.LabelHTMLAttributes<HTMLLabelElement>) => (
+    <label htmlFor={htmlFor}>{children}</label>
+  ),
+  Combobox: ({
+    id,
+    value,
+    options,
+    onChange,
+  }: {
+    id: string;
+    value: string;
+    options: Array<{ value: string; label: string }>;
+    onChange: (option: { value: string }) => void;
+  }) => (
+    <select id={id} value={value} onChange={(event) => onChange({ value: event.target.value })}>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
+  Button: ({ children, icon: _icon, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: string }) => (
+    <button {...props}>{children}</button>
+  ),
   TabsBar: ({ children, ...rest }: { children: React.ReactNode }) => (
     <div role="tablist" {...rest}>
       {children}
@@ -46,7 +83,11 @@ jest.mock('@grafana/ui', () => ({
 // is stubbed — never the calculation itself, or this file would agree with a
 // reimplementation instead of the code that ships.
 jest.mock('@grafana/runtime', () => ({
-  config: { bootData: { user: { id: 1, orgId: 1 } }, namespace: 'stacks-123', featureToggles: {} },
+  config: {
+    bootData: { user: { id: 1, orgId: 1 }, settings: { cloudMigrationIsTarget: true } },
+    namespace: 'stacks-123',
+    featureToggles: {},
+  },
   getAppEvents: () => ({ publish: jest.fn() }),
   getBackendSrv: () => ({ fetch: jest.fn(), get: jest.fn(), post: jest.fn() }),
   locationService: { push: jest.fn(), getSearchObject: () => ({}) },
@@ -68,11 +109,13 @@ jest.mock('../../lib/user-storage', () => ({
   // Reached by the real calculation's module graph, never called from a
   // render path here.
   journeyCompletionStorage: { getAll: jest.fn(), set: jest.fn(), clear: jest.fn() },
-  learningProgressStorage: { get: jest.fn(), save: jest.fn() },
 }));
 
 const getBadgeForPathMock = jest.fn();
 jest.mock('../../learning-paths', () => ({
+  BADGES: jest.requireActual('../../learning-paths/badges').BADGES,
+  findPathByUrl: jest.requireActual('../../learning-paths/paths-data').findPathByUrl,
+  getPathsData: jest.requireActual('../../learning-paths/paths-data').getPathsData,
   getBadgeForPath: (...args: unknown[]) => getBadgeForPathMock(...args),
 }));
 
@@ -239,7 +282,7 @@ describe('LearningPathTableOfContents', () => {
     expect(screen.getByTestId('learning-paths-cover-hero')).toBeInTheDocument();
     expect(screen.getByText('Connect your first data source')).toBeInTheDocument();
     expect(screen.getByText('Learn how Grafana connects to data.')).toBeInTheDocument();
-    expect(screen.getByText('2 milestones')).toBeInTheDocument();
+    expect(screen.getByText('2 modules')).toBeInTheDocument();
   });
 
   it('shows the hero card from title alone, with no description and no badge', () => {
@@ -602,10 +645,10 @@ describe('LearningPathTableOfContents', () => {
         />
       );
 
-      expect(screen.getByText('2 milestones')).toBeInTheDocument();
+      expect(screen.getByText('2 modules')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'Builder' }));
-      expect(screen.getByText('1 milestone')).toBeInTheDocument();
+      expect(screen.getByText('1 module')).toBeInTheDocument();
     });
 
     // A track is a presentation ordering only, never a second completion
@@ -637,4 +680,93 @@ describe('LearningPathTableOfContents', () => {
       await Promise.resolve();
     });
   });
+});
+
+it('shows the topic above the title, groups progress with the action, and updates the heading and progress label for the selected track', () => {
+  const builderMilestones = [
+    milestones[0]!,
+    milestones[1]!,
+    { number: 3, title: 'Build', url: `${baseUrl}build/content.json`, isActive: false },
+  ];
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      title="Build dashboards"
+      category="visualization"
+      milestones={milestones}
+      baseUrl={baseUrl}
+      tracks={[
+        { trackId: 'builder', label: 'Builder', milestones: builderMilestones },
+        { trackId: 'engineer', label: 'Engineer', milestones },
+        { trackId: 'seller', label: 'Seller', milestones },
+      ]}
+    />
+  );
+  const hero = screen.getByTestId('learning-paths-cover-hero');
+  const eyebrow = within(hero).getByText('Dashboards');
+  const title = within(hero).getByRole('heading', { name: 'Build dashboards' });
+  expect(eyebrow).toBeInTheDocument();
+  expect(eyebrow.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(hero).not.toHaveTextContent('Learning path');
+  expect(screen.getByRole('heading', { name: '2 modules in this path' })).toBeInTheDocument();
+  const fundamentalsProgress = screen.getByRole('progressbar', { name: /through Fundamentals/ });
+  expect(fundamentalsProgress).toHaveAttribute('aria-valuemax', '100');
+  expect(screen.getByTestId('learning-paths-toc-cta').parentElement).toContainElement(fundamentalsProgress);
+  expect(hero).not.toHaveTextContent('2 modules');
+  const track = screen.getByRole('combobox', { name: 'Altitude' });
+  expect(track).toHaveDisplayValue('Fundamentals (default)');
+  expect(
+    within(track)
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+  ).toEqual(['Fundamentals (default)', 'Builder', 'Seller', 'Engineer']);
+  fireEvent.change(track, { target: { value: 'builder' } });
+  expect(track).toHaveDisplayValue('Builder');
+  expect(screen.getByRole('heading', { name: '3 modules in this path' })).toBeInTheDocument();
+  const builderProgress = screen.getByRole('progressbar', { name: /through Builder/ });
+  expect(builderProgress).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Build' })).toHaveAttribute(
+    'data-milestone-url',
+    `${baseUrl}build/content.json`
+  );
+});
+
+it('shows available course metadata and does not reuse the default estimate for another track', () => {
+  getBadgeForPathMock.mockReturnValue({ id: 'core-badge', title: 'Core Concepts', icon: 'grafana' });
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      organization
+      estimatedMinutes={25}
+      pathId="core-grafana-concepts-lj"
+      title="Build dashboards"
+      category="visualization"
+      milestones={milestones}
+      baseUrl={baseUrl}
+      tracks={[{ trackId: 'builder', label: 'Builder', milestones }]}
+    />
+  );
+  expect(screen.getByRole('link', { name: 'Dashboards' })).toHaveAttribute(
+    'href',
+    '/a/grafana-pathfinder-app/browse?topic=dashboards'
+  );
+  expect(screen.getByText('Your organization')).toBeInTheDocument();
+  expect(screen.getByText('25 min')).toBeInTheDocument();
+  expect(screen.queryByText('Earn this badge')).not.toBeInTheDocument();
+  expect(screen.queryByText('Core Concepts')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Altitude' }), { target: { value: 'builder' } });
+  expect(screen.queryByText('25 min')).not.toBeInTheDocument();
+});
+
+it('looks up artwork by the course URL when there is no manifest ID', () => {
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      title="Explore metrics"
+      baseUrl="https://grafana.com/docs/learning-paths/drilldown-metrics/"
+      milestones={milestones}
+    />
+  );
+  expect(screen.queryByRole('combobox', { name: 'Altitude' })).not.toBeInTheDocument();
+  expect(screen.getByRole('img', { name: /Metrics Drilldown displaying/ })).toBeInTheDocument();
 });

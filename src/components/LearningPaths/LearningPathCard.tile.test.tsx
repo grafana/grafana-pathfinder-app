@@ -27,13 +27,68 @@ it('opens the tile overview, keeps radial progress, and has no competing start a
   );
   expect(screen.queryByText('In progress')).not.toBeInTheDocument();
   expect(screen.getByText('50%')).toBeInTheDocument();
-  expect(screen.getByText(/1\/2 guides/)).toBeInTheDocument();
+  expect(screen.getByText('2 modules')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Start|Continue|View path/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByText('A path description'));
   expect(view).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Test path' }));
   expect(view).toHaveBeenCalledTimes(2);
   expect(launch).not.toHaveBeenCalled();
+});
+
+it('counts only published modules in the displayed sequence of an organization path', () => {
+  render(
+    <LearningPathCard
+      tile
+      path={{
+        id: 'team-path',
+        title: 'Team path',
+        description: '',
+        guides: ['published', 'track-only'],
+        badgeId: '',
+        isPrivate: true,
+        manifest: {
+          type: 'path',
+          milestones: ['published', 'draft'],
+          tracks: [{ trackId: 'builder', label: 'Builder', guides: ['track-only'] }],
+        },
+      }}
+      guides={[
+        { id: 'published', title: 'Published module', completed: true, isCurrent: false },
+        { id: 'track-only', title: 'Builder module', completed: true, isCurrent: false },
+      ]}
+      progress={100}
+      isCompleted={false}
+      onContinue={jest.fn()}
+    />
+  );
+  expect(screen.getByText('1 module')).toBeInTheDocument();
+});
+
+it('shows the module total and saved progress while URL-based modules are loading', () => {
+  render(
+    <LearningPathCard
+      tile
+      path={{
+        id: 'catalog-path',
+        title: 'Catalog path',
+        description: '',
+        url: 'https://grafana.com/docs/learning-paths/catalog-path/',
+        guides: [],
+        badgeId: '',
+        manifest: {
+          type: 'path',
+          tracks: [{ trackId: 'builder', label: 'Builder', guides: ['one', 'two'] }],
+        },
+      }}
+      guides={[]}
+      progress={50}
+      isCompleted={false}
+      onContinue={jest.fn()}
+    />
+  );
+  expect(screen.getByText('2 modules')).toBeInTheDocument();
+  expect(screen.getByText('50%')).toBeInTheDocument();
 });
 
 it('opens the course from its inset preview with a duration badge and category eyebrow', () => {
@@ -93,7 +148,7 @@ it('features the next guide without repeating the full outline and resumes throu
   expect(screen.queryByText('A course')).not.toBeInTheDocument();
   expect(screen.getByText('Learn what to do in the next lesson.')).toBeInTheDocument();
   expect(screen.queryByText('Completed lesson')).not.toBeInTheDocument();
-  expect(screen.getByText('2 guides')).toBeInTheDocument();
+  expect(screen.getByText('2 modules')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Resume' }).closest('[data-learning-card-footer]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
   expect(view).toHaveBeenCalledTimes(1);

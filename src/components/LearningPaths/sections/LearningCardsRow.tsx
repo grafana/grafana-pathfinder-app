@@ -119,9 +119,10 @@ export function LearningCardsRow({
 const getStyles = (theme: GrafanaTheme2) => ({
   controls: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(1) }),
   row: css({
+    '--learning-card-min-width': theme.spacing(36),
     display: 'grid',
     gridAutoFlow: 'column',
-    gridAutoColumns: `max(${theme.spacing(30)}, calc((100% - ${theme.spacing(6)}) / 4.5))`,
+    gridAutoColumns: `max(var(--learning-card-min-width), calc((100% - ${theme.spacing(6)}) / 4.5))`,
     gap: theme.spacing(1.5),
     overflowX: 'auto',
     overscrollBehaviorX: 'contain',
@@ -129,12 +130,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
     paddingBottom: theme.spacing(1),
     '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
     '@container (max-width: 1000px)': {
-      gridAutoColumns: `max(${theme.spacing(30)}, calc((100% - ${theme.spacing(4.5)}) / 3.5))`,
+      gridAutoColumns: `max(var(--learning-card-min-width), calc((100% - ${theme.spacing(4.5)}) / 3.5))`,
     },
     '@container (max-width: 700px)': {
-      gridAutoColumns: `max(${theme.spacing(30)}, calc((100% - ${theme.spacing(3)}) / 2.5))`,
+      gridAutoColumns: `max(var(--learning-card-min-width), calc((100% - ${theme.spacing(3)}) / 2.5))`,
     },
-    '@container (max-width: 450px)': { gridAutoColumns: '85%' },
+    '@container (max-width: 450px)': { gridAutoColumns: 'max(85%, min(100%, var(--learning-card-min-width)))' },
   }),
   item: css({ display: 'flex', minWidth: 0, '& > *': { width: '100%' } }),
   fadeLeft: css({ maskImage: `linear-gradient(to right, transparent, black ${theme.spacing(4)})` }),

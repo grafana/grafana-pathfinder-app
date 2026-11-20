@@ -8,7 +8,11 @@ jest.mock('@grafana/runtime', () => ({
   locationService: { push: jest.fn(), getHistory: () => ({ listen: () => () => undefined }) },
 }));
 
-jest.mock('@grafana/scenes', () => ({ SceneObjectBase: class {} }));
+jest.mock('@grafana/scenes', () => ({
+  SceneObjectBase: class {},
+  SceneAppPage: class {},
+  sceneGraph: { getAncestor: () => ({ setState: jest.fn() }) },
+}));
 
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => ({}),
@@ -77,7 +81,7 @@ jest.mock('../../utils/experiments/interactive-learning-banner', () => ({
   enrollInteractiveLearningBannerExperiment: jest.fn(),
 }));
 jest.mock('../../global-state/panel-mode', () => ({
-  panelModeManager: { getMode: () => 'fullscreen', setModeTransient: jest.fn() },
+  panelModeManager: { getMode: () => 'fullscreen', getPriorPath: () => null, setModeTransient: jest.fn() },
 }));
 jest.mock('../../global-state/sidebar', () => ({ sidebarState: { setIsSidebarMounted: jest.fn() } }));
 jest.mock('../../lib/analytics', () => ({ reportAppInteraction: jest.fn(), UserInteraction: {} }));

@@ -1,5 +1,6 @@
 import { validateInternalNavigationPath } from '../../security/url-validator';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
+import { PLUGIN_BASE_URL } from '../../constants';
 
 /**
  * `targetPath` (see `FullScreenPanel.tsx`'s `handleExitToSidebar`) is
@@ -16,6 +17,15 @@ export function resolveSafeTargetPath(candidate: string): string | undefined {
   // This feature treats root as no real signal (see
   // full-screen-fallback-location.ts), including root with search or hash.
   return new URL(safePath, window.location.origin).pathname !== '/' ? safePath : undefined;
+}
+
+export function resolveCourseReturnPath(candidate: string | null): string {
+  const safePath = candidate ? resolveSafeTargetPath(candidate) : undefined;
+  if (!safePath) {
+    return PLUGIN_BASE_URL;
+  }
+  const pathname = new URL(safePath, window.location.origin).pathname;
+  return pathname === PLUGIN_BASE_URL || pathname === `${PLUGIN_BASE_URL}/browse` ? safePath : PLUGIN_BASE_URL;
 }
 
 /**

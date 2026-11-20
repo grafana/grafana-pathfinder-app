@@ -84,8 +84,8 @@ export function GuideRow({ guide, testId, expansionTestIds, onLaunch, onOpenModu
             <LearningDetailsToggle
               expanded={expanded}
               hasDetails={expansion.hasDetails}
-              label={expansion.hasModules ? t('learningCard.showModules', 'Show milestones') : undefined}
-              collapseLabel={expansion.hasModules ? t('learningCard.hideModules', 'Hide milestones') : undefined}
+              label={expansion.hasModules ? t('learningCard.showModules', 'Show modules') : undefined}
+              collapseLabel={expansion.hasModules ? t('learningCard.hideModules', 'Hide modules') : undefined}
               controls={detailsId}
               subtle
               testId={expansionTestIds?.toggle}

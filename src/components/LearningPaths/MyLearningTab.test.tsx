@@ -574,7 +574,7 @@ describe('MyLearningTab launch flow', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
     const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
-    expect(card).toHaveTextContent('1/2 guides');
+    expect(card).toHaveTextContent('2 modules');
     // guide-1 is locally done but not credited; Continue must warn before resetting it.
     fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-new')));
     expect(prepareMock).not.toHaveBeenCalled();
@@ -734,7 +734,7 @@ describe('MyLearningTab launch flow', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
     const card = screen.getByTestId(testIds.learningPaths.card('path-track'));
-    expect(card).toHaveTextContent('1/2 guides');
+    expect(card).toHaveTextContent('2 modules');
     expect(card.querySelector('.expandable')).toHaveTextContent('Track Ops engineers');
 
     fireEvent.click(within(card).getByTestId(testIds.learningPaths.continueButton('path-track')));
@@ -779,7 +779,7 @@ describe('MyLearningTab launch flow', () => {
     expect(header).toHaveTextContent('Assigned');
     expect(header).toHaveTextContent(/\d+ days/);
     expect(header).not.toHaveTextContent('left');
-    expect(header).toHaveTextContent('0/1 guides');
+    expect(header).toHaveTextContent('1 module');
     expect(header).not.toHaveTextContent('min');
     expect(header).not.toHaveTextContent('Assigned by');
     expect(details).toHaveTextContent('Assigned by');
@@ -944,8 +944,8 @@ describe('MyLearningTab launch flow', () => {
 
     const firstCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
     const secondCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-2'));
-    expect(firstCard).toHaveTextContent('1 milestone');
-    expect(secondCard).toHaveTextContent('2 milestones');
+    expect(firstCard).toHaveTextContent('1 module');
+    expect(secondCard).toHaveTextContent('2 modules');
     expect(firstCard).not.toHaveTextContent('guide');
     expect(secondCard).not.toHaveTextContent('guide');
   });
@@ -1061,7 +1061,7 @@ describe('MyLearningTab launch flow', () => {
     ];
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     const card = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
-    const expand = within(card).getByRole('button', { name: /Show milestones/ });
+    const expand = within(card).getByRole('button', { name: /Show modules/ });
     expect(expand).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(expand);
     expect(expand).toHaveAttribute('aria-expanded', 'true');

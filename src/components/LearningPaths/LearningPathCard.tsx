@@ -5,7 +5,9 @@ import { t } from '@grafana/i18n';
 
 import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-visual';
 import { LearningCardPreview } from '../LearningContentCard/LearningCardPreview';
+import { moduleCountText } from '../LearningContentCard/learning-effort';
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
+import { getManifestMilestoneIds, getManifestTracks } from '../../types/package.types';
 import { formatDueDate, getDueStatus, getAssignmentGuideState } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { getLearningPathCardStyles } from './learning-paths.styles';
@@ -124,7 +126,16 @@ export function LearningPathCard({
     return 'Continue';
   };
 
-  const completedCount = effectiveGuides.filter((g) => g.completed).length;
+  const tracks = getManifestTracks(path.manifest);
+  const assignedTrack = tracks.find((track) => track.trackId === assignment?.trackId);
+  const defaultModuleIds = getManifestMilestoneIds(path.manifest);
+  const moduleIds = assignedTrack?.guides ?? (defaultModuleIds.length ? defaultModuleIds : (tracks[0]?.guides ?? []));
+  const availableModuleIds = path.isPrivate ? moduleIds.filter((id) => path.guides.includes(id)) : moduleIds;
+  const moduleCount = assignmentGuides?.length || (moduleIds.length ? availableModuleIds.length : guides.length);
+  const moduleLabel =
+    isLoadingGuides && !moduleCount
+      ? t('learningCard.loadingModules', 'Loading modules…')
+      : moduleCountText(moduleCount);
   const imageDuration =
     tile &&
     typeof path.estimatedMinutes === 'number' &&
@@ -233,13 +244,7 @@ export function LearningPathCard({
           {!tile && (
             <div className={styles.meta}>
               {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
-              {isLoadingGuides ? (
-                <span>Loading guides...</span>
-              ) : (
-                <span>
-                  {completedCount}/{guides.length} guides
-                </span>
-              )}
+              <span>{moduleLabel}</span>
             </div>
           )}
         </div>
@@ -265,16 +270,7 @@ export function LearningPathCard({
                     <span>{t('learningCard.path', 'Learning path')}</span>
                   )}
                   <span aria-hidden="true">·</span>
-                  {isLoadingGuides
-                    ? t('learningCard.loadingGuides', 'Loading guides…')
-                    : presentation === 'resume' || presentation === 'compact'
-                      ? guides.length === 1
-                        ? t('myLearning.summaryOneGuide', '1 guide')
-                        : t('myLearning.summaryGuides', '{{count}} guides', { count: guides.length })
-                      : t('myLearning.guidesProgress', '{{completed}}/{{total}} guides', {
-                          completed: completedCount,
-                          total: guides.length,
-                        })}
+                  {moduleLabel}
                 </span>
                 {presentation !== 'compact' &&
                   !imageDuration &&

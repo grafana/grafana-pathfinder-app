@@ -65,7 +65,7 @@ export function GuideDetails({ expansion, loadingTestId, moduleTestId, onOpenMod
       )}
       {onRetry && !isResolving && (
         <div className={cardStyles.error} role="alert">
-          <p>{t('learningCard.membersError', 'Could not load milestone details.')}</p>
+          <p>{t('learningCard.membersError', 'Could not load module details.')}</p>
           <Button size="sm" variant="secondary" onClick={onRetry}>
             {t('learningCard.retry', 'Retry')}
           </Button>
@@ -73,7 +73,7 @@ export function GuideDetails({ expansion, loadingTestId, moduleTestId, onOpenMod
       )}
       {modules.length > 0 && (
         <div>
-          <h4 className={hubStyles.detailsHeading}>{t('learningCard.modulesTitle', 'Milestones')}</h4>
+          <h4 className={hubStyles.detailsHeading}>{t('learningCard.modulesTitle', 'Modules')}</h4>
           <LearningModuleList
             compact
             modules={modules}

@@ -1,4 +1,4 @@
-import { milestoneCountText } from '../LearningContentCard/learning-effort';
+import { catalogModuleCountText } from '../LearningContentCard/learning-effort';
 import React, { useMemo, useState } from 'react';
 import { useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -122,11 +122,10 @@ export function CompletionSuggestions({ content, completionIdentity, inPath = fa
               item.format === 'path'
                 ? t('completionPanel.learningPath', 'Learning path')
                 : t('completionPanel.guide', 'Guide'),
-              item.memberIds?.length
-                ? milestoneCountText(item.memberIds.length)
-                : item.estimatedMinutes
+              catalogModuleCountText(item) ??
+                (item.estimatedMinutes
                   ? t('completionPanel.minutes', 'About {{minutes}} min', { minutes: item.estimatedMinutes })
-                  : undefined,
+                  : undefined),
               item.source === 'organization' ? t('completionPanel.organization', 'Your organization') : undefined,
             ]
               .filter(Boolean)
