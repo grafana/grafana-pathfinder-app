@@ -13,7 +13,7 @@ const mockContext = {
 };
 jest.mock('../../docs-retrieval', () => ({ useGuideResponsesOptional: () => mockContext }));
 jest.mock('../../lib/analytics', () => require('../../test-utils/data-check-stubs').analyticsStub);
-jest.mock('./datasource-options', () => ({ filterDatasourcesByType: () => [], toDatasourceOptions: () => [] }));
+jest.mock('./datasource-options', () => ({ filterDatasourcesByType: async () => [], toDatasourceOptions: () => [] }));
 
 beforeEach(() => jest.clearAllMocks());
 

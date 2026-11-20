@@ -5,7 +5,8 @@
  * to its peers and the router stays small.
  */
 
-import { config, hasPermission, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
+import { config, hasPermission, getBackendSrv } from '@grafana/runtime';
+import { getDataSourceInstanceList } from '@grafana/plugin-compat/datasources';
 import { fetchDataSources, fetchPlugins, fetchDashboardsByName } from '../../lib/grafana-api';
 import type { CheckResultError } from '../../types/requirements.types';
 
@@ -117,11 +118,9 @@ function matchDataSource(dataSources: ListedDataSource[], requirement: string): 
   return undefined;
 }
 
-function localDataSources(): ListedDataSource[] {
+async function localDataSources(): Promise<ListedDataSource[]> {
   try {
-    return getDataSourceSrv()
-      .getList()
-      .filter((ds) => !ds.meta?.builtIn);
+    return (await getDataSourceInstanceList()).filter((ds) => !ds.meta?.builtIn);
   } catch {
     return [];
   }
@@ -139,7 +138,7 @@ export async function hasDataSourceCheck(check: string): Promise<CheckResultErro
       available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, uid: ds.uid })),
     },
   });
-  const local = localDataSources();
+  const local = await localDataSources();
   const localMatch = matchDataSource(local, dsRequirement);
   if (localMatch) {
     return result(local, localMatch);

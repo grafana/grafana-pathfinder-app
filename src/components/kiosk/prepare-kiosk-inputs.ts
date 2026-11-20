@@ -31,11 +31,8 @@ export async function prepareKioskInputs(
   }
   const values = validateKioskValues(inputs, draft);
   for (const input of inputs) {
-    if (
-      input.inputType === 'datasource' &&
-      values[input.variableName] &&
-      !filterDatasourcesByType(input.datasourceFilter).some((ds) => ds.name === values[input.variableName])
-    ) {
+    const picked = input.inputType === 'datasource' ? values[input.variableName] : undefined;
+    if (picked && !(await filterDatasourcesByType(input.datasourceFilter)).some((ds) => ds.name === picked)) {
       throw new KioskFormError('Choose an available data source');
     }
   }

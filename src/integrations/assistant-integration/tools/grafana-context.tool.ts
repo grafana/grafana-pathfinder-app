@@ -6,7 +6,8 @@
  */
 
 import { createTool, type InlineToolRunnable, type ToolInvokeOptions, type ToolOutput } from '@grafana/assistant';
-import { config, locationService, getBackendSrv, getDataSourceSrv } from '@grafana/runtime';
+import { config, locationService, getBackendSrv } from '@grafana/runtime';
+import { getDataSourceInstanceList } from '@grafana/plugin-compat/datasources';
 
 import type { GrafanaContextArtifact, DatasourceInfo } from './types';
 import { getDetectedDatasourceType, getDetectedVisualizationType } from '../../../context-engine';
@@ -97,12 +98,9 @@ const fetchDashboardInfo = async (
   }
 };
 
-/**
- * Get all datasources as simplified info
- */
-const getDatasourcesInfo = (): DatasourceInfo[] => {
+const getDatasourcesInfo = async (): Promise<DatasourceInfo[]> => {
   try {
-    const datasources = getDataSourceSrv().getList();
+    const datasources = await getDataSourceInstanceList();
     return datasources.map((ds) => ({
       uid: ds.uid,
       name: ds.name,
@@ -211,7 +209,7 @@ export const createGrafanaContextTool = (
         grafanaVersion: getGrafanaVersion(),
         platform: currentPlatform(),
         theme: getCurrentTheme(),
-        datasources: getDatasourcesInfo(),
+        datasources: await getDatasourcesInfo(),
         dashboard,
         activeDatasourceType,
         activeVisualizationType,
