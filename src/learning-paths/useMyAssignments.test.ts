@@ -169,10 +169,9 @@ describe('useMyAssignments', () => {
       })
     );
 
-    await waitFor(() => expect(logger.warn).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.notDone).toEqual([]);
-    expect(result.current.isLoading).toBe(false);
     expect(result.current.hasError).toBe(false);
     expect(logger.warn).toHaveBeenCalledWith('[assignments] unresolvable target', {
       reason: 'unresolvable-target',
