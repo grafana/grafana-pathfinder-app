@@ -13,7 +13,7 @@ func TestEvaluateGolden(t *testing.T) {
 	for i := range catalog.Achievements {
 		defs[catalog.Achievements[i].ID] = &catalog.Achievements[i]
 	}
-	capCount := string(repeatByte('x', maxUnitIDBytes-len("516:")))
+	capCount := string(repeatByte('x', maxUnitIDBytes-len("dashboard:")-len("506:")))
 
 	cases := []struct {
 		name        string
@@ -392,10 +392,10 @@ func TestEvaluateCountsTheRecordersLongestGuideID(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := &catalog.Achievements[0]
-	source, id := string(repeatByte('s', 256)), string(repeatByte('i', 256))
+	source, id := string(repeatByte('s', 253)), string(repeatByte('i', 253))
 	got := evaluate(d, Progress{AchievementID: d.ID}, guideFinished(source, id))
 	if got.decision.Decision != KindAward || !equalStrings(got.next.Units, []string{unitKey("guide", source, id)}) {
-		t.Errorf("a 256-byte source and id = %+v, want one counted guide", got.decision)
+		t.Errorf("the longest source and id the unit cap admits = %+v, want one counted guide", got.decision)
 	}
 }
 

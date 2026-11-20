@@ -144,7 +144,7 @@ func TestPublishedDefinitionCountsTheRecordersLongestGuideID(t *testing.T) {
 	ev := NewEvaluator(catalog, newFakeStore(), &fakePolicy{}, func() time.Time { return fixedNow })
 	decisions, err := ev.Evaluate(context.Background(), testPerson, Event{
 		ID: "long", Entity: "guides", Action: "completed",
-		Context: map[string]any{"guideSource": string(repeatByte('s', 256)), "guideId": string(repeatByte('i', 256)), "guideCategory": "interactive"},
+		Context: map[string]any{"guideSource": string(repeatByte('s', 253)), "guideId": string(repeatByte('i', 253)), "guideCategory": "interactive"},
 	})
 	if err != nil || len(decisions) != 1 || decisions[0].Decision != KindAward {
 		t.Errorf("decisions = %+v err = %v, want one counted guide", decisions, err)

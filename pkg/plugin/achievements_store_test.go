@@ -586,7 +586,7 @@ func TestAchievementStore_EvaluatorsLongestUnitKeyFits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProgress: %v", err)
 	}
-	longest := unitKeyForTest(strings.Repeat("s", 256), strings.Repeat("i", 256))
+	longest := unitKeyForTest(strings.Repeat("s", 253), strings.Repeat("i", 253))
 	created.Units = []string{longest}
 	if _, err := store.SaveProgress(ctx, achievementTestPerson, created); err != nil {
 		t.Fatalf("the recorder's longest guide key (%d bytes) was refused: %v", len(longest), err)

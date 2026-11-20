@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// Two recorder ids of 256 bytes each, with a four-byte length prefix apiece.
-const maxUnitIDBytes = 2 * (256 + len("256:"))
+// The AchievementProgress CRD caps a unit at 520 characters, unit prefix included.
+const maxUnitIDBytes = 520
 
 type outcome struct {
 	decision Decision
@@ -242,10 +242,11 @@ func (r *Rule) unitID(ev Event) (string, bool) {
 		}
 		add(part)
 	}
-	if key.Len() > maxUnitIDBytes {
+	id := r.unit + ":" + key.String()
+	if len(id) > maxUnitIDBytes {
 		return "", false
 	}
-	return r.unit + ":" + key.String(), true
+	return id, true
 }
 
 func scalarString(v any) (string, bool) {

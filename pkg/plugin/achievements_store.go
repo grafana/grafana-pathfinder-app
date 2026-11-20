@@ -19,6 +19,7 @@ const (
 type achievementWriter = services.AchievementWriter
 
 var errAchievementRowMismatch = services.ErrAchievementRowMismatch
+var errAchievementPointsUnserved = services.ErrAchievementPointsUnserved
 var achievementProgressName = services.AchievementProgressName
 var achievementAwardName = services.AchievementAwardName
 
