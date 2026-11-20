@@ -1,3 +1,4 @@
+import { SectionBranchContext } from './section-branch-context';
 import { useCompletionCoordinator } from '../../global-state/observation/context';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { usePathfinderPluginConfig } from '../../hooks';
@@ -76,7 +77,8 @@ export const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSch
  *  is not a tracked step type (markdown / media / wrapper). */
 function isInlineConditional(child: React.ReactNode): boolean {
   return (
-    React.isValidElement(child) &&
+    React.isValidElement<{ display?: string }>(child) &&
+    child.props.display !== 'section' &&
     typeof child.type !== 'string' &&
     (child.type as { displayName?: string }).displayName === 'InteractiveConditional'
   );
@@ -337,6 +339,47 @@ export function InteractiveSection({
   // Use executeInteractiveAction directly (no wrapper needed)
   // Section-level blocking is managed separately at the section level
 
+  const [branches, setBranches] = useState<ReadonlyMap<string, readonly React.ReactNode[]>>(new Map());
+  const registerBranch = useCallback((id: string, nodes: readonly React.ReactNode[] | undefined) => {
+    setBranches((previous) => {
+      if (previous.get(id) === nodes) {
+        return previous;
+      }
+      const next = new Map(previous);
+      if (nodes === undefined) {
+        next.delete(id);
+      } else {
+        next.set(id, nodes);
+      }
+      return next;
+    });
+  }, []);
+  const activeChildren = useMemo(() => {
+    let pending = false;
+    let conditional = false;
+    const flatten = (nodes: React.ReactNode): React.ReactNode[] => {
+      const result: React.ReactNode[] = [];
+      React.Children.forEach(nodes, (wrapped) => {
+        const child = unwrapSectionChild(wrapped);
+        if (isInlineConditional(child) && React.isValidElement<{ id?: string; keyPrefix: string }>(child)) {
+          conditional = true;
+          result.push(wrapped);
+          const selected = branches.get(child.props.id ?? child.props.keyPrefix);
+          if (selected === undefined) {
+            pending = true;
+          } else {
+            result.push(...flatten(selected));
+          }
+        } else {
+          result.push(wrapped);
+        }
+      });
+      return result;
+    };
+    const nodes = flatten(children);
+    return { nodes, pending, conditional };
+  }, [children, branches]);
+
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
     let stepIndex = 0;
@@ -344,7 +387,7 @@ export function InteractiveSection({
     let opaqueBefore = false;
     let displayNumber = 0;
     let numberingKnown = true;
-    React.Children.forEach(children, (wrappedChild) => {
+    React.Children.forEach(activeChildren.nodes, (wrappedChild) => {
       const child = unwrapSectionChild(wrappedChild);
       const schema = lookupStepSchema(child);
       if (shouldNumberSectionChild(wrappedChild)) {
@@ -376,7 +419,17 @@ export function InteractiveSection({
     });
 
     return steps;
-  }, [children, sectionId]);
+  }, [activeChildren.nodes, sectionId]);
+
+  const activeRosterKey = JSON.stringify([activeChildren.pending, stepComponents.map((step) => step.stepId)]);
+  useEffect(
+    () => () => {
+      if (executionControllerRef.current) {
+        handleSectionCancel();
+      }
+    },
+    [activeRosterKey, handleSectionCancel]
+  );
 
   // Acknowledgement-gate analysis (issue #842). Classifies each direct
   // child by document-order kind and decides whether the section needs
@@ -392,9 +445,11 @@ export function InteractiveSection({
   // Recomputes only on child-tree changes. The classification of each
   // child is stable across renders if the React element identity is.
   const gateAnalysis: AcknowledgementAnalysis = useMemo(() => {
-    const kinds = React.Children.toArray(children).map(classifySectionChild);
+    const kinds = React.Children.toArray(activeChildren.nodes)
+      .filter((child) => !isInlineConditional(unwrapSectionChild(child)))
+      .map(classifySectionChild);
     return analyzeAcknowledgement(kinds);
-  }, [children]);
+  }, [activeChildren.nodes]);
 
   // Ack + collapse storage IO + the mount-only RESTORE effect are owned
   // by `useSectionPersistence`. Step-completion storage is owned by the
@@ -420,7 +475,7 @@ export function InteractiveSection({
   // once per roster change; idempotent when storage is already aligned.
   // Skipped in preview mode where storage writes are sandboxed.
   useEffect(() => {
-    if (isPreviewMode) {
+    if (isPreviewMode || activeChildren.conditional) {
       return;
     }
     const roster = stepComponents.map((s) => s.stepId);
@@ -428,7 +483,7 @@ export function InteractiveSection({
       return;
     }
     reconcileSection(sectionId, roster);
-  }, [isPreviewMode, sectionId, stepComponents]);
+  }, [isPreviewMode, sectionId, stepComponents, activeChildren.conditional]);
 
   // Preview-mode sandbox (#842 Bug 3): the store's in-memory cache is
   // module-scope and would otherwise survive an unmount/remount cycle
@@ -575,11 +630,19 @@ export function InteractiveSection({
       isCompletedByObjectives,
       completedSteps
     );
-    if (gatesOnObjectives && !isCompletedByObjectives && result.isCompleted) {
+    if (activeChildren.pending || (gatesOnObjectives && !isCompletedByObjectives && result.isCompleted)) {
       return { ...result, kind: 'partial' as const, isCompleted: false, doneVia: null };
     }
     return result;
-  }, [sectionState, stepComponents, gateAnalysis, isCompletedByObjectives, completedSteps, gatesOnObjectives]);
+  }, [
+    sectionState,
+    stepComponents,
+    gateAnalysis,
+    isCompletedByObjectives,
+    completedSteps,
+    gatesOnObjectives,
+    activeChildren.pending,
+  ]);
   const sectionKind = derived.kind;
   const isCompleted = derived.isCompleted;
   const doneVia = derived.doneVia;
@@ -650,7 +713,7 @@ export function InteractiveSection({
     { onEvent: onRecoveryEvent, suspended: isRunning || executingSteps.size > 0 }
   );
   const hasRecoveryPlan = !!recoveryPlan;
-  const sectionReady = sectionRequirementsStatus.passed && !recovery.paused;
+  const sectionReady = sectionRequirementsStatus.passed && !recovery.paused && !activeChildren.pending;
   const checkRecovery = recovery.recheck;
   const setupStepId = recovery.unrestorable ? recoveryPlan?.setupStepId : undefined;
   const recoveryHint = useMemo((): RecoveryHint | undefined => {
@@ -1514,7 +1577,8 @@ export function InteractiveSection({
     completedSteps,
   });
 
-  const enhancedChildren = useMemo(() => {
+  const enhancedByChild = useMemo(() => {
+    const enhanced = new Map<unknown, React.ReactNode>();
     let stepIndex = 0;
 
     const makeRefCallback =
@@ -1529,7 +1593,7 @@ export function InteractiveSection({
       };
 
     // eslint-disable-next-line react-hooks/refs -- the stepRefs/multiStepRefs Maps are read inside the ref callback, which runs at commit time, not during render
-    return React.Children.map(children, (wrappedChild) =>
+    React.Children.forEach(activeChildren.nodes, (wrappedChild) =>
       mapSectionChild(wrappedChild, (child) => {
         const schema = lookupStepSchema(child);
         if (!schema) {
@@ -1571,7 +1635,7 @@ export function InteractiveSection({
 
         stepIndex++;
 
-        return React.cloneElement(child as React.ReactElement<any>, {
+        const node = React.cloneElement(child as React.ReactElement<any>, {
           ...(child as React.ReactElement<any>).props,
           ...enhancedProps,
           ...(schema.kind === 'plain' || schema.kind === 'multistep' || schema.kind === 'guided'
@@ -1580,10 +1644,14 @@ export function InteractiveSection({
           key: stepInfo.stepId,
           ...(refCallback ? { ref: refCallback } : {}),
         });
+        enhanced.set(stepInfo.stepId, node);
+        enhanced.set((child as React.ReactElement).props, node);
+        return node;
       })
     );
+    return enhanced;
   }, [
-    children,
+    activeChildren.nodes,
     stepComponents,
     stepEligibility,
     currentlyExecutingStep,
@@ -1600,6 +1668,17 @@ export function InteractiveSection({
     recoveryHint,
     recoveryHintStepId,
   ]);
+
+  const enhanceBranchChild = (child: React.ReactNode) =>
+    mapSectionChild(
+      child,
+      (inner) =>
+        (React.isValidElement<{ stepId?: string }>(inner)
+          ? (enhancedByChild.get(inner.props) ?? enhancedByChild.get(inner.props.stepId))
+          : undefined) ?? (lookupStepSchema(inner) ? null : inner)
+    );
+  const branchContext = { register: registerBranch, enhance: enhanceBranchChild };
+  const enhancedChildren = React.Children.map(children, enhanceBranchChild);
 
   // Computed once per render so the catch-all action button's `title`
   // and label IIFEs share a single result instead of recomputing.
@@ -1737,7 +1816,9 @@ export function InteractiveSection({
           )}
 
           <ol className="interactive-section-content" hidden={isCollapsed}>
-            {wrapSectionChildrenForNumbering(enhancedChildren)}
+            <SectionBranchContext.Provider value={branchContext}>
+              {wrapSectionChildrenForNumbering(enhancedChildren)}
+            </SectionBranchContext.Provider>
           </ol>
 
           <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
