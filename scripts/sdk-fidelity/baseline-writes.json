@@ -2762,7 +2762,7 @@
           },
           {
             "metadata": {
-              "name": "last",
+              "name": "last-resource",
               "resourceVersion": "9"
             },
             "spec": {
