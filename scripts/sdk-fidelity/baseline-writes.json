@@ -1,0 +1,6890 @@
+{
+  "assignmentHistory": {
+    "200/insights=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [
+          {
+            "assignedAt": "2026-09-05T00:00:00Z",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "last",
+                "guideSource": "bundled"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "last-page",
+            "satisfied": false,
+            "targetId": "last",
+            "targetSource": "bundled",
+            "targetType": "guide"
+          },
+          {
+            "assignedAt": "2026-09-05T00:00:00Z",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "partial",
+                "guideSource": "app-platform"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "partial",
+            "satisfied": false,
+            "targetId": "partial",
+            "targetSource": "app-platform",
+            "targetType": "guide"
+          },
+          {
+            "acceptCompletionsFrom": "2026-09-03T00:00:00Z",
+            "assignedAt": "2026-09-03T00:00:00Z",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "repeat",
+            "satisfied": false,
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide"
+          },
+          {
+            "assignedAt": "2026-09-02T00:00:00Z",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "app-platform"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "private",
+            "satisfied": true,
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "lifecycle": "active",
+            "ruleId": "first",
+            "satisfied": true,
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide"
+          }
+        ],
+        "capability": {
+          "available": true
+        },
+        "userId": "user:abc"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "200/insights=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [
+          {
+            "assignedAt": "2026-09-05T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "last",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "last-page",
+            "status": "outstanding",
+            "targetId": "last",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-05T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "partial",
+                "guideSource": "app-platform"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "partial",
+            "status": "outstanding",
+            "targetId": "partial",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "first",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-02T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "app-platform"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "private",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-03T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "repeat",
+            "status": "outstanding",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "withdrawn",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "other",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "other",
+            "status": "outstanding",
+            "targetId": "other",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:other"
+          }
+        ],
+        "capability": {
+          "available": true
+        },
+        "completeness": "complete",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:other",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "403/insights=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-403"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "403/insights=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "first",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-02T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "app-platform"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "private",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-03T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "repeat",
+            "status": "outstanding",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "withdrawn",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "other",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "other",
+            "status": "outstanding",
+            "targetId": "other",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:other"
+          }
+        ],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:other",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "503/insights=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "503/insights=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "first",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-02T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "app-platform"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "private",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-03T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "repeat",
+            "status": "outstanding",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "withdrawn",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:abc"
+          },
+          {
+            "assignedAt": "2026-09-01T00:00:00Z",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "other",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "other",
+            "status": "outstanding",
+            "targetId": "other",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:other"
+          }
+        ],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:other",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    }
+  },
+  "cache": [
+    {
+      "asOf": "",
+      "calls": 1,
+      "failed": true,
+      "name": "cold outage"
+    },
+    {
+      "asOf": "",
+      "calls": 1,
+      "failed": true,
+      "name": "cold cooldown"
+    },
+    {
+      "asOf": "2026-11-01T00:00:30Z",
+      "calls": 2,
+      "failed": false,
+      "name": "cold recovery"
+    },
+    {
+      "asOf": "2026-11-01T00:00:30Z",
+      "calls": 2,
+      "failed": false,
+      "name": "within TTL"
+    },
+    {
+      "asOf": "2026-11-01T00:05:30Z",
+      "calls": 3,
+      "failed": false,
+      "name": "TTL boundary"
+    },
+    {
+      "asOf": "2026-11-01T00:05:30Z",
+      "calls": 4,
+      "failed": false,
+      "name": "forced refresh"
+    },
+    {
+      "asOf": "2026-11-01T00:05:30Z",
+      "calls": 4,
+      "failed": false,
+      "name": "forced refresh throttled"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 5,
+      "failed": false,
+      "name": "forced refresh resumes"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 6,
+      "failed": true,
+      "name": "invalidation retains stale on denied refresh"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 7,
+      "failed": true,
+      "name": "denied refresh is not cached"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 8,
+      "failed": true,
+      "name": "warm outage"
+    },
+    {
+      "asOf": "2026-11-01T00:06:00Z",
+      "calls": 8,
+      "failed": false,
+      "name": "warm cooldown serves stale"
+    },
+    {
+      "asOf": "2026-11-01T00:06:30Z",
+      "calls": 9,
+      "failed": false,
+      "name": "warm recovery"
+    },
+    {
+      "asOf": "2026-11-01T00:06:30Z",
+      "calls": 10,
+      "failed": false,
+      "name": "write invalidation refreshes"
+    }
+  ],
+  "completed-schema-rejection": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 422
+    },
+    {
+      "assignment": {
+        "historyReads": 1,
+        "reads": 1,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 1
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "concurrent": {
+    "100-first": {
+      "creates": 1,
+      "gets": 4,
+      "persisted": {
+        "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+        "kind": "CompletionRecord",
+        "metadata": {
+          "annotations": {
+            "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+          },
+          "name": "concurrent-attempt",
+          "namespace": "stacks-1",
+          "resourceVersion": "2"
+        },
+        "spec": {
+          "completedAt": "2026-11-01T01:00:00Z",
+          "completionPercent": 100,
+          "durationSeconds": 90,
+          "guideCategory": "interactive",
+          "guideId": "first-dashboard",
+          "guideSource": "bundled",
+          "guideTitle": "First dashboard",
+          "orgId": 1,
+          "pathId": "",
+          "platform": "cloud",
+          "recordedAt": "2026-11-01T01:00:00Z",
+          "schemaVersion": 1,
+          "source": "manual",
+          "stackNamespace": "stacks-1",
+          "userDisplayName": "",
+          "userId": "user:abc",
+          "userLogin": ""
+        }
+      },
+      "replaces": 2,
+      "results": {
+        "100": {
+          "Error": "",
+          "Outcome": 1,
+          "Percent": 100,
+          "Persisted": {
+            "completedAt": "2026-11-01T01:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 90,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "2026-11-01T01:00:00Z",
+            "schemaVersion": 1,
+            "source": "manual",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        },
+        "70": {
+          "Error": "",
+          "Outcome": 2,
+          "Percent": 70,
+          "Persisted": {
+            "completedAt": "2026-11-01T01:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 90,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "2026-11-01T01:00:00Z",
+            "schemaVersion": 1,
+            "source": "manual",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      }
+    },
+    "70-first": {
+      "creates": 1,
+      "gets": 4,
+      "persisted": {
+        "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+        "kind": "CompletionRecord",
+        "metadata": {
+          "annotations": {
+            "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+          },
+          "name": "concurrent-attempt",
+          "namespace": "stacks-1",
+          "resourceVersion": "3"
+        },
+        "spec": {
+          "completedAt": "2026-11-01T01:00:00Z",
+          "completionPercent": 100,
+          "durationSeconds": 90,
+          "guideCategory": "interactive",
+          "guideId": "first-dashboard",
+          "guideSource": "bundled",
+          "guideTitle": "First dashboard",
+          "orgId": 1,
+          "pathId": "",
+          "platform": "cloud",
+          "recordedAt": "2026-11-01T01:00:00Z",
+          "schemaVersion": 1,
+          "source": "manual",
+          "stackNamespace": "stacks-1",
+          "userDisplayName": "",
+          "userId": "user:abc",
+          "userLogin": ""
+        }
+      },
+      "replaces": 3,
+      "results": {
+        "100": {
+          "Error": "",
+          "Outcome": 1,
+          "Percent": 100,
+          "Persisted": {
+            "completedAt": "2026-11-01T01:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 90,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "2026-11-01T01:00:00Z",
+            "schemaVersion": 1,
+            "source": "manual",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        },
+        "70": {
+          "Error": "",
+          "Outcome": 1,
+          "Percent": 70,
+          "Persisted": {
+            "completionPercent": 70,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "2026-11-01T00:00:00Z",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      }
+    }
+  },
+  "conflict-exhaustion-recovery": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "error": "completion-write-contended"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "completionPercent": 70,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    }
+  ],
+  "conflict-retry": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "completionPercent": 70,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    }
+  ],
+  "forbidden-recovery": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 403
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "history": {
+    "completed": {
+      "user:1": [
+        {
+          "count": 1,
+          "guideCategory": "interactive",
+          "guideId": "first-dashboard",
+          "guideSource": "online-cdn",
+          "guideTitle": "",
+          "latestCompletedAt": "2026-09-03T00:00:00Z",
+          "latestSource": "",
+          "maxCompletionPercent": 100,
+          "pathId": ""
+        },
+        {
+          "count": 3,
+          "guideCategory": "interactive",
+          "guideId": "same",
+          "guideSource": "bundled",
+          "guideTitle": "",
+          "latestCompletedAt": "2026-09-02T00:00:00Z",
+          "latestSource": "",
+          "maxCompletionPercent": 100,
+          "pathId": ""
+        }
+      ],
+      "user:2": [
+        {
+          "count": 1,
+          "guideCategory": "interactive",
+          "guideId": "same",
+          "guideSource": "app-platform",
+          "guideTitle": "",
+          "latestCompletedAt": "2026-10-01T00:00:00Z",
+          "latestSource": "",
+          "maxCompletionPercent": 100,
+          "pathId": ""
+        }
+      ]
+    },
+    "partial": {
+      "user:1": [
+        {
+          "completionPercent": 40,
+          "guideCategory": "interactive",
+          "guideId": "partial",
+          "guideSource": "bundled",
+          "guideTitle": "",
+          "lastUpdatedAt": "",
+          "pathId": ""
+        }
+      ]
+    },
+    "reports": [
+      {
+        "asOf": "",
+        "assignments": [
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "first-dashboard",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "rss-is-not-dashboard",
+            "status": "outstanding",
+            "targetId": "first-dashboard",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "one",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "two",
+            "status": "outstanding",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:2"
+          }
+        ],
+        "capability": {
+          "available": false
+        },
+        "completeness": "complete",
+        "completions": [
+          {
+            "completedAt": "2026-09-01T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "Current title",
+            "source": "",
+            "userId": "user:1"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "first-dashboard",
+            "guideSource": "online-cdn",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:1"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:1",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:2",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      },
+      {
+        "asOf": "",
+        "assignments": [
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "first-dashboard",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "completion-history-incomplete",
+            "ruleId": "rss-is-not-dashboard",
+            "status": "unknown",
+            "targetId": "first-dashboard",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": true,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "",
+            "ruleId": "one",
+            "status": "complete",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [
+              {
+                "completed": false,
+                "guideId": "same",
+                "guideSource": "bundled"
+              }
+            ],
+            "name": "",
+            "reason": "completion-history-incomplete",
+            "ruleId": "two",
+            "status": "unknown",
+            "targetId": "same",
+            "targetSource": "bundled",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:1"
+          },
+          {
+            "assignedAt": "",
+            "dueAt": "",
+            "guides": [],
+            "name": "",
+            "reason": "",
+            "ruleId": "withdrawn",
+            "status": "withdrawn",
+            "targetId": "same",
+            "targetSource": "app-platform",
+            "targetType": "guide",
+            "trackId": "",
+            "userId": "user:2"
+          }
+        ],
+        "capability": {
+          "available": false
+        },
+        "completeness": "complete",
+        "completions": [
+          {
+            "completedAt": "2026-09-01T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "Current title",
+            "source": "",
+            "userId": "user:1"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "first-dashboard",
+            "guideSource": "online-cdn",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:1"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:1",
+            "userLogin": ""
+          },
+          {
+            "userDisplayName": "",
+            "userId": "user:2",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      }
+    ]
+  },
+  "httpReads": {
+    "-1/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-1/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-2/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "timeout",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-2/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "timeout",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-3/capability=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "capability": {
+          "available": true,
+          "progressRecords": true
+        },
+        "completions": [
+          {
+            "count": 2,
+            "guideCategory": "",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "latestCompletedAt": "2026-09-03T00:00:00Z",
+            "latestSource": "",
+            "maxCompletionPercent": 100,
+            "pathId": ""
+          },
+          {
+            "count": 1,
+            "guideCategory": "",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "latestCompletedAt": "2026-09-02T00:00:00Z",
+            "latestSource": "",
+            "maxCompletionPercent": 100,
+            "pathId": ""
+          }
+        ],
+        "inProgress": [
+          {
+            "completionPercent": 40,
+            "guideCategory": "",
+            "guideId": "partial",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "lastUpdatedAt": "2026-09-03T00:00:00Z",
+            "pathId": ""
+          }
+        ],
+        "userId": "user:abc"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "-3/capability=true": {
+      "body": {
+        "available": true,
+        "progressRecords": true
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "-4/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "cancelled",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-4/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "cancelled",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-5/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "network-error",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "-5/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "network-error",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "200/capability=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "capability": {
+          "available": true,
+          "progressRecords": true
+        },
+        "completions": [],
+        "inProgress": [],
+        "userId": "user:abc"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "200/capability=true": {
+      "body": {
+        "available": true,
+        "progressRecords": true
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "400/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 400
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "400/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "401/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "authentication-failed",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 401
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "401/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "403/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "authorization-denied",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 403
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "403/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "404/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 404
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "404/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "405/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 405
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "405/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "408/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "408/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "409/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 409
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "409/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "422/capability=false": {
+      "body": {
+        "capability": {
+          "available": false,
+          "diagnostics": {
+            "cacheAgeMs": 0,
+            "operation": "list",
+            "outcome": "error",
+            "reason": "http-error",
+            "resource": "completionrecords",
+            "stage": "app-platform",
+            "upstreamStatus": 422
+          },
+          "reason": "backend-unavailable"
+        },
+        "completions": [],
+        "inProgress": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "422/capability=true": {
+      "body": {
+        "available": false,
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "reason": "backend-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "429/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "429/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "500/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "500/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "501/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "501/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "503/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "503/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "504/capability=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "504/capability=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "completion-records-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-1/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-1/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-2/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-2/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-4/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-4/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-5/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/-5/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/200/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "userId": "user:abc"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/400/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-400"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/400/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-400"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/401/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-401"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/401/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-401"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/403/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-403"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/403/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-403"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/404/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-404"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/404/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-404"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/405/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-405"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/405/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-405"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/408/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/408/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/409/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-409"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/409/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-409"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/422/completions=false": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-422"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/422/completions=true": {
+      "body": {
+        "assignments": [],
+        "capability": {
+          "available": false,
+          "reason": "upstream-422"
+        }
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "assignments/429/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/429/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/500/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/500/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/501/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/501/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/503/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/503/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/504/completions=false": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "assignments/504/completions=true": {
+      "body": {
+        "error": "assignments-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/-1/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide-list/-1/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/-2/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "response-too-large",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide-list/-2/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "response-too-large",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/200/catalogue=false": {
+      "body": {
+        "items": [
+          {
+            "metadata": {
+              "name": "draft",
+              "resourceVersion": "7"
+            },
+            "spec": {
+              "blocks": [
+                {
+                  "content": "private draft",
+                  "type": "markdown"
+                }
+              ],
+              "futureField": true,
+              "id": "draft",
+              "status": "draft",
+              "title": "Draft"
+            }
+          },
+          {
+            "metadata": {
+              "name": "published",
+              "resourceVersion": "8"
+            },
+            "spec": {
+              "blocks": [
+                {
+                  "content": "published content",
+                  "type": "markdown"
+                }
+              ],
+              "id": "published",
+              "manifest": {
+                "description": "Metadata",
+                "type": "guide"
+              },
+              "status": "published",
+              "title": "Published"
+            }
+          },
+          {
+            "metadata": {
+              "name": "last",
+              "resourceVersion": "9"
+            },
+            "spec": {
+              "id": "last",
+              "manifest": {
+                "type": "guide"
+              },
+              "status": "published",
+              "title": "Last page"
+            }
+          }
+        ]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/200/catalogue=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "capability": {
+          "available": true
+        },
+        "guides": [
+          {
+            "id": "draft",
+            "status": "draft",
+            "title": "Draft"
+          },
+          {
+            "id": "published",
+            "manifest": {
+              "description": "Metadata",
+              "type": "guide"
+            },
+            "status": "published",
+            "title": "Published"
+          },
+          {
+            "id": "last",
+            "manifest": {
+              "type": "guide"
+            },
+            "status": "published",
+            "title": "Last page"
+          }
+        ]
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/400/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 400
+    },
+    "guide-list/400/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-400"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/401/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide-list/401/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-401"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/403/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 403
+    },
+    "guide-list/403/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-403"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/404/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "guide-list/404/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-404"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/405/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 405
+    },
+    "guide-list/405/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-405"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/408/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 408
+    },
+    "guide-list/408/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/409/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 409
+    },
+    "guide-list/409/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-409"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/422/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 422
+    },
+    "guide-list/422/catalogue=true": {
+      "body": {
+        "capability": {
+          "available": false,
+          "reason": "upstream-422"
+        },
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "guides": []
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide-list/429/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 429
+    },
+    "guide-list/429/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/500/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 500
+    },
+    "guide-list/500/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/501/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 501
+    },
+    "guide-list/501/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/503/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 503
+    },
+    "guide-list/503/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide-list/504/catalogue=false": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 504
+    },
+    "guide-list/504/catalogue=true": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "list",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "custom-guide-repository-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "retryAfter": "30",
+      "status": 503
+    },
+    "guide/-1": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide/-2": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "response-too-large",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide/200": {
+      "body": {
+        "metadata": {
+          "name": "test-guide",
+          "resourceVersion": "42"
+        },
+        "spec": {
+          "blocks": [
+            {
+              "content": "Hello",
+              "type": "markdown"
+            }
+          ],
+          "futureField": {
+            "enabled": true
+          },
+          "status": "draft"
+        }
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "guide/400": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 400
+    },
+    "guide/401": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "guide/403": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 403
+    },
+    "guide/404": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "guide/405": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 405
+    },
+    "guide/408": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 408
+    },
+    "guide/409": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 409
+    },
+    "guide/422": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 422
+    },
+    "guide/429": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 429
+    },
+    "guide/500": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 500
+    },
+    "guide/501": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 501
+    },
+    "guide/503": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 503
+    },
+    "guide/504": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "interactiveguides",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 504
+    },
+    "insights-paged/-1/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/-2/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/-4/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/-5/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/200/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "complete",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/400/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/401/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/403/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/404/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/405/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/408/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/409/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/422/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/429/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/500/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/501/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/503/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights-paged/504/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [
+          {
+            "completedAt": "2026-09-02T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "bundled",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          },
+          {
+            "completedAt": "2026-09-03T00:00:00Z",
+            "guideId": "same",
+            "guideSource": "app-platform",
+            "guideTitle": "",
+            "source": "",
+            "userId": "user:abc"
+          }
+        ],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [
+          {
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        ],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-1/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-1/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-2/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-2/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-4/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-4/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-5/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/-5/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/200/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "complete",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": []
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/400/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/400/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/401/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/401/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/403/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/403/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/404/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/404/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/405/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/405/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/408/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/408/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/409/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/409/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/422/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/422/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-unsupported"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/429/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/429/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/500/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/500/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/501/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/501/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/503/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/503/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/504/completions=false": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["assignments-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "insights/504/completions=true": {
+      "body": {
+        "asOf": "<validated-server-time>",
+        "assignments": [],
+        "capability": {
+          "available": true
+        },
+        "completeness": "partial",
+        "completions": [],
+        "from": "2026-09-01T00:00:00Z",
+        "people": [],
+        "to": "2026-10-01T00:00:00Z",
+        "warnings": ["completions-fetch-failed"]
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "settings-absence/cause": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/confirmed": {
+      "body": {
+        "state": "not-configured"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "settings-absence/conflicting-body-code": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/forbidden": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 403
+    },
+    "settings-absence/legacy-query": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/malformed": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/missing-route": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/other-group": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/other-name": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/oversized": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings-absence/unavailable": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 503
+    },
+    "settings/-1": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "invalid-json",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "settings/-2": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "response-too-large",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 200
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "settings/200": {
+      "body": {
+        "metadata": {
+          "resourceVersion": "42"
+        },
+        "spec": {
+          "futureField": {
+            "enabled": true
+          }
+        }
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 200
+    },
+    "settings/400": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 400
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 400
+    },
+    "settings/401": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authentication-failed",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 401
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 502
+    },
+    "settings/403": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "authorization-denied",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 403
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 403
+    },
+    "settings/404": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 404
+    },
+    "settings/405": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 405
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 405
+    },
+    "settings/408": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 408
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 408
+    },
+    "settings/409": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 409
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 409
+    },
+    "settings/422": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 422
+    },
+    "settings/429": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 429
+    },
+    "settings/500": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 500
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 500
+    },
+    "settings/501": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 501
+        },
+        "error": "settings-upstream-unavailable"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 501
+    },
+    "settings/503": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 503
+    },
+    "settings/504": {
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "get",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "pathfindersettings",
+          "stage": "app-platform",
+          "upstreamStatus": 504
+        },
+        "error": "app platform read failed"
+      },
+      "cacheControl": "no-store",
+      "contentType": "application/json",
+      "retryAfter": "",
+      "status": 504
+    }
+  },
+  "invalid-percent": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "error": "completionPercent out of range"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 400
+    }
+  ],
+  "lost-acknowledgement": [
+    {
+      "assignment": {
+        "historyReads": 1,
+        "reads": 1,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 1
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": true,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    },
+    {
+      "assignment": {
+        "historyReads": 2,
+        "reads": 2,
+        "resourceVersion": "8",
+        "satisfied": true,
+        "writes": 2
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    }
+  ],
+  "mixed-validation": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 422
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "not-found": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 404
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 404
+    }
+  ],
+  "other-field-validation": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 422
+        },
+        "error": "completion-write-rejected"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "",
+      "status": 422
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "outage-recovery": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 503
+        },
+        "error": "completion-write-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "partial-schema-recovery": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "error": "schema-not-ready"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "progress-retry-out-of-order-complete": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "completionPercent": 70,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    },
+    {
+      "assignment": {
+        "historyReads": 1,
+        "reads": 1,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 1
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "3"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    },
+    {
+      "assignment": {
+        "historyReads": 2,
+        "reads": 2,
+        "resourceVersion": "8",
+        "satisfied": true,
+        "writes": 2
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "3"
+          },
+          "spec": {
+            "completedAt": "2026-11-01T00:00:00Z",
+            "completionPercent": 100,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 200
+    }
+  ],
+  "resources": {
+    "InteractiveGuide": [
+      {
+        "body": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "draft",
+            "title": "Historical guide"
+          }
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "draft",
+            "title": "Historical guide"
+          }
+        },
+        "status": 201
+      },
+      {
+        "body": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "published",
+            "title": "Published guide"
+          }
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "published",
+            "title": "Published guide"
+          }
+        },
+        "status": 200
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 409,
+          "kind": "Status",
+          "message": "Conflict",
+          "reason": "Conflict",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "published",
+            "title": "Published guide"
+          }
+        },
+        "status": 409
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 403,
+          "kind": "Status",
+          "message": "Forbidden",
+          "reason": "Forbidden",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "InteractiveGuide",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "guide",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "blocks": [
+              {
+                "content": "Original",
+                "type": "markdown"
+              }
+            ],
+            "futureField": {
+              "preserve": true
+            },
+            "id": "guide",
+            "status": "published",
+            "title": "Published guide"
+          }
+        },
+        "status": 403
+      },
+      {
+        "body": {
+          "status": "Success"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": null,
+        "status": 200
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 404,
+          "kind": "Status",
+          "message": "NotFound",
+          "reason": "NotFound",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": null,
+        "status": 404
+      }
+    ],
+    "PathfinderSettings": [
+      {
+        "body": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "enableKioskMode": true,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "enableKioskMode": true,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "status": 201
+      },
+      {
+        "body": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "enableKioskMode": false,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "enableKioskMode": false,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "status": 200
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 409,
+          "kind": "Status",
+          "message": "Conflict",
+          "reason": "Conflict",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "enableKioskMode": false,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "status": 409
+      },
+      {
+        "body": {
+          "apiVersion": "v1",
+          "code": 403,
+          "kind": "Status",
+          "message": "Forbidden",
+          "reason": "Forbidden",
+          "status": "Failure"
+        },
+        "cacheControl": "",
+        "contentType": "application/json",
+        "persisted": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "PathfinderSettings",
+          "metadata": {
+            "annotations": {
+              "historical": "retained"
+            },
+            "name": "default",
+            "namespace": "stacks-1",
+            "resourceVersion": "2"
+          },
+          "spec": {
+            "enableKioskMode": false,
+            "futureField": {
+              "preserve": true
+            },
+            "schemaVersion": 1
+          }
+        },
+        "status": 403
+      }
+    ]
+  },
+  "throttle": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "http-error",
+          "resource": "completionrecords",
+          "stage": "app-platform",
+          "upstreamStatus": 429
+        },
+        "error": "completion-write-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 429
+    }
+  ],
+  "transport-cancelled-recovery": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "cancelled",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-write-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "transport-deadline-recovery": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "timeout",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-write-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ],
+  "transport-network-recovery": [
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "diagnostics": {
+          "cacheAgeMs": 0,
+          "operation": "create",
+          "outcome": "error",
+          "reason": "network-error",
+          "resource": "completionrecords",
+          "stage": "app-platform"
+        },
+        "error": "completion-write-unavailable"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {},
+      "retryAfter": "30",
+      "status": 503
+    },
+    {
+      "assignment": {
+        "historyReads": 0,
+        "reads": 0,
+        "resourceVersion": "7",
+        "satisfied": false,
+        "writes": 0
+      },
+      "body": {
+        "name": "completion-276b2b3e085bf0c91be367df1d4978b5"
+      },
+      "cacheControl": "",
+      "contentType": "application/json",
+      "discardResponse": false,
+      "persisted": {
+        "completion-276b2b3e085bf0c91be367df1d4978b5": {
+          "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
+          "kind": "CompletionRecord",
+          "metadata": {
+            "annotations": {
+              "pathfinder.grafana.com/attempt-started-at": "2026-11-01T00:00:00Z"
+            },
+            "name": "completion-276b2b3e085bf0c91be367df1d4978b5",
+            "namespace": "stacks-1",
+            "resourceVersion": "1"
+          },
+          "spec": {
+            "completionPercent": 40,
+            "durationSeconds": 0,
+            "guideCategory": "interactive",
+            "guideId": "first-dashboard",
+            "guideSource": "bundled",
+            "guideTitle": "First dashboard",
+            "orgId": 1,
+            "pathId": "",
+            "platform": "cloud",
+            "recordedAt": "<validated-server-time>",
+            "schemaVersion": 1,
+            "source": "objectives",
+            "stackNamespace": "stacks-1",
+            "userDisplayName": "",
+            "userId": "user:abc",
+            "userLogin": ""
+          }
+        }
+      },
+      "retryAfter": "",
+      "status": 201
+    }
+  ]
+}

@@ -1,0 +1,258 @@
+[
+  {
+    "name": "progress-retry-out-of-order-complete",
+    "steps": [
+      {
+        "percent": 40
+      },
+      {
+        "percent": 40
+      },
+      {
+        "percent": 20
+      },
+      {
+        "percent": 70
+      },
+      {
+        "percent": 100
+      },
+      {
+        "percent": 100
+      }
+    ]
+  },
+  {
+    "name": "lost-acknowledgement",
+    "steps": [
+      {
+        "percent": 100,
+        "discardResponse": true
+      },
+      {
+        "percent": 100
+      }
+    ]
+  },
+  {
+    "name": "conflict-retry",
+    "steps": [
+      {
+        "percent": 40
+      },
+      {
+        "percent": 70,
+        "conflicts": 2
+      }
+    ]
+  },
+  {
+    "name": "conflict-exhaustion-recovery",
+    "steps": [
+      {
+        "percent": 40
+      },
+      {
+        "percent": 70,
+        "conflicts": 3
+      },
+      {
+        "percent": 70
+      }
+    ]
+  },
+  {
+    "name": "forbidden-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "status": 403
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "outage-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "status": 503
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "not-found",
+    "steps": [
+      {
+        "percent": 40,
+        "status": 404
+      }
+    ]
+  },
+  {
+    "name": "throttle",
+    "steps": [
+      {
+        "percent": 40,
+        "status": 429
+      }
+    ]
+  },
+  {
+    "name": "invalid-percent",
+    "steps": [
+      {
+        "percent": 101
+      }
+    ]
+  },
+  {
+    "name": "partial-schema-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "status": 422,
+        "errorBody": {
+          "kind": "Status",
+          "apiVersion": "v1",
+          "reason": "Invalid",
+          "code": 422,
+          "details": {
+            "causes": [
+              {
+                "field": "spec.completedAt",
+                "reason": "FieldValueRequired"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "completed-schema-rejection",
+    "steps": [
+      {
+        "percent": 100,
+        "status": 422,
+        "errorBody": {
+          "kind": "Status",
+          "apiVersion": "v1",
+          "reason": "Invalid",
+          "code": 422,
+          "details": {
+            "causes": [
+              {
+                "field": "spec.completedAt",
+                "reason": "FieldValueRequired"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "percent": 100
+      }
+    ]
+  },
+  {
+    "name": "other-field-validation",
+    "steps": [
+      {
+        "percent": 40,
+        "status": 422,
+        "errorBody": {
+          "kind": "Status",
+          "apiVersion": "v1",
+          "reason": "Invalid",
+          "code": 422,
+          "details": {
+            "causes": [
+              {
+                "field": "spec.guideId",
+                "reason": "FieldValueRequired"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "mixed-validation",
+    "steps": [
+      {
+        "percent": 40,
+        "status": 422,
+        "errorBody": {
+          "kind": "Status",
+          "apiVersion": "v1",
+          "reason": "Invalid",
+          "code": 422,
+          "details": {
+            "causes": [
+              {
+                "field": "spec.completedAt",
+                "reason": "FieldValueRequired"
+              },
+              {
+                "field": "spec.guideId",
+                "reason": "FieldValueInvalid"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "transport-deadline-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "failure": "deadline"
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "transport-cancelled-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "failure": "cancelled"
+      },
+      {
+        "percent": 40
+      }
+    ]
+  },
+  {
+    "name": "transport-network-recovery",
+    "steps": [
+      {
+        "percent": 40,
+        "failure": "network"
+      },
+      {
+        "percent": 40
+      }
+    ]
+  }
+]

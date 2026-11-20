@@ -1,0 +1,146 @@
+package PACKAGE
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strconv"
+	"testing"
+)
+
+func TestFrozenFidelityResourceWrites(t *testing.T) {
+	results := map[string]any{}
+	for _, kind := range []string{"PathfinderSettings", "InteractiveGuide"} {
+		t.Run(kind, func(t *testing.T) {
+			var stored map[string]any
+			version := 0
+			denied := false
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				failure := func(code int, reason string) {
+					w.WriteHeader(code)
+					_ = json.NewEncoder(w).Encode(map[string]any{"kind": "Status", "apiVersion": "v1", "status": "Failure", "code": code, "reason": reason, "message": reason})
+				}
+				collection := "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-1/interactiveguides"
+				resourceName := "guide"
+				if kind == "PathfinderSettings" {
+					collection = "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-1/pathfindersettings"
+					resourceName = "default"
+				}
+				expectedPath := collection
+				if r.Method != http.MethodPost {
+					expectedPath += "/" + resourceName
+				}
+				if r.URL.Path != expectedPath {
+					t.Errorf("wrong resource path: %s", r.URL.Path)
+					failure(400, "BadRequest")
+					return
+				}
+				if denied {
+					failure(403, "Forbidden")
+					return
+				}
+				if r.Method == http.MethodDelete {
+					if stored == nil {
+						failure(404, "NotFound")
+						return
+					}
+					stored = nil
+					_ = json.NewEncoder(w).Encode(map[string]string{"status": "Success"})
+					return
+				}
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					failure(400, "BadRequest")
+					return
+				}
+				var incoming map[string]any
+				if json.Unmarshal(body, &incoming) != nil {
+					failure(400, "BadRequest")
+					return
+				}
+				meta := incoming["metadata"].(map[string]any)
+				if r.Method == http.MethodPost && stored != nil {
+					failure(409, "AlreadyExists")
+					return
+				}
+				if r.Method == http.MethodPut && (stored == nil || meta["resourceVersion"] != stored["metadata"].(map[string]any)["resourceVersion"]) {
+					failure(409, "Conflict")
+					return
+				}
+				version++
+				meta["resourceVersion"] = strconv.Itoa(version)
+				meta["namespace"] = "stacks-1"
+				stored = incoming
+				if r.Method == http.MethodPost {
+					w.WriteHeader(201)
+				}
+				_ = json.NewEncoder(w).Encode(stored)
+			}))
+			defer upstream.Close()
+			name := "guide"
+			spec := map[string]any{"id": "guide", "title": "Historical guide", "status": "draft", "blocks": []any{map[string]any{"type": "markdown", "content": "Original"}}, "futureField": map[string]any{"preserve": true}}
+			if kind == "PathfinderSettings" {
+				name = "default"
+				spec = map[string]any{"schemaVersion": 1, "enableKioskMode": true, "futureField": map[string]any{"preserve": true}}
+			}
+			original := map[string]any{"apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1", "kind": kind, "metadata": map[string]any{"name": name, "annotations": map[string]string{"historical": "retained"}}, "spec": spec}
+			rows := []any{}
+			invoke := func(method string, object any) {
+				body, _ := json.Marshal(object)
+				response := fidelityResourceMutation(t, upstream.URL, kind, method, name, body)
+				var output any
+				if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
+					t.Fatal(err)
+				}
+				snapshot, _ := json.Marshal(stored)
+				var persisted any
+				_ = json.Unmarshal(snapshot, &persisted)
+				rows = append(rows, map[string]any{"status": response.Code, "body": output, "persisted": persisted, "cacheControl": response.Header().Get("Cache-Control"), "contentType": response.Header().Get("Content-Type")})
+			}
+			invoke(http.MethodPost, original)
+			raw, _ := json.Marshal(stored)
+			var update map[string]any
+			_ = json.Unmarshal(raw, &update)
+			updateSpec := update["spec"].(map[string]any)
+			if kind == "PathfinderSettings" {
+				updateSpec["enableKioskMode"] = false
+			} else {
+				updateSpec["status"] = "published"
+				updateSpec["title"] = "Published guide"
+			}
+			invoke(http.MethodPut, update)
+			if stored["spec"].(map[string]any)["futureField"].(map[string]any)["preserve"] != true {
+				t.Fatal("lost historical field")
+			}
+			invoke(http.MethodPut, update)
+			denied = true
+			invoke(http.MethodPut, update)
+			denied = false
+			if kind == "InteractiveGuide" {
+				invoke(http.MethodDelete, nil)
+				invoke(http.MethodDelete, nil)
+			}
+			expectedStatuses := []int{201, 200, 409, 403}
+			if kind == "InteractiveGuide" {
+				expectedStatuses = append(expectedStatuses, 200, 404)
+			}
+			for index, row := range rows {
+				if row.(map[string]any)["status"] != expectedStatuses[index] {
+					t.Fatalf("step %d: %v", index, row)
+				}
+			}
+			results[kind] = rows
+		})
+	}
+	body, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fmt.Sprint(os.Getenv("FIDELITY_OUTPUT"), ".resources"), body, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
