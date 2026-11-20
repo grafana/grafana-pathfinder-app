@@ -538,6 +538,34 @@ func TestAchievementStore_KindWithoutPointsFailsBeforeAUnitIsSpent(t *testing.T)
 	}
 }
 
+func TestAchievementStore_KindWithoutPointsFailsTheSaveOfAVersionOneRow(t *testing.T) {
+	store, api := newAchievementTestStore(t)
+	schema := api.schemas[achievementProgressResource]
+	delete(schema["properties"].(map[string]any), "points")
+	required := []any{}
+	for _, f := range schema["required"].([]any) {
+		if f != "points" {
+			required = append(required, f)
+		}
+	}
+	schema["required"] = required
+	api.seed(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "guides-finished"), map[string]any{
+		"achievementId": "guides-finished", "tierIds": []any{}, "units": []any{}, "updatedAt": "2026-01-01T00:00:00Z",
+		"userId": achievementTestPerson.ID, "orgId": 1, "stackNamespace": achievementTestNamespace, "schemaVersion": 1,
+	})
+	evaluator := achievements.NewEvaluator(achievementTestCatalog(t), store, allowAllPolicy{}, func() time.Time { return achievementTestNow })
+	decisions, err := evaluator.Evaluate(context.Background(), achievementTestPerson, achievements.Event{
+		ID: "evt-1", Entity: "guides", Action: "completed",
+		Context: map[string]any{"guideSource": "bundled", "guideId": "one", "guideCategory": "interactive"},
+	})
+	if err != nil || len(decisions) != 1 {
+		t.Fatalf("Evaluate = %v, %v", decisions, err)
+	}
+	if d := decisions[0]; d.Reason != achievements.ReasonStoreUnavailable || !d.Reason.Transient() {
+		t.Fatalf("decision = %+v, want a transient store_unavailable", d)
+	}
+}
+
 func TestAchievementStore_RowOfAnotherUserIsRefused(t *testing.T) {
 	store, api := newAchievementTestStore(t)
 	api.seed(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "a"), map[string]any{

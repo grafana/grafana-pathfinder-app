@@ -163,6 +163,9 @@ func (s *AchievementStore) SaveProgress(ctx context.Context, person achievements
 		return achievements.Progress{}, err
 	}
 	stored, err := decodeAchievementProgress(body)
+	if errors.Is(err, ErrAchievementPointsUnserved) {
+		return achievements.Progress{}, err
+	}
 	if err != nil {
 		// The 2xx means the save is durable. Without its Version, a later save gets ErrConflict and reloads.
 		obj.Metadata.ResourceVersion = ""
