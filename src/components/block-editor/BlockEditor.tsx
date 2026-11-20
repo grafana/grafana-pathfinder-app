@@ -26,7 +26,7 @@ import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuideDetails } from './hooks/useGuideDetails';
 import { authorNameToWrite, type DefaultedAuthor } from './utils/derive-manifest';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
-import { isBackendApiAvailable } from '../../utils/interactive-guides-api';
+import { discoverSdkBackend, usesSdkBackend } from '../../lib/backend-routes';
 import { currentUserAuthorName } from '../../utils/current-user-name';
 import { EDITOR_FALLBACK_AUTHOR } from '../../types/author-defaults';
 import { getBlockEditorStyles } from './block-editor.styles';
@@ -311,8 +311,22 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
   // Block selection mode state (for merging and bulk deletion)
   const selection = useBlockSelection();
 
-  // Backend availability — read once from boot-time feature toggles
-  const backendAvailable = isBackendApiAvailable();
+  const [backendAvailable, setBackendAvailable] = useState(usesSdkBackend);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      await discoverSdkBackend();
+      if (active) {
+        setBackendAvailable(usesSdkBackend());
+      }
+    };
+    void refresh();
+    window.addEventListener('focus', refresh);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
 
   // Backend guides management
   const backendGuides = useBackendGuides();

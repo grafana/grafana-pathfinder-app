@@ -10,7 +10,7 @@ Load this reference when changing the reporting route, its frontend consumer, me
 - `src/hooks/useLearningInsights.ts` — plugin-resource request, wire validation, loading/error state, and refresh. It clears previously displayed data before a new request; a failed refresh does not replay old results.
 - `src/types/learning-insights.ts` — response types; `src/types/backend-api.schema.ts` validates the wire response.
 - `pkg/provider/insights.go` — trusted admin gate, bounded namespace reads, aggregation, and read-only assignment snapshot.
-- `pkg/plugin/assignment_satisfaction.go` and `assignment_paths.go` — source-qualified target membership and completion acceptance.
+- `pkg/services/assignment_evaluator.go` and `pkg/services/assignment_sources.go` — source-qualified target membership and completion acceptance.
 
 ## Production rollout
 

@@ -248,7 +248,7 @@ This helps the reviewer scan the surface quickly.
 
 - Phase 0: list-only; small.
 - Phase 1: read each frontend file's changed hunks (not full files). For files under 200 lines, read the whole file once.
-- Phase 2: read each backend file's changed hunks; reference the canonical pattern from the in-context summary, do not re-read `package_recommendations.go` or `app_platform_client.go` in full each time.
+- Phase 2: read each backend file's changed hunks; reference the canonical pattern from the in-context summary, do not re-read `pkg/publiccontent/recommendations.go` or `pkg/resourceaccess/transport.go` in full each time.
 - Phase 3: only runs when MCP code is touched.
 - Phase 4: streams `npm audit` and `go list -m -u all`; summarize, do not embed full output.
 - Phase 5: in-memory aggregation + render.

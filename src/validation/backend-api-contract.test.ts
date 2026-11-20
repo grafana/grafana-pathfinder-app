@@ -195,7 +195,7 @@ function assertStructTagsMatchSchema(goStruct: string, fields: GoFieldTag[]): vo
   if (unemitted.length > 0) {
     throw new Error(
       `src/types/backend-api.schema.ts declares ${goStruct} fields Go no longer emits: ` +
-        `${unemitted.join(', ')}. Remove them, or restore them in pkg/plugin.`
+        `${unemitted.join(', ')}. Remove them, or restore them in the backend emitter.`
     );
   }
 

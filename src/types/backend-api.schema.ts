@@ -83,11 +83,7 @@ export const InProgressCompletionWireSchema = z.strictObject({
 });
 
 /**
- * `completions` is a required array, never nullable and never `.catch([])`:
- * the handler builds a non-nil slice unconditionally (`writeMyCompletions` and
- * `handleMyCompletions` in completion_records.go) and
- * `TestMyCompletions_UnknownUserEmptyList` asserts it serializes as `[]`.
- * A `null` here is a Go bug that should fail loudly rather than be absorbed.
+ * The provider sends an empty array when the caller has no completions.
  *
  * @coupling Go struct: CompletionResponse
  */
