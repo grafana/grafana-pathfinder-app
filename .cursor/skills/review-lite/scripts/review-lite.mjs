@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { extractConcernContext, validateConcernRegistry } from '../../../review-shared/concern-context.mjs';
 import { findTable, unquote } from '../../../review-shared/registry-table.mjs';
+import { assertReviewGate } from './review-gate.mjs';
 import { deltaTriggers, isTestPath, scanSync } from './sync-scan.mjs';
 
 export const STATE_VERSION = 'review-lite-v1';
@@ -1693,7 +1694,12 @@ export function main(argv) {
   }
   const options = parseArgs(command, rest);
   if (command === 'prepare') {
+    if (!Number.isSafeInteger(Number(options.round)) || Number(options.round) < 1) {
+      throw new UsageError('--round must be a positive safe integer.');
+    }
+    const reviewGate = assertReviewGate(options);
     const { manifest, routing, files, sync, delta, checklistCharacters } = prepare(options);
+    writeJson(join(options.out, 'gate.json'), reviewGate);
     const lines = [
       `Prepared ${manifest.mode} review of ${short(manifest.merge_base)}..${short(manifest.head)} (${files.length} files) in ${options.out}`,
     ];
