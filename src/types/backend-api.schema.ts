@@ -1,18 +1,18 @@
 /**
  * Zod schemas for the App Platform backend response envelopes.
  *
- * These describe **wire truth** — what `pkg/plugin` actually emits — not what
+ * These describe **wire truth** — what `pkg/provider` actually emits — not what
  * the hand-written client interfaces wish it emitted. Where the two disagree,
  * these schemas follow Go and `src/validation/backend-api-contract.test.ts`
  * pins the disagreement (see `CustomGuideManifestWireSchema`).
  *
  * Nothing parses at runtime yet: the schemas exist so the committed goldens
- * under `pkg/plugin/testdata/contract/` are checked against a TypeScript
+ * under `pkg/provider/testdata/contract/` are checked against a TypeScript
  * description of the same bytes, in CI, in a separate process from the Go
  * tests that produced them. Adopting them at the fetch sites
  * (parse-log-fall-back, per the decision on issue #1526) is a follow-up.
  *
- * @coupling API: pkg/plugin/contract_fixtures_test.go + pkg/plugin/testdata/contract/
+ * @coupling API: pkg/provider/contract_fixtures_test.go + pkg/provider/testdata/contract/
  */
 
 import { z } from 'zod';
@@ -38,7 +38,7 @@ export const GuideProxyDiagnosticWireSchema = z.strictObject({
 // ============ /completion-records/capability ============
 
 /**
- * `CompletionCapability` (pkg/plugin/completion_records.go).
+ * `CompletionCapability` (pkg/provider/completions.go).
  * @coupling Go struct: CompletionCapability
  */
 export const CompletionCapabilityWireSchema = z.strictObject({
@@ -227,7 +227,7 @@ export const AchievementDefinitionsResponseWireSchema = z.strictObject({
 // ============ /assignments/my ============
 
 /**
- * `AssignmentCapability` (pkg/plugin/assignments.go).
+ * `AssignmentCapability` (pkg/provider/assignments.go).
  * @coupling Go struct: AssignmentCapability
  */
 export const AssignmentCapabilityWireSchema = z.strictObject({
@@ -283,7 +283,7 @@ export const MyAssignmentsResponseWireSchema = z.strictObject({
 
 // ============ /custom-guide-repository ============
 
-/** @coupling Go struct: CatalogueCapability */
+/** @coupling Go struct: customGuideCapability */
 export const CustomGuideCapabilityWireSchema = z.strictObject({
   available: z.boolean(),
   reason: z.string().optional(),
@@ -449,11 +449,12 @@ export const LearningInsightsResponseWireSchema = z.strictObject({
 
 /**
  * Every Go struct reachable from an in-scope response envelope, keyed exactly
- * as `pkg/plugin/testdata/contract/struct-tags.json` keys it. The contract test
+ * as `pkg/provider/testdata/contract/struct-tags.json` keys it. The contract test
  * requires this map and that golden to agree in both directions, so a new Go
  * struct — or a stale schema — fails.
  */
 export const GO_STRUCT_SCHEMAS = {
+  guideProxyDiagnostic: GuideProxyDiagnosticWireSchema,
   ProxyDiagnostic: GuideProxyDiagnosticWireSchema,
   PackageRecommendationsResponse: PackageRecommendationsResponseWireSchema,
   PackageEntry: PackageEntryWireSchema,

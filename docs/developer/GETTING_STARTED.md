@@ -65,7 +65,7 @@ mage build:darwinARM64   # or build:darwin / build:linux / build:linuxARM64 / bu
 docker compose restart grafana
 ```
 
-The plugin's Go code lives in `pkg/`; the entrypoint is `pkg/main.go`. Backend resource handlers are wired from `pkg/plugin/resources.go`. See [`AGENTS.md`](../../AGENTS.md) for the rest of the layout.
+The plugin's Go code lives in `pkg/`; the entrypoint is `pkg/main.go`. Backend resource handlers are wired from `pkg/provider/provider.go`. See [`AGENTS.md`](../../AGENTS.md) for the rest of the layout.
 
 ## Pre-merge check
 

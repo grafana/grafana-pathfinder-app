@@ -1,0 +1,1 @@
+{"baseUrl":"https://interactive-learning.grafana.net/","packages":[{"description":"Get started with Prometheus","id":"prom-101","manifest":{"id":"prom-101","milestones":["prom-101-a","prom-101-b"],"type":"guide"},"path":"prom-101/v1.0.0","targeting":{"match":{"cohort":"new-user","urlPrefix":"/connections"}},"title":"Prometheus 101","type":"guide"}]}

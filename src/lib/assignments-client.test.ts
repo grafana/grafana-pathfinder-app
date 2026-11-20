@@ -63,12 +63,12 @@ describe('fetchMyAssignments', () => {
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('obo-unavailable');
   });
 
-  it('does not request when the aggregation toggle is off', async () => {
+  it('reports a registered but undiscovered backend as unavailable', async () => {
     (isBackendApiAvailable as jest.Mock).mockReturnValue(false);
 
     const result = await fetchMyAssignments('stacks-123');
 
-    expect(result).toEqual({ ok: true, assignments: [] });
+    expect(result).toEqual({ ok: false, reason: 'capability-unavailable' });
     expect(mockGet).not.toHaveBeenCalled();
     expect(recordAssignmentsUnavailable).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();

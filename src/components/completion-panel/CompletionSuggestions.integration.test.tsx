@@ -1,3 +1,4 @@
+import { discoverSdkBackend } from '../../lib/backend-routes';
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { of } from 'rxjs';
@@ -12,7 +13,7 @@ jest.mock('@grafana/runtime', () => ({
   config: {
     namespace: 'org-a',
     bootData: { user: { id: 1, orgId: 1 } },
-    featureToggles: { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true },
+    featureToggles: { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true },
   },
   getBackendSrv: () => ({ fetch: mockFetch }),
 }));
@@ -36,6 +37,12 @@ jest.mock('../LearningContentCard/LearningContentCard', () => ({
     <button onClick={onLaunch}>{title}</button>
   ),
 }));
+
+beforeAll(async () => {
+  mockFetch.mockReturnValueOnce(of({ data: { status: 'ok' } }));
+  await discoverSdkBackend();
+  mockFetch.mockClear();
+});
 
 beforeEach(() => jest.clearAllMocks());
 
