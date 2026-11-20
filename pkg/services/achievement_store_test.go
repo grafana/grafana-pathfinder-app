@@ -50,3 +50,12 @@ func TestAchievementStoreWarnsWhenTheKindDropsPointsFromAWrite(t *testing.T) {
 		t.Errorf("warnings = %q, want one naming the missing field", logger.messages)
 	}
 }
+
+func TestAchievementStoreServesEveryRequiredFieldItWrites(t *testing.T) {
+	store := NewAchievementStore(pointsFreeClient{}, AchievementWriter{Namespace: "ns"}, time.Now, &warnRecorder{})
+	obj := store.progressObject(achievements.Person{ID: "user:1"}, achievements.Progress{AchievementID: "a", SchemaVersion: achievements.ProgressSchemaVersion})
+	obj.Metadata.ResourceVersion = "1"
+	if missing := progressOf(obj).MissingFields; len(missing) != 0 {
+		t.Errorf("a row written in full reports %v missing; presentFields must cover every required field", missing)
+	}
+}

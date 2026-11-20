@@ -265,10 +265,15 @@ func progressOf(obj achievementObject[achievementProgressSpec]) achievements.Pro
 		SchemaVersion: int(obj.Spec.SchemaVersion),
 		Version:       obj.Metadata.ResourceVersion,
 	}
-	if obj.Spec.Points == nil && p.SchemaVersion == achievements.ProgressSchemaVersion {
-		p.MissingFields = []string{achievements.FieldPoints}
+	if p.SchemaVersion == achievements.ProgressSchemaVersion {
+		p.MissingFields = achievements.MissingFields(presentFields(obj.Spec))
 	}
 	return p
+}
+
+// presentFields has an entry for every required field of the current version.
+func presentFields(spec achievementProgressSpec) map[string]bool {
+	return map[string]bool{achievements.FieldPoints: spec.Points != nil}
 }
 
 // A version 1 row predates points and starts at 0.

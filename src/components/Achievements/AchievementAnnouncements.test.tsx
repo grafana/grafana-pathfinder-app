@@ -27,7 +27,7 @@ const definitions: AchievementDefinitions = {
       title: 'Guide finisher',
       description: 'Finish guides.',
       tiers: [
-        { id: 'bronze', at: 1, art: 'guides-finished-1' },
+        { id: 'bronze', at: 5, art: 'guides-finished-1' },
         { id: 'silver', at: 5, art: 'guides-finished-2' },
         { id: 'gold', at: 15, art: 'guides-finished-3' },
       ],

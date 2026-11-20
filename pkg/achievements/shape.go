@@ -39,6 +39,17 @@ var migrations = map[int]func(Progress) Progress{
 	},
 }
 
+// MissingFields lists the required fields present reports as absent.
+func MissingFields(present map[string]bool) []string {
+	var missing []string
+	for _, f := range requiredFields {
+		if !present[f.name] {
+			missing = append(missing, f.name)
+		}
+	}
+	return missing
+}
+
 func Classify(p Progress) Shape {
 	switch {
 	case p.SchemaVersion > ProgressSchemaVersion:

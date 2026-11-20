@@ -111,3 +111,28 @@ func TestEvaluateReReadsTheRowWhenTheRepairAcknowledgementIsUnreadable(t *testin
 		t.Errorf("decision = %+v, want the re-read row repaired and the event counted", d)
 	}
 }
+
+type pruningStore struct{ *fakeStore }
+
+func (s pruningStore) SaveProgress(ctx context.Context, person Person, p Progress) (Progress, error) {
+	p.MissingFields = []string{FieldPoints}
+	saved, err := s.fakeStore.SaveProgress(ctx, person, p)
+	saved.Version = ""
+	return saved, err
+}
+
+func TestEvaluateSpendsNothingWhenAnUnreadableAcknowledgementHidesAPruningKind(t *testing.T) {
+	fake := newFakeStore()
+	fake.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, SchemaVersion: ProgressSchemaVersion, MissingFields: []string{FieldPoints}})
+	ev := NewEvaluator(mustCatalog(t), pruningStore{fake}, &fakePolicy{}, func() time.Time { return fixedNow })
+	decisions, err := ev.Evaluate(context.Background(), testPerson, dashboardCreated("a", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := decisionFor(t, decisions, "dash-builder"); d.Reason != ReasonStoreUnavailable {
+		t.Errorf("decision = %+v, want store_unavailable", d)
+	}
+	if fake.saves != maxAttempts || fake.awardCalls != 0 || len(fake.progress["dash-builder"].Units) != 0 {
+		t.Errorf("saves = %d awards = %d units = %v, want %d bounded repair saves and nothing spent", fake.saves, fake.awardCalls, fake.progress["dash-builder"].Units, maxAttempts)
+	}
+}
