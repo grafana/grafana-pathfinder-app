@@ -1,6 +1,6 @@
 # Grafana Pathfinder - AI Agent Guide
 
-**Grafana Pathfinder** is a Grafana App Plugin that renders contextual, interactive documentation in a right-hand sidebar inside Grafana: context-aware recommendations, tutorials with "Show me" / "Do it" UI automation, and per-step completion tracking. React + TypeScript + Grafana Scenes frontend, Go backend on `grafana-plugin-sdk-go`.
+**Grafana Pathfinder** is a Grafana App Plugin that renders contextual, interactive documentation in a right-hand sidebar inside Grafana: context-aware recommendations, tutorials with "Show me" / "Do it" UI automation, and per-step completion tracking. React + TypeScript + Grafana Scenes frontend, Go backend with App SDK and legacy plugin handlers.
 
 It targets beginners and intermediate users learning Grafana, not experts after reference docs — when a product call hinges on audience, favor the newcomer. Scope and goals: `.cursor/rules/projectbrief.mdc`.
 
@@ -70,7 +70,7 @@ Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-intera
 
 ### Backend (`pkg/`)
 
-The Go backend is an **App Platform proxy** and nothing else — no database, no streaming. Load `docs/design/BACKEND_PROXY_PATTERN.md` before touching `pkg/`; it is the canonical pattern and holds the identity trust boundary. `/package-recommendations` and the achievements definitions source are anonymous, process-wide cached CDN fetches: per-user data must never enter their caches. Sandbox VMs and terminals live in [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app); see `.cursor/rules/coda.mdc`.
+For changes to either backend path, follow the [adaptive backend skill](.cursor/skills/adaptive-backend/SKILL.md). Load `docs/design/BACKEND_PROXY_PATTERN.md` before touching `pkg/`; it is the canonical pattern and holds the identity trust boundary. `/package-recommendations` and the achievements definitions source are anonymous, process-wide cached CDN fetches: per-user data must never enter their caches. Sandbox VMs and terminals live in [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app); see `.cursor/rules/coda.mdc`.
 
 ## On-demand context
 
