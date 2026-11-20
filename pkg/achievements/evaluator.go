@@ -3,6 +3,7 @@ package achievements
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -69,8 +70,14 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		current = created
 	}
 
+	current, ok := e.repair(ctx, person, d, current)
+	if !ok {
+		return d.unavailable(current)
+	}
+
+	var written []string
 	for attempt := 1; ; attempt++ {
-		out := evaluate(d, current, ev)
+		out := d.keepWritten(current, evaluate(d, current, ev), written)
 		if !out.changed {
 			return out.decision
 		}
@@ -80,6 +87,9 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
 				return d.unavailable(current)
 			}
+			if !slices.Contains(written, tierID) {
+				written = append(written, tierID)
+			}
 		}
 		_, err := e.store.SaveProgress(ctx, person, out.next)
 		switch {
@@ -88,7 +98,7 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		case !errors.Is(err, ErrConflict):
 			return d.unavailable(current)
 		case attempt == maxAttempts:
-			return d.decision(KindIgnored, ReasonConflict, nil, heldSet(current.TierIDs), len(current.Units))
+			return d.decision(KindIgnored, ReasonConflict, nil, heldSet(current.TierIDs), current.Points)
 		}
 		reloaded, ok := e.reload(ctx, person, d)
 		if !ok {
@@ -98,8 +108,35 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 	}
 }
 
+// repair saves Normalize(row) when the row is repairable, adding no unit,
+// points or award, and returns the row the store acknowledged. An
+// acknowledgement that cannot be read proves nothing, so the row is re-read.
+func (e *Evaluator) repair(ctx context.Context, person Person, d *Definition, row Progress) (Progress, bool) {
+	for attempt := 1; Classify(row) == ShapeRepairable; attempt++ {
+		if attempt > maxAttempts {
+			return row, false
+		}
+		saved, err := e.store.SaveProgress(ctx, person, Normalize(row))
+		var ok bool
+		switch {
+		case errors.Is(err, ErrConflict):
+			row, ok = e.reload(ctx, person, d)
+		case err != nil:
+			return row, false
+		case saved.Version == "":
+			row, ok = e.reload(ctx, person, d)
+		default:
+			row, ok = saved, true
+		}
+		if !ok {
+			return row, false
+		}
+	}
+	return row, true
+}
+
 func (e *Evaluator) ensureProgress(ctx context.Context, person Person, d *Definition) (Progress, bool) {
-	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, SchemaVersion: SchemaVersion})
+	created, err := e.store.CreateProgress(ctx, person, Progress{AchievementID: d.ID, SchemaVersion: ProgressSchemaVersion})
 	switch {
 	case err == nil:
 		return created, true
@@ -117,5 +154,5 @@ func (e *Evaluator) reload(ctx context.Context, person Person, d *Definition) (P
 }
 
 func (d *Definition) unavailable(p Progress) Decision {
-	return d.decision(KindIgnored, ReasonStoreUnavailable, nil, heldSet(p.TierIDs), len(p.Units))
+	return d.decision(KindIgnored, ReasonStoreUnavailable, nil, heldSet(p.TierIDs), p.Points)
 }

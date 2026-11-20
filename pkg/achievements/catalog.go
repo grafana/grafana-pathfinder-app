@@ -11,23 +11,26 @@ import (
 
 const (
 	maxTiers          = 10
-	maxThreshold      = 200
-	maxOccurrenceAt   = 50
-	maxEvidence       = 16
+	maxGoal           = 200
+	maxOccurrenceGoal = 50
+	maxRules          = 16
 	maxConditions     = 8
-	maxRoutes         = 5
 	maxInValues       = 16
 	maxIDLen          = 64
 	maxTierIDLen      = 32
 	maxTitleRunes     = 80
 	maxDescRunes      = 280
 	unitOccurrence    = "occurrence"
-	actionCompleted   = "completed"
 	countByResource   = "resource"
 	countByOccurrence = "occurrence"
 	opEq, opIn        = "eq", "in"
 	opGte, opLte      = "gte", "lte"
 )
+
+// maxUnits is the most units a progress row's ledger holds, so the goals of an
+// achievement's tiers add up to at most this; compat keeps published goals from
+// going down, which keeps that bound across catalog versions.
+const maxUnits = maxGoal
 
 var idPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
@@ -41,46 +44,44 @@ type Catalog struct {
 	Achievements []Definition `json:"achievements"`
 }
 
-// Definition with a Counter counts distinct units toward tiers with an At
-// threshold. Without one it is a milestone: each tier is earned by an Or route.
+// Definition is earned one tier at a time, lowest first.
 type Definition struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Counter     *Counter `json:"counter,omitempty"`
-	Tiers       []Tier   `json:"tiers"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Tiers       []Tier `json:"tiers"`
 }
 
-type Counter struct {
-	Unit     string    `json:"unit"`
-	Evidence []Matcher `json:"evidence"`
+// Tier is earned by reaching Goal points from its own Rules, counted only while
+// it is the lowest tier not held. ID is permanent: a released tier is never
+// renamed, removed or moved. Art is an optional, explicitly authored key naming
+// the image published at achievements/art/<key>.svg on the interactive-learning
+// CDN; never a URL or a path.
+type Tier struct {
+	ID    string `json:"id"`
+	Goal  int    `json:"goal"`
+	Rules []Rule `json:"rules"`
+	Art   string `json:"art,omitempty"`
 }
 
-type Matcher struct {
+// Rule scores Worth points, 1 when unset, for an event that matches it and
+// brings a unit the achievement has not counted.
+type Rule struct {
 	Entity  string      `json:"entity"`
 	Action  string      `json:"action"`
 	CountBy CountBy     `json:"countBy"`
 	Where   []Condition `json:"where,omitempty"`
+	Worth   *int        `json:"worth,omitempty"`
 
+	unit     string
 	idFields []string
 }
 
-// Tier is earned by reaching At distinct units, or outright by an event that
-// matches one of its Or routes or a later tier's. ID is permanent: a released
-// tier is never renamed, removed or moved. Art is an optional, explicitly
-// authored key naming the image published at achievements/art/<key>.svg on the
-// interactive-learning CDN; never a URL or a path.
-type Tier struct {
-	ID  string  `json:"id"`
-	At  *int    `json:"at,omitempty"`
-	Art string  `json:"art,omitempty"`
-	Or  []Route `json:"or,omitempty"`
-}
-
-type Route struct {
-	Entity string      `json:"entity"`
-	Action string      `json:"action"`
-	Where  []Condition `json:"where,omitempty"`
+func (r *Rule) worth() int {
+	if r.Worth == nil {
+		return 1
+	}
+	return *r.Worth
 }
 
 type Condition struct {
@@ -179,12 +180,10 @@ func (d *Definition) validate(registry *Registry) []error {
 		fail("needs 1 to %d tiers, got %d", maxTiers, len(d.Tiers))
 	}
 
-	if d.Counter != nil {
-		errs = append(errs, d.Counter.validate(where, registry)...)
-	}
-	prev := 0
+	total := 0
 	tierIDs := map[string]bool{}
-	for i, t := range d.Tiers {
+	for i := range d.Tiers {
+		t := &d.Tiers[i]
 		tw := fmt.Sprintf("tier %d", i+1)
 		if t.ID != "" {
 			tw = fmt.Sprintf("tier %q", t.ID)
@@ -199,30 +198,11 @@ func (d *Definition) validate(registry *Registry) []error {
 		if t.Art != "" && (len(t.Art) > maxIDLen || !idPattern.MatchString(t.Art)) {
 			fail("%s: art must be a lowercase key of at most %d characters", tw, maxIDLen)
 		}
-		switch {
-		case d.Counter == nil && t.At != nil:
-			fail("%s: at is forbidden on a milestone achievement", tw)
-		case d.Counter != nil && t.At == nil:
-			fail("%s: at is required on a counted achievement", tw)
-		case t.At != nil:
-			limit := d.ceiling()
-			if *t.At < 1 || *t.At > limit {
-				fail("%s: at must be 1 to %d, got %d", tw, limit, *t.At)
-			}
-			if *t.At <= prev {
-				fail("%s: at must be strictly greater than the previous tier's %d", tw, prev)
-			}
-			prev = *t.At
-		}
-		if d.Counter == nil && len(t.Or) == 0 {
-			fail("%s: a milestone tier needs at least one route", tw)
-		}
-		if len(t.Or) > maxRoutes {
-			fail("%s: %d routes, at most %d", tw, len(t.Or), maxRoutes)
-		}
-		for j, r := range t.Or {
-			errs = append(errs, r.validate(fmt.Sprintf("%s: %s route %d", where, tw, j), registry)...)
-		}
+		errs = append(errs, t.validate(where+": "+tw, registry)...)
+		total += t.Goal
+	}
+	if total > maxUnits {
+		fail("the tiers' goals add up to %d, at most %d", total, maxUnits)
 	}
 	return errs
 }
@@ -246,79 +226,75 @@ func checkText(s string, maxRunes int) error {
 	return nil
 }
 
-// ceiling is the most units a counter records, so a tier appended later can
-// land on a count reached before it existed.
-func (d *Definition) ceiling() int {
-	switch {
-	case d.Counter == nil:
-		return 0
-	case d.Counter.Unit == unitOccurrence:
-		return maxOccurrenceAt
-	default:
-		return maxThreshold
-	}
-}
-
-func (c *Counter) validate(where string, registry *Registry) []error {
+func (t *Tier) validate(where string, registry *Registry) []error {
 	var errs []error
-	if !validToken(c.Unit) {
-		errs = append(errs, fmt.Errorf("%s: counter unit %q is not a lowercase token of at most %d characters", where, c.Unit, maxTokenLen))
+	if len(t.Rules) == 0 || len(t.Rules) > maxRules {
+		errs = append(errs, fmt.Errorf("%s: needs 1 to %d rules, got %d", where, maxRules, len(t.Rules)))
 	}
-	if len(c.Evidence) == 0 || len(c.Evidence) > maxEvidence {
-		errs = append(errs, fmt.Errorf("%s: counter needs 1 to %d evidence matchers, got %d", where, maxEvidence, len(c.Evidence)))
+	limit := maxGoal
+	units := map[Pair]string{}
+	for i := range t.Rules {
+		r := &t.Rules[i]
+		rw := fmt.Sprintf("%s: rule %d", where, i+1)
+		ruleErrs := r.validate(rw, registry)
+		errs = append(errs, ruleErrs...)
+		if len(ruleErrs) > 0 {
+			continue
+		}
+		if r.unit == unitOccurrence {
+			limit = maxOccurrenceGoal
+		}
+		// One event is one item, so every rule it can match must agree on what it counts.
+		pair := Pair{r.Entity, r.Action}
+		if unit, ok := units[pair]; ok && unit != r.unit {
+			errs = append(errs, fmt.Errorf("%s: counts unit %q but another rule on %s.%s counts %q", rw, r.unit, r.Entity, r.Action, unit))
+		}
+		units[pair] = r.unit
 	}
-	for i := range c.Evidence {
-		errs = append(errs, c.Evidence[i].validate(fmt.Sprintf("%s: evidence %d", where, i), c.Unit, registry)...)
+	goalValid := t.Goal >= 1 && t.Goal <= limit
+	if !goalValid {
+		errs = append(errs, fmt.Errorf("%s: goal must be 1 to %d, got %d", where, limit, t.Goal))
+	}
+	for i := range t.Rules {
+		w := t.Rules[i].worth()
+		switch {
+		case w < 1:
+			errs = append(errs, fmt.Errorf("%s: rule %d: worth must be at least 1, got %d", where, i+1, w))
+		case goalValid && w > t.Goal:
+			errs = append(errs, fmt.Errorf("%s: rule %d: worth %d is over the tier's goal of %d", where, i+1, w, t.Goal))
+		}
 	}
 	return errs
 }
 
-func (m *Matcher) validate(where, counterUnit string, registry *Registry) []error {
-	action, ok := registry.action(m.Entity, m.Action)
-	if !ok {
-		return []error{fmt.Errorf("%s: %s.%s is not declared in the registry", where, m.Entity, m.Action)}
-	}
-	errs := validateConditions(where, m.Where, action)
-	if !m.CountBy.set {
-		return append(errs, fmt.Errorf("%s: countBy is required", where))
-	}
-
-	unit := ""
-	switch {
-	case m.CountBy.occurrence:
-		unit = unitOccurrence
-		if len(action.Sources) > 1 {
-			errs = append(errs, fmt.Errorf("%s: %s.%s has %d sources, so count it by resource; by occurrence a renamed event counts twice", where, m.Entity, m.Action, len(action.Sources)))
-		}
-	case m.CountBy.resource == "":
-		if len(action.Resources) == 0 {
-			return append(errs, fmt.Errorf(`%s: countBy "resource" on %s.%s, which declares no resources`, where, m.Entity, m.Action))
-		}
-		unit, m.idFields = action.Resources[0].Unit, action.Resources[0].ID
-	default:
-		for _, res := range action.Resources {
-			if res.Unit == m.CountBy.resource {
-				unit, m.idFields = res.Unit, res.ID
-			}
-		}
-		if unit == "" {
-			return append(errs, fmt.Errorf("%s: %s.%s declares no resource %q", where, m.Entity, m.Action, m.CountBy.resource))
-		}
-	}
-	if unit != counterUnit {
-		errs = append(errs, fmt.Errorf("%s: counts unit %q but the counter's unit is %q", where, unit, counterUnit))
-	}
-	return errs
-}
-
-func (r *Route) validate(where string, registry *Registry) []error {
+func (r *Rule) validate(where string, registry *Registry) []error {
 	action, ok := registry.action(r.Entity, r.Action)
 	if !ok {
 		return []error{fmt.Errorf("%s: %s.%s is not declared in the registry", where, r.Entity, r.Action)}
 	}
 	errs := validateConditions(where, r.Where, action)
-	if r.Action != actionCompleted {
-		errs = append(errs, fmt.Errorf("%s: routes take action %q only, got %q", where, actionCompleted, r.Action))
+	switch {
+	case !r.CountBy.set:
+		errs = append(errs, fmt.Errorf("%s: countBy is required", where))
+	case r.CountBy.occurrence:
+		r.unit = unitOccurrence
+		if len(action.Sources) > 1 {
+			errs = append(errs, fmt.Errorf("%s: %s.%s has %d sources, so count it by resource; by occurrence a renamed event counts twice", where, r.Entity, r.Action, len(action.Sources)))
+		}
+	case r.CountBy.resource == "":
+		if len(action.Resources) == 0 {
+			return append(errs, fmt.Errorf(`%s: countBy "resource" on %s.%s, which declares no resources`, where, r.Entity, r.Action))
+		}
+		r.unit, r.idFields = action.Resources[0].Unit, action.Resources[0].ID
+	default:
+		for _, res := range action.Resources {
+			if res.Unit == r.CountBy.resource {
+				r.unit, r.idFields = res.Unit, res.ID
+			}
+		}
+		if r.unit == "" {
+			errs = append(errs, fmt.Errorf("%s: %s.%s declares no resource %q", where, r.Entity, r.Action, r.CountBy.resource))
+		}
 	}
 	return errs
 }
@@ -380,8 +356,7 @@ func (c Condition) validateValue(where string, field Field) []error {
 	return nil
 }
 
-// Dormant lists the achievements whose every matcher, counter evidence and
-// routes alike, is on a pair that nothing emits.
+// Dormant lists the achievements whose first tier has no rule on a pair something emits.
 func (c *Catalog) Dormant(emitted []Pair) []string {
 	live := map[Pair]bool{}
 	for _, p := range emitted {
@@ -390,7 +365,7 @@ func (c *Catalog) Dormant(emitted []Pair) []string {
 	var ids []string
 	for i := range c.Achievements {
 		d := &c.Achievements[i]
-		if !d.anyPair(func(p Pair) bool { return live[p] }) {
+		if !d.firstTierHasPair(func(p Pair) bool { return live[p] }) {
 			ids = append(ids, d.ID)
 		}
 	}
@@ -398,18 +373,22 @@ func (c *Catalog) Dormant(emitted []Pair) []string {
 }
 
 func (d *Definition) anyPair(f func(Pair) bool) bool {
-	if d.Counter != nil {
-		for _, m := range d.Counter.Evidence {
-			if f(Pair{m.Entity, m.Action}) {
-				return true
-			}
+	for _, t := range d.Tiers {
+		if t.anyPair(f) {
+			return true
 		}
 	}
-	for _, t := range d.Tiers {
-		for _, r := range t.Or {
-			if f(Pair{r.Entity, r.Action}) {
-				return true
-			}
+	return false
+}
+
+func (d *Definition) firstTierHasPair(f func(Pair) bool) bool {
+	return len(d.Tiers) > 0 && d.Tiers[0].anyPair(f)
+}
+
+func (t *Tier) anyPair(f func(Pair) bool) bool {
+	for _, r := range t.Rules {
+		if f(Pair{r.Entity, r.Action}) {
+			return true
 		}
 	}
 	return false

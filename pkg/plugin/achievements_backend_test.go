@@ -111,7 +111,7 @@ func TestAchievementNameReader_ReadsOnlyTheCallersRowsByName(t *testing.T) {
 	if got := strings.Join(awardKeys(rows), ","); got != "dash-builder/bronze" {
 		t.Errorf("awards = %s, want only the caller's", got)
 	}
-	if len(rows.Progress) != 1 || rows.Progress[0].AchievementID != "dash-builder" || rows.Progress[0].Units[0] != "unit-a" {
+	if len(rows.Progress) != 1 || rows.Progress[0].AchievementID != "dash-builder" || len(rows.Progress[0].TierIDs) != 1 || rows.Progress[0].TierIDs[0] != "bronze" {
 		t.Errorf("progress = %+v", rows.Progress)
 	}
 	if !rows.AsOf.Equal(achievementTestNow) || rows.Truncated {
@@ -355,7 +355,8 @@ func TestAchievementRoutes_WiredBackendAwardsAndReadsBack(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &my); err != nil {
 		t.Fatal(err)
 	}
-	if !my.Capability.Available || len(my.Awards) != 1 || my.Awards[0].TierID != "bronze" || len(my.Progress) != 1 || my.Progress[0].Units != 1 {
+	if !my.Capability.Available || len(my.Awards) != 1 || my.Awards[0].TierID != "bronze" || len(my.Progress) != 1 ||
+		my.Progress[0].Units != 0 || my.Progress[0].Next == nil || *my.Progress[0].Next != 2 {
 		t.Fatalf("my = %+v", my)
 	}
 	if listed {

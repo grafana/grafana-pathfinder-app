@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 )
 
-const achievementsTestBundleJSON = `{"grammar":"1.0","registry":{"entities":{
+const achievementsTestBundleJSON = `{"grammar":"2.0","registry":{"entities":{
   "dashboards":{"actions":{"created":{
     "context":{"resourceId":{"type":"string"},"numPanels":{"type":"number"}},
     "resources":[{"unit":"dashboard","id":["resourceId"]}],
@@ -35,10 +35,12 @@ const achievementsTestBundleJSON = `{"grammar":"1.0","registry":{"entities":{
   "search":{"actions":{"performed":{"context":{}}}}
 }},"catalog":{"achievements":[
   {"id":"dash-builder","title":"Dashboard builder","description":"Create dashboards.",
-   "counter":{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource"}]},
-   "tiers":[{"id":"bronze","at":1},{"id":"silver","at":3},{"id":"gold","at":5}]},
+   "tiers":[
+     {"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]},
+     {"id":"silver","goal":2,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]},
+     {"id":"gold","goal":2,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]}]},
   {"id":"guide-routes","title":"Guide routes","description":"Finish the named guide.",
-   "tiers":[{"id":"intro","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]}]}
+   "tiers":[{"id":"intro","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource","where":[{"field":"guideId","op":"eq","value":"intro"}]}]}]}
 ]}}`
 
 const achievementsTestUser = "user:1"
@@ -269,7 +271,7 @@ func TestAchievementEvent_AwardsOnceAndRepeatChangesNothing(t *testing.T) {
 	if body.EventID != "evt-1" || body.Retry || len(body.Decisions) != 1 {
 		t.Fatalf("unexpected response %+v", body)
 	}
-	if d := body.Decisions[0]; d.AchievementID != "dash-builder" || d.Decision != achievements.KindAward || !slices.Equal(d.Awarded, []string{"bronze"}) || d.Units != 1 {
+	if d := body.Decisions[0]; d.AchievementID != "dash-builder" || d.Decision != achievements.KindAward || !slices.Equal(d.Awarded, []string{"bronze"}) || d.Units != 0 || d.Next == nil || *d.Next != 2 {
 		t.Fatalf("decision = %+v", d)
 	}
 	if awards, progress := mem.rowsFor(achievementsTestUser); awards != 1 || progress != 1 {
@@ -549,7 +551,7 @@ func TestMyAchievements_ShapesOnlyTheCallersRows(t *testing.T) {
 		postAchievementEvent(t, app, achievementsTestUser, dashboardEventBody("e"+strconv.Itoa(i), "uid-"+strconv.Itoa(i)))
 	}
 	postAchievementEvent(t, app, "user:2", dashboardEventBody("o", "uid-z"))
-	milestone := fmt.Sprintf(`{"schemaVersion":1,"eventId":"m","entity":"guides","action":"completed","occurredAt":%q,"context":{"guideId":"intro"}}`, timeNow().UTC().Format(time.RFC3339))
+	milestone := fmt.Sprintf(`{"schemaVersion":1,"eventId":"m","entity":"guides","action":"completed","occurredAt":%q,"context":{"guideSource":"bundled","guideId":"intro"}}`, timeNow().UTC().Format(time.RFC3339))
 	postAchievementEvent(t, app, achievementsTestUser, milestone)
 
 	rr, body := getMyAchievements(t, app, achievementsTestUser)
@@ -563,9 +565,12 @@ func TestMyAchievements_ShapesOnlyTheCallersRows(t *testing.T) {
 		body.Awards[1].AchievementID != "guide-routes" {
 		t.Fatalf("awards = %+v", body.Awards)
 	}
-	if len(body.Progress) != 1 || body.Progress[0].AchievementID != "dash-builder" || body.Progress[0].Units != 2 ||
-		body.Progress[0].Next == nil || *body.Progress[0].Next != 3 {
-		t.Fatalf("progress = %+v (a milestone must not appear)", body.Progress)
+	if len(body.Progress) != 2 || body.Progress[0].AchievementID != "dash-builder" || body.Progress[0].Units != 1 ||
+		body.Progress[0].Next == nil || *body.Progress[0].Next != 2 {
+		t.Fatalf("progress = %+v, want one point of silver's 2", body.Progress)
+	}
+	if p := body.Progress[1]; p.AchievementID != "guide-routes" || p.Units != 0 || p.Next != nil {
+		t.Fatalf("progress = %+v, want guide-routes complete with no next tier", body.Progress)
 	}
 	if !strings.Contains(rr.Body.String(), `"legacy":[]`) {
 		t.Fatalf("legacy must be an empty array: %s", rr.Body.String())
@@ -580,7 +585,7 @@ func TestMyAchievements_FinalTierHasNoNextAndTruncationPasses(t *testing.T) {
 		postAchievementEvent(t, app, achievementsTestUser, dashboardEventBody("e"+strconv.Itoa(i), "uid-"+strconv.Itoa(i)))
 	}
 	_, body := getMyAchievements(t, app, achievementsTestUser)
-	if !body.Truncated || len(body.Progress) != 1 || body.Progress[0].Next != nil || body.Progress[0].Units != 5 {
+	if !body.Truncated || len(body.Progress) != 1 || body.Progress[0].Next != nil || body.Progress[0].Units != 0 {
 		t.Fatalf("body = %+v", body)
 	}
 	if len(body.Awards) != 3 {
@@ -605,11 +610,13 @@ func TestMyAchievements_AwardsFollowCatalogRankWithUnknownTiersLast(t *testing.T
 
 func TestMyAchievements_NextSkipsATierAwardedBeforeTheRowRecordedIt(t *testing.T) {
 	mem := newMemAchievements()
-	mem.put(achievements.Person{ID: achievementsTestUser}, achievements.Progress{AchievementID: "dash-builder", TierIDs: []string{}, Units: []string{"u1"}, SchemaVersion: 1})
-	mem.awards[achievementsTestUser+"/dash-builder/bronze"] = achievements.Award{AchievementID: "dash-builder", TierID: "bronze", Entity: "dashboards", EarnedAt: timeNow()}
+	mem.put(achievements.Person{ID: achievementsTestUser}, achievements.Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{"u1", "u2"}, Points: 1, SchemaVersion: achievements.ProgressSchemaVersion})
+	for _, tier := range []string{"bronze", "silver"} {
+		mem.awards[achievementsTestUser+"/dash-builder/"+tier] = achievements.Award{AchievementID: "dash-builder", TierID: tier, Entity: "dashboards", EarnedAt: timeNow()}
+	}
 	_, body := getMyAchievements(t, newAchievementsTestApp(t, mem), achievementsTestUser)
-	if len(body.Progress) != 1 || body.Progress[0].Next == nil || *body.Progress[0].Next != 3 {
-		t.Fatalf("progress = %+v, want next at silver's threshold 3", body.Progress)
+	if len(body.Progress) != 1 || body.Progress[0].Next == nil || *body.Progress[0].Next != 2 || body.Progress[0].Units != 0 {
+		t.Fatalf("progress = %+v, want gold's goal of 2 and none of the point the row holds toward silver", body.Progress)
 	}
 }
 
@@ -673,7 +680,7 @@ func TestNewAppReadsThePublishedDefinitionsLazily(t *testing.T) {
 	if !ok || app.achievementEventsRateLimiter == nil {
 		t.Fatalf("definitions = %T, limiter %v", app.definitions, app.achievementEventsRateLimiter)
 	}
-	if source.url != "https://interactive-learning.grafana.net/achievements/v1/definitions.json" {
+	if source.url != "https://interactive-learning.grafana.net/achievements/v2/definitions.json" {
 		t.Errorf("definitions URL = %q", source.url)
 	}
 	if source.current.Load() != nil || source.flight != nil {
@@ -696,7 +703,7 @@ func captureAchievementEventsTierUp(t *testing.T) *httptest.ResponseRecorder {
 
 func captureAchievementEventsMilestoneAward(t *testing.T) *httptest.ResponseRecorder {
 	freezeContractTime(t)
-	body := fmt.Sprintf(`{"schemaVersion":1,"eventId":"event-m","entity":"guides","action":"completed","occurredAt":%q,"context":{"guideId":"intro"}}`, timeNow().UTC().Format(time.RFC3339))
+	body := fmt.Sprintf(`{"schemaVersion":1,"eventId":"event-m","entity":"guides","action":"completed","occurredAt":%q,"context":{"guideSource":"bundled","guideId":"intro"}}`, timeNow().UTC().Format(time.RFC3339))
 	return postAchievementEvent(t, newAchievementsTestApp(t, newMemAchievements()), achievementsTestUser, body)
 }
 
@@ -726,9 +733,10 @@ func captureMyAchievements(t *testing.T, mem *memAchievements, sub string, event
 
 func captureMyAchievementsDefault(t *testing.T) *httptest.ResponseRecorder {
 	freezeContractTime(t)
-	milestone := fmt.Sprintf(`{"schemaVersion":1,"eventId":"event-m","entity":"guides","action":"completed","occurredAt":%q,"context":{"guideId":"intro"}}`, timeNow().UTC().Format(time.RFC3339))
+	milestone := fmt.Sprintf(`{"schemaVersion":1,"eventId":"event-m","entity":"guides","action":"completed","occurredAt":%q,"context":{"guideSource":"bundled","guideId":"intro"}}`, timeNow().UTC().Format(time.RFC3339))
 	return captureMyAchievements(t, newMemAchievements(), achievementsTestUser,
-		dashboardEventBody("event-0", "uid-0"), dashboardEventBody("event-1", "uid-1"), dashboardEventBody("event-2", "uid-2"), milestone)
+		dashboardEventBody("event-0", "uid-0"), dashboardEventBody("event-1", "uid-1"), dashboardEventBody("event-2", "uid-2"),
+		dashboardEventBody("event-3", "uid-3"), milestone)
 }
 
 func captureMyAchievementsEmpty(t *testing.T) *httptest.ResponseRecorder {

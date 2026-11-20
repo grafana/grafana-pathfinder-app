@@ -23,7 +23,7 @@ var (
 )
 
 func seedProgress(id string) achievements.Progress {
-	return achievements.Progress{AchievementID: id, SchemaVersion: achievements.SchemaVersion}
+	return achievements.Progress{AchievementID: id, SchemaVersion: achievements.ProgressSchemaVersion}
 }
 
 func award(id, tierID string) achievements.Award {
@@ -70,6 +70,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"racing saves at one version have exactly one winner", saveRace},
 		{"units come back sorted and distinct", unitsNormalised},
 		{"held tier ids come back distinct", tierIDsDistinct},
+		{"points toward the next tier persist, including a reset to zero", pointsPersist},
 		{"people never see each other's rows", peopleIsolated},
 		{"award create twice is ErrExists", awardTwice},
 		{"awards are independent per tier id, achievement and person", awardIndependent},
@@ -111,8 +112,11 @@ func createReturnsRow(t *testing.T, s achievements.Store) {
 	if row.Version == "" {
 		t.Fatal("created row has no version")
 	}
-	if row.AchievementID != "a" || len(row.TierIDs) != 0 || len(row.Units) != 0 || row.SchemaVersion != achievements.SchemaVersion {
+	if row.AchievementID != "a" || len(row.TierIDs) != 0 || len(row.Units) != 0 || row.Points != 0 || row.SchemaVersion != achievements.ProgressSchemaVersion {
 		t.Fatalf("created row = %+v", row)
+	}
+	if achievements.Classify(row) != achievements.ShapeCurrent {
+		t.Fatalf("created row = %+v, want a current shape", row)
 	}
 	loaded := mustLoad(t, s, alice, "a")
 	if loaded.Version != row.Version {
@@ -272,6 +276,25 @@ func tierIDsDistinct(t *testing.T, s achievements.Store) {
 	}
 	if got := mustLoad(t, s, alice, "a").TierIDs; len(got) != len(silver) || !sameSet(got, silver) {
 		t.Fatalf("tier ids = %v, want the set %v once each", got, silver)
+	}
+}
+
+func pointsPersist(t *testing.T, s achievements.Store) {
+	row := mustCreate(t, s, alice, "a")
+	for _, points := range []int{3, 0} {
+		next := withUnits(row, bronze, "u1")
+		next.Points = points
+		saved, err := s.SaveProgress(context.Background(), alice, next)
+		if err != nil {
+			t.Fatalf("SaveProgress(points=%d): %v", points, err)
+		}
+		if saved.Points != points {
+			t.Fatalf("saved points = %d, want %d", saved.Points, points)
+		}
+		if got := mustLoad(t, s, alice, "a"); got.Points != points {
+			t.Fatalf("loaded points = %d, want %d", got.Points, points)
+		}
+		row = saved
 	}
 }
 

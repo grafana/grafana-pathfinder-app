@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
-	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
 	"time"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 )
 
 const (
@@ -32,7 +35,7 @@ func newAchievementStore(c *appPlatformListClient, w achievementWriter, now func
 	return &achievementStore{client: c, writer: w, now: now}
 }
 func (s *achievementStore) shared() *services.AchievementStore {
-	return services.NewAchievementStore(legacyAchievementClient{s.client}, s.writer, s.now)
+	return services.NewAchievementStore(legacyAchievementClient{s.client}, s.writer, s.now, log.DefaultLogger)
 }
 func (s *achievementStore) LoadProgress(ctx context.Context, p achievements.Person, ids []string) (map[string]achievements.Progress, error) {
 	return s.shared().LoadProgress(ctx, p, ids)
