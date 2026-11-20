@@ -107,18 +107,21 @@ func TestEvaluateReReadsTheRowWhenTheRepairAcknowledgementIsUnreadable(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d := decisionFor(t, decisions, "dash-builder"); d.Units != 1 || Classify(fake.progress["dash-builder"]) != ShapeCurrent {
-		t.Errorf("decision = %+v, want the re-read row repaired and the event counted", d)
+	if d := decisionFor(t, decisions, "dash-builder"); d.Units != 1 || Classify(fake.progress["dash-builder"]) != ShapeCurrent || fake.saves != 2 {
+		t.Errorf("decision = %+v saves = %d, want the re-read row already repaired, so one counting save", d, fake.saves)
 	}
 }
 
 type pruningStore struct{ *fakeStore }
 
 func (s pruningStore) SaveProgress(ctx context.Context, person Person, p Progress) (Progress, error) {
+	acknowledged := p
+	acknowledged.Version = ""
 	p.MissingFields = []string{FieldPoints}
-	saved, err := s.fakeStore.SaveProgress(ctx, person, p)
-	saved.Version = ""
-	return saved, err
+	if _, err := s.fakeStore.SaveProgress(ctx, person, p); err != nil {
+		return Progress{}, err
+	}
+	return acknowledged, nil
 }
 
 func TestEvaluateSpendsNothingWhenAnUnreadableAcknowledgementHidesAPruningKind(t *testing.T) {
