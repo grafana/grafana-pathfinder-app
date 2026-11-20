@@ -1061,8 +1061,9 @@ filter the caller before shaping the result, expose truncation, and do not cache
 personal state. Public CDN definitions retain their existing shared cache and
 failure backoff; caller credentials never reach the CDN.
 
-Achievement schemas are copied from the exact backend revision used by the
-merged store tests (`84c582fdae1916910e5197a44bd0078018315135`, backend PR #146).
-Their resource names, versions, schemas, and award create-only role are preserved.
+Achievement schemas are copied from the backend revision used by the merged
+store tests (`84c582fdae1916910e5197a44bd0078018315135`, backend PR #146), plus
+the required `points` field on AchievementProgress that the kind does not serve
+yet. Their resource names, versions, schemas, and award create-only role are preserved.
 The local SDK provider registers these kinds; this is not evidence of Cloud
 registration or deployment. There is no new achievement frontend in this change.

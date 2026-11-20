@@ -70,6 +70,16 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		current = created
 	}
 
+	if current.SchemaVersion > 0 && current.SchemaVersion < ProgressSchemaVersion {
+		migrated := current
+		migrated.SchemaVersion, migrated.Units, migrated.Points = ProgressSchemaVersion, nil, 0
+		saved, err := e.store.SaveProgress(ctx, person, migrated)
+		if err != nil {
+			return d.unavailable(current)
+		}
+		current = saved
+	}
+
 	var written []string
 	for attempt := 1; ; attempt++ {
 		out := d.keepWritten(current, evaluate(d, current, ev), written)

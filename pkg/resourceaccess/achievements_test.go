@@ -39,8 +39,9 @@ var (
 
 // fakeAchievementAPI enforces the kinds' CRD schemas, 409 on a duplicate create
 // or a stale resourceVersion, and create-only verbs on AchievementAward.
-// testdata/achievements holds byte copies of the CRDs generated at
-// grafana-pathfinder-backend 84c582fdae1916910e5197a44bd0078018315135.
+// testdata/achievements holds the CRDs generated at
+// grafana-pathfinder-backend 84c582fdae1916910e5197a44bd0078018315135, plus
+// the required points field on AchievementProgress that the kind still lacks.
 type fakeAchievementAPI struct {
 	mu           sync.Mutex
 	rv           int

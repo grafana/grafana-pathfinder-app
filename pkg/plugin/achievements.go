@@ -169,11 +169,6 @@ func (a *App) handleAchievementEvent(w http.ResponseWriter, r *http.Request) {
 		a.writeRateLimited(w, limited.retryAfter)
 		return
 	}
-	if errors.Is(err, errAchievementPointsUnserved) {
-		a.ctxLogger(r.Context()).Warn("achievement progress rows carry no points field; the AchievementProgress kind on this backend does not serve it", "error", err)
-		a.writeError(w, "busy", http.StatusServiceUnavailable)
-		return
-	}
 	if err != nil {
 		a.ctxLogger(r.Context()).Warn("achievement evaluation failed", "error", err)
 		a.writeError(w, "busy", http.StatusServiceUnavailable)
@@ -240,7 +235,6 @@ func (a *App) handleMyAchievements(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, errAchievementPointsUnserved) {
-			a.ctxLogger(r.Context()).Warn("achievement progress rows carry no points field; the AchievementProgress kind on this backend does not serve it", "error", err)
 			a.writeMyAchievements(w, myAchievementsResponse{Capability: achievementCapability{Reason: reasonBackendUnavailable}})
 			return
 		}

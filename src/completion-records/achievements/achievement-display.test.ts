@@ -161,6 +161,7 @@ describe('announcements across tabs', () => {
     let deliver: ((message: unknown) => void) | null = null;
     __setAchievementDisplayDepsForTests({
       fetchDefinitions: async () => definitions,
+      fetchMy: async () => myOk(),
       isVisible: () => visible,
       onVisible: (listener) => {
         becameVisible = listener;
@@ -224,6 +225,15 @@ describe('announcements across tabs', () => {
     expect(t.seen).toHaveBeenCalledTimes(1);
     expect(t.seen).toHaveBeenCalledWith(silver);
     expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes the hub on a progress relay from a build that names no tier', () => {
+    const t = tab({ visible: true, claims: new Set() });
+    const changed = jest.fn();
+    onAchievementsChanged(changed);
+    t.receive({ achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5, displayed: false });
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(t.seen).not.toHaveBeenCalled();
   });
 
   it('does not show an award another tab already displayed', () => {

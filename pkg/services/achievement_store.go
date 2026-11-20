@@ -10,6 +10,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 )
 
@@ -245,6 +247,7 @@ func decodeAchievementProgress(body []byte) (achievementObject[achievementProgre
 	// A kind that does not declare points prunes it silently, and evaluating on
 	// would spend ledger units that never add up to a tier.
 	if obj.Spec.Points == nil && obj.Spec.SchemaVersion >= achievements.ProgressSchemaVersion {
+		log.DefaultLogger.Warn("achievement progress rows carry no points field; the AchievementProgress kind on this backend does not serve it", "achievementId", obj.Spec.AchievementID)
 		return obj, ErrAchievementPointsUnserved
 	}
 	return obj, nil

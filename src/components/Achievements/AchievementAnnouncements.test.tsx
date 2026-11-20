@@ -58,7 +58,13 @@ async function announce(r: AchievementEventsResponseWire) {
 
 beforeEach(() => {
   __resetAchievementDisplayForTests();
-  __setAchievementDisplayDepsForTests({ fetchDefinitions: async () => definitions });
+  __setAchievementDisplayDepsForTests({
+    fetchDefinitions: async () => definitions,
+    fetchMy: async () => ({
+      kind: 'ok',
+      data: { capability: { available: true }, truncated: false, awards: [], progress: [], legacy: [] },
+    }),
+  });
 });
 
 describe('AchievementAnnouncementHost', () => {

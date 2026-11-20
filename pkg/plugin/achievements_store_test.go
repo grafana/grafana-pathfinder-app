@@ -564,6 +564,13 @@ func TestAchievementStore_KindWithoutPointsFailsTheSaveOfAVersionOneRow(t *testi
 	if d := decisions[0]; d.Reason != achievements.ReasonStoreUnavailable || !d.Reason.Transient() {
 		t.Fatalf("decision = %+v, want a transient store_unavailable", d)
 	}
+	spec := api.spec(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "guides-finished"))
+	if units, _ := spec["units"].([]any); len(units) != 0 {
+		t.Fatalf("units = %v, want none spent while the kind drops points", units)
+	}
+	if api.spec(achievementAwardResource, achievementAwardName(achievementTestPerson.ID, "guides-finished", "bronze")) != nil {
+		t.Fatal("an award was created while the kind drops points")
+	}
 }
 
 func TestAchievementStore_RowOfAnotherUserIsRefused(t *testing.T) {
