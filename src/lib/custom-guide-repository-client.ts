@@ -85,13 +85,7 @@ interface CustomGuideRepositoryResponse {
 
 const APP_PLATFORM_REPOSITORY = 'app-platform';
 
-// Short TTL + in-flight de-duplication. Several callers fetch the catalogue on
-// panel open (the Custom Guides surface, My Learning ingestion, and the
-// panel-open probe), and the proxy deliberately keeps no cross-request cache of
-// its own (custom_guide_repository.go). Without this, each caller drives a full
-// paginated upstream drain plus its own on-behalf-of token exchange,
-// concurrently. The proxy derives the namespace server-side, so keying on the
-// client-side namespace gate is safe. A full reload always refetches.
+// Coalesce panel-open reads so each namespace pays for one paginated catalogue fetch.
 const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { result: CustomGuideCatalogue; at: number }>();
 const inflight = new Map<string, Promise<CustomGuideCatalogue>>();
