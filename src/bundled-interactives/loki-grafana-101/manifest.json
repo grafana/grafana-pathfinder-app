@@ -29,9 +29,9 @@
   },
   "stats": {
     "version": 2,
-    "blockCount": 26,
+    "blockCount": 27,
     "sectionCount": 2,
-    "completableBlockCount": 21,
-    "finalCompletablePosition": 25
+    "completableBlockCount": 22,
+    "finalCompletablePosition": 26
   }
 }
