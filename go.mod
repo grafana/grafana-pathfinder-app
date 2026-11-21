@@ -8,7 +8,7 @@ require (
 	github.com/grafana/authlib/types v0.0.0-20260930204439-665ccbf27cbe
 	github.com/grafana/grafana-app-sdk v0.63.2
 	github.com/grafana/grafana-app-sdk/logging v0.63.2
-	github.com/grafana/grafana-plugin-sdk-go v0.299.0
+	github.com/grafana/grafana-plugin-sdk-go v0.300.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.25.0
 	k8s.io/apimachinery v0.37.2
@@ -128,7 +128,7 @@ require (
 	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	gomodules.xyz/jsonpatch/v3 v3.0.1 // indirect
 	gomodules.xyz/orderedmap v0.1.0 // indirect
