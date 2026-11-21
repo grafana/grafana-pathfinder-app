@@ -11,6 +11,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { runCreate } from '../../commands/create';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { readPackage } from '../../utils/package-io';
 import { InMemorySessionStore, SESSION_GENERATION_ABSENT, type SessionStore } from '../lib/session-store';
 import { buildServer } from '../server';
@@ -84,6 +85,7 @@ async function seedSession(store: SessionStore, token: string, title = 'Fixture'
 }
 
 describe('mutation tools — session-mode dispatch', () => {
+  useStepIndexFixture();
   let h: Harness;
   beforeEach(async () => {
     h = await newHarness();

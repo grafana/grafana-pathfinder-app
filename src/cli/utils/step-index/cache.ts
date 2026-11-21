@@ -89,6 +89,31 @@ export function getStepIndex(): Promise<StepIndexResult> {
   return inFlight;
 }
 
+const selectorSets = new WeakMap<StepIndexSnapshot, ReadonlySet<string>>();
+
+/**
+ * Every selector a verified step targets in the held index; empty until one is held.
+ * The set only exempts selectors from advisory hints, so authoring must never wait on a build: with nothing
+ * held this starts one in the background (joining any in flight) and answers empty.
+ */
+export function getVerifiedSelectors(): ReadonlySet<string> {
+  if (!held) {
+    void getStepIndex().catch(() => undefined);
+    return new Set();
+  }
+  const { snapshot } = held;
+  let selectors = selectorSets.get(snapshot);
+  if (!selectors) {
+    selectors = new Set(
+      [...snapshot.procedures.values()].flatMap((procedure) =>
+        procedure.steps.flatMap((step) => (step.selector ? [step.selector] : []))
+      )
+    );
+    selectorSets.set(snapshot, selectors);
+  }
+  return selectors;
+}
+
 export function __resetStepIndexForTests(): void {
   held = undefined;
   inFlight = undefined;

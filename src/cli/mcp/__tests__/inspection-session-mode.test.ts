@@ -11,6 +11,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { InMemorySessionStore } from '../lib/session-store';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { buildServer } from '../server';
 
 interface ToolPayload {
@@ -60,6 +61,7 @@ async function mintSession(call: (n: string, a: Record<string, unknown>) => Prom
 }
 
 describe('pathfinder_inspect — session mode', () => {
+  useStepIndexFixture();
   it('loads the session and returns the artifact', async () => {
     const h = await newHarness();
     try {
@@ -109,6 +111,7 @@ describe('pathfinder_inspect — session mode', () => {
 });
 
 describe('pathfinder_validate — session mode', () => {
+  useStepIndexFixture();
   it('validates a session-stored artifact', async () => {
     const h = await newHarness();
     try {

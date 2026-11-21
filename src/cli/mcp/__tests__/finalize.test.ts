@@ -11,6 +11,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { PERSISTED_DIVIDER_MARKDOWN } from '../../../types/app-platform-guide-compat';
 import { InMemorySessionStore, SESSION_GENERATION_ABSENT } from '../lib/session-store';
 import { generateSessionToken } from '../lib/session-token';
@@ -101,6 +102,7 @@ async function callFinalizeWithStore(store: InMemorySessionStore, args: Record<s
 }
 
 describe('pathfinder_finalize_for_app_platform contract', () => {
+  useStepIndexFixture();
   it('matches the App Platform handoff snapshot', async () => {
     const payload = await callFinalize();
     expect(payload).toMatchInlineSnapshot(`
@@ -230,6 +232,15 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
             "Do NOT surface the viewer link from this response — it only resolves after a successful App Platform write, not for local-export.",
           ],
           "summary": "Fallback used by the grafanaOss and nonGrafanaClient branches to preserve the authored guide as files on disk that the user can later import via the block editor.",
+        },
+        "qualityHints": {
+          "blocks": [],
+          "guide": [
+            {
+              "code": "KIND_NOT_GIVEN",
+              "steer": "No guide kind was declared, so kind checks were skipped. Declare \`kind\` when you call pathfinder_create_package.",
+            },
+          ],
         },
         "resource": {
           "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
@@ -378,10 +389,16 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
 });
 
 describe('pathfinder_finalize_for_app_platform — session mode', () => {
+  useStepIndexFixture();
   it('loads the artifact from the session store and returns the same shape as stateless mode', async () => {
     const store = new InMemorySessionStore();
     const token = generateSessionToken();
-    await store.save(token, { content: fixtureContent, manifest: fixtureManifest }, SESSION_GENERATION_ABSENT);
+    await store.save(
+      token,
+      { content: fixtureContent, manifest: fixtureManifest },
+      SESSION_GENERATION_ABSENT,
+      'reference'
+    );
 
     const payload = await callFinalizeWithStore(store, { sessionToken: token, status: 'draft' });
 
@@ -393,7 +410,12 @@ describe('pathfinder_finalize_for_app_platform — session mode', () => {
   it('deletes the session on a successful finalize so the token becomes unusable', async () => {
     const store = new InMemorySessionStore();
     const token = generateSessionToken();
-    await store.save(token, { content: fixtureContent, manifest: fixtureManifest }, SESSION_GENERATION_ABSENT);
+    await store.save(
+      token,
+      { content: fixtureContent, manifest: fixtureManifest },
+      SESSION_GENERATION_ABSENT,
+      'reference'
+    );
     expect(await store.load(token)).not.toBeNull();
 
     const payload = await callFinalizeWithStore(store, { sessionToken: token, status: 'draft' });

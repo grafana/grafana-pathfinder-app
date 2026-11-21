@@ -21,6 +21,7 @@ import {
   JsonStepSchema,
 } from '../../../types/json-guide.schema';
 import { mockStepIndexFetch } from '../../../test-utils/step-index-fixtures';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { CONTAINER_BLOCK_TYPES } from '../../utils/block-registry';
 import { __resetRepositoryClientForTests } from '../../utils/repository-client';
 import { __resetStepIndexForTests } from '../../utils/step-index/cache';
@@ -64,6 +65,7 @@ async function callTool(client: Client, name: string, args: Record<string, unkno
 }
 
 describe('MCP server', () => {
+  useStepIndexFixture();
   it('surfaces non-empty server `instructions` on the initialize handshake (M1 layer 3)', async () => {
     const { client, close } = await spinUp();
     try {
@@ -127,6 +129,7 @@ describe('MCP server', () => {
       const step3 = (ctx.workflow as string[]).find((step) => step.startsWith('3. '));
       expect(step3).toContain('send the independent sub-tasks in one call (up to 8 queries)');
       expect(step3).toContain('follow-up calls are expected for `procedureId` fetches and `pageUrl` chaining');
+      expect(step3).toContain('skip it for a `reference` guide');
       expect(step3).toContain('naming third-party products by the Grafana process');
       expect(step3).toContain("If a step you searched for isn't in the procedure you found, check its `nextProcedure`");
       expect(step3).toContain('Use placeholders only for what stays unresolved.');

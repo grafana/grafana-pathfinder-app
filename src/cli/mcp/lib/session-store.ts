@@ -6,6 +6,7 @@
  */
 
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import type { GuideKind } from './quality-hints';
 
 export interface SessionArtifact {
   content: ContentJson;
@@ -16,6 +17,10 @@ export interface LoadedSession {
   artifact: SessionArtifact;
   /** Monotonic generation for optimistic concurrency. */
   generation: number;
+  /** Declared once at creation; kept beside the artifact so it never reaches the published guide. */
+  kind?: GuideKind;
+  /** Hint keys shown at a finalize review; kept beside the artifact and across later saves. */
+  reviewedHints?: string[];
 }
 
 export interface SaveResult {
@@ -57,8 +62,14 @@ export interface SessionStore {
   /** Current artifact + generation, or `null` if absent. Never throws for the absent case. */
   load(token: string): Promise<LoadedSession | null>;
 
-  /** Write the artifact; throws `SessionPreconditionFailedError` if the current generation ≠ `ifGenerationMatch` (`0` = create-only). */
-  save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult>;
+  /**
+   * Write the artifact; throws `SessionPreconditionFailedError` if the current generation ≠ `ifGenerationMatch` (`0` = create-only).
+   * `kind` is stored only on create; later saves keep the stored value whatever they pass.
+   */
+  save(token: string, artifact: SessionArtifact, ifGenerationMatch: number, kind?: GuideKind): Promise<SaveResult>;
+
+  /** Record the hint keys a finalize review showed; no-op for an absent session, no generation bump. */
+  markHintsReviewed(token: string, keys: string[]): Promise<void>;
 
   /** Remove the session; idempotent. `ifGenerationMatch` is reserved for a future precondition-gated backend (in-memory ignores it). */
   delete(token: string, ifGenerationMatch?: number): Promise<void>;
@@ -147,10 +158,20 @@ export class InMemorySessionStore implements SessionStore, SessionPinStore {
       return null;
     }
     entry.expiresAt = this.now() + this.ttlMs;
-    return { artifact: entry.artifact, generation: entry.generation };
+    return {
+      artifact: entry.artifact,
+      generation: entry.generation,
+      kind: entry.kind,
+      reviewedHints: entry.reviewedHints,
+    };
   }
 
-  async save(token: string, artifact: SessionArtifact, ifGenerationMatch: number): Promise<SaveResult> {
+  async save(
+    token: string,
+    artifact: SessionArtifact,
+    ifGenerationMatch: number,
+    kind?: GuideKind
+  ): Promise<SaveResult> {
     this.sweepExpired();
     const current = this.liveEntry(token);
     const actual = current ? current.generation : SESSION_GENERATION_ABSENT;
@@ -158,8 +179,21 @@ export class InMemorySessionStore implements SessionStore, SessionPinStore {
       throw new SessionPreconditionFailedError(ifGenerationMatch, actual);
     }
     const nextGeneration = actual + 1;
-    this.entries.set(token, { artifact, generation: nextGeneration, expiresAt: this.now() + this.ttlMs });
+    this.entries.set(token, {
+      artifact,
+      generation: nextGeneration,
+      kind: current ? current.kind : kind,
+      reviewedHints: current?.reviewedHints,
+      expiresAt: this.now() + this.ttlMs,
+    });
     return { generation: nextGeneration };
+  }
+
+  async markHintsReviewed(token: string, keys: string[]): Promise<void> {
+    const entry = this.liveEntry(token);
+    if (entry) {
+      entry.reviewedHints = keys;
+    }
   }
 
   async delete(token: string, _ifGenerationMatch?: number): Promise<void> {

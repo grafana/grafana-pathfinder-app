@@ -23,6 +23,10 @@
  * `resolveReadOnlyInput`. On a successful finalize the server deletes the
  * session — the token is single-use through here. A failed delete logs but
  * does not fail the response: the sliding session TTL is the safety net.
+ *
+ * While quality hints are open, the first session-mode call returns
+ * `status: "review"` and leaves the session in place; the next call proceeds
+ * unless hints it has not shown yet have appeared.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -33,6 +37,8 @@ import { withManifestAuthor } from '../../utils/manifest-author';
 import { runValidate } from '../../commands/validate';
 import { renderMachineJson } from '../../utils/output';
 import { placeholderSelectorWarnings } from '../../utils/warnings';
+import { getVerifiedSelectors } from '../../utils/step-index/cache';
+import { currentQualityHints, KindSchema, type GuideKind } from '../lib/quality-hints';
 import { projectManifestForCrd } from '../lib/crd-manifest';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
@@ -49,6 +55,8 @@ const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.app/v1alpha1';
 const APP_PLATFORM_KIND = 'InteractiveGuide';
 const APP_PLATFORM_RESOURCE = 'interactiveguides';
 const NAMESPACE_PLACEHOLDER = '{namespace}';
+const REVIEW_MESSAGE =
+  'Quality hints are open. Fix each one with pathfinder_manage_block, or keep it deliberately, then call pathfinder_finalize_for_app_platform again. Nothing was saved and the session is still open.';
 
 const ArtifactSchema = ArtifactInputBase.describe(
   'STATELESS MODE. Pass an in-flight artifact directly. Pass EITHER `artifact` OR `sessionToken`, not both.'
@@ -67,7 +75,7 @@ export function registerFinalizeTool(
     'pathfinder_finalize_for_app_platform',
     {
       description:
-        'Use this tool when the user wants to publish a finished Pathfinder guide to Grafana. Validates the artifact, then returns the App Platform write payload (resource, path templates, viewer link) and a localExport fallback. The MCP does not perform the write — the controlling agent (e.g. Grafana Assistant) does. Pass `artifact` for stateless mode or `sessionToken` for session mode; the session is deleted on a successful finalize.',
+        'Use this tool when the user wants to publish a finished Pathfinder guide to Grafana. Validates the artifact, then returns the App Platform write payload (resource, path templates, viewer link) and a localExport fallback. The MCP does not perform the write — the controlling agent (e.g. Grafana Assistant) does. Pass `artifact` for stateless mode or `sessionToken` for session mode; the session is deleted on a successful finalize. In session mode, open `qualityHints` return `status: "review"` once, with nothing saved; call again to finish. Session mode checks the kind declared at pathfinder_create_package; `kind` applies only to stateless mode. `qualityHints` are non-blocking.',
       annotations: readOnly('Finalize Pathfinder artifact'),
       inputSchema: {
         artifact: ArtifactSchema,
@@ -78,11 +86,12 @@ export function registerFinalizeTool(
           .describe(
             'Resource status. Defaults to draft; clients should only set published after explicit user confirmation.'
           ),
+        kind: KindSchema,
       },
     },
-    async ({ artifact, sessionToken, status }) =>
+    async ({ artifact, sessionToken, status, kind }) =>
       withToolErrorEnvelope(typeof sessionToken === 'string' ? sessionToken : undefined, 'finalize', () =>
-        finalizeImpl({ artifact, sessionToken, status, sessionStore, mcpSessionId, identityFromEnvironment })
+        finalizeImpl({ artifact, sessionToken, status, kind, sessionStore, mcpSessionId, identityFromEnvironment })
       )
   );
 }
@@ -91,11 +100,12 @@ async function finalizeImpl(args: {
   artifact?: { content: Record<string, unknown>; manifest?: Record<string, unknown> };
   sessionToken?: string;
   status: 'draft' | 'published';
+  kind?: GuideKind;
   sessionStore: AuthoringSessionStore;
   mcpSessionId: string | undefined;
   identityFromEnvironment?: boolean;
 }): Promise<ToolResult> {
-  const { artifact, sessionToken, status, sessionStore, mcpSessionId, identityFromEnvironment } = args;
+  const { artifact, sessionToken, status, kind, sessionStore, mcpSessionId, identityFromEnvironment } = args;
   const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
   if (!resolved.ok) {
     return resolved.response;
@@ -121,6 +131,21 @@ async function finalizeImpl(args: {
       }),
       true
     );
+  }
+
+  const qualityHints = currentQualityHints(
+    content,
+    resolved.sessionToken ? resolved.sessionKind : kind,
+    getVerifiedSelectors()
+  );
+
+  if (resolved.sessionToken !== undefined && qualityHints) {
+    const reviewed = new Set(resolved.sessionReviewedHints);
+    const keys = [...qualityHints.guide, ...qualityHints.blocks].map((hint) => `${hint.code}:${hint.blockId ?? ''}`);
+    if (keys.some((key) => !reviewed.has(key))) {
+      await sessionStore.markHintsReviewed(resolved.sessionToken, [...new Set([...reviewed, ...keys])]);
+      return textResult(renderMachineJson({ status: 'review', message: REVIEW_MESSAGE, qualityHints }));
+    }
   }
 
   // Filled after validation, so missing metadata can never make a guide invalid.
@@ -162,6 +187,7 @@ async function finalizeImpl(args: {
       errors: [],
       warnings: placeholderSelectorWarnings(content.blocks),
     },
+    ...(qualityHints ? { qualityHints } : {}),
     appPlatform: {
       apiVersion: APP_PLATFORM_API_VERSION,
       kind: APP_PLATFORM_KIND,

@@ -31,6 +31,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { buildServer } from '../server';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 
 interface Outcome {
   status?: string;
@@ -51,6 +52,7 @@ async function callTool(client: Client, name: string, args: Record<string, unkno
 }
 
 describe('MCP hardening — end-to-end composition', () => {
+  useStepIndexFixture();
   it('an agent walking the canonical flow sees every hardening hint at the right layer', async () => {
     const server = buildServer();
     const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();

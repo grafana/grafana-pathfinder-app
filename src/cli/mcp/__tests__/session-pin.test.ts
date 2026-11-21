@@ -20,6 +20,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { InMemorySessionStore } from '../lib/session-store';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { buildServer } from '../server';
 
 interface ToolPayload {
@@ -66,6 +67,7 @@ async function mintSession(store: InMemorySessionStore, mcpSessionId: string | u
 }
 
 describe('Mcp-Session-Id binding (P7 task 16)', () => {
+  useStepIndexFixture();
   describe('happy path — matching pin', () => {
     it('lets subsequent mutations through when the header matches the pin', async () => {
       const store = new InMemorySessionStore();

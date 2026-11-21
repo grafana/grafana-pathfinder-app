@@ -25,6 +25,7 @@ import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { type CommandOutcome, renderMachineJson } from '../../utils/output';
 import { spellOutcome } from '../../utils/param-spelling';
+import type { QualityHints } from '../lib/quality-hints';
 import { type ConcurrentModificationResult, type SessionTooLargeResult } from './state-bridge';
 
 export type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
@@ -91,9 +92,13 @@ function errorResult(
 export function outcomeResult(
   outcome: CommandOutcome,
   artifact?: { content: unknown; manifest?: unknown },
-  summary?: TreeNode[]
+  summary?: TreeNode[],
+  qualityHints?: QualityHints
 ): ToolResult {
-  const payload: Record<string, unknown> = { ...sanitizeOutcomeForMcp(outcome) };
+  const payload: Record<string, unknown> = {
+    ...sanitizeOutcomeForMcp(outcome),
+    ...(qualityHints ? { qualityHints } : {}),
+  };
   if (artifact) {
     payload.artifact = {
       ...artifact,
@@ -101,6 +106,7 @@ export function outcomeResult(
     };
   }
   if (summary) {
+    delete payload.summary;
     payload.summary = summary;
   }
   return textResult(renderMachineJson(payload), outcome.status === 'error');
@@ -116,12 +122,18 @@ export function sessionOutcomeResult(
   sessionToken: string,
   outcome: CommandOutcome,
   generation: number | undefined,
-  summary: TreeNode[]
+  summary: TreeNode[],
+  qualityHints?: QualityHints
 ): ToolResult {
-  const payload: Record<string, unknown> = { ...sanitizeOutcomeForMcp(outcome), sessionToken, summary };
+  const payload: Record<string, unknown> = { ...sanitizeOutcomeForMcp(outcome), sessionToken };
   if (generation !== undefined) {
     payload.generation = generation;
   }
+  if (qualityHints) {
+    payload.qualityHints = qualityHints;
+  }
+  delete payload.summary;
+  payload.summary = summary;
   return textResult(renderMachineJson(payload), outcome.status === 'error');
 }
 

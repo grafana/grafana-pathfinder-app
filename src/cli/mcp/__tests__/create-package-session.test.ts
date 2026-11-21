@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { InMemorySessionStore } from '../lib/session-store';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { isValidSessionToken } from '../lib/session-token';
 import { buildServer } from '../server';
 
@@ -54,6 +55,7 @@ async function withHarness<T>(
 }
 
 describe('pathfinder_create_package — session mint', () => {
+  useStepIndexFixture();
   it('mints a session token at generation 1 and persists the seed artifact', async () => {
     await withHarness(async (call, store) => {
       const r = await call('pathfinder_create_package', {

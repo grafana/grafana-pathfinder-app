@@ -12,6 +12,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import type { TreeNode } from '../../utils/package-io';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { buildServer } from '../server';
 
 interface SummaryPayload {
@@ -47,6 +48,7 @@ async function call(client: Client, name: string, args: Record<string, unknown> 
 }
 
 describe('mutation responses include a TreeNode[] summary', () => {
+  useStepIndexFixture();
   it('pathfinder_create_package: returns an empty summary', async () => {
     const { client, close } = await spinUp();
     try {

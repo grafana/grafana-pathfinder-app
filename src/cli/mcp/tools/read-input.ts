@@ -7,6 +7,7 @@
  */
 
 import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import type { GuideKind } from '../lib/quality-hints';
 import { enforceMcpSessionPin } from '../lib/session-pin';
 import { normalizeSessionToken } from '../lib/session-token';
 import { type AuthoringSessionStore } from '../lib/session-store';
@@ -25,6 +26,10 @@ export type ReadInputResolution =
        * the first such caller in the next stack layer.
        */
       sessionToken: string | undefined;
+      /** Session mode only: the kind declared at creation. */
+      sessionKind?: GuideKind;
+      /** Session mode only: hint keys a finalize review already showed. */
+      sessionReviewedHints?: string[];
     }
   | {
       ok: false;
@@ -86,6 +91,8 @@ export async function resolveReadOnlyInput(
       manifest: loaded.artifact.manifest,
       manifestAuthored: loaded.artifact.manifest !== undefined,
       sessionToken: token,
+      sessionKind: loaded.kind,
+      sessionReviewedHints: loaded.reviewedHints,
     };
   }
   const a = classified.artifact;

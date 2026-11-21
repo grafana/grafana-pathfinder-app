@@ -61,6 +61,8 @@ export interface ArtifactOutcome {
    * strictly additive; the full artifact still ships alongside.
    */
   summary: TreeNode[];
+  /** The content the runner started from, kept so a mutation ack can report only what the edit introduced. */
+  before: ContentJson;
 }
 
 export interface SessionOutcome extends ArtifactOutcome {
@@ -157,7 +159,7 @@ export async function withArtifact(
     const outcome = await runner(dir);
 
     if (outcome.status !== 'ok') {
-      return { outcome, artifact, summary: buildArtifactSummary(artifact.content) };
+      return { outcome, artifact, summary: buildArtifactSummary(artifact.content), before: artifact.content };
     }
 
     const updated = readPackage(dir);
@@ -166,6 +168,7 @@ export async function withArtifact(
       outcome,
       artifact: updatedArtifact,
       summary: buildArtifactSummary(updatedArtifact.content),
+      before: artifact.content,
     };
   } finally {
     try {
@@ -271,7 +274,7 @@ async function attemptMutation(
   if (quotaFailure) {
     return quotaFailure;
   }
-  const saved = await store.save(token, result.artifact, session.generation);
+  const saved = await store.save(token, result.artifact, session.generation, session.kind);
   return { ...result, generation: saved.generation };
 }
 
