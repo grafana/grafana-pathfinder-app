@@ -53,7 +53,7 @@ const AUTHORING_CONTEXT = {
     '5. Navigate with the `summary` tree on each ack; read deeper with pathfinder_read_session ("list-blocks" | "get-block" | "get-manifest", {sessionToken}).',
     '6. Last, set guide metadata with pathfinder_manage_guide "set-manifest".',
     '7. Rarely, pathfinder_inspect {sessionToken, opts:{}} pulls the full artifact.',
-    '8. Call pathfinder_validate with {sessionToken}.',
+    '8. Call pathfinder_validate with {sessionToken} before finalize.',
     '9. Call pathfinder_finalize_for_app_platform with {sessionToken}: it returns the artifact and publish handoff, and spends the session.',
   ],
   // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
