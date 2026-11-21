@@ -37,6 +37,25 @@ describe('searchSteps', () => {
     expect(dependent('/dashboard/new').score).toBeGreaterThan(dependent().score);
   });
 
+  it('matches the root page only against root procedures, not every page', () => {
+    const scored = (pageUrl?: string) =>
+      searchSteps(index, { queries: ['dependent service filter'], limit: 3, pageUrl })[0]!.hits[0]!.score;
+    expect(scored('/')).toBe(scored());
+    const rootProcedure: Procedure = {
+      ...fixtureProcedures()[0]!,
+      id: 'root#0',
+      startsOn: '/',
+      endsOn: '/',
+      steps: fixtureProcedures()[0]!.steps.map((step) => ({ ...step, page: '/' })),
+    };
+    const rootIndex = buildStepIndex([...fixtureProcedures(), rootProcedure]);
+    const boosted = (pageUrl?: string) =>
+      searchSteps(rootIndex, { queries: [rootProcedure.crumbs.at(-1) ?? 'x'], limit: 10, pageUrl })[0]!.hits.find(
+        (h) => h.procedure.id === 'root#0'
+      )!.score;
+    expect(boosted('/')).toBeGreaterThan(boosted());
+  });
+
   it('does not flag steps whose only match is in their selector', () => {
     const [top] = find('dashboard settings').hits;
     const flagged = top!.procedure.steps.filter((s) => top!.matchedSteps.includes(s.n));

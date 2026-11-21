@@ -125,7 +125,8 @@ describe('MCP server', () => {
     try {
       const ctx = await callTool(client, 'pathfinder_authoring_start');
       const step3 = (ctx.workflow as string[]).find((step) => step.startsWith('3. '));
-      expect(step3).toContain('one pathfinder_find_steps call');
+      expect(step3).toContain('send the independent sub-tasks in one call (up to 8 queries)');
+      expect(step3).toContain('follow-up calls are expected for `procedureId` fetches and `pageUrl` chaining');
       expect(step3).toContain('naming third-party products by the Grafana process');
       expect(step3).toContain("If a step you searched for isn't in the procedure you found, check its `nextProcedure`");
       expect(step3).toContain('Use placeholders only for what stays unresolved.');
@@ -214,9 +215,10 @@ describe('MCP server', () => {
       expect(JsonInteractiveBlockSchema.shape.reftarget.description).toContain("start the block's `content` with");
       expect(JsonCodeBlockBlockSchema.shape.reftarget.description).toContain("start the block's `content` with");
       expect(JsonConditionalBlockSchema.shape.reftarget.description).toContain(
-        "put `TODO: add the selector for <target>` in the block's `authorNote`"
+        'conditionals have no visible text to carry a lead'
       );
-      expect(JsonConditionalBlockSchema.shape.authorNote).toBeDefined();
+      expect(JsonConditionalBlockSchema.shape.reftarget.description).toContain(placeholder);
+      expect(JsonConditionalBlockSchema.shape.reftarget.description).not.toContain('authorNote');
     } finally {
       await close();
     }

@@ -129,7 +129,10 @@ function toStep(
   const action = ('targetAction' in source && source.targetAction) || source.action;
   const selector = source.reftarget ?? source.refTarget;
   const value = source.targetvalue ?? source.targetValue;
-  const onPage = requirements.find((r) => r.startsWith('on-page:'))?.slice('on-page:'.length);
+  const onPage = requirements
+    .filter((r) => r.startsWith('on-page:'))
+    .pop()
+    ?.slice('on-page:'.length);
   const navigatesTo = action === 'navigate' && selector?.startsWith('/') ? pathOf(selector) : undefined;
   const page = navigatesTo ?? (onPage ? pathOf(onPage) : undefined);
   const text =

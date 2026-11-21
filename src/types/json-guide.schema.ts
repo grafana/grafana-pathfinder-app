@@ -1064,7 +1064,7 @@ const ConditionalProps = {
     .string()
     .optional()
     .describe(
-      'Verified Grafana DOM selector consumed by certain conditional styles, taken from pathfinder_find_steps or given by the user. Never invent or guess one; without a verified selector, use `[data-testid="TODO-<target>"]` and put `TODO: add the selector for <target>` in the block\'s `authorNote`. A wrong selector silently fails at runtime — the validator cannot catch this.'
+      'Verified Grafana DOM selector consumed by certain conditional styles, taken from pathfinder_find_steps or given by the user. Never invent or guess one; without a verified selector, use `[data-testid="TODO-<target>"]` (conditionals have no visible text to carry a lead; validate and finalize flag this placeholder) and tell the user which conditional still needs a selector. A wrong selector silently fails at runtime — the validator cannot catch this.'
     ),
   whenTrueSectionConfig: ConditionalSectionConfigSchema.optional().describe(
     'Section config applied to the whenTrue branch'

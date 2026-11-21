@@ -118,7 +118,7 @@ export function buildStepIndex(procedures: Procedure[]): StepSearchIndex {
   return { search, procedures: new Map(procedures.map((p) => [p.id, p])), documentFrequency };
 }
 
-const normalizePage = (url: string) => (url.split(/[?#]/)[0] ?? url).replace(/\/+$/, '');
+const normalizePage = (url: string) => (url.split(/[?#]/)[0] ?? url).replace(/\/+$/, '') || '/';
 
 const pageMatches = (page: string, wanted: string) =>
   page === wanted || page.startsWith(`${wanted}/`) || wanted.startsWith(`${page}/`);

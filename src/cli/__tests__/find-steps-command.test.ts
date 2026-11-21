@@ -468,6 +468,59 @@ describe('lean search results', () => {
     expect(result.stepCount).toBe(21);
   });
 
+  describe('window size', () => {
+    const searchProcedure = async (total: number, matched: number) => {
+      const steps = Array.from({ length: total - 1 }, (_, i) => ({
+        type: 'interactive',
+        action: 'highlight',
+        reftarget: `[data-testid="row-${i + 2}"]`,
+        content: i + 2 === matched ? 'Press the quibblefrop control.' : `Press item ${i + 2}.`,
+      }));
+      global.fetch = mockStepIndexFetch({
+        content: (id) =>
+          id === 'adaptive-metrics-value'
+            ? {
+                id,
+                title: 'Gadget tour',
+                blocks: [
+                  { type: 'markdown', content: '## Gadget tour' },
+                  { type: 'interactive', action: 'navigate', reftarget: '/page', content: 'Open the page.' },
+                  ...steps,
+                ],
+              }
+            : undefined,
+      }) as unknown as typeof fetch;
+      rmSync(cacheRoot, { recursive: true, force: true });
+      __resetRepositoryClientForTests();
+      __resetStepIndexForTests();
+      const outcome = (await run({ queries: ['quibblefrop'], limit: 1 })) as any;
+      return outcome.data.groups[0].results[0];
+    };
+
+    it('shows the navigation steps and three steps either side of the match, with the gaps omitted', async () => {
+      const result = await searchProcedure(20, 11);
+      expect(result.procedureId).toBe('adaptive-metrics-value#0');
+      expect(result.steps.map((step: any) => step.n)).toEqual([1, 8, 9, 10, 11, 12, 13, 14]);
+      expect(result.omitted).toEqual([
+        [2, 7],
+        [15, 20],
+      ]);
+      expect(result.stepCount).toBe(20);
+    });
+
+    it('leaves a 15-step procedure whole and windows a 16-step one', async () => {
+      const fifteen = await searchProcedure(15, 8);
+      expect(fifteen.steps).toHaveLength(15);
+      expect(fifteen.omitted).toBeUndefined();
+      const sixteen = await searchProcedure(16, 8);
+      expect(sixteen.steps.map((step: any) => step.n)).toEqual([1, 5, 6, 7, 8, 9, 10, 11]);
+      expect(sixteen.omitted).toEqual([
+        [2, 4],
+        [12, 16],
+      ]);
+    });
+  });
+
   it('sends matchedSteps only when it is not every returned step', async () => {
     const windowed = (await search('dependent service filter', 1)).data.groups[0]!.results[0];
     expect(windowed.omitted).toBeDefined();

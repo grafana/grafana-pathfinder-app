@@ -172,6 +172,22 @@ describe('segmentGuide block coverage', () => {
     expect(procedure!.endsOn).toBe('/alerting/silence/new');
   });
 
+  it('reports the innermost on-page requirement for a step after a navigate in the same section', () => {
+    const [procedure] = segment([
+      {
+        type: 'section',
+        title: 'Move on',
+        requirements: ['on-page:/old'],
+        blocks: [
+          { type: 'interactive', action: 'navigate', reftarget: '/new', content: 'Open the page.' },
+          { ...click('[data-testid="after"]', '/new') },
+        ],
+      } as JsonBlock,
+    ]);
+    expect(procedure!.steps.map((step) => step.page)).toEqual(['/new', '/new']);
+    expect(procedure!.endsOn).toBe('/new');
+  });
+
   it('turns a code-block into a step on its reftarget without indexing the code', () => {
     const [procedure] = segment([
       {
