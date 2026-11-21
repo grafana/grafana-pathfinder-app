@@ -23,7 +23,7 @@ import {
 import type { ToolResult } from '../tools/result';
 
 beforeAll(() => {
-  for (const command of ['create', 'inspect', 'schema']) {
+  for (const command of ['create', 'inspect', 'schema', 'find-steps']) {
     bindCommandInterface(command);
   }
   // Bound the way `pathfinder_manage_block` binds it. The placement parameters
@@ -384,5 +384,21 @@ describe('validateCommandArgs', () => {
     const result = rejection(validateCommandArgs('add-block', { type: 'markdown', content: 'x', branch: true }));
     expect(result).toMatchObject({ status: 'error', code: 'SCHEMA_VALIDATION' });
     expect(String(result.message)).toMatch(/branch expected true\|false/);
+  });
+});
+
+describe('a repeatable parameter that also accepts one string', () => {
+  it('accepts a string or a list for find-steps procedureId', () => {
+    expect(validateCommandArgs('find-steps', { procedureId: 'a#0' })).toBeUndefined();
+    expect(validateCommandArgs('find-steps', { procedureId: ['a#0'] })).toBeUndefined();
+  });
+
+  it('still rejects a non-string value and a list with a non-string', () => {
+    expect(rejection(validateCommandArgs('find-steps', { procedureId: 5 })).message).toContain('string|string[]');
+    expect(validateCommandArgs('find-steps', { procedureId: [5] })).toBeDefined();
+  });
+
+  it('keeps a plain list parameter strict', () => {
+    expect(validateCommandArgs('find-steps', { queries: 'oops' })).toBeDefined();
   });
 });

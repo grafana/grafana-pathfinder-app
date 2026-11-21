@@ -48,6 +48,8 @@ export async function runMcp(args: McpInput): Promise<CommandOutcome> {
   const { runHttp } = await import('./transports/http');
   const handle = await runHttp({ port: args.port, host: args.host });
   process.stderr.write(`pathfinder-cli mcp listening on http://${args.host}:${handle.port}/mcp\n`);
+  // Warm the step index so the first pathfinder_find_steps call joins the in-flight build; stdio stays lazy.
+  void import('../utils/step-index/cache').then(({ getStepIndex }) => getStepIndex()).catch(() => undefined);
   process.stderr.write('sessions: in-memory, process-local — run a single instance (Cloud Run --max-instances=1)\n');
 
   let shuttingDown = false;

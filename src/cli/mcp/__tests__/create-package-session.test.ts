@@ -110,7 +110,7 @@ describe('pathfinder_create_package — session mint', () => {
     });
   });
 
-  it('accepts authorNote on a multistep block, where the placeholder-selector guidance puts it', async () => {
+  it('accepts authorNote on a multistep block', async () => {
     await withHarness(async (call) => {
       const created = await call('pathfinder_create_package', { opts: { title: 'Notes' } });
       const added = await call('pathfinder_manage_block', {

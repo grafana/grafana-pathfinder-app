@@ -33,6 +33,7 @@ import { createCliSpec } from './commands/create';
 import { e2eSpec } from './commands/e2e';
 import { editBlockSpec } from './commands/edit-block';
 import { findGuidesSpec } from './commands/find-guides';
+import { findStepsSpec } from './commands/find-steps';
 import { inspectSpec } from './commands/inspect';
 import { moveBlockSpec } from './commands/move-block';
 import { removeBlockSpec } from './commands/remove-block';
@@ -156,6 +157,15 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
       instanceUrl: 'url',
     },
   },
+  'find-steps': {
+    placeholders: {
+      queries: 'text',
+      pageUrl: 'path',
+      procedureId: 'id',
+      excludeIds: 'id',
+      limit: 'n',
+    },
+  },
   requirements: {
     omitted: ['format', 'quiet'],
     inherits: ['format', 'quiet'],
@@ -188,6 +198,7 @@ const RENDERED: Record<string, Command> = {
   'build-graph': mountCommander(buildGraphSpec, PRESENTATIONS['build-graph']),
   schema: mountCommander(schemaSpec, PRESENTATIONS.schema),
   'find-guides': mountCommander(findGuidesSpec, PRESENTATIONS['find-guides']),
+  'find-steps': mountCommander(findStepsSpec, PRESENTATIONS['find-steps']),
   requirements: mountCommanderGroup(requirementsGroup, PRESENTATIONS.requirements),
   mcp: mountCommander(mcpSpec, PRESENTATIONS.mcp).version(CURRENT_SCHEMA_VERSION),
 };

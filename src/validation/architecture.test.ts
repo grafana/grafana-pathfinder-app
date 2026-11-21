@@ -548,6 +548,7 @@ const NODE_SAFE_EXTERNALS = new Set([
   '@modelcontextprotocol/sdk', // MCP server/client SDK, Node-only
   '@playwright/test', // Playwright test runner, Node-only
   'commander', // CLI argument parser, Node-only
+  'minisearch', // in-memory full-text index, no DOM access
   'playwright', // Playwright runtime and package metadata, Node-only
   'prettier', // used by the CLI for output formatting, Node API
   'zod', // schema validation, environment-neutral

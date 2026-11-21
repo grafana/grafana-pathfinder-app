@@ -463,6 +463,10 @@ describe('cross-renderer consistency (architecture, not full parity)', () => {
         mode: z.enum(['fast', 'slow']).optional().meta(content),
         tags: z.array(z.string()).optional().meta(content),
         loose: z.union([z.string(), z.boolean()]).optional().meta(content),
+        either: z
+          .union([z.string(), z.array(z.string())])
+          .optional()
+          .meta(content),
       }),
       run: () => ({ status: 'ok', summary: '' }),
     });
@@ -502,6 +506,15 @@ describe('cross-renderer consistency (architecture, not full parity)', () => {
         expect(flag!.unionOf).toBeDefined();
       }
     }
+  });
+
+  it('renders a string-or-array union as a repeatable array flag that also accepts a single string', () => {
+    const iface = renderInterface(everyKindFixture(), CLI_VIEW);
+    const flags = [...iface.required, ...iface.optional, ...(iface.addressing ?? [])];
+    expect(flags.find((flag) => flag.name === 'either')).toEqual(
+      expect.objectContaining({ valueType: 'array', repeatable: true, acceptsSingle: true })
+    );
+    expect(flags.find((flag) => flag.name === 'tags')).not.toHaveProperty('acceptsSingle');
   });
 
   it('the fields each renderer decides are published are the same fields, spelled each view’s own way', () => {
