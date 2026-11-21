@@ -47,9 +47,11 @@ export const SERVER_INSTRUCTIONS: string = [
   // Detailed shape/rules live in `pathfinder_authoring_start`.
   'Authoring is session-token based. `pathfinder_create_package` mints a `sessionToken`; pass `{sessionToken}` on every subsequent mutation, read, and finalize call. Mutation responses are ACKS (`{sessionToken, generation, summary, outcome}`) — they do NOT include the artifact body. Use the `summary` tree for navigation; call `pathfinder_read_session` / `pathfinder_inspect` for explicit on-demand reads. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session. Stateless `{artifact}` mode is an OSS / airgap fallback — do not use it when a `sessionToken` is available.',
   '',
+  'Pathfinder guides usually show how to do something in Grafana. Call `pathfinder_find_steps` with the independent Grafana-specific sub-tasks together, each its own 2-5 word query (up to 8 queries per call), and build from its steps; follow-up calls are expected for `procedureId` fetches and `pageUrl` chaining; when a step you searched for is missing from the procedure found, check its `nextProcedure`/`previousProcedure` (fetch by `procedureId`) before writing a placeholder.',
+  '',
   'Two rules that bite agents in production — observe them before writing blocks:',
   '',
-  '- Never invent or guess Grafana DOM selectors for a `reftarget` field. If you do not have a verified selector, use a `button` action with visible text matching, ask the user, or write the placeholder selector `pathfinder_authoring_start` describes and tell the user to replace it. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.',
+  '- Never invent or guess Grafana DOM selectors for a `reftarget` field. Use only selectors from `pathfinder_find_steps` or ones the user gives you. If none exists but you know the procedure, use the placeholder `pathfinder_authoring_start` describes and tell the user where it is. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.',
   '',
   '- Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must be completed in order and are tightly coupled. Never write a step with `action: noop` as filler — if there is nothing concrete for the user to do, write a markdown block describing what they would do instead.',
   '',

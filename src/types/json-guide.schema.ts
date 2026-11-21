@@ -186,7 +186,7 @@ export const JsonStepSchema = z
       .string()
       .optional()
       .describe(
-        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) ask the user, (c) set a placeholder `[data-testid="TODO-<what-to-target>"]` and tell the user to replace it (you may note it in `authorNote` on the enclosing block, never on a step; finalize strips notes). A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element, taken from pathfinder_find_steps or given by the user. Required for non-noop actions. Never invent or guess one; without a verified selector, use `[data-testid="TODO-<target>"]` and start the enclosing `multistep` or `guided` block\'s `content` with `**⚠️ TODO: add the selector for <target>**` (step descriptions are not always shown). A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
       ),
 
     targetvalue: z
@@ -356,7 +356,7 @@ export const JsonInteractiveBlockSchema = z
       .string()
       .optional()
       .describe(
-        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) ask the user, (c) set a placeholder `[data-testid="TODO-<what-to-target>"]` and tell the user to replace it (you may note it in `authorNote` on this block; finalize strips notes). A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element, taken from pathfinder_find_steps or given by the user. Required for non-noop actions. Never invent or guess one; without a verified selector, use `[data-testid="TODO-<target>"]` and start the block\'s `content` with `**⚠️ TODO: add the selector for <target>**`. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
       ),
 
     targetvalue: z
@@ -784,7 +784,7 @@ export const JsonCodeBlockBlockSchema = z.object({
     .string()
     .min(1, 'Code block reftarget is required')
     .describe(
-      'Verified Grafana DOM selector for the target Monaco editor. Do NOT invent or guess. Confirm against the live Grafana DOM or ask the user for the selector — Monaco editors have stable data-testid attributes in Grafana. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.'
+      'Verified Grafana DOM selector for the target Monaco editor, taken from pathfinder_find_steps or given by the user. Never invent or guess one; without a verified selector, use `[data-testid="TODO-<target>"]` and start the block\'s `content` with `**⚠️ TODO: add the selector for <target>**`. A wrong selector silently breaks the guide at runtime; the validator cannot catch this.'
     ),
   language: z.string().optional().describe('Source language hint (e.g., promql, logql, sql)'),
   code: z.string().min(1, 'Code is required').describe('Code to insert into the editor'),
@@ -1064,7 +1064,7 @@ const ConditionalProps = {
     .string()
     .optional()
     .describe(
-      'Verified Grafana DOM selector consumed by certain conditional styles. Do NOT invent or guess; confirm against the live Grafana DOM. A wrong selector silently fails at runtime — the validator cannot catch this.'
+      'Verified Grafana DOM selector consumed by certain conditional styles, taken from pathfinder_find_steps or given by the user. Never invent or guess one; without a verified selector, use `[data-testid="TODO-<target>"]` (conditionals have no visible text to carry a lead; validate and finalize flag this placeholder) and tell the user which conditional still needs a selector. A wrong selector silently fails at runtime — the validator cannot catch this.'
     ),
   whenTrueSectionConfig: ConditionalSectionConfigSchema.optional().describe(
     'Section config applied to the whenTrue branch'
