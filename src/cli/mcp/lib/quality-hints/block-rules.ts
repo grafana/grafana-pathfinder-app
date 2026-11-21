@@ -108,6 +108,9 @@ const actionRules: BlockRule[] = [
     code: 'MISSING_VERIFY',
     check: (block) =>
       unitPaths(block, (unit) => {
+        if (block.type !== 'interactive') {
+          return false;
+        }
         const action = actionOf(unit);
         const text = action === 'button' ? [unit.node.content, reftargetOf(unit)] : [unit.node.content];
         return (

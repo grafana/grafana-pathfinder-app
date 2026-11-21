@@ -122,8 +122,8 @@ describe('block rules', () => {
     ],
     [
       'MISSING_VERIFY',
-      multistep([step({ content: 'Create the alert' }), step()]),
-      multistep([step({ content: 'Create the alert', verify: 'on-page:/alerting' }), step()]),
+      interactive({ content: 'Save dashboard' }),
+      interactive({ content: 'Save dashboard', verify: 'on-page:/d/x' }),
     ],
     [
       'EDITOR_CODE_IN_MARKDOWN',
@@ -133,6 +133,16 @@ describe('block rules', () => {
     ['ADJACENT_SECTIONS', section('A'), section('A')],
     ['ADJACENT_VISUALS', { type: 'divider', id: 'd1' } as JsonBlock, { type: 'divider', id: 'd1' } as JsonBlock],
   ];
+
+  it('does not flag MISSING_VERIFY on multistep or guided steps, which cannot carry verify', () => {
+    const steps = [
+      step({ action: 'button', reftarget: 'Save dashboard' }),
+      step({ description: 'Save the dashboard' }),
+    ];
+    const guided = { type: 'guided', id: 'g', content: 'Do', steps } as unknown as JsonBlock;
+    expect(codes(guide(multistep(steps)))).not.toContain('MISSING_VERIFY');
+    expect(codes(guide(guided))).not.toContain('MISSING_VERIFY');
+  });
 
   it.each(cases)('%s flags and clears', (rule, flagged, clean) => {
     const wrap = (block: JsonBlock) =>
