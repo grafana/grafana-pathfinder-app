@@ -10,6 +10,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { runValidate } from '../../commands/validate';
+import { getVerifiedSelectors } from '../../utils/step-index/cache';
+import { currentQualityHints, KindSchema } from '../lib/quality-hints';
 import { buildArtifactSummary } from '../../utils/package-io';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
@@ -34,14 +36,15 @@ export function registerValidateTool(
     'pathfinder_validate',
     {
       description:
-        'Use this tool when you need to confirm an in-flight Pathfinder authoring artifact is publishable before calling finalize. Runs the canonical Pathfinder validation pipeline (Zod + cross-file checks + condition syntax). Read-only. Pass `artifact` or `sessionToken`.',
+        'Use this tool when you need to confirm an in-flight Pathfinder authoring artifact is publishable before calling finalize. Runs the canonical Pathfinder validation pipeline (Zod + cross-file checks + condition syntax). Read-only. Pass `artifact` or `sessionToken`. Session mode checks the kind declared at pathfinder_create_package; `kind` applies only to stateless mode. Returns non-blocking `qualityHints` when there are any.',
       annotations: readOnly('Validate Pathfinder artifact'),
       inputSchema: {
         artifact: ArtifactSchema,
         sessionToken: SessionTokenSchema,
+        kind: KindSchema,
       },
     },
-    async ({ artifact, sessionToken }) =>
+    async ({ artifact, sessionToken, kind }) =>
       withToolErrorEnvelope(sessionToken, 'validate', async () => {
         const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
         if (!resolved.ok) {
@@ -55,7 +58,14 @@ export function registerValidateTool(
         return outcomeResult(
           outcome,
           { content: resolved.content, manifest: resolved.manifest },
-          buildArtifactSummary(resolved.content)
+          buildArtifactSummary(resolved.content),
+          outcome.status === 'ok'
+            ? currentQualityHints(
+                resolved.content,
+                resolved.sessionToken ? resolved.sessionKind : kind,
+                getVerifiedSelectors()
+              )
+            : undefined
         );
       })
   );

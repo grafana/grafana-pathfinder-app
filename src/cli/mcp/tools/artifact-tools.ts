@@ -20,6 +20,7 @@ import { buildArtifactSummary, readPackage, type TreeNode } from '../../utils/pa
 import { MCP_TMPDIR_PREFIX } from '../lib/constants';
 import { bindCommandInterface, validateCommandArgs } from '../lib/command-interface';
 import { generateSessionToken } from '../lib/session-token';
+import { KindSchema, type GuideKind } from '../lib/quality-hints';
 import { SESSION_GENERATION_ABSENT, type SessionArtifact, type AuthoringSessionStore } from '../lib/session-store';
 import { type CommandOutcome, renderMachineJson } from '../../utils/output';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
@@ -37,15 +38,18 @@ export function registerArtifactTools(
     'pathfinder_create_package',
     {
       description:
-        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call pathfinder_help({ command: "create" }) for the `opts` interface. `title` is required: `{ "opts": { "title": "Alert on PostgreSQL connections", "authorName": "Ada Lovelace" } }`. Pass `authorName` (and `authorTeam` if known): resolve the author from context and ask the user when unclear — it defaults to pathfinder-mcp. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
+        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call pathfinder_help({ command: "create" }) for the `opts` interface. `title` is required: `{ "opts": { "title": "Alert on PostgreSQL connections", "authorName": "Ada Lovelace" } }`. Pass `authorName` (and `authorTeam` if known): resolve the author from context and ask the user when unclear — it defaults to pathfinder-mcp. Pass `kind` (reference, teach or walkthrough) beside `opts`: declare it once here; it cannot change later. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
       annotations: writeAppend('Create Pathfinder package'),
       inputSchema: {
         opts: z
           .record(z.string(), z.unknown())
           .describe('Parameters keyed exactly as pathfinder_help({ command: "create" }) returns them.'),
+        kind: KindSchema.describe(
+          'The kind of guide this is (`guideShape.kinds`), decided before creating the package. Declared once; it cannot change later.'
+        ),
       },
     },
-    async ({ opts }) => {
+    async ({ opts, kind }) => {
       const rejected = validateCommandArgs('create', opts);
       if (rejected) {
         return rejected;
@@ -76,7 +80,7 @@ export function registerArtifactTools(
           // handle for subsequent session-mode mutation calls. Token
           // generation collisions are vanishingly rare (~110 bits of
           // entropy) but we retry-on-conflict a few times just in case.
-          const sessionToken = await mintSession(sessionStore, artifact);
+          const sessionToken = await mintSession(sessionStore, artifact, kind);
           if (mcpSessionId !== undefined) {
             await sessionStore.bindMcpSessionId(sessionToken, mcpSessionId);
           }
@@ -102,9 +106,13 @@ export function registerArtifactTools(
  * collision standpoint. Any error here (auth, storage outage) is
  * routed through `withToolErrorEnvelope` by the caller.
  */
-async function mintSession(store: AuthoringSessionStore, artifact: SessionArtifact): Promise<string> {
+async function mintSession(
+  store: AuthoringSessionStore,
+  artifact: SessionArtifact,
+  kind: GuideKind | undefined
+): Promise<string> {
   const token = generateSessionToken();
-  await store.save(token, artifact, SESSION_GENERATION_ABSENT);
+  await store.save(token, artifact, SESSION_GENERATION_ABSENT, kind);
   return token;
 }
 

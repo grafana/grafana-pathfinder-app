@@ -46,15 +46,15 @@ const AUTHORING_CONTEXT = {
   product:
     'Grafana Pathfinder is a Grafana plugin that runs interactive, contextual guides as a sidebar in Grafana. Guides usually show how to do something in Grafana. A guide is a tree of "blocks" — markdown, interactive UI actions, sections, conditionals, multistep, quizzes, and challenges — stored as JSON.',
   workflow: [
-    '1. Use the writer the user or conversation names (ask if unclear; defaults to pathfinder-mcp). Call pathfinder_create_package with `title` and `authorName` (`authorTeam` if known). Use its sessionToken; ignore the seed artifact.',
-    '2. Decide what kind of guide is being built per `guideShape.decideFirst`.',
-    `3. Plan with pathfinder_find_steps: send the independent sub-tasks in one call (up to 8 queries), each Grafana-specific sub-task its own 2-5 word query at procedure level ("create alert rule"), naming third-party products by the Grafana process ("configure contact point"). If a step you searched for isn't in the procedure you found, check its \`nextProcedure\` (or \`previousProcedure\`) to see if it's covered there; follow-up calls are expected for \`procedureId\` fetches and \`pageUrl\` chaining. Use placeholders only for what stays unresolved.`,
-    '4. Build with pathfinder_manage_block per `guideShape` and `interactiveRules`: "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" | "add-hint". One block per call, addressed by id. Adds append under the parent, so author in display order. Steps, choices and hints are not editable or removable alone: cascade-remove the parent and rebuild.',
+    '1. Decide what kind of guide is being built per `guideShape.decideFirst`.',
+    '2. Use the writer the user or conversation names (ask if unclear; defaults to pathfinder-mcp). Call pathfinder_create_package with `title`, `authorName` and that `kind` (`authorTeam` if known). Use its sessionToken; ignore the seed artifact.',
+    `3. Plan with pathfinder_find_steps (skip it for a \`reference\` guide): send the independent sub-tasks in one call (up to 8 queries), each Grafana-specific sub-task its own 2-5 word query at procedure level ("create alert rule"), naming third-party products by the Grafana process ("configure contact point"). If a step you searched for isn't in the procedure you found, check its \`nextProcedure\` (or \`previousProcedure\`) to see if it's covered there; follow-up calls are expected for \`procedureId\` fetches and \`pageUrl\` chaining. Use placeholders only for what stays unresolved.`,
+    '4. Build with pathfinder_manage_block per `guideShape` and `interactiveRules`: "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" | "add-hint". One block per call, addressed by id. Adds append under the parent, so author in display order. Steps, choices and hints are not editable or removable alone: cascade-remove the parent and rebuild. Address or deliberately keep each ack\'s `qualityHints` as you build, unless the user asked otherwise.',
     '5. Navigate with the `summary` tree on each ack; read deeper with pathfinder_read_session ("list-blocks" | "get-block" | "get-manifest", {sessionToken}).',
     '6. Last, set guide metadata with pathfinder_manage_guide "set-manifest".',
     '7. Rarely, pathfinder_inspect {sessionToken, opts:{}} pulls the full artifact.',
-    '8. Call pathfinder_validate with {sessionToken}.',
-    '9. Call pathfinder_finalize_for_app_platform with {sessionToken}: it returns the artifact and publish handoff, and spends the session.',
+    '8. Call pathfinder_validate with {sessionToken}. Fix or deliberately keep each `qualityHints` entry before finalizing.',
+    '9. Call pathfinder_finalize_for_app_platform with {sessionToken}: it returns the artifact and publish handoff, and spends the session. A `review` status lists open hints: fix or keep them, then call it again.',
   ],
   // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
   // Curate ruthlessly — every connected client pays this length on every
@@ -153,6 +153,7 @@ const AUTHORING_CONTEXT = {
       '`warnings` are advisory and non-blocking (composition nudges, unverified selectors, normalized input). They do not fail the call, but they are the CLI telling you the guide will be worse if you ignore them.',
       '`data` is the stable machine payload and `details` is display text — read ids and paths from `data`.',
       'Mutation acks add a `summary` tree ({path, id, type, hint?, children?}). Navigate and address blocks from it instead of re-reading the artifact.',
+      'Mutation acks may carry `qualityHints` (blocks[], guide[], more?): style issues that edit introduced, each with a `steer`. pathfinder_validate and pathfinder_finalize_for_app_platform carry the full current list; the kind checks use the `kind` declared at pathfinder_create_package. They are non-blocking: fix each one or keep it deliberately.',
       'Error messages may reference CLI flag names like `--parent` or `--show-me` for human readers. Map these to camelCase parameter names (`parent`, `showMe`) when reading the message. Ignore any suggestion to run a command — you call tools, not a shell. When a message mentions a withheld parameter, the `exposed` list from UNSUPPORTED_PARAMETER is authoritative.',
     ],
   },

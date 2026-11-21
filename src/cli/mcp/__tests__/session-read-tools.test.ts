@@ -9,6 +9,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { InMemorySessionStore } from '../lib/session-store';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { buildServer } from '../server';
 
 interface ToolPayload {
@@ -71,6 +72,7 @@ async function seedWithOneBlock(
 }
 
 describe('pathfinder_read_session — list-blocks', () => {
+  useStepIndexFixture();
   it('returns the tree summary for a real session', async () => {
     const h = await newHarness();
     try {
@@ -119,6 +121,7 @@ describe('pathfinder_read_session — list-blocks', () => {
 });
 
 describe('pathfinder_read_session — get-block', () => {
+  useStepIndexFixture();
   it('returns the block by id', async () => {
     const h = await newHarness();
     try {
@@ -170,6 +173,7 @@ describe('pathfinder_read_session — get-block', () => {
 });
 
 describe('pathfinder_read_session — get-manifest', () => {
+  useStepIndexFixture();
   it('returns the manifest for a real session', async () => {
     const h = await newHarness();
     try {

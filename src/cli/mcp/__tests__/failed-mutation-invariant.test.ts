@@ -20,6 +20,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { InMemorySessionStore } from '../lib/session-store';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { buildServer } from '../server';
 
 interface ToolPayload {
@@ -74,6 +75,7 @@ async function snapshot(store: InMemorySessionStore, token: string): Promise<str
 }
 
 describe('P7 failed-mutation invariant — session store unchanged on CLI runner error', () => {
+  useStepIndexFixture();
   let h: Awaited<ReturnType<typeof newHarness>>;
   let token: string;
   let initialSnapshot: string;

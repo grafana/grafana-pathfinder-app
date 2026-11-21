@@ -12,6 +12,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { runCreate } from '../../commands/create';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { readPackage } from '../../utils/package-io';
 import { InMemorySessionStore, SESSION_GENERATION_ABSENT, type AuthoringSessionStore } from '../lib/session-store';
 import { buildServer } from '../server';
@@ -88,12 +89,14 @@ function makeThrowingStore(inner: InMemorySessionStore, err: () => Error): Autho
       return inner.save(t, art, ifGen);
     },
     delete: (t) => inner.delete(t),
+    markHintsReviewed: (t, keys) => inner.markHintsReviewed(t, keys),
     bindMcpSessionId: (t, id) => inner.bindMcpSessionId(t, id),
     readMcpSessionPin: (t) => inner.readMcpSessionPin(t),
   };
 }
 
 describe('tool-layer error envelope', () => {
+  useStepIndexFixture();
   // Silence the intentional [tool] error log from the INTERNAL_ERROR branch;
   // the contract under test is the well-formed JSON wire response.
   let consoleSpy: jest.SpyInstance;

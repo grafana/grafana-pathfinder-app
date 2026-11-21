@@ -8,7 +8,7 @@ import { join } from 'path';
 
 import { FIXTURE_IDS, mockStepIndexFetch } from '../../../../test-utils/step-index-fixtures';
 import { __resetRepositoryClientForTests } from '../../repository-client';
-import { __resetStepIndexForTests, cacheDirectory, getStepIndex } from '../cache';
+import { __resetStepIndexForTests, cacheDirectory, getStepIndex, getVerifiedSelectors } from '../cache';
 
 const RECHECK_INTERVAL_MS = 10 * 60_000;
 
@@ -395,5 +395,35 @@ describe('getStepIndex failures', () => {
     expect(result.ok && result.snapshot.stats.eligibleGuides).toBe(3);
     expect(result.ok && result.snapshot.guidePaths['blocked-guide']).toBeUndefined();
     expect(result.ok && result.snapshot.guidePaths['unreported-guide']).toBeUndefined();
+  });
+});
+
+describe('getVerifiedSelectors', () => {
+  it('answers empty at once with nothing held, builds once in the background, then serves the indexed selectors', async () => {
+    const fetchMock = freshProcess();
+    expect(getVerifiedSelectors().size).toBe(0);
+    expect(getVerifiedSelectors().size).toBe(0);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('package-health'))).toHaveLength(1);
+
+    await getStepIndex();
+    expect(getVerifiedSelectors()).toContain('[data-testid="install-quickpizza"], [data-testid="view-quickpizza"]');
+    expect(getVerifiedSelectors()).toBe(getVerifiedSelectors());
+  });
+
+  it('never waits on a fetch when the build cannot finish', async () => {
+    const never = new Promise<never>(() => undefined);
+    global.fetch = jest.fn(() => never) as unknown as typeof fetch;
+    __resetStepIndexForTests();
+    __resetRepositoryClientForTests();
+    for (let i = 0; i < 3; i++) {
+      expect(getVerifiedSelectors().size).toBe(0);
+    }
+  });
+
+  it('stays empty and does not throw when the build fails', async () => {
+    freshProcess({ healthStatus: 500 });
+    expect(getVerifiedSelectors().size).toBe(0);
+    await getStepIndex();
+    expect(getVerifiedSelectors().size).toBe(0);
   });
 });

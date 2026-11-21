@@ -14,6 +14,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { runCreate } from '../../commands/create';
 import { COMMAND_MANIFEST } from '../../commands/manifest';
 import { readPackage } from '../../utils/package-io';
@@ -121,6 +122,7 @@ const PRODUCER_DRIVERS: Record<string, () => Promise<unknown>> = {
 };
 
 describe('author default coverage', () => {
+  useStepIndexFixture();
   it('classifies every CLI command', () => {
     const commands = COMMAND_MANIFEST.map((entry) => entry.name);
     const classified = new Set([...MANIFEST_PRODUCERS.commands, ...Object.keys(NOT_PRODUCERS)]);

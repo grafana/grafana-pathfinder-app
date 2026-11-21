@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { useStepIndexFixture } from '../../../test-utils/mcp-step-index';
 import { readGitUserName } from '../../utils/local-identity';
 import { InMemorySessionStore } from '../lib/session-store';
 import { buildServer, type BuildServerOptions } from '../server';
@@ -61,6 +62,7 @@ beforeEach(() => {
 });
 
 describe('pathfinder_create_package author', () => {
+  useStepIndexFixture();
   it('writes the supplied author and carries it through the session to finalize', async () => {
     await withServer({}, async (call) => {
       const created = await call('pathfinder_create_package', {
@@ -68,6 +70,7 @@ describe('pathfinder_create_package author', () => {
       });
       expect(created.artifact?.manifest?.author).toEqual({ name: 'Ada', team: 'Docs' });
 
+      await call('pathfinder_finalize_for_app_platform', { sessionToken: created.sessionToken });
       const finalized = await call('pathfinder_finalize_for_app_platform', { sessionToken: created.sessionToken });
       expect(finalized.status).toBe('ready');
       expect(finalized.artifact?.manifest?.author).toEqual({ name: 'Ada', team: 'Docs' });
@@ -114,6 +117,7 @@ describe('pathfinder_create_package author', () => {
 });
 
 describe('pathfinder_finalize_for_app_platform author', () => {
+  useStepIndexFixture();
   const finalize = (options: BuildServerOptions, manifest: Record<string, unknown> | undefined) =>
     withServer(options, (call) =>
       call('pathfinder_finalize_for_app_platform', {

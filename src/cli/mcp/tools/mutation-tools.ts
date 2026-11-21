@@ -12,6 +12,9 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { getVerifiedSelectors } from '../../utils/step-index/cache';
+import { mutationQualityHints } from '../lib/quality-hints';
+import { dropVerifiedSelectorWarnings } from '../lib/unverified-selector';
 
 import { parseCommandInput, variantNames, type CommandSpec } from '../../contracts';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
@@ -202,7 +205,11 @@ async function dispatchMutation(
       if (isSessionTooLarge(r)) {
         return sessionTooLargeResult(token, r);
       }
-      return sessionOutcomeResult(token, r.outcome, r.generation, r.summary);
+      const verifiedSelectors = getVerifiedSelectors();
+      const qualityHints =
+        r.generation === undefined ? undefined : mutationQualityHints(r.before, r.artifact.content, verifiedSelectors);
+      const outcome = dropVerifiedSelectorWarnings(r.outcome, r.artifact.content, verifiedSelectors);
+      return sessionOutcomeResult(token, outcome, r.generation, r.summary, qualityHints);
     }
 
     // Stateless mode — unchanged behavior from before P7.
@@ -212,7 +219,13 @@ async function dispatchMutation(
       return mismatch;
     }
     const result = await withArtifact(asArtifact(artifact), runner);
-    return outcomeResult(result.outcome, result.artifact, result.summary);
+    const verifiedSelectors = getVerifiedSelectors();
+    const qualityHints =
+      result.outcome.status === 'ok'
+        ? mutationQualityHints(result.before, result.artifact.content, verifiedSelectors)
+        : undefined;
+    const outcome = dropVerifiedSelectorWarnings(result.outcome, result.artifact.content, verifiedSelectors);
+    return outcomeResult(outcome, result.artifact, result.summary, qualityHints);
   });
 }
 
@@ -369,7 +382,7 @@ export function registerMutationTools(
         'Adds append under the parent (reorder = remove-block + add-block). Duplicate ids → DUPLICATE_ID.',
         'Steps, choices, and hints are not individually editable or removable; cascade-remove their parent block and rebuild it instead.',
         'Call pathfinder_help({ command: <operation> }) for the `opts` interface; for add-block, call help again with the chosen block type as `subcommand`.',
-        'Returns a session ack (or the updated artifact in stateless mode).',
+        'Returns a session ack (or the updated artifact in stateless mode); the ack may carry non-blocking `qualityHints`.',
       ].join(' '),
       // Deliberately NOT destructive: MCP hints are per-tool (no per-operation
       // hints), and every operation here mutates an in-flight authoring

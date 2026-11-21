@@ -47,6 +47,33 @@ describe('InMemorySessionStore', () => {
       expect(loaded?.artifact.content.title).toBe('first');
     });
 
+    it('round-trips the kind declared at creation and keeps it across later saves', async () => {
+      const store = new InMemorySessionStore();
+      await store.save(TOKEN_A, makeArtifact('first'), SESSION_GENERATION_ABSENT, 'teach');
+      expect((await store.load(TOKEN_A))?.kind).toBe('teach');
+      await store.save(TOKEN_A, makeArtifact('second'), 1, 'reference');
+      expect((await store.load(TOKEN_A))?.kind).toBe('teach');
+      await store.save(TOKEN_A, makeArtifact('third'), 2);
+      expect((await store.load(TOKEN_A))?.kind).toBe('teach');
+    });
+
+    it('round-trips the reviewed hint keys without bumping the generation and keeps them across a save', async () => {
+      const store = new InMemorySessionStore();
+      await store.save(TOKEN_A, makeArtifact('first'), SESSION_GENERATION_ABSENT);
+      await store.markHintsReviewed(TOKEN_A, ['NOOP_STEP:m']);
+      const reviewed = await store.load(TOKEN_A);
+      expect(reviewed?.reviewedHints).toEqual(['NOOP_STEP:m']);
+      expect(reviewed?.generation).toBe(1);
+      await store.save(TOKEN_A, makeArtifact('second'), 1);
+      expect((await store.load(TOKEN_A))?.reviewedHints).toEqual(['NOOP_STEP:m']);
+    });
+
+    it('loads no kind when none was declared', async () => {
+      const store = new InMemorySessionStore();
+      await store.save(TOKEN_A, makeArtifact('first'), SESSION_GENERATION_ABSENT);
+      expect((await store.load(TOKEN_A))?.kind).toBeUndefined();
+    });
+
     it('rejects a create when a session already exists', async () => {
       const store = new InMemorySessionStore();
       await store.save(TOKEN_A, makeArtifact('first'), SESSION_GENERATION_ABSENT);
