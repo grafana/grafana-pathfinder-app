@@ -45,6 +45,7 @@ import {
   type ResolvedAssignment,
 } from '../../learning-paths';
 import { learningEffort } from '../LearningContentCard/learning-effort';
+import { bundledId } from '../../lib/completion-suggestions';
 import { catalogTopic } from '../../lib/catalog-discovery';
 
 /**
@@ -312,8 +313,7 @@ function toHubGuides({
       recommendation,
       assignmentForPath(recommendation, assignments)?.trackId
     );
-    const id =
-      recommendationTargetId(recommendation) ?? (contentUrl.startsWith('bundled:') ? contentUrl.slice(8) : undefined);
+    const id = recommendationTargetId(recommendation) ?? bundledId(contentUrl);
     const completed = kind === 'guide' && id !== undefined && completedGuides.includes(id);
     return {
       key: contentUrl,

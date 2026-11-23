@@ -243,6 +243,15 @@ describe('ContextPanelRenderer sidebar hub', () => {
     );
   });
 
+  it.each(['bundled:a', 'bundled:a/content.json', 'bundled:a/content.ja.json'])(
+    'recognizes the completed bundled guide at %s without a manifest',
+    (url) => {
+      setup({ featured: [{ title: 'Bundled A', type: 'interactive', url }, pkg('other')], startedPath: true });
+      expect(screen.getByText('1 of 2 complete')).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Review: Bundled A' })).toBeVisible();
+    }
+  );
+
   it('uses the neutral heading for multiple editorial spotlights', () => {
     setup({ featured: [pkg('one'), pkg('two')] });
     expect(screen.getByRole('button', { name: 'Recommended for you' })).toHaveAttribute('aria-expanded', 'true');
