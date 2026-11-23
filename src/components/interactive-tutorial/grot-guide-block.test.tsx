@@ -1,5 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { css } from '@emotion/css';
+import { Button } from '@grafana/ui';
 import { GrotGuideBlock, type GrotGuideBlockProps } from './grot-guide-block';
 
 // Minimal mock for @grafana/ui
@@ -62,6 +64,24 @@ const makeProps = (overrides: Partial<GrotGuideBlockProps> = {}): GrotGuideBlock
   ...overrides,
 });
 
+function sharedBackButtonMarkup() {
+  const { container, unmount } = render(
+    <Button
+      variant="secondary"
+      fill="text"
+      size="sm"
+      icon="arrow-left"
+      type="submit"
+      className={css({ marginBottom: '8px' })}
+    >
+      Back
+    </Button>
+  );
+  const markup = container.querySelector('button')!.outerHTML;
+  unmount();
+  return markup;
+}
+
 describe('GrotGuideBlock', () => {
   it('renders the welcome screen by default', () => {
     render(<GrotGuideBlock {...makeProps()} />);
@@ -121,6 +141,27 @@ describe('GrotGuideBlock', () => {
     // Click back
     fireEvent.click(screen.getByText('Back'));
     expect(screen.getByText('Test Welcome')).toBeInTheDocument();
+  });
+
+  it('question screen Back is the shared text Button with an explicit submit type', () => {
+    const expected = sharedBackButtonMarkup();
+    render(<GrotGuideBlock {...makeProps()} />);
+    fireEvent.click(screen.getByText("Let's go!"));
+
+    const back = screen.getByRole('button', { name: 'Back' });
+    expect(back).toHaveAttribute('type', 'submit');
+    expect(back.outerHTML).toBe(expected);
+  });
+
+  it('result screen Back is the shared text Button with an explicit submit type', () => {
+    const expected = sharedBackButtonMarkup();
+    render(<GrotGuideBlock {...makeProps()} />);
+    fireEvent.click(screen.getByText("Let's go!"));
+    fireEvent.click(screen.getByText('Option A'));
+
+    const back = screen.getByRole('button', { name: 'Back' });
+    expect(back).toHaveAttribute('type', 'submit');
+    expect(back.outerHTML).toBe(expected);
   });
 
   it('start over returns to welcome from result screen', () => {
