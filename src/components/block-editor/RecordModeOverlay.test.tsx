@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { Button, type ButtonProps } from '@grafana/ui';
 import { RecordModeOverlay, type RecordModeOverlayProps } from './RecordModeOverlay';
 import { useActionRecorder } from '../../utils/devtools/action-recorder.hook';
 import { testIds } from '../../constants/testIds';
@@ -16,6 +17,13 @@ function renderOverlay(props: Partial<RecordModeOverlayProps> = {}) {
     </div>
   );
   return { ...utils, onStop, onAncestorClick };
+}
+
+function sharedButtonClass(props: Pick<ButtonProps, 'variant' | 'fill' | 'size' | 'disabled'>) {
+  const { container, unmount } = render(<Button {...props}>Reference</Button>);
+  const className = container.querySelector('button')!.className;
+  unmount();
+  return className;
 }
 
 function RecorderHarness({ onSteps }: { onSteps: (count: number) => void }) {
@@ -53,6 +61,12 @@ describe('RecordModeOverlay', () => {
       expect(stop).toBe(screen.getByTestId(testIds.blockEditor.recordStopButton));
     });
 
+    it('uses the shared destructive outline Button styles with no local overrides', () => {
+      const expected = sharedButtonClass({ variant: 'destructive', fill: 'outline', size: 'sm' });
+      renderOverlay();
+      expect(screen.getByRole('button', { name: 'Stop' }).className).toBe(expected);
+    });
+
     it('calls onStop once without default action or bubbling to a React ancestor', () => {
       const { onStop, onAncestorClick } = renderOverlay();
       const notCancelled = fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
@@ -79,6 +93,17 @@ describe('RecordModeOverlay', () => {
     it('is absent without a starting URL', () => {
       renderOverlay();
       expect(screen.queryByRole('button', { name: 'Return to start' })).not.toBeInTheDocument();
+    });
+
+    it('uses the shared secondary outline Button styles with no local overrides', () => {
+      const enabled = sharedButtonClass({ variant: 'secondary', fill: 'outline', size: 'sm' });
+      const disabled = sharedButtonClass({ variant: 'secondary', fill: 'outline', size: 'sm', disabled: true });
+      const { unmount } = renderOverlay({ startingUrl: `${window.location.origin}/#recording-start` });
+      expect(screen.getByRole('button', { name: 'Return to start' }).className).toBe(enabled);
+      unmount();
+
+      renderOverlay({ startingUrl: window.location.href });
+      expect(screen.getByRole('button', { name: 'Return to start' }).className).toBe(disabled);
     });
 
     it('navigates to the exact starting URL without default action or bubbling', () => {
