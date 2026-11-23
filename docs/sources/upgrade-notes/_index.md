@@ -44,7 +44,7 @@ None.
 
 ## Version 2.16: Private learning paths and the Coda plugin
 
-Version 2.16 adds stack-private guide packages and learning paths. Published content appears under **Custom guides**, and private paths have their own section in **My learning**. These features require the Pathfinder App Platform service on your stack.
+Version 2.16 adds stack-private guide packages and learning paths. Published content appears under **Custom guides**, and private paths have their own section in **My learning**. These features require guide storage, the Interactive learning App Platform backend. Refer to [Set up guide storage](../administrators-reference/#set-up-guide-storage).
 
 **The Coda terminal migration is a breaking change for existing sandbox users.** It does not affect guides that do not use a sandbox.
 
