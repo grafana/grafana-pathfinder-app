@@ -65,7 +65,7 @@ function withSidecars(edit: (copy: Record<'ja' | 'ja-JP', Mutable>) => void): Si
   return copy as unknown as SidecarSet;
 }
 
-/** Re-stamp each reviewed entry's review hash, as `sync-translations --accept` would. */
+/** Re-stamp each reviewed entry's review hash, as a reviewer re-affirming (delete `_reviewHash`, run sync) would. */
 async function restamped(set: SidecarSet): Promise<SidecarSet> {
   for (const sidecar of Object.values(set) as Mutable[]) {
     for (const entry of [sidecar.guide, sidecar.manifest, ...Object.values(sidecar.blocks ?? {})] as Mutable[]) {

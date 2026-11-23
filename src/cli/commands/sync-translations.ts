@@ -227,15 +227,25 @@ export async function runSyncTranslations(args: SyncTranslationsInput): Promise<
     );
   }
 
+  const written: string[] = [];
   try {
     for (const sync of pending) {
       writePackageSidecar(dir, sync.tag, sync.sidecar);
+      written.push(sync.tag);
     }
   } catch (err) {
-    if (err instanceof PackageIOError) {
-      return issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message });
+    const outcome =
+      err instanceof PackageIOError
+        ? issueToOutcome(err.issues[0] ?? { code: err.code, message: err.message })
+        : failure('WRITE_FAILED', renderError(err));
+    if (written.length === 0 || outcome.status !== 'error') {
+      return outcome;
     }
-    return failure('WRITE_FAILED', renderError(err));
+    return {
+      ...outcome,
+      message: `${outcome.message}\nPartially written: ${written.join(', ')} already on disk.`,
+      data: { ...outcome.data, written },
+    };
   }
 
   if (pending.length === 0) {

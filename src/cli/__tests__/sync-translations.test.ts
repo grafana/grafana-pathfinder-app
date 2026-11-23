@@ -17,6 +17,21 @@ import { COMMAND_SPECS } from '../commands/manifest';
 import { runSyncTranslations, SyncTranslationsCommand } from '../commands/sync-translations';
 import type { CommandOutcome } from '../utils/output';
 
+const failWriteFor = { tag: undefined as string | undefined };
+
+jest.mock('../utils/package-io', () => {
+  const actual = jest.requireActual('../utils/package-io');
+  return {
+    ...actual,
+    writePackageSidecar: (dir: string, tag: string, sidecar: unknown) => {
+      if (tag === failWriteFor.tag) {
+        throw new Error('disk full');
+      }
+      return actual.writePackageSidecar(dir, tag, sidecar);
+    },
+  };
+});
+
 const GOLDEN = path.join(
   __dirname,
   '..',
@@ -38,6 +53,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  failWriteFor.tag = undefined;
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -251,6 +267,29 @@ describe('unreadable input', () => {
 
   it('reports a missing package directory', async () => {
     expect(failed(await run({ dir: path.join(root, 'missing') })).code).toBe('NOT_FOUND');
+  });
+});
+
+describe('a write that fails partway', () => {
+  it('reports the sidecars already written in the message and in data.written', async () => {
+    stripTooling('ja');
+    stripTooling('ja-JP');
+    failWriteFor.tag = 'ja-JP';
+    const outcome = failed(await run());
+    expect(outcome.code).toBe('WRITE_FAILED');
+    expect(outcome.message).toMatch(/Partially written: ja already on disk/);
+    expect(outcome.data).toEqual({ written: ['ja'] });
+    expect(readSidecar('ja')._available).toBeDefined();
+  });
+
+  it('adds no partial-write note when the first write fails', async () => {
+    stripTooling('ja');
+    stripTooling('ja-JP');
+    failWriteFor.tag = 'ja';
+    const outcome = failed(await run());
+    expect(outcome.code).toBe('WRITE_FAILED');
+    expect(outcome.message).not.toMatch(/Partially written/);
+    expect(outcome.data).toBeUndefined();
   });
 });
 

@@ -230,7 +230,7 @@ describe('_reviewHash', () => {
     expect(sync.changes).toEqual([]);
   });
 
-  it('keeps an edited entry that was never source-stamped out of the reviewed set until the next run stamps it', async () => {
+  it('ratifies an edited entry that has no review hash in one run', async () => {
     const sidecars = { ja: bare(ja) as Mutable };
     sidecars.ja.blocks.intro.content = '書き換えた本文。';
     const sync = syncOf(await syncTranslations(content, manifest, sidecars as never), 'ja');
