@@ -82,6 +82,37 @@ describe('runRenameBlock', () => {
     expect(blocks[3].whenTrue[0].requirements).toEqual(['section-completed:setup-extra']);
   });
 
+  it('rewrites only the refs the runtime resolves to the renamed block', async () => {
+    const dir = await writePackage([
+      section('1'),
+      section('section-1'),
+      interactive({
+        id: 'next',
+        requirements: ['section-completed:section-1', 'section-completed:section-section-1'],
+      }),
+    ]);
+
+    const result = await runRenameBlock({ dir, id: 'section-1', newId: 'install' });
+
+    expect(result.status === 'ok' && result.data?.referencesRewritten).toEqual(['blocks[2].requirements[1]']);
+    expect((readPackage(dir).content.blocks as any[])[2].requirements).toEqual([
+      'section-completed:section-1',
+      'section-completed:section-install',
+    ]);
+  });
+
+  it('writes the prefixed ref when the new id starts with section-', async () => {
+    const dir = await writePackage([
+      section('setup'),
+      interactive({ id: 'next', requirements: ['section-completed:setup'] }),
+    ]);
+
+    const result = await runRenameBlock({ dir, id: 'setup', newId: 'section-2' });
+
+    expect(result.status).toBe('ok');
+    expect((readPackage(dir).content.blocks as any[])[1].requirements).toEqual(['section-completed:section-section-2']);
+  });
+
   it('renames a nested block with no references', async () => {
     const dir = await writePackage([
       { type: 'collapsible', id: 'more', title: 'More', blocks: [{ type: 'markdown', id: 'note', content: 'Hi' }] },
@@ -115,16 +146,6 @@ describe('runRenameBlock', () => {
         id: 'missing',
         newId: 'install',
         code: 'BLOCK_NOT_FOUND',
-      },
-      {
-        name: 'the alias could mean another block',
-        blocks: [
-          section('setup'),
-          section('section-setup'),
-          interactive({ requirements: ['section-completed:section-setup'] }),
-        ],
-        newId: 'install',
-        code: 'UNSUPPORTED_REFERENCE',
       },
       {
         name: 'a compiled locale annotation lists the id',

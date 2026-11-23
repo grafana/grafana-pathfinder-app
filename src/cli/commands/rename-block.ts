@@ -2,11 +2,10 @@
  * `pathfinder-cli rename-block <dir> <id> <new-id>` renames one block id and
  * rewrites every supported reference to it inside the same package.
  *
- * Supported references: `section-completed:<id>` and `section-completed:section-<id>`
- * in any `requirements`, `objectives`, `conditions` or `verify` field. Shapes it
- * cannot rewrite safely are reported and the rename refused: an alias another
- * block could also own, and ids in a compiled locale's `translation` annotation.
- * Other packages and completion records are out of scope.
+ * Supported references: any `section-completed:` token in a `requirements`,
+ * `objectives`, `conditions` or `verify` field that the runtime resolves to this
+ * block. Ids in a compiled locale's `translation` annotation are reported and the
+ * rename refused. Other packages and completion records are out of scope.
  */
 
 import { z } from 'zod';
@@ -17,8 +16,8 @@ import { collectAllIds, findBlockById, mutateAndValidate, PackageIOError } from 
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
 const SECTION_COMPLETED = ParameterizedRequirementPrefix.SECTION_COMPLETED;
-// The section check maps `section-completed:X` and `section-completed:section-X` to the same section.
-const SECTION_ALIAS_PREFIX = 'section-';
+// A section renders as `section-<id>`, and the section check adds that prefix unless the ref already has it.
+const SECTION_PREFIX = 'section-';
 const CONDITION_KEYS = new Set(['requirements', 'objectives', 'conditions', 'verify']);
 
 export const RenameBlockCommand = z.object({
@@ -32,30 +31,32 @@ export type RenameBlockInput = z.output<typeof RenameBlockCommand>;
 interface RenameScan {
   oldId: string;
   newId: string;
-  /** True when another block owns `section-<oldId>`, so the alias spelling could mean either block. */
-  aliasIsAmbiguous: boolean;
   rewritten: string[];
   unsupported: string[];
 }
 
+// Mirrors sectionCompletedCheck, so a ref is only rewritten when the runtime would look up this block.
+function sectionLookupId(ref: string): string {
+  return ref.startsWith(SECTION_PREFIX) ? ref : `${SECTION_PREFIX}${ref}`;
+}
+
 function rewriteConditionString(value: string, path: string, scan: RenameScan): string {
-  const exact = `${SECTION_COMPLETED}${scan.oldId}`;
-  const alias = `${SECTION_COMPLETED}${SECTION_ALIAS_PREFIX}${scan.oldId}`;
+  const oldSectionId = `${SECTION_PREFIX}${scan.oldId}`;
   return value
     .split(',')
     .map((part) => {
       const token = part.trim();
-      if (token === exact) {
-        scan.rewritten.push(path);
-        return part.replace(token, `${SECTION_COMPLETED}${scan.newId}`);
+      if (!token.startsWith(SECTION_COMPLETED)) {
+        return part;
       }
-      if (token === alias && scan.aliasIsAmbiguous) {
-        scan.unsupported.push(`${path}: "${token}" could also mean block "${SECTION_ALIAS_PREFIX}${scan.oldId}"`);
-      } else if (token === alias) {
-        scan.rewritten.push(path);
-        return part.replace(token, `${SECTION_COMPLETED}${SECTION_ALIAS_PREFIX}${scan.newId}`);
+      const ref = token.slice(SECTION_COMPLETED.length);
+      if (sectionLookupId(ref) !== oldSectionId) {
+        return part;
       }
-      return part;
+      // Keep the short spelling only when it still resolves to the renamed block.
+      const keepShort = ref === scan.oldId && !scan.newId.startsWith(SECTION_PREFIX);
+      scan.rewritten.push(path);
+      return part.replace(token, `${SECTION_COMPLETED}${keepShort ? '' : SECTION_PREFIX}${scan.newId}`);
     })
     .join(',');
 }
@@ -107,7 +108,6 @@ export async function runRenameBlock(args: RenameBlockInput): Promise<CommandOut
       const found: RenameScan = {
         oldId: args.id,
         newId: args.newId,
-        aliasIsAmbiguous: ids.has(`${SECTION_ALIAS_PREFIX}${args.id}`),
         rewritten: [],
         unsupported: [],
       };

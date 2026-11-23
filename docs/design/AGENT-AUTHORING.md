@@ -376,7 +376,7 @@ Rename one block ID and rewrite the references to it inside the same package. Va
 pathfinder-cli rename-block <dir> <id> <new-id>
 ```
 
-It rewrites `section-completed:<id>` and `section-completed:section-<id>` in any `requirements`, `objectives`, `conditions` or `verify` field. It refuses with `UNSUPPORTED_REFERENCE` when the `section-` spelling could also mean another block, or when a compiled locale's `translation` annotation lists the ID. Other packages and saved completion records are not touched.
+It rewrites every `section-completed:` reference in a `requirements`, `objectives`, `conditions` or `verify` field that the section check resolves to the renamed block. That is `section-completed:<id>` when the ID has no `section-` prefix, and `section-completed:section-<id>` always. It refuses with `UNSUPPORTED_REFERENCE` when a compiled locale's `translation` annotation lists the ID. Other packages and saved completion records are not touched.
 
 **Output on success:**
 
