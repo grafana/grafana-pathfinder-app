@@ -1,4 +1,4 @@
-import { GrafanaTheme2 } from '@grafana/data';
+import { colorManipulator, createTheme, GrafanaTheme2 } from '@grafana/data';
 import { updateInteractiveThemeColors } from './interactive.styles';
 
 const makeMockTheme = (isDark: boolean): GrafanaTheme2 =>
@@ -11,6 +11,7 @@ const makeMockTheme = (isDark: boolean): GrafanaTheme2 =>
         secondary: isDark ? '#999999' : '#666666',
       },
       border: { weak: isDark ? '#404040' : '#d0d0d0' },
+      warning: { border: isDark ? '#fbad37' : '#B04E0C' },
     },
   }) as unknown as GrafanaTheme2;
 
@@ -102,6 +103,26 @@ describe('updateInteractiveThemeColors', () => {
       updateInteractiveThemeColors(makeMockTheme(false));
       expect(getProp('--pathfinder-comment-text')).toBe('#1a1a1a');
       expect(getProp('--pathfinder-comment-border-weak')).toBe('#d0d0d0');
+    });
+  });
+
+  describe.each(['light', 'dark'] as const)('highlight ring in the %s theme', (mode) => {
+    const theme = createTheme({ colors: { mode } });
+
+    it.each(['canvas', 'primary', 'secondary'] as const)('keeps 3:1 contrast against background.%s', (background) => {
+      updateInteractiveThemeColors(theme);
+      const ring = getProp('--pathfinder-highlight-color');
+
+      expect(colorManipulator.getContrastRatio(ring, theme.colors.background[background])).toBeGreaterThanOrEqual(3);
+    });
+
+    it('derives the glow from the ring color', () => {
+      updateInteractiveThemeColors(theme);
+
+      expect(getProp('--pathfinder-highlight-glow')).toBe(colorManipulator.alpha(theme.colors.warning.border, 0.5));
+      expect(getProp('--pathfinder-highlight-glow-soft')).toBe(
+        colorManipulator.alpha(theme.colors.warning.border, 0.3)
+      );
     });
   });
 });
