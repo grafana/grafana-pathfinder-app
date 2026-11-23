@@ -164,6 +164,25 @@ describe('RecordModeOverlay', () => {
       expect(toggle).toHaveFocus();
     });
 
+    it('uses the shared outline Button styles, success when on and secondary when off', () => {
+      const on = sharedButtonClass({ variant: 'success', fill: 'outline', size: 'sm' });
+      const off = sharedButtonClass({ variant: 'secondary', fill: 'outline', size: 'sm' });
+      expect(on).not.toBe(off);
+
+      const { rerender } = renderOverlay({ isMultiStepGroupingEnabled: true, onToggleMultiStepGrouping: jest.fn() });
+      expect(screen.getByRole('button', { name: 'Auto-group' }).className).toBe(on);
+
+      rerender(
+        <RecordModeOverlay
+          onStop={jest.fn()}
+          stepCount={0}
+          isMultiStepGroupingEnabled={false}
+          onToggleMultiStepGrouping={jest.fn()}
+        />
+      );
+      expect(screen.getByRole('button', { name: 'No grouping' }).className).toBe(off);
+    });
+
     it.each([
       { enabled: true, label: 'Auto-group' },
       { enabled: false, label: 'No grouping' },
