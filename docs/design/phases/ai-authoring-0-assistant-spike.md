@@ -8,6 +8,8 @@
 **Started:** 2026-04-28
 **Completed:** 2026-04-28
 
+> **Historical note (2026-11-24).** References in this spike to the `pathfinderbackend.ext.grafana.com` group record the pre-migration CAP state at the time of the spike. That group is retired and is not an active endpoint; the current App Platform group is `pathfinderbackend.ext.grafana.app` (toggle `aggregation.pathfinderbackend-ext-grafana-app.enabled`). See [Backend App Platform proxy pattern](../BACKEND_PROXY_PATTERN.md).
+
 ---
 
 ## Confidentiality
@@ -122,7 +124,7 @@ _One entry per capability question. Each entry: answer + confidence label + brie
 
 - **Answer:** partial
 - **Confidence:** verified
-- **Functional description:** Assistant has a per-tool confirmation/approval layer (some writes prompt the user before executing; MCP integrations carry an approval policy) but no resource-type allowlist that would specifically block writes to a custom resource group like `pathfinderbackend.ext.grafana.com`. Grafana itself enforces RBAC on the App Platform endpoint as it would for any caller. The remaining gate is UX: a write tool may be configured to require user confirmation, which is a feature rather than an obstacle for a "publish" action.
+- **Functional description:** Assistant has a per-tool confirmation/approval layer (some writes prompt the user before executing; MCP integrations carry an approval policy) but no resource-type allowlist that would specifically block writes to a custom resource group like `pathfinderbackend.ext.grafana.com` (the pre-migration CAP group at the time of this spike; see the historical note above). Grafana itself enforces RBAC on the App Platform endpoint as it would for any caller. The remaining gate is UX: a write tool may be configured to require user confirmation, which is a feature rather than an obstacle for a "publish" action.
 - **Public references:** none
 
 ### 8. Orchestration coherence
