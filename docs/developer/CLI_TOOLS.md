@@ -7,10 +7,11 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 - **build-stats** — Writes the computed completion block stats into every package's `manifest.json`
 - **build-graph** — Generates a D3-compatible dependency graph from repository indexes
 - **build-snippets** — Generates a snippet catalog (`index.json`) from a directory of snippet bodies
+- **sync-translations** — Stamps a package's translation sidecars with the tooling-owned fields (`_sourceHash`, `_reviewHash`, `_available`, `baseRef`)
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, `sync-translations`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
 
 ---
 
@@ -489,6 +490,56 @@ Snippet bodies live in the content repository alongside package content, not in 
 
 ```bash
 npm run snippets:build -- <dir>
+```
+
+---
+
+## Sync-translations command
+
+Writes the tooling-owned fields of a package's translation sidecars (`i18n/<tag>.json`, [`docs/design/I18N.md`](../design/I18N.md) §6.8, §7.1, §9). It is the only writer of those fields: `validate` stays read-only, and nothing runs this command in CI. The rules live in `src/lib/guide-translation/sync-translations.ts`; the command reads the package, asks git for `baseRef`, and writes through `writePackageSidecar`.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js sync-translations <dir> [options]
+```
+
+### Arguments
+
+- `<dir>` (required): The package directory, holding `content.json`, an optional `manifest.json` and `i18n/`.
+
+### Options
+
+- `--locale <tag>`: Sync only this sidecar. The other sidecars still layer into the availability rule, but are not written.
+- `--accept <entry...>`: Re-stamp the named entries of `--locale`, which is required with it. This is the translator asserting that the translation now matches the current English, and the reviewer re-affirming it. Name the `guide` entry as `guide`, the `manifest` entry as `manifest`, and a block by its id; write `block:<id>` for a block whose id is itself `guide` or `manifest`. Put the package directory before this option, because it takes a list.
+- `--check`: Print what would be written and exit non-zero if anything would be. Writes nothing.
+
+### What a plain run stamps
+
+For each sidecar, in this order:
+
+| Field         | Where                                 | Rule                                                                                                                                                             |
+| ------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_sourceHash` | Each block entry, `guide`, `manifest` | Stamped when the entry has translated text and no hash. Hashes the current English with the functions in `source-hash.ts`.                                       |
+| `_reviewHash` | Each entry with `reviewed: true`      | Stamped when the entry has translated text and no review hash. Hashes the translated text, so a later edit to it ends the review.                                |
+| `_available`  | Sidecar root                          | Stamped as `true` the first time every translatable unit resolves to a reviewed translation (the derived rule in `availableLocales`). Never removed by the tool. |
+| `baseRef`     | Sidecar root                          | Set to the commit that last changed `content.json`, with its repository-relative path, only when every entry's `_sourceHash` matches the current English.        |
+
+A hash that is present but no longer matches is **never** re-stamped by a plain run, because that would hide a stale or changed translation. It is reported instead: entries whose English changed are listed as stale, and entries whose translated text changed since they were reviewed are listed as lapsed. Such an entry stops counting as reviewed (so it no longer counts toward availability or coverage) until someone runs `--accept` for it.
+
+`baseRef` is left absent or unchanged, with a note and no error, outside a git repository, in a shallow clone, when `content.json` has uncommitted changes, or while any entry is stale or has no English source. A second run with no input change writes nothing. Writes keep the file's key order and two-space JSON formatting with a trailing newline.
+
+### Examples
+
+```bash
+# After editing i18n/ja.json: stamp what is missing
+node dist/cli/cli/index.js sync-translations guides/first-dashboard
+
+# See what a run would change, without writing (exit 1 if anything would change)
+node dist/cli/cli/index.js sync-translations guides/first-dashboard --check
+
+# The Japanese translation of two entries was brought up to date by hand
+node dist/cli/cli/index.js sync-translations guides/first-dashboard --locale ja --accept intro guide
 ```
 
 ---

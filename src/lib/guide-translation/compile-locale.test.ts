@@ -12,6 +12,7 @@ import type { ContentJson } from '../../types/package.types';
 import { TranslationSidecarSchema } from '../../types/translation-sidecar.schema';
 import { availableLocales, compileLocale, type SidecarSet } from './compile-locale';
 import { localeChain } from './locale-chain';
+import { hashEntryText } from './review';
 import { hashBlockSource } from './source-hash';
 
 const FIXTURES = path.join(__dirname, 'fixtures');
@@ -64,6 +65,18 @@ function withSidecars(edit: (copy: Record<'ja' | 'ja-JP', Mutable>) => void): Si
   return copy as unknown as SidecarSet;
 }
 
+/** Re-stamp each reviewed entry's review hash, as `sync-translations --accept` would. */
+async function restamped(set: SidecarSet): Promise<SidecarSet> {
+  for (const sidecar of Object.values(set) as Mutable[]) {
+    for (const entry of [sidecar.guide, sidecar.manifest, ...Object.values(sidecar.blocks ?? {})] as Mutable[]) {
+      if (entry?.reviewed === true) {
+        entry._reviewHash = await hashEntryText(entry);
+      }
+    }
+  }
+  return set;
+}
+
 function expectedFile(name: string): ContentJson {
   return ContentJsonSchema.parse(readJson(FIXTURES, 'expected', name)) as ContentJson;
 }
@@ -106,8 +119,8 @@ describe('compileLocale on the golden fixture package', () => {
     expect(Object.keys(compiled)).toEqual([...Object.keys(content), 'translation']);
   });
 
-  it('lists the locales that have a sidecar and qualify', () => {
-    expect(availableLocales(content, manifest, sidecars)).toEqual(['ja', 'ja-JP']);
+  it('lists the locales that have a sidecar and qualify', async () => {
+    expect(await availableLocales(content, manifest, sidecars)).toEqual(['ja', 'ja-JP']);
   });
 });
 
@@ -169,6 +182,53 @@ describe('reviewed gate', () => {
   });
 });
 
+describe('review validity', () => {
+  it('stops counting a reviewed entry once its translated text changes', async () => {
+    const edited = withSidecars((copy) => {
+      copy.ja.blocks['intro'].content = '書き換えた本文。';
+    });
+    const { content: compiled } = await compileLocale(content, manifest, edited, 'ja');
+    expect(blockById(compiled, 'intro').content).toBe(blockById(content, 'intro').content);
+    expect(compiled.translation?.fallbackBlockIds).toEqual(['intro']);
+  });
+
+  it('counts the entry again once its review hash is re-stamped', async () => {
+    const edited = await restamped(
+      withSidecars((copy) => {
+        copy.ja.blocks['intro'].content = '書き換えた本文。';
+      })
+    );
+    const { content: compiled } = await compileLocale(content, manifest, edited, 'ja');
+    expect(blockById(compiled, 'intro').content).toBe('書き換えた本文。');
+    expect(compiled.translation?.fallbackBlockIds).toEqual([]);
+  });
+
+  it('does not count a reviewed entry that carries no review hash', async () => {
+    const edited = withSidecars((copy) => {
+      delete copy.ja.blocks['intro']._reviewHash;
+    });
+    const { content: compiled } = await compileLocale(content, manifest, edited, 'ja');
+    expect(compiled.translation?.fallbackBlockIds).toEqual(['intro']);
+  });
+
+  it('withdraws derived availability when a reviewed entry is edited', async () => {
+    const edited = withSidecars((copy) => {
+      delete copy.ja['_available'];
+      copy.ja.guide.title = '書き換えたタイトル';
+    });
+    expect(await availableLocales(content, manifest, edited)).toEqual(['ja-JP']);
+  });
+
+  it('keeps a latched locale available after a reviewed entry is edited', async () => {
+    const edited = withSidecars((copy) => {
+      copy.ja.guide.title = '書き換えたタイトル';
+    });
+    expect(await availableLocales(content, manifest, edited)).toEqual(['ja', 'ja-JP']);
+    const { content: compiled } = await compileLocale(content, manifest, edited, 'ja');
+    expect(compiled.title).toBe(content.title);
+  });
+});
+
 describe('projection', () => {
   it('replaces only the fields the table lists and copies structure unchanged', async () => {
     const { content: compiled } = await compileLocale(content, manifest, sidecars, 'ja');
@@ -193,23 +253,27 @@ describe('projection', () => {
   });
 
   it('ignores structural keys, fields the table does not list, and block types outside the table', async () => {
-    const edited = withSidecars((copy) => {
-      copy.ja.blocks['name-dashboard'].reftarget = 'hijacked';
-      copy.ja.blocks['name-dashboard'].action = 'button';
-      copy.ja.blocks['example-dashboard'].src = 'https://example.invalid/x.png';
-      copy.ja.blocks['example-dashboard'].content = 'not an image field';
-      copy.ja.blocks['next-steps'] = { content: '翻訳', title: '次へ', reviewed: true };
-      copy.ja.blocks['add-panel'].steps['open-add-menu'].reftarget = 'hijacked';
-    });
+    const edited = await restamped(
+      withSidecars((copy) => {
+        copy.ja.blocks['name-dashboard'].reftarget = 'hijacked';
+        copy.ja.blocks['name-dashboard'].action = 'button';
+        copy.ja.blocks['example-dashboard'].src = 'https://example.invalid/x.png';
+        copy.ja.blocks['example-dashboard'].content = 'not an image field';
+        copy.ja.blocks['next-steps'] = { content: '翻訳', title: '次へ', reviewed: true };
+        copy.ja.blocks['add-panel'].steps['open-add-menu'].reftarget = 'hijacked';
+      })
+    );
     const { content: compiled } = await compileLocale(content, manifest, edited, 'ja');
     expect(compiled).toEqual(expectedFile('content.ja.json'));
   });
 
   it('matches steps by step id under their own parent only', async () => {
-    const edited = withSidecars((copy) => {
-      copy.ja.blocks['save-dashboard'].steps['open-add-menu'] = { description: 'wrong parent' };
-      delete copy.ja.blocks['add-panel'].steps['open-add-menu'];
-    });
+    const edited = await restamped(
+      withSidecars((copy) => {
+        copy.ja.blocks['save-dashboard'].steps['open-add-menu'] = { description: 'wrong parent' };
+        delete copy.ja.blocks['add-panel'].steps['open-add-menu'];
+      })
+    );
     const { content: compiled } = await compileLocale(content, manifest, edited, 'ja');
     expect(blockById(compiled, 'add-panel').steps[0].description).toBe(
       blockById(content, 'add-panel').steps[0].description
@@ -222,50 +286,50 @@ describe('projection', () => {
 });
 
 describe('availability', () => {
-  it('derives availability from complete reviewed translations without the latch', () => {
+  it('derives availability from complete reviewed translations without the latch', async () => {
     const unlatched = withSidecars((copy) => {
       delete copy.ja['_available'];
       delete copy['ja-JP']['_available'];
     });
-    expect(availableLocales(content, manifest, unlatched)).toEqual(['ja', 'ja-JP']);
+    expect(await availableLocales(content, manifest, unlatched)).toEqual(['ja', 'ja-JP']);
   });
 
-  it('withholds a locale whose translation is incomplete', () => {
+  it('withholds a locale whose translation is incomplete', async () => {
     const edited = withSidecars((copy) => {
       delete copy.ja['_available'];
       delete copy.ja.blocks['intro'];
     });
-    expect(availableLocales(content, manifest, edited)).toEqual(['ja-JP']);
+    expect(await availableLocales(content, manifest, edited)).toEqual(['ja-JP']);
   });
 
-  it('withholds a locale whose guide or manifest entry is missing', () => {
+  it('withholds a locale whose guide or manifest entry is missing', async () => {
     for (const slot of ['guide', 'manifest']) {
       const edited = withSidecars((copy) => {
         delete copy.ja['_available'];
         delete copy.ja[slot];
       });
-      expect(availableLocales(content, manifest, edited)).not.toContain('ja');
+      expect(await availableLocales(content, manifest, edited)).not.toContain('ja');
     }
   });
 
   it('keeps a latched locale available after the English guide adds a block', async () => {
     const grown = clone(content);
     grown.blocks.push({ type: 'markdown', id: 'brand-new', content: 'A block added after translation.' });
-    expect(availableLocales(grown, manifest, sidecars)).toEqual(['ja', 'ja-JP']);
+    expect(await availableLocales(grown, manifest, sidecars)).toEqual(['ja', 'ja-JP']);
     const { content: compiled, available } = await compileLocale(grown, manifest, sidecars, 'ja');
     expect(available).toBe(true);
     expect(blockById(compiled, 'brand-new').content).toBe('A block added after translation.');
     expect(compiled.translation?.fallbackBlockIds).toEqual(['brand-new']);
   });
 
-  it('withdraws the same guide once the latch is gone', () => {
+  it('withdraws the same guide once the latch is gone', async () => {
     const grown = clone(content);
     grown.blocks.push({ type: 'markdown', id: 'brand-new', content: 'A block added after translation.' });
     const edited = withSidecars((copy) => {
       delete copy.ja['_available'];
       delete copy['ja-JP']['_available'];
     });
-    expect(availableLocales(grown, manifest, edited)).toEqual([]);
+    expect(await availableLocales(grown, manifest, edited)).toEqual([]);
   });
 
   it('does not offer a locale that has no sidecar of its own', async () => {
@@ -274,13 +338,13 @@ describe('availability', () => {
     expect(compiled.content.title).toBe(ja.guide?.title);
   });
 
-  it('withholds a locale when a translatable block has no id to address it by', () => {
+  it('withholds a locale when a translatable block has no id to address it by', async () => {
     const anonymous = clone(content);
     delete blockById(anonymous, 'intro').id;
     const edited = withSidecars((copy) => {
       delete copy.ja['_available'];
     });
-    expect(availableLocales(anonymous, manifest, edited)).not.toContain('ja');
+    expect(await availableLocales(anonymous, manifest, edited)).not.toContain('ja');
   });
 });
 
@@ -405,7 +469,7 @@ describe('monotonic degradation (I18N.md §8, property 3)', () => {
       expect(allowed.map((layer) => layer.get(at))).toContain(text);
     }
 
-    expect(availableLocales(content, manifest, edited).includes(locale)).toBe(compiled.available);
+    expect((await availableLocales(content, manifest, edited)).includes(locale)).toBe(compiled.available);
   }
 
   const locales = ['ja', 'ja-JP'] as const;
@@ -500,16 +564,15 @@ describe('malformed input', () => {
     const compiled = await compileLocale(content, manifest, malformed, 'ja-JP');
     expect(compiled.available).toBe(false);
     expect(compiled.content.blocks).toEqual(content.blocks);
-    expect(() => availableLocales(content, manifest, malformed)).not.toThrow();
-    expect(availableLocales(content, manifest, malformed)).toEqual([]);
+    await expect(availableLocales(content, manifest, malformed)).resolves.toEqual([]);
   });
 
   it('never throws when the guide content is not an object', async () => {
     for (const bad of [null, undefined, 'nope', 4, []]) {
       const compiled = await compileLocale(bad as never, manifest, sidecars, 'ja');
       expect(compiled.locale).toBe('ja');
-      expect(() => availableLocales(bad as never, manifest, sidecars)).not.toThrow();
-      expect(availableLocales(bad as never, manifest, { ja: {} } as never)).toEqual([]);
+      await expect(availableLocales(bad as never, manifest, sidecars)).resolves.toBeDefined();
+      expect(await availableLocales(bad as never, manifest, { ja: {} } as never)).toEqual([]);
     }
   });
 
@@ -527,6 +590,6 @@ describe('malformed input', () => {
     await expect(compileLocale(odd, manifest, sidecars, 'ja')).resolves.toBeDefined();
     const noBlocks = { id: 'x', title: 'X' } as unknown as ContentJson;
     await expect(compileLocale(noBlocks, undefined as never, sidecars, 'ja')).resolves.toBeDefined();
-    expect(availableLocales(odd, null as never, undefined as never)).toEqual([]);
+    expect(await availableLocales(odd, null as never, undefined as never)).toEqual([]);
   });
 });

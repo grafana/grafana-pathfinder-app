@@ -481,10 +481,54 @@ node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bund
 
 ---
 
+## Translate a guide
+
+A guide is translated by adding one sidecar per language beside `content.json`. The English guide is not touched. The design is in [I18N.md](../design/I18N.md); this section is the working procedure.
+
+```
+first-dashboard/
+├── content.json
+├── manifest.json
+└── i18n/
+    ├── ja.json          ← every Japanese string
+    └── ja-JP.json       ← optional: only the fields that differ for Japan
+```
+
+Name the file after its language tag, and set `language` to the same tag. A regional file such as `ja-JP.json` holds only the fields that differ from `ja.json`; every other field falls back to it.
+
+### What a translator edits
+
+A sidecar maps a block `id` to the translated text of that block. Translate only text fields: `content`, `tooltip`, `hint`, `formHint`, `title`, `alt`, `description`, and so on, as the projection table in [I18N.md §7.1](../design/I18N.md) lists for each block type. A multistep or guided block translates each step under its `steps` key, by step id. The `guide` entry holds the guide title, and the `manifest` entry holds the manifest `description` and `category`.
+
+Never copy a selector, a requirement, an action, or any other structural field into a sidecar. `validate` rejects them, and they are not read.
+
+Fields whose name starts with an underscore are owned by tooling. Do not write or edit `_sourceHash`, `_reviewHash` or `_available`, or the root `baseRef`. `sync-translations` writes them.
+
+### Write UI labels with a gloss
+
+The reader's guide language and Grafana's interface language are independent choices, so a label in a translated sentence must work for both readers. Write the label as the English Grafana UI shows it, then Grafana's own string for it in the guide's language, in parentheses. For Japanese: `**Add**（追加）メニューを開いてください。` Take the gloss from Grafana's own catalog for that language, not from a fresh translation. Leave operational values untouched in every language: query text, label matchers such as `walker=jack`, and values to type. The reasoning is in [I18N.md §6.4](../design/I18N.md).
+
+### Review, and stamp
+
+1. Translate the entry.
+2. A second person checks it and sets `"reviewed": true` on that entry. An entry that is not reviewed is treated as untranslated: readers see the English for it.
+3. Run `pathfinder-cli sync-translations <dir>`. It stamps `_sourceHash` (the English the entry was translated from), `_reviewHash` (the text that was reviewed), `_available` (once the whole guide is translated and reviewed), and `baseRef`. Commit the sidecar with those changes in it.
+
+A reviewed entry with no `_reviewHash` does not count as reviewed, so step 3 is part of the review.
+
+After that, two things can change under a translation, and the command never hides either:
+
+- **The English changes.** The entry's `_sourceHash` no longer matches. The translation counts as stale, and `sync-translations` lists it. Update the translation, then run `pathfinder-cli sync-translations <dir> --locale ja --accept <entry>` to say that it now matches the English.
+- **The translation is edited.** The entry's `_reviewHash` no longer matches, so it stops counting as reviewed and readers see the English for it. A reviewer who checks the new text re-affirms it with the same `--accept` command.
+
+`--accept` is a deliberate act and shows up in the diff as changed hashes. A plain run never re-stamps a hash that no longer matches. See the [command reference](./CLI_TOOLS.md#sync-translations-command) for every option, including `--check`.
+
+---
+
 ## Further reading
 
 - [JSON guide format](./interactive-examples/json-guide-format.md) — block-level schema reference
-- [CLI tools](./CLI_TOOLS.md) — `validate`, `build-repository`, `build-stats`, `build-graph` command reference
+- [CLI tools](./CLI_TOOLS.md) — `validate`, `build-repository`, `build-stats`, `build-graph`, `sync-translations` command reference
 - [Authoring interactive guides](./interactive-examples/authoring-interactive-journeys.md) — starting point for all guide authoring
 - [Pathfinder package design](../design/PATHFINDER-PACKAGE-DESIGN.md) — the full design spec (for design review, not day-to-day authoring)
 - [Dependencies design](../design/package/dependencies.md) — deep dive on the dependency model
