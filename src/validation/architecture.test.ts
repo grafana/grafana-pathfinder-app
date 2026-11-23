@@ -442,6 +442,7 @@ const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] =
     'lib/guide-translation/projection-table.ts',
     'lib/guide-translation/review.ts',
     'lib/guide-translation/source-hash.ts',
+    'lib/guide-translation/sync-translations.ts',
     'types/translation-sidecar.schema.ts',
   ].map((violation) => ({
     violation,

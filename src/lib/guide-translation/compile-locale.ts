@@ -92,15 +92,18 @@ interface Layer {
 }
 
 /** The reviewed entries a sidecar chain holds for one slot, most specific sidecar first. */
-function reviewedLayers(
+async function reviewedLayers(
   chain: readonly TranslationSidecar[],
   pick: (sidecar: RawRecord) => RawRecord | undefined
-): Layer[] {
-  return chain.flatMap((sidecar) => {
-    const source = pick(sidecar as unknown as RawRecord);
-    const entry = source as TranslationBlockEntry | undefined;
-    return source && entry && isEntryReviewed(entry) ? [{ entry, source }] : [];
-  });
+): Promise<Layer[]> {
+  const layers = await Promise.all(
+    chain.map(async (sidecar): Promise<Layer[]> => {
+      const source = pick(sidecar as unknown as RawRecord);
+      const entry = source as TranslationBlockEntry | undefined;
+      return source && entry && (await isEntryReviewed(entry)) ? [{ entry, source }] : [];
+    })
+  );
+  return layers.flat();
 }
 
 function firstText(layers: readonly Layer[], read: (source: RawRecord) => string | undefined) {
@@ -175,10 +178,12 @@ function projectStep(step: unknown, stepFields: readonly string[], resolver: Res
   return projected;
 }
 
-function projectOwnText(block: JsonBlock, row: ProjectionRow, context: ProjectionContext): RawRecord {
+async function projectOwnText(block: JsonBlock, row: ProjectionRow, context: ProjectionContext): Promise<RawRecord> {
   const id = idOf(block);
   const layers =
-    id === undefined ? [] : reviewedLayers(context.chain, (sidecar) => ownRecord(ownRecord(sidecar, 'blocks'), id));
+    id === undefined
+      ? []
+      : await reviewedLayers(context.chain, (sidecar) => ownRecord(ownRecord(sidecar, 'blocks'), id));
   const resolver = createResolver(layers);
   let projected: RawRecord = { ...block };
 
@@ -208,17 +213,22 @@ function projectOwnText(block: JsonBlock, row: ProjectionRow, context: Projectio
   return projected;
 }
 
-function projectBlocks(blocks: readonly unknown[], context: ProjectionContext): unknown[] {
-  return blocks.map((block) => (isBlockLike(block) ? projectBlock(block, context) : block));
+// Sequential, so `context.records` keeps document order.
+async function projectBlocks(blocks: readonly unknown[], context: ProjectionContext): Promise<unknown[]> {
+  const projected: unknown[] = [];
+  for (const block of blocks) {
+    projected.push(isBlockLike(block) ? await projectBlock(block, context) : block);
+  }
+  return projected;
 }
 
-function projectBlock(block: JsonBlock, context: ProjectionContext): unknown {
+async function projectBlock(block: JsonBlock, context: ProjectionContext): Promise<unknown> {
   const row = getProjectionRow(block.type);
-  const projected: RawRecord = row ? projectOwnText(block, row, context) : { ...block };
+  const projected: RawRecord = row ? await projectOwnText(block, row, context) : { ...block };
   for (const key of CHILD_BLOCK_KEYS) {
     const children = projected[key];
     if (Array.isArray(children)) {
-      projected[key] = projectBlocks(children, context);
+      projected[key] = await projectBlocks(children, context);
     }
   }
   return projected;
@@ -229,13 +239,13 @@ interface MetadataResolution {
   readonly values: Readonly<Record<string, string>>;
 }
 
-function resolveMetadata(
+async function resolveMetadata(
   source: object,
   fields: readonly string[],
   chain: readonly TranslationSidecar[],
   slot: 'guide' | 'manifest'
-): MetadataResolution {
-  const resolver = createResolver(reviewedLayers(chain, (sidecar) => ownRecord(sidecar, slot)));
+): Promise<MetadataResolution> {
+  const resolver = createResolver(await reviewedLayers(chain, (sidecar) => ownRecord(sidecar, slot)));
   const values: Record<string, string> = {};
   for (const field of fields) {
     if (canonicalText(source, field) === undefined) {
@@ -268,20 +278,27 @@ function asContent(content: unknown): ContentJson {
   return isRecord(content) ? (content as unknown as ContentJson) : ({} as ContentJson);
 }
 
-function resolveLocale(
+async function resolveLocale(
   guideContent: ContentJson,
   manifest: CompileManifest,
   sidecars: SidecarSet,
   locale: string
-): LocaleResolution {
+): Promise<LocaleResolution> {
   const content = asContent(guideContent);
   const chain = sidecarChain(sidecars, locale);
   const records: BlockRecord[] = [];
-  const blocks = Array.isArray(content.blocks) ? projectBlocks(content.blocks, { chain, records }) : content.blocks;
+  const blocks = Array.isArray(content.blocks)
+    ? await projectBlocks(content.blocks, { chain, records })
+    : content.blocks;
 
   const titleSource = { title: content.title };
-  const guide = resolveMetadata(titleSource, ['title'], chain, 'guide');
-  const metadata = resolveMetadata(isRecord(manifest) ? manifest : {}, ['description', 'category'], chain, 'manifest');
+  const guide = await resolveMetadata(titleSource, ['title'], chain, 'guide');
+  const metadata = await resolveMetadata(
+    isRecord(manifest) ? manifest : {},
+    ['description', 'category'],
+    chain,
+    'manifest'
+  );
 
   const units: UnitResolution[] = [guide, metadata, ...records];
   const ownSidecar = hasSidecar(sidecars, locale) ? (sidecars[locale] as TranslationSidecar) : undefined;
@@ -323,12 +340,23 @@ function unique(ids: readonly string[]): string[] {
  * own whose translatable units all resolve to reviewed translations after
  * layering, or whose sidecar carries the `_available` latch (§6.7). Sorted.
  */
-export function availableLocales(content: ContentJson, manifest: CompileManifest, sidecars: SidecarSet): string[] {
+export async function availableLocales(
+  content: ContentJson,
+  manifest: CompileManifest,
+  sidecars: SidecarSet
+): Promise<string[]> {
   if (!isRecord(sidecars)) {
     return [];
   }
-  return Object.keys(sidecars)
-    .filter((locale) => resolveLocale(content, manifest, sidecars, locale).available)
+  const verdicts = await Promise.all(
+    Object.keys(sidecars).map(async (locale) => ({
+      locale,
+      available: (await resolveLocale(content, manifest, sidecars, locale)).available,
+    }))
+  );
+  return verdicts
+    .filter(({ available }) => available)
+    .map(({ locale }) => locale)
     .sort();
 }
 
@@ -347,7 +375,7 @@ export async function compileLocale(
   locale: string
 ): Promise<CompiledLocale> {
   const content = asContent(guideContent);
-  const resolution = resolveLocale(content, manifest, sidecars, locale);
+  const resolution = await resolveLocale(content, manifest, sidecars, locale);
   const translation: GuideTranslationAnnotation = {
     language: locale,
     canonicalLanguage: canonicalLanguageOf(manifest),
