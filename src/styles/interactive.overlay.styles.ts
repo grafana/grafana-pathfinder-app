@@ -95,7 +95,16 @@ export const addGlobalInteractiveStyles = () => {
         border-color: rgba(170, 170, 170, 0.35);
       }
     }
-    /* Global interactive highlight styles */
+    /* Global interactive highlight styles. Theme colors come from updateInteractiveThemeColors(). */
+    .interactive-highlight-outline,
+    .interactive-hover-highlight-outline,
+    .interactive-highlight-dot {
+      --hl-color: var(--pathfinder-highlight-color, rgba(255, 136, 0, 0.85));
+      --hl-glow: var(--pathfinder-highlight-glow, rgba(255, 136, 0, 0.5));
+      --hl-glow-soft: var(--pathfinder-highlight-glow-soft, rgba(255, 136, 0, 0.3));
+      --hl-thickness: 3px;
+    }
+
     .interactive-highlight-outline {
       position: fixed;
       top: var(--highlight-top);
@@ -106,8 +115,6 @@ export const addGlobalInteractiveStyles = () => {
       z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
       border-radius: 4px;
       /* Draw border clockwise using four gradient strokes (no fill) */
-      --hl-color: rgba(255, 136, 0, 0.85);
-      --hl-thickness: 2px;
       background:
         linear-gradient(var(--hl-color) 0 0) top left / 0 var(--hl-thickness) no-repeat,
         linear-gradient(var(--hl-color) 0 0) top right / var(--hl-thickness) 0 no-repeat,
@@ -142,9 +149,6 @@ export const addGlobalInteractiveStyles = () => {
       pointer-events: none;
       z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
       border-radius: 4px;
-      /* Same orange color as regular highlights for consistency */
-      --hl-color: rgba(255, 136, 0, 0.85);
-      --hl-thickness: 2px;
       background:
         linear-gradient(var(--hl-color) 0 0) top left / 0 var(--hl-thickness) no-repeat,
         linear-gradient(var(--hl-color) 0 0) top right / var(--hl-thickness) 0 no-repeat,
@@ -175,13 +179,13 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
-    /* Breathing orange glow that activates after border draw completes */
+    /* Breathing glow that activates after border draw completes */
     @keyframes interactive-glow-breathe {
       0%, 100% {
-        box-shadow: 0 0 8px 2px rgba(255, 136, 0, 0.3);
+        box-shadow: 0 0 8px 2px var(--hl-glow-soft);
       }
       50% {
-        box-shadow: 0 0 16px 4px rgba(255, 136, 0, 0.5);
+        box-shadow: 0 0 16px 4px var(--hl-glow);
       }
     }
 
@@ -189,11 +193,11 @@ export const addGlobalInteractiveStyles = () => {
     @keyframes interactive-outline-fade {
       from {
         opacity: 0.95;
-        box-shadow: 0 0 8px 2px rgba(255, 136, 0, 0.3);
+        box-shadow: 0 0 8px 2px var(--hl-glow-soft);
       }
       to {
         opacity: 0;
-        box-shadow: 0 0 4px 1px rgba(255, 136, 0, 0);
+        box-shadow: 0 0 4px 1px transparent;
       }
     }
 
@@ -217,11 +221,11 @@ export const addGlobalInteractiveStyles = () => {
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      background: rgba(255, 136, 0, 0.9);
+      background: var(--hl-color);
       pointer-events: none;
       z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
       transform: translate(-50%, -50%); /* Center on the point */
-      box-shadow: 0 0 12px 4px rgba(255, 136, 0, 0.5);
+      box-shadow: 0 0 12px 4px var(--hl-glow);
       /* Finite animation: 2 pulse cycles (3s) then fade out (0.5s) = 3.5s total
        * JS cleanup at 4000ms (500ms buffer after CSS completes)
        */
@@ -255,6 +259,7 @@ export const addGlobalInteractiveStyles = () => {
     .interactive-highlight-outline.interactive-highlight-persistent {
       animation: interactive-draw-border ${drawMs}ms ease-out forwards;
       opacity: 0.95;
+      box-shadow: 0 0 8px 2px var(--hl-glow-soft);
     }
 
     .interactive-highlight-dot.interactive-highlight-persistent {
@@ -262,10 +267,20 @@ export const addGlobalInteractiveStyles = () => {
       opacity: 0.95;
     }
 
+    /* Every variant drops the draw, breathe and pulse. The static ring stays until JS cleanup removes it. */
     @media (prefers-reduced-motion: reduce) {
-      .interactive-highlight-outline.interactive-highlight-persistent {
-        animation: none;
+      .interactive-highlight-outline,
+      .interactive-highlight-dot {
+        animation: none !important;
+      }
+
+      .interactive-highlight-outline {
         background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100%;
+        box-shadow: 0 0 8px 2px var(--hl-glow-soft);
+      }
+
+      .interactive-hover-highlight-outline {
+        transition: none;
       }
     }
 
