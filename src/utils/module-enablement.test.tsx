@@ -65,6 +65,8 @@ async function boot(
     setPendingOpenSource: jest.fn(),
     consumePendingOpenSource: jest.fn(() => ({ source: 'unset', action: 'open' })),
     setIsSidebarMounted: jest.fn(),
+    getIsSidebarMounted: jest.fn(() => true),
+    setSuggestions: jest.fn(),
     closeSidebar: jest.fn(),
     enrollInteractiveLearningBannerExperiment: jest.fn(),
     recordStartupSettings: jest.fn(),
@@ -125,7 +127,7 @@ async function boot(
     './global-state/link-interception': { linkInterceptionState: effects },
     'global-state/sidebar': { sidebarState: effects },
     './global-state/panel-mode': { panelModeManager: { getMode: () => panelMode } },
-    './global-state/suggestion': { suggestionState: {} },
+    './global-state/suggestion': { suggestionState: effects },
     './utils/pathfinder-deep-link-loader': effects,
     './utils/pathfinder-search-params': {
       parsePathfinderDeepLink: () => deepLink,
@@ -313,6 +315,21 @@ it.each([
 it('does not clear another plugin’s docked entry', async () => {
   const { effects } = await boot(false, false, false, undefined, 'another-plugin');
   expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
+});
+
+it('accepts multiple suggested guides in order when the sidebar is open', async () => {
+  const { effects } = await boot(true);
+  const suggestions = [
+    { title: 'First', url: 'bundled:first', type: 'interactive' },
+    { title: 'Second', url: 'bundled:second', type: 'interactive' },
+  ];
+  const detail = { suggestions, groupTitle: '  What’s new  ', status: '' };
+  document.dispatchEvent(new CustomEvent('pathfinder-suggest', { detail }));
+  expect(detail.status).toBe('accepted');
+  expect(effects.setSuggestions).toHaveBeenCalledWith(suggestions, {
+    groupTitle: 'What’s new',
+    pathname: window.location.pathname,
+  });
 });
 
 it('rejects buffered and subsequent suggestions while disabled', async () => {
