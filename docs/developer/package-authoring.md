@@ -518,10 +518,10 @@ A reviewed entry with no `_reviewHash` does not count as reviewed, so step 3 is 
 
 After that, two things can change under a translation, and the command never hides either:
 
-- **The English changes.** The entry's `_sourceHash` no longer matches. The translation counts as stale, and `sync-translations` lists it. Update the translation, then run `pathfinder-cli sync-translations <dir> --locale ja --accept <entry>` to say that it now matches the English.
-- **The translation is edited.** The entry's `_reviewHash` no longer matches, so it stops counting as reviewed and readers see the English for it. A reviewer who checks the new text re-affirms it with the same `--accept` command.
+- **The English changes.** The entry's `_sourceHash` no longer matches. The translation counts as stale, and `sync-translations` lists it. Update the translation, then run `pathfinder-cli sync-translations <dir> --locale ja --accept <entry>` to say that it now matches the English. This does not restore the review: the edited text needs a reviewer, as in the next item.
+- **The translation is edited.** The entry's `_reviewHash` no longer matches, so it stops counting as reviewed and readers see the English for it. `--accept` never changes `_reviewHash`. A reviewer who checks the new text deletes the entry's `_reviewHash` and runs `pathfinder-cli sync-translations <dir>`, which stamps a new one.
 
-`--accept` is a deliberate act and shows up in the diff as changed hashes. A plain run never re-stamps a hash that no longer matches. See the [command reference](./CLI_TOOLS.md#sync-translations-command) for every option, including `--check`.
+`--accept` and a deleted `_reviewHash` are deliberate acts and show up in the diff as changed hashes. A plain run never re-stamps a hash that no longer matches. See the [command reference](./CLI_TOOLS.md#sync-translations-command) for every option, including `--check`.
 
 ---
 

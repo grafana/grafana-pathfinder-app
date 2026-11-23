@@ -6,9 +6,9 @@
  *
  * Two rules keep staleness honest. A present `_sourceHash` or `_reviewHash`
  * that no longer matches is never re-stamped, because that would hide a stale
- * or changed translation; only an entry named in `accept` is re-stamped. And
- * nothing here removes a field: the `_available` latch is cleared only by a
- * human.
+ * or changed translation; `accept` re-stamps only `_sourceHash`, so it never
+ * restores a lapsed review. And nothing here removes a field: the `_available`
+ * latch is cleared only by a human.
  */
 
 import type { JsonBlock } from '../../types/json-guide.types';
@@ -55,7 +55,7 @@ export interface SyncChange {
   readonly kind: SyncChangeKind;
   /** The entry, in `formatEntryRef` spelling. Absent for `available` and `base-ref`. */
   readonly entry?: string;
-  /** The entry was named in `accept`, so an existing stamp was replaced. */
+  /** The entry was named in `accept`, so an existing `_sourceHash` was replaced. */
   readonly accepted?: boolean;
 }
 
@@ -211,17 +211,9 @@ async function syncOneSidecar(
       }
     }
 
-    if (translated && entry.reviewed === true && (entry._reviewHash === undefined || accepted)) {
-      const reviewHash = await hashEntryText(entry);
-      if (entry._reviewHash !== reviewHash) {
-        next = { ...next, _reviewHash: reviewHash };
-        changes.push({
-          tag,
-          kind: 'review-hash',
-          entry: name,
-          ...(entry._reviewHash === undefined ? {} : { accepted: true }),
-        });
-      }
+    if (translated && entry.reviewed === true && entry._reviewHash === undefined) {
+      next = { ...next, _reviewHash: await hashEntryText(entry) };
+      changes.push({ tag, kind: 'review-hash', entry: name });
     }
 
     if (translated && entry.reviewed === true && next._reviewHash !== (await hashEntryText(next))) {

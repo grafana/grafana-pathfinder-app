@@ -511,7 +511,7 @@ node dist/cli/cli/index.js sync-translations <dir> [options]
 ### Options
 
 - `--locale <tag>`: Sync only this sidecar. The other sidecars still layer into the availability rule, but are not written.
-- `--accept <entry...>`: Re-stamp the named entries of `--locale`, which is required with it. This is the translator asserting that the translation now matches the current English, and the reviewer re-affirming it. Name the `guide` entry as `guide`, the `manifest` entry as `manifest`, and a block by its id; write `block:<id>` for a block whose id is itself `guide` or `manifest`. Put the package directory before this option, because it takes a list.
+- `--accept <entry...>`: Re-stamp `_sourceHash` on the named entries of `--locale`, which is required with it. This is the translator asserting that the translation now matches the current English. It never re-stamps `_reviewHash`, so it never restores a lapsed review. Name the `guide` entry as `guide`, the `manifest` entry as `manifest`, and a block by its id; write `block:<id>` for a block whose id is itself `guide` or `manifest`. Put the package directory before this option, because it takes a list.
 - `--check`: Print what would be written and exit non-zero if anything would be. Writes nothing.
 
 ### What a plain run stamps
@@ -525,7 +525,7 @@ For each sidecar, in this order:
 | `_available`  | Sidecar root                          | Stamped as `true` the first time every translatable unit resolves to a reviewed translation (the derived rule in `availableLocales`). Never removed by the tool. |
 | `baseRef`     | Sidecar root                          | Set to the commit that last changed `content.json`, with its repository-relative path, only when every entry's `_sourceHash` matches the current English.        |
 
-A hash that is present but no longer matches is **never** re-stamped by a plain run, because that would hide a stale or changed translation. It is reported instead: entries whose English changed are listed as stale, and entries whose translated text changed since they were reviewed are listed as lapsed. Such an entry stops counting as reviewed (so it no longer counts toward availability or coverage) until someone runs `--accept` for it.
+A hash that is present but no longer matches is **never** re-stamped by a plain run, because that would hide a stale or changed translation. It is reported instead: entries whose English changed are listed as stale, and entries whose translated text changed since they were reviewed are listed as lapsed. A stale entry stays stale until a translator runs `--accept` for it. A lapsed entry stops counting as reviewed (so it no longer counts toward availability or coverage) until a reviewer checks the new text, deletes its `_reviewHash`, and runs `sync-translations` again, which stamps a new review hash.
 
 `baseRef` is left absent or unchanged, with a note and no error, outside a git repository, in a shallow clone, when `content.json` has uncommitted changes, or while any entry is stale or has no English source. A second run with no input change writes nothing. Writes keep the file's key order and two-space JSON formatting with a trailing newline.
 

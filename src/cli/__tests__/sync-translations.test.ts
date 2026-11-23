@@ -208,6 +208,18 @@ describe('--accept', () => {
     expect(readSidecar('ja').guide._sourceHash).not.toBe(before.guide._sourceHash);
   });
 
+  it('keeps a lapsed review lapsed after a translator accepts an edited translation', async () => {
+    await staleIntro();
+    const sidecar = readSidecar('ja');
+    const reviewHash = sidecar.blocks.intro._reviewHash;
+    sidecar.blocks.intro.content = '書き換えた本文。';
+    writeSidecar('ja', sidecar);
+    const outcome = ok(await run({ locale: 'ja', accept: ['intro'] }));
+    expect(readSidecar('ja').blocks.intro._reviewHash).toBe(reviewHash);
+    expect((outcome.data as Mutable).reviewLapsed.ja).toEqual(['intro']);
+    expect((outcome.data as Mutable).stale.ja).not.toContain('intro');
+  });
+
   it('requires --locale', async () => {
     const outcome = failed(await run({ accept: ['intro'] }));
     expect(outcome.code).toBe('INVALID_OPTIONS');

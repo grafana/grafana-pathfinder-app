@@ -5,7 +5,8 @@
  * The only writer of `_sourceHash`, `_reviewHash`, `_available` and `baseRef`.
  * It stamps what is missing and never re-stamps a value that no longer matches,
  * since that would hide a stale or changed translation; `--accept` is the
- * deliberate act that does. `validate` stays read-only.
+ * deliberate act that re-stamps `_sourceHash`, and never `_reviewHash`.
+ * `validate` stays read-only.
  *
  * The rules live in `src/lib/guide-translation/sync-translations.ts`. This
  * file reads the package, asks git for `baseRef`, and writes.
@@ -44,7 +45,7 @@ export const SyncTranslationsCommand = z.object({
     .array(z.string().min(1))
     .default([])
     .describe(
-      'Re-stamp these entries of --locale: the translation now matches the current English and, if reviewed, the review stands. Name `guide`, `manifest`, a block id, or `block:<id>` for a block called guide or manifest'
+      'Re-stamp the source hash of these entries of --locale: the translation now matches the current English. Never restores a lapsed review. Name `guide`, `manifest`, a block id, or `block:<id>` for a block called guide or manifest'
     )
     .meta({ role: 'addressing' }),
   check: z

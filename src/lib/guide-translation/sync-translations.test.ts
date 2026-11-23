@@ -237,17 +237,33 @@ describe('_reviewHash', () => {
     expect(await isEntryReviewed(sync.sidecar.blocks?.['intro'])).toBe(true);
   });
 
-  it('re-stamps the named entry on accept, which re-affirms the review', async () => {
+  it('does not restore a lapsed review when the translator accepts an updated translation', async () => {
+    const edited = clone(content);
+    blockById(edited, 'intro').content = 'Rewritten English.';
     const sidecars = stamped() as Record<string, Mutable>;
     sidecars.ja!.blocks.intro.content = '書き換えた本文。';
-    sidecars.ja!.blocks['save-dashboard'].content = '書き換えた本文。';
     const sync = syncOf(
-      await syncTranslations(content, manifest, sidecars as never, { tags: ['ja'], accept: [parseEntryRef('intro')] }),
+      await syncTranslations(edited, manifest, sidecars as never, { tags: ['ja'], accept: [parseEntryRef('intro')] }),
       'ja'
     );
+    expect(sync.sidecar.blocks?.['intro']?._sourceHash).toBe(
+      await hashBlockSource(blockById(edited, 'intro') as JsonBlock)
+    );
+    expect(sync.stale).toEqual([]);
+    expect(sync.sidecar.blocks?.['intro']?._reviewHash).toBe(ja.blocks?.['intro']?._reviewHash);
+    expect(await isEntryReviewed(sync.sidecar.blocks?.['intro'])).toBe(false);
+    expect(sync.reviewLapsed).toEqual(['intro']);
+    expect(sync.changes.map((change) => change.kind)).toEqual(['source-hash']);
+  });
+
+  it('re-affirms an edited entry when a reviewer removes its review hash and runs again', async () => {
+    const sidecars = stamped() as Record<string, Mutable>;
+    sidecars.ja!.blocks.intro.content = '書き換えた本文。';
+    delete sidecars.ja!.blocks.intro._reviewHash;
+    const sync = syncOf(await syncTranslations(content, manifest, sidecars as never, { tags: ['ja'] }), 'ja');
     expect(await isEntryReviewed(sync.sidecar.blocks?.['intro'])).toBe(true);
-    expect(await isEntryReviewed(sync.sidecar.blocks?.['save-dashboard'])).toBe(false);
-    expect(sync.reviewLapsed).toEqual(['save-dashboard']);
+    expect(sync.reviewLapsed).toEqual([]);
+    expect(sync.changes).toEqual([{ tag: 'ja', kind: 'review-hash', entry: 'intro' }]);
   });
 
   it('puts the edited entry out of coverage for availability and for compilation', async () => {
