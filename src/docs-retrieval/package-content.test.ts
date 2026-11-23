@@ -9,6 +9,11 @@
  * - Manifest metadata passthrough via fetchPackageContent
  * - setPackageResolver injection and resolver-not-configured error
  */
+
+jest.mock('../lib/telemetry/facade', () => ({
+  ...jest.requireActual('../lib/telemetry/facade'),
+  recordPackageMilestonesLocked: jest.fn(),
+}));
 import { config, getBackendSrv, setBackendSrv, type BackendSrv } from '@grafana/runtime';
 import { of } from 'rxjs';
 import {
@@ -23,6 +28,7 @@ import {
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
 import { logger } from '../lib/logging';
+import { recordPackageMilestonesLocked } from '../lib/telemetry/facade';
 import { CompositePackageResolver } from '../package-engine/composite-resolver';
 import {
   isJourneyCoverPage,
@@ -721,6 +727,7 @@ describe('resolvePackageMilestones', () => {
       }),
     };
     setPackageResolver(resolver);
+    (recordPackageMilestonesLocked as jest.Mock).mockClear();
 
     const result = await resolvePackageMilestones(['first', 'missing', 'third']);
 
@@ -732,6 +739,8 @@ describe('resolvePackageMilestones', () => {
     expect(result[1]).toMatchObject({ number: 2, title: 'missing', url: '', isLocked: true });
     expect(result[2]).toMatchObject({ number: 3, title: 'Title: third' });
     expect(result[2]!.isLocked).toBeUndefined();
+    expect(recordPackageMilestonesLocked).toHaveBeenCalledTimes(1);
+    expect(recordPackageMilestonesLocked).toHaveBeenCalledWith(1, 3);
   });
 
   it('surfaces the manifest description as a subtitle when content already has its own title', async () => {

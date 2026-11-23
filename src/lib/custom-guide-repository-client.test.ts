@@ -8,6 +8,7 @@ jest.mock('../utils/interactive-guides-api', () => ({
 }));
 
 jest.mock('./telemetry/facade', () => ({
+  recordCustomGuideCatalogueRequest: jest.fn(),
   recordCustomGuideCatalogueUnavailable: jest.fn(),
 }));
 
@@ -22,7 +23,7 @@ import {
   invalidateCustomGuideRepositoryCache,
 } from './custom-guide-repository-client';
 import { logger } from './logging';
-import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
+import { recordCustomGuideCatalogueRequest, recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 
 const mockGet = jest.fn();
 
@@ -304,5 +305,38 @@ describe('fetchCustomGuideRepository', () => {
     expect(mockGet).toHaveBeenCalledTimes(2);
     expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledTimes(1);
     expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('transport-error');
+  });
+});
+
+describe('catalogue round-trip measurement', () => {
+  it.each([
+    { outcome: 'available', response: { capability: { available: true }, guides: [] } },
+    { outcome: 'unavailable', response: { capability: { available: false, reason: 'obo-unavailable' }, guides: [] } },
+    { outcome: 'malformed', response: { capability: { available: true }, guides: 'drift' } },
+  ])('records one $outcome measurement per network request', async ({ outcome, response }) => {
+    mockGet.mockResolvedValue(response);
+
+    await fetchCustomGuideCatalogue('stacks-measure', { refresh: true });
+
+    expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledTimes(1);
+    expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledWith(expect.any(Number), outcome);
+  });
+
+  it('records a request-failed measurement when the request rejects', async () => {
+    mockGet.mockRejectedValue(new Error('boom'));
+
+    await fetchCustomGuideCatalogue('stacks-measure', { refresh: true });
+
+    expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledWith(expect.any(Number), 'request-failed');
+  });
+
+  it('does not measure a cached answer', async () => {
+    mockGet.mockResolvedValue({ capability: { available: true }, guides: [] });
+
+    await fetchCustomGuideCatalogue('stacks-cached', { refresh: true });
+    await fetchCustomGuideCatalogue('stacks-cached');
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledTimes(1);
   });
 });

@@ -54,6 +54,7 @@ export const TELEMETRY_EVENTS = {
   gcxCredentialDegraded: 'pathfinder_gcx_credential_degraded',
   assignmentsUnavailable: 'pathfinder_assignments_unavailable',
   assignmentTargetUnresolved: 'pathfinder_assignment_target_unresolved',
+  packageMilestonesLocked: 'pathfinder_package_milestones_locked',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {
@@ -64,6 +65,7 @@ export const TELEMETRY_MEASUREMENTS = {
   step: 'pathfinder_step',
   requirements: 'pathfinder_requirements',
   panel: 'pathfinder_panel',
+  customGuideCatalogue: 'pathfinder_custom_guide_catalogue',
 } as const;
 
 // Faro-only spans with no real UserInteraction counterpart (unlike guide-open,

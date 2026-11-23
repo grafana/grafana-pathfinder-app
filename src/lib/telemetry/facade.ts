@@ -186,6 +186,25 @@ export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEventChecked(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason: toAnalyticsValue(reason) });
 }
 
+export type CustomGuideCatalogueOutcome = 'available' | 'unavailable' | 'malformed' | 'request-failed';
+
+// Whole client round trip, so it includes the proxy's paginated drain (60 s budget).
+export function recordCustomGuideCatalogueRequest(durationMs: number, outcome: CustomGuideCatalogueOutcome): void {
+  pushFaroMeasurementChecked(
+    TELEMETRY_MEASUREMENTS.customGuideCatalogue,
+    { custom_guide_catalogue_ms: durationMs },
+    { outcome: toAnalyticsValue(outcome) }
+  );
+}
+
+// One event per resolution call with counts only, never the locked guide ids.
+export function recordPackageMilestonesLocked(lockedCount: number, totalCount: number): void {
+  pushFaroEventChecked(TELEMETRY_EVENTS.packageMilestonesLocked, {
+    locked_count: lockedCount,
+    total_count: totalCount,
+  });
+}
+
 // Input reason is a capability.reason, `http-<status>` or `transport-error`; never an id or identity.
 export function recordAssignmentsUnavailable(reason: string): void {
   pushFaroEventChecked(TELEMETRY_EVENTS.assignmentsUnavailable, { reason: toAnalyticsValue(reason) });

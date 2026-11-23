@@ -17,7 +17,11 @@ import { backendRoute } from './backend-routes';
 import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
 import { logger } from './logging';
-import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
+import {
+  type CustomGuideCatalogueOutcome,
+  recordCustomGuideCatalogueRequest,
+  recordCustomGuideCatalogueUnavailable,
+} from './telemetry/facade';
 import { PackageTypeSchema } from '../types/package.schema';
 import type { Author, ManifestTrack, PackageType } from '../types/package.types';
 
@@ -193,8 +197,11 @@ export async function fetchCustomGuideCatalogue(
     return existing;
   }
   // Only the latest request for a key caches its result, so a superseded one cannot overwrite a refresh.
+  const startedAt = performance.now();
+  let outcome: CustomGuideCatalogueOutcome = 'request-failed';
   const request: Promise<CustomGuideCatalogue> = requestCatalogue()
     .then(({ cacheable, ...result }) => {
+      outcome = result.available ? 'available' : result.reason === MALFORMED_REASON ? 'malformed' : 'unavailable';
       if (cacheable && inflight.get(key) === request) {
         cache.set(key, { result, at: Date.now() });
       }
@@ -205,6 +212,7 @@ export async function fetchCustomGuideCatalogue(
       return { entries: [], available: false, reason: 'request-failed' };
     })
     .finally(() => {
+      recordCustomGuideCatalogueRequest(Math.round(performance.now() - startedAt), outcome);
       if (inflight.get(key) === request) {
         inflight.delete(key);
       }
