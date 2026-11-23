@@ -24,6 +24,7 @@ export type PackageIOErrorCode =
   | 'INVALID_OPTIONS'
   | 'QUIZ_CORRECT_COUNT'
   | 'UNKNOWN_REQUIREMENT'
+  | 'UNSUPPORTED_REFERENCE'
   | 'WRITE_FAILED';
 
 /**

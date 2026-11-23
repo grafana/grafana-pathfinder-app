@@ -36,6 +36,7 @@ const NOT_PRODUCERS: Record<string, string> = {
   'remove-block': 'edits content.json only',
   'move-block': 'edits content.json only',
   'rename-id': 'renames ids; leaves the author untouched',
+  'rename-block': 'edits content.json only',
   'set-manifest': 'patches named fields only; auto-defaulting is out of scope (an explicit patch is the author)',
   inspect: 'read-only',
   validate: 'read-only',

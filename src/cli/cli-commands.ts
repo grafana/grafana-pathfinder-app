@@ -36,6 +36,7 @@ import { findGuidesSpec } from './commands/find-guides';
 import { inspectSpec } from './commands/inspect';
 import { moveBlockSpec } from './commands/move-block';
 import { removeBlockSpec } from './commands/remove-block';
+import { renameBlockSpec } from './commands/rename-block';
 import { renameIdSpec } from './commands/rename-id';
 import { requirementsGroup } from './commands/requirements';
 import { schemaSpec } from './commands/schema';
@@ -88,6 +89,7 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
     // `<new-id>` keeps the hyphenated spelling the usage line has always shown.
     placeholders: { newId: 'new-id' },
   },
+  'rename-block': { positionals: ['dir', 'id', 'newId'], placeholders: { newId: 'new-id' } },
   validate: {
     positionals: ['files'],
     placeholders: {
@@ -180,6 +182,7 @@ const RENDERED: Record<string, Command> = {
   'remove-block': mountCommander(removeBlockSpec, PRESENTATIONS['remove-block']),
   'move-block': mountCommander(moveBlockSpec, PRESENTATIONS['move-block']),
   'rename-id': mountCommander(renameIdSpec, PRESENTATIONS['rename-id']),
+  'rename-block': mountCommander(renameBlockSpec, PRESENTATIONS['rename-block']),
   validate: mountCommander(validateCliSpec, PRESENTATIONS.validate),
   e2e: mountCommander(e2eSpec, PRESENTATIONS.e2e),
   'build-repository': mountCommander(buildRepositorySpec, PRESENTATIONS['build-repository']),
