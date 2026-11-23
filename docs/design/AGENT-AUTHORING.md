@@ -19,6 +19,7 @@
   - [inspect](#inspect)
   - [edit-block](#edit-block)
   - [remove-block](#remove-block)
+  - [rename-block](#rename-block)
 - [Addressing model](#addressing-model)
   - [Auto-assignment of IDs](#auto-assignment-of-ids)
   - [Idempotent retries with `--if-absent`](#idempotent-retries-with---if-absent)
@@ -365,6 +366,26 @@ Removed section "setup" (and 3 children) from my-guide/
 Error: Section "setup" has 3 children and cannot be removed without --cascade.
   Use: pathfinder-cli remove-block my-guide/ setup --cascade
   Or inspect first: pathfinder-cli inspect my-guide/ --block setup
+```
+
+### `rename-block`
+
+Rename one block ID and rewrite the references to it inside the same package. Validates the package before writing and leaves every file unchanged on any failure.
+
+```
+pathfinder-cli rename-block <dir> <id> <new-id>
+```
+
+It rewrites `section-completed:<id>` and `section-completed:section-<id>` in any `requirements`, `objectives`, `conditions` or `verify` field. It refuses with `UNSUPPORTED_REFERENCE` when the `section-` spelling could also mean another block, or when a compiled locale's `translation` annotation lists the ID. Other packages and saved completion records are not touched.
+
+**Output on success:**
+
+```
+Renamed section "setup" to "install" and rewrote 3 reference(s)
+  old id: setup
+  new id: install
+  references: blocks[1].requirements[0], blocks[1].objectives[0], blocks[2].conditions[0]
+  package valid: true
 ```
 
 ---
