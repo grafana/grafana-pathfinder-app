@@ -17,16 +17,7 @@ import { readOnly } from './annotations';
 import { outcomeResult, textResult, type ToolResult } from './result';
 
 const DESCRIPTION =
-  "Use this tool to find verified Grafana procedures (steps with selectors that pass live tests) when authoring a guide. Each result's `nextProcedure`/`previousProcedure` lets you fetch an adjacent part by `procedureId` when a step you searched for isn't in the procedure you found. " +
-  'Each result is an ordered list of steps with the exact selector, action, and value that worked. ' +
-  'Send every sub-task of the guide in one call: `{ "opts": { "queries": ["configure loki data source", "create dashboard"] } }`, up to 8 phrases of 2-5 words, one per sub-task, using the words on Grafana\'s UI. ' +
-  'Each phrase comes back as its own group whose first result has the steps and later results are summaries (fetch one with procedureId when it fits better); `limit` (per phrase, default 2) is optional. ' +
-  'The first `navigation` steps only reach `startsOn`; drop them when the guide is already there. ' +
-  'To continue from where a result leaves the user, query the next sub-task with pageUrl set to its endsOn. ' +
-  "A result's `context` names where it sits (`position` of `total` in its path); each neighbour is `{ procedureId, title }`. " +
-  '`procedureId` takes one id or a list of up to 8 and returns every step plus the path `outline`; use it when `omitted` hides steps you need or the task spans more than the hit. ' +
-  'For third-party platforms (Slack, PagerDuty, AWS) query the Grafana process in generic terms ("configure contact point"), not the product. ' +
-  'On an error, retry once; if it still fails, use placeholders and tell the user the verified index was unavailable.';
+  'Use this tool to find verified Grafana procedures (ordered steps with the exact selector, action and value that passed live tests) when authoring a guide. Send every sub-task in one call: `{ "opts": { "queries": ["configure loki data source", "create dashboard"] } }`, up to 8 phrases of 2-5 words in Grafana\'s UI words; `limit` (per phrase, default 2) is optional. Each phrase returns its own group: the first result has the steps, later ones are summaries (fetch by procedureId). The first `navigation` steps only reach `startsOn`; drop them if the guide is already there. To continue where a result leaves the user, query the next sub-task with pageUrl set to its endsOn. `context` gives `position` of `total` and neighbours `{ procedureId, title }`; `procedureId` (one id or up to 8) returns every step plus the path `outline`, for when `omitted` hides steps you need. For third-party platforms (Slack, PagerDuty, AWS) query the Grafana process ("configure contact point"), not the product. On an error, use placeholders and tell the user the verified index was unavailable; retrying returns the same error until the time it names.';
 
 const FindStepsOptsSchema = z
   .record(z.string(), z.unknown())

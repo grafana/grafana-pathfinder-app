@@ -126,10 +126,8 @@ describe('MCP server', () => {
       const ctx = await callTool(client, 'pathfinder_authoring_start');
       const step3 = (ctx.workflow as string[]).find((step) => step.startsWith('3. '));
       expect(step3).toContain('send the independent sub-tasks in one call (up to 8 queries)');
-      expect(step3).toContain('follow-up calls are expected for `procedureId` fetches and `pageUrl` chaining');
       expect(step3).toContain('naming third-party products by the Grafana process');
-      expect(step3).toContain("If a step you searched for isn't in the procedure you found, check its `nextProcedure`");
-      expect(step3).toContain('Use placeholders only for what stays unresolved.');
+      expect(step3).toContain('Gaps and weak matches: see `interactiveRules`.');
     } finally {
       await close();
     }
@@ -237,7 +235,7 @@ describe('MCP server', () => {
         .map((t) => ({ name: t.name, description: t.description }));
       expect(offenders).toEqual([]);
       expect(tools.find((t) => t.name === 'pathfinder_find_steps')?.description).toMatch(
-        /^Use this tool to find verified Grafana procedures \(steps with selectors that pass live tests\) when authoring a guide\. Each result's `nextProcedure`\/`previousProcedure` lets you fetch an adjacent part by `procedureId` when a step you searched for isn't in the procedure you found\. /
+        /^Use this tool to find verified Grafana procedures \(ordered steps with the exact selector, action and value that passed live tests\) when authoring a guide\. /
       );
     } finally {
       await close();

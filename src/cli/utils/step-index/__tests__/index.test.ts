@@ -96,7 +96,14 @@ describe('searchSteps', () => {
     const group = find('configure dependent zzzquux filter');
     expect(group.noStrongMatch).toBe(true);
     expect(group.hits.length).toBeGreaterThan(0);
-    expect(find('dependent service filter').noStrongMatch).toBe(false);
+    expect(find('dependent service filter classic').noStrongMatch).toBe(false);
+  });
+
+  it('is weak when only common terms match, even with a high score', () => {
+    const group = find('dependent service filter');
+    expect(group.hits[0]?.score).toBeGreaterThanOrEqual(STRONG_SCORE);
+    expect(group.commonOnly).toBe(true);
+    expect(group.noStrongMatch).toBe(true);
   });
 });
 
@@ -161,6 +168,34 @@ describe('distinctive-term gate', () => {
   });
 });
 
+describe('strong match', () => {
+  const corpus = buildStepIndex([
+    procedure('aws#0', 'Connect AWS account', ['Open the account page', 'Enter the account id']),
+    procedure('sa#0', 'Tokens', ['Open the service page', 'Add token', 'Save']),
+    procedure('dash#0', 'Dashboards', ['Open dashboards', 'Click New dashboard']),
+    ...Array.from({ length: 10 }, (_, i) => procedure(`filler#${i}`, `Dashboards ${i}`, ['Open dashboards', 'Save'])),
+  ]);
+  const group = (query: string) => searchSteps(corpus, { queries: [query], limit: 1 })[0]!;
+
+  it('is weak when a distinctive query term is missing from the top hit', () => {
+    const weak = group('create service account');
+    expect(weak.hits[0]?.procedure.id).toBe('aws#0');
+    expect(weak.noStrongMatch).toBe(true);
+  });
+
+  it('is weak when every query term is common', () => {
+    const common = group('open dashboards save');
+    expect(common.commonOnly).toBe(true);
+    expect(common.noStrongMatch).toBe(true);
+  });
+
+  it('is strong when every distinctive term is in the top hit', () => {
+    const strong = group('account id');
+    expect(strong.hits[0]?.procedure.id).toBe('aws#0');
+    expect(strong.noStrongMatch).toBe(false);
+  });
+});
+
 describe('selectorWords', () => {
   it('splits Grafana selector tokens and attribute values', () => {
     expect(selectorWords('{grafana:components.DataSourcePicker.inputV2}')).toBe('components data source picker input');
@@ -172,7 +207,7 @@ describe('selectorWords', () => {
 
 describe('document frequency', () => {
   const stemmed = buildStepIndex([
-    procedure('mappings#0', 'Configure value mappings', ['Open the panel', 'Add a mapping']),
+    procedure('mappings#0', 'Configure value mappings', ['Open the panel', 'Add value mappings']),
     procedure('settings#0', 'Configure the data source', ['Open data source settings', 'Save']),
     ...Array.from({ length: 12 }, (_, i) => procedure(`filler#${i}`, `Unrelated topic ${i}`, ['Click', 'Save'])),
   ]);

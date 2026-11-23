@@ -13,7 +13,10 @@ const PAGE_MATCH_FACTOR = 1.25;
 const START_MATCH_FACTOR = 1.25;
 const MIN_PREFIX_LENGTH = 4;
 const MIN_FUZZY_LENGTH = 6;
-/** Below this best score a result is not worth offering. Calibrated on the prod corpus: unrelated queries top out near 14, real topics start above 50. */
+/**
+ * Below this best score a result is not worth offering.
+ * Measured 2026-11-23 on prod: titles of guides with no procedure come back strong for 16 of 210 (85 before the distinctive-term check); a guide's own title ranks its procedure first for 94 of 120, top three for 113.
+ */
 export const STRONG_SCORE = 30;
 /** A query whose rarest term appears in more than this share of procedures has no distinctive word, so no term gates the hits. */
 const GATE_MAX_DF_SHARE = 0.25;
@@ -55,6 +58,8 @@ export interface StepSearchGroup {
   noStrongMatch: boolean;
   /** Words of the query, in order, that occur in no procedure. */
   absentWords: string[];
+  /** Every query word occurs in procedures, but all are common, so nothing ties a hit to what was asked. */
+  commonOnly: boolean;
 }
 
 const options = {
@@ -134,20 +139,31 @@ function pageFactor(procedure: Procedure, pageUrl: string | undefined): number {
   return (onPage ? PAGE_MATCH_FACTOR : 1) * (startsThere ? START_MATCH_FACTOR : 1);
 }
 
-/** The rarest query term present in the corpus; undefined when none is, or when even the rarest is common. `absent` means some query term is in no procedure. */
-function anchorTerm(index: StepSearchIndex, terms: string[]): { anchor?: string; absent: boolean } {
-  const all = terms.map((term) => ({ term, df: index.documentFrequency.get(term) ?? 0 }));
-  const counted = all.filter(({ df }) => df > 0);
-  const rarest = counted.reduce<(typeof counted)[number] | undefined>(
-    (best, c) => (!best || c.df < best.df ? c : best),
+/** Query terms present in the corpus that are not common (`distinctive`), the rarest of them, and whether some query term is in no procedure (`absent`). */
+function anchorTerm(
+  index: StepSearchIndex,
+  terms: string[]
+): { distinctive: string[]; rarest?: string; absent: boolean } {
+  const frequency = (term: string) => index.documentFrequency.get(term) ?? 0;
+  const distinctive = terms.filter((term) => {
+    const df = frequency(term);
+    return df > 0 && df <= GATE_MAX_DF_SHARE * index.procedures.size;
+  });
+  const rarest = distinctive.reduce<string | undefined>(
+    (best, term) => (best === undefined || frequency(term) < frequency(best) ? term : best),
     undefined
   );
-  if (!rarest) {
-    return { absent: true };
-  }
-  const absent = counted.length < all.length;
-  return rarest.df > GATE_MAX_DF_SHARE * index.procedures.size ? { absent } : { anchor: rarest.term, absent };
+  return { distinctive, rarest, absent: terms.some((term) => frequency(term) === 0) };
 }
+
+const procedureTerms = (procedure: Procedure) =>
+  new Set(
+    normalizeTerms(
+      [...procedure.labels, ...procedure.steps.flatMap((s) => [s.text, s.value, selectorWords(s.selector ?? '')])].join(
+        ' '
+      )
+    )
+  );
 
 const anchorSteps = (procedure: Procedure, anchor: string) =>
   procedure.steps.filter((s) =>
@@ -156,7 +172,7 @@ const anchorSteps = (procedure: Procedure, anchor: string) =>
 
 function searchQuery(index: StepSearchIndex, query: string, request: StepSearchRequest): StepSearchGroup {
   const excluded = new Set(request.excludeIds ?? []);
-  const { anchor, absent } = anchorTerm(index, normalizeTerms(query));
+  const { distinctive, rarest: anchor, absent } = anchorTerm(index, normalizeTerms(query));
   const absentWords = query.split(/\s+/).filter((word) => {
     const terms = normalizeTerms(word);
     return terms.length > 0 && terms.every((term) => !index.documentFrequency.has(term));
@@ -183,15 +199,17 @@ function searchQuery(index: StepSearchIndex, query: string, request: StepSearchR
           .filter(([, fields]) => fields.some((field) => field === 'labels' || field === 'steps'))
           .map(([term]) => term)
       );
-      return { procedure, passes, terms, score: result.score * gate * pageFactor(procedure, request.pageUrl) };
+      return { procedure, terms, score: result.score * gate * pageFactor(procedure, request.pageUrl) };
     })
     .sort((a, b) => b.score - a.score || a.procedure.id.localeCompare(b.procedure.id));
 
   const top = ranked[0];
+  const covered = top !== undefined && distinctive.every((term) => procedureTerms(top.procedure).has(term));
   return {
     query,
     absentWords,
-    noStrongMatch: absent || !top || !top.passes || top.score < STRONG_SCORE,
+    commonOnly: !absent && distinctive.length === 0,
+    noStrongMatch: absent || !top || distinctive.length === 0 || !covered || top.score < STRONG_SCORE,
     hits: ranked.slice(0, request.limit).map(({ procedure, score, terms }) => ({
       procedure,
       score,

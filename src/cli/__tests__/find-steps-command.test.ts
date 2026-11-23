@@ -46,11 +46,11 @@ describe('find-steps command', () => {
   });
 
   it('returns the procedure with its steps, neighbours and build stats', async () => {
-    const outcome = await run({ queries: ['dependent service filter'], limit: 1 });
+    const outcome = await run({ queries: ['dependent service filter classic'], limit: 1 });
     expect(outcome.status).toBe('ok');
     const data = (outcome as { data: any }).data;
     expect(data.groups).toHaveLength(1);
-    expect(data.groups[0].query).toBe('dependent service filter');
+    expect(data.groups[0].query).toBe('dependent service filter classic');
     expect(data.groups[0].noStrongMatch).toBe(false);
     expect(data.stats).toEqual(expect.objectContaining({ eligibleGuides: 3, healthRevision: 1 }));
     const results = data.groups[0].results;
@@ -117,9 +117,9 @@ describe('find-steps command', () => {
   });
 
   it('headers each group in the text output', async () => {
-    const outcome = await run({ queries: ['dependent service filter', 'kubernetes cluster monitoring'] });
+    const outcome = await run({ queries: ['dependent service filter classic', 'kubernetes cluster monitoring'] });
     const text = (outcome as any).text as string;
-    expect(text).toMatch(/"dependent service filter"\n1\./);
+    expect(text).toMatch(/"dependent service filter classic"\n1\./);
     expect(text).toContain('"kubernetes cluster monitoring" (no strong match)');
   });
 
@@ -166,11 +166,20 @@ describe('next-action hints', () => {
   });
 
   it('hints only weak groups, leaving the continuation to context.nextProcedure', async () => {
-    const outcome = (await run({ queries: ['dependent service filter', 'kubernetes cluster monitoring'] })) as any;
+    const outcome = (await run({
+      queries: ['dependent service filter classic', 'kubernetes cluster monitoring'],
+    })) as any;
     const [continuing, weak] = outcome.data.groups;
     expect(continuing.results[0].context.nextProcedure).toBeDefined();
     expect(continuing.hint).toBeUndefined();
     expect(weak.hint).toContain('No verified steps mention "kubernetes", "cluster".');
+  });
+
+  it('gives a common-words hint when no query term is distinctive', async () => {
+    const outcome = (await run({ queries: ['dependent service filter'] })) as any;
+    const [group] = outcome.data.groups;
+    expect(group.noStrongMatch).toBe(true);
+    expect(group.hint).toMatch(/^Every word here is common to many procedures\. These results show shared steps/);
   });
 
   it('rewords a weak group around the words found in no procedure, in their original order and casing', async () => {

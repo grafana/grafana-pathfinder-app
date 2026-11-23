@@ -73,6 +73,7 @@ interface Held {
 
 let held: Held | undefined;
 let inFlight: Promise<StepIndexResult> | undefined;
+let failed: { at: number; result: Exclude<StepIndexResult, { ok: true }> } | undefined;
 
 export function cacheDirectory(): string {
   const base = process.env.XDG_CACHE_HOME || join(homedir(), platform() === 'darwin' ? 'Library/Caches' : '.cache');
@@ -83,6 +84,9 @@ export function getStepIndex(): Promise<StepIndexResult> {
   if (held && Date.now() - held.checkedAt < RECHECK_INTERVAL_MS) {
     return Promise.resolve({ ok: true, snapshot: held.snapshot });
   }
+  if (!held && failed && Date.now() - failed.at < RECHECK_INTERVAL_MS) {
+    return Promise.resolve(failed.result);
+  }
   inFlight ??= resolveIndex().finally(() => {
     inFlight = undefined;
   });
@@ -92,6 +96,7 @@ export function getStepIndex(): Promise<StepIndexResult> {
 export function __resetStepIndexForTests(): void {
   held = undefined;
   inFlight = undefined;
+  failed = undefined;
 }
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -104,11 +109,22 @@ async function resolveIndex(): Promise<StepIndexResult> {
     held = { ...previous!, checkedAt: Date.now() };
     return { ok: true, snapshot: previous!.snapshot };
   };
+  // With nothing held, remember the failure so repeated calls do not refetch every guide from a failing origin.
+  const fail = (result: Exclude<StepIndexResult, { ok: true }>, source?: string): StepIndexResult => {
+    if (previous) {
+      return keepHeld();
+    }
+    const at = Date.now();
+    const retryAt = new Date(at + RECHECK_INTERVAL_MS).toISOString();
+    const message = `${source ? `${source}: ` : ''}${result.message} Not retried before ${retryAt}.`;
+    failed = { at, result: { ...result, message } };
+    return failed.result;
+  };
   if (!health.ok) {
-    return previous ? keepHeld() : health;
+    return fail(health, 'health report');
   }
   if (!catalog.ok) {
-    return previous ? keepHeld() : catalog;
+    return fail(catalog, 'catalog');
   }
   const catalogHash = sha256(JSON.stringify(catalog.rawIndex) + catalog.baseUrl);
   const unchanged = previous?.revision === health.revision && previous.catalogHash === catalogHash;
@@ -118,7 +134,7 @@ async function resolveIndex(): Promise<StepIndexResult> {
 
   const built = await build(health, catalog);
   if (!built.ok) {
-    return previous ? keepHeld() : built;
+    return fail(built);
   }
   // A changed revision or catalog changes which guides are eligible, so even a partial build (some content fetches
   // failed) replaces the held index. For the same guides, keep whichever indexed more procedures.
@@ -127,6 +143,7 @@ async function resolveIndex(): Promise<StepIndexResult> {
     !previous || !unchanged || !partial || built.snapshot.stats.procedures >= previous.snapshot.stats.procedures;
   const snapshot = useBuilt ? built.snapshot : previous.snapshot;
   held = { revision: health.revision, catalogHash, checkedAt: Date.now(), snapshot };
+  failed = undefined;
   return { ok: true, snapshot };
 }
 

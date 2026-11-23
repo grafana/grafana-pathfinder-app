@@ -19,6 +19,8 @@ import type { Procedure, Step } from '../utils/step-index/segment';
 
 const MAX_FETCH = 8;
 
+const COMMON_HINT =
+  'Every word here is common to many procedures. These results show shared steps you can reuse; check each product-specific step (such as a data source or visualization type) before using its selectors, and use placeholders for steps you cannot verify.';
 const WEAK_HINT =
   "No strong match. Reword once with the words Grafana's UI uses; if still weak, use placeholders only for steps you know.";
 
@@ -30,7 +32,7 @@ export const FindStepsCommand = z
       .max(8)
       .optional()
       .describe(
-        'One phrase of 2-5 words per sub-task, each searched and returned separately (e.g. "create dashboard", "configure loki data source", "merge query results").'
+        'One phrase of 2-5 words per sub-task, each searched and returned separately (e.g. "create dashboard", "configure loki data source", "create alert rule").'
       )
       .meta({ role: 'addressing' }),
     pageUrl: z
@@ -139,7 +141,7 @@ export async function runFindSteps(input: FindStepsInput): Promise<CommandOutcom
     pageUrl: input.pageUrl,
     excludeIds: input.excludeIds,
     limit: input.limit,
-  }).map(({ query, noStrongMatch, absentWords, hits }, groupIndex) => {
+  }).map(({ query, noStrongMatch, absentWords, commonOnly, hits }, groupIndex) => {
     const results = hits.map(({ procedure, matchedSteps }, i) => {
       const earlier = renderedFull.get(procedure.id);
       if (i === 0 && earlier === undefined) {
@@ -153,7 +155,9 @@ export async function runFindSteps(input: FindStepsInput): Promise<CommandOutcom
       ? undefined
       : absentWords.length > 0 && generic.length > 0
         ? `No verified steps mention ${absentWords.map((word) => `"${word}"`).join(', ')}. Search the Grafana process in generic terms: { "opts": { "queries": [${JSON.stringify(generic.join(' '))}] } }. Use placeholders only for the product-specific fields.`
-        : WEAK_HINT;
+        : commonOnly
+          ? COMMON_HINT
+          : WEAK_HINT;
     return { query, noStrongMatch, ...(hint ? { hint } : {}), results };
   });
 

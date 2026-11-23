@@ -181,8 +181,45 @@ describe('getStepIndex failures', () => {
   it('returns an error and no index when the health report cannot be fetched on a cold start', async () => {
     global.fetch = mockStepIndexFetch({ healthStatus: 500 }) as unknown as typeof fetch;
     const result = await getStepIndex();
-    expect(result).toEqual(expect.objectContaining({ ok: false, code: 'HTTP_ERROR' }));
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: false,
+        code: 'HTTP_ERROR',
+        message: expect.stringMatching(/^health report: .* Not retried before \d{4}-/),
+      })
+    );
     expect('snapshot' in result).toBe(false);
+  });
+
+  it('does not refetch within the recheck interval after a failed cold build', async () => {
+    const fetchMock = mockStepIndexFetch({ content: () => 500 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const first = await getStepIndex();
+    expect(first).toEqual(expect.objectContaining({ ok: false, code: 'EMPTY_INDEX' }));
+    expect(!first.ok && first.message).toContain('Not retried before');
+    const fetches = contentFetches(fetchMock);
+    expect(fetches).toBeGreaterThan(0);
+
+    expect(await getStepIndex()).toBe(first);
+    clock += RECHECK_INTERVAL_MS - 1;
+    expect(await getStepIndex()).toBe(first);
+    expect(contentFetches(fetchMock)).toBe(fetches);
+
+    clock += 1;
+    await getStepIndex();
+    expect(contentFetches(fetchMock)).toBeGreaterThan(fetches);
+  });
+
+  it('does not refetch within the recheck interval after the health report fails on a cold start', async () => {
+    const fetchMock = mockStepIndexFetch({ healthStatus: 500 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const first = await getStepIndex();
+    const calls = fetchMock.mock.calls.length;
+    expect(await getStepIndex()).toBe(first);
+    expect(fetchMock.mock.calls).toHaveLength(calls);
+    afterRecheckInterval();
+    await getStepIndex();
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(calls);
   });
 
   it('returns PARSE_ERROR and writes nothing for a malformed health report', async () => {
@@ -363,6 +400,7 @@ describe('getStepIndex failures', () => {
     const fetchMock = mockStepIndexFetch();
     global.fetch = fetchMock as unknown as typeof fetch;
     __resetRepositoryClientForTests();
+    afterRecheckInterval();
     expect((await getStepIndex()).ok).toBe(true);
   });
 

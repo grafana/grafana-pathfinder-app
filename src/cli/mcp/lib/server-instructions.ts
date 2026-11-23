@@ -47,7 +47,7 @@ export const SERVER_INSTRUCTIONS: string = [
   // Detailed shape/rules live in `pathfinder_authoring_start`.
   'Authoring is session-token based. `pathfinder_create_package` mints a `sessionToken`; pass `{sessionToken}` on every subsequent mutation, read, and finalize call. Mutation responses are ACKS (`{sessionToken, generation, summary, outcome}`) — they do NOT include the artifact body. Use the `summary` tree for navigation; call `pathfinder_read_session` / `pathfinder_inspect` for explicit on-demand reads. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session. Stateless `{artifact}` mode is an OSS / airgap fallback — do not use it when a `sessionToken` is available.',
   '',
-  'Pathfinder guides usually show how to do something in Grafana. Call `pathfinder_find_steps` with the independent Grafana-specific sub-tasks together, each its own 2-5 word query (up to 8 queries per call), and build from its steps; follow-up calls are expected for `procedureId` fetches and `pageUrl` chaining; when a step you searched for is missing from the procedure found, check its `nextProcedure`/`previousProcedure` (fetch by `procedureId`) before writing a placeholder.',
+  "Pathfinder guides usually show how to do something in Grafana. Call `pathfinder_find_steps` once with all the independent Grafana-specific sub-tasks (2-5 word queries, up to 8) and build from its steps; check a result's `nextProcedure`/`previousProcedure` before writing a placeholder.",
   '',
   'Two rules that bite agents in production — observe them before writing blocks:',
   '',
