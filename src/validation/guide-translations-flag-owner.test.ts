@@ -16,12 +16,12 @@ import { SRC_DIR, collectSourceFiles, isTestFile, toPosixPath } from './import-g
 
 const OWNERS = new Set(['utils/openfeature.ts', 'utils/guide-translations-enablement.ts']);
 
-const FLAG_NAMES = [/pathfinder\.guide-translations/, /\bGUIDE_TRANSLATIONS_FLAG\b/];
+const FLAG_NAMES = [/pathfinder\.guide-translations(?![\w-])/, /\bGUIDE_TRANSLATIONS_FLAG\b/];
 
 const ADVICE =
   'Only the flag registry and src/utils/guide-translations-enablement.ts may name the guide translations flag. ' +
   'Readers must call isGuideTranslationsEnabled() instead of reading the flag. ' +
-  'Only #2400 may change the default or add an owner of the flag.';
+  'To change the default or add an owner, do it in the release-gate change, and update OWNERS here and docs/design/I18N.md together.';
 
 function filesNamingTheFlag(): string[] {
   return collectSourceFiles()
@@ -45,5 +45,11 @@ describe('guide translations flag ownership', () => {
       const text = fs.readFileSync(path.join(SRC_DIR, owner), 'utf-8');
       expect(FLAG_NAMES.some((pattern) => pattern.test(text))).toBe(true);
     }
+  });
+
+  it('reports the exact flag name but not a sibling flag that extends it', () => {
+    const matches = (text: string) => FLAG_NAMES.some((pattern) => pattern.test(text));
+    expect(matches("getFlag('pathfinder.guide-translations')")).toBe(true);
+    expect(matches("getFlag('pathfinder.guide-translations-ai')")).toBe(false);
   });
 });
