@@ -7,6 +7,8 @@ import { testIds } from '../../constants/testIds';
 
 const RETURN_TITLE = 'Return to the page where recording started';
 const AT_START_TITLE = 'Already at starting page';
+const GROUPING_ON_TITLE = 'Multi-step grouping is ON. Click to disable.';
+const GROUPING_OFF_TITLE = 'Multi-step grouping is OFF. Click to enable.';
 
 function renderOverlay(props: Partial<RecordModeOverlayProps> = {}) {
   const onStop = jest.fn();
@@ -41,7 +43,12 @@ function RecorderHarness({ onSteps }: { onSteps: (count: number) => void }) {
         Page action
       </button>
       {recorder.isRecording && (
-        <RecordModeOverlay onStop={jest.fn()} stepCount={0} startingUrl={`${window.location.origin}/#start`} />
+        <RecordModeOverlay
+          onStop={jest.fn()}
+          stepCount={0}
+          startingUrl={`${window.location.origin}/#start`}
+          onToggleMultiStepGrouping={jest.fn()}
+        />
       )}
     </>
   );
@@ -134,12 +141,56 @@ describe('RecordModeOverlay', () => {
     });
   });
 
+  describe('Auto-group', () => {
+    it('is absent without the toggle callback', () => {
+      renderOverlay({ isMultiStepGroupingEnabled: true });
+      expect(screen.queryByRole('button', { name: 'Auto-group' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'No grouping' })).not.toBeInTheDocument();
+    });
+
+    it.each([
+      { enabled: true, label: 'Auto-group', title: GROUPING_ON_TITLE },
+      { enabled: false, label: 'No grouping', title: GROUPING_OFF_TITLE },
+    ])('renders a focusable native button labelled $label', ({ enabled, label, title }) => {
+      renderOverlay({ isMultiStepGroupingEnabled: enabled, onToggleMultiStepGrouping: jest.fn() });
+      const toggle = screen.getByRole('button', { name: label });
+      expect(toggle.tagName).toBe('BUTTON');
+      expect(toggle).toHaveAttribute('type', 'button');
+      expect(toggle).toHaveAttribute('title', title);
+      expect(toggle).toBeEnabled();
+      expect(toggle).not.toHaveAttribute('aria-disabled', 'true');
+
+      act(() => toggle.focus());
+      expect(toggle).toHaveFocus();
+    });
+
+    it.each([
+      { enabled: true, label: 'Auto-group' },
+      { enabled: false, label: 'No grouping' },
+    ])('toggles once per click on $label without default action or bubbling', ({ enabled, label }) => {
+      const onToggle = jest.fn();
+      const { onAncestorClick } = renderOverlay({
+        isMultiStepGroupingEnabled: enabled,
+        onToggleMultiStepGrouping: onToggle,
+      });
+
+      const notCancelled = fireEvent.click(screen.getByRole('button', { name: label }));
+      expect(notCancelled).toBe(false);
+      expect(onToggle).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByText(label));
+      expect(onToggle).toHaveBeenCalledTimes(2);
+      expect(onAncestorClick).not.toHaveBeenCalled();
+    });
+  });
+
   it('does not record a step when the button text is clicked during recording', () => {
     const onSteps = jest.fn();
     render(<RecorderHarness onSteps={onSteps} />);
 
     fireEvent.click(screen.getByText('Stop'));
     fireEvent.click(screen.getByText('Return to start'));
+    fireEvent.click(screen.getByText('Auto-group'));
     expect(onSteps).toHaveBeenLastCalledWith(0);
 
     fireEvent.click(screen.getByTestId('page-button'));
