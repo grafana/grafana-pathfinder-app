@@ -135,14 +135,14 @@ describe('GuidedHandler', () => {
         mockNavigationManager.getOwnedCommentBox()?.remove();
       });
       const pending = guidedHandler.executeGuidedStep(
-        { targetAction: 'button', refTarget: '#terminal-target' },
+        { targetAction: 'button', refTarget: '#terminal-target', isSkippable: true },
         0,
         1,
         5000
       );
       await jest.advanceTimersByTimeAsync(0);
-      document.querySelector<HTMLButtonElement>('#terminal-target')!.click();
-      expect(await pending).toBe('completed');
+      document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
+      expect(await pending).toBe('skipped');
       const doneBox = document.querySelector('[data-guided-state="completed"]')!;
       expect(doneBox).toBeInTheDocument();
       expect(doneBox.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
@@ -173,7 +173,25 @@ describe('GuidedHandler', () => {
       expect(box).not.toBeInTheDocument();
     });
 
-    it.each(['completed', 'skipped'] as const)(
+    it('dismisses the final box when the user performs the final action', async () => {
+      const target = document.querySelector<HTMLButtonElement>('#terminal-target')!;
+      const pending = guidedHandler.executeGuidedStep(
+        { targetAction: 'button', refTarget: '#terminal-target', isSkippable: true },
+        0,
+        1,
+        5000
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('.interactive-comment-box')).not.toBeNull();
+      target.click();
+      expect(await pending).toBe('completed');
+      expect(document.querySelector('[data-guided-state="completed"]')).toBeNull();
+      expect(document.querySelector('.interactive-comment-box')).toBeNull();
+      expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it.each(['skipped'] as const)(
       'keeps a close-only done box after %s without delaying the result',
       async (outcome) => {
         const target = document.querySelector<HTMLButtonElement>('#terminal-target')!;
@@ -835,8 +853,8 @@ describe('GuidedHandler', () => {
 
       await jest.advanceTimersByTimeAsync(0);
 
-      // Progress bar should be at 100%
-      expect(progressBar.style.width).toBe('100%');
+      // The user performed the final action, so the box is dismissed rather than kept at 100%
+      expect(document.querySelector('[data-guided-state="completed"]')).toBeNull();
 
       // Reset click count to track only the second click
       clickCount = 0;
@@ -861,14 +879,13 @@ describe('GuidedHandler', () => {
       expect(result).toBe('completed');
       expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
     });
-    it('shows 100% on single-step tour completion', async () => {
-      const button = document.querySelector<HTMLButtonElement>('#target')!;
-
+    it('shows 100% when a single-step tour is skipped', async () => {
       const completionPromise = guidedHandler.executeGuidedStep(
         {
           targetAction: 'highlight',
           refTarget: '#target',
           targetComment: 'Only step',
+          isSkippable: true,
         },
         0, // stepIndex = 0
         1, // totalSteps = 1 (single-step tour)
@@ -878,17 +895,32 @@ describe('GuidedHandler', () => {
       // Wait for async setup to complete
       await jest.advanceTimersByTimeAsync(0);
 
-      // Trigger the click
-      button.click();
+      document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
 
-      // Wait for click handler async operations
+      // Wait for skip handler async operations
       await jest.advanceTimersByTimeAsync(0);
 
       expect(progressBar.style.width).toBe('100%');
 
       const result = await completionPromise;
-      expect(result).toBe('completed');
+      expect(result).toBe('skipped');
       expect(mockNavigationManager.clearOwnedHighlights).toHaveBeenCalled();
+    });
+
+    it('removes the single-step box without a done paint when the user completes it', async () => {
+      const completionPromise = guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#target', targetComment: 'Only step' },
+        0,
+        1,
+        5000
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      document.querySelector<HTMLButtonElement>('#target')!.click();
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(await completionPromise).toBe('completed');
+      expect(progressBar.style.width).toBe('0%');
+      expect(document.querySelector('[data-guided-state="completed"]')).toBeNull();
     });
 
     it('does NOT delay cleanup for non-final steps', async () => {
@@ -1018,6 +1050,7 @@ describe('GuidedHandler', () => {
           targetAction: 'highlight',
           refTarget: '#target',
           targetComment: 'Final step',
+          isSkippable: true,
         },
         1, // Final step
         2, // Total steps
@@ -1027,12 +1060,13 @@ describe('GuidedHandler', () => {
       // Wait for async setup to complete
       await jest.advanceTimersByTimeAsync(0);
 
-      // Trigger the click
-      button.click();
+      // Skip the final step; a user-performed click would dismiss the box instead
+      expect(button).toBeInTheDocument();
+      document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 1 } }));
 
       await jest.advanceTimersByTimeAsync(0);
 
-      expect(await completionPromise).toBe('completed');
+      expect(await completionPromise).toBe('skipped');
       const box = document.querySelector('[data-guided-state="completed"]')!;
       expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
       expect(box.querySelector('button')).toHaveTextContent('Close');
@@ -1041,11 +1075,16 @@ describe('GuidedHandler', () => {
     it.each(['noop', 'button'] as const)(
       "removes another handler's done box before starting a %s action",
       async (targetAction) => {
-        const first = guidedHandler.executeGuidedStep({ targetAction: 'button', refTarget: '#target' }, 0, 1, 5000);
+        const first = guidedHandler.executeGuidedStep(
+          { targetAction: 'button', refTarget: '#target', isSkippable: true },
+          0,
+          1,
+          5000
+        );
         await jest.advanceTimersByTimeAsync(0);
-        document.querySelector<HTMLButtonElement>('#target')!.click();
+        document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
         await jest.advanceTimersByTimeAsync(0);
-        expect(await first).toBe('completed');
+        expect(await first).toBe('skipped');
         const oldBox = document.querySelector('[data-guided-state="completed"]')!;
         expect(oldBox).toBeInTheDocument();
         const second = new GuidedHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
