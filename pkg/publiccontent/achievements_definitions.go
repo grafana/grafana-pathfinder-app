@@ -20,7 +20,7 @@ import (
 
 // The CDN holds one definitions file per format version; a build reads only its own.
 const (
-	achievementsCDNBase = "https://interactive-learning.grafana.net/"
+	achievementsCDNBase = "https://interactive-learning.grafana-dev.net/"
 	achievementsArtBase = achievementsCDNBase + "achievements/art/"
 
 	definitionsFetchTimeout    = 5 * time.Second
