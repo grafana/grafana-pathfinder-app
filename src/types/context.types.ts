@@ -79,6 +79,7 @@ export interface Recommendation {
   missingCriteria?: string[];
   placement?: 'suggestion' | 'experiment';
   editorialFeatured?: boolean;
+  groupTitle?: string;
   title: string;
   url: string;
   type?: 'learning-journey' | 'docs-page' | 'interactive' | 'package';

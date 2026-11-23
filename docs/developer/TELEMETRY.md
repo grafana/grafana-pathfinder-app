@@ -199,6 +199,8 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 
 ### Source attribution
 
+In the sidebar’s **Recommended** tab, `open_resource_click` uses `interaction_location=hub_featured_card` for every guide launched from a featured group. This includes **Recommended for you** groups created from untitled suggestions or multiple recommender picks. Before featured groups, only the first eligible item used that location. The next three rows used `hub_more_recommended`, and later rows used `hub_other_docs`. Compare location-level click trends by plugin version across the rollout, since the same guide can now count toward a different location.
+
 Catalog Start and Resume report `open_resource_click` once per accepted click.
 The locations are `package_browser`, `my_learning_discover_more`,
 `my_learning_continue` and `content_completion_panel`. Confirmed official content retains its title and URL;
