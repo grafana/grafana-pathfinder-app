@@ -370,21 +370,21 @@ Error: Section "setup" has 3 children and cannot be removed without --cascade.
 
 ### `rename-block`
 
-Rename one block ID and rewrite the references to it inside the same package. Validates the package before writing and leaves every file unchanged on any failure.
+Rename one block ID and rewrite the references to it inside the same package. Validates the package before writing and leaves every file unchanged on any validation or refusal failure.
 
 ```
 pathfinder-cli rename-block <dir> <id> <new-id>
 ```
 
-It rewrites every `section-completed:` reference in a `requirements`, `objectives`, `conditions` or `verify` field that the section check resolves to the renamed block. That is `section-completed:<id>` when the ID has no `section-` prefix, and `section-completed:section-<id>` always. It refuses with `UNSUPPORTED_REFERENCE` when a compiled locale's `translation` annotation lists the ID. Other packages and saved completion records are not touched.
+It rewrites every `section-completed:` reference in a `requirements`, `objectives`, `conditions`, `verify` or challenge `successCriteria` field that the section check resolves to the renamed block. That is `section-completed:<id>` when the ID has no `section-` prefix, and `section-completed:section-<id>` always. It refuses with `UNSUPPORTED_REFERENCE` when a compiled locale's `translation` annotation lists the ID, and with `INVALID_BLOCK_ID` when the new ID contains a comma or starts or ends with whitespace, because a condition cannot carry it. Other packages and saved completion records are not touched.
 
 **Output on success:**
 
 ```
-Renamed section "setup" to "install" and rewrote 3 reference(s)
+Renamed section "setup" to "install" and rewrote 3 field(s) that referenced it
   old id: setup
   new id: install
-  references: blocks[1].requirements[0], blocks[1].objectives[0], blocks[2].conditions[0]
+  fields: blocks[1].requirements[0], blocks[1].objectives[0], blocks[2].conditions[0]
   package valid: true
 ```
 
