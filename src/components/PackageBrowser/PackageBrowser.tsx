@@ -14,7 +14,7 @@ import { ControlsLabel } from '@grafana/scenes';
 
 import { useLearningPageScroll, usePathfinderPluginConfig } from '../../hooks';
 import { resolvePackageNavLinks } from '../../docs-retrieval';
-import { catalogModuleCountText } from '../LearningContentCard/learning-effort';
+import { courseCompletionCounts, catalogModuleCountText } from '../LearningContentCard/learning-effort';
 import {
   CATALOG_BATCH_SIZE,
   EMPTY_CATALOG_VIEW,
@@ -340,7 +340,6 @@ function PackageBrowserContent({
     progress,
     {
       onOpenGuide,
-      loadInSidebar: page,
       onAcceptedLaunch: (item) => {
         update({ focusKey: item.key });
         selectCard(item.key);
@@ -349,6 +348,9 @@ function PackageBrowserContent({
     }
   );
   const searchId = useId();
+  const pathCompletions = new Map(
+    pathEntries.map((entry) => [entry.key, courseCompletionCounts(entry.path, entry.guides, entry.assignment)])
+  );
   const loadedPathModuleCounts = new Map(
     pathEntries.filter((entry) => entry.guides.length > 0).map((entry) => [entry.key, entry.guides.length])
   );
@@ -367,7 +369,7 @@ function PackageBrowserContent({
     [
       item.format === 'path'
         ? catalogModuleCountText(item, loadedPathModuleCounts.get(catalogIdentity(item)))
-        : item.format === 'guide' && item.activityCount !== undefined
+        : item.format === 'guide' && typeof item.activityCount === 'number' && item.activityCount > 0
           ? t('packageBrowser.activities', '{{count}} activities', { count: item.activityCount })
           : null,
       !page && item.estimatedMinutes
@@ -393,6 +395,7 @@ function PackageBrowserContent({
       estimatedMinutes={page ? item.estimatedMinutes : undefined}
       organization={item.source === 'organization'}
       progress={progress.get(item.key)?.percent}
+      courseCompletion={pathCompletions.get(catalogIdentity(item))}
       onLaunch={() => launch(item)}
       launching={launchingKey === item.key}
       launchDisabled={launchingKey !== null && launchingKey !== item.key}

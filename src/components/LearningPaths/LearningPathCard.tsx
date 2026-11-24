@@ -5,7 +5,8 @@ import { t } from '@grafana/i18n';
 
 import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-visual';
 import { LearningCardPreview } from '../LearningContentCard/LearningCardPreview';
-import { moduleCountText } from '../LearningContentCard/learning-effort';
+import { moduleCountText, courseCompletionCounts } from '../LearningContentCard/learning-effort';
+import { LearningCardMetadata } from '../LearningContentCard/LearningCardMetadata';
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
 import { getManifestMilestoneIds, getManifestTracks } from '../../types/package.types';
 import { formatDueDate, getDueStatus, getAssignmentGuideState } from '../../learning-paths';
@@ -259,26 +260,19 @@ export function LearningPathCard({
                 isCompleted={isCompleted}
                 showPercentage
               />
-              <span className={styles.tileGuideCount}>
-                {isCompleted && (
-                  <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
-                )}
-                <span>
-                  {isLaunching && presentation !== 'resume' ? (
-                    <span role="status">{t('learningCard.opening', 'Opening…')}</span>
-                  ) : (
-                    <span>{t('learningCard.path', 'Learning path')}</span>
-                  )}
-                  <span aria-hidden="true">·</span>
-                  {moduleLabel}
-                </span>
+              <div className={styles.tileGuideCount}>
+                <LearningCardMetadata
+                  progress={isCompleted ? 100 : progress}
+                  completion={courseCompletionCounts(path, effectiveGuides, assignment)}
+                  opening={isLaunching && presentation !== 'resume'}
+                />
                 {presentation !== 'compact' &&
                   !imageDuration &&
                   typeof path.estimatedMinutes === 'number' &&
                   path.estimatedMinutes > 0 && (
                     <span>{t('packageBrowser.time', 'About {{minutes}} min', { minutes: path.estimatedMinutes })}</span>
                   )}
-              </span>
+              </div>
             </div>
             {!isCompleted && assignment && <AssignmentBadges assignment={assignment} />}
           </div>

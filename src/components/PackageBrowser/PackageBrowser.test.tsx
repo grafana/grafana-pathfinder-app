@@ -8,9 +8,34 @@ import { getCatalogView, updateCatalogView } from '../../global-state/package-br
 import { prepareGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import { AppPlatformPackageResolver } from '../../package-engine';
 import { finishGuideLoad } from '../../lib/telemetry/guide-load';
-import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
+import { openGuideInSidebar, openPreparedGuide } from '../docs-panel/utils/open-prepared-guide';
+import { panelModeManager } from '../../global-state/panel-mode';
+import { locationService } from '@grafana/runtime';
+import { createPreparedContent } from '../../lib/guide-counting-source';
 
-jest.mock('../docs-panel/utils/open-prepared-guide', () => ({ openGuideInSidebar: jest.fn() }));
+jest.mock('../docs-panel/utils/open-prepared-guide', () => ({
+  ...jest.requireActual('../docs-panel/utils/open-prepared-guide'),
+  openGuideInSidebar: jest.fn(),
+}));
+jest.mock('../../global-state/panel-mode', () => ({
+  panelModeManager: {
+    getMode: jest.fn(() => 'sidebar'),
+    setModeTransient: jest.fn(),
+    setPendingGuide: jest.fn(),
+    capturePriorPath: jest.fn(),
+  },
+}));
+jest.mock('../../global-state/sidebar', () => ({
+  sidebarState: {
+    getIsSidebarMounted: jest.fn(() => true),
+    setIsSidebarMounted: jest.fn(),
+    setPendingOpenSource: jest.fn(),
+    openSidebar: jest.fn(),
+  },
+}));
+jest.mock('../../global-state/guide-launch', () => ({ guideLaunchStore: { stage: jest.fn(() => 'launch-key') } }));
+jest.mock('../../global-state/link-interception', () => ({ linkInterceptionState: { addToQueue: jest.fn() } }));
+jest.mock('../../lib/storage/extension-sidebar', () => ({ isExtensionSidebarOwnedByOther: jest.fn(() => false) }));
 
 jest.mock('@grafana/scenes', () => ({
   ControlsLabel: ({ label, htmlFor }: { label: string; htmlFor?: string }) => <label htmlFor={htmlFor}>{label}</label>,
@@ -45,6 +70,7 @@ let mockLocalPaths: LearningPath[] = [];
 let mockLocalGuides: PathGuide[] = [];
 let mockGuideMetadata: Record<string, GuideMetadataEntry> = {};
 let mockLocalPercent = 0;
+let mockRequiresGrafanaUi = false;
 const mockRetry = jest.fn();
 const mockResolve = jest.fn();
 const originalObserver = global.IntersectionObserver;
@@ -77,6 +103,7 @@ jest.mock('../../lib/analytics', () => ({
 }));
 
 jest.mock('../../learning-paths', () => ({
+  pathSequences: jest.requireActual('../../learning-paths/path-sequences').pathSequences,
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   useCatalogProgress: () => mockProgress,
@@ -108,6 +135,7 @@ jest.mock('../../lib/telemetry/guide-load', () => ({
 }));
 jest.mock('@grafana/runtime', () => ({
   config: { bootData: { user: {} } },
+  locationService: { push: jest.fn() },
 }));
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
@@ -116,6 +144,26 @@ jest.mock('@grafana/i18n', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRequiresGrafanaUi = false;
+  jest.mocked(prepareGuideLaunch).mockImplementation(async (url, context) => {
+    const guide = { id: 'test', title: context.title, blocks: [] };
+    return {
+      ok: true,
+      launch: {
+        url,
+        title: context.title,
+        source: context.source,
+        type: 'docs',
+        packageInfo: context.packageInfo,
+        requiresGrafanaUi: mockRequiresGrafanaUi,
+        preparedContent: createPreparedContent({
+          fetched: { content: '{}', metadata: { title: context.title }, type: 'single-doc', url, lastFetched: '' },
+          countingGuide: guide,
+          expandedGuide: guide,
+        }),
+      },
+    };
+  });
   mockScope = 'test';
   mockProgress = new Map();
   mockLocalPaths = [];
@@ -123,6 +171,7 @@ beforeEach(() => {
   mockGuideMetadata = {};
   mockLocalPercent = 0;
   mockItems.splice(2);
+  mockItems[0] = { ...mockItems[0]!, format: 'guide' };
   updateCatalogView('test', {
     mode: 'all',
     query: '',
@@ -839,7 +888,7 @@ it('uses the same local path progress as the homepage even when catalogue progre
   expect(screen.getByText('28%')).toBeInTheDocument();
 });
 
-it('resumes a local bundled path whose guides are missing from the catalog', async () => {
+it('shows lesson completion counts and resumes a local path whose guides are missing from the catalog', async () => {
   mockLocalPaths = [{ id: 'local-path', title: 'Local course', description: '', guides: ['old', 'next'], badgeId: '' }];
   mockLocalGuides = [
     { id: 'old', title: 'Completed guide', completed: true, isCurrent: false },
@@ -847,14 +896,16 @@ it('resumes a local bundled path whose guides are missing from the catalog', asy
   ];
   mockGuideMetadata = { next: { title: 'Next guide', estimatedMinutes: 5 } };
   mockLocalPercent = 50;
-  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  const onOpen = jest.fn();
+  render(<PackageBrowser page onOpenGuide={onOpen} />);
 
+  expect(screen.getByText('1 of 2 completed')).toBeInTheDocument();
+  expect(screen.getByText('50%')).toBeInTheDocument();
+  expect(screen.queryByText('2 modules')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Local course' }));
 
   await waitFor(() =>
-    expect(openGuideInSidebar).toHaveBeenCalledWith(
-      expect.objectContaining({ url: 'bundled:next', title: 'Next guide' })
-    )
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ url: 'bundled:next', title: 'Next guide' }))
   );
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
@@ -873,14 +924,37 @@ it('opens a missing-catalog organization path instead of a public guide with a m
     },
   ];
   mockResolve.mockResolvedValue({ ok: true, manifest });
-  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+  const onOpen = jest.fn();
+  render(<PackageBrowser page onOpenGuide={onOpen} />);
 
   fireEvent.click(screen.getByRole('button', { name: 'Team course' }));
 
   await waitFor(() =>
-    expect(openGuideInSidebar).toHaveBeenCalledWith(
+    expect(onOpen).toHaveBeenCalledWith(
       expect.objectContaining({ url: 'backend-guide:team-path', title: 'Team course' })
     )
   );
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
+
+it.each(
+  (['guide', 'path'] as const).flatMap((format) =>
+    [false, true].map((requiresGrafanaUi) => ({ format, requiresGrafanaUi }))
+  )
+)(
+  'routes an Explore $format click using its prepared content classification (requires Grafana: $requiresGrafanaUi)',
+  async ({ format, requiresGrafanaUi }) => {
+    mockItems[0] = { ...mockItems[0]!, format };
+    mockRequiresGrafanaUi = requiresGrafanaUi;
+    render(<PackageBrowser page onOpenGuide={openPreparedGuide} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Build a dashboard' }));
+    await waitFor(() =>
+      expect(panelModeManager.setModeTransient).toHaveBeenCalledWith(requiresGrafanaUi ? 'sidebar' : 'fullscreen')
+    );
+    expect(prepareGuideLaunch).toHaveBeenCalledTimes(1);
+    if (!requiresGrafanaUi) {
+      expect(locationService.push).toHaveBeenCalledWith(expect.stringContaining('/fullscreen?'));
+    }
+    expect(openGuideInSidebar).not.toHaveBeenCalled();
+  }
+);

@@ -7,6 +7,7 @@
 
 // Main hook
 export { useLearningPaths, useGuideCompletion } from './learning-paths.hook';
+export { pathSequences } from './path-sequences';
 
 // Discover More (external package index)
 export { useDiscoverMore, toDiscoverMoreItem } from './useDiscoverMore';

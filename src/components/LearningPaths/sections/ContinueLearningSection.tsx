@@ -71,7 +71,7 @@ export function ContinueLearningSection({
             effort={[
               item.format === 'path'
                 ? catalogModuleCountText(item)
-                : item.activityCount !== undefined
+                : typeof item.activityCount === 'number' && item.activityCount > 0
                   ? t('packageBrowser.activities', '{{count}} activities', { count: item.activityCount })
                   : undefined,
               item.estimatedMinutes

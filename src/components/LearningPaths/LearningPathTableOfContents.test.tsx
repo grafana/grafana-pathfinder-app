@@ -682,7 +682,8 @@ describe('LearningPathTableOfContents', () => {
   });
 });
 
-it('shows the topic above the title, groups progress with the action, and updates the heading and progress label for the selected track', () => {
+it('shows the topic above the title and updates the completion count and progress for the selected track', () => {
+  setCompletedSlugs(new Set(['set-up']));
   const builderMilestones = [
     milestones[0]!,
     milestones[1]!,
@@ -708,10 +709,15 @@ it('shows the topic above the title, groups progress with the action, and update
   expect(eyebrow).toBeInTheDocument();
   expect(eyebrow.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(hero).not.toHaveTextContent('Learning path');
-  expect(screen.getByRole('heading', { name: '2 modules in this path' })).toBeInTheDocument();
+  expect(screen.getByText('1 of 2 completed')).toBeInTheDocument();
   const fundamentalsProgress = screen.getByRole('progressbar', { name: /through Fundamentals/ });
   expect(fundamentalsProgress).toHaveAttribute('aria-valuemax', '100');
-  expect(screen.getByTestId('learning-paths-toc-cta').parentElement).toContainElement(fundamentalsProgress);
+  expect(
+    Array.from(fundamentalsProgress.querySelectorAll('[data-segment-state]')).map((segment) =>
+      segment.getAttribute('data-segment-state')
+    )
+  ).toEqual(['done', 'current']);
+  expect(fundamentalsProgress.parentElement).toHaveTextContent('1 of 2 completed(50%)');
   expect(hero).not.toHaveTextContent('2 modules');
   const track = screen.getByRole('combobox', { name: 'Altitude' });
   expect(track).toHaveDisplayValue('Fundamentals (default)');
@@ -722,9 +728,14 @@ it('shows the topic above the title, groups progress with the action, and update
   ).toEqual(['Fundamentals (default)', 'Builder', 'Seller', 'Engineer']);
   fireEvent.change(track, { target: { value: 'builder' } });
   expect(track).toHaveDisplayValue('Builder');
-  expect(screen.getByRole('heading', { name: '3 modules in this path' })).toBeInTheDocument();
+  expect(screen.getByText('1 of 3 completed')).toBeInTheDocument();
   const builderProgress = screen.getByRole('progressbar', { name: /through Builder/ });
   expect(builderProgress).toBeInTheDocument();
+  expect(
+    Array.from(builderProgress.querySelectorAll('[data-segment-state]')).map((segment) =>
+      segment.getAttribute('data-segment-state')
+    )
+  ).toEqual(['done', 'current', 'upcoming']);
   expect(screen.getByRole('button', { name: 'Build' })).toHaveAttribute(
     'data-milestone-url',
     `${baseUrl}build/content.json`
@@ -769,4 +780,21 @@ it('looks up artwork by the course URL when there is no manifest ID', () => {
   );
   expect(screen.queryByRole('combobox', { name: 'Altitude' })).not.toBeInTheDocument();
   expect(screen.getByRole('img', { name: /Metrics Drilldown displaying/ })).toBeInTheDocument();
+});
+
+it('keeps the overview current segment and completed total aligned with published lessons', () => {
+  setCompletedSlugs(new Set());
+  peekAllMock.mockReturnValue({});
+  const withLockedFirst = [{ ...milestones[0]!, isLocked: true }, milestones[1]!];
+  const { rerender } = render(<LearningPathTableOfContents fullPage milestones={withLockedFirst} baseUrl={baseUrl} />);
+  const progress = screen.getByRole('progressbar');
+  expect(screen.getByText('0 of 1 completed')).toBeInTheDocument();
+  expect(progress.querySelector('[data-segment-state="current"]')).toBeInTheDocument();
+  expect(screen.getByTestId('learning-paths-toc-cta')).toHaveAttribute('data-milestone-url', milestones[1]!.url);
+  setCompletedSlugs(new Set(['explore']));
+  rerender(<LearningPathTableOfContents fullPage milestones={withLockedFirst} baseUrl={baseUrl} />);
+  expect(screen.getByText('1 of 1 completed')).toBeInTheDocument();
+  expect(progress).toHaveAttribute('aria-valuenow', '100');
+  expect(progress.querySelector('[data-segment-state="done"]')).toBeInTheDocument();
+  expect(progress.querySelector('[data-segment-state="current"]')).not.toBeInTheDocument();
 });

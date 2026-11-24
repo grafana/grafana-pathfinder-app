@@ -201,6 +201,7 @@ let mockAssignmentsError = false;
 const mockRetryAssignments = jest.fn();
 
 jest.mock('../../learning-paths', () => ({
+  pathSequences: jest.requireActual('../../learning-paths/path-sequences').pathSequences,
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   get BADGES() {
@@ -265,7 +266,7 @@ jest.mock('../../lib/user-storage', () => ({
   learningProgressStorage: { clear: jest.fn() },
   journeyCompletionStorage: { getAll: jest.fn(async () => ({})), clear: jest.fn() },
   interactiveStepStorage: { clearAll: jest.fn() },
-  interactiveCompletionStorage: { clearAll: jest.fn() },
+  interactiveCompletionStorage: { clearAll: jest.fn(), peekAll: jest.fn(() => ({})) },
   milestoneCompletionStorage: { clearAll: jest.fn() },
   guideCompletionMarkStorage: { clearAllWithPrefix: jest.fn() },
 }));

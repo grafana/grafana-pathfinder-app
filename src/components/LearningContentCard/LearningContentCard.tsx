@@ -3,6 +3,7 @@ import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { cx } from '@emotion/css';
 
+import { LearningCardMetadata } from './LearningCardMetadata';
 import { ProgressRing } from '../LearningPaths/ProgressRing';
 import { LearningDetailsToggle } from './LearningDetailsToggle';
 import { LearningTopicIcon } from './LearningTopicIcon';
@@ -15,6 +16,7 @@ import type { LearningPreview } from './learning-previews';
 export interface LearningContentCardProps {
   title: string;
   estimatedMinutes?: number;
+  courseCompletion?: { completed: number; total: number };
   preview?: Pick<LearningPreview, 'src' | 'alt'>;
   presentation?: 'resume' | 'compact';
   tile?: boolean;
@@ -55,6 +57,7 @@ const FEATURED_DESCRIPTION_LINES = 4;
 export function LearningContentCard({
   title,
   estimatedMinutes,
+  courseCompletion,
   preview,
   presentation,
   tile = false,
@@ -305,29 +308,19 @@ export function LearningContentCard({
                 showPercentage
               />
             )}
-            <span className={styles.tileMetadata}>
+            <div className={styles.tileMetadata}>
               {busy && kind === 'docs' && <span role="status">{t('learningCard.opening', 'Opening…')}</span>}
-              {percent === 100 && (
+              {percent === 100 && kind === 'docs' && (
                 <span className={styles.completedLabel}>{t('learningCard.completed', 'Completed')}</span>
               )}
               {kind !== 'docs' && (
-                <span>
-                  <span>
-                    {busy ? (
-                      <span role="status">{t('learningCard.opening', 'Opening…')}</span>
-                    ) : kind === 'path' ? (
-                      t('learningCard.path', 'Learning path')
-                    ) : (
-                      t('learningCard.guide', 'Guide')
-                    )}
-                  </span>
-                  {effort && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      {effort}
-                    </>
-                  )}
-                </span>
+                <LearningCardMetadata
+                  kind={kind}
+                  progress={percent}
+                  completion={courseCompletion}
+                  effort={effort}
+                  opening={busy}
+                />
               )}
               {kind === 'docs' && effort && <span>{effort}</span>}
               {presentation !== 'compact' &&
@@ -336,7 +329,7 @@ export function LearningContentCard({
                 estimatedMinutes > 0 && (
                   <span>{t('packageBrowser.time', 'About {{minutes}} min', { minutes: estimatedMinutes })}</span>
                 )}
-            </span>
+            </div>
           </div>
         </div>
         {(launchError || error) && (

@@ -20,6 +20,7 @@ import { testIds } from '../../constants/testIds';
 import { findPathByUrl, getBadgeForPath } from '../../learning-paths';
 import { GuideList } from './GuideList';
 import { ProgressRing } from './ProgressRing';
+import { SegmentedProgressBar } from './SegmentedProgressBar';
 import { BadgeIcon } from './BadgeIcon';
 import { getTableOfContentsStyles } from './learning-paths.styles';
 
@@ -361,16 +362,43 @@ export function LearningPathTableOfContents({
       data-test-path-percent={progress}
     >
       <div className={styles.header}>
-        <div className={fullPage ? fullPageStyles.headingGroup : undefined}>
+        {fullPage ? (
+          <div className={fullPageStyles.progressRow}>
+            <div className={fullPageStyles.progressSummary}>
+              <span className={fullPageStyles.progressCount}>
+                {t('coverPage.completedOfTotal', '{{completed}} of {{total}} completed', {
+                  completed: guides.filter((guide) => guide.completed).length,
+                  total: milestonePercentages.length,
+                })}
+              </span>
+              <span className={fullPageStyles.progressLabel}>({Math.round(progress)}%)</span>
+            </div>
+            <div
+              className={fullPageStyles.progressBar}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              aria-label={t('coverPage.progressAriaLabel', '{{percent}}% through {{sequence}}', {
+                percent: Math.round(progress),
+                sequence: activeSequenceLabel,
+              })}
+            >
+              <SegmentedProgressBar
+                highContrast
+                currentColor="primary"
+                segments={milestonePercentages.map(({ percent, milestone }) =>
+                  percent === 100 ? 'done' : milestone.url === ctaTarget?.url ? 'current' : 'upcoming'
+                )}
+              />
+            </div>
+          </div>
+        ) : (
           <h2 className={styles.heading}>
-            {!fullPage && <Icon name="list-ul" size="md" className={styles.headingIcon} />}
-            {fullPage
-              ? t('coverPage.modulesInPath', '{{modules}} in this path', {
-                  modules: moduleCountText(activeMilestones.length),
-                })
-              : t('coverPage.tableOfContents', 'In this path')}
+            <Icon name="list-ul" size="md" className={styles.headingIcon} />
+            {t('coverPage.tableOfContents', 'In this path')}
           </h2>
-        </div>
+        )}
         <div className={styles.headerActions}>
           {!fullPage && progress > 0 && (
             <ProgressRing
@@ -384,26 +412,7 @@ export function LearningPathTableOfContents({
               })}
             />
           )}
-          {fullPage && (
-            <div className={fullPageStyles.progressRow}>
-              <div
-                className={fullPageStyles.progressTrack}
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(progress)}
-                aria-label={t('coverPage.progressAriaLabel', '{{percent}}% through {{sequence}}', {
-                  percent: Math.round(progress),
-                  sequence: activeSequenceLabel,
-                })}
-              >
-                <div className={fullPageStyles.progressFill} style={{ width: `${progress}%` }} />
-              </div>
-              <span className={fullPageStyles.progressLabel}>
-                {t('coverPage.percentComplete', '{{percent}}% complete', { percent: Math.round(progress) })}
-              </span>
-            </div>
-          )}
+
           {ctaTarget &&
             (fullPage ? (
               <Button icon="play" {...ctaProps}>
@@ -489,31 +498,18 @@ const getFullPageStyles = (theme: GrafanaTheme2) => ({
     ...theme.typography.base,
     color: theme.colors.text.secondary,
   }),
-  headingGroup: css({
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: theme.spacing(2),
-    flex: '0 0 auto',
-    maxWidth: '100%',
-  }),
   headerActions: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(2), flexWrap: 'wrap' }),
   progressRow: css({
     display: 'flex',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     gap: theme.spacing(1),
-    width: theme.spacing(22),
+    width: theme.spacing(32),
     maxWidth: '100%',
   }),
-  progressTrack: css({
-    flex: 1,
-    minWidth: 0,
-    height: theme.spacing(0.5),
-    borderRadius: theme.shape.radius.pill,
-    background: theme.colors.border.weak,
-    overflow: 'hidden',
-  }),
-  progressFill: css({ height: '100%', background: theme.colors.success.main, borderRadius: theme.shape.radius.pill }),
+  progressBar: css({ width: theme.spacing(32), maxWidth: '100%' }),
+  progressSummary: css({ display: 'flex', alignItems: 'baseline', gap: theme.spacing(0.5), flexWrap: 'wrap' }),
+  progressCount: css({ ...theme.typography.sm, color: theme.colors.text.primary, whiteSpace: 'nowrap' }),
   progressLabel: css({ ...theme.typography.sm, color: theme.colors.text.secondary, whiteSpace: 'nowrap' }),
   trackFilter: css({
     display: 'flex',

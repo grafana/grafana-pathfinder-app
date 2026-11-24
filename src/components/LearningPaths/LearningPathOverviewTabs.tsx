@@ -21,7 +21,7 @@ export function LearningPathOverviewTabs({
   const detailsAvailable = details != null;
   const active = detailsAvailable ? selected : 'modules';
   const tabs = [
-    { key: 'modules' as const, label: t('coverPage.modulesTab', 'Modules'), content: modules },
+    { key: 'modules' as const, label: t('coverPage.outlineTab', 'Outline'), content: modules },
     { key: 'details' as const, label: t('coverPage.detailsTab', 'Details'), content: details },
   ];
 

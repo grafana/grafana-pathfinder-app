@@ -259,7 +259,6 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       marginBottom: theme.spacing(0.5),
     }),
     tileEyebrowMetricIcon: css({ boxSizing: 'border-box', padding: theme.spacing(0.125) }),
-    completedLabel: css({ color: theme.colors.success.text }),
     tileFooter: css({
       display: 'flex',
       flexWrap: 'wrap',
@@ -282,7 +281,6 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       flexWrap: 'wrap',
       columnGap: theme.spacing(1.5),
       rowGap: theme.spacing(0.5),
-      '& > span': { display: 'inline-flex', alignItems: 'center', gap: theme.spacing(0.5) },
     }),
     launchError: css({ ...theme.typography.sm, color: theme.colors.error.text, margin: 0 }),
     titleButton: css({

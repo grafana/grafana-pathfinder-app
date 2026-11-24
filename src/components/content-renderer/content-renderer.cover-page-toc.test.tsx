@@ -64,7 +64,7 @@ describe('ContentRenderer cover-page table of contents', () => {
     render(<ContentRenderer fullPageOverview completion={UNTRACKED_COMPLETION} content={content} />);
 
     const toc = screen.getByTestId(testIds.learningPaths.tableOfContents);
-    expect(screen.getByRole('tab', { name: 'Modules' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Outline' })).toHaveAttribute('aria-selected', 'true');
     expect(toc).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'About this path' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
@@ -73,7 +73,7 @@ describe('ContentRenderer cover-page table of contents', () => {
     expect(heading.compareDocumentPosition(screen.getByText('Body')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole('heading', { level: 3, name: 'What to expect' })).toHaveAttribute('id', 'expect');
     expect(screen.getByRole('heading', { level: 4, name: 'More detail' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Modules' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Outline' }));
     expect(toc).toBeVisible();
   });
 
@@ -92,7 +92,7 @@ describe('ContentRenderer cover-page table of contents', () => {
     const details = screen.getByRole('tab', { name: 'Details' });
     expect(details).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(details);
-    expect(screen.getByRole('tab', { name: 'Modules' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Outline' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId(testIds.learningPaths.tableOfContents)).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'About this path' })).not.toBeInTheDocument();
   });
@@ -151,7 +151,7 @@ describe('ContentRenderer cover-page table of contents', () => {
     });
 
     expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-disabled', 'true');
-    const modules = screen.getByRole('tabpanel', { name: 'Modules' });
+    const modules = screen.getByRole('tabpanel', { name: 'Outline' });
     expect(within(modules).getByRole('heading', { level: 2, name: 'Badges you can earn' })).toBeVisible();
     expect(within(screen.getByTestId(testIds.learningPaths.coverHero)).getByText('15 min')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'About this path' })).not.toBeInTheDocument();
