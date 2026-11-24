@@ -1,7 +1,7 @@
 import { createQueueStorage } from '../completion-write-storage';
 import { MAX_RETENTION_MS } from '../completion-write-timing';
 
-import { createEventQueue, MAX_QUEUED_EVENTS } from './achievement-event-queue';
+import { createEventQueue, discardQueuedGuideEvents, MAX_QUEUED_EVENTS } from './achievement-event-queue';
 import type { AchievementEventBody, EventOutcome } from './achievements-client';
 
 const NOW = Date.parse('2026-11-01T00:00:00.000Z');
@@ -82,6 +82,45 @@ describe('achievement event queue', () => {
     queue.discardGuideEvents();
     expect(queue.snapshot().map((item) => item.id)).toEqual(['echo']);
     expect(storage.list().map((item) => item.id)).toEqual(['echo']);
+  });
+
+  it('stops another tab mid-drain when this tab discards, keeping only the in-flight guide and source events', async () => {
+    const tabB = createQueueStorage<AchievementEventBody>('test-achievement-queue:', 'user-1:org-1', 'tab-b');
+    const outcomes: EventOutcome[] = [{ kind: 'transient' }, evaluated(false)];
+    let now = NOW;
+    let calls = 0;
+    const sent: string[] = [];
+    const queue = createEventQueue({
+      now: () => now,
+      random: () => 0.5,
+      storage: createQueueStorage<AchievementEventBody>('test-achievement-queue:', 'user-1:org-1', 'tab-a'),
+      send: async (body) => {
+        sent.push(body.eventId);
+        if (calls === 0) {
+          discardQueuedGuideEvents(tabB);
+        }
+        return outcomes[Math.min(calls++, outcomes.length - 1)]!;
+      },
+    });
+    queue.enqueue(event('g1'));
+    now += 1;
+    queue.enqueue(event('g2'));
+    now += 1;
+    queue.enqueue(event('g3'));
+    now += 1;
+    queue.enqueue(sourceEvent('echo'));
+
+    await queue.processDue();
+    expect(sent).toEqual(['g1']);
+    expect(
+      tabB
+        .list()
+        .map((item) => item.id)
+        .sort()
+    ).toEqual(['echo', 'g1']);
+
+    await queue.processDue();
+    expect(sent).toEqual(['g1', 'echo']);
   });
 
   it('removes an event the route evaluated with retry false and hands the response on', async () => {

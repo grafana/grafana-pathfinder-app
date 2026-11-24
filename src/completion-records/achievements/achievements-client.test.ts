@@ -5,7 +5,7 @@ import { parseAchievementDefinitions } from './achievements-client';
 
 const golden = JSON.parse(
   fs.readFileSync(
-    path.join(__dirname, '../../../pkg/plugin/testdata/contract/achievements-definitions.default.json'),
+    path.join(__dirname, '../../../pkg/provider/testdata/contract/achievements-definitions.default.json'),
     'utf8'
   )
 );

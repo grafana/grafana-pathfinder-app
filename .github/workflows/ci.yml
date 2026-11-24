@@ -259,6 +259,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Check for backend
         id: check-for-backend
@@ -279,6 +280,10 @@ jobs:
         with:
           version: latest
           args: coverage
+
+      - name: Compare SDK behavior with frozen backend
+        if: steps.check-for-backend.outputs.has-backend == 'true'
+        run: python3 scripts/sdk-fidelity/run.py
 
   # Build job runs in parallel with quality checks
   build:
@@ -625,6 +630,8 @@ jobs:
 
       - name: Run Playwright tests
         id: run-tests
+        env:
+          GRAFANA_TEST_IMAGE_VERSION: ${{ matrix.GRAFANA_IMAGE.VERSION }}
         run: npm run e2e
 
       - name: Upload e2e test summary
@@ -691,8 +698,14 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "$table" >> "$GITHUB_STEP_SUMMARY"
 
+      # Fork PRs get a read-only GITHUB_TOKEN, so the comment call would fail with a 403.
+      - name: Note fork PR in job summary
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          echo "Playwright results are in this job summary. A PR comment is posted only for branches in this repository." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Comment PR with results
-        if: ${{ github.event.number != null && steps.results.outputs.table != '' }}
+        if: ${{ github.event.number != null && steps.results.outputs.table != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b # v3.0.1
         with:
           comment-tag: gf-playwright-test-results
