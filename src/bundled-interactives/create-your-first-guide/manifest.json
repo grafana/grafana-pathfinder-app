@@ -1,0 +1,28 @@
+{
+  "id": "create-your-first-guide",
+  "type": "guide",
+  "repository": "bundled",
+  "description": "Create a team guide with explanatory text, recorded UI actions, and a show-only highlight. Preview it and save a draft.",
+  "category": "authoring",
+  "author": {
+    "name": "Interactive Learning",
+    "team": "Grafana Developer Advocacy"
+  },
+  "prerequisites": [
+    {
+      "id": "editor-access",
+      "label": "Editor or Admin access is required. No existing dashboards, data sources, or integrations are needed."
+    }
+  ],
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  },
+  "stats": {
+    "version": 2,
+    "blockCount": 24,
+    "sectionCount": 6,
+    "completableBlockCount": 10,
+    "finalCompletablePosition": 23
+  }
+}
