@@ -297,7 +297,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         // would drop spec.manifest and the provenance annotations, and with no resourceVersion it
         // would not even 409 against a concurrent writer.
         if (existingResourceName && !existing) {
-          throw new Error(`Could not read the saved guide "${existingResourceName}" — try saving again.`);
+          throw Object.assign(new Error(`Could not read the saved guide "${existingResourceName}"`), { status: 404 });
         }
 
         // Caller metadata wins per field: its resourceVersion is the version the editor's content is
@@ -359,7 +359,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       try {
         const existing = await readStoredGuide(resourceName);
         if (!existing) {
-          throw new Error(`Guide "${resourceName}" was not found on the server`);
+          throw Object.assign(new Error(`Guide "${resourceName}" was not found on the server`), { status: 404 });
         }
 
         const response = await lastValueFrom(

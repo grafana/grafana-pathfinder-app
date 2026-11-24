@@ -30,6 +30,7 @@ export interface BlockEditorHeaderProps {
    * - 'published': visible in docs panel Custom guides section
    */
   publishedStatus: 'not-saved' | 'draft' | 'published';
+  canSaveAsNew?: boolean;
   /** Whether the guide (draft or published) has local changes not yet sent to the backend */
   hasUnsyncedChanges: boolean;
   /** Current view mode */
@@ -97,6 +98,7 @@ export function BlockEditorHeader({
   guideTitle,
   isDirty,
   publishedStatus,
+  canSaveAsNew,
   hasUnsyncedChanges,
   viewMode,
   onSetViewMode,
@@ -236,6 +238,7 @@ export function BlockEditorHeader({
 
           {isBackendAvailable && (
             <SaveActions
+              canSaveAsNew={canSaveAsNew}
               publishedStatus={publishedStatus}
               hasUnsyncedChanges={hasUnsyncedChanges}
               isPosting={isPostingToBackend}
