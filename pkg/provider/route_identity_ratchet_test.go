@@ -30,14 +30,14 @@ const routeRecipe = "docs/design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a
 
 // publicRoutesWithoutCallerIdentity is the reviewed list of routes whose handler serves a caller it never verified.
 // Adding a route here means serving it with no verified identity, so a change to this map needs the same
-// review as a change to the unprovisioned-client exemption switch in newApp. Anything personal or tenant-scoped
+// review as a change to the unprovisioned-client exemption switch in appConfig. Anything personal or tenant-scoped
 // belongs in neither. See "How to add or change a route" in docs/design/BACKEND_PROXY_PATTERN.md.
 var publicRoutesWithoutCallerIdentity = map[string]string{
 	"/backend/package-recommendations": "anonymous public CDN recommendations feed; exempt in the unprovisioned-client switch",
 	"/backend/health":                  "fixed status document that reads no data; deliberately not exempt, so an unprovisioned backend fails the browser's health probe and tenant calls never route to it",
 }
 
-// unprovisionedClientExemptions mirrors the switch in newApp that keeps a route live without a caller-exchange
+// unprovisionedClientExemptions mirrors the switch in appConfig that keeps a route live without a caller-exchange
 // transport. Every entry must read no tenant storage; a change here needs the same review as that switch.
 var unprovisionedClientExemptions = map[string]string{
 	"/backend/package-recommendations":         "anonymous public CDN recommendations feed",
@@ -251,7 +251,7 @@ func TestPublicRouteAllowlistsMatchTheUnprovisionedExemption(t *testing.T) {
 		}
 		_, exempt := unprovisionedClientExemptions[route.path]
 		if served := !strings.Contains(recorder.Body.String(), "obo-unavailable"); served != exempt {
-			t.Errorf("%s served=%t without a caller-exchange transport, but unprovisionedClientExemptions says %t; the switch in newApp and this reviewed list must agree, and a personal or tenant route belongs in neither. See %s.", route, served, exempt, routeRecipe)
+			t.Errorf("%s served=%t without a caller-exchange transport, but unprovisionedClientExemptions says %t; the switch in appConfig and this reviewed list must agree, and a personal or tenant route belongs in neither. See %s.", route, served, exempt, routeRecipe)
 		}
 	}
 }
