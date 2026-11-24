@@ -3,7 +3,7 @@
 Pathfinder uses the Grafana App SDK provider in `pkg/provider`. The Go executable
 starts `sdkplugin.Run(provider, ...)`, following the
 [SDK test app](https://github.com/grafana/app-examples/tree/main/example-appsdktest-app).
-It has no `WithAppFunc`, legacy `CallResource` adapter, or `pkg/plugin` implementation.
+Tenant routes use the SDK provider. The public recommendations compatibility feed uses a separate plugin instance registered with `WithAppFunc`.
 Grafana launches this executable to run the SDK application. Removing the executable
 would require a separately hosted application server.
 
@@ -39,24 +39,40 @@ It is a local runtime prerequisite, not an observable frontend capability flag.
 The public-feed plugin instance answers the standard Grafana plugin health check. SDK `backend/health`
 also returns the application health response.
 
+## How to add or change a route
+
+Follow `POST backend/completion-records` from a reader's click to the durable record. The SDK steps register and dispatch the request. The identity, storage, caching, and retry policies below are Pathfinder's contract for tenant features.
+
+1. **Register the method and path.** In `kinds/manifest.cue`, find `createBackendCompletion`. Declare the new route alongside it under the namespaced API version and run `npm run generate:kinds`. In `pkg/provider/provider.go`, register the same method and path in `VersionedCustomRoutes` and supply its handler. Check how an unprovisioned client answers the route too. Add a dispatch case for the new endpoint (see `TestProviderDispatchesSettingsRoute` and `TestUnprovisionedAndSharedCredentialsCannotAccessTenantStores`). A manifest entry alone cannot exercise the handler.
+2. **Call it from the browser.** Add the relative path to the allowlist in `src/lib/backend-routes.ts`. Follow `src/completion-records/completion-write-client.ts`, which sends its POST to `backendRoute('completion-records')`. The helper supplies the host namespace. Keep tenant operations on that route when the backend is unavailable. The browser transport guard lives in `src/validation/app-platform-transport.test.ts`.
+3. **Establish who can act before touching storage.** In `completionWriteHandler`, `completionCaller(ctx, req.ResourceIdentifier.Namespace)` derives the subject from verified ingress identity and checks the namespace for exact equality. Apply the route's authorization using that caller. Use the caller's context and namespace with the generated resource client. Reject missing delegation, including a shared bearer credential. Exercise a wrong namespace, a forged body identity, and an unauthorized caller with zero upstream writes. See `TestCompletionCallerUsesAuthenticatedNamespace`, `TestSDKCompletionWritesPreserveIdentityProgressAndRepair`, and `TestUnprovisionedAndSharedCredentialsCannotAccessTenantStores`.
+4. **Bound requests and expose failures.** The completion handler limits the incoming body before decoding. Reuse the bounded client in `pkg/resourceaccess` for upstream calls and propagate the route's error or capability response. A denied or failed read must never authorize a write, imply an empty store, or trigger another credential or transport. Use `TestSettingsStoreDelegatesCallerThroughBoundedTransport`, `TestSettingsTransportRefusesRedirect`, and `TestSettingsRouteDoesNotMistakeUpstreamFailureForAbsence` as examples.
+5. **Define retry behavior for writes.** Follow the attempt-ID branch: `CompletionAttemptRecordName` derives a stable name from the subject and attempt ID, and `UpsertCompletionAttempt` handles concurrent updates. Replaying a completed attempt must repair side effects without duplicating the record or advancing completion again. For updates to an existing resource, preserve its identity and use its resource version. Exercise a duplicate and a lost acknowledgement as in `TestCompletionRetryAfterConnectionLossRepairsAssignmentAndCache`.
+6. **Scope any cache to the data it contains.** Start an uncached read with the caller-delegated client. If you add a personal cache, follow the sibling `GET backend/completion-records/my` handler: partition by verified namespace and subject, including failure cooldowns, and invalidate the same caller's entry after a write. Reserve process-wide caches for anonymous public content. See `TestCompletionSDKCacheFiltersUsersAndInvalidates` and `TestRecommendationsSDKFetchAndSharedCache`.
+
+For review, trace the browser call through both registrations to the upstream client. Run the affected route tests and exercise the route over HTTP on a registered SDK host using the [local acceptance procedure](#local-acceptance).
+
 ## Route inventory
 
 Tenant requests and the preferred public-feed request use:
 
 `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/{route}`
 
-| Route                           | Methods                | Responsibility                                         |
-| ------------------------------- | ---------------------- | ------------------------------------------------------ |
-| `pathfinder-settings`           | GET, POST, PUT         | Read, create, and update the default settings resource |
-| `custom-guide`                  | GET, POST, PUT, DELETE | Guide item access and authoring                        |
-| `custom-guide-repository`       | GET                    | Catalogue metadata                                     |
-| `completion-records`            | POST                   | Completion creation and attempt progress               |
-| `completion-records/my`         | GET                    | Current caller's collated progress                     |
-| `completion-records/capability` | GET                    | Completion availability and progress support           |
-| `assignments/my`                | GET                    | Current caller's assignments and satisfaction          |
-| `learning-insights`             | GET                    | Admin-only learning aggregation                        |
-| `package-recommendations`       | GET                    | Anonymous public recommendation catalogue              |
-| `health`                        | GET                    | SDK application health                                 |
+| Route                             | Methods                | Responsibility                                         |
+| --------------------------------- | ---------------------- | ------------------------------------------------------ |
+| `pathfinder-settings`             | GET, POST, PUT         | Read, create, and update the default settings resource |
+| `custom-guide`                    | GET, POST, PUT, DELETE | Guide item access and authoring                        |
+| `custom-guide-repository`         | GET                    | Catalogue metadata                                     |
+| `completion-records`              | POST                   | Completion creation and attempt progress               |
+| `completion-records/my`           | GET                    | Current caller's collated progress                     |
+| `completion-records/capability`   | GET                    | Completion availability and progress support           |
+| `assignments/my`                  | GET                    | Current caller's assignments and satisfaction          |
+| `learning-insights`               | GET                    | Admin-only learning aggregation                        |
+| `package-recommendations`         | GET                    | Anonymous public recommendation catalogue              |
+| `api/v1/achievements/events`      | POST                   | Record an achievement event                            |
+| `api/v1/achievements/my`          | GET                    | Read personal achievements                             |
+| `api/v1/achievements/definitions` | GET                    | Read the public definitions catalogue                  |
+| `health`                          | GET                    | SDK application health                                 |
 
 The frontend `backendRoute()` helper allows only this bounded route inventory,
 derives namespace from Grafana runtime configuration, and rejects missing or

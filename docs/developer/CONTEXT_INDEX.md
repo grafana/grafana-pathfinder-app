@@ -86,7 +86,7 @@ Load these files **only when working in the relevant domain**.
 - `magefile.go` — Go build tasks (mage targets)
 - `coda.mdc` — Coda terminal integration — the client side of the `grafana-coda-app` v1 API
 - `CODA.md` — Coda terminal integration (comprehensive). Backend contract lives in the `grafana-coda-app` repo's `docs/API.md`
-- `docs/design/BACKEND_PROXY_PATTERN.md` — Canonical pattern for plugin-backend proxies to the App Platform aggregator: inbound ID-token verification and namespace binding, outbound OBO access-token minting, caching, pagination, failure semantics, capability envelopes, the Go ⇄ TypeScript contract goldens (§10), the POST-create write variant (§11), and the frontend read/write transport split that `src/validation/app-platform-transport.test.ts` enforces
+- [SDK backend route pattern](../design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a-route) — Follow the worked completion route when changing a tenant API. Covers registration, caller delegation, namespace and cache isolation, bounded clients, retry behavior, and the tests for each.
 
 ## History and onboarding
 

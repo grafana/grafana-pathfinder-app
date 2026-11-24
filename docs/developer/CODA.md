@@ -8,7 +8,7 @@ See also: [`.cursor/rules/coda.mdc`](../../.cursor/rules/coda.mdc) for prescript
 constraints, and the `grafana-coda-app` repo's `docs/API.md` for the authoritative v1 API contract.
 
 > **Moved:** the canonical App Platform identity trust-boundary statement used to live in this file.
-> It now lives in [`docs/design/BACKEND_PROXY_PATTERN.md`](../design/BACKEND_PROXY_PATTERN.md) §3,
+> It now lives in [Identity and namespace boundaries](../design/BACKEND_PROXY_PATTERN.md#identity-and-namespace-boundaries),
 > where it belongs — this file no longer describes any Go code in this repo.
 
 ## Ownership

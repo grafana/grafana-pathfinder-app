@@ -63,7 +63,7 @@ async function completionCount(guideSource, guideId, options) {
 // Polls a pair's count until it has risen by `expected`. The read route answers
 // from a per-caller, per-namespace cache with a five-minute TTL, so a single read will often
 // miss a completion that did land; `?refresh=1` forces an upstream read and is
-// itself rate-limited to one per namespace per 30 seconds, which is why the poll
+// itself rate-limited to one per caller and namespace per 30 seconds, which is why the poll
 // spacing is 30 seconds and not tighter.
 async function waitForDelta(guideSource, guideId, baselineCount, expected, timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
