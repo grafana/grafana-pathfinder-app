@@ -183,9 +183,15 @@ test('the lesson action keeps an existing reader tab from displacing the editor'
   await page.getByRole('button', { name: 'Create your first guide', exact: true }).click();
   const floating = page.getByRole('dialog', { name: 'Interactive learning floating panel', exact: true });
   await expect(page.getByLabel('Guide title', { exact: true })).toBeVisible();
-  await floating.locator('[data-interactive-section][id$="explain-the-task"]').getByRole('button', { name: 'Do it', exact: true }).click();
+  await floating
+    .locator('[data-interactive-section][id$="explain-the-task"]')
+    .getByRole('button', { name: 'Do it', exact: true })
+    .click();
   if (process.env.AUTHORING_EVIDENCE) {
-    await page.screenshot({ path: `${process.env.AUTHORING_EVIDENCE}/existing-tab-displaces-editor.png`, fullPage: true });
+    await page.screenshot({
+      path: `${process.env.AUTHORING_EVIDENCE}/existing-tab-displaces-editor.png`,
+      fullPage: true,
+    });
   }
   await expect(page.getByLabel('Guide title', { exact: true })).toHaveValue("Find your team's dashboards");
 });

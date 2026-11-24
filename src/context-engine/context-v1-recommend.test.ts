@@ -139,7 +139,9 @@ it.each([
       const recommendations = await (ContextService as any).getBundledInteractiveRecommendations(
         makeContextData({ currentPath: '/' })
       );
-      expect(recommendations.some((rec: Recommendation) => rec.url === 'bundled:create-your-first-guide')).toBe(expected);
+      expect(recommendations.some((rec: Recommendation) => rec.url === 'bundled:create-your-first-guide')).toBe(
+        expected
+      );
     } finally {
       index.interactives.pop();
       user.orgRole = previousRole;
