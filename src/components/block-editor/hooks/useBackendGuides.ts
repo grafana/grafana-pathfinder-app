@@ -145,7 +145,7 @@ async function readStoredGuide(resourceName: string): Promise<BackendGuide | und
     if (status === 404) {
       return undefined;
     }
-    // Grafana errors carry `data.message`; the plugin proxy writes its reason as `data.error`.
+    // Grafana errors carry `data.message`; the SDK handler returns its reason as `data.error`.
     const data = (err as { data?: { message?: string; error?: string } } | null)?.data;
     const reason = data?.message || data?.error || (err instanceof Error ? err.message : 'request failed');
     const suffix = status === undefined ? '' : ` (HTTP ${status})`;
