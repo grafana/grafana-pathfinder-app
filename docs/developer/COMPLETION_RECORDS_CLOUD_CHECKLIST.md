@@ -275,7 +275,7 @@ Each milestone also records separately, keyed on its own slug. Those are worth s
 
 **Cross-reader privacy is not tested here.** The guarantee is that one reader's `/completion-records/my` never returns another reader's records, and checking it needs two real identities on the same stack signed in at the same time — which is more setup than this checklist is worth, and easy to get subtly wrong (two tabs under one identity would pass while proving nothing).
 
-It is covered by inspection instead: the read path serves only `idx.byUser[caller]`, keyed on the caller's verified ID-token subject, so a cache hit is structurally incapable of returning another reader's rows. See the identity trust boundary in [`../design/BACKEND_PROXY_PATTERN.md`](../design/BACKEND_PROXY_PATTERN.md) and the namespace and subject checks in `pkg/provider/completions.go`.
+It is covered by inspection instead: the read path serves only `CompletionIndex.ByUser[caller]` (`pkg/services/completion_cache.go`), and the cache entry is keyed on the caller's verified namespace and subject, so a cache hit is structurally incapable of returning another reader's rows. See the identity trust boundary in [`../design/BACKEND_PROXY_PATTERN.md`](../design/BACKEND_PROXY_PATTERN.md) and the namespace and subject checks in `pkg/provider/completions.go`.
 
 If you do want to exercise it, do it as a separate, deliberate two-identity session — not as a sixth step here.
 

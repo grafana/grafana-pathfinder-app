@@ -70,7 +70,7 @@ Excluded from tier analysis (not tiered): `test-utils/`, `cli/`, `bundled-intera
 
 ### Backend (`pkg/`)
 
-The Go backend is an **App SDK provider** with shared services and generated resource clients — no database, no streaming. Load `docs/design/BACKEND_PROXY_PATTERN.md` before touching `pkg/`; copy its route recipe and identity checks. `backend/package-recommendations` and achievement definitions use anonymous, process-wide CDN caches; per-user data must never enter them. Sandbox VMs and terminals live in [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app); see `.cursor/rules/coda.mdc`.
+The Go backend is an **App SDK provider** with shared services and generated resource clients — no database, no streaming. Load `docs/design/BACKEND_PROXY_PATTERN.md` before touching `pkg/`, `kinds/manifest.cue` routes, `src/lib/backend-routes.ts`, or `backendRoute(` call sites; copy its route recipe and invariants. `backend/package-recommendations` and achievement definitions use anonymous, process-wide CDN caches; per-user data must never enter them. Sandbox VMs and terminals live in [`grafana-coda-app`](https://github.com/grafana/grafana-coda-app); see `.cursor/rules/coda.mdc`.
 
 ## On-demand context
 

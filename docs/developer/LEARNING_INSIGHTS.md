@@ -89,7 +89,7 @@ The latest available recorded name snapshot is preferred. Display name/login can
 
 ## Availability and incomplete evidence
 
-Treat `capability.available == false` separately from a complete response containing zero rows. A backend version without the route, an identity/OBO problem, a transient request error, and an empty stack are different states.
+Treat `capability.available == false` separately from a complete response containing zero rows. A backend version without the route, an identity or caller-delegation problem, a transient request error, and an empty stack are different states.
 
 A `partial` response is usable observed evidence, not a blanket statement that every metric is incomplete. The UI shows exact counts of available records and scopes limitations by source: completion read failures affect completing people, completion counts, rankings, recent completions and chart placement; assignment read failures affect assignment counts and follow-up coverage. Journey exclusions affect identifiable-guide completion metrics, not assignment LIST coverage. These exclusions do not add an expandable explanation or a page-wide warning; their identity contract is documented above. Actual incomplete reads retain visible recovery notices. Unknown diagnostics conservatively qualify both sources. Machine tokens are translated into impact and recovery guidance rather than displayed verbatim. Unknown assignment reasons include `target-unresolved`, `target-fetch-failed`, and `completion-history-incomplete`; they remain unknown rather than becoming zero progress or false outstanding.
 
@@ -101,7 +101,7 @@ No stale reporting payload is supplied after a failure. An unavailable response 
 
 ### Prerequisites and current verification limit
 
-Use an already deployed build containing both the page and plugin resource, with `pathfinder.learning-insights` enabled only for the test stack and Grafana reloaded. Obtain authorized current-org **Admin** and **Viewer** sessions, an available App Platform namespace, SDK registration and caller delegation, and existing test records in that namespace. Do not assume Basic auth or a service-account token exercises the SDK-verified caller path.
+Use an already deployed build containing both the page and the SDK backend route, with `pathfinder.learning-insights` enabled only for the test stack and Grafana reloaded. Obtain authorized current-org **Admin** and **Viewer** sessions, an available App Platform namespace, SDK registration and caller delegation, and existing test records in that namespace. Do not assume Basic auth or a service-account token exercises the SDK-verified caller path.
 
 The initial local probe reached `http://localhost:3000/api/health`, but `admin:admin` returned **401** for authenticated access. Actual authenticated live reporting, permission enforcement, and the upstream round trip therefore remain **unverified** by that probe. Health success alone proves neither plugin deployment nor authorization.
 

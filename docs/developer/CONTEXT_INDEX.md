@@ -86,7 +86,7 @@ Load these files **only when working in the relevant domain**.
 - `magefile.go` — Go build tasks (mage targets)
 - `coda.mdc` — Coda terminal integration — the client side of the `grafana-coda-app` v1 API
 - `CODA.md` — Coda terminal integration (comprehensive). Backend contract lives in the `grafana-coda-app` repo's `docs/API.md`
-- [SDK backend route pattern](../design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a-route) — Follow the worked completion route when changing a tenant API. Covers registration, caller delegation, namespace and cache isolation, bounded clients, retry behavior, and the tests for each.
+- [SDK backend route pattern](../design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a-route) — Load before adding or changing a route in `pkg/`, `kinds/manifest.cue`, `src/lib/backend-routes.ts`, or a frontend `backendRoute(` call site. Follow the worked completion route. Covers registration, unprovisioned-client behavior, caller delegation, rate limits, cache isolation, bounded clients, retry behavior, and the [route invariants](../design/BACKEND_PROXY_PATTERN.md#route-invariants) with the test that guards each.
 
 ## History and onboarding
 
