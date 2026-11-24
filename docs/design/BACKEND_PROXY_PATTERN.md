@@ -259,8 +259,11 @@ PATHFINDER_SDK_E2E=1 PATHFINDER_ACHIEVEMENTS_FIXTURE=1 GRAFANA_URL=http://localh
 ```
 
 The fixture test checks persistence, retry deduplication, ignored body-supplied
-identity, personal reads, and cross-namespace refusal. It creates achievement
-records for the test user. The normal build and all existing data remain in place
+identity, personal reads, and cross-namespace refusal. Achievement rows cannot be
+deleted and awards are create-only, so before writing it resets the test user's
+`guides-finished` progress to the tiers it has awards for. Every run then makes a
+real write; a test user holding every tier fails the test instead of passing
+without one. The normal build and all existing data remain in place
 after restoration. Cloud testing remains deferred.
 
 The public package feed is the one plugin resource retained for hosts without SDK routes or anonymous SDK access. Both GET paths call the same anonymous CDN reader and process cache. It has no tenant store or write operation. Grafana 13.1 remains supported.
