@@ -29,7 +29,7 @@ test('SDK achievement writes persist and retries do not count a guide twice', as
   expect(beforeResponse.status(), await beforeResponse.text()).toBe(200);
   const before = await beforeResponse.json();
   expect(before.capability.available).toBe(true);
-  const oldUnits =
+  const oldPoints =
     before.progress.find((item: { achievementId: string }) => item.achievementId === 'guides-finished')?.units ?? 0;
   const guideId = `sdk-achievement-${Date.now()}`;
   const event = {
@@ -41,17 +41,30 @@ test('SDK achievement writes persist and retries do not count a guide twice', as
     context: { guideSource: 'bundled', guideId, guideCategory: 'interactive' },
     userId: 'user:forged',
   };
+  const decisions = [];
   for (let retry = 0; retry < 2; retry++) {
     const response = await request.post(`${prefix}/events`, { data: event });
     expect(response.status(), await response.text()).toBe(200);
     const body = await response.json();
     expect(body.retry).toBe(false);
-    expect(body.decisions[0].units).toBe(oldUnits + 1);
+    decisions.push(body.decisions[0]);
   }
+  const [first, repeat] = decisions;
+  if (first.final) {
+    expect(first.units).toBe(0);
+  } else if (first.awarded.length > 0) {
+    expect(first.units).toBe(0);
+    expect(first.nextTier).toBeTruthy();
+  } else {
+    expect(first.units).toBe(oldPoints + 1);
+  }
+  expect(repeat.decision).toBe('ignored');
+  expect(repeat.awarded).toEqual([]);
+  expect(repeat.units).toBe(first.units);
   const after = await (await request.get(`${prefix}/my`)).json();
-  expect(after.progress.find((item: { achievementId: string }) => item.achievementId === 'guides-finished').units).toBe(
-    oldUnits + 1
-  );
+  const progress = after.progress.find((item: { achievementId: string }) => item.achievementId === 'guides-finished');
+  expect(progress.units).toBe(first.units);
+  expect(progress.next).toBe(first.next);
   expect(after.awards.some((item: { achievementId: string }) => item.achievementId === 'guides-finished')).toBe(true);
   expect(after.legacy).toEqual([]);
 });

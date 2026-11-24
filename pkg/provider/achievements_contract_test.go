@@ -229,3 +229,51 @@ func captureAchievementDefinitionsDefault(t *testing.T) *httptest.ResponseRecord
 	defs := loadAchievementsTestBundle(t, achievementsTestBundleWithSkipJSON)
 	return achievementRequest(t, "definitions", "user:1", "default", "default", "", testAchievementDefinitions{defs})
 }
+
+func TestMyAchievementsShowsPointsTowardTheLowestUnheldTier(t *testing.T) {
+	progressOf := func(t *testing.T, mem *memAchievements) (services.MyAchievementsResponse, services.AchievementProgress) {
+		t.Helper()
+		rows, err := mem.ListMine(context.Background(), achievements.Person{ID: achievementsTestUser})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := services.ShapeMyAchievements(rows, loadAchievementsTestBundle(t, achievementsTestBundleJSON))
+		for _, p := range body.Progress {
+			if p.AchievementID == "dash-builder" {
+				return body, p
+			}
+		}
+		t.Fatalf("progress = %+v, want a dash-builder row", body.Progress)
+		return body, services.AchievementProgress{}
+	}
+
+	t.Run("a point toward silver", func(t *testing.T) {
+		mem := newMemAchievements()
+		for i := range 2 {
+			fixtureDashboardEvent(t, mem, i)
+		}
+		if _, p := progressOf(t, mem); p.Units != 1 || p.Next == nil || *p.Next != 2 {
+			t.Fatalf("progress = %+v, want 1 of silver's 2", p)
+		}
+	})
+	t.Run("every tier held", func(t *testing.T) {
+		mem := newMemAchievements()
+		for i := range 5 {
+			fixtureDashboardEvent(t, mem, i)
+		}
+		body, p := progressOf(t, mem)
+		if p.Units != 0 || p.Next != nil || len(body.Awards) != 3 {
+			t.Fatalf("progress = %+v awards = %+v, want all three tiers and no next", p, body.Awards)
+		}
+	})
+	t.Run("a tier awarded before the row recorded it", func(t *testing.T) {
+		mem := newMemAchievements()
+		mem.put(achievements.Person{ID: achievementsTestUser}, achievements.Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{"u1", "u2"}, Points: 1, SchemaVersion: achievements.ProgressSchemaVersion})
+		for _, tier := range []string{"bronze", "silver"} {
+			mem.awards[achievementsTestUser+"/dash-builder/"+tier] = achievements.Award{AchievementID: "dash-builder", TierID: tier, Entity: "dashboards", EarnedAt: achievementContractNow()}
+		}
+		if _, p := progressOf(t, mem); p.Next == nil || *p.Next != 2 || p.Units != 0 {
+			t.Fatalf("progress = %+v, want gold's goal of 2 and none of the point the row holds toward silver", p)
+		}
+	})
+}
