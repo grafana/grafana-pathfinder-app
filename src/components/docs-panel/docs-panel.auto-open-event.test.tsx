@@ -26,6 +26,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { isLearningJourneyUrl } from './utils/url-validation';
+
 const PANEL_ROOT = path.join(__dirname);
 
 /**
@@ -64,10 +66,13 @@ describe('Phase 0 tripwire: pathfinder-auto-open-docs CustomEvent contract', () 
     expect(eventNames).toContain("AUTO_OPEN_DOCS_EVENT = 'pathfinder-auto-open-docs'");
   });
 
-  it('the shared routing predicate still decides from the classified pathname', () => {
-    const urlValidation = fs.readFileSync(path.join(PANEL_ROOT, 'utils', 'url-validation.ts'), 'utf-8');
-    expect(urlValidation).toContain('classifyDocsUrl(');
-    expect(urlValidation).toContain('isLegacyJourneyFamily(');
+  it.each<[string, boolean]>([
+    ['https://grafana.com/docs/learning-paths/x/', true],
+    ['https://grafana.com/learning-paths/x/', true],
+    ['https://grafana.com/docs/learning-hub/x/', false],
+    ['https://grafana.com/docs/foo/?ref=/learning-paths/x', false],
+  ])('the shared routing predicate routes %s as a journey: %s', (url, expected) => {
+    expect(isLearningJourneyUrl(url)).toBe(expected);
   });
 
   it('listener registration exists in exactly one tracked file', () => {

@@ -31,6 +31,28 @@ export interface LearnLocation {
   sectionUrl?: string;
 }
 
+export type LegacySegmentName = 'learning-journeys' | 'learning-paths' | 'tutorials';
+
+/** One `learning-journeys`, `learning-paths` or `tutorials` segment of the path, wherever it sits. */
+export interface LegacySegment {
+  name: LegacySegmentName;
+  /** The segment before it is `docs`. */
+  underDocs: boolean;
+  /** First in the path, or directly after a leading `/docs`. */
+  rooted: boolean;
+  /** Last in the path, with no slash after it. */
+  bare: boolean;
+}
+
+/** `exact` when a whole segment is `milestone-N`, `prefix` when a segment only starts with it. */
+export type MilestoneSegment = 'exact' | 'prefix';
+
+/** The legacy path segments of a non-Learn URL; absent when it has none. */
+export interface LegacyPathFacts {
+  segments: readonly LegacySegment[];
+  milestone?: MilestoneSegment;
+}
+
 export interface DocsUrlClassification {
   family: DocsUrlFamily;
   /**
@@ -39,36 +61,73 @@ export interface DocsUrlClassification {
    */
   journeyBaseUrl?: string;
   learn?: LearnLocation;
+  legacy?: LegacyPathFacts;
 }
 
 const LEARN_ROOT = '/docs/learning-hub/';
 const LEARN_SEARCH_SEGMENT = 'search';
 const LEARN_MAX_DEPTH = 3;
 const UNSTYLED_FILE = 'unstyled.html';
+const DOCS_SEGMENT = 'docs';
 
 const LEARN_KIND_BY_DEPTH: readonly LearnKind[] = ['home', 'journey', 'section', 'step'];
 
-// A legacy family is a root of the path: `/docs/learning-paths/…`, `/tutorials/…`. The `/docs` prefix is optional,
-// as it has always been for these URLs. A segment deeper in the path (`/docs/alloy/latest/tutorials/…`) is an
-// ordinary docs page.
-const LEGACY_ROOT = /^(?:\/docs)?\/(learning-journeys|learning-paths|tutorials)\//;
-const LEGACY_FAMILY_BY_ROOT: Record<string, DocsUrlFamily> = {
+const LEGACY_FAMILY_BY_SEGMENT: Record<LegacySegmentName, DocsUrlFamily> = {
   'learning-journeys': 'legacy-learning-journey',
   'learning-paths': 'learning-path',
   tutorials: 'tutorial',
 };
 
+const MILESTONE_EXACT = /^milestone-\d+$/;
+const MILESTONE_PREFIX = /^milestone-\d/;
+
 const LEGACY_JOURNEY_BASE = /^\/docs\/(?:learning-journeys|learning-paths)\/[^/]+|^\/tutorials\/[^/]+/;
 
 const OTHER: DocsUrlClassification = { family: 'other' };
 
-/** The pathname with `unstyled.html` or a `content[.<locale>].json` file removed. */
+const LEGACY_SEGMENT_NAMES: ReadonlySet<string> = new Set(Object.keys(LEGACY_FAMILY_BY_SEGMENT));
+
+function isLegacySegmentName(segment: string): segment is LegacySegmentName {
+  return LEGACY_SEGMENT_NAMES.has(segment);
+}
+
+/** The pathname with `unstyled.html` or a `content[.<locale>].json` file removed, keeping the slash before it. */
 function stripFile(pathname: string): string {
-  return pathname.endsWith(`/${UNSTYLED_FILE}`) ? pathname.slice(0, -UNSTYLED_FILE.length) : stripContentFile(pathname);
+  if (pathname.endsWith(`/${UNSTYLED_FILE}`)) {
+    return pathname.slice(0, -UNSTYLED_FILE.length);
+  }
+  const stripped = stripContentFile(pathname);
+  return stripped === pathname ? pathname : `${stripped}/`;
 }
 
 function isHttp(url: URL): boolean {
   return url.protocol === 'https:' || url.protocol === 'http:';
+}
+
+function legacyPathFacts(path: string): LegacyPathFacts | undefined {
+  const parts = path.split('/');
+  const absolute = parts[0] === '';
+  const segments: LegacySegment[] = [];
+  let milestone: MilestoneSegment | undefined;
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i]!;
+    if (isLegacySegmentName(part)) {
+      segments.push({
+        name: part,
+        underDocs: i >= 2 && parts[i - 1] === DOCS_SEGMENT,
+        rooted: absolute && (i === 1 || (i === 2 && parts[1] === DOCS_SEGMENT)),
+        bare: i === parts.length - 1,
+      });
+    } else if (MILESTONE_EXACT.test(part)) {
+      milestone = 'exact';
+    } else if (milestone === undefined && MILESTONE_PREFIX.test(part)) {
+      milestone = 'prefix';
+    }
+  }
+  if (segments.length === 0 && milestone === undefined) {
+    return undefined;
+  }
+  return { segments, ...(milestone && { milestone }) };
 }
 
 /** `undefined` when the URL is outside the Learn tree or off a Grafana docs host. */
@@ -104,9 +163,9 @@ function legacyJourneyBaseUrl(url: URL, path: string): string | undefined {
   return rooted ? `${url.origin}${rooted[0]}` : undefined;
 }
 
-function pathFamily(path: string): DocsUrlFamily | undefined {
-  const root = LEGACY_ROOT.exec(path)?.[1];
-  return root === undefined ? undefined : LEGACY_FAMILY_BY_ROOT[root];
+function rootFamily(legacy: LegacyPathFacts | undefined): DocsUrlFamily | undefined {
+  const root = legacy?.segments.find((segment) => segment.rooted && !segment.bare);
+  return root && LEGACY_FAMILY_BY_SEGMENT[root.name];
 }
 
 /**
@@ -121,19 +180,23 @@ export function classifyDocsUrl(input: string | URL): DocsUrlClassification {
   }
 
   const path = stripFile(url.pathname);
-
   const learn = classifyLearn(url, path);
-  if (learn) {
+  if (learn?.family === 'learn') {
     return learn;
   }
 
-  const journeyBaseUrl = legacyJourneyBaseUrl(url, path);
-  const withBase = (family: DocsUrlFamily): DocsUrlClassification => ({
-    family,
-    ...(journeyBaseUrl && { journeyBaseUrl }),
-  });
+  const legacy = legacyPathFacts(path);
+  const withFacts = (classification: DocsUrlClassification): DocsUrlClassification =>
+    legacy ? { ...classification, legacy } : classification;
+  if (learn) {
+    return withFacts(learn);
+  }
 
-  const family = pathFamily(path);
+  const journeyBaseUrl = legacyJourneyBaseUrl(url, path);
+  const withBase = (family: DocsUrlFamily): DocsUrlClassification =>
+    withFacts({ family, ...(journeyBaseUrl && { journeyBaseUrl }) });
+
+  const family = rootFamily(legacy);
   if (family) {
     return withBase(family);
   }
@@ -143,16 +206,42 @@ export function classifyDocsUrl(input: string | URL): DocsUrlClassification {
   return withBase(isGrafanaDocsUrl(url.href) ? 'docs' : 'other');
 }
 
-/**
- * Legacy learning paths and journeys: served as a list of milestones, open as a
- * learning-journey tab, and publish a `content.json` beside the page. Grafana
- * Learn is deliberately absent until the journey mode lands behind its flag.
- */
-export function isLegacyJourneyFamily(classification: DocsUrlClassification): boolean {
-  return classification.family === 'learning-path' || classification.family === 'legacy-learning-journey';
+function hasLegacySegment(classification: DocsUrlClassification, test: (segment: LegacySegment) => boolean): boolean {
+  return classification.legacy?.segments.some(test) ?? false;
 }
 
-/** URLs the content fetcher types as `learning-journey`: the legacy families and tutorials. */
+/**
+ * Opens as a learning-journey tab and publishes a `content.json`: a
+ * `learning-journeys` or `learning-paths` segment followed by more path,
+ * anywhere in it. Grafana Learn is deliberately absent until the journey mode
+ * lands behind its flag.
+ */
+export function isLegacyJourneyFamily(classification: DocsUrlClassification): boolean {
+  return hasLegacySegment(classification, (segment) => segment.name !== 'tutorials' && !segment.bare);
+}
+
+/** The link handler's narrower journey rule: the path starts with `/docs/learning-journeys/` or `/docs/learning-paths/`. */
+export function isDocsRootedLegacyJourney(classification: DocsUrlClassification): boolean {
+  return hasLegacySegment(
+    classification,
+    (segment) => segment.name !== 'tutorials' && segment.underDocs && segment.rooted && !segment.bare
+  );
+}
+
+/**
+ * URLs the content fetcher types as `learning-journey`: `/docs/learning-journeys/`,
+ * `/docs/learning-paths/` or `/tutorials/` anywhere in the path, or a segment
+ * starting with `milestone-N`.
+ */
 export function isJourneyContent(classification: DocsUrlClassification): boolean {
-  return isLegacyJourneyFamily(classification) || classification.family === 'tutorial';
+  return (
+    classification.legacy?.milestone !== undefined ||
+    hasLegacySegment(classification, (segment) => !segment.bare && (segment.name === 'tutorials' || segment.underDocs))
+  );
+}
+
+/** Any `learning-journeys`, `learning-paths`, `tutorials` or whole `milestone-N` segment, bare or not. */
+export function hasJourneyFamilySegment(classification: DocsUrlClassification): boolean {
+  const legacy = classification.legacy;
+  return legacy !== undefined && (legacy.segments.length > 0 || legacy.milestone === 'exact');
 }

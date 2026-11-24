@@ -1,8 +1,9 @@
 import {
   classifyDocsUrl,
+  hasJourneyFamilySegment,
+  isDocsRootedLegacyJourney,
   isJourneyContent,
   isLegacyJourneyFamily,
-  type DocsUrlClassification,
   type DocsUrlFamily,
 } from './docs-url-family';
 
@@ -58,7 +59,7 @@ describe('classifyDocsUrl', () => {
       expect(familyOf('https://grafana.com/docs/learning-paths/foo/milestone-2/')).toBe('learning-path');
     });
 
-    it('anchors a legacy family at the root of the path, with or without /docs', () => {
+    it('takes the primary family from the root of the path, with or without /docs', () => {
       expect(familyOf('https://grafana.com/docs/learning-paths/x/')).toBe('learning-path');
       expect(familyOf('https://grafana.com/learning-paths/x/')).toBe('learning-path');
       expect(familyOf('https://grafana.com/docs/learning-journeys/x/')).toBe('legacy-learning-journey');
@@ -77,7 +78,7 @@ describe('classifyDocsUrl', () => {
       'https://grafana.com/docs/foo/learning-journeys/x/',
       'https://grafana.com/docs/learning-paths-guide/x/',
       'https://grafana.com/docs/grafana/latest/milestone-3/',
-    ])('treats a segment deeper in the path as an ordinary docs page: %s', (url) => {
+    ])('gives a segment deeper in the path the docs family: %s', (url) => {
       expect(familyOf(url)).toBe('docs');
     });
   });
@@ -139,6 +140,7 @@ describe('classifyDocsUrl', () => {
     it('keeps Learn out of the legacy families, whatever its slugs say', () => {
       const result = classifyDocsUrl(`${HUB}/intro/tutorials/learning-paths/`);
       expect(result.family).toBe('learn');
+      expect(result.legacy).toBeUndefined();
       expect(isLegacyJourneyFamily(result)).toBe(false);
       expect(isJourneyContent(result)).toBe(false);
     });
@@ -236,20 +238,46 @@ describe('classifyDocsUrl', () => {
 });
 
 describe('family predicates', () => {
-  const classify = (url: string): DocsUrlClassification => classifyDocsUrl(url);
-
-  it.each<[string, boolean, boolean]>([
-    ['https://grafana.com/docs/learning-paths/x/', true, true],
-    ['https://grafana.com/docs/learning-journeys/x/', true, true],
-    ['https://grafana.com/tutorials/x/', false, true],
-    ['https://grafana.com/docs/foo/milestone-1/', false, false],
-    ['https://grafana.com/docs/learning-journeys/foo/milestone-1/', true, true],
-    ['https://grafana.com/docs/grafana/latest/', false, false],
-    [`${HUB}/j/s/step/`, false, false],
-    ['https://interactive-learning.grafana.net/guides/x/content.json', false, false],
-    ['https://example.com/', false, false],
-  ])('%s: legacy journey family %s, journey content %s', (url, legacy, content) => {
-    expect(isLegacyJourneyFamily(classify(url))).toBe(legacy);
-    expect(isJourneyContent(classify(url))).toBe(content);
-  });
+  // Expected values are the base-commit predicates applied to the pathname: routing
+  // `includes('/learning-journeys/' | '/learning-paths/')`, link handler
+  // `startsWith('/docs/learning-journeys/' | '/docs/learning-paths/')`, content type
+  // `includes('/docs/learning-journeys/' | '/docs/learning-paths/' | '/tutorials/') || /\/milestone-\d+/`,
+  // private-guide `/\/(learning-journeys|learning-paths|tutorials|milestone-\d+)(\/|$)/`.
+  it.each<[string, boolean, boolean, boolean, boolean]>([
+    ['https://grafana.com/docs/learning-paths/x/', true, true, true, true],
+    ['https://grafana.com/docs/learning-journeys/x/', true, true, true, true],
+    ['https://grafana.com/docs/learning-journeys/foo/milestone-1/', true, true, true, true],
+    ['https://grafana.com/docs/learning-paths/x/content.json', true, true, true, true],
+    ['https://grafana.com/docs/learning-paths/content.json', true, true, true, true],
+    ['https://grafana.com/docs/learning-paths/x/unstyled.html', true, true, true, true],
+    ['https://example.com/docs/learning-paths/x/', true, true, true, true],
+    ['https://grafana.com/learning-paths/x/', true, false, false, true],
+    ['https://grafana.com/docs/grafana/latest/learning-paths/x/', true, false, false, true],
+    ['https://grafana.com/docs/foo/learning-journeys/x/', true, false, false, true],
+    ['https://grafana.com/tutorials/x/', false, false, true, true],
+    ['https://grafana.com/docs/tutorials/x/', false, false, true, true],
+    ['https://grafana.com/docs/alloy/latest/tutorials/send-logs-to-loki/', false, false, true, true],
+    ['https://grafana.com/docs/foo/milestone-3/', false, false, true, true],
+    ['https://grafana.com/docs/foo/milestone-3abc/', false, false, true, false],
+    ['https://grafana.com/docs/learning-paths', false, false, false, true],
+    ['https://grafana.com/docs/foo/tutorials', false, false, false, true],
+    ['https://grafana.com/docs/learning-paths-guide/x/', false, false, false, false],
+    ['https://grafana.com/docs/grafana/latest/', false, false, false, false],
+    ['https://grafana.com/docs/foo/?ref=/learning-paths/x', false, false, false, false],
+    ['https://grafana.com/docs/foo/#/tutorials/x/', false, false, false, false],
+    [`${HUB}/j/s/step/`, false, false, false, false],
+    [`${HUB}/intro/tutorials/learning-paths/`, false, false, false, false],
+    ['https://interactive-learning.grafana.net/guides/x/content.json', false, false, false, false],
+    ['https://example.com/', false, false, false, false],
+    ['not a url', false, false, false, false],
+  ])(
+    '%s: routing %s, link handler %s, journey content %s, family segment %s',
+    (url, routing, link, content, segment) => {
+      const classification = classifyDocsUrl(url);
+      expect(isLegacyJourneyFamily(classification)).toBe(routing);
+      expect(isDocsRootedLegacyJourney(classification)).toBe(link);
+      expect(isJourneyContent(classification)).toBe(content);
+      expect(hasJourneyFamilySegment(classification)).toBe(segment);
+    }
+  );
 });

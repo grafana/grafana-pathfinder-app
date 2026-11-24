@@ -130,11 +130,9 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       }
 
       const contentType = determineContentType(url);
-      // Whether fetchRawHtml actually attempted the content.json ↔ unstyled.html
-      // ladder for this URL. `contentType === 'learning-journey'` only matches
-      // grafana.com path patterns (/tutorials/, /milestone-N/, ...) — generic
-      // guides on the interactive-learning hostnames get the same ladder via a
-      // separate branch in fetchRawHtml, so they must be included here too.
+      // Whether fetchRawHtml attempted the content.json ↔ unstyled.html ladder.
+      // `learning-journey` is `isJourneyContent` (a path rule); interactive-learning
+      // hosts reach the ladder through a separate branch, so they count too.
       const triedContentJsonLadder = contentType === 'learning-journey' || isInteractiveLearningUrl(url);
 
       // fetchRawHtml resolves the content.json ↔ unstyled.html ladder

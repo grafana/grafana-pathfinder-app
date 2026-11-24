@@ -90,7 +90,7 @@ const ALLOWED_FAMILY_LITERALS: readonly AllowedArchitectureEntry[] = [
   {
     violation: "components/docs-panel/link-handler.hook.ts — '/tutorials/'",
     reason:
-      'Analytics link-type label for root `/tutorials/` links only, deliberately narrower than the tutorial family; the routing decision beside it uses isLearningJourneyUrl.',
+      'Analytics link-type label for root `/tutorials/` links only, deliberately narrower than the tutorial family; the routing decision beside it uses isDocsRootedLegacyJourney.',
     tracking: ARCHITECTURE_BY_DESIGN,
   },
   {
@@ -185,8 +185,9 @@ const ADVICE =
   'A hand-written test for a docs URL family (a path that contains "/learning-paths/", "/tutorials/", ' +
   'a "milestone-N" segment, or the Grafana Learn root) can disagree with the classifier on query strings, ' +
   'host and path depth, and it cannot see Grafana Learn at all.\n\n' +
-  `Fix: call classifyDocsUrl from src/${CLASSIFIER} and read the family, or use isLegacyJourneyFamily / ` +
-  'isJourneyContent. Add a family or a field there if the decision you need is missing.\n\n' +
+  `Fix: call classifyDocsUrl from src/${CLASSIFIER} and read the family, or use one of the predicates beside it ` +
+  '(isLegacyJourneyFamily, isDocsRootedLegacyJourney, isJourneyContent, hasJourneyFamilySegment). ' +
+  'Add a family or a field there if the decision you need is missing.\n\n' +
   'Only if the literal is not a routing or content decision (a trust-gate prefix, a URL being built, display ' +
   'text, sample data), add an entry to ALLOWED_FAMILY_LITERALS with the reason.';
 
