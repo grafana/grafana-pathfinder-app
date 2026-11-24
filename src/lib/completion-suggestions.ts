@@ -57,7 +57,7 @@ function normalizedUrl(value: string): string {
   }
 }
 
-function bundledId(value: string): string | undefined {
+export function bundledId(value: string): string | undefined {
   return value.startsWith('bundled:') ? normalizeGuideId(value.slice('bundled:'.length)) : undefined;
 }
 

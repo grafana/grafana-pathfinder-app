@@ -128,6 +128,7 @@
     "dueOn": "Vence el {{- date}}",
     "dueToday": "Vence hoy",
     "dueTomorrow": "Vence mañana",
+    "groupProgress": "",
     "inProgress": "En curso",
     "moduleOf": "Módulo {{current}} de {{total}}",
     "moreRecommended": "Más recomendados",

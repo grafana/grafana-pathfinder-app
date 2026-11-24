@@ -47,6 +47,7 @@ const NOT_PRODUCERS: Record<string, string> = {
   'build-stats': 'reports on existing packages; out of scope',
   'build-snippets': 'builds snippets from existing packages',
   'build-graph': 'builds a graph from existing packages; out of scope',
+  'sync-translations': 'stamps tooling fields on existing translation sidecars; leaves the author untouched',
   // tools
   pathfinder_authoring_start: 'static guidance',
   pathfinder_find_guides: 'read-only',

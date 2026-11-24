@@ -15,7 +15,7 @@ jest.mock('../hooks', () => ({
 }));
 jest.mock('@grafana/runtime', () => ({
   locationService: {
-    getLocation: () => ({ pathname: '/d/abc' }),
+    getLocation: () => window.location,
     getHistory: () => ({ listen: () => () => {} }),
   },
 }));
@@ -32,6 +32,7 @@ jest.mock('./context-event-bus', () => ({
 }));
 
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { suggestionState } from '../global-state/suggestion';
 import { StorageEvents } from '../lib/event-names';
 import { useContextPanel } from './context.hook';
 
@@ -119,6 +120,41 @@ it('fetches recommendations when the refreshed context changes', async () => {
 
   expect(mockFetchRecommendations).toHaveBeenCalledTimes(2);
   unmount();
+});
+
+it('removes a named suggestion group on navigation and restores it on return', async () => {
+  const originalUrl = window.location.href;
+  const pathname = '/a/grafana-slo-app';
+  const suggestions = [
+    { title: 'Create an SLO', url: 'bundled:create-slo' },
+    { title: 'Monitor an SLO', url: 'bundled:monitor-slo' },
+  ];
+  const group = suggestions.map((guide) => expect.objectContaining({ ...guide, groupTitle: 'What’s new' }));
+  const navigate = async (path: string) => {
+    window.history.replaceState(null, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await act(async () => jest.runAllTimersAsync());
+  };
+
+  window.history.replaceState(null, '', pathname);
+  mockGetContextData.mockImplementation(async () => ({ ...context(), currentPath: window.location.pathname }));
+  const { result, unmount } = await renderSettled();
+  try {
+    act(() => suggestionState.setSuggestions(suggestions, { groupTitle: 'What’s new', pathname }));
+    expect(result.current.contextData.featuredRecommendations).toEqual(group);
+
+    await navigate('/dashboards');
+    expect(result.current.contextData.currentPath).toBe('/dashboards');
+    expect(result.current.contextData.featuredRecommendations).toEqual([]);
+
+    await navigate(pathname);
+    expect(result.current.contextData.currentPath).toBe(pathname);
+    expect(result.current.contextData.featuredRecommendations).toEqual(group);
+  } finally {
+    unmount();
+    suggestionState.clearSuggestions();
+    window.history.replaceState(null, '', originalUrl);
+  }
 });
 
 it('refetches recommendations after progress is cleared even when the context is unchanged', async () => {

@@ -19,6 +19,13 @@ export const TRANSLATION_SIDECAR_DIR = 'i18n';
 const SourceHashSchema = z.string();
 
 /**
+ * Review validity, tooling-stamped (docs/design/I18N.md §7.1): the hash of the
+ * entry's translated text at the moment `reviewed` was affirmed. The `reviewed`
+ * mark counts only while the entry's text still hashes to it.
+ */
+const ReviewHashSchema = z.string();
+
+/**
  * A block entry: translated string fields keyed by field name, plus `steps`
  * for `multistep` and `guided`. Unknown keys parse whatever their value, so
  * the projection-conformance check can report a structural or
@@ -28,6 +35,7 @@ export const TranslationBlockEntrySchema = z.looseObject({
   steps: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   reviewed: z.boolean().optional(),
   _sourceHash: SourceHashSchema.optional(),
+  _reviewHash: ReviewHashSchema.optional(),
 });
 
 /**
@@ -40,6 +48,7 @@ export const TranslationManifestEntrySchema = z.looseObject({
   category: z.string().optional(),
   reviewed: z.boolean().optional(),
   _sourceHash: SourceHashSchema.optional(),
+  _reviewHash: ReviewHashSchema.optional(),
 });
 
 /**
@@ -52,6 +61,7 @@ export const TranslationGuideEntrySchema = z.strictObject({
   title: z.string().optional(),
   reviewed: z.boolean().optional(),
   _sourceHash: SourceHashSchema.optional(),
+  _reviewHash: ReviewHashSchema.optional(),
 });
 
 export const TranslationBaseRefSchema = z.strictObject({

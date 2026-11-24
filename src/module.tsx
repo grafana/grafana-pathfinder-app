@@ -43,9 +43,9 @@ installEchoSubscriptions();
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
 // apps are never lost. Replayed or discarded after experiment state is known.
-const pendingSuggestEvents: CustomEvent[] = [];
+const pendingSuggestEvents: Array<{ event: CustomEvent; pathname: string }> = [];
 const earlySuggestListener = ((event: CustomEvent) => {
-  pendingSuggestEvents.push(event);
+  pendingSuggestEvents.push({ event, pathname: window.location.pathname });
 }) as EventListener;
 document.addEventListener('pathfinder-suggest', earlySuggestListener);
 
@@ -484,11 +484,11 @@ if (pathfinderEnabled) {
   document.removeEventListener('pathfinder-suggest', earlySuggestListener);
   document.addEventListener('pathfinder-suggest', realSuggestHandler);
 
-  for (const buffered of pendingSuggestEvents) {
+  for (const { event: buffered, pathname } of pendingSuggestEvents) {
     if (buffered.detail) {
       buffered.detail._buffered = true;
     }
-    handlePathfinderSuggest(buffered);
+    handlePathfinderSuggest(buffered, pathname);
   }
   pendingSuggestEvents.length = 0;
 } else {
@@ -500,7 +500,7 @@ if (pathfinderEnabled) {
   }) as EventListener;
   document.removeEventListener('pathfinder-suggest', earlySuggestListener);
   document.addEventListener('pathfinder-suggest', rejectSuggestion);
-  pendingSuggestEvents.forEach(rejectSuggestion);
+  pendingSuggestEvents.forEach(({ event }) => rejectSuggestion(event));
   pendingSuggestEvents.length = 0;
 }
 
@@ -517,7 +517,7 @@ if (pathfinderEnabled) {
  * (via the pathfinder-sidebar-mounted event) so the flag is never burned
  * if the sidebar fails to open for any reason.
  */
-function handlePathfinderSuggest(event: CustomEvent): void {
+function handlePathfinderSuggest(event: CustomEvent, pathname = window.location.pathname): void {
   const detail = event.detail;
   if (!detail) {
     logger.warn('[Pathfinder] pathfinder-suggest event missing detail');
@@ -556,7 +556,8 @@ function handlePathfinderSuggest(event: CustomEvent): void {
 
   const buffered = detail._buffered === true;
 
-  suggestionState.setSuggestions(valid);
+  const groupTitle = typeof detail.groupTitle === 'string' ? detail.groupTitle.trim() : '';
+  suggestionState.setSuggestions(valid, groupTitle ? { groupTitle, pathname } : undefined);
 
   const suggestedTitles = valid.map((s: Record<string, unknown>) => s.title).join(', ');
   const suggestedUrls = valid.map((s: Record<string, unknown>) => s.url).join(', ');
