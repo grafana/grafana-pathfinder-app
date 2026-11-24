@@ -1,13 +1,15 @@
 import { locationService } from '@grafana/runtime';
 import { isJourneyCoverPage } from '../../docs-retrieval';
 import { panelModeManager } from '../../global-state/panel-mode';
+import { sidebarState } from '../../global-state/sidebar';
 import { parsePathfinderDeepLink } from '../../utils/pathfinder-search-params';
 import type { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { resolveCourseReturnPath } from './resolve-safe-target-path';
 
 function returnToLearning() {
   const returnPath = resolveCourseReturnPath(panelModeManager.consumePriorPath());
-  panelModeManager.setModeTransient('fullscreen');
+  panelModeManager.setMode('sidebar');
+  sidebarState.setIsSidebarMounted(false);
   locationService.push(returnPath);
 }
 

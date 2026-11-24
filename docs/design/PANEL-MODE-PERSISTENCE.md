@@ -36,6 +36,12 @@ stored surface preference. Readers can still choose floating or full-screen
 after opening the guide. Legacy path launches through `openPreparedGuide` retain
 their content-based surface selection, as do Learn Home and full-page Explore launches.
 
+The course overview's Back button returns to Learn or Explore without opening a
+reader. It uses conditional `setMode('sidebar')` and clears the reader-mounted
+flag before navigation, so later links can open a fresh reader. This preserves
+the stored preference during an automatic launch session and records a return
+from a deliberately chosen full-screen surface outside one.
+
 ## The two axes and the three mutators
 
 `localStorage[StorageKeys.PANEL_MODE]` holds the persisted preference.
