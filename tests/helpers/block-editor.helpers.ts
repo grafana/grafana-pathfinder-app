@@ -226,6 +226,6 @@ export async function clickAddBlockInSection(page: Page): Promise<void> {
   // The Add Block button is a sibling of the empty state div inside the same parent
   // Use xpath to go up one level and find the button within that container
   const parentContainer = sectionEmptyState.locator('xpath=..');
-  const addBlockButton = parentContainer.getByTestId(testIds.blockEditor.addBlockButton);
+  const addBlockButton = parentContainer.getByTestId(testIds.blockEditor.sectionNestedAddButton);
   await addBlockButton.click();
 }

@@ -80,6 +80,11 @@ const ALLOWED_CONTENT_FILE_LITERALS: readonly AllowedArchitectureEntry[] = [
     tracking: ARCHITECTURE_BY_DESIGN,
   },
   {
+    violation: "global-state/companion-guide.ts — '../bundled-interactives/create-your-first-guide/content.json'",
+    reason: 'Fixed build-time JSON import for the bundled authoring lesson, not a reader URL match.',
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+  {
     violation: 'learning-paths/catalog-progress.hook.ts — `bundled:${id}/content.json`',
     reason:
       'Builds the canonical bundled launch shape. Under the identity rule the canonical URL is the one identity-bearing form, and the site never parses an incoming URL, so a localized file cannot reach it.',

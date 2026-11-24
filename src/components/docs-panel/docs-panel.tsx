@@ -90,6 +90,7 @@ import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { openAuthoringGuide } from '../../global-state/companion-guide';
+import { contentFileName } from '../../lib/guide-content-file';
 import { cancelCatalogActivation } from '../../global-state/package-browser';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
@@ -443,7 +444,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     prepare: boolean
   ): Promise<void> {
     if (
-      ['bundled:create-your-first-guide', 'bundled:create-your-first-guide/content.json'].includes(url) &&
+      ['bundled:create-your-first-guide', `bundled:create-your-first-guide/${contentFileName()}`].includes(url) &&
       isCurrentUserEditor()
     ) {
       this.openEditorTab();

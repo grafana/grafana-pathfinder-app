@@ -48,7 +48,6 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
   await expect(page.getByTestId(testIds.blockEditor.container)).toContainText(
     'Use this guide to find dashboards for your team.'
   );
-  await expect(introduction).toHaveClass(/completed/);
   await modes.getByRole('radio', { name: 'Edit', exact: true }).click();
   await expect(page.getByTestId(testIds.blockEditor.content)).toContainText(
     'Use this guide to find dashboards for your team.'

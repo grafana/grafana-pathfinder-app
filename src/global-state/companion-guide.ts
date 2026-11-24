@@ -1,12 +1,13 @@
 import content from '../bundled-interactives/create-your-first-guide/content.json';
 import manifest from '../bundled-interactives/create-your-first-guide/manifest.json';
 import { COMPANION_GUIDE_CHANGE_EVENT } from '../lib/event-names';
+import { CANONICAL_CONTENT_FILE } from '../lib/guide-content-file';
 import type { LearningJourneyTab } from '../types/content-panel.types';
 
 let guide: LearningJourneyTab | null = null;
 
 export function openAuthoringGuide(): void {
-  const url = 'bundled:create-your-first-guide/content.json';
+  const url = `bundled:create-your-first-guide/${CANONICAL_CONTENT_FILE}`;
   guide = {
     id: 'authoring-instructions',
     type: 'interactive',
