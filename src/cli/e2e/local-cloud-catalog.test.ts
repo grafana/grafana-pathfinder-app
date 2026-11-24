@@ -102,6 +102,27 @@ describe('local cloud catalog from a working checkout', () => {
     });
   }
 
+  it('rejects a required guide that is not declared cloud-tier', () => {
+    writeJson(join(prerequisiteDir, 'manifest.json'), {
+      id: 'prerequisite',
+      type: 'guide',
+      testEnvironment: { tier: 'local' },
+    });
+    expect(() => resolveRoot(root)).toThrow(
+      'Required local guide "prerequisite" must be declared cloud-tier in its manifest and repository.'
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('takes required guide metadata from the checkout, not a stale catalog file', () => {
+    writeJson(catalogPath, { 'cloud-root': { path: 'renamed-directory/', type: 'guide', depends: ['missing'] } });
+    const resolution = resolveRoot(catalogPath);
+    expect(resolution.executionPlan?.chains.flat().map((planned) => planned.id)).toEqual([
+      'prerequisite',
+      'cloud-root',
+    ]);
+  });
+
   it('rejects a duplicate selected root ID even when the selected directory is the first builder entry', () => {
     addDuplicatePackage('z-shadow-root', 'cloud-root');
     expect(loadLocalRepositorySource(root, true, true).duplicateIds).toEqual(new Set(['cloud-root']));

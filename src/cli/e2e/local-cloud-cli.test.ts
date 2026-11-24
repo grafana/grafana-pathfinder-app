@@ -1086,6 +1086,79 @@ describe('local cloud package CLI preflight', () => {
     }
   );
 
+  it.each([
+    { name: 'with', tokenResponse: { key: runnerToken }, reportedTarget: 'https://docs.example/' },
+    // A token response without a key is the supported way to reach a target with no credential.
+    // Pool leases reject a missing runnerToken before this point.
+    { name: 'without', tokenResponse: {}, reportedTarget: undefined },
+  ])(
+    'reports the shared target on pre-flight failure only when it has a runner credential ($name)',
+    async ({ tokenResponse, reportedTarget }) => {
+      const host = 'docs.example';
+      const packageDir = join(root, 'cloud-guide');
+      writeFileSync(
+        join(packageDir, 'manifest.json'),
+        JSON.stringify({ id: 'cloud-guide', type: 'guide', testEnvironment: { tier: 'cloud', instance: host } })
+      );
+      fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(input.toString());
+        if (url.hostname !== host) {
+          throw new Error(`Unexpected target: ${url.origin}`);
+        }
+        if (url.pathname === '/api/serviceaccounts/search') {
+          return jsonResponse({ serviceAccounts: [] });
+        }
+        if (url.pathname === '/api/serviceaccounts') {
+          return jsonResponse({ id: 42 });
+        }
+        if (url.pathname === '/api/serviceaccounts/42/tokens') {
+          return jsonResponse(tokenResponse);
+        }
+        if (url.pathname === '/api/serviceaccounts/42' && init?.method === 'DELETE') {
+          return jsonResponse({});
+        }
+        if (url.pathname === '/api/health') {
+          return jsonResponse({ message: 'unavailable' }, 503);
+        }
+        throw new Error(`Unexpected request: ${url.pathname}`);
+      });
+      const reportPath = join(root, 'shared-target-report.json');
+
+      await expect(
+        runE2e(
+          E2eCommand.parse({
+            package: packageDir,
+            repository: root,
+            tier: 'cloud',
+            cloudInstanceAdminToken: [`${host}=${tokenVariable}`],
+            output: reportPath,
+            artifacts: join(root, 'artifacts'),
+          })
+        )
+      ).rejects.toThrow(`CLI exited with ${ExitCode.CONFIGURATION_ERROR}`);
+
+      expect(runPlaywrightTests).not.toHaveBeenCalled();
+      expect(runPlaywrightChain).not.toHaveBeenCalled();
+      const report = JSON.parse(readFileSync(reportPath, 'utf8')) as Report;
+      expect(report.outcome).not.toBe('passed');
+      if (reportedTarget) {
+        expect(report.errorMessage).toContain(`Pre-flight check failed for cloud-guide at ${reportedTarget}`);
+        expect(report.guide.targetUrl).toBe(reportedTarget);
+        expect(report.target.url).toBe(reportedTarget);
+      } else {
+        expect(report.errorMessage).toContain('Cloud target credential is unavailable for cloud-guide');
+        expect(report.guide).not.toHaveProperty('targetUrl');
+        expect(report.target.url).toBe('unknown://target');
+      }
+      expect(
+        fetchSpy.mock.calls.some(
+          ([input, init]) =>
+            new URL(input.toString()).pathname === '/api/serviceaccounts/42' && init?.method === 'DELETE'
+        )
+      ).toBe(true);
+    }
+  );
+
   it('runs without minVersion and retires the fake lease once', async () => {
     allowRequiredPlugin();
     jest.mocked(runPlaywrightTests).mockResolvedValue({
