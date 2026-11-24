@@ -452,3 +452,13 @@ func resetPackageRecommendationsCache() {
 	packageCache = nil
 	packageActiveFlight = nil
 }
+
+func ReadRecommendations(ctx context.Context) (json.RawMessage, bool, error) {
+	response, err := (&App{}).getCachedPackageRecommendations(ctx)
+	if err != nil {
+		body, encodeErr := json.Marshal(map[string]interface{}{"error": "package-index-unavailable", "diagnostics": classifyGuideProxyError(err)})
+		return body, false, encodeErr
+	}
+	body, err := json.Marshal(response)
+	return body, true, err
+}

@@ -255,6 +255,8 @@ describe('existing resource update recovery', () => {
 });
 
 it('preserves OSS plugin settings without materializing system defaults', async () => {
+  config.namespace = 'default';
+  config.featureToggles = {};
   jest.mocked(isBackendApiAvailable).mockReturnValue(false);
   fetchMock
     .mockReturnValueOnce(
@@ -433,15 +435,12 @@ describe('the kind is not served (structural upstream 404)', () => {
     expect(fetchMock.mock.calls.filter(([request]) => request.url.endsWith('/pathfinder-settings'))).toHaveLength(2);
   });
 
-  it('saves to jsonData rather than failing', async () => {
+  it('preserves the registered settings store when its resource is not served', async () => {
     const writes: Array<{ url: string; data: unknown }> = [];
     routes(writes);
-    await saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } });
-    expect(writes).toEqual([
-      {
-        url: '/api/plugins/grafana-pathfinder-app/settings',
-        data: expect.objectContaining({ jsonData: expect.objectContaining({ stackId: '123', tutorialUrl: 'new' }) }),
-      },
-    ]);
+    await expect(
+      saveTenantSettings({ pluginId: 'grafana-pathfinder-app', changes: { tutorialUrl: 'new' } })
+    ).rejects.toThrow('unavailable');
+    expect(writes).toEqual([]);
   });
 });

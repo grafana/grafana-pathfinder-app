@@ -48,6 +48,9 @@ describe('StorageKeys — stable string contract', () => {
       MILESTONE_COMPLETION: 'grafana-pathfinder-app-milestone-completion',
       LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
       COMPLETION_WRITE_QUEUE_PREFIX: 'grafana-pathfinder-app-completion-write-queue-v2:',
+      ACHIEVEMENT_EVENT_QUEUE_PREFIX: 'grafana-pathfinder-app-achievement-event-queue-v1:',
+      ACHIEVEMENT_ANNOUNCED_PREFIX: 'grafana-pathfinder-app-achievement-announced-v1:',
+      ACHIEVEMENT_SOURCES_PREFIX: 'grafana-pathfinder-app-achievement-sources-v1:',
       GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
 
       // Experiment / feature-flag state

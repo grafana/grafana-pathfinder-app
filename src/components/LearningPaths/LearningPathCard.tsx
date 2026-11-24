@@ -199,9 +199,18 @@ export function LearningPathCard({
         className={styles.header}
         onClick={tile ? undefined : handleToggleExpand}
       >
-        {!tile && (
-          <ProgressRing progress={progress} size={44} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
-        )}
+        {!tile &&
+          (assignment?.progressUnavailable ? (
+            <span>{t('learningPaths.assignments.cannotCheck', 'Cannot check')}</span>
+          ) : (
+            <ProgressRing
+              progress={progress}
+              size={44}
+              strokeWidth={3}
+              isCompleted={isCompleted}
+              showPercentage={true}
+            />
+          ))}
 
         <div className={styles.content}>
           {tile && (
@@ -253,17 +262,25 @@ export function LearningPathCard({
         {tile && (
           <div className={styles.tileFooter} data-learning-card-footer>
             <div className={styles.tileProgress}>
-              <ProgressRing
-                progress={progress}
-                size={presentation === 'compact' ? 32 : isCompleted ? 34 : 36}
-                strokeWidth={2}
-                isCompleted={isCompleted}
-                showPercentage
-              />
+              {assignment?.progressUnavailable ? (
+                <span>{t('learningPaths.assignments.cannotCheck', 'Cannot check')}</span>
+              ) : (
+                <ProgressRing
+                  progress={progress}
+                  size={presentation === 'compact' ? 32 : isCompleted ? 34 : 36}
+                  strokeWidth={2}
+                  isCompleted={isCompleted}
+                  showPercentage
+                />
+              )}
               <div className={styles.tileGuideCount}>
                 <LearningCardMetadata
-                  progress={isCompleted ? 100 : progress}
-                  completion={courseCompletionCounts(path, effectiveGuides, assignment)}
+                  progress={assignment?.progressUnavailable ? 0 : isCompleted ? 100 : progress}
+                  completion={
+                    assignment?.progressUnavailable
+                      ? undefined
+                      : courseCompletionCounts(path, effectiveGuides, assignment)
+                  }
                   opening={isLaunching && presentation !== 'resume'}
                 />
                 {presentation !== 'compact' &&

@@ -16,6 +16,11 @@ const mockBadge: EarnedBadge = {
   earnedAt: Date.UTC(2026, 9, 30),
 };
 let mockLoading = false;
+const mockLegacyBadgesHidden = jest.fn(() => false);
+jest.mock('../Achievements/useLegacyBadgesHidden', () => ({ useLegacyBadgesHidden: () => mockLegacyBadgesHidden() }));
+jest.mock('../Achievements/AchievementsSection', () => ({
+  AchievementsList: () => <div data-testid="badges-page-achievements-list" />,
+}));
 
 jest.mock('@grafana/scenes', () => ({ SceneObjectBase: class {} }));
 jest.mock('@grafana/runtime', () => ({
@@ -36,6 +41,7 @@ jest.mock('../../learning-paths', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockLoading = false;
+  mockLegacyBadgesHidden.mockReturnValue(false);
 });
 
 it('opens and closes badge details from the gallery and navigates back to Home', () => {
@@ -101,4 +107,21 @@ it('preserves badge-page scroll when opening the sidebar moves scrolling onto ma
     document.documentElement.scrollTop = 0;
     global.ResizeObserver = originalObserver;
   }
+});
+
+it('keeps the legacy badge gallery while achievements are not available', () => {
+  const Page = BadgesPanel.Component;
+  render(<Page />);
+  expect(screen.getByTestId(testIds.learningPaths.badgeItem(mockBadge.id))).toBeInTheDocument();
+  expect(screen.queryByTestId(testIds.achievements.pageList)).not.toBeInTheDocument();
+});
+
+it('lists achievements instead of the legacy gallery once they are available, under the same page title', () => {
+  mockLegacyBadgesHidden.mockReturnValue(true);
+  const Page = BadgesPanel.Component;
+  render(<Page />);
+  expect(screen.getByRole('heading', { name: 'Your badges', level: 1 })).toBeInTheDocument();
+  expect(screen.getByTestId(testIds.achievements.pageList)).toBeInTheDocument();
+  expect(screen.queryByTestId(testIds.learningPaths.badgesSection)).not.toBeInTheDocument();
+  expect(screen.queryByTestId(testIds.learningPaths.badgeItem(mockBadge.id))).not.toBeInTheDocument();
 });

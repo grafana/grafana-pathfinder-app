@@ -2,152 +2,29 @@ package plugin
 
 import (
 	"context"
-	"errors"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
-	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
-type assignmentGuideEntry struct {
-	GuideID     string `json:"guideId"`
-	GuideSource string `json:"guideSource"`
-	Completed   bool   `json:"completed"`
-}
+type assignmentGuideEntry = services.AssignmentGuideEntry
 
-// Empty or unresolved membership cannot prove satisfaction.
 func satisfiedFromGuides(guides []assignmentGuideEntry) bool {
-	if len(guides) == 0 {
-		return false
-	}
-	for _, g := range guides {
-		if !g.Completed {
-			return false
-		}
-	}
-	return true
+	return services.SatisfiedFromGuides(guides)
 }
 
-type resolvedGuides struct {
-	guides []assignmentGuideIdentity
-	err    error
-}
-
-// obligationEvaluator serves one request: each target's guide list is resolved
-// at most once across all assignments, failures included.
-type obligationEvaluator struct {
-	ctx      context.Context
-	logger   log.Logger
-	sources  []pathGuideSource
-	resolved map[string]resolvedGuides
-}
-
-// Credit requires one raw row to meet identity, terminal percent and acceptance time together.
-func (e *obligationEvaluator) guideProgress(asg assignmentSpec, completions []completionRecordSpec) ([]assignmentGuideEntry, error) {
-	guideIDs, err := e.assignmentGuides(asg)
-	if err != nil || len(guideIDs) == 0 {
-		return nil, err
-	}
-	var accept time.Time
-	hasAccept := false
-	if asg.AcceptCompletionsFrom != "" {
-		parsed, ok := parseCompletionTime(asg.AcceptCompletionsFrom)
-		if !ok {
-			return nil, nil
-		}
-		accept, hasAccept = parsed, true
-	}
-	entries := make([]assignmentGuideEntry, len(guideIDs))
-	for i, guideID := range guideIDs {
-		done := false
-		for _, rec := range completions {
-			if !assignmentGuideMatchesCompletion(guideID, rec) || rec.CompletionPercent < 100 {
-				continue
-			}
-			at, ok := parseCompletionTime(rec.CompletedAt)
-			if !ok {
-				continue
-			}
-			if hasAccept && at.Before(accept) {
-				continue
-			}
-			done = true
-			break
-		}
-		entries[i] = assignmentGuideEntry{GuideID: guideID.GuideID, GuideSource: guideID.GuideSource, Completed: done}
-	}
-	return entries, nil
-}
-
-// A missing member identity makes the whole target unresolved, not partially satisfiable.
-func (e *obligationEvaluator) assignmentGuides(asg assignmentSpec) ([]assignmentGuideIdentity, error) {
-	if e.resolved == nil {
-		e.resolved = map[string]resolvedGuides{}
-	}
-	key := asg.TargetType + "\x00" + asg.TargetID + "\x00" + asg.TrackID + "\x00" + asg.TargetSource
-	if cached, ok := e.resolved[key]; ok {
-		return cached.guides, cached.err
-	}
-	guides, err := e.resolveGuides(asg)
-	seen := make(map[assignmentGuideIdentity]bool, len(guides))
-	unique := make([]assignmentGuideIdentity, 0, len(guides))
-	for _, guide := range guides {
-		if guide.GuideID == "" || guide.GuideSource == "" {
-			unique = nil
-			break
-		}
-		if !seen[guide] {
-			seen[guide] = true
-			unique = append(unique, guide)
-		}
-	}
-	guides = unique
-	e.resolved[key] = resolvedGuides{guides: guides, err: err}
-	return guides, err
-}
-
-// errAssignmentUncheckable means no source found the target and at least one
-// failed, so the target may exist.
-var errAssignmentUncheckable = errors.New("assignment target could not be checked")
-
-// Source order is precedence: the first found target owns its membership, even if unresolved.
-func (e *obligationEvaluator) resolveGuides(asg assignmentSpec) ([]assignmentGuideIdentity, error) {
-	if asg.TargetType == assignmentTargetGuide {
-		if asg.TargetID == "" || asg.TargetSource == "" || asg.TrackID != "" {
-			return nil, nil
-		}
-		return []assignmentGuideIdentity{{GuideID: asg.TargetID, GuideSource: asg.TargetSource}}, nil
-	}
-	if asg.TargetType != assignmentTargetPath || asg.TargetID == "" {
-		return nil, nil
-	}
-	failed := false
-	for _, source := range e.sources {
-		guides, found, err := source(e.ctx, asg.TargetID, asg.TrackID, asg.TargetSource)
-		if err != nil {
-			failed = true
-			e.logger.Info("assignment guide source failed", "targetId", asg.TargetID, "trackId", asg.TrackID, "error", err)
-			continue
-		}
-		if found {
-			return guides, nil
-		}
-	}
-	if failed {
-		return nil, errAssignmentUncheckable
-	}
-	return nil, nil
-}
+type obligationEvaluator = services.ObligationEvaluator
 
 // newObligationEvaluator builds one evaluator per request. The custom-guide
 // catalogue is drained on first use, at most once.
 func (a *App) newObligationEvaluator(r *http.Request) *obligationEvaluator {
 	ev := &obligationEvaluator{
-		ctx:    r.Context(),
-		logger: a.ctxLogger(r.Context()),
+		Context: r.Context(),
+		Logger:  a.ctxLogger(r.Context()),
 	}
-	ev.sources = append(ev.sources, bundledPathGuides(ev.logger), a.lazyCustomPathGuides(r, ev.logger))
-	ev.sources = append(ev.sources, a.onlinePathGuides(ev.logger))
+	ev.Sources = append(ev.Sources, bundledPathGuides(ev.Logger), a.lazyCustomPathGuides(r, ev.Logger))
+	ev.Sources = append(ev.Sources, a.onlinePathGuides(ev.Logger))
 	return ev
 }
 
@@ -219,12 +96,6 @@ func (a *App) callerCompletionRecords(r *http.Request, userID string) ([]complet
 }
 
 // satisfactionFunc returns the per-assignment guide progress for this request.
-func (a *App) satisfactionFunc(r *http.Request, completions []completionRecordSpec) func(assignmentSpec) ([]assignmentGuideEntry, error) {
-	ev := a.newObligationEvaluator(r)
-	return func(rec assignmentSpec) ([]assignmentGuideEntry, error) {
-		return ev.guideProgress(rec, completions)
-	}
-}
 
 // assignmentStatusDispatchOverride lets tests run the background status writes
 // inline so no goroutine outlives the test.
@@ -286,10 +157,6 @@ func containsAssignmentGuide(guides []assignmentGuideIdentity, rec completionRec
 	return false
 }
 
-func isStatusSatisfied(rec assignmentSpec) bool {
-	return rec.StatusSatisfied != nil && *rec.StatusSatisfied
-}
-
 // syncSatisfiedAssignments reads completions only once an unsatisfied active
 // assignment of the caller's contains the just-completed guide.
 func (a *App) syncSatisfiedAssignments(r *http.Request, userID string, just completionRecordSpec, logger log.Logger) {
@@ -304,46 +171,7 @@ func (a *App) syncSatisfiedAssignments(r *http.Request, userID string, just comp
 		logger.Info("assignment status write skipped", "error", err)
 		return
 	}
-	ev := a.newObligationEvaluator(r)
-	var candidates []assignmentSpec
-	for _, rec := range records {
-		if rec.Name == "" || isStatusSatisfied(rec) {
-			continue
-		}
-		guideIDs, err := ev.assignmentGuides(rec)
-		if err != nil {
-			logger.Info("assignment status write skipped", "targetId", rec.TargetID, "error", err)
-			continue
-		}
-		if containsAssignmentGuide(guideIDs, just) {
-			candidates = append(candidates, rec)
-		}
-	}
-	if len(candidates) == 0 {
-		return
-	}
-	completions, err := a.callerCompletionRecords(r, userID)
-	if err != nil {
-		logger.Info("assignment status write skipped", "error", err)
-		return
-	}
-	fresh := true
-	for _, rec := range completions {
-		if rec.GuideID == just.GuideID && rec.GuideSource == just.GuideSource && rec.CompletedAt == just.CompletedAt {
-			fresh = false
-			break
-		}
-	}
-	if fresh {
-		completions = append(completions, just)
-	}
-	for _, rec := range candidates {
-		guides, err := ev.guideProgress(rec, completions)
-		if err != nil || !satisfiedFromGuides(guides) {
-			continue
-		}
-		markAssignmentSatisfied(r.Context(), lister, namespace, rec, logger)
-	}
+	services.SyncSatisfiedAssignments(records, just, a.newObligationEvaluator(r), func() ([]services.CompletionRecord, error) { return a.callerCompletionRecords(r, userID) }, func(rec services.Assignment) { markAssignmentSatisfied(r.Context(), lister, namespace, rec, logger) }, logger)
 }
 
 // markAssignmentSatisfied replaces the assignment's status subresource (PUT).

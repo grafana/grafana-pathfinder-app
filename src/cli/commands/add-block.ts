@@ -18,7 +18,12 @@ import {
   type CommandShape,
   type CommandSpec,
 } from '../contracts';
-import { BLOCK_SCHEMA_MAP, isContainerBlockType, type BlockType } from '../utils/block-registry';
+import {
+  BLOCK_SCHEMA_MAP,
+  isContainerBlockType,
+  PRESENTATIONAL_BLOCK_TYPES,
+  type BlockType,
+} from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import {
   appendBlock,
@@ -138,12 +143,19 @@ function addBlockVariant(type: BlockType): CommandSpec {
     type === 'conditional' && contentSchema.conditions
       ? { ...contentSchema, conditions: required(contentSchema.conditions).meta({ role: 'content' }) }
       : contentSchema;
+  contentSchema =
+    type === 'collapsible' && contentSchema.title
+      ? { ...contentSchema, title: required(contentSchema.title).meta({ role: 'content' }) }
+      : contentSchema;
 
   const contentKeys = Object.keys(contentSchema);
 
   return defineCommand({
     name: type,
-    summary: `Append a ${type} block`,
+    summary:
+      type === 'collapsible'
+        ? `Append a collapsible block, then add its content as child blocks (${PRESENTATIONAL_BLOCK_TYPES.join(', ')} only)`
+        : `Append a ${type} block`,
     schema: z.object({ ...baseSchema, ...contentSchema }),
     // The group supplies `type`; the block's own fields are gathered into `fields`
     // because the runner builds a block object out of them. Nothing is renamed on the
@@ -404,6 +416,11 @@ function hintsFor(type: BlockType, parentId: string | undefined, assignedId: str
   if (type === 'section' || type === 'assistant') {
     return [`Add child blocks with: pathfinder-cli add-block <type> <dir> --parent ${assignedId ?? '<id>'}`];
   }
+  if (type === 'collapsible') {
+    return [
+      `Add ${PRESENTATIONAL_BLOCK_TYPES.join(', ')} blocks with: pathfinder-cli add-block <type> <dir> --parent ${assignedId ?? '<id>'}`,
+    ];
+  }
   if (parentId) {
     return [`Continue inside "${parentId}" or add a new top-level block with: pathfinder-cli add-block <type> <dir>`];
   }
@@ -417,7 +434,7 @@ function hintsFor(type: BlockType, parentId: string | undefined, assignedId: str
  * `add-choice`, `add-hint`) in subsequent invocations.
  */
 function initializeStructuralFields(block: Record<string, unknown>, type: BlockType): void {
-  if (type === 'section' || type === 'assistant') {
+  if (type === 'section' || type === 'assistant' || type === 'collapsible') {
     if (!Array.isArray(block.blocks)) {
       block.blocks = [];
     }

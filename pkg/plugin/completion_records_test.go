@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -395,7 +396,7 @@ func TestCache_InvalidationKeepsStaleServeFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("warm read: %v", err)
 	}
-	if got := warm.byUser["user:1"][0].GuideID; got != "old" {
+	if got := warm.ByUser["user:1"][0].GuideID; got != "old" {
 		t.Fatalf("warm guide = %q, want old", got)
 	}
 
@@ -412,7 +413,7 @@ func TestCache_InvalidationKeepsStaleServeFallback(t *testing.T) {
 	if idx == nil {
 		t.Fatalf("post-write refresh failure returned no index, want the stale one (err: %v)", err)
 	}
-	if got := idx.byUser["user:1"][0].GuideID; got != "old" {
+	if got := idx.ByUser["user:1"][0].GuideID; got != "old" {
 		t.Fatalf("stale-served guide = %q, want old", got)
 	}
 }
@@ -449,7 +450,7 @@ func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post-invalidation refresh: %v", err)
 	}
-	if got := fresh.byUser["user:1"][0].GuideID; got != "new" {
+	if got := fresh.ByUser["user:1"][0].GuideID; got != "new" {
 		t.Fatalf("post-invalidation guide = %q, want new", got)
 	}
 
@@ -460,7 +461,7 @@ func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cached read: %v", err)
 	}
-	if got := cached.byUser["user:1"][0].GuideID; got != "new" {
+	if got := cached.ByUser["user:1"][0].GuideID; got != "new" {
 		t.Fatalf("stale in-flight refresh replaced the cache with %q", got)
 	}
 	if got := calls.Load(); got != 2 {
@@ -470,10 +471,10 @@ func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
 	// The fenced refresh still lands in the §9 vital signs: every miss must be
 	// answered by a refresh or a failure, or the per-namespace counters an operator
 	// reads stop reconciling exactly when the write path is busiest.
-	completionCacheMu.Lock()
-	stats := *completionStatsFor(testNamespace)
-	completionCacheMu.Unlock()
-	if stats.refreshes+stats.refreshFailures != stats.misses {
+	services.CompletionCacheMu.Lock()
+	stats := *services.CompletionStatsFor(testNamespace)
+	services.CompletionCacheMu.Unlock()
+	if stats.Refreshes+stats.RefreshFailures != stats.Misses {
 		t.Errorf("stats do not reconcile (a fenced refresh went uncounted): %+v", stats)
 	}
 }

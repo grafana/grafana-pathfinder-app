@@ -67,6 +67,7 @@ export {
   formatDueDate,
   getDueStatus,
   getAssignmentGuideState,
+  getPathAssignment,
 } from './assignments-core';
 export type { DueStatus } from './assignments-core';
 export type { ResolvedAssignment } from '../types/learning-paths.types';
@@ -82,5 +83,7 @@ export type { CatalogProgress } from './catalog-progress.hook';
 
 export { catalogIdentity, pathCatalogIdentities, selectContinueLearning } from './catalog-learning-core';
 
-export { selectLearningPathEntries } from './learning-path-entries';
+export { selectLearningPathEntries, selectPathAssignmentEntries } from './learning-path-entries';
 export type { LearningPathEntry } from './learning-path-entries';
+
+export { selectGuideAssignmentEntries } from './guide-assignment-entries';

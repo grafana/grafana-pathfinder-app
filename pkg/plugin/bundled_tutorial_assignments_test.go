@@ -85,7 +85,7 @@ func TestMigratedTutorialAssignmentSources(t *testing.T) {
 						if satisfiedFromGuides(got) != want {
 							t.Fatalf("%s: %+v, want completed %v", kind, got, want)
 						}
-						identities, err := ev.assignmentGuides(asg)
+						identities, err := ev.AssignmentGuides(asg)
 						if err != nil || containsAssignmentGuide(identities, row) != want {
 							t.Fatalf("repair parity: %v, %v", identities, err)
 						}

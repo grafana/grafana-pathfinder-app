@@ -29,4 +29,11 @@ describe('HeroStats', () => {
     expect(screen.getByText('2')).toHaveClass('statValueBadges');
     expect(screen.getByText('4')).toHaveClass('statValue');
   });
+
+  it('hides the badge count when it is null', () => {
+    render(<HeroStats guidesCompleted={4} badgesEarned={null} streakDays={3} styles={styles} />);
+
+    expect(screen.queryByText('Badges earned')).not.toBeInTheDocument();
+    expect(screen.getByText('Guides completed')).toBeInTheDocument();
+  });
 });

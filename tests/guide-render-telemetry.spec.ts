@@ -1,3 +1,4 @@
+import { matchesBackendRoute } from './helpers/backend-route';
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { TIMEOUTS } from './constants';
@@ -38,11 +39,10 @@ test('correlates private and CDN failures with committed rendering without leaki
       },
     });
   });
-  await page.route(
-    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
-    (route) => route.fulfill({ json: { state: 'not-configured' } })
+  await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
+    route.fulfill({ json: { state: 'not-configured' } })
   );
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/custom-guide?*', async (route) => {
+  await page.route(matchesBackendRoute('custom-guide'), async (route) => {
     const id = new URL(route.request().url()).searchParams.get('name');
     if (id === 'private-missing') {
       await route.fulfill({ status: 404, json: { error: 'private upstream body' } });

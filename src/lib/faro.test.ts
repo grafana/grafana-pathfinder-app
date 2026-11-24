@@ -13,6 +13,8 @@ import { HELP_BUTTON_EXPERIMENT_ID, HELP_BUTTON_CLICK_EVENT } from '../constants
 import {
   AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
   AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+  COHORT_AUTO_OPEN_EXPERIMENT_ID,
+  COHORT_AUTO_OPEN_ELIGIBLE_EVENT,
   ONBOARDING_EXPLORING_EXPERIMENT_ID,
   ONBOARDING_EXPLORING_ELIGIBLE_EVENT,
 } from '../constants/auto-open-guide-experiment';
@@ -1276,6 +1278,16 @@ describe('passesActivityGate', () => {
     (exposure.payload as any).attributes = { experiment_id: ONBOARDING_EXPLORING_EXPERIMENT_ID };
     expect(faro.passesActivityGate(exposure)).toBe(true);
     (exposure.payload as any).name = ONBOARDING_EXPLORING_ELIGIBLE_EVENT;
+    expect(faro.passesActivityGate(exposure)).toBe(true);
+    expect(faro.passesActivityGate(eventItem())).toBe(false);
+  });
+  it('keeps cohort child exposure and eligibility events without opening the activity gate', () => {
+    const faro = freshFaro();
+    const exposure = eventItem();
+    (exposure.payload as any).name = 'experiment_viewed';
+    (exposure.payload as any).attributes = { experiment_id: COHORT_AUTO_OPEN_EXPERIMENT_ID };
+    expect(faro.passesActivityGate(exposure)).toBe(true);
+    (exposure.payload as any).name = COHORT_AUTO_OPEN_ELIGIBLE_EVENT;
     expect(faro.passesActivityGate(exposure)).toBe(true);
     expect(faro.passesActivityGate(eventItem())).toBe(false);
   });

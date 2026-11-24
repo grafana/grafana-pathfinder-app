@@ -1,3 +1,4 @@
+import { matchesBackendRoute } from './helpers/backend-route';
 import { test, expect } from './fixtures';
 import pluginJson from '../src/plugin.json';
 import { waitForGrafanaReady } from './helpers/grafana.helpers';
@@ -48,7 +49,7 @@ test.describe('online package recommendations endpoint', () => {
     // OSS dev container defaults acceptedTermsAndConditions to false, so the
     // recommender-disabled branch should run and hit the new endpoint.
     const requestPromise = page.waitForRequest(
-      (req) => req.url().includes(PACKAGE_RECOMMENDATIONS_PATH) && req.method() === 'GET',
+      (req) => matchesBackendRoute('package-recommendations')(new URL(req.url())) && req.method() === 'GET',
       { timeout: 15000 }
     );
 
@@ -58,7 +59,6 @@ test.describe('online package recommendations endpoint', () => {
     const helpButton = page.locator('button[aria-label="Help"]');
     await helpButton.click();
 
-    const request = await requestPromise;
-    expect(request.url()).toContain(PACKAGE_RECOMMENDATIONS_PATH);
+    await requestPromise;
   });
 });

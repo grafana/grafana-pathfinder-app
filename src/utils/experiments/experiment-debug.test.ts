@@ -22,7 +22,10 @@ jest.mock('../openfeature', () => ({
 }));
 
 import { getOnboardingIntentContextKey } from '../../global-state/onboarding-exploring-intent';
-import { ONBOARDING_EXPLORING_EXPERIMENT_ID } from '../../constants/auto-open-guide-experiment';
+import {
+  COHORT_AUTO_OPEN_EXPERIMENT_ID,
+  ONBOARDING_EXPLORING_EXPERIMENT_ID,
+} from '../../constants/auto-open-guide-experiment';
 import { createExperimentDebugger } from './experiment-debug';
 import { setAutoOpenGuideEnrollment } from './auto-open-guide/state';
 
@@ -71,19 +74,22 @@ describe('experiment-debug', () => {
       expect(localStorage.getItem(`${prefix}other.host.net:bundled:first-dashboard`)).toBe('true');
     });
 
-    it('lists clean scoped guide names only for the current identity and deduplicates legacy markers', () => {
-      const prefix = `grafana-pathfinder-auto-open-guide-shown-${window.location.hostname}:`;
-      const scopedPrefix = `${prefix}${ONBOARDING_EXPLORING_EXPERIMENT_ID}:`;
-      localStorage.setItem(`${prefix}bundled:first-dashboard`, 'true');
-      localStorage.setItem(`${scopedPrefix}${getOnboardingIntentContextKey()}:bundled:first-dashboard`, 'true');
-      localStorage.setItem(`${scopedPrefix}${getOnboardingIntentContextKey()}:https://example.com/guide`, 'true');
-      localStorage.setItem(`${scopedPrefix}other-context:bundled:other-guide`, 'true');
-      createExperimentDebugger();
-      expect(window.__pathfinderExperiment!.autoOpenGuide().shown.sort()).toEqual([
-        'bundled:first-dashboard',
-        'https://example.com/guide',
-      ]);
-    });
+    it.each([ONBOARDING_EXPLORING_EXPERIMENT_ID, COHORT_AUTO_OPEN_EXPERIMENT_ID])(
+      'lists clean scoped guide names for %s only for the current identity',
+      (experimentId) => {
+        const prefix = `grafana-pathfinder-auto-open-guide-shown-${window.location.hostname}:`;
+        const scopedPrefix = `${prefix}${experimentId}:`;
+        localStorage.setItem(`${prefix}bundled:first-dashboard`, 'true');
+        localStorage.setItem(`${scopedPrefix}${getOnboardingIntentContextKey()}:bundled:first-dashboard`, 'true');
+        localStorage.setItem(`${scopedPrefix}${getOnboardingIntentContextKey()}:https://example.com/guide`, 'true');
+        localStorage.setItem(`${scopedPrefix}other-context:bundled:other-guide`, 'true');
+        createExperimentDebugger();
+        expect(window.__pathfinderExperiment!.autoOpenGuide().shown.sort()).toEqual([
+          'bundled:first-dashboard',
+          'https://example.com/guide',
+        ]);
+      }
+    );
 
     it('should expose known flag names', () => {
       createExperimentDebugger();

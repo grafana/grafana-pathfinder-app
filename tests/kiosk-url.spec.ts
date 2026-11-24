@@ -1,3 +1,4 @@
+import { matchesBackendRoute } from './helpers/backend-route';
 import type { Page } from '@playwright/test';
 import { StorageKeys } from '../src/lib/storage-keys';
 import { test, expect } from './fixtures';
@@ -50,7 +51,7 @@ async function mockCoreConceptsPackage(page: Page) {
       ? route.fulfill({ json: response })
       : route.fulfill({ status: 404, body: 'Unknown fixture resource' });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/package-recommendations', (route) =>
+  await page.route(matchesBackendRoute('package-recommendations'), (route) =>
     route.fulfill({
       json: {
         baseUrl,
@@ -83,9 +84,8 @@ test.beforeEach(async ({ page }) => {
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...settings } } });
   });
-  await page.route(
-    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
-    (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
+  await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
+    route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
   );
   await page.route(defaultUrl, (route) => route.fulfill({ json: catalog('Default kiosk') }));
   await page.route(customUrl, (route) => route.fulfill({ json: catalog('Custom kiosk') }));

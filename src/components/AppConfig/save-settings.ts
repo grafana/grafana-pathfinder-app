@@ -1,3 +1,4 @@
+import { expectsSdkBackend } from '../../lib/backend-routes';
 import { PathfinderTenantSettings, TENANT_SETTING_KEYS } from '../../constants';
 import {
   clampToKindBounds,
@@ -30,6 +31,10 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
       }
     }
     return;
+  }
+
+  if (tenant || expectsSdkBackend()) {
+    throw new Error('Tenant settings are unavailable. Retry when the backend is ready.');
   }
 
   const { devModeOptIn: _devModeOptIn, ...legacy } = pluginSettings.jsonData;

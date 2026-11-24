@@ -1,5 +1,6 @@
 import { AppConfigPage, AppPage, test as base } from '@grafana/plugin-e2e';
 import pluginJson from '../src/plugin.json';
+import { dismissWhatsNewOnInteraction } from './helpers/grafana.helpers';
 
 type AppTestFixture = {
   appConfigPage: AppConfigPage;
@@ -8,12 +9,7 @@ type AppTestFixture = {
 
 export const test = base.extend<AppTestFixture>({
   page: async ({ page }, use) => {
-    // Grafana 13+ shows a "What's new" modal on first login that blocks pointer
-    // events via a portal overlay. Register a handler so Playwright automatically
-    // dismisses it whenever it intercepts an action.
-    await page.addLocatorHandler(page.getByLabel("What's new in Grafana"), async () => {
-      await page.getByLabel("What's new in Grafana").getByLabel('Close').click();
-    });
+    await dismissWhatsNewOnInteraction(page);
     await use(page);
   },
   appConfigPage: async ({ gotoAppConfigPage }, use) => {

@@ -366,9 +366,8 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   `signing-keys-unreachable` (no signing-keys endpoint answered at all — §3). The `reason*`
   constants in `pkg/plugin/` are the definition, and the front-end gates on `available` and
   ignores the string.
-  A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
-  not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`)
-  and silently renders empty with no retry, so a
+  A bare 503 conflates "never works here" with "blip": a front-end reader that treats 503 as
+  not rolled out renders empty with no retry, so a
   transient 503 darkens the feature for that load exactly as if it were structurally absent. This
   is also why missing identity on a GET read is soft-200, not 401: these routes gate whether a
   feature renders at all.
@@ -777,14 +776,25 @@ package resolver's published-status probe both use this route. The proxy
 preserves draft content for existing share links; the resolver retains its
 published-status gate. Catalogue listing continues to use `/custom-guide-repository`.
 
-`GET /custom-guides` supplies the editor with complete InteractiveGuide resources,
-including all metadata and spec fields, through the same identity gate and caller-scoped
-OBO client. It drains pages of 100 resources with an 8 MiB page cap, a 32 MiB aggregate
-resource byte budget, a 50,000-item cap, and a 30-second aggregate deadline. Budget
-truncation is logged. Responses are `Cache-Control: no-store` and never cached
-across callers. Upstream 401 maps to 502; other upstream errors retain the single-item
-reader's mapping. The browser's existing optional-endpoint status handling remains
-unchanged. Editor writes continue to use App Platform directly.
+The block editor's library lists from `/custom-guide-repository` too. Each entry carries
+`name` and `creationTimestamp` from the resource's metadata, because the editor loads and
+saves by resource name, which can differ from `spec.id`. A guide's full resource, including
+the `resourceVersion` an update must echo back, comes only from `/custom-guide?name=`.
+There is no full-resource LIST route: `/custom-guides` was removed because its 32 MiB
+budget cut the list off without telling the client. Editor writes continue to use App
+Platform directly.
+
+The catalogue's limits are an aggregate budget of 50,000 entries, past which the list is
+truncated with a logged warning, and 8 MiB per LIST page. Pages carry full specs, so the
+page size starts at 500 and halves, re-reading the same continue token, whenever a page
+would exceed 8 MiB. The smaller size holds for the rest of the drain, and each shrink
+logs at info rather than as a `pathfinder_proxy_failure`, since the drain recovers. Large guides
+therefore cost round trips rather than the catalogue, within the drain's 60-second aggregate
+deadline (`customGuideAggregateDeadline`): a guide near 8 MiB can shrink the rest of the drain
+to very small pages, and a drain past the deadline is served as a retryable 503. Only a single
+guide over 8 MiB fails outright,
+and since `/custom-guide?name=` shares that cap and cannot read it either, it is served as
+the terminal soft-200 `available:false` with reason `guide-too-large`, not a retryable 503.
 
 ## Operational diagnostics
 
@@ -920,3 +930,139 @@ That test's allowlist contains only the [signed-in survey compatibility read](#s
 The temporary saved-exploring experiment has one explicit browser-read exception, tracked in PR #2343: `src/lib/onboarding-survey-intent.ts` reads the existing `grafana-setupguide-app:<current-user-uid>` object in `userstorage.grafana.app/v0alpha1`. This is Grafana's own-user settings API, not the Pathfinder catalogue API. Its authorizer verifies the authenticated caller's UID against the record name, regardless of the service-name prefix. The adapter derives namespace and UID from the signed-in runtime context, never from a URL parameter, and uses the browser session. Anonymous users never read or enroll. There is no service-account credential, internal storage import, fabricated plugin context or Setupguide release dependency.
 
 This exception does not change the proxy requirement for any other resource. The transport ratchet explicitly detects and allowlists this single call, with a regression preventing it from becoming invisible to the scanner. The private survey key/schema and alpha resource require compatibility tests. Missing/malformed data, authentication failures and timeouts leave both experiment arms ineligible; legacy browser storage is not an identity-safe fallback. Revalidate on bounded navigation/visibility cycles only on configured experiment pages and discard stale responses. The source is the latest completed server save, not a guarantee that a newer, still-pending survey submission has completed. Remove the exception when retiring the experiment.
+
+## SDK runtime migration
+
+The SDK provider now exposes
+`GET /apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/pathfinder-settings`.
+The browser uses the bounded `backendRoute()` helper when both SDK registration
+flags are enabled and Grafana provides a namespace; otherwise it retains the legacy
+transport. Both settings routes use the settings-read
+service; SDK access uses the generated kind definition with `resource.Client.GetInto`
+to retain unknown JSON fields that a generated typed settings object would discard.
+The SDK adapter preserves the request context, binds its verified identity namespace
+to the route namespace, and uses the runtime's caller-delegating client generator.
+Its transport refuses redirects and bounds successful responses to 1 MiB and error
+responses to 2 KiB. The shared service applies the existing 15-second deadline.
+
+Local verification on Grafana 13.3.0 (commit
+`6f8ce3c693b493043ebcd4787566d2b6b118b0f0`) enabled
+`appplugins.loadAppManifest`, `appplugins.registerAPIServer`, and
+`grafana.useRouterMiddleware`. The plugin binary and generated manifest registered
+all four kinds. The SDK route returned the same complete settings resource as
+standard CRUD, retained it across a plugin restart, returned explicit confirmed
+absence before creation, and rejected unauthenticated and cross-namespace requests.
+A restricted user was rejected at ingress; this does not prove outbound delegation.
+The resource-access integration test separately exercises token exchange with the
+caller's token and namespace through the bounded SDK transport.
+
+An enabled plugin checks the namespaced SDK health route at startup on Cloud
+and on local instances with both registration flags enabled. A healthy
+response selects the SDK transport for that namespace. If the router wave has
+yet to arrive or the check times out, the compatibility build uses its legacy
+adapter for the page. Reloading repeats the check.
+
+Cloud coexistence with the manifest-only registration and real restricted-caller
+outbound authorization remain unverified. Cloud testing is deferred until after local
+implementation and does not block local endpoint migration or frontend validation.
+Do not remove or replace the Cloud registration or remove the legacy adapter on the
+strength of local registration alone. Retain the planned compatibility window.
+
+### Final local acceptance: OSS guide authoring
+
+After all required endpoints and direct Pathfinder resource writes have migrated,
+enable block editor creation and saving on the local OSS instance. Availability
+detection must recognize the SDK provider without depending exclusively on the
+Cloud aggregation toggle. Preserve authorization and namespace isolation; runtime
+feature flags alone are not evidence that an individual caller can write guides.
+
+Verify these journeys end to end through the migrated SDK routes:
+
+- Create a guide in the block editor and save it.
+- Reload Grafana, reopen the saved guide, edit it, and save again.
+- Exercise existing publishing and deletion actions where authorized.
+- Verify denied writes leave stored data unchanged and another namespace cannot
+  read or modify the guide.
+- Run settings, progress, assignment, and learning-insights journeys after the
+  complete endpoint migration.
+
+Leave the dedicated local OSS Grafana instance running with the built frontend,
+SDK plugin binary, and persistent test data. Report its URL, login, validation
+results, and any remaining limitations. Do not repurpose another local instance.
+
+### Browser transport boundary
+
+`src/lib/backend-routes.ts` permits only the named backend surfaces. It derives
+the namespace from Grafana runtime configuration and rejects unknown paths. These
+SDK custom handlers retain the verified caller context and enforce namespace
+binding before resource access. They are distinct from direct resource CRUD reads.
+The transport ratchet recognizes this exact helper module and declaration; an
+unrelated helper with the same name or a raw `/apis/` URL remains subject to the
+existing restrictions. Guide and settings mutations also use these SDK handlers.
+
+The provider owns settings, guide item/list/catalogue, personal completion reads,
+completion capability/writes, assignments, learning insights, recommendations, and
+health routes. Legacy adapters remain for the compatibility window. Recommendations
+retain their anonymous shared cache; authenticated user data must never enter it.
+
+Assignment status updates are a narrow exception to caller-delegated resource
+writes: Grafana reserves status mutations for service identities. After delegated
+reads establish caller ownership and completion satisfaction, `MarkSatisfied`
+checks the verified namespace and subject against the assignment, requires its
+resource version, and uses a bounded app-identity context to update status. Guide,
+settings, and completion writes continue to use caller delegation.
+
+SDK completion caches are keyed by namespace and authenticated subject. A caller
+never receives another caller's cached availability, failures, or completion index.
+Completion writes invalidate every caller entry in the affected namespace, including
+in-flight generations; the legacy namespace cache is also invalidated during the
+compatibility window.
+
+Run the dedicated local browser acceptance with:
+
+```sh
+PATHFINDER_SDK_E2E=1 GRAFANA_URL=http://localhost:3302 npx playwright test tests/sdk-guide-authoring.spec.ts --project=chromium
+```
+
+The test enables the existing learning-insights rollout flag through Grafana's local
+OpenFeature override. Resource reads and writes use the real SDK provider and store.
+
+Local validation covers guide create/save/reload/edit/publish/delete, completion
+persistence, assignment satisfaction and stored status synchronization, admin insights,
+and settings save/reload. Viewer guide/settings writes and cross-namespace reads
+return 403. The full frontend coverage suite and Go service/client/provider checks
+pass. The dedicated OSS instance uses the SDK route path throughout these journeys.
+
+Legacy rollback remains a rollout prerequisite, not a locally proven result: the
+legacy settings adapter on this OSS instance returns `proxy-unavailable` because
+its former OBO configuration is absent. Keep compatibility routes and
+`WithAppFunc(plugin.NewApp)` until Cloud coexistence, rollback, and the planned
+compatibility window have been verified.
+
+### Achievement routes
+
+The SDK also serves `backend/api/v1/achievements/events` (POST),
+`backend/api/v1/achievements/my` (GET), and
+`backend/api/v1/achievements/definitions` (GET). The compatibility path retains
+`api/v1/achievements/...`. Both transports use the same evaluator, response shaping,
+and persistence service. The SDK wires persistence; main's compatibility routes
+still report unavailable until their store builder is configured.
+
+Only authenticated user principals can submit or read achievements. SDK writes
+stamp the caller and namespace from verified authentication and use delegated
+clients. Award names remain deterministic and awards are create-only. Progress
+uses resource-version concurrency; a successful save with an unreadable response
+remains durable and forces the next update to reload. The events limit is 30
+requests with a refill of 0.5 per second, isolated by namespace and user.
+
+Personal reads drain both resource kinds with 100-item pages, a 50,000-record
+aggregate cap, 15-second page deadlines, and a 30-second overall deadline. They
+filter the caller before shaping the result, expose truncation, and do not cache
+personal state. Public CDN definitions retain their existing shared cache and
+failure backoff; caller credentials never reach the CDN.
+
+Achievement schemas are copied from the exact backend revision used by the
+merged store tests (`84c582fdae1916910e5197a44bd0078018315135`, backend PR #146).
+Their resource names, versions, schemas, and award create-only role are preserved.
+The local SDK provider registers these kinds; this is not evidence of Cloud
+registration or deployment. There is no new achievement frontend in this change.

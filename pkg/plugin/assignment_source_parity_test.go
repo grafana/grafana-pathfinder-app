@@ -69,7 +69,7 @@ func TestAssignmentSourceChainParity(t *testing.T) {
 					r := insightsRequest(t, "Admin", "user:1")
 					ev := constructor.build(newTestApp(t), r)
 					asg := assignmentSpec{TargetType: assignmentTargetPath, TargetID: tc.target, TargetSource: tc.source, AcceptCompletionsFrom: "2026-10-01T00:00:00Z"}
-					got, err := ev.assignmentGuides(asg)
+					got, err := ev.AssignmentGuides(asg)
 					if err != nil || !reflect.DeepEqual(got, tc.want) {
 						t.Fatalf("identities = %+v, err = %v; want %+v", got, err, tc.want)
 					}
@@ -78,8 +78,8 @@ func TestAssignmentSourceChainParity(t *testing.T) {
 						rows = append(rows, rec("user:1", guide.GuideSource, guide.GuideID, "Member", "learning-journey", "", "objectives", asg.AcceptCompletionsFrom, 100))
 					}
 					for i, guide := range tc.want {
-						if guide.alternateSource != "" {
-							rows[i].GuideSource = guide.alternateSource
+						if guide.AlternateSource != "" {
+							rows[i].GuideSource = guide.AlternateSource
 						}
 					}
 					progress := mustGuideProgress(t, ev, asg, rows)

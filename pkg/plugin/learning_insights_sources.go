@@ -3,12 +3,14 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"net/http"
 )
 
 func (a *App) insightsObligationEvaluator(r *http.Request) *obligationEvaluator {
 	logger := a.ctxLogger(r.Context())
-	ev := &obligationEvaluator{ctx: r.Context(), logger: logger}
+	ev := &obligationEvaluator{Context: r.Context(), Logger: logger}
 	var custom pathGuideSource
 	var customErr error
 	customLoaded := false
@@ -39,11 +41,19 @@ func (a *App) insightsObligationEvaluator(r *http.Request) *obligationEvaluator 
 		}
 		return custom(ctx, targetID, trackID, targetSource)
 	}
+	onlineSource := InsightsOnlineAssignmentSource()
+
+	ev.Sources = []pathGuideSource{bundledPathGuides(logger), customSource, onlineSource}
+	return ev
+}
+
+func InsightsOnlineAssignmentSource() services.PathGuideSource {
+	logger := log.DefaultLogger
 	var online *PackageRecommendationsResponse
 	var onlineErr error
 	onlineLoaded := false
-	onlineSource := func(ctx context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
-		if targetSource != "" && !onlineAssignmentGuide(targetID).matchesSource(targetSource) {
+	return func(ctx context.Context, targetID, trackID, targetSource string) ([]assignmentGuideIdentity, bool, error) {
+		if targetSource != "" && !onlineAssignmentGuide(targetID).MatchesSource(targetSource) {
 			return nil, false, nil
 		}
 		if !onlineLoaded {
@@ -57,8 +67,6 @@ func (a *App) insightsObligationEvaluator(r *http.Request) *obligationEvaluator 
 		if onlineErr != nil {
 			return nil, false, onlineErr
 		}
-		return a.resolveOnlinePathGuides(ctx, online, logger, targetID, trackID, targetSource)
+		return (&App{}).resolveOnlinePathGuides(ctx, online, logger, targetID, trackID, targetSource)
 	}
-	ev.sources = []pathGuideSource{bundledPathGuides(logger), customSource, onlineSource}
-	return ev
 }

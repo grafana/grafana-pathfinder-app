@@ -29,7 +29,7 @@ func bundleOf(grammar, actions string, definitions ...string) []byte {
 func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
 	data := bundleOf("1.0",
 		guidesAction+`,
-  "started":{"context":{},"sources":[{"interaction":"x"}]},
+  "started":{"context":{},"examples":[{"interaction":"x"}]},
   "viewed":{"context":{"at":{"type":"date"}}}`,
 		guidesDefinition("kept", ""),
 		guidesDefinition("versioned", `,"requires":"1.1","window":{"days":7}`),
@@ -201,12 +201,12 @@ func TestLoadBundleKeepsAnActionThatGainedAnAdditiveKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withSources := strings.Replace(string(data), `"completed": {`, `"completed": {
-            "sources": [{ "interaction": "grafana_guide_completed", "context": { "guideId": "id" } }],`, 1)
-	if withSources == string(data) {
+	withKey := strings.Replace(string(data), `"completed": {`, `"completed": {
+            "examples": [{ "interaction": "grafana_guide_completed", "context": { "guideId": "id" } }],`, 1)
+	if withKey == string(data) {
 		t.Fatal("fixture no longer has the completed action")
 	}
-	s, err := LoadBundle([]byte(withSources))
+	s, err := LoadBundle([]byte(withKey))
 	if err != nil {
 		t.Fatal(err)
 	}

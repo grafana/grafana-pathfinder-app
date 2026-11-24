@@ -1,3 +1,4 @@
+import { matchesBackendRoute } from './helpers/backend-route';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from './fixtures';
@@ -29,7 +30,7 @@ async function settings(page: Page | BrowserContext, overrides: Record<string, u
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...config } } });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
+  await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
     route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: config } })
   );
 }

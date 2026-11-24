@@ -53,15 +53,20 @@ async function boot(
     addLink: jest.fn().mockReturnThis(),
   };
   const effects = {
+    discoverSdkBackend: jest.fn().mockResolvedValue(undefined),
     initializeConfiguredSurfaces: jest.fn().mockResolvedValue(undefined),
     handlePathfinderDeepLink: jest.fn(),
     installDeepLinkNavListener: jest.fn(),
     setPackageResolverFactory: jest.fn(),
     armCompletionWriteHook: jest.fn(),
+    installEchoSubscriptions: jest.fn(),
+    closeEchoSubscriptions: jest.fn(),
     clearExtensionSidebarDocked: jest.fn(),
     setPendingOpenSource: jest.fn(),
     consumePendingOpenSource: jest.fn(() => ({ source: 'unset', action: 'open' })),
     setIsSidebarMounted: jest.fn(),
+    getIsSidebarMounted: jest.fn(() => true),
+    setSuggestions: jest.fn(),
     closeSidebar: jest.fn(),
     enrollInteractiveLearningBannerExperiment: jest.fn(),
     recordStartupSettings: jest.fn(),
@@ -96,6 +101,7 @@ async function boot(
         return load();
       },
     },
+    './lib/backend-routes': { discoverSdkBackend: effects.discoverSdkBackend },
     './lib/analytics': {
       reportAppInteraction,
       UserInteraction: { DocsPanelInteraction: 'docs_panel_interaction' },
@@ -103,6 +109,7 @@ async function boot(
     },
     './lib/analytics-values': jest.requireActual('../lib/analytics-values'),
     './lib/retry-chunk-import': { retryChunkImport },
+    './lib/achievement-echo': effects,
     './lib/logging': { logger: { exception: jest.fn(), error: jest.fn(), warn: jest.fn() } },
     './plugin.json': { id: 'grafana-pathfinder-app' },
     './utils/configured-bootstrap': effects,
@@ -120,7 +127,7 @@ async function boot(
     './global-state/link-interception': { linkInterceptionState: effects },
     'global-state/sidebar': { sidebarState: effects },
     './global-state/panel-mode': { panelModeManager: { getMode: () => panelMode } },
-    './global-state/suggestion': { suggestionState: {} },
+    './global-state/suggestion': { suggestionState: effects },
     './utils/pathfinder-deep-link-loader': effects,
     './utils/pathfinder-search-params': {
       parsePathfinderDeepLink: () => deepLink,
@@ -191,6 +198,7 @@ it.each([
 ])('suppresses every entry point with remote=%s, tenant=%s, read failure=%s', async (remote, tenant, readFailed) => {
   const { plugin, effects, root, requireModule } = await boot(remote, tenant, readFailed);
   plugin.init();
+  expect(effects.discoverSdkBackend).toHaveBeenCalledTimes(remote ? 1 : 0);
   expect(plugin.addComponent).not.toHaveBeenCalled();
   expect(plugin.addLink).not.toHaveBeenCalled();
   expect(plugin.addConfigPage).toHaveBeenCalledTimes(3);
@@ -210,6 +218,7 @@ it.each([
 
 it.each([true, undefined])('registers learning surfaces when remote enabled and tenant=%s', async (tenant) => {
   const { plugin, effects } = await boot(true, tenant);
+  expect(effects.discoverSdkBackend).toHaveBeenCalledTimes(1);
   expect(plugin.addComponent).toHaveBeenCalledTimes(1);
   expect(plugin.addLink).toHaveBeenCalledTimes(4);
   plugin.init();
@@ -306,6 +315,21 @@ it.each([
 it('does not clear another plugin’s docked entry', async () => {
   const { effects } = await boot(false, false, false, undefined, 'another-plugin');
   expect(effects.clearExtensionSidebarDocked).not.toHaveBeenCalled();
+});
+
+it('accepts multiple suggested guides in order when the sidebar is open', async () => {
+  const { effects } = await boot(true);
+  const suggestions = [
+    { title: 'First', url: 'bundled:first', type: 'interactive' },
+    { title: 'Second', url: 'bundled:second', type: 'interactive' },
+  ];
+  const detail = { suggestions, groupTitle: '  What’s new  ', status: '' };
+  document.dispatchEvent(new CustomEvent('pathfinder-suggest', { detail }));
+  expect(detail.status).toBe('accepted');
+  expect(effects.setSuggestions).toHaveBeenCalledWith(suggestions, {
+    groupTitle: 'What’s new',
+    pathname: window.location.pathname,
+  });
 });
 
 it('rejects buffered and subsequent suggestions while disabled', async () => {

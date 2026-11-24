@@ -29,8 +29,9 @@ type SkipReason string
 const SkipInvalid SkipReason = "invalid"
 
 // Skip names an entry LoadBundle left out: an "entity", an "action" (ID is
-// entity.action), an "art" key or an "achievement". Past maxListedSkips, one
-// "bundle" entry counts the rest.
+// entity.action), a "source" (ID is its interaction, or entity.action#index), an
+// "art" key or an "achievement". Past maxListedSkips, one "bundle" entry counts
+// the rest.
 type Skip struct {
 	What   string     `json:"what"`
 	ID     string     `json:"id"`
@@ -83,8 +84,8 @@ type envelope struct {
 
 // LoadBundle reads a published bundle. The envelope and each registry action's
 // top level are lenient, so additive keys need no grammar change; fields,
-// resources and definitions are decoded strictly, and each entry is validated
-// on its own. An entry this build cannot read is skipped with a reason and
+// resources, sources and definitions are decoded strictly, and each entry is
+// validated on its own. An entry this build cannot read is skipped with a reason and
 // everything else stays live. Only an unreadable envelope or a grammar other
 // than Grammar fails the whole bundle.
 func LoadBundle(data []byte) (*Snapshot, error) {
@@ -112,6 +113,7 @@ func LoadBundle(data []byte) (*Snapshot, error) {
 	for _, entity := range sortedKeys(env.Registry.Entities) {
 		s.addEntity(entity, env.Registry.Entities[entity])
 	}
+	s.Registry.indexSources(s.skipSource)
 	for i, raw := range env.Art {
 		var key string
 		if json.Unmarshal(raw, &key) != nil || !validID(key, maxIDLen) {
@@ -148,6 +150,7 @@ func (s *Snapshot) addEntity(entity string, raw json.RawMessage) {
 			s.skip("action", entity+"."+name, SkipInvalid, err)
 			continue
 		}
+		action.loadSources(entity+"."+name, s.skipSource)
 		loaded, ok := s.Registry.Entities[entity]
 		if !ok {
 			loaded = Entity{Actions: map[string]Action{}}
@@ -208,6 +211,10 @@ func (s *Snapshot) addDefinition(i int, raw json.RawMessage, seen map[string]boo
 	s.Catalog.Achievements = append(s.Catalog.Achievements, d)
 	display.Earnable = true
 	s.Display = append(s.Display, display)
+}
+
+func (s *Snapshot) skipSource(id string, err error) {
+	s.skip("source", id, SkipInvalid, err)
 }
 
 func (s *Snapshot) skip(what, id string, reason SkipReason, err error) {

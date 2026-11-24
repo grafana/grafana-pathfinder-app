@@ -1,4 +1,22 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "",
+      "dismiss": "",
+      "final": "",
+      "progress": "",
+      "tierUp": ""
+    },
+    "hub": {
+      "empty": "",
+      "progress": "",
+      "progressLabel": "",
+      "showAll": "",
+      "title": "",
+      "truncated": "",
+      "unavailable": ""
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "Page de documentation",
     "categoryInteractiveGuide": "Guide interactif",
@@ -144,6 +162,7 @@
     "dueOn": "",
     "dueToday": "",
     "dueTomorrow": "",
+    "groupProgress": "",
     "inProgress": "",
     "moduleOf": "",
     "moreRecommended": "",

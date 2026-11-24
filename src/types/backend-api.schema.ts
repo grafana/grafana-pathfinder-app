@@ -38,8 +38,8 @@ export const GuideProxyDiagnosticWireSchema = z.strictObject({
 // ============ /completion-records/capability ============
 
 /**
- * `completionCapability` (pkg/plugin/completion_records.go).
- * @coupling Go struct: completionCapability
+ * `CompletionCapability` (pkg/plugin/completion_records.go).
+ * @coupling Go struct: CompletionCapability
  */
 export const CompletionCapabilityWireSchema = z.strictObject({
   diagnostics: GuideProxyDiagnosticWireSchema.optional(),
@@ -51,7 +51,7 @@ export const CompletionCapabilityWireSchema = z.strictObject({
 
 // ============ /completion-records/my ============
 
-/** @coupling Go struct: collatedCompletion */
+/** @coupling Go struct: CollatedCompletion */
 export const CollatedCompletionWireSchema = z.strictObject({
   guideSource: z.string(),
   guideId: z.string(),
@@ -69,7 +69,7 @@ export const CollatedCompletionWireSchema = z.strictObject({
 
 /**
  * A guide whose most recent activity is an unfinished attempt.
- * @coupling Go struct: inProgressCompletion
+ * @coupling Go struct: InProgressCompletion
  */
 export const InProgressCompletionWireSchema = z.strictObject({
   guideSource: z.string(),
@@ -89,7 +89,7 @@ export const InProgressCompletionWireSchema = z.strictObject({
  * `TestMyCompletions_UnknownUserEmptyList` asserts it serializes as `[]`.
  * A `null` here is a Go bug that should fail loudly rather than be absorbed.
  *
- * @coupling Go struct: myCompletionsResponse
+ * @coupling Go struct: CompletionResponse
  */
 export const MyCompletionsResponseWireSchema = z.strictObject({
   diagnostics: GuideProxyDiagnosticWireSchema.optional(),
@@ -120,7 +120,7 @@ export const AchievementDecisionWireSchema = z.strictObject({
 
 /**
  * `decisions` is always an array, `[]` when no achievement matched the event.
- * @coupling Go struct: achievementEventsResponse
+ * @coupling Go struct: AchievementEventsResponse
  */
 export const AchievementEventsResponseWireSchema = z.strictObject({
   eventId: z.string(),
@@ -128,13 +128,13 @@ export const AchievementEventsResponseWireSchema = z.strictObject({
   decisions: z.array(AchievementDecisionWireSchema),
 });
 
-/** @coupling Go struct: achievementCapability */
+/** @coupling Go struct: AchievementCapability */
 export const AchievementCapabilityWireSchema = z.strictObject({
   available: z.boolean(),
   reason: z.string().optional(),
 });
 
-/** @coupling Go struct: achievementAward */
+/** @coupling Go struct: AchievementAward */
 export const AchievementAwardWireSchema = z.strictObject({
   achievementId: z.string(),
   tierId: z.string(),
@@ -142,14 +142,14 @@ export const AchievementAwardWireSchema = z.strictObject({
   earnedAt: z.string(),
 });
 
-/** @coupling Go struct: achievementProgress */
+/** @coupling Go struct: AchievementProgress */
 export const AchievementProgressWireSchema = z.strictObject({
   achievementId: z.string(),
   units: z.number().int(),
   next: z.number().int().nullable(),
 });
 
-/** @coupling Go struct: legacyBadge */
+/** @coupling Go struct: LegacyBadge */
 export const LegacyBadgeWireSchema = z.strictObject({
   source: z.string(),
   name: z.string(),
@@ -160,7 +160,7 @@ export const LegacyBadgeWireSchema = z.strictObject({
  * All three arrays are required, never nullable: the handler builds non-nil
  * slices unconditionally, including in the unavailable answer.
  *
- * @coupling Go struct: myAchievementsResponse
+ * @coupling Go struct: MyAchievementsResponse
  */
 export const MyAchievementsResponseWireSchema = z.strictObject({
   asOf: z.string().optional(),
@@ -193,20 +193,42 @@ export const AchievementDisplayWireSchema = z.strictObject({
 });
 
 /**
- * A tier's image is `artBase + art + '.svg'`.
- * @coupling Go struct: achievementDefinitionsResponse
+ * `value` is a scalar for `eq` and a list of scalars for `in`.
+ * @coupling Go struct: SourceCondition (pkg/achievements/source.go)
+ */
+export const AchievementSourceConditionWireSchema = z.strictObject({
+  property: z.string(),
+  op: z.string(),
+  value: JsonValueSchema,
+});
+
+/**
+ * `properties` are the only event properties the browser may forward.
+ * @coupling Go struct: SourceSubscription (pkg/achievements/source.go)
+ */
+export const AchievementSourceSubscriptionWireSchema = z.strictObject({
+  interaction: z.string(),
+  properties: z.array(z.string()),
+  when: z.array(AchievementSourceConditionWireSchema).optional(),
+});
+
+/**
+ * A tier's image is `artBase + art + '.svg'`. `sources` are the Echo
+ * interactions this stack can emit, `[]` when none.
+ * @coupling Go struct: AchievementDefinitionsResponse
  */
 export const AchievementDefinitionsResponseWireSchema = z.strictObject({
   version: z.string(),
   artBase: z.string(),
   achievements: z.array(AchievementDisplayWireSchema),
+  sources: z.array(AchievementSourceSubscriptionWireSchema),
 });
 
 // ============ /assignments/my ============
 
 /**
- * `assignmentCapability` (pkg/plugin/assignments.go).
- * @coupling Go struct: assignmentCapability
+ * `AssignmentCapability` (pkg/plugin/assignments.go).
+ * @coupling Go struct: AssignmentCapability
  */
 export const AssignmentCapabilityWireSchema = z.strictObject({
   available: z.boolean(),
@@ -216,7 +238,7 @@ export const AssignmentCapabilityWireSchema = z.strictObject({
 /**
  * One guide within an assignment's target, on the wire — the per-guide
  * detail behind `satisfied`.
- * @coupling Go struct: assignmentGuideEntry
+ * @coupling Go struct: AssignmentGuideEntry
  */
 export const AssignmentGuideEntryWireSchema = z.strictObject({
   guideId: z.string(),
@@ -226,7 +248,7 @@ export const AssignmentGuideEntryWireSchema = z.strictObject({
 
 /**
  * One assigned obligation.
- * @coupling Go struct: assignmentEntry
+ * @coupling Go struct: AssignmentEntry
  */
 export const AssignmentEntryWireSchema = z.strictObject({
   targetType: z.string(),
@@ -250,7 +272,7 @@ export const AssignmentEntryWireSchema = z.strictObject({
  * obligations, which is a different statement from `capability.available`
  * being false — a `null` here is a Go bug that should fail loudly.
  *
- * @coupling Go struct: myAssignmentsResponse
+ * @coupling Go struct: AssignmentResponse
  */
 export const MyAssignmentsResponseWireSchema = z.strictObject({
   capability: AssignmentCapabilityWireSchema,
@@ -261,19 +283,19 @@ export const MyAssignmentsResponseWireSchema = z.strictObject({
 
 // ============ /custom-guide-repository ============
 
-/** @coupling Go struct: customGuideCapability */
+/** @coupling Go struct: CatalogueCapability */
 export const CustomGuideCapabilityWireSchema = z.strictObject({
   available: z.boolean(),
   reason: z.string().optional(),
 });
 
-/** @coupling Go struct: customGuideManifest.author */
+/** @coupling Go struct: CatalogueManifest.author */
 export const CustomGuideAuthorWireSchema = z.strictObject({
   name: z.string().optional(),
   team: z.string().optional(),
 });
 
-/** @coupling Go struct: customGuideManifest.tracks */
+/** @coupling Go struct: CatalogueManifest.tracks */
 export const CustomGuideTrackWireSchema = z.strictObject({
   trackId: z.string(),
   label: z.string(),
@@ -290,7 +312,7 @@ export const CustomGuideTrackWireSchema = z.strictObject({
  * non-negative invariant every member carries. `strictObject` adds only the
  * closed-shape rule the rest of this module's wire schemas apply.
  *
- * @coupling Go struct: customGuideStats
+ * @coupling Go struct: CatalogueStats
  */
 export const CustomGuideStatsWireSchema = z.strictObject(GuideStatsSummarySchema.shape);
 
@@ -314,7 +336,7 @@ export const CustomGuideStatsWireSchema = z.strictObject(GuideStatsSummarySchema
  *   will reach the browser untyped — the client declares no `stats` field for a
  *   reader to use.
  *
- * @coupling Go struct: customGuideManifest
+ * @coupling Go struct: CatalogueManifest
  */
 export const CustomGuideManifestWireSchema = z.strictObject({
   type: z.string(),
@@ -328,9 +350,11 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   stats: CustomGuideStatsWireSchema.optional(),
 });
 
-/** @coupling Go struct: customGuideRepositoryEntry */
+/** @coupling Go struct: CatalogueEntry */
 export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
   id: z.string(),
+  name: z.string(),
+  creationTimestamp: z.string().optional(),
   title: z.string().optional(),
   status: z.string().optional(),
   manifest: CustomGuideManifestWireSchema.optional(),
@@ -340,18 +364,13 @@ export const CustomGuideRepositoryEntryWireSchema = z.strictObject({
  * `guides` is a required array for the same reason as `completions`:
  * `custom_guide_repository_test.go:156` asserts `[]` not `null`.
  *
- * @coupling Go struct: customGuideRepositoryResponse
+ * @coupling Go struct: CatalogueResponse
  */
 export const CustomGuideRepositoryResponseWireSchema = z.strictObject({
   diagnostics: GuideProxyDiagnosticWireSchema.optional(),
   capability: CustomGuideCapabilityWireSchema,
   guides: z.array(CustomGuideRepositoryEntryWireSchema),
   asOf: z.string().optional(),
-});
-
-// Full resources stay arbitrary JSON so unknown metadata and spec fields survive.
-export const CustomGuidesResponseWireSchema = z.strictObject({
-  items: z.array(JsonValueSchema),
 });
 
 // ============ /package-recommendations ============
@@ -435,40 +454,41 @@ export const LearningInsightsResponseWireSchema = z.strictObject({
  * struct — or a stale schema — fails.
  */
 export const GO_STRUCT_SCHEMAS = {
-  guideProxyDiagnostic: GuideProxyDiagnosticWireSchema,
+  ProxyDiagnostic: GuideProxyDiagnosticWireSchema,
   PackageRecommendationsResponse: PackageRecommendationsResponseWireSchema,
   PackageEntry: PackageEntryWireSchema,
   PackageTargeting: PackageTargetingWireSchema,
-  customGuideRepositoryResponse: CustomGuideRepositoryResponseWireSchema,
-  customGuidesResponse: CustomGuidesResponseWireSchema,
-  customGuideCapability: CustomGuideCapabilityWireSchema,
-  customGuideRepositoryEntry: CustomGuideRepositoryEntryWireSchema,
-  customGuideManifest: CustomGuideManifestWireSchema,
-  customGuideStats: CustomGuideStatsWireSchema,
-  'customGuideManifest.author': CustomGuideAuthorWireSchema,
-  'customGuideManifest.tracks': CustomGuideTrackWireSchema,
-  myCompletionsResponse: MyCompletionsResponseWireSchema,
-  completionCapability: CompletionCapabilityWireSchema,
-  collatedCompletion: CollatedCompletionWireSchema,
-  inProgressCompletion: InProgressCompletionWireSchema,
-  myAssignmentsResponse: MyAssignmentsResponseWireSchema,
-  assignmentCapability: AssignmentCapabilityWireSchema,
-  assignmentEntry: AssignmentEntryWireSchema,
-  assignmentGuideEntry: AssignmentGuideEntryWireSchema,
-  learningInsightsResponse: LearningInsightsResponseWireSchema,
-  learningInsightsPerson: LearningInsightsPersonWireSchema,
-  learningInsightsCompletion: LearningInsightsCompletionWireSchema,
-  learningInsightsAssignment: LearningInsightsAssignmentWireSchema,
-  achievementEventsResponse: AchievementEventsResponseWireSchema,
+  CatalogueResponse: CustomGuideRepositoryResponseWireSchema,
+  CatalogueCapability: CustomGuideCapabilityWireSchema,
+  CatalogueEntry: CustomGuideRepositoryEntryWireSchema,
+  CatalogueManifest: CustomGuideManifestWireSchema,
+  CatalogueStats: CustomGuideStatsWireSchema,
+  'CatalogueManifest.author': CustomGuideAuthorWireSchema,
+  'CatalogueManifest.tracks': CustomGuideTrackWireSchema,
+  CompletionResponse: MyCompletionsResponseWireSchema,
+  CompletionCapability: CompletionCapabilityWireSchema,
+  CollatedCompletion: CollatedCompletionWireSchema,
+  InProgressCompletion: InProgressCompletionWireSchema,
+  AssignmentResponse: MyAssignmentsResponseWireSchema,
+  AssignmentCapability: AssignmentCapabilityWireSchema,
+  AssignmentEntry: AssignmentEntryWireSchema,
+  AssignmentGuideEntry: AssignmentGuideEntryWireSchema,
+  LearningInsightsResponse: LearningInsightsResponseWireSchema,
+  LearningInsightsPerson: LearningInsightsPersonWireSchema,
+  LearningInsightsCompletion: LearningInsightsCompletionWireSchema,
+  LearningInsightsAssignment: LearningInsightsAssignmentWireSchema,
+  AchievementEventsResponse: AchievementEventsResponseWireSchema,
   Decision: AchievementDecisionWireSchema,
-  myAchievementsResponse: MyAchievementsResponseWireSchema,
-  achievementCapability: AchievementCapabilityWireSchema,
-  achievementAward: AchievementAwardWireSchema,
-  achievementProgress: AchievementProgressWireSchema,
-  legacyBadge: LegacyBadgeWireSchema,
-  achievementDefinitionsResponse: AchievementDefinitionsResponseWireSchema,
+  MyAchievementsResponse: MyAchievementsResponseWireSchema,
+  AchievementCapability: AchievementCapabilityWireSchema,
+  AchievementAward: AchievementAwardWireSchema,
+  AchievementProgress: AchievementProgressWireSchema,
+  LegacyBadge: LegacyBadgeWireSchema,
+  AchievementDefinitionsResponse: AchievementDefinitionsResponseWireSchema,
   Display: AchievementDisplayWireSchema,
   DisplayTier: AchievementDisplayTierWireSchema,
+  SourceSubscription: AchievementSourceSubscriptionWireSchema,
+  SourceCondition: AchievementSourceConditionWireSchema,
 } as const;
 
 export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
@@ -481,15 +501,14 @@ export type GoStructName = keyof typeof GO_STRUCT_SCHEMAS;
  */
 export const BACKEND_RESPONSE_ENVELOPES = {
   'package-recommendations': 'PackageRecommendationsResponse',
-  'custom-guide-repository': 'customGuideRepositoryResponse',
-  'custom-guides': 'customGuidesResponse',
-  'completion-records-my': 'myCompletionsResponse',
-  'completion-records-capability': 'completionCapability',
-  'assignments-my': 'myAssignmentsResponse',
-  'learning-insights': 'learningInsightsResponse',
-  'achievements-events': 'achievementEventsResponse',
-  'achievements-my': 'myAchievementsResponse',
-  'achievements-definitions': 'achievementDefinitionsResponse',
+  'custom-guide-repository': 'CatalogueResponse',
+  'completion-records-my': 'CompletionResponse',
+  'completion-records-capability': 'CompletionCapability',
+  'assignments-my': 'AssignmentResponse',
+  'learning-insights': 'LearningInsightsResponse',
+  'achievements-events': 'AchievementEventsResponse',
+  'achievements-my': 'MyAchievementsResponse',
+  'achievements-definitions': 'AchievementDefinitionsResponse',
 } as const satisfies Record<string, GoStructName>;
 
 export type BackendResponseEnvelopeKey = keyof typeof BACKEND_RESPONSE_ENVELOPES;

@@ -1,7 +1,7 @@
 /**
  * Go <-> TypeScript contract ratchet for the App Platform response
  * envelopes: `/package-recommendations`, `/custom-guide-repository`,
- * `/custom-guides`, `/completion-records/my`, `/completion-records/capability`, `/assignments/my`,
+ * `/completion-records/my`, `/completion-records/capability`, `/assignments/my`,
  * `/api/v1/achievements/events`, `/api/v1/achievements/my`, `/api/v1/achievements/definitions`.
  *
  * The boundary is a process boundary, so no compiler can couple the two
@@ -282,40 +282,40 @@ describe('backend API contract: struct tags match the schemas', () => {
   });
 
   it('rejects a regenerated same-value Go type widening', () => {
-    const manifestFields = STRUCT_TAGS.customGuideManifest;
+    const manifestFields = STRUCT_TAGS.CatalogueManifest;
     if (!manifestFields) {
-      throw new Error('struct-tags.json does not inventory customGuideManifest.');
+      throw new Error('struct-tags.json does not inventory CatalogueManifest.');
     }
     const fields = manifestFields.map((field) =>
       field.json === 'milestones' ? { ...field, type: '[]json.RawMessage', wire: 'array<json>' } : field
     );
 
-    expect(() => assertStructTagsMatchSchema('customGuideManifest', fields)).toThrow(
-      'customGuideManifest.milestones is array<json> on the Go wire ([]json.RawMessage), ' +
+    expect(() => assertStructTagsMatchSchema('CatalogueManifest', fields)).toThrow(
+      'CatalogueManifest.milestones is array<json> on the Go wire ([]json.RawMessage), ' +
         'but its Zod schema accepts array<string>.'
     );
   });
 
   it('rejects pointer and numeric widenings that preserve fixture values', () => {
-    const responseFields = STRUCT_TAGS.myCompletionsResponse;
-    const completionFields = STRUCT_TAGS.collatedCompletion;
+    const responseFields = STRUCT_TAGS.CompletionResponse;
+    const completionFields = STRUCT_TAGS.CollatedCompletion;
     if (!responseFields || !completionFields) {
       throw new Error('struct-tags.json does not inventory the completion response structs.');
     }
 
     const pointerFields = responseFields.map((field) =>
-      field.json === 'capability' ? { ...field, type: '*completionCapability', wire: 'nullable<object>' } : field
+      field.json === 'capability' ? { ...field, type: '*CompletionCapability', wire: 'nullable<object>' } : field
     );
     const numberFields = completionFields.map((field) =>
       field.json === 'count' ? { ...field, type: 'float64', wire: 'number' } : field
     );
 
-    expect(() => assertStructTagsMatchSchema('myCompletionsResponse', pointerFields)).toThrow(
-      'myCompletionsResponse.capability is nullable<object> on the Go wire (*completionCapability), ' +
+    expect(() => assertStructTagsMatchSchema('CompletionResponse', pointerFields)).toThrow(
+      'CompletionResponse.capability is nullable<object> on the Go wire (*CompletionCapability), ' +
         'but its Zod schema accepts object.'
     );
-    expect(() => assertStructTagsMatchSchema('collatedCompletion', numberFields)).toThrow(
-      'collatedCompletion.count is number on the Go wire (float64), but its Zod schema accepts integer.'
+    expect(() => assertStructTagsMatchSchema('CollatedCompletion', numberFields)).toThrow(
+      'CollatedCompletion.count is number on the Go wire (float64), but its Zod schema accepts integer.'
     );
   });
 

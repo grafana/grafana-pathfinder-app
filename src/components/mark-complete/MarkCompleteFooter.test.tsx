@@ -53,7 +53,12 @@ jest.mock('../../global-state/content-key', () => ({
 }));
 
 let percentage = 25;
-let notifyProgress: (() => void) | undefined;
+const progressListeners = new Set<() => void>();
+function notifyProgress() {
+  for (const listener of progressListeners) {
+    listener();
+  }
+}
 /** Every content key the footer has asked the store about, in order. */
 const progressKeys: string[] = [];
 const subscribedKeys: string[] = [];
@@ -65,10 +70,8 @@ jest.mock('../../global-state/completion-store', () => ({
   },
   subscribeProgress: (contentKey: string, listener: () => void) => {
     subscribedKeys.push(contentKey);
-    notifyProgress = listener;
-    return () => {
-      notifyProgress = undefined;
-    };
+    progressListeners.add(listener);
+    return () => progressListeners.delete(listener);
   },
 }));
 
@@ -92,7 +95,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   percentage = 25;
   mockChoiceResponses = null;
-  notifyProgress = undefined;
+  progressListeners.clear();
   ambientKey = 'guide-key';
   progressKeys.length = 0;
   subscribedKeys.length = 0;
@@ -101,6 +104,20 @@ beforeEach(() => {
 });
 
 describe('completion panel handoff', () => {
+  it('shows a mark written while the first storage read is pending', async () => {
+    let finishInitialRead!: (mark: null) => void;
+    markStorage.get.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishInitialRead = resolve;
+      })
+    );
+    render(<MarkCompleteFooter context="guide" />);
+    markStorage.get.mockResolvedValue(true);
+    await act(async () => notifyProgress());
+    await act(async () => finishInitialRead(null));
+    expect(screen.getByTestId(testIds.markComplete.completed)).toBeInTheDocument();
+  });
+
   it.each(['mark', 'percentage'] as const)(
     'reports hydrated %s completion, reset and unmount visibility',
     async (source) => {
@@ -128,7 +145,7 @@ describe('completion panel handoff', () => {
       expect(screen.queryByText('Next steps')).not.toBeInTheDocument();
 
       percentage = 100;
-      await act(async () => notifyProgress?.());
+      await act(async () => notifyProgress());
       expect(onVisibility).toHaveBeenLastCalledWith(true);
       unmount();
       expect(onVisibility).toHaveBeenLastCalledWith(false);
@@ -279,7 +296,7 @@ describe('completion panel handoff', () => {
     expect(await screen.findByText('Guide complete panel')).toBeInTheDocument();
     act(() => {
       percentage = 0;
-      notifyProgress?.();
+      notifyProgress();
     });
     expect(await screen.findByRole('button', { name: 'Mark complete' })).toBeInTheDocument();
     expect(screen.queryByText('Guide complete panel')).not.toBeInTheDocument();
@@ -342,10 +359,10 @@ describe('MarkCompleteFooter', () => {
       expect(mockChoiceResponses!.setResponse).not.toHaveBeenCalled();
       markStorage.get.mockResolvedValue(true);
       percentage = 100;
-      await act(async () => notifyProgress?.());
+      await act(async () => notifyProgress());
       await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
       percentage = 50;
-      await act(async () => notifyProgress?.());
+      await act(async () => notifyProgress());
       await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
     });
   });
@@ -577,7 +594,7 @@ describe('MarkCompleteFooter', () => {
 
     percentage = 50;
     act(() => {
-      notifyProgress?.();
+      notifyProgress();
     });
 
     expect(liveRegions()).toEqual([]);
@@ -667,7 +684,7 @@ describe('MarkCompleteFooter', () => {
     markStorage.get.mockResolvedValue(true);
     percentage = 100;
     await act(async () => {
-      notifyProgress?.();
+      notifyProgress();
     });
 
     expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument();

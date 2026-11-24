@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Achievement badge">
+  <path d="M22 4h20l-4 18H26z" fill="#6e7680"/>
+  <path d="M26 4h12l-2 18h-8z" fill="#8e96a0"/>
+  <circle cx="32" cy="40" r="20" fill="#f2cc0c"/>
+  <circle cx="32" cy="40" r="15" fill="#e0b400"/>
+  <path d="M32 29l3.2 6.6 7.3 1-5.3 5.1 1.3 7.2L32 45.5l-6.5 3.4 1.3-7.2-5.3-5.1 7.3-1z" fill="#fff8d6"/>
+</svg>

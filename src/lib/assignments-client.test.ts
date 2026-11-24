@@ -1,4 +1,8 @@
+let mockScope = 'default:1:1';
+jest.mock('./user-scope', () => ({ getUserScope: () => mockScope }));
+
 jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'stacks-123' },
   getBackendSrv: jest.fn(),
 }));
 
@@ -23,6 +27,7 @@ import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 const mockGet = jest.fn();
 
 beforeEach(() => {
+  mockScope = 'default:1:1';
   jest.clearAllMocks();
   (getBackendSrv as jest.Mock).mockReturnValue({ get: mockGet });
   (isBackendApiAvailable as jest.Mock).mockReturnValue(true);
@@ -157,4 +162,26 @@ describe('fetchMyAssignments', () => {
     await expect(fetchMyAssignments('stacks-123')).resolves.toEqual({ ok: false });
     expect(recordAssignmentsUnavailable).toHaveBeenCalledWith('http-429');
   });
+});
+
+it('does not share assignment requests across callers and discards the old response', async () => {
+  let resolve!: (value: unknown) => void;
+  mockGet.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      })
+  );
+  const previous = fetchMyAssignments('stacks-123');
+  mockScope = 'default:1:2';
+  mockGet.mockResolvedValueOnce({ capability: { available: true }, assignments: [] });
+  await expect(fetchMyAssignments('stacks-123')).resolves.toEqual({ ok: true, assignments: [] });
+  resolve({ capability: { available: true }, assignments: [{ targetId: 'private-guide' }] });
+  await expect(previous).resolves.toEqual({ ok: false });
+  expect(mockGet).toHaveBeenCalledTimes(2);
+});
+
+it('rejects a namespace other than the authenticated namespace without requesting', async () => {
+  await expect(fetchMyAssignments('stacks-other')).resolves.toEqual({ ok: false });
+  expect(mockGet).not.toHaveBeenCalled();
 });

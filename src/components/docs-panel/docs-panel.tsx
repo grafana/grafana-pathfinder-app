@@ -77,6 +77,7 @@ import { createCompositeResolver } from '../../package-engine';
 
 import { ContextPanel } from './context-panel';
 import { BadgeUnlockedToast } from '../LearningPaths';
+import { useLegacyBadgesHidden } from '../Achievements/useLegacyBadgesHidden';
 import { getBadgeById } from '../../learning-paths';
 
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
@@ -1216,6 +1217,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     queueCount: badgeCelebrationQueueCount,
     onDismiss: handleDismissGlobalCelebration,
   } = useBadgeCelebrationQueue();
+  const legacyBadgesHidden = useLegacyBadgesHidden();
 
   const {
     isActive: isSessionActive,
@@ -1706,7 +1708,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       />
 
       {/* Global Badge Celebration Toast - shows queued toasts sequentially */}
-      {currentCelebrationBadge && getBadgeById(currentCelebrationBadge) && (
+      {!legacyBadgesHidden && currentCelebrationBadge && getBadgeById(currentCelebrationBadge) && (
         <BadgeUnlockedToast
           badge={getBadgeById(currentCelebrationBadge)!}
           onDismiss={handleDismissGlobalCelebration}

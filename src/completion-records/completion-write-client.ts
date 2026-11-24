@@ -2,7 +2,7 @@ import { reportProxyFailure } from '../lib/proxy-diagnostics';
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from '../lib/backend-routes';
 import { extractFetchErrorStatus } from '../lib/fetch-error';
 import { currentPlatform, type GrafanaPlatform } from '../lib/platform';
 
@@ -10,8 +10,6 @@ import type { CompletionCategory, CompletionSource } from './types';
 import { WRITE_REQUEST_TIMEOUT_MS } from './completion-write-timing';
 
 export { WRITE_REQUEST_TIMEOUT_MS } from './completion-write-timing';
-
-const WRITE_URL = `${PLUGIN_BACKEND_URL}/completion-records`;
 
 /**
  * Body field carrying the queued event's stable client id. The backend derives
@@ -97,7 +95,7 @@ export async function postCompletionRecord(body: CompletionWriteBody, idempotenc
     await lastValueFrom(
       getBackendSrv()
         .fetch({
-          url: WRITE_URL,
+          url: backendRoute('completion-records'),
           method: 'POST',
           data: { ...body, [IDEMPOTENCY_KEY_FIELD]: idempotencyKey },
           showErrorAlert: false,

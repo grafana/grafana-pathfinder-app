@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"net/http"
 	"strconv"
 	"time"
@@ -17,8 +18,9 @@ import (
 // Machine tokens; the frontend gates on capability.available and ignores the
 // specific string.
 //
-// Only reasonFeatureToggleDisabled and reasonOBOUnavailable actually reach a
-// client on this route. The identity gate runs before resolveCustomGuideBackend
+// Of the structural reasons, only reasonFeatureToggleDisabled and
+// reasonOBOUnavailable actually reach a client on this route; a drain can add
+// reasonGuideTooLarge. The identity gate runs before resolveCustomGuideBackend
 // and needs both a namespace and an app URL itself, so a stack missing either
 // reports identity-unverifiable first; the reasonGrafanaConfigUnavailable guard
 // is dead for its own reason (config.GrafanaConfigFromContext never returns
@@ -32,6 +34,10 @@ const (
 	// reasonOBOUnavailable means the stack has no provisioned on-behalf-of
 	// credentials, so the proxy cannot authenticate as the caller at all.
 	reasonOBOUnavailable = "obo-unavailable"
+
+	// reasonGuideTooLarge means a single stored guide exceeds the LIST page byte
+	// cap even on a one-guide page, which no retry fixes.
+	reasonGuideTooLarge = "guide-too-large"
 )
 
 // Custom guide repository catalogue proxy (docs/design/BACKEND_PROXY_PATTERN.md).
@@ -88,23 +94,16 @@ var customGuideListMaxTotalEntries = 50_000
 // interactiveguides API on this stack. Reasons are reasonIdentityUnavailable,
 // reasonIdentityUnverifiable and reasonSigningKeysUnreachable (all via
 // identityStatus.capabilityReason()), reasonFeatureToggleDisabled,
-// reasonOBOUnavailable, and `upstream-<status>` for a terminal upstream.
+// reasonOBOUnavailable, reasonGuideTooLarge, and `upstream-<status>` for a
+// terminal upstream.
 // reasonBackendUnavailable is unreachable here: its only assignment is
 // overwritten by `upstream-<status>`.
-type customGuideCapability struct {
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
-}
+type customGuideCapability = services.CatalogueCapability
 
 // customGuideRepositoryResponse is the GET /custom-guide-repository envelope
 // (BACKEND_PROXY_PATTERN.md §6): a capability object, the always-non-null data
 // array, and asOf — when this request's underlying LIST completed.
-type customGuideRepositoryResponse struct {
-	Diagnostics *guideProxyDiagnostic        `json:"diagnostics,omitempty"`
-	Capability  customGuideCapability        `json:"capability"`
-	Guides      []customGuideRepositoryEntry `json:"guides"`
-	AsOf        string                       `json:"asOf,omitempty"`
-}
+type customGuideRepositoryResponse = services.CatalogueResponse
 
 // customGuideListerOverride injects a fake lister in tests. nil selects the
 // real per-request HTTP client. Config resolution (feature toggle, app URL,
@@ -156,7 +155,7 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	cancel()
 
 	if err != nil {
-		if isTerminalUpstreamError(err) {
+		if isTerminalUpstreamError(err) || isResponseTooLarge(err) {
 			// Structurally can't serve for this caller ("never works here") —
 			// includes identity-scoped 401/403 for this caller's token. Surface
 			// the upstream HTTP status in the reason (e.g. "upstream-403") so the
@@ -166,6 +165,9 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 			var upErr *appPlatformUpstreamError
 			if errors.As(err, &upErr) {
 				reason = fmt.Sprintf("upstream-%d", upErr.status)
+			} else if isResponseTooLarge(err) {
+				// Only one guide over the page byte cap reaches here (ListPage shrinks pages first).
+				reason = reasonGuideTooLarge
 			}
 			logger.Info("custom guide catalogue unavailable (terminal)", "namespace", namespace, "reason", classifyGuideProxyError(err).Reason)
 			a.writeJSON(w, customGuideRepositoryResponse{
@@ -208,37 +210,16 @@ func drainCustomGuides(ctx context.Context, namespace string, lister customGuide
 		defer finalizer.finalizeDrain(namespace)
 	}
 
-	entries := []customGuideRepositoryEntry{}
-	continueToken := ""
-	pages := 0
-	for {
-		page, err := lister.ListPage(ctx, namespace, continueToken)
-		if err != nil {
-			return nil, pages, err
-		}
-		pages++
-		entries = append(entries, page.Entries...)
-		if len(entries) >= customGuideListMaxTotalEntries {
-			// Strict budget: cap the accumulated slice so the memory bound holds
-			// exactly (a page can push us past the limit), and log whenever the
-			// cap actually drops data — either we trimmed an overshoot or more
-			// pages remained undrained.
-			truncated := len(entries) > customGuideListMaxTotalEntries || page.Continue != ""
-			if len(entries) > customGuideListMaxTotalEntries {
-				entries = entries[:customGuideListMaxTotalEntries]
+	return services.ReadCatalogue(ctx, namespace, customGuideListMaxTotalEntries,
+		func(ctx context.Context, namespace, token string) (services.CataloguePage[customGuideRepositoryEntry], error) {
+			page, err := lister.ListPage(ctx, namespace, token)
+			if err != nil {
+				return services.CataloguePage[customGuideRepositoryEntry]{}, err
 			}
-			if truncated {
-				logger.Warn("custom guide catalogue LIST truncated at aggregate budget",
-					"namespace", namespace, "maxTotalEntries", customGuideListMaxTotalEntries, "pages", pages)
-			}
-			break
-		}
-		if page.Continue == "" {
-			break
-		}
-		continueToken = page.Continue
-	}
-	return entries, pages, nil
+			return services.CataloguePage[customGuideRepositoryEntry]{Entries: page.Entries, Continue: page.Continue}, nil
+		}, func(pages int) {
+			logger.Warn("custom guide catalogue LIST truncated at aggregate budget", "namespace", namespace, "maxTotalEntries", customGuideListMaxTotalEntries, "pages", pages)
+		})
 }
 
 // resolveCustomGuideBackend determines whether the aggregated CRUD API is
