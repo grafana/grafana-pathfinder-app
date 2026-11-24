@@ -27,6 +27,7 @@ export type StorageBackend = 'user-storage' | 'local-storage';
  * conflict resolution.
  */
 export interface GrafanaUserStorage {
+  updateItem?(key: string, update: (current: string | null) => string | undefined): Promise<void>;
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
 }
