@@ -551,6 +551,7 @@ const NODE_SAFE_EXTERNALS = new Set([
   'commander', // CLI argument parser, Node-only
   'playwright', // Playwright runtime and package metadata, Node-only
   'prettier', // used by the CLI for output formatting, Node API
+  'semver', // version range checks, verified in plain Node
   'zod', // schema validation, environment-neutral
 ]);
 
