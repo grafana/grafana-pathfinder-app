@@ -4,7 +4,7 @@
  */
 
 import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../../../constants';
-import { parseUrlSafely } from '../../../security';
+import { classifyDocsUrl, isLegacyJourneyFamily } from '../../../lib/docs-url-family';
 import { stripContentFile } from '../../../lib/guide-content-file';
 
 /**
@@ -15,8 +15,7 @@ import { stripContentFile } from '../../../lib/guide-content-file';
  * consumers stay consistent by construction.
  */
 export function isLearningJourneyUrl(url: string): boolean {
-  const urlObj = parseUrlSafely(url);
-  return Boolean(urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/'));
+  return isLegacyJourneyFamily(classifyDocsUrl(url));
 }
 
 /**

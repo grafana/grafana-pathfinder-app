@@ -14,6 +14,7 @@ import {
   AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { isLearningJourneyUrl } from './utils/url-validation';
 import { getJourneyProgress } from '../../docs-retrieval';
 import {
   parseUrlSafely,
@@ -261,9 +262,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Parse URL to check pathname (already validated by isValidGrafanaContentUrl)
             const urlObj = parseUrlSafely(fullUrl);
-            const isLearningJourney =
-              urlObj?.pathname.startsWith('/docs/learning-journeys/') ||
-              urlObj?.pathname.startsWith('/docs/learning-paths/');
+            const isLearningJourney = isLearningJourneyUrl(fullUrl);
 
             // Determine if it's a learning path or regular docs/tutorials
             if (isLearningJourney) {

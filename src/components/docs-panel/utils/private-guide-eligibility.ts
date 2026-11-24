@@ -1,6 +1,7 @@
 import { LOCAL_BUNDLED_GUIDE_IDS } from '../../../constants/local-bundled-guides';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import { parseUrlSafely } from '../../../security/url-validator';
+import { classifyDocsUrl, isJourneyContent } from '../../../lib/docs-url-family';
 
 const BUNDLED_PREFIX = 'bundled:';
 
@@ -10,9 +11,7 @@ function isPublicGuideUrl(value: string): boolean {
   }
   const url = parseUrlSafely(value);
   return Boolean(
-    url &&
-    (url.protocol === 'https:' || url.protocol === 'http:') &&
-    !/\/(learning-journeys|learning-paths|tutorials|milestone-\d+)(\/|$)/.test(url.pathname)
+    url && (url.protocol === 'https:' || url.protocol === 'http:') && !isJourneyContent(classifyDocsUrl(url))
   );
 }
 

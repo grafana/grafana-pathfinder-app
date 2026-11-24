@@ -64,10 +64,10 @@ describe('Phase 0 tripwire: pathfinder-auto-open-docs CustomEvent contract', () 
     expect(eventNames).toContain("AUTO_OPEN_DOCS_EVENT = 'pathfinder-auto-open-docs'");
   });
 
-  it('the shared routing predicate still tests journey pathnames', () => {
+  it('the shared routing predicate still decides from the classified pathname', () => {
     const urlValidation = fs.readFileSync(path.join(PANEL_ROOT, 'utils', 'url-validation.ts'), 'utf-8');
-    expect(urlValidation).toContain('/learning-journeys/');
-    expect(urlValidation).toContain('/learning-paths/');
+    expect(urlValidation).toContain('classifyDocsUrl(');
+    expect(urlValidation).toContain('isLegacyJourneyFamily(');
   });
 
   it('listener registration exists in exactly one tracked file', () => {
