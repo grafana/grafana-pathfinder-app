@@ -167,6 +167,19 @@ describe('openfeature', () => {
       });
     });
 
+    it('pathfinder.guide-translations must default to false so translated guides ship dark', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.guide-translations'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.guide-translations'].defaultValue).toBe(false);
+      });
+    });
+
     it('pathfinder.learning-insights is a default-off boolean rollout flag', () => {
       jest.isolateModules(() => {
         const mockOF = createMockOpenFeature();

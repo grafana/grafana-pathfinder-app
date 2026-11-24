@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, useStyles2 } from '@grafana/ui';
+import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { generateFullDomPath } from '../../utils/devtools';
@@ -126,77 +126,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(0.5),
     whiteSpace: 'nowrap',
-  }),
-  bannerButton: css({
-    padding: `2px ${theme.spacing(1)}`,
-    backgroundColor: 'transparent',
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.text.secondary,
-    cursor: 'pointer',
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.15s ease',
-    whiteSpace: 'nowrap',
-
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-      color: theme.colors.text.primary,
-      borderColor: theme.colors.border.strong,
-    },
-
-    '&:disabled': {
-      opacity: 0.4,
-      cursor: 'not-allowed',
-    },
-  }),
-  stopButton: css({
-    padding: `2px ${theme.spacing(1)}`,
-    backgroundColor: theme.colors.error.transparent,
-    border: `1px solid ${theme.colors.error.border}`,
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.error.text,
-    cursor: 'pointer',
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.15s ease',
-    whiteSpace: 'nowrap',
-
-    '&:hover': {
-      backgroundColor: theme.colors.error.main,
-      color: theme.colors.error.contrastText,
-    },
-  }),
-  toggleButton: css({
-    padding: `2px ${theme.spacing(0.75)}`,
-    backgroundColor: 'transparent',
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.text.secondary,
-    cursor: 'pointer',
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.15s ease',
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    whiteSpace: 'nowrap',
-
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
-  toggleButtonEnabled: css({
-    backgroundColor: theme.colors.success.transparent,
-    borderColor: theme.colors.success.border,
-    color: theme.colors.success.text,
-
-    '&:hover': {
-      backgroundColor: theme.colors.success.transparent,
-    },
-  }),
-  toggleButtonDisabled: css({
-    opacity: 0.6,
   }),
   hintText: css({
     fontSize: theme.typography.bodySmall.fontSize,
@@ -507,8 +436,10 @@ export function RecordModeOverlay({
           </span>
           <div className={styles.separator} />
           {onToggleMultiStepGrouping && (
-            <button
-              className={`${styles.toggleButton} ${isMultiStepGroupingEnabled ? styles.toggleButtonEnabled : styles.toggleButtonDisabled}`}
+            <Button
+              size="sm"
+              variant={isMultiStepGroupingEnabled ? 'success' : 'secondary'}
+              fill="outline"
               onClick={handleToggleMultiStepGrouping}
               type="button"
               title={
@@ -518,27 +449,31 @@ export function RecordModeOverlay({
               }
             >
               {isMultiStepGroupingEnabled ? 'Auto-group' : 'No grouping'}
-            </button>
+            </Button>
           )}
           {startingUrl && (
-            <button
-              className={styles.bannerButton}
+            <Button
+              size="sm"
+              variant="secondary"
+              fill="outline"
               onClick={handleReturnToStart}
               disabled={isAtStartingUrl}
               type="button"
               title={isAtStartingUrl ? 'Already at starting page' : 'Return to the page where recording started'}
             >
               Return to start
-            </button>
+            </Button>
           )}
-          <button
-            className={styles.stopButton}
+          <Button
+            size="sm"
+            variant="destructive"
+            fill="outline"
             onClick={handleStopClick}
             type="button"
             data-testid={testIds.blockEditor.recordStopButton}
           >
             Stop
-          </button>
+          </Button>
         </div>
       </div>
 

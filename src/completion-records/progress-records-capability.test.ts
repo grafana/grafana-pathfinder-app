@@ -2,7 +2,10 @@ let mockScope = 'default:1:1';
 jest.mock('../lib/user-scope', () => ({ getUserScope: () => mockScope }));
 
 jest.mock('../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => false) }));
-jest.mock('@grafana/runtime', () => ({ getBackendSrv: () => ({ fetch: mockFetch }) }));
+jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'stacks-123' },
+  getBackendSrv: () => ({ fetch: mockFetch }),
+}));
 
 import { of, throwError } from 'rxjs';
 import { getFeatureFlagValue } from '../utils/openfeature';

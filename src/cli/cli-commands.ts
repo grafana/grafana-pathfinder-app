@@ -41,6 +41,7 @@ import { renameIdSpec } from './commands/rename-id';
 import { requirementsGroup } from './commands/requirements';
 import { schemaSpec } from './commands/schema';
 import { setManifestSpec } from './commands/set-manifest';
+import { syncTranslationsSpec } from './commands/sync-translations';
 import { validateCliSpec } from './commands/validate';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
 import { mcpSpec } from './mcp';
@@ -145,6 +146,10 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
     shorts: { output: 'o' },
     negatable: { lint: 'Suppress lint output' },
   },
+  'sync-translations': {
+    positionals: ['dir'],
+    placeholders: { locale: 'tag', accept: 'entry...' },
+  },
   schema: { positionals: ['name'] },
   // Repeat --queries, --categories, and --exclude-ids once per value.
   'find-guides': {
@@ -196,6 +201,7 @@ const RENDERED: Record<string, Command> = {
   'build-stats': mountCommander(buildStatsSpec, PRESENTATIONS['build-stats']),
   'build-snippets': mountCommander(buildSnippetsSpec, PRESENTATIONS['build-snippets']),
   'build-graph': mountCommander(buildGraphSpec, PRESENTATIONS['build-graph']),
+  'sync-translations': mountCommander(syncTranslationsSpec, PRESENTATIONS['sync-translations']),
   schema: mountCommander(schemaSpec, PRESENTATIONS.schema),
   'find-guides': mountCommander(findGuidesSpec, PRESENTATIONS['find-guides']),
   'find-steps': mountCommander(findStepsSpec, PRESENTATIONS['find-steps']),

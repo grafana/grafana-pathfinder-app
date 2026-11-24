@@ -20,6 +20,8 @@ export type RecommendCompletionsOutcome = 'ok' | 'disabled' | 'unavailable' | 't
 export type ContentFetchTier = 'bundled' | 'backend-guide' | 'content-json' | 'unstyled-html' | 'other';
 export type ContentFetchOutcome = 'ok' | 'error';
 
+export type CustomGuideCatalogueOutcome = 'available' | 'unavailable' | 'malformed' | 'request-failed';
+
 // Low-cardinality reason enum for the durable completion-write path degrading.
 // Aggregate classes only — never a guide id/title, user id, URL, or raw error.
 export type CompletionWriteDegradation =
@@ -54,6 +56,7 @@ export const TELEMETRY_EVENTS = {
   gcxCredentialDegraded: 'pathfinder_gcx_credential_degraded',
   assignmentsUnavailable: 'pathfinder_assignments_unavailable',
   assignmentTargetUnresolved: 'pathfinder_assignment_target_unresolved',
+  packageMilestonesLocked: 'pathfinder_package_milestones_locked',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {
@@ -64,6 +67,7 @@ export const TELEMETRY_MEASUREMENTS = {
   step: 'pathfinder_step',
   requirements: 'pathfinder_requirements',
   panel: 'pathfinder_panel',
+  customGuideCatalogue: 'pathfinder_custom_guide_catalogue',
 } as const;
 
 // Faro-only spans with no real UserInteraction counterpart (unlike guide-open,

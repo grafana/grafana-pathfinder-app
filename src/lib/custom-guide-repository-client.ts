@@ -3,21 +3,22 @@ import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from '.
  * Client for the /custom-guide-repository backend proxy — a slim,
  * denormalized catalogue of the caller's private InteractiveGuide packages
  * (the App Platform analogue of the CDN's repository.json), computed live by
- * pkg/plugin/custom_guide_repository.go rather than pre-built.
+ * pkg/provider/catalogue.go rather than pre-built.
  *
  * Consumed by the Custom Guides surface and My Learning ingestion to
  * enumerate path/journey packages without pulling every guide's full
  * content.json just to build a catalogue view.
  *
- * @coupling API: GET /custom-guide-repository served by pkg/plugin/custom_guide_repository.go
+ * @coupling API: GET /custom-guide-repository served by pkg/provider/catalogue.go
  */
 import { config, getBackendSrv } from '@grafana/runtime';
 
-import { backendRoute } from './backend-routes';
+import { backendRoute, expectsSdkBackend, recoverSdkBackend } from './backend-routes';
 import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
 import { logger } from './logging';
-import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
+import { recordCustomGuideCatalogueRequest, recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
+import type { CustomGuideCatalogueOutcome } from './telemetry/types';
 import { PackageTypeSchema } from '../types/package.schema';
 import type { Author, ManifestTrack, PackageType } from '../types/package.types';
 
@@ -85,13 +86,7 @@ interface CustomGuideRepositoryResponse {
 
 const APP_PLATFORM_REPOSITORY = 'app-platform';
 
-// Short TTL + in-flight de-duplication. Several callers fetch the catalogue on
-// panel open (the Custom Guides surface, My Learning ingestion, and the
-// panel-open probe), and the proxy deliberately keeps no cross-request cache of
-// its own (custom_guide_repository.go). Without this, each caller drives a full
-// paginated upstream drain plus its own on-behalf-of token exchange,
-// concurrently. The proxy derives the namespace server-side, so keying on the
-// client-side namespace gate is safe. A full reload always refetches.
+// Coalesce panel-open reads so each namespace pays for one paginated catalogue fetch.
 const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { result: CustomGuideCatalogue; at: number }>();
 const inflight = new Map<string, Promise<CustomGuideCatalogue>>();
@@ -120,10 +115,20 @@ export interface CustomGuideCatalogue {
 
 interface CatalogueResult extends CustomGuideCatalogue {
   cacheable: boolean;
+  outcome: Exclude<CustomGuideCatalogueOutcome, typeof REQUEST_FAILED_REASON>;
 }
 
 // Bounded token, same closed vocabulary as the reasons above (TELEMETRY.md).
 const MALFORMED_REASON = 'malformed-response';
+const REQUEST_FAILED_REASON = 'request-failed';
+
+function measureCatalogueRequest(startedAt: number, outcome: CustomGuideCatalogueOutcome): void {
+  try {
+    recordCustomGuideCatalogueRequest(performance.now() - startedAt, outcome);
+  } catch {
+    // Observability must not turn a listing answer into a rejection.
+  }
+}
 
 // `null` is absent, not malformed: the proxy is Go, and json.Marshal of a nil
 // []guide emits `null`, so an empty catalogue legitimately sends exactly that.
@@ -160,22 +165,28 @@ async function requestCatalogue(): Promise<CatalogueResult> {
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[custom-guides] catalogue unavailable', { reason });
     recordCustomGuideCatalogueUnavailable(reason);
-    return { entries: [], available: false, reason, cacheable: true };
+    return { entries: [], available: false, reason, cacheable: true, outcome: 'unavailable' };
   }
   if (isMalformedGuides(response.guides)) {
     logger.warn('[custom-guides] catalogue malformed', { reason: MALFORMED_REASON });
     recordCustomGuideCatalogueUnavailable(MALFORMED_REASON);
-    return { entries: [], available: false, reason: MALFORMED_REASON, cacheable: false };
+    return { entries: [], available: false, reason: MALFORMED_REASON, cacheable: false, outcome: 'malformed' };
   }
   const guides = Array.isArray(response.guides) ? response.guides : [];
-  return { entries: guides.map(shapeEntry), available: true, cacheable: true };
+  return { entries: guides.map(shapeEntry), available: true, cacheable: true, outcome: 'available' };
 }
 
 export async function fetchCustomGuideCatalogue(
   namespace: string,
   options: { refresh?: boolean } = {}
 ): Promise<CustomGuideCatalogue> {
-  if (!isBackendApiAvailable() || !namespace) {
+  if (!namespace || namespace !== config.namespace) {
+    return { entries: [], available: false, reason: 'unsupported' };
+  }
+  if (!isBackendApiAvailable() && !(await recoverSdkBackend())) {
+    if (expectsSdkBackend()) {
+      return { entries: [], available: false, reason: 'backend-unavailable' };
+    }
     return { entries: [], available: false, reason: 'unsupported' };
   }
 
@@ -193,16 +204,19 @@ export async function fetchCustomGuideCatalogue(
     return existing;
   }
   // Only the latest request for a key caches its result, so a superseded one cannot overwrite a refresh.
+  const startedAt = performance.now();
   const request: Promise<CustomGuideCatalogue> = requestCatalogue()
-    .then(({ cacheable, ...result }) => {
+    .then(({ cacheable, outcome, ...result }) => {
       if (cacheable && inflight.get(key) === request) {
         cache.set(key, { result, at: Date.now() });
       }
+      measureCatalogueRequest(startedAt, outcome);
       return result;
     })
     .catch((err: unknown): CustomGuideCatalogue => {
       reportCatalogueFetchFailure(err);
-      return { entries: [], available: false, reason: 'request-failed' };
+      measureCatalogueRequest(startedAt, REQUEST_FAILED_REASON);
+      return { entries: [], available: false, reason: REQUEST_FAILED_REASON };
     })
     .finally(() => {
       if (inflight.get(key) === request) {

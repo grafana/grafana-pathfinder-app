@@ -33,6 +33,7 @@ import { renameIdSpec } from './rename-id';
 import { requirementsGroup } from './requirements';
 import { schemaSpec } from './schema';
 import { setManifestSpec } from './set-manifest';
+import { syncTranslationsSpec } from './sync-translations';
 import { validateCliSpec } from './validate';
 
 /** One command as declared: a single shape, or a family selected by a discriminator. */
@@ -63,6 +64,7 @@ export const COMMAND_MANIFEST: readonly CommandEntry[] = Object.freeze([
   entry(buildStatsSpec),
   entry(buildSnippetsSpec),
   entry(buildGraphSpec),
+  entry(syncTranslationsSpec),
   entry(schemaSpec),
   // Catalog search.
   entry(findGuidesSpec),

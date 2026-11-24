@@ -1,12 +1,12 @@
 /**
- * Client for the /assignments/my backend proxy (pkg/plugin/assignments.go).
+ * Client for the /assignments/my backend proxy (pkg/provider/assignments.go).
  * Satisfaction is evaluated live server-side, so only in-flight requests are shared, never a result.
  *
- * @coupling API: GET /assignments/my served by pkg/plugin/assignments.go
+ * @coupling API: GET /assignments/my served by pkg/provider/assignments.go
  */
 import { config, getBackendSrv } from '@grafana/runtime';
 
-import { backendRoute } from './backend-routes';
+import { backendRoute, expectsSdkBackend, recoverSdkBackend } from './backend-routes';
 import type { AssignmentEntryWire, MyAssignmentsResponseWire } from '../types/backend-api.schema';
 import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
@@ -68,13 +68,19 @@ async function requestAssignments(): Promise<MyAssignmentsResult> {
  * answer is `ok: false`. Concurrent calls for the same authenticated scope share one in-flight request.
  */
 export async function fetchMyAssignments(namespace: string): Promise<MyAssignmentsResult> {
-  if (!isBackendApiAvailable() || !namespace) {
+  if (!namespace) {
     return NOTHING_ASSIGNED;
   }
-
   if (namespace !== config.namespace) {
     return FETCH_FAILED;
   }
+  if (!isBackendApiAvailable() && !(await recoverSdkBackend())) {
+    if (expectsSdkBackend()) {
+      return { ok: false, reason: 'capability-unavailable' };
+    }
+    return NOTHING_ASSIGNED;
+  }
+
   const scope = getUserScope();
   const existing = inflight.get(scope);
   if (existing) {

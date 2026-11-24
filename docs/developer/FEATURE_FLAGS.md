@@ -599,18 +599,12 @@ The flag is read once per page load, so a flip takes effect on the next reload.
 
 ---
 
-## Backend aggregation toggles (not MTFF)
+## SDK backend discovery
 
-Separate from the OpenFeature flags above, Grafana **App Platform APIService aggregation toggles** gate whether the plugin's aggregated backend APIs are served on a stack. They live in core Grafana config (`config.featureToggles`), not MTFF, and are read server-side in the Go backend — not through `openfeature.ts`.
+At startup, the plugin probes the namespaced SDK health route on Cloud stacks, including when the boot toggle map is empty. For other concrete namespaces, discovery requires both Grafana registration flags, `appplugins.loadAppManifest` and `appplugins.registerAPIServer`. OSS also requires the server-side `grafana.useRouterMiddleware` flag.
 
-| Toggle                                                  | Gates                                                                                                                                                | Go constant                                                                                                                                                          | Group         |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `aggregation.pathfinderbackend-ext-grafana-app.enabled` | Every aggregated surface: the custom guide catalogue, the private `interactiveguides` resolver, and the completion-records read and write proxies    | `customGuideAggregationToggle` (`pkg/plugin/custom_guide_repository_client.go`) and `completionRecordsAggregationToggle` (`pkg/plugin/completion_records_client.go`) | GAP `.app`    |
-| `aggregation.pathfinderbackend-ext-grafana-com.enabled` | Nothing today — completion records cut over to `.app` with no migration or dual-read, so the named constant only pins the `.app` derivation in tests | `pathfinderBackendAggregationToggle` (`pkg/plugin/app_platform_client.go`)                                                                                           | legacy `.com` |
-
-The toggle name is the API group with dots replaced by dashes. The frontend derives the `.app` toggle in `src/utils/interactive-guides-api.ts`; the Go constants derive theirs from `appPlatformGroup` (`pkg/plugin/app_platform_client.go`) so they cannot drift from the group name.
-
-A toggle reports that the group's aggregation layer is served, which is a **precondition, not the availability signal** — a real stack reports both toggles true. Route availability is whatever the capability/resolver path returns, which additionally requires an app URL, a namespace, and a provisioned on-behalf-of (OBO) token on the stack. See [`docs/design/BACKEND_PROXY_PATTERN.md`](../design/BACKEND_PROXY_PATTERN.md) §7–§8.
+A successful probe enables SDK-backed features for the current namespace. Feature requests can still fail independently. Cloud and registered OSS installations keep tenant settings writes on the SDK store during an outage. Unregistered OSS installations can save plugin JSON settings.
+See [SDK backend and resource access](../design/BACKEND_PROXY_PATTERN.md).
 
 ---
 

@@ -860,7 +860,39 @@ describe('E2E Contract: Comment Box Attributes', () => {
     expect(navigationManager.getOwnedCommentBox()).toBeNull();
   });
 
-  it('retains the real highlighted action box and removes it before another handler starts', async () => {
+  it('removes the real highlighted action box when the user performs the final action', async () => {
+    jest.useFakeTimers();
+    mockElement.id = 'final-target';
+    (elementValidator.resolveSelector as jest.Mock).mockImplementation((selector: string) => selector);
+    (elementValidator.querySelectorAllEnhanced as jest.Mock).mockReturnValue({
+      elements: [mockElement],
+      usedFallback: false,
+    });
+    jest.spyOn(navigationManager, 'ensureNavigationOpen').mockResolvedValue(undefined);
+    jest.spyOn(navigationManager, 'ensureElementVisible').mockResolvedValue(undefined);
+    const handler = new GuidedHandler({} as any, navigationManager, async () => {});
+    try {
+      const pending = handler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#final-target', targetComment: 'Final instruction' },
+        0,
+        1,
+        5000
+      );
+      await jest.advanceTimersByTimeAsync(1000);
+      const box = navigationManager.getOwnedCommentBox()!;
+      expect(box).toBeInTheDocument();
+      mockElement.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(await pending).toBe('completed');
+      expect(box).not.toBeInTheDocument();
+      expect(document.querySelector('[data-guided-state="completed"]')).toBeNull();
+    } finally {
+      handler.cancel();
+      jest.useRealTimers();
+    }
+  });
+
+  it('retains the real highlighted action box after a final skip and removes it before another handler starts', async () => {
     jest.useFakeTimers();
     mockElement.id = 'final-target';
     (elementValidator.resolveSelector as jest.Mock).mockImplementation((selector: string) => selector);
@@ -874,7 +906,12 @@ describe('E2E Contract: Comment Box Attributes', () => {
     const next = new GuidedHandler({} as any, new NavigationManager(), async () => {});
     try {
       const pending = handler.executeGuidedStep(
-        { targetAction: 'highlight', refTarget: '#final-target', targetComment: 'Final instruction' },
+        {
+          targetAction: 'highlight',
+          refTarget: '#final-target',
+          targetComment: 'Final instruction',
+          isSkippable: true,
+        },
         0,
         1,
         5000
@@ -884,9 +921,9 @@ describe('E2E Contract: Comment Box Attributes', () => {
       expect(box).toBeInTheDocument();
       expect(box).toHaveAttribute('data-test-reftarget', '#final-target');
       expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '0%' });
-      mockElement.click();
+      document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
       await jest.advanceTimersByTimeAsync(0);
-      expect(await pending).toBe('completed');
+      expect(await pending).toBe('skipped');
       expect(box).toHaveAttribute('data-guided-state', 'completed');
       expect(box).toHaveTextContent('Final instruction');
       expect(box.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });

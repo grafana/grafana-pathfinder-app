@@ -1,13 +1,27 @@
-import { matchesBackendRoute } from './helpers/backend-route';
+import { satisfies } from 'semver';
+import type { APIRequestContext } from '@playwright/test';
+import { testIds } from '../src/constants/testIds';
 import { test, expect } from './fixtures';
-import pluginJson from '../src/plugin.json';
 import { waitForGrafanaReady } from './helpers/grafana.helpers';
 
-const PACKAGE_RECOMMENDATIONS_PATH = `/api/plugins/${pluginJson.id}/resources/package-recommendations`;
+const PACKAGE_RECOMMENDATIONS_PATH = `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/backend/package-recommendations`;
+
+const PUBLIC_FEED_PATH = '/api/plugins/grafana-pathfinder-app/resources/package-recommendations';
+
+async function sdkAvailable(request: APIRequestContext): Promise<boolean> {
+  const health = await request.get(PACKAGE_RECOMMENDATIONS_PATH.replace('package-recommendations', 'health'));
+  if (health.status() === 404 && !satisfies(process.env.GRAFANA_TEST_IMAGE_VERSION ?? '', '>=13.3.0')) {
+    return false;
+  }
+  expect(health.status()).toBe(200);
+  expect(await health.json()).toMatchObject({ status: 'ok' });
+  return true;
+}
 
 test.describe('online package recommendations endpoint', () => {
   test('GET returns the proxied repository.json with baseUrl + packages', async ({ request }) => {
-    const response = await request.get(PACKAGE_RECOMMENDATIONS_PATH);
+    const available = await sdkAvailable(request);
+    const response = await request.get(available ? PACKAGE_RECOMMENDATIONS_PATH : PUBLIC_FEED_PATH);
 
     // 200 when the public CDN is reachable from the dev container; 503 if the
     // host blocks egress. Both are valid endpoint behaviours; assert the shape
@@ -41,24 +55,24 @@ test.describe('online package recommendations endpoint', () => {
   });
 
   test('rejects non-GET methods with 405', async ({ request }) => {
-    const response = await request.post(PACKAGE_RECOMMENDATIONS_PATH, { data: {} });
+    const available = await sdkAvailable(request);
+    const response = await request.post(available ? PACKAGE_RECOMMENDATIONS_PATH : PUBLIC_FEED_PATH, { data: {} });
     expect(response.status()).toBe(405);
   });
 
-  test('docs panel triggers a call to the endpoint when the recommender is disabled', async ({ page }) => {
-    // OSS dev container defaults acceptedTermsAndConditions to false, so the
-    // recommender-disabled branch should run and hit the new endpoint.
-    const requestPromise = page.waitForRequest(
-      (req) => matchesBackendRoute('package-recommendations')(new URL(req.url())) && req.method() === 'GET',
-      { timeout: 15000 }
+  test('docs panel opens with the catalogue available or unavailable', async ({ page, request }) => {
+    const available = await sdkAvailable(request);
+    const catalogue = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === (available ? PACKAGE_RECOMMENDATIONS_PATH : PUBLIC_FEED_PATH) &&
+        response.request().method() === 'GET'
     );
-
     await page.goto('/dashboards');
     await waitForGrafanaReady(page);
-
-    const helpButton = page.locator('button[aria-label="Help"]');
-    await helpButton.click();
-
-    await requestPromise;
+    await page.getByRole('button', { name: 'Help', exact: true }).click();
+    await expect(page.getByTestId(testIds.sidebarHub.container)).toBeVisible();
+    await expect(page.getByTestId(testIds.sidebarHub.loading)).toHaveCount(0);
+    const response = await catalogue;
+    expect([200, 503]).toContain(response.status());
   });
 });

@@ -333,18 +333,7 @@ function localPackageEntry(
       `Root package type mismatch: manifest declares "${manifest.type}", repository declares "${entry.type}".`
     );
   }
-  if (
-    JSON.stringify(manifest.depends ?? []) !== JSON.stringify(entry.depends ?? []) ||
-    JSON.stringify(manifest.milestones ?? []) !== JSON.stringify(entry.milestones ?? []) ||
-    JSON.stringify(manifest.provides ?? []) !== JSON.stringify(entry.provides ?? []) ||
-    manifest.startingLocation !== entry.startingLocation ||
-    manifest.testEnvironment?.tier !== entry.testEnvironment?.tier ||
-    manifest.testEnvironment?.instance !== entry.testEnvironment?.instance ||
-    manifest.testEnvironment?.minVersion !== entry.testEnvironment?.minVersion ||
-    JSON.stringify(manifest.testEnvironment?.plugins ?? []) !== JSON.stringify(entry.testEnvironment?.plugins ?? [])
-  ) {
-    throw new Error(`Local manifest and repository metadata differ for package "${manifest.id}".`);
-  }
+  // The entry is built from this same checkout manifest, so only its directory can differ.
   const entryPath = entry.path || `${manifest.id}/`;
   const packagePath = entryPath.endsWith('.json') ? dirname(entryPath) : entryPath;
   const repositoryRoot = realpathSync(localRepositoryRoot(options.repositoryPath!));
@@ -372,17 +361,6 @@ function validateLocalCloudPlan(plan: ExecutionPlan, repoSource: LocalRepository
       throw new Error(
         `Required local guide "${planned.id}" must be declared cloud-tier in its manifest and repository.`
       );
-    }
-    if (
-      manifest.testEnvironment?.instance !== entry.testEnvironment?.instance ||
-      manifest.testEnvironment?.minVersion !== entry.testEnvironment?.minVersion ||
-      JSON.stringify(manifest.testEnvironment?.plugins ?? []) !==
-        JSON.stringify(entry.testEnvironment?.plugins ?? []) ||
-      JSON.stringify(manifest.depends ?? []) !== JSON.stringify(entry.depends ?? []) ||
-      JSON.stringify(manifest.provides ?? []) !== JSON.stringify(entry.provides ?? []) ||
-      manifest.startingLocation !== entry.startingLocation
-    ) {
-      throw new Error(`Local manifest and repository metadata differ for guide "${planned.id}".`);
     }
   }
 }
