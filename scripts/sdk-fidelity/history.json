@@ -1,0 +1,91 @@
+{
+  "records": [
+    {
+      "userId": "user:1",
+      "guideId": "same",
+      "guideSource": "bundled",
+      "guideTitle": "Old title",
+      "guideCategory": "interactive",
+      "completionPercent": 100,
+      "completedAt": "2026-08-01T00:00:00Z"
+    },
+    {
+      "userId": "user:1",
+      "guideId": "same",
+      "guideSource": "bundled",
+      "guideTitle": "Current title",
+      "guideCategory": "interactive",
+      "completionPercent": 100,
+      "completedAt": "2026-09-01T00:00:00Z"
+    },
+    {
+      "userId": "user:1",
+      "guideId": "same",
+      "guideSource": "bundled",
+      "guideCategory": "interactive",
+      "completionPercent": 100,
+      "completedAt": "2026-09-02T00:00:00Z"
+    },
+    {
+      "userId": "user:2",
+      "guideId": "same",
+      "guideSource": "app-platform",
+      "guideCategory": "interactive",
+      "completionPercent": 100,
+      "completedAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "userId": "user:1",
+      "guideId": "partial",
+      "guideSource": "bundled",
+      "guideCategory": "interactive",
+      "completionPercent": 40,
+      "recordedAt": "2026-09-03T00:00:00Z",
+      "attemptId": "historic-attempt"
+    },
+    {
+      "userId": "user:1",
+      "guideId": "first-dashboard",
+      "guideSource": "online-cdn",
+      "guideCategory": "interactive",
+      "completionPercent": 100,
+      "completedAt": "2026-09-03T00:00:00Z"
+    }
+  ],
+  "assignments": [
+    {
+      "userId": "user:1",
+      "targetType": "guide",
+      "targetId": "same",
+      "targetSource": "bundled",
+      "lifecycle": "active",
+      "ruleId": "one",
+      "acceptCompletionsFrom": "2026-07-01T00:00:00Z"
+    },
+    {
+      "userId": "user:1",
+      "targetType": "guide",
+      "targetId": "same",
+      "targetSource": "bundled",
+      "lifecycle": "active",
+      "ruleId": "two",
+      "acceptCompletionsFrom": "2026-09-03T00:00:00Z"
+    },
+    {
+      "userId": "user:1",
+      "targetType": "guide",
+      "targetId": "first-dashboard",
+      "targetSource": "bundled",
+      "lifecycle": "active",
+      "ruleId": "rss-is-not-dashboard"
+    },
+    {
+      "userId": "user:2",
+      "targetType": "guide",
+      "targetId": "same",
+      "targetSource": "app-platform",
+      "lifecycle": "withdrawn",
+      "ruleId": "withdrawn"
+    }
+  ]
+}
