@@ -113,6 +113,30 @@ describe('runRenameBlock', () => {
     expect((readPackage(dir).content.blocks as any[])[1].requirements).toEqual(['section-completed:section-section-2']);
   });
 
+  it.each(['a$$b', 'a$&b', 'a$`b', "a$'b", '$1', 'a b'])(
+    'writes the id %j into every reference literally',
+    async (newId) => {
+      const dir = await writePackage([
+        section('setup'),
+        interactive({
+          id: 'next',
+          requirements: ['section-completed:setup'],
+          objectives: ['section-completed:section-setup'],
+          verify: 'is-admin, section-completed:setup',
+        }),
+      ]);
+
+      const result = await runRenameBlock({ dir, id: 'setup', newId });
+
+      expect(result.status).toBe('ok');
+      const blocks = readPackage(dir).content.blocks as any[];
+      expect(blocks[0].id).toBe(newId);
+      expect(blocks[1].requirements).toEqual([`section-completed:${newId}`]);
+      expect(blocks[1].objectives).toEqual([`section-completed:section-${newId}`]);
+      expect(blocks[1].verify).toBe(`is-admin, section-completed:${newId}`);
+    }
+  );
+
   it('renames a nested block with no references', async () => {
     const dir = await writePackage([
       { type: 'collapsible', id: 'more', title: 'More', blocks: [{ type: 'markdown', id: 'note', content: 'Hi' }] },
@@ -148,6 +172,18 @@ describe('runRenameBlock', () => {
         code: 'BLOCK_NOT_FOUND',
       },
       {
+        name: 'the new id has a comma',
+        blocks: [section('setup'), interactive({ id: 'next', verify: 'section-completed:setup' })],
+        newId: 'a,is-admin',
+        code: 'INVALID_BLOCK_ID',
+      },
+      {
+        name: 'the new id has edge whitespace',
+        blocks: [section('setup'), interactive({ id: 'next', requirements: ['section-completed:setup'] })],
+        newId: ' install',
+        code: 'INVALID_BLOCK_ID',
+      },
+      {
         name: 'a compiled locale annotation lists the id',
         blocks: [section('setup')],
         extra: {
@@ -163,19 +199,9 @@ describe('runRenameBlock', () => {
         code: 'UNSUPPORTED_REFERENCE',
       },
       {
-        name: 'the renamed package fails validation',
-        blocks: [
-          {
-            type: 'input',
-            id: 'setup',
-            inputType: 'datasource',
-            variableName: 'metricsDatasource',
-            prompt: 'Pick a data source.',
-            dataCheckQuery: 'up',
-            dataCheckBlocking: true,
-          },
-        ],
-        newId: '   ',
+        name: 'the package fails validation after the rename',
+        blocks: [section('setup'), interactive({ id: 'next', requirements: ['not-a-requirement'] })],
+        newId: 'install',
         code: 'SCHEMA_VALIDATION',
       },
     ])('when $name', async ({ blocks, extra, id, newId, code }) => {

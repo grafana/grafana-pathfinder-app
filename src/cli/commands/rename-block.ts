@@ -4,8 +4,9 @@
  *
  * Supported references: any `section-completed:` token in a `requirements`,
  * `objectives`, `conditions` or `verify` field that the runtime resolves to this
- * block. Ids in a compiled locale's `translation` annotation are reported and the
- * rename refused. Other packages and completion records are out of scope.
+ * block. Ids in a compiled locale's `translation` annotation are
+ * reported and the rename refused, and so is a new id a condition cannot carry
+ * (a comma, or edge whitespace). Other packages and completion records are out of scope.
  */
 
 import { z } from 'zod';
@@ -23,7 +24,11 @@ const CONDITION_KEYS = new Set(['requirements', 'objectives', 'conditions', 'ver
 export const RenameBlockCommand = z.object({
   dir: z.string().describe('package directory').meta({ role: 'io' }),
   id: z.string().describe('current id of the block to rename').meta({ role: 'addressing' }),
-  newId: z.string().min(1).describe('new block id').meta({ role: 'content' }),
+  newId: z
+    .string()
+    .min(1)
+    .describe('new block id (no comma, no leading or trailing whitespace)')
+    .meta({ role: 'content' }),
 });
 
 export type RenameBlockInput = z.output<typeof RenameBlockCommand>;
@@ -40,25 +45,41 @@ function sectionLookupId(ref: string): string {
   return ref.startsWith(SECTION_PREFIX) ? ref : `${SECTION_PREFIX}${ref}`;
 }
 
+// A single condition token. Keeps the surrounding whitespace and returns it unchanged unless it names this block.
+function rewriteToken(part: string, path: string, scan: RenameScan): string {
+  const token = part.trim();
+  if (!token.startsWith(SECTION_COMPLETED)) {
+    return part;
+  }
+  const ref = token.slice(SECTION_COMPLETED.length);
+  if (sectionLookupId(ref) !== `${SECTION_PREFIX}${scan.oldId}`) {
+    return part;
+  }
+  // Keep the short spelling only when it still resolves to the renamed block.
+  const keepShort = ref === scan.oldId && !scan.newId.startsWith(SECTION_PREFIX);
+  scan.rewritten.push(path);
+  const next = `${SECTION_COMPLETED}${keepShort ? '' : SECTION_PREFIX}${scan.newId}`;
+  // A replacer function keeps `$` sequences in the new id literal.
+  return part.replace(token, () => next);
+}
+
+// Only a string field holds several comma-separated conditions. Each array entry is one condition.
 function rewriteConditionString(value: string, path: string, scan: RenameScan): string {
-  const oldSectionId = `${SECTION_PREFIX}${scan.oldId}`;
   return value
     .split(',')
-    .map((part) => {
-      const token = part.trim();
-      if (!token.startsWith(SECTION_COMPLETED)) {
-        return part;
-      }
-      const ref = token.slice(SECTION_COMPLETED.length);
-      if (sectionLookupId(ref) !== oldSectionId) {
-        return part;
-      }
-      // Keep the short spelling only when it still resolves to the renamed block.
-      const keepShort = ref === scan.oldId && !scan.newId.startsWith(SECTION_PREFIX);
-      scan.rewritten.push(path);
-      return part.replace(token, `${SECTION_COMPLETED}${keepShort ? '' : SECTION_PREFIX}${scan.newId}`);
-    })
+    .map((part) => rewriteToken(part, path, scan))
     .join(',');
+}
+
+// An id the condition parser would split or trim cannot be written into a reference and read back as itself.
+function unsafeIdReason(id: string): string | undefined {
+  if (id.includes(',')) {
+    return 'it contains a comma, which separates conditions';
+  }
+  if (id !== id.trim()) {
+    return 'it starts or ends with whitespace, which condition parsing trims';
+  }
+  return undefined;
 }
 
 function rewriteReferences(node: unknown, path: string, scan: RenameScan): void {
@@ -95,6 +116,13 @@ export async function runRenameBlock(args: RenameBlockInput): Promise<CommandOut
       }
       if (args.id === args.newId) {
         return;
+      }
+      const unsafe = unsafeIdReason(args.newId);
+      if (unsafe) {
+        throw new PackageIOError({
+          code: 'INVALID_BLOCK_ID',
+          message: `Block id "${args.newId}" cannot be used because ${unsafe}`,
+        });
       }
       const ids = collectAllIds(content);
       if (ids.has(args.newId)) {
