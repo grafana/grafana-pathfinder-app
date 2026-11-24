@@ -319,6 +319,23 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     }
   );
 
+  it('keeps the editor active when an earlier reader restoration finishes late', async () => {
+    let finish!: (id: string) => void;
+    mockRestoreActiveTabFromStorage.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const panel = new CombinedLearningJourneyPanel();
+    const restoring = panel.restoreTabsAsync();
+    await Promise.resolve();
+    panel.openEditorTab();
+    finish('tab-guide-1');
+    await restoring;
+    expect(panel.state.activeTabId).toBe('editor');
+    expect(panel.state.tabs.find((tab) => tab.id === 'tab-guide-1')).toBeDefined();
+  });
+
   it('does not persist an ephemeral reader over the editor workspace', async () => {
     const panel = new CombinedLearningJourneyPanel({}, { persistTabs: false });
     await panel.saveTabsToStorage();

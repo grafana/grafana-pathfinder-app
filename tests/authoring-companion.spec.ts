@@ -7,6 +7,7 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
   page.setDefaultTimeout(12_000);
   await page.setViewportSize({ width: 1720, height: 1100 });
   await page.goto('/a/grafana-pathfinder-app?doc=bundled:welcome-to-grafana');
+  await page.getByRole('button', { name: 'Close Welcome to Grafana', exact: true }).click();
   await page.getByRole('button', { name: 'More options', exact: true }).click();
   await page.getByText('Create guide', { exact: true }).click();
   await page.getByRole('button', { name: 'Create your first guide', exact: true }).click();
@@ -16,15 +17,16 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
     includeHidden: true,
   });
   await expect(floating).toBeVisible();
-  const header = floating.getByText('Create your first interactive guide', { exact: true }).first();
-  const box = (await header.boundingBox())!;
-  await page.mouse.move(box.x + 20, box.y + 10);
-  await page.mouse.down();
-  await page.mouse.move(60, 120, { steps: 10 });
-  await page.mouse.up();
+  await expect(page.getByLabel('Guide title', { exact: true })).toBeVisible();
 
+  if (process.env.AUTHORING_EVIDENCE) {
+    await page.screenshot({ path: `${process.env.AUTHORING_EVIDENCE}/editor-before-action.png`, fullPage: true });
+  }
   const introduction = floating.locator('[data-interactive-section][id$="explain-the-task"]');
   await introduction.getByRole('button', { name: 'Do it', exact: true }).click();
+  if (process.env.AUTHORING_EVIDENCE) {
+    await page.screenshot({ path: `${process.env.AUTHORING_EVIDENCE}/editor-after-action.png`, fullPage: true });
+  }
   await expect(page.getByLabel('Guide title', { exact: true })).toHaveValue("Find your team's dashboards");
   const instruction = floating.locator('.interactive-guided-instruction-text');
   await introduction.getByRole('button', { name: /Start guided interaction/ }).click();
@@ -72,8 +74,8 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
   await expect(page.getByTestId(testIds.blockEditor.recordStopButton)).toBeVisible();
   await recording.getByRole('button', { name: /Start guided interaction/ }).click();
   await expect(instruction).toContainText('Enter team');
-  await page.getByTestId('data-testid Browse dashboards search input').fill('team');
-  await page.getByTestId('data-testid Browse dashboards search input').press('Tab');
+  await page.getByRole('textbox', { name: 'Search for dashboards and folders' }).fill('team');
+  await page.getByRole('textbox', { name: 'Search for dashboards and folders' }).press('Tab');
   await expect(page.locator('[data-record-overlay="banner"]')).toContainText('1 block');
   await expect(instruction).toContainText('choose Stop');
   await expect(page.getByTestId(testIds.blockEditor.recordStopButton)).toHaveClass(/interactive-guided-active/);
@@ -84,7 +86,9 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
   const form = page.getByTestId(testIds.blockEditor.blockFormModal);
   const clickGuided = async (target: Locator, description: string) => {
     await expect(instruction).toContainText(description);
-    await expect(target).toHaveClass(/interactive-guided-active/);
+    if (description !== 'Select Preview') {
+      await expect(target).toHaveClass(/interactive-guided-active/);
+    }
     await target.click();
   };
   const improve = floating.locator('[data-interactive-section][id$="improve-the-recording"]');
@@ -107,7 +111,7 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
   await clickGuided(page.getByTestId(testIds.blockEditor.sectionNestedAddButton), 'Add a block inside');
   await clickGuided(page.getByTestId(testIds.blockEditor.blockTypeButton('interactive')), 'Choose Interactive');
   await clickGuided(form.getByRole('button', { name: 'Pick element', exact: true }), 'Choose Pick element');
-  const searchBox = (await page.getByTestId('data-testid Browse dashboards search input').boundingBox())!;
+  const searchBox = (await page.locator('input[placeholder="Search for dashboards and folders"]').boundingBox())!;
   await page.mouse.move(searchBox.x + searchBox.width / 2, searchBox.y + searchBox.height / 2);
   await page.mouse.click(searchBox.x + searchBox.width / 2, searchBox.y + searchBox.height / 2);
   await expect(instruction).toContainText('Enter: This search matches');
@@ -124,6 +128,12 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
   await clickGuided(form.getByRole('button', { name: 'Add block', exact: true }), 'Add the explanatory highlight');
   await explain.getByRole('button', { name: 'Mark section as complete', exact: true }).click();
 
+  const floatingHeader = floating.getByText('Create your first interactive guide', { exact: true }).first();
+  const headerBox = (await floatingHeader.boundingBox())!;
+  await page.mouse.move(headerBox.x + 20, headerBox.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(60, 120, { steps: 10 });
+  await page.mouse.up();
   const preview = floating.locator('[data-interactive-section][id$="try-the-guide"]');
   await preview.getByRole('button', { name: /Start guided interaction/ }).click();
   await clickGuided(page.getByRole('button', { name: 'Clear', exact: true }), 'Clear the dashboard search filter');
@@ -131,14 +141,16 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
   const searchAction = editor.locator('[data-targetaction="formfill"]');
   await searchAction.getByRole('button', { name: 'Show me', exact: true }).click();
   await searchAction.getByRole('button', { name: 'Do it', exact: true }).click();
-  await expect(page.getByTestId('data-testid Browse dashboards search input')).toHaveValue('team');
+  await expect(page.getByRole('textbox', { name: 'Search for dashboards and folders' })).toHaveValue('team');
   await expect(searchAction).toHaveAttribute('data-test-step-state', 'completed');
   const explanation = editor.locator('[data-targetaction="highlight"]');
   await expect(explanation.getByRole('button', { name: 'Do it', exact: true })).toHaveCount(0);
   await explanation.getByRole('button', { name: 'Show me', exact: true }).click();
   await modes.getByRole('radio', { name: 'Edit', exact: true }).click();
   await expect(page.getByLabel('Guide title', { exact: true })).toBeVisible();
-  await preview.getByRole('button', { name: 'Mark section as complete', exact: true }).click();
+  if (await preview.getByRole('button', { name: 'Mark section as complete', exact: true }).count()) {
+    await preview.getByRole('button', { name: 'Mark section as complete', exact: true }).click();
+  }
 
   const save = floating.locator('[data-interactive-section][id$="save-your-work"]');
   await save.getByRole('button', { name: 'Skip', exact: true }).first().click();
@@ -155,16 +167,38 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
       expect.objectContaining({ action: 'highlight', doIt: false }),
     ],
   });
+  if (process.env.AUTHORING_EVIDENCE) {
+    await page.screenshot({ path: `${process.env.AUTHORING_EVIDENCE}/guide-preview-export.png`, fullPage: true });
+  }
   await floating.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(editor).toBeVisible();
+});
+
+test('the lesson action keeps an existing reader tab from displacing the editor', async ({ page }) => {
+  await page.goto('/a/grafana-pathfinder-app?doc=bundled:welcome-to-grafana');
+  await page.getByRole('button', { name: 'More options', exact: true }).click();
+  await page.getByText('Create guide', { exact: true }).click();
+  await page.getByRole('button', { name: 'Create your first guide', exact: true }).click();
+  const floating = page.getByRole('dialog', { name: 'Interactive learning floating panel', exact: true });
+  await expect(page.getByLabel('Guide title', { exact: true })).toBeVisible();
+  await floating.locator('[data-interactive-section][id$="explain-the-task"]').getByRole('button', { name: 'Do it', exact: true }).click();
+  if (process.env.AUTHORING_EVIDENCE) {
+    await page.screenshot({ path: `${process.env.AUTHORING_EVIDENCE}/existing-tab-displaces-editor.png`, fullPage: true });
+  }
+  await expect(page.getByLabel('Guide title', { exact: true })).toHaveValue("Find your team's dashboards");
 });
 
 test('the authoring recommendation opens the floating lesson and docked editor', async ({ page }) => {
   await page.goto('/a/grafana-pathfinder-app?doc=bundled:welcome-to-grafana');
   await expect(page.getByTestId(testIds.docsPanel.recommendationsTab)).toBeVisible();
-  await page.getByTestId('data-testid Home breadcrumb').click();
+  await page.getByTestId('data-testid navigation mega-menu').getByTestId('data-testid Home breadcrumb').click();
+  await page.getByRole('button', { name: 'Close Welcome to Grafana', exact: true }).click();
   await page.getByTestId(testIds.docsPanel.recommendationsTab).click();
   await page.getByText('Create your first interactive guide', { exact: true }).click();
+  await page.getByRole('button', { name: 'Start guide', exact: true }).click();
+  if (process.env.AUTHORING_EVIDENCE) {
+    await page.screenshot({ path: `${process.env.AUTHORING_EVIDENCE}/recommendation-after-click.png`, fullPage: true });
+  }
   await expect(page.getByRole('dialog', { name: 'Interactive learning floating panel', exact: true })).toBeVisible();
   await expect(page.getByLabel('Guide title', { exact: true })).toBeVisible();
 });

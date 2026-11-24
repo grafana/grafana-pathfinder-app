@@ -124,7 +124,7 @@
           "steps": [
             {
               "action": "formfill",
-              "reftarget": "input[data-testid='data-testid Browse dashboards search input']",
+              "reftarget": "input[placeholder='Search for dashboards and folders']",
               "targetvalue": "team",
               "description": "Enter team in the dashboard search field. Then press Tab to capture the input."
             },

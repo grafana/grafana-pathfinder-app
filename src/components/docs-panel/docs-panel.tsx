@@ -291,6 +291,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   private async restoreTabWorkspace(): Promise<void> {
+    const initialActiveTabId = this.state.activeTabId;
     await pendingTabStorageWrite;
     const { allowDevTools: isDevMode } = resolveTabGates(this.state.pluginConfig);
 
@@ -305,7 +306,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     this.setState({
       tabs: restoredTabs,
-      activeTabId,
+      activeTabId: this.state.activeTabId !== initialActiveTabId ? this.state.activeTabId : activeTabId,
     });
 
     this.initializeRestoredActiveTab();
