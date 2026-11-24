@@ -116,11 +116,13 @@ def main():
                 if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
                     raise RuntimeError('unexpected cache-control difference')
                 old['cacheControl'] = 'no-store'
+        # Personal reads (assignments, completion-records/my and /capability,
+        # custom-guide-repository) add Cache-Control: no-store in the SDK.
         for name, old in transcripts[0]['httpReads'].items():
-            if name.startswith('assignments/'):
+            if name.startswith('assignments/') or '/capability=' in name or name.endswith('/catalogue=true'):
                 new = transcripts[1]['httpReads'][name]
                 if old['cacheControl'] != '' or new['cacheControl'] != 'no-store':
-                    raise RuntimeError('unexpected assignment cache-control difference')
+                    raise RuntimeError('unexpected personal-read cache-control difference')
                 old['cacheControl'] = 'no-store'
         for kind, rows in transcripts[0]['resources'].items():
             for old, new in zip(rows, transcripts[1]['resources'][kind], strict=True):
