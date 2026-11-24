@@ -137,12 +137,19 @@ describe('classifyDocsUrl', () => {
       expect(classifyDocsUrl(`${HUB}/j/s/step/extra/`)).toEqual({ family: 'docs' });
     });
 
-    it('keeps Learn out of the legacy families, whatever its slugs say', () => {
-      const result = classifyDocsUrl(`${HUB}/intro/tutorials/learning-paths/`);
+    it.each([
+      `${HUB}/intro/tutorials/learning-paths/`,
+      `${HUB}/x/learning-paths/y`,
+      `${HUB}/x/learning-journeys/y/`,
+      `${HUB}/x/milestone-1/`,
+    ])('keeps Learn out of the legacy families, whatever its slugs say: %s', (url) => {
+      const result = classifyDocsUrl(url);
       expect(result.family).toBe('learn');
       expect(result.legacy).toBeUndefined();
       expect(isLegacyJourneyFamily(result)).toBe(false);
+      expect(isDocsRootedLegacyJourney(result)).toBe(false);
       expect(isJourneyContent(result)).toBe(false);
+      expect(hasJourneyFamilySegment(result)).toBe(false);
     });
 
     it('does not mistake a longer segment for the Learn root', () => {
@@ -176,6 +183,12 @@ describe('classifyDocsUrl', () => {
     it('keeps matching the legacy families on the path alone, as the predicates it replaced did', () => {
       expect(familyOf('https://example.com/docs/learning-paths/x/')).toBe('learning-path');
       expect(familyOf('https://example.com/tutorials/x/')).toBe('tutorial');
+    });
+
+    it('gives a Learn-shaped path off a Grafana docs host its legacy facts', () => {
+      const result = classifyDocsUrl('https://example.com/docs/learning-hub/x/learning-paths/y');
+      expect(result.family).not.toBe('learn');
+      expect(isLegacyJourneyFamily(result)).toBe(true);
     });
 
     it('requires an exact interactive-learning host over https', () => {
@@ -267,6 +280,7 @@ describe('family predicates', () => {
     ['https://grafana.com/docs/foo/#/tutorials/x/', false, false, false, false],
     [`${HUB}/j/s/step/`, false, false, false, false],
     [`${HUB}/intro/tutorials/learning-paths/`, false, false, false, false],
+    [`${HUB}/x/learning-paths/y`, false, false, false, false],
     ['https://interactive-learning.grafana.net/guides/x/content.json', false, false, false, false],
     ['https://example.com/', false, false, false, false],
     ['not a url', false, false, false, false],

@@ -11,7 +11,9 @@
  * `src/security/url-validator.ts`. The legacy families keep matching on the
  * path alone, as every predicate this module replaced did, so a foreign host
  * that echoes `/docs/learning-paths/` still classifies as one (private-guide
- * eligibility depends on that). `learn` is new and born host-gated.
+ * eligibility depends on that). The exception is `/docs/learning-hub/` on a
+ * Grafana docs host, where Learn wins and carries no legacy facts. `learn` is
+ * new and born host-gated.
  */
 
 import { isGrafanaDocsUrl, isGrafanaDomain, isInteractiveLearningUrl, parseUrlSafely } from '../security/url-validator';
