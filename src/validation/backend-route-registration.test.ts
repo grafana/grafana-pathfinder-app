@@ -1,80 +1,30 @@
 /**
- * Backend route registration ratchet.
+ * Browser half of the backend route registration ratchet.
  *
- * A tenant route is registered in three places: the custom routes in `kinds/manifest.cue`, the
- * `VersionedCustomRoutes` map in `pkg/provider/provider.go`, and the browser allowlist `backendPaths` in
- * `src/lib/backend-routes.ts`. They are edited by hand in different languages, so a route missing from one of them
- * fails only at runtime (a 404 from the host, or `Unknown backend route` in the browser). This test makes the
- * three agree. The procedure is recipe steps 1 and 2 in docs/design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a-route.
+ * `src/app-sdk-manifest.json` is the manifest `npm run generate:kinds` emits from `kinds/manifest.cue`, and it is the
+ * contract the host serves. Every namespaced route it declares must be reachable through `backendRoute()`, and the
+ * browser must not allow a path the backend does not serve. The provider half is
+ * `TestProviderRegistersExactlyTheManifestRoutes` in `pkg/provider/route_identity_ratchet_test.go`.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import manifest from '../app-sdk-manifest.json';
+import { backendPaths, backendRoute } from '../lib/backend-routes';
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
+jest.mock('@grafana/runtime', () => ({
+  getBackendSrv: jest.fn(),
+  config: { namespace: 'stacks-1', featureToggles: {} },
+}));
+
 const PATTERN_DOC = 'docs/design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a-route';
-const METHODS = ['GET', 'POST', 'PUT', 'DELETE'];
+const BACKEND_PREFIX = '/backend/';
 
-function read(relativePath: string): string {
-  return fs.readFileSync(path.join(REPO_ROOT, relativePath), 'utf8');
-}
+type BrowserPath = Parameters<typeof backendRoute>[0];
 
-function manifestRoutes(source: string): string[] {
-  return [...source.matchAll(/"\/backend\/([^"]+)":\s*"(GET|POST|PUT|DELETE)"/g)].map(
-    (match) => `${match[2] ?? ''} ${match[1] ?? ''}`
-  );
-}
-
-function providerRoutes(source: string): string[] {
-  return [
-    ...source.matchAll(
-      /Path:\s*"\/backend\/([^"]+)",\s*Method:\s*simple\.AppCustomRouteMethod(Get|Post|Put|Delete)\b/g
-    ),
-  ].map((match) => `${(match[2] ?? '').toUpperCase()} ${match[1] ?? ''}`);
-}
-
-function browserPaths(source: string): string[] {
-  const block = source.match(/const backendPaths = \[([\s\S]*?)\] as const/)?.[1];
-  if (block === undefined) {
-    return [];
-  }
-  return [...block.matchAll(/'([^']+)'/g)].map((match) => match[1] ?? '');
-}
-
-function difference(left: string[], right: string[]): string[] {
-  const rightSet = new Set(right);
-  return left.filter((item) => !rightSet.has(item));
-}
-
-function routeRegistrationProblems(manifest: string[], provider: string[], browser: string[]): string[] {
-  const problems: string[] = [];
-  const manifestPaths = [...new Set(manifest.map((route) => route.split(' ').slice(1).join(' ')))];
-  const duplicates = (routes: string[]) => routes.filter((route, index) => routes.indexOf(route) !== index);
-  for (const [label, routes] of [
-    ['kinds/manifest.cue', manifest],
-    ['pkg/provider/provider.go', provider],
-  ] as const) {
-    for (const route of duplicates(routes)) {
-      problems.push(`${label} registers "${route}" more than once.`);
-    }
-  }
-  for (const route of difference(manifest, provider)) {
-    problems.push(`"${route}" is in kinds/manifest.cue but not in VersionedCustomRoutes in pkg/provider/provider.go.`);
-  }
-  for (const route of difference(provider, manifest)) {
-    problems.push(`"${route}" is in VersionedCustomRoutes in pkg/provider/provider.go but not in kinds/manifest.cue.`);
-  }
-  for (const route of difference(manifestPaths, browser)) {
-    problems.push(
-      `"${route}" is registered by the backend but missing from backendPaths in src/lib/backend-routes.ts.`
-    );
-  }
-  for (const route of difference(browser, manifestPaths)) {
-    problems.push(
-      `"${route}" is in backendPaths in src/lib/backend-routes.ts but no backend route is registered for it.`
-    );
-  }
-  return problems;
+function manifestBackendPaths(): string[] {
+  const version = manifest.spec.versions.find((candidate) => candidate.name === 'v1alpha1');
+  return Object.keys(version?.routes.namespaced ?? {})
+    .filter((route) => route.startsWith(BACKEND_PREFIX))
+    .map((route) => route.slice(BACKEND_PREFIX.length));
 }
 
 function failureMessage(problems: string[]): string {
@@ -89,52 +39,31 @@ function failureMessage(problems: string[]): string {
 }
 
 describe('Backend route registration', () => {
-  it('declares the same routes in the manifest, the provider, and the browser allowlist', () => {
-    const manifest = manifestRoutes(read('kinds/manifest.cue'));
-    const provider = providerRoutes(read('pkg/provider/provider.go'));
-    const browser = browserPaths(read('src/lib/backend-routes.ts'));
+  it('lets the browser reach exactly the routes the generated manifest declares', () => {
+    const declared = manifestBackendPaths();
+    expect(declared.length).toBeGreaterThan(0);
 
-    expect(manifest.length).toBeGreaterThan(0);
-    expect(provider.length).toBeGreaterThan(0);
-    expect(browser.length).toBeGreaterThan(0);
-    expect(manifest.every((route) => METHODS.some((method) => route.startsWith(`${method} `)))).toBe(true);
-
-    const problems = routeRegistrationProblems(manifest, provider, browser);
+    const problems: string[] = [];
+    for (const route of declared) {
+      try {
+        expect(backendRoute(route as BrowserPath)).toBe(
+          `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-1/backend/${route}`
+        );
+      } catch {
+        problems.push(
+          `"${route}" is declared in the manifest but backendRoute() rejects it (src/lib/backend-routes.ts).`
+        );
+      }
+    }
+    for (const route of backendPaths) {
+      if (!declared.includes(route)) {
+        problems.push(
+          `"${route}" is in backendPaths in src/lib/backend-routes.ts but the manifest declares no such route.`
+        );
+      }
+    }
     if (problems.length > 0) {
       throw new Error(failureMessage(problems));
     }
-  });
-
-  it('reports a route that is missing from any of the three places', () => {
-    const manifest = ['GET a', 'POST b'];
-    const provider = ['GET a', 'POST b'];
-    const browser = ['a', 'b'];
-    expect(routeRegistrationProblems(manifest, provider, browser)).toEqual([]);
-
-    expect(routeRegistrationProblems([...manifest, 'GET c'], provider, browser).join('\n')).toMatch(
-      /"GET c" is in kinds\/manifest\.cue but not in VersionedCustomRoutes/
-    );
-    expect(routeRegistrationProblems(manifest, [...provider, 'GET c'], browser).join('\n')).toMatch(
-      /"GET c" is in VersionedCustomRoutes .* but not in kinds\/manifest\.cue/
-    );
-    expect(routeRegistrationProblems([...manifest, 'GET c'], [...provider, 'GET c'], browser).join('\n')).toMatch(
-      /"c" is registered by the backend but missing from backendPaths/
-    );
-    expect(routeRegistrationProblems(manifest, provider, [...browser, 'c']).join('\n')).toMatch(
-      /"c" is in backendPaths .* no backend route is registered/
-    );
-    expect(routeRegistrationProblems(manifest, ['GET a', 'PUT b'], browser).join('\n')).toMatch(/"POST b" is in kinds/);
-  });
-
-  it('parses the manifest, provider, and allowlist formats it relies on', () => {
-    expect(manifestRoutes(' "/backend/x/my": "GET": {name: "y"}\n routes: namespaced: "/backend/z": "PUT": {')).toEqual(
-      ['GET x/my', 'PUT z']
-    );
-    expect(
-      providerRoutes(
-        'simple.AppVersionRoute{Namespaced: true, Path: "/backend/x", Method: simple.AppCustomRouteMethodPost}: h,'
-      )
-    ).toEqual(['POST x']);
-    expect(browserPaths("const backendPaths = [\n  'a',\n  'b/c',\n] as const;")).toEqual(['a', 'b/c']);
   });
 });

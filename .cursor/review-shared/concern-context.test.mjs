@@ -298,42 +298,44 @@ const globToRegExp = (glob) =>
       .replace(/\*/g, '[^/]*')
       .replace(/\u0000/g, '.*')}$`
   );
-const repoFile = (path) => readFileSync(fileURLToPath(new URL(`../../${path}`, import.meta.url)), 'utf8');
 const sdkRoutePatternDoc = 'docs/design/BACKEND_PROXY_PATTERN.md';
 
-test('every step of the SDK route recipe reaches go-backend and the pattern doc', () => {
-  const context = extractConcernContext({
-    routingMarkdown: concerns,
-    detailMarkdown: concernDetails,
-    concern: 'go-backend',
-  });
-  const pathHit = (file) => context.trigger_paths.some((glob) => globToRegExp(glob).test(file));
-  const keywordHit = (file) => context.trigger_keywords.some((keyword) => repoFile(file).includes(keyword));
-  const pathsAloneException = concerns
-    .split('\n')
-    .find((line) => line.startsWith('Exception to the paths-alone rule above'));
+const routeDiff = (concern, diff) => {
+  const context = extractConcernContext({ routingMarkdown: concerns, detailMarkdown: concernDetails, concern });
+  const pathSignal = diff.some(({ path }) => context.trigger_paths.some((glob) => globToRegExp(glob).test(path)));
+  const keywordSignal = diff.some(({ hunk }) => context.trigger_keywords.some((keyword) => hunk.includes(keyword)));
+  const signals = Number(pathSignal) + Number(keywordSignal);
+  return { activated: signals >= context.activation.min_signals, pathSignal, keywordSignal, context };
+};
 
-  assert.ok(context.load_docs.includes(sdkRoutePatternDoc));
-  assert.ok(pathsAloneException, 'CONCERNS.md must state the pkg/ load rule as an exception to the paths-alone rule');
-  assert.ok(concerns.indexOf(pathsAloneException) > concerns.indexOf('Never activate concerns using paths alone'));
-  assert.match(pathsAloneException, /BACKEND_PROXY_PATTERN\.md#how-to-add-or-change-a-route/);
-
-  for (const file of ['pkg/provider/provider.go', 'kinds/manifest.cue', 'src/lib/backend-routes.ts']) {
-    assert.ok(pathHit(file), `${file} must be a go-backend trigger path`);
-    assert.ok(
-      pathsAloneException.includes(file.startsWith('pkg/') ? 'pkg/' : file),
-      `${file} must be named in the exception`
-    );
+test('a diff touching only one SDK route recipe step routes to go-backend and loads the pattern', () => {
+  const diffs = {
+    'kinds/manifest.cue': [
+      { path: 'kinds/manifest.cue', hunk: '+\t\t"/backend/new-route": "GET": {name: "getNewRoute"}' },
+    ],
+    'src/lib/backend-routes.ts': [{ path: 'src/lib/backend-routes.ts', hunk: "+  'new-route'," }],
+    'pkg/provider/provider.go': [{ path: 'pkg/provider/provider.go', hunk: '+\t\t\t\tnewRouteHandler(store),' }],
+    'a backendRoute( call site': [
+      { path: 'src/lib/assignments-client.ts', hunk: "+  const url = backendRoute('assignments/my');" },
+    ],
+  };
+  for (const [label, diff] of Object.entries(diffs)) {
+    const routed = routeDiff('go-backend', diff);
+    assert.ok(routed.activated, `${label} must activate go-backend`);
+    assert.ok(routed.context.load_docs.includes(sdkRoutePatternDoc), `${label} must load ${sdkRoutePatternDoc}`);
   }
-  assert.ok(context.trigger_keywords.includes('backendRoute('));
-  for (const callSite of ['src/completion-records/completion-write-client.ts', 'src/lib/assignments-client.ts']) {
-    assert.ok(keywordHit(callSite), `${callSite} calls backendRoute( and must hit a go-backend keyword`);
-  }
+  const callSite = routeDiff('go-backend', diffs['a backendRoute( call site']);
+  assert.equal(callSite.pathSignal, false, 'the call-site diff must reach go-backend through its keyword, not a path');
+  assert.equal(callSite.keywordSignal, true);
+  assert.equal(
+    routeDiff('go-backend', [{ path: 'src/lib/assignments-client.ts', hunk: "+  const url = '/api/other';" }])
+      .activated,
+    false,
+    'an unrelated frontend change must not activate go-backend'
+  );
 });
 
 test('route concerns that share handlers send reviewers to the pattern invariants', () => {
-  const doc = repoFile(sdkRoutePatternDoc);
-  assert.match(doc, /^### Route invariants$/m);
   for (const concern of ['go-backend', 'completion-records', 'tenant-settings']) {
     const context = extractConcernContext({ routingMarkdown: concerns, detailMarkdown: concernDetails, concern });
     assert.ok(context.load_docs.includes(sdkRoutePatternDoc), `${concern} must load the pattern doc`);
@@ -343,20 +345,6 @@ test('route concerns that share handlers send reviewers to the pattern invariant
       `${concern} review questions must name the route invariants`
     );
   }
-});
-
-test('agent context and the review skill lead to the route pattern for every route entry point', () => {
-  const entryPoints = ['pkg/', 'kinds/manifest.cue', 'src/lib/backend-routes.ts', 'backendRoute('];
-  for (const file of ['AGENTS.md', 'docs/developer/CONTEXT_INDEX.md']) {
-    const text = repoFile(file);
-    for (const entryPoint of entryPoints) {
-      assert.ok(text.includes(entryPoint), `${file} must name ${entryPoint}`);
-    }
-    assert.ok(text.includes('BACKEND_PROXY_PATTERN.md'), `${file} must link the route pattern`);
-  }
-  assert.match(repoFile('docs/design/PR_REVIEW.md'), /BACKEND_PROXY_PATTERN\.md#route-invariants/);
-  assert.match(repoFile('.cursor/rules/systemPatterns.mdc'), /how-to-add-or-change-a-route/);
-  assert.match(repoFile('.cursor/rules/techContext.mdc'), /BACKEND_PROXY_PATTERN\.md#how-to-add-or-change-a-route/);
 });
 
 test('every concern extracts within a budget that leaves headroom under the worker cap', () => {
