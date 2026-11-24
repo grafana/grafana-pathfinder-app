@@ -1,0 +1,34 @@
+[
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/00-overview/02-what-are-data-sources/",
+    "params": {
+      "title": "What are data sources?",
+      "layout": "step",
+      "weight": 20
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/00-overview/01-course-overview/",
+    "params": {
+      "title": "Connect Grafana to your data",
+      "layout": "step",
+      "weight": 10
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/00-overview/04-three-approaches-overview/",
+    "params": {
+      "title": "Data sources compared to integrations",
+      "layout": "step",
+      "weight": 40
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/00-overview/05-prerequisites/",
+    "params": {
+      "title": "Prerequisites",
+      "layout": "step",
+      "weight": 15
+    }
+  }
+]

@@ -11,6 +11,7 @@ import {
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
 import { classifyDocsUrl, isLegacyJourneyFamily } from '../../lib/docs-url-family';
+import { isLearnJourneyModeUrl } from '../../utils/learn-journey-mode';
 import { usePersistedString } from '../../hooks';
 
 export interface UrlTesterProps {
@@ -95,7 +96,8 @@ export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterPr
 
       const tutorialName = extractTitleFromUrl(testUrl);
 
-      if (isLegacyJourneyFamily(classifyDocsUrl(cleanedUrl)) && onOpenLearningJourney) {
+      const classification = classifyDocsUrl(cleanedUrl);
+      if ((isLegacyJourneyFamily(classification) || isLearnJourneyModeUrl(classification)) && onOpenLearningJourney) {
         onOpenLearningJourney(testUrl, tutorialName);
       } else {
         onOpenDocsPage(testUrl, tutorialName);

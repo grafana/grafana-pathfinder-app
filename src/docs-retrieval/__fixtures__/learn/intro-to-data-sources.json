@@ -1,0 +1,26 @@
+[
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/01-data-source-tour/",
+    "params": {
+      "title": "Common data sources",
+      "layout": "section",
+      "weight": 1
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/02-after-you-connect/",
+    "params": {
+      "title": "Put your data to work",
+      "layout": "section",
+      "weight": 2
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/00-overview/",
+    "params": {
+      "title": "Data source fundamentals",
+      "layout": "section",
+      "weight": 0
+    }
+  }
+]

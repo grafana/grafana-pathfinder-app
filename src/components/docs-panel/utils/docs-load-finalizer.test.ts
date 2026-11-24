@@ -2,7 +2,10 @@ import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../.
 import type { RawContent } from '../../../types/content.types';
 import { fetchContent } from '../../../docs-retrieval/content-fetcher';
 import { findDocPage } from '../../../utils/find-doc-page';
+import { getFeatureFlagValue } from '../../../utils/openfeature';
 import { buildDocsLoadSuccessPatch, resolveDocsLoadAlignment } from './docs-load-finalizer';
+
+jest.mock('../../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => false) }));
 
 function tab(overrides: Partial<LearningJourneyTab> = {}): LearningJourneyTab {
   return {
@@ -655,5 +658,49 @@ describe('resolved path locator capture', () => {
     });
     expect(patch.packageInfo).toBe(packageInfo);
     expect(patch.packageInfo?.resolvedPath).toBeUndefined();
+  });
+});
+
+describe('Grafana Learn placeholder titles', () => {
+  const step = 'https://grafana.com/docs/learning-hub/intro-to-data-sources/01-data-source-tour/07-prometheus/';
+
+  afterEach(() => {
+    jest.mocked(getFeatureFlagValue).mockReturnValue(false);
+  });
+
+  it('replaces the slug placeholder a deep link opened with by the resolved title', () => {
+    jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+    const page = findDocPage(step)!;
+
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: page.title, baseUrl: page.url, type: 'learning-journey' }),
+      requestedUrl: page.url,
+      fetchedContent: content({ metadata: { title: 'Prometheus' } }),
+    });
+
+    expect(page.title).toBe('07 Prometheus');
+    expect(patch.title).toBe('Prometheus');
+  });
+
+  it('keeps a title the reader already saw, such as the text of the link they clicked', () => {
+    jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: 'Connect Prometheus', baseUrl: step, type: 'learning-journey' }),
+      requestedUrl: step,
+      fetchedContent: content({ metadata: { title: 'Prometheus' } }),
+    });
+
+    expect(patch.title).toBeUndefined();
+  });
+
+  it('never treats a title as a Learn placeholder while the flag is off', () => {
+    const patch = buildDocsLoadSuccessPatch({
+      tab: tab({ title: '07 Prometheus', baseUrl: step }),
+      requestedUrl: step,
+      fetchedContent: content({ metadata: { title: 'Prometheus' } }),
+    });
+
+    expect(patch.title).toBeUndefined();
   });
 });

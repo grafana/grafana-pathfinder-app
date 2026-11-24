@@ -216,6 +216,18 @@ const pathfinderFeatureFlags = {
     trackingKey: 'guide_translations',
   },
   /**
+   * Opens Grafana Learn journey, section and step URLs as learning journeys
+   * (cover, ordered table of contents, milestone navigation). Off keeps every
+   * Learn URL a flat document. Stays off until Learn completion identity
+   * (#2513) has merged.
+   */
+  'pathfinder.learn-journey-mode': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'learn_journey_mode',
+  },
+  /**
    * Kill switch for the `guide_progress` and `guide_completed` analytics
    * events. Only stops the events: guide attempts are still tracked locally,
    * and completion records are unaffected.

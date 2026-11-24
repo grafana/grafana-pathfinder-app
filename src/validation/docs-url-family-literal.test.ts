@@ -31,7 +31,6 @@ import {
 } from './import-graph';
 
 const CLASSIFIER = 'lib/docs-url-family.ts';
-const GRAFANA_LEARN_JOURNEY_ISSUE = '#2512';
 
 const ALLOWED_FAMILY_LITERALS: readonly AllowedArchitectureEntry[] = [
   {
@@ -120,8 +119,8 @@ const ALLOWED_FAMILY_LITERALS: readonly AllowedArchitectureEntry[] = [
   {
     violation: 'docs-retrieval/content-fetcher/metadata-extract.ts — /\\/milestone-(\\d+)/',
     reason:
-      'Reads the milestone number out of a legacy milestone URL to find the current position; the Learn journey resolver replaces position lookup.',
-    tracking: GRAFANA_LEARN_JOURNEY_ISSUE,
+      'Reads the milestone number out of a legacy milestone URL to find the current position. Learn journeys never reach it: their position comes from the resolved index in learn-journey.ts.',
+    tracking: ARCHITECTURE_BY_DESIGN,
   },
   {
     violation:
@@ -160,24 +159,6 @@ const ALLOWED_FAMILY_LITERALS: readonly AllowedArchitectureEntry[] = [
     reason:
       'The trust gate: which grafana.com paths may be fetched. It authorizes and does not route, and must not depend on the classifier it protects.',
     tracking: ARCHITECTURE_BY_DESIGN,
-  },
-  {
-    violation: "utils/find-doc-page.ts — '/docs/learning-journeys/'",
-    reason:
-      'Accepts a relative `?doc=` path as a docs page and types it; moves onto the classifier when Learn journeys open.',
-    tracking: GRAFANA_LEARN_JOURNEY_ISSUE,
-  },
-  {
-    violation: "utils/find-doc-page.ts — '/docs/learning-paths/'",
-    reason:
-      'Accepts a relative `?doc=` path as a docs page and types it; moves onto the classifier when Learn journeys open.',
-    tracking: GRAFANA_LEARN_JOURNEY_ISSUE,
-  },
-  {
-    violation: "utils/find-doc-page.ts — '/tutorials/'",
-    reason:
-      'Accepts a relative `?doc=` path as a docs page and types it; moves onto the classifier when Learn journeys open.',
-    tracking: GRAFANA_LEARN_JOURNEY_ISSUE,
   },
 ];
 

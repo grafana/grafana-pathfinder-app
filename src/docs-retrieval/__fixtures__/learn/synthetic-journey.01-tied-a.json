@@ -1,0 +1,37 @@
+[
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/01-tied-a/step-b/",
+    "params": {
+      "title": "Second step",
+      "layout": "step",
+      "weight": 20
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/01-tied-a/step-a/",
+    "params": {
+      "title": "First step",
+      "layout": "step",
+      "weight": 10
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/01-tied-a/step-skip/",
+    "params": {
+      "title": "Skipped step",
+      "layout": "step",
+      "weight": 15,
+      "grafana": {
+        "skip": true
+      }
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/02-tied-b/wrong-section/",
+    "params": {
+      "title": "Step of another section",
+      "layout": "step",
+      "weight": 1
+    }
+  }
+]

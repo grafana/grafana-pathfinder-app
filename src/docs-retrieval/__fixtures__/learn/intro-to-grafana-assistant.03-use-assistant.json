@@ -1,0 +1,18 @@
+[
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/03-use-assistant/08-query/",
+    "params": {
+      "title": "Query your data",
+      "layout": "step",
+      "weight": 20
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/03-use-assistant/07-navigate/",
+    "params": {
+      "title": "Navigate Grafana resources",
+      "layout": "step",
+      "weight": 10
+    }
+  }
+]

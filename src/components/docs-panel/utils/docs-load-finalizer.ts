@@ -3,7 +3,7 @@ import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '.
 import type { LearningJourneyTab, PackageOpenInfo, PendingAlignment } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
 import { getPackageRenderType, isSamePackageRepository } from '../../../types/package.types';
-import { getInteractiveLearningUrlTitle } from '../../../utils/doc-page-title';
+import { getInteractiveLearningUrlTitle, getLearnUrlPlaceholderTitle } from '../../../utils/doc-page-title';
 
 export interface DocsLoadAlignmentInput {
   requestedUrl: string;
@@ -98,7 +98,9 @@ export function titleFromLoadedContent(
   const placeholder =
     backendGuideResourceName(tab.baseUrl) ??
     backendGuideResourceName(fetchedContent.url) ??
-    (requestedUrl === tab.baseUrl ? getInteractiveLearningUrlTitle(tab.baseUrl) : undefined);
+    (requestedUrl === tab.baseUrl
+      ? (getInteractiveLearningUrlTitle(tab.baseUrl) ?? getLearnUrlPlaceholderTitle(tab.baseUrl))
+      : undefined);
   if (!placeholder || tab.title !== placeholder || fetched === placeholder) {
     return undefined;
   }

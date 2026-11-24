@@ -164,6 +164,10 @@ export function LearningPathTableOfContents({
       isCurrent: cursor >= 0 && index === cursor,
       locked: milestone.isLocked,
       url: milestone.url,
+      ...(milestone.section &&
+        milestone.section.url !== activeMilestones[index - 1]?.section?.url && {
+          sectionHeading: milestone.section.title,
+        }),
     };
   });
 

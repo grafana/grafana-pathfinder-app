@@ -77,6 +77,8 @@ export interface PathGuide {
    * misclassify the next load as the cover page.
    */
   guideId?: string;
+  /** Heading shown above this row; set only on the first row of a group, and only for Grafana Learn journeys. */
+  sectionHeading?: string;
 }
 
 /**

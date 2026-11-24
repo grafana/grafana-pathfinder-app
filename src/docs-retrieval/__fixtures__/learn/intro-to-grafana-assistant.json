@@ -1,0 +1,26 @@
+[
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/02-get-started/",
+    "params": {
+      "title": "Get started with Grafana Assistant",
+      "layout": "module",
+      "weight": 1
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/03-use-assistant/",
+    "params": {
+      "title": "Use Grafana Assistant",
+      "layout": "module",
+      "weight": 2
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/01-intro/",
+    "params": {
+      "title": "Grafana Assistant fundamentals",
+      "layout": "module",
+      "weight": 0
+    }
+  }
+]

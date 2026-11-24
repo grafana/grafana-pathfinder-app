@@ -24,6 +24,7 @@ import {
   isGitHubRawUrl,
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { isLearnJourneyModeUrl } from '../../utils/learn-journey-mode';
 import { LearningJourneyTab } from '../../types/content-panel.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
@@ -262,7 +263,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Parse URL to check pathname (already validated by isValidGrafanaContentUrl)
             const urlObj = parseUrlSafely(fullUrl);
-            const isLearningJourney = isDocsRootedLegacyJourney(classifyDocsUrl(fullUrl));
+            const classification = classifyDocsUrl(fullUrl);
+            const isLearningJourney =
+              isDocsRootedLegacyJourney(classification) || isLearnJourneyModeUrl(classification);
 
             // Determine if it's a learning path or regular docs/tutorials
             if (isLearningJourney) {
