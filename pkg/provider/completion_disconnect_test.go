@@ -18,6 +18,19 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
+type cancelAfterCreateStore struct {
+	*fakeAttemptStore
+	cancel context.CancelFunc
+}
+
+func (s cancelAfterCreateStore) Create(ctx context.Context, namespace string, obj services.CompletionRecordObject) error {
+	if err := s.fakeAttemptStore.Create(ctx, namespace, obj); err != nil {
+		return err
+	}
+	s.cancel()
+	return nil
+}
+
 func TestCompletionRetryAfterConnectionLossRepairsAssignmentAndCache(t *testing.T) {
 	services.ResetCompletionCache()
 	t.Cleanup(services.ResetCompletionCache)
@@ -25,7 +38,7 @@ func TestCompletionRetryAfterConnectionLossRepairsAssignmentAndCache(t *testing.
 	var repairAttempts atomic.Int32
 	var satisfied atomic.Bool
 	assignment := services.Assignment{Name: "assigned", UserID: "user:1", TargetType: "guide", TargetID: "first-dashboard", TargetSource: "bundled", Lifecycle: "active"}
-	handler := completionWriteHandler(store, func(ctx context.Context, namespace string, record services.CompletionRecord) {
+	repair := func(ctx context.Context, namespace string, record services.CompletionRecord) {
 		if namespace != "default" || record.UserID != "user:1" || ctx.Err() != nil {
 			t.Error("repair lost the authenticated caller or usable context")
 		}
@@ -37,15 +50,21 @@ func TestCompletionRetryAfterConnectionLossRepairsAssignmentAndCache(t *testing.
 					satisfied.Store(true)
 				}
 			}, log.DefaultLogger)
-	})
+	}
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		ctx := authlib.WithAuthInfo(request.Context(), writerIdentity{completionIdentity{testIdentity: testIdentity{namespace: "default"}, subject: "user:1"}})
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		handler := completionWriteHandler(cancelAfterCreateStore{store, cancel}, repair)
 		buffer := httptest.NewRecorder()
 		if err := handler(ctx, buffer, &app.CustomRouteRequest{Method: request.Method, Body: request.Body, ResourceIdentifier: resource.FullIdentifier{Namespace: "default"}}); err != nil {
 			t.Error(err)
 		}
 		if requests.Add(1) == 1 {
+			if ctx.Err() != context.Canceled {
+				t.Error("first request remained active after the store committed")
+			}
 			connection, _, err := w.(http.Hijacker).Hijack()
 			if err != nil {
 				t.Error(err)

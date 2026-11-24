@@ -242,7 +242,7 @@ capability/retry responses for the personal view and honest partial reports for
 insights. Full bodies and headers are compared, with the documented no-store
 addition on personal assignments. Dropping the generated assignment client's
 continuation token must fail the independent last-page/caller-count invariant.
-Status repair is covered by the separate write sequence and lost-acknowledgement tests. The HTTP harness closes the connection after handler completion. Cancellation between storage commit and handler completion remains unverified.
+Status repair is covered by the separate write sequence and lost-acknowledgement tests. The HTTP harness cancels the first request context immediately after the fake store commits the record. It checks that assignment repair receives a usable context, drops the HTTP response after handler completion, and retries with a fresh request. The retry repairs the assignment and invalidates the cache without duplicating the record.
 
 ## Historical guide and settings writes
 

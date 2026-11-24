@@ -51,3 +51,9 @@ On the pre-SDK main branch, the `withFrozenTime` helper in `pkg/plugin/package_r
 ## SDK fidelity reports a changed mutation target
 
 The negative controls in `scripts/sdk-fidelity/run.py` deliberately alter one production expression in a temporary checkout. After a refactor, find the control named by the failure, point it at the equivalent production expression, and rerun `python3 scripts/sdk-fidelity/run.py`. The unmodified build must match the legacy baseline and the isolated mutation must still be detected. Keep the frozen baseline until the compatibility window closes and the team has retained equivalent coverage for supported behavior.
+
+## SDK fidelity CI reports “mutation target changed”
+
+The controls in `scripts/sdk-fidelity/run.py` temporarily replace exact source strings to check that the tests catch a regression. After a refactor, find the error text in the script, update the target to the equivalent code, and run `python3 scripts/sdk-fidelity/run.py`. Each control must still introduce the behavior its test is meant to catch.
+
+The `f106a89` pin supplies the legacy comparison. Keep it across refactors. Retire it only when the team explicitly ends that compatibility contract and identifies the tests that will cover the supported behavior going forward.
