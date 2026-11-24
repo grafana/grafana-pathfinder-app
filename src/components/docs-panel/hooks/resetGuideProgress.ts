@@ -39,6 +39,8 @@ export interface ResetGuideProgressIdentity {
    * (see that field's own doc comment).
    */
   journeyBaseUrl?: string;
+  /** The milestone's URL: a Grafana Learn step's identity is its path, not its slug. */
+  milestoneUrl?: string;
 }
 
 /**
@@ -94,6 +96,7 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
         repository: identity.repository,
         packageManifest: identity.packageManifest,
         milestoneSlug: identity.milestoneSlug,
+        milestoneUrl: identity.milestoneUrl,
       })
     : resolveIdentity({
         packageManifest: identity?.packageManifest,
