@@ -58,6 +58,23 @@ describe('planPackageExecution', () => {
     ).toEqual(['chosen', 'leaf', 'root', 'separate']);
   });
 
+  it('keeps a single root in one chain even when its prerequisites are unrelated', () => {
+    // Local cloud runs plan exactly one root, so they always get one chain.
+    // The per-chain target reset in `runChains` has no multi-chain local cloud case to cover.
+    const repository: RepositoryJson = {
+      root: { path: 'root/', type: 'guide', depends: ['left', 'right'] },
+      left: { path: 'left/', type: 'guide' },
+      right: { path: 'right/', type: 'guide' },
+    };
+
+    const single = planPackageExecution({ rootIds: ['root'], repository });
+    expect(single.errors).toEqual([]);
+    expect(single.chains.map((chain) => chain.map((guide) => guide.id))).toEqual([['left', 'right', 'root']]);
+
+    const batched = planPackageExecution({ rootIds: ['left', 'right'], repository });
+    expect(batched.chains.map((chain) => chain.map((guide) => guide.id))).toEqual([['left'], ['right']]);
+  });
+
   it('expands path milestones in declared order without making order a hard dependency', () => {
     const repository: RepositoryJson = {
       path: { path: 'path/', type: 'path', milestones: ['first', 'second', 'third'] },
