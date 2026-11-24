@@ -1523,7 +1523,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const opts = { source: 'live_session_attendee' as const };
 
       // Open the tutorial in a new tab
-      if (url.includes('/learning-journeys/') || url.includes('/learning-paths/')) {
+      if (isLearningJourneyUrl(url)) {
         model.openLearningJourney(url, title, opts);
       } else {
         model.openDocsPage(url, title, opts);
