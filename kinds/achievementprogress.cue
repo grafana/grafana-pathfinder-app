@@ -32,11 +32,8 @@ achievementProgressKind: {
 // from. The writer names each object hash(userId ‖ 0x00 ‖ achievementId) and
 // updates it in place at a resourceVersion (compare-and-swap).
 //
-// Enforcement note (manifest-only deploy posture, see PR #64): in production
-// this kind is served by a shared generic apiserver directly from the generated
-// CRD schema. The CUE schema below is therefore the ONLY enforcement surface
-// that ships, so every invariant we can express is pushed into it. It checks
-// presence and domains, not truth.
+// The schema constrains progress fields. The SDK achievement handler
+// establishes caller identity before updating progress.
 achievementprogressv1alpha1: achievementProgressKind & {
 	schema: {
 		spec: {

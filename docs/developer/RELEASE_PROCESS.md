@@ -40,7 +40,7 @@ There is no fixed Pathfinder Argo workflow name: shared CD uses the `grafana-plu
 
 ## Build process
 
-Webpack enters `src/module.tsx`, builds the frontend bundle and replaces version/date placeholders. The plugin distribution also includes its backend proxy artifacts through the release build. Local commands:
+Webpack enters `src/module.tsx`, builds the frontend bundle and replaces version/date placeholders. The plugin distribution also includes its SDK backend artifacts through the release build. Local commands:
 
 ```bash
 npm run build  # production frontend build
