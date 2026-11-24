@@ -66,7 +66,9 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
   await expect(instruction).toContainText('Choose Add block');
   await page.getByTestId(testIds.blockEditor.palette).getByTestId(testIds.blockEditor.addBlockButton).click();
   await expect(instruction).toContainText('Choose Section');
-  await page.getByTestId(testIds.blockEditor.blockTypeButton('section')).click();
+  const sectionButton = page.getByTestId(testIds.blockEditor.blockTypeButton('section'));
+  await expect(sectionButton).toHaveClass(/interactive-guided-active/);
+  await sectionButton.click();
   await expect(instruction).toContainText('Enter Search the dashboard list');
   await page.getByTestId(testIds.blockEditor.sectionTitleInput).fill('Search the dashboard list');
   await expect(instruction).toContainText('Choose Add and record');

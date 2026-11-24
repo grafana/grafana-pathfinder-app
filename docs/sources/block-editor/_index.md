@@ -31,7 +31,7 @@ This page walks you through:
 
 ## Who can use the block editor
 
-The block editor is available to users with the Editor or Admin role in Grafana. The **Create guide** menu item is not available to users with the Viewer role. Published guides are visible to users in the same Grafana organization, regardless of role.
+The block editor is available to users with the Editor or Admin organization role, and to Grafana server administrators. Other Viewers cannot use **Create guide**. Published guides are visible to users in the same Grafana organization, regardless of role.
 
 Publishing requires server storage to be available on your stack. Published custom guides are shared within the current Grafana organization. Other authors with the required access can load guides from the library. When publishing is unavailable, you can still author guides locally and export their JSON.
 
@@ -42,11 +42,11 @@ The block editor lives inside the Interactive learning sidebar.
 1. Click the **Help** icon in the top navigation bar to open the Interactive learning sidebar.
 1. Open **More options** (the three-dot menu) and select **Create guide**.
 
-If **Create guide** is missing, check that you are signed in with the Editor or Admin role.
+If **Create guide** is missing, check [who can use the block editor](#who-can-use-the-block-editor).
 
 ## Create your first guide with a lesson
 
-Editors and Admins can select **Create your first guide** in an empty editor or its **More actions** menu. This action opens only the bundled authoring lesson beside the current draft. Other guides cannot use this layout.
+Authors can select **Create your first guide** in an empty sidebar editor or its **More actions** menu. They can also open it from the Grafana home recommendation. This action opens only the bundled authoring lesson beside the current draft. Other guides cannot use this layout.
 
 The lesson covers Markdown, recording, selector checks, show-only highlights, Preview, and draft storage. It does not publish the practice guide.
 
@@ -227,7 +227,7 @@ You can also add an interactive `popout` action to move the reader's guide betwe
 
 ### Create guide is missing
 
-You need the Editor or Admin role on this Grafana instance. Ask an administrator to update your role, or check that you're logged in as the right user.
+Check [who can use the block editor](#who-can-use-the-block-editor). If you lack access, ask an administrator to update your role.
 
 ### Selector health badge is yellow or red
 
