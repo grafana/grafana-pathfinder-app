@@ -310,34 +310,97 @@ describe('fetchCustomGuideRepository', () => {
 });
 
 describe('catalogue round-trip measurement', () => {
+  const catalogue = { capability: { available: true }, guides: [] };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it.each([
-    { outcome: 'available', response: { capability: { available: true }, guides: [] } },
+    { outcome: 'available', response: catalogue },
     { outcome: 'unavailable', response: { capability: { available: false, reason: 'obo-unavailable' }, guides: [] } },
     { outcome: 'malformed', response: { capability: { available: true }, guides: 'drift' } },
   ])('records one $outcome measurement per network request', async ({ outcome, response }) => {
     mockGet.mockResolvedValue(response);
 
-    await fetchCustomGuideCatalogue('stacks-measure', { refresh: true });
+    await fetchCustomGuideCatalogue('stacks-123');
 
     expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledTimes(1);
     expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledWith(expect.any(Number), outcome);
   });
 
-  it('records a request-failed measurement when the request rejects', async () => {
+  it('measures the elapsed time between the request start and its answer', async () => {
+    jest.spyOn(performance, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1250.5);
+    mockGet.mockResolvedValue(catalogue);
+
+    await fetchCustomGuideCatalogue('stacks-123');
+
+    expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledWith(250.5, 'available');
+  });
+
+  it('records one request-failed measurement when the request rejects', async () => {
     mockGet.mockRejectedValue(new Error('boom'));
 
-    await fetchCustomGuideCatalogue('stacks-measure', { refresh: true });
+    await fetchCustomGuideCatalogue('stacks-123');
 
+    expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledTimes(1);
     expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledWith(expect.any(Number), 'request-failed');
   });
 
   it('does not measure a cached answer', async () => {
-    mockGet.mockResolvedValue({ capability: { available: true }, guides: [] });
+    mockGet.mockResolvedValue(catalogue);
 
-    await fetchCustomGuideCatalogue('stacks-cached', { refresh: true });
-    await fetchCustomGuideCatalogue('stacks-cached');
+    await fetchCustomGuideCatalogue('stacks-123');
+    await fetchCustomGuideCatalogue('stacks-123');
 
     expect(mockGet).toHaveBeenCalledTimes(1);
     expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('records one measurement for concurrent callers that share a request', async () => {
+    mockGet.mockResolvedValue(catalogue);
+
+    await Promise.all([fetchCustomGuideCatalogue('stacks-123'), fetchCustomGuideCatalogue('stacks-123')]);
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('records both requests when a refresh supersedes one in flight', async () => {
+    let answerStale!: (value: unknown) => void;
+    mockGet.mockReturnValueOnce(new Promise((resolve) => (answerStale = resolve)));
+    const stale = fetchCustomGuideCatalogue('stacks-123');
+    mockGet.mockResolvedValueOnce(catalogue);
+
+    await fetchCustomGuideCatalogue('stacks-123', { refresh: true });
+    answerStale(catalogue);
+    await stale;
+
+    expect(recordCustomGuideCatalogueRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { name: 'an unsupported namespace', namespace: 'stacks-other', backend: true },
+    { name: 'an unavailable backend', namespace: 'stacks-123', backend: false },
+  ])('does not measure $name, which never reaches the network', async ({ namespace, backend }) => {
+    mockAvailable = backend;
+
+    await fetchCustomGuideCatalogue(namespace);
+
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(recordCustomGuideCatalogueRequest).not.toHaveBeenCalled();
+  });
+
+  it('still resolves and releases the request when the measurement sink throws', async () => {
+    (recordCustomGuideCatalogueRequest as jest.Mock).mockImplementation(() => {
+      throw new Error('sink down');
+    });
+    mockGet.mockResolvedValue(catalogue);
+
+    await expect(fetchCustomGuideCatalogue('stacks-123')).resolves.toMatchObject({ available: true });
+    invalidateCustomGuideRepositoryCache();
+    await fetchCustomGuideCatalogue('stacks-123');
+
+    expect(mockGet).toHaveBeenCalledTimes(2);
   });
 });

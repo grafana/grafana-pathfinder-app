@@ -17,11 +17,8 @@ import { backendRoute, expectsSdkBackend, recoverSdkBackend } from './backend-ro
 import { isBackendApiAvailable } from '../utils/interactive-guides-api';
 import { classifyRequestFailure } from './fetch-error';
 import { logger } from './logging';
-import {
-  type CustomGuideCatalogueOutcome,
-  recordCustomGuideCatalogueRequest,
-  recordCustomGuideCatalogueUnavailable,
-} from './telemetry/facade';
+import { recordCustomGuideCatalogueRequest, recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
+import type { CustomGuideCatalogueOutcome } from './telemetry/types';
 import { PackageTypeSchema } from '../types/package.schema';
 import type { Author, ManifestTrack, PackageType } from '../types/package.types';
 
@@ -118,10 +115,20 @@ export interface CustomGuideCatalogue {
 
 interface CatalogueResult extends CustomGuideCatalogue {
   cacheable: boolean;
+  outcome: Exclude<CustomGuideCatalogueOutcome, typeof REQUEST_FAILED_REASON>;
 }
 
 // Bounded token, same closed vocabulary as the reasons above (TELEMETRY.md).
 const MALFORMED_REASON = 'malformed-response';
+const REQUEST_FAILED_REASON = 'request-failed';
+
+function measureCatalogueRequest(startedAt: number, outcome: CustomGuideCatalogueOutcome): void {
+  try {
+    recordCustomGuideCatalogueRequest(performance.now() - startedAt, outcome);
+  } catch {
+    // Observability must not turn a listing answer into a rejection.
+  }
+}
 
 // `null` is absent, not malformed: the proxy is Go, and json.Marshal of a nil
 // []guide emits `null`, so an empty catalogue legitimately sends exactly that.
@@ -158,15 +165,15 @@ async function requestCatalogue(): Promise<CatalogueResult> {
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[custom-guides] catalogue unavailable', { reason });
     recordCustomGuideCatalogueUnavailable(reason);
-    return { entries: [], available: false, reason, cacheable: true };
+    return { entries: [], available: false, reason, cacheable: true, outcome: 'unavailable' };
   }
   if (isMalformedGuides(response.guides)) {
     logger.warn('[custom-guides] catalogue malformed', { reason: MALFORMED_REASON });
     recordCustomGuideCatalogueUnavailable(MALFORMED_REASON);
-    return { entries: [], available: false, reason: MALFORMED_REASON, cacheable: false };
+    return { entries: [], available: false, reason: MALFORMED_REASON, cacheable: false, outcome: 'malformed' };
   }
   const guides = Array.isArray(response.guides) ? response.guides : [];
-  return { entries: guides.map(shapeEntry), available: true, cacheable: true };
+  return { entries: guides.map(shapeEntry), available: true, cacheable: true, outcome: 'available' };
 }
 
 export async function fetchCustomGuideCatalogue(
@@ -198,21 +205,20 @@ export async function fetchCustomGuideCatalogue(
   }
   // Only the latest request for a key caches its result, so a superseded one cannot overwrite a refresh.
   const startedAt = performance.now();
-  let outcome: CustomGuideCatalogueOutcome = 'request-failed';
   const request: Promise<CustomGuideCatalogue> = requestCatalogue()
-    .then(({ cacheable, ...result }) => {
-      outcome = result.available ? 'available' : result.reason === MALFORMED_REASON ? 'malformed' : 'unavailable';
+    .then(({ cacheable, outcome, ...result }) => {
       if (cacheable && inflight.get(key) === request) {
         cache.set(key, { result, at: Date.now() });
       }
+      measureCatalogueRequest(startedAt, outcome);
       return result;
     })
     .catch((err: unknown): CustomGuideCatalogue => {
       reportCatalogueFetchFailure(err);
-      return { entries: [], available: false, reason: 'request-failed' };
+      measureCatalogueRequest(startedAt, REQUEST_FAILED_REASON);
+      return { entries: [], available: false, reason: REQUEST_FAILED_REASON };
     })
     .finally(() => {
-      recordCustomGuideCatalogueRequest(Math.round(performance.now() - startedAt), outcome);
       if (inflight.get(key) === request) {
         inflight.delete(key);
       }

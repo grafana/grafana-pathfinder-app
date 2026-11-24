@@ -24,6 +24,7 @@ import {
   type CompletionWriteDegradation,
   type ContentFetchOutcome,
   type ContentFetchTier,
+  type CustomGuideCatalogueOutcome,
   type RecommendCompletionsOutcome,
   type RecommenderErrorType,
   type RecommenderOutcome,
@@ -186,13 +187,11 @@ export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEventChecked(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason: toAnalyticsValue(reason) });
 }
 
-export type CustomGuideCatalogueOutcome = 'available' | 'unavailable' | 'malformed' | 'request-failed';
-
-// Whole client round trip, so it includes the proxy's paginated drain (60 s budget).
+// Whole client round trip, including the proxy's paginated drain.
 export function recordCustomGuideCatalogueRequest(durationMs: number, outcome: CustomGuideCatalogueOutcome): void {
   pushFaroMeasurementChecked(
     TELEMETRY_MEASUREMENTS.customGuideCatalogue,
-    { custom_guide_catalogue_ms: durationMs },
+    { custom_guide_catalogue_ms: Math.round(durationMs) },
     { outcome: toAnalyticsValue(outcome) }
   );
 }

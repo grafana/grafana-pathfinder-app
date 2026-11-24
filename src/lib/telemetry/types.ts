@@ -20,6 +20,8 @@ export type RecommendCompletionsOutcome = 'ok' | 'disabled' | 'unavailable' | 't
 export type ContentFetchTier = 'bundled' | 'backend-guide' | 'content-json' | 'unstyled-html' | 'other';
 export type ContentFetchOutcome = 'ok' | 'error';
 
+export type CustomGuideCatalogueOutcome = 'available' | 'unavailable' | 'malformed' | 'request-failed';
+
 // Low-cardinality reason enum for the durable completion-write path degrading.
 // Aggregate classes only — never a guide id/title, user id, URL, or raw error.
 export type CompletionWriteDegradation =

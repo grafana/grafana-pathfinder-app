@@ -149,11 +149,11 @@ describe('measurement and event domain operations', () => {
     });
   });
 
-  it('recordCustomGuideCatalogueRequest measures the catalogue round trip with a closed outcome', () => {
-    recordCustomGuideCatalogueRequest(1250, 'request-failed');
+  it('recordCustomGuideCatalogueRequest rounds the catalogue round trip and closes the outcome', () => {
+    recordCustomGuideCatalogueRequest(1250.6, 'request-failed');
     expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
       'pathfinder_custom_guide_catalogue',
-      { custom_guide_catalogue_ms: 1250 },
+      { custom_guide_catalogue_ms: 1251 },
       { outcome: 'request_failed' }
     );
   });
